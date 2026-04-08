@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 
-const SPLASH_HOLD_MS = 3700;
+const SPLASH_HOLD_MS = 4700;
 const SPLASH_FADEOUT_MS = 700;
 
 export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
@@ -49,6 +49,11 @@ export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
           background: "radial-gradient(ellipse 80% 50% at 50% 45%, rgba(104, 171, 232, 0.2) 0%, transparent 60%)",
         }}
       />
+      {/* Soft starfield + orbital glow */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="welcome-splash-stars" />
+        <div className="welcome-splash-orbit" />
+      </div>
       {/* Accent rays */}
       <div
         className="absolute inset-0 pointer-events-none opacity-30"
@@ -57,7 +62,7 @@ export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
         }}
       />
 
-      <div className="relative flex flex-col items-center justify-center gap-5 px-4">
+      <div className="relative flex flex-col items-center justify-center gap-5 px-4 -translate-y-16 sm:-translate-y-20">
         <p className="welcome-splash-title text-uri-keaney/95 text-sm sm:text-base font-semibold tracking-[0.3em] uppercase">
           Welcome to
         </p>
@@ -73,7 +78,15 @@ export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
 
       {/* Loading bar: ram walking across grass field */}
       <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-[min(300px,88vw)] flex flex-col items-center gap-2">
-        <p className="text-sm font-medium text-white/80 tracking-wide">Loading CampusQuest...</p>
+        <p className="text-sm font-semibold text-white/90 tracking-[0.18em] uppercase">
+          Loading CampusQuest
+          <span className="inline-block w-4 text-center welcome-splash-dots" aria-hidden>
+            ...
+          </span>
+        </p>
+        <p className="text-[11px] sm:text-xs text-white/70 tracking-wide">
+          {Math.round(progress)}% ready · Daily training keeps your streak alive
+        </p>
         {/* Track: clean pill bar */}
         <div
           className="relative w-full h-10 rounded-full overflow-hidden border border-white/20 bg-white/5"
@@ -114,6 +127,8 @@ export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
           >
             <span className="text-2xl drop-shadow-lg inline-block scale-x-[-1] filter brightness-110" aria-hidden>🐏</span>
           </div>
+          {/* Animated shine sweeping across the grass track */}
+          <div className="welcome-splash-scanline pointer-events-none" />
         </div>
       </div>
 

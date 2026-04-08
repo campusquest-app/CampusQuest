@@ -44,6 +44,85 @@
 .welcome-splash-tagline {
   animation: welcome-zoom-in 0.5s 0.5s ease-out both;
 }
+@keyframes welcome-stars-twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: translate3d(-4px, 2px, 0) scale(1.03);
+  }
+}
+@keyframes welcome-orbit {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+@keyframes welcome-scan {
+  0% {
+    opacity: 0;
+    transform: translateX(-120%) skewX(-12deg);
+  }
+  15% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(120%) skewX(-12deg);
+  }
+}
+.welcome-splash-stars {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.24) 0, transparent 40%),
+    radial-gradient(circle at 80% 30%, rgba(183, 224, 255, 0.32) 0, transparent 45%),
+    radial-gradient(circle at 20% 75%, rgba(104, 171, 232, 0.3) 0, transparent 50%);
+  filter: blur(0.3px);
+  opacity: 0.55;
+  mix-blend-mode: screen;
+  animation: welcome-stars-twinkle 5.5s ease-in-out infinite alternate;
+}
+.welcome-splash-orbit {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  width: min(420px, 90vw);
+  height: min(420px, 90vw);
+  border-radius: 999px;
+  border: 1px solid rgba(104, 171, 232, 0.16);
+  box-shadow:
+    0 0 40px rgba(104, 171, 232, 0.22),
+    0 0 80px rgba(15, 23, 42, 0.96);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(104, 171, 232, 0.35), transparent 55%),
+    radial-gradient(circle at 80% 100%, rgba(15, 23, 42, 0.85), transparent 60%);
+  opacity: 0.5;
+  transform-origin: center;
+  animation: welcome-orbit 26s linear infinite;
+}
+.welcome-splash-scanline {
+  position: absolute;
+  inset: -40%;
+  background: linear-gradient(
+    120deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 40%,
+    rgba(255, 255, 255, 0.16) 50%,
+    transparent 60%
+  );
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: welcome-scan 2.2s ease-in-out infinite;
+}
+.welcome-splash-dots {
+  animation: steps(3, end) 1.2s infinite;
+}
 @keyframes welcome-ram-walk {
   0%, 100% { transform: translate(-50%, -50%) translateY(0); }
   50% { transform: translate(-50%, -50%) translateY(-3px); }
