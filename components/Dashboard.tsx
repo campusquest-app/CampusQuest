@@ -202,8 +202,10 @@ export function Dashboard() {
     primaryStat?: StatKey;
   }>(null);
   const [bossDefeatPhase, setBossDefeatPhase] = useState<"teaser" | "reveal" | null>(null);
+  const [bossChestPhase, setBossChestPhase] = useState<"idle" | "opening" | "open" | "handoff">("idle");
   const [bossVictoryExiting, setBossVictoryExiting] = useState(false);
   const bossVictoryTimerRef = useRef<number | null>(null);
+  const bossChestSequenceTimersRef = useRef<number[]>([]);
   const [showLevel3Popup, setShowLevel3Popup] = useState(false);
   const [dmWithOther, setDmWithOther] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
   const [screenShake, setScreenShake] = useState(false);
@@ -245,6 +247,8 @@ export function Dashboard() {
   }
 
   function dismissBossVictory() {
+    bossChestSequenceTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+    bossChestSequenceTimersRef.current = [];
     if (bossVictoryTimerRef.current) {
       clearTimeout(bossVictoryTimerRef.current);
       bossVictoryTimerRef.current = null;
@@ -256,6 +260,37 @@ export function Dashboard() {
       setBossVictoryExiting(false);
     }, 500);
   }
+
+  const startBossChestReveal = useCallback(() => {
+    if (bossDefeatPhase !== "teaser" || bossChestPhase !== "idle") return;
+
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate?.([18, 40, 24]);
+    }
+    setBossChestPhase("opening");
+    bossChestSequenceTimersRef.current.push(
+      window.setTimeout(() => {
+        if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+          navigator.vibrate?.([10, 20, 40]);
+        }
+        setBossChestPhase("open");
+      }, 900),
+      // Hold the open chest state for 2 seconds before transitioning.
+      window.setTimeout(() => setBossChestPhase("handoff"), 2900),
+      window.setTimeout(() => {
+        setBossDefeatPhase("reveal");
+        setBossChestPhase("idle");
+        bossChestSequenceTimersRef.current = [];
+      }, 3400)
+    );
+  }, [bossDefeatPhase, bossChestPhase]);
+
+  useEffect(() => {
+    if (bossDefeatPhase === "teaser") return;
+    bossChestSequenceTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+    bossChestSequenceTimersRef.current = [];
+    setBossChestPhase("idle");
+  }, [bossDefeatPhase]);
 
   useEffect(() => {
     if (bossDefeatPhase !== "reveal") return;
@@ -357,7 +392,10 @@ export function Dashboard() {
         setScreenShake(true);
         window.setTimeout(() => setScreenShake(false), 700);
       }
-      if (result.lastBossDrop) setBossDefeatPhase("teaser");
+      if (result.lastBossDrop) {
+        setBossChestPhase("idle");
+        setBossDefeatPhase("teaser");
+      }
       if (!result.lastBossDrop) {
         const ms = modLines && modLines.length > 2 ? 5200 : 3800;
         window.setTimeout(() => setGainToast(null), ms);
@@ -395,30 +433,56 @@ export function Dashboard() {
         {gainToast?.lastBossDrop && typeof document !== "undefined" && createPortal(
           bossDefeatPhase === "teaser" ? (
             <div
-              className={`fixed inset-0 z-[100] flex items-center justify-center p-4 lootbox-teaser-enter ${bossVictoryExiting ? "boss-victory-exit" : ""}`}
+              className={`fixed inset-0 z-[100] flex items-center justify-center p-4 lootbox-teaser-enter ${
+                bossChestPhase === "handoff" ? "lootbox-teaser-handoff" : ""
+              } ${bossVictoryExiting ? "boss-victory-exit" : ""}`}
               role="dialog"
               aria-modal="true"
               aria-labelledby="lootbox-teaser-title"
               style={{ background: "radial-gradient(ellipse 100% 100% at 50% 40%, rgba(197,165,40,0.2) 0%, rgba(4,30,66,0.98) 45%, #041E42 100%)" }}
             >
               <div className="absolute inset-0 bg-black/50" aria-hidden />
-              <div className="relative z-10 w-full max-w-sm flex flex-col items-center text-center">
+              <div className="relative z-10 w-full max-w-md flex flex-col items-center text-center">
                 <p className="text-uri-gold/90 font-semibold text-sm uppercase tracking-widest mb-2">Victory!</p>
-                <h2 id="lootbox-teaser-title" className="text-white font-display font-bold text-2xl mb-1">A loot box awaits</h2>
+                <h2 id="lootbox-teaser-title" className="lootbox-title-glow text-white font-display font-bold text-3xl mb-1">A loot box awaits</h2>
                 <p className="text-white/70 text-sm mb-6">You defeated a boss. Open it to see what you earned.</p>
                 <button
                   type="button"
-                  onClick={() => setBossDefeatPhase("reveal")}
-                  className="lootbox-teaser-glow relative flex items-center justify-center rounded-2xl border-4 border-uri-gold/60 bg-gradient-to-br from-uri-gold/30 to-uri-navy p-2 shadow-2xl hover:scale-105 active:scale-[0.98] transition-transform cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-uri-gold w-40 h-40 sm:w-44 sm:h-44 min-w-[10rem] min-h-[10rem] overflow-visible"
+                  onClick={startBossChestReveal}
+                  className={`lootbox-teaser-glow relative flex items-center justify-center rounded-2xl border-4 border-uri-gold/60 bg-gradient-to-br from-uri-gold/30 to-uri-navy p-2 shadow-2xl transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-uri-gold w-64 h-64 sm:w-72 sm:h-72 min-w-[16rem] min-h-[16rem] overflow-visible ${
+                    bossChestPhase === "idle"
+                      ? "cursor-pointer hover:scale-105 active:scale-[0.98]"
+                      : "cursor-default pointer-events-none"
+                  }`}
                   aria-label="Open loot box"
                 >
-                  <span className="lootbox-teaser-chest flex w-full h-full items-center justify-center pointer-events-none">
+                  <span
+                    aria-hidden
+                    className={`lootbox-arcane-ring ${
+                      bossChestPhase === "opening" || bossChestPhase === "open" || bossChestPhase === "handoff" ? "is-active" : ""
+                    }`}
+                  />
+                  <span
+                    aria-hidden
+                    className={`lootbox-starfield ${
+                      bossChestPhase === "opening" || bossChestPhase === "open" || bossChestPhase === "handoff" ? "is-active" : ""
+                    }`}
+                  />
+                  <span
+                    className={`lootbox-teaser-chest flex w-full h-full items-center justify-center pointer-events-none ${
+                      bossChestPhase === "opening" ? "lootbox-teaser-chest-opening" : ""
+                    } ${
+                      bossChestPhase === "open" || bossChestPhase === "handoff" ? "lootbox-teaser-chest-opened" : ""
+                    }`}
+                  >
                     <img
-                      src="/treasure-chest.png"
+                      src="/boss-chest-closed.png"
                       alt=""
-                      className="w-full h-full max-w-[9rem] max-h-[9rem] object-contain"
-                      width={144}
-                      height={144}
+                      className={`lootbox-chest-closed w-full h-full max-w-[14.5rem] max-h-[14.5rem] object-contain ${
+                        bossChestPhase === "open" || bossChestPhase === "handoff" ? "opacity-0" : "opacity-100"
+                      }`}
+                      width={232}
+                      height={232}
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                         const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
@@ -433,8 +497,40 @@ export function Dashboard() {
                       📦
                     </span>
                   </span>
+                  <span
+                    aria-hidden
+                    className={`lootbox-chest-open absolute inset-0 flex items-center justify-center transition-all duration-500 ${
+                      bossChestPhase === "open" || bossChestPhase === "handoff"
+                        ? "opacity-100 scale-100"
+                        : "opacity-0 scale-95"
+                    }`}
+                  >
+                    <img
+                      src="/boss-chest-open.png"
+                      alt=""
+                      className="w-full h-full max-w-[16rem] max-h-[16rem] object-contain"
+                      width={256}
+                      height={256}
+                    />
+                  </span>
+                  <span
+                    aria-hidden
+                    className={`lootbox-magic-bloom ${bossChestPhase === "opening" || bossChestPhase === "open" || bossChestPhase === "handoff" ? "is-active" : ""}`}
+                  />
+                  <span
+                    aria-hidden
+                    className={`lootbox-magic-sparkles ${bossChestPhase === "opening" || bossChestPhase === "open" || bossChestPhase === "handoff" ? "is-active" : ""}`}
+                  />
                 </button>
-                <p className="mt-6 text-white/60 text-sm">Tap the chest to open</p>
+                <p className="mt-6 text-white/60 text-sm">
+                  {bossChestPhase === "idle"
+                    ? "Tap the chest to open"
+                    : bossChestPhase === "opening"
+                      ? "Arcane seals breaking..."
+                      : bossChestPhase === "open"
+                        ? "Treasure revealed!"
+                        : "Claiming your victory..."}
+                </p>
               </div>
             </div>
           ) : (
