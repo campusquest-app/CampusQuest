@@ -30,6 +30,7 @@ import { describeCosmeticEquipEffect } from "@/lib/gameBuffs";
 import { SkillTreePanel } from "./SkillTreePanel";
 import { SurpriseQuestBanner } from "./SurpriseQuestBanner";
 import { DailyTrainingGames } from "./DailyTrainingGames";
+import { LoreArchiveCard } from "./LoreArchiveCard";
 import type { StatKey } from "@/lib/types";
 
 type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox";
@@ -844,6 +845,11 @@ export function Dashboard() {
                   </div>
                   <div className="md:col-span-2">
                     <DailyTrainingGames character={character} onRefresh={refresh} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <CollapsibleSection title="Lore archive" defaultCollapsed>
+                      <LoreArchiveCard />
+                    </CollapsibleSection>
                   </div>
                   <div className="md:col-span-2">
                     <CollapsibleSection title="Weekly recap" defaultCollapsed>
