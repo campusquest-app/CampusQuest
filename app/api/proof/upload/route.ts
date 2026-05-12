@@ -15,6 +15,9 @@ export async function POST(request: Request) {
       userId: auth.user.id,
       extension: input.extension,
       contentType: input.contentType,
+      fileSizeBytes: input.fileSizeBytes,
+      questId: input.questId,
+      userQuestId: input.userQuestId,
     });
     return ok(result, 201);
   } catch (error) {

@@ -58,3 +58,20 @@ export function enforceRateLimit(args: {
   globalRateStore.set(key, existing);
 }
 
+export function assertModerationSafeText(args: { text: string; field: "post" | "comment"; maxLen: number }) {
+  const { text, field, maxLen } = args;
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new ApiError(400, `${field} cannot be empty.`, "EMPTY_CONTENT");
+  }
+  if (trimmed.length > maxLen) {
+    throw new ApiError(400, `${field} exceeds max length.`, "CONTENT_TOO_LONG");
+  }
+  if (/[\u0000-\u001F\u007F]/.test(trimmed)) {
+    throw new ApiError(400, `${field} contains invalid control characters.`, "INVALID_CONTENT");
+  }
+  if (/<script\b|javascript:/i.test(trimmed)) {
+    throw new ApiError(400, `${field} contains unsafe content.`, "UNSAFE_CONTENT");
+  }
+}
+

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { setAccessToken } from "@/lib/client/apiSession";
 
 type Mode = "signin" | "signup";
 
@@ -14,23 +15,52 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSignIn(e: React.FormEvent) {
+  async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const u = username.trim();
+    const u = username.trim().toLowerCase();
     const p = password.trim();
     if (!u || !p) {
-      setError("Enter your student email or username and password.");
+      setError("Enter your student email and password.");
       return;
     }
-    onComplete();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u)) {
+      setError("Use your email address to sign in.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: u, password: p }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(payload?.error?.message ?? "Sign in failed.");
+        return;
+      }
+      const accessToken = payload?.data?.session?.access_token;
+      if (!accessToken) {
+        setError("Missing access token from login response.");
+        return;
+      }
+      setAccessToken(accessToken);
+      onComplete();
+    } catch {
+      setError("Could not reach the backend. Try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
-  function handleSignUp(e: React.FormEvent) {
+  async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const eVal = email.trim();
+    const eVal = email.trim().toLowerCase();
     const p = password.trim();
     if (!eVal || !p) {
       setError("Enter your email and password.");
@@ -44,7 +74,29 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setError("Password must be at least 6 characters.");
       return;
     }
-    onComplete();
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: eVal, password: p }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(payload?.error?.message ?? "Sign up failed.");
+        return;
+      }
+      const accessToken = payload?.data?.session?.access_token;
+      if (accessToken) {
+        setAccessToken(accessToken);
+      }
+      onComplete();
+    } catch {
+      setError("Could not reach the backend. Try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -111,7 +163,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
               <form onSubmit={handleSignIn} className="space-y-5">
                 <div>
                   <label htmlFor="auth-username" className={labelClass}>
-                    Student Email or username
+                    Student email
                   </label>
                   <input
                     id="auth-username"
@@ -119,7 +171,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                     autoComplete="username email"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="e.g. you@uri.edu or jsmith"
+                    placeholder="e.g. you@uri.edu"
                     className={inputClass}
                   />
                 </div>
@@ -144,9 +196,10 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                 )}
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="w-full py-3.5 rounded-xl bg-uri-keaney text-white font-semibold text-sm hover:bg-uri-keaney/90 focus:outline-none focus:ring-2 focus:ring-uri-keaney focus:ring-offset-2 focus:ring-offset-uri-navy transition-colors shadow-lg shadow-uri-keaney/20"
                 >
-                  Sign in
+                  {isSubmitting ? "Signing in..." : "Sign in"}
                 </button>
               </form>
             ) : (
@@ -186,9 +239,10 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                 )}
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="w-full py-3.5 rounded-xl bg-uri-keaney text-white font-semibold text-sm hover:bg-uri-keaney/90 focus:outline-none focus:ring-2 focus:ring-uri-keaney focus:ring-offset-2 focus:ring-offset-uri-navy transition-colors shadow-lg shadow-uri-keaney/20"
                 >
-                  Create account
+                  {isSubmitting ? "Creating account..." : "Create account"}
                 </button>
               </form>
             )}

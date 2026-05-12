@@ -33,6 +33,13 @@ export function createUserClient(accessToken: string) {
   });
 }
 
+export function createPublicClient() {
+  const { url, anonKey } = getSupabaseEnv();
+  return createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 export function createAdminClient() {
   const { url, serviceRoleKey } = getSupabaseEnv();
   if (!serviceRoleKey) {

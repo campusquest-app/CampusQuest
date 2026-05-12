@@ -31,7 +31,9 @@ import { SkillTreePanel } from "./SkillTreePanel";
 import { SurpriseQuestBanner } from "./SurpriseQuestBanner";
 import { DailyTrainingGames } from "./DailyTrainingGames";
 import { LoreArchiveCard } from "./LoreArchiveCard";
+import { BackendDashboardPreview } from "./BackendDashboardPreview";
 import type { StatKey } from "@/lib/types";
+import { clearAccessToken } from "@/lib/client/apiSession";
 
 type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox";
 
@@ -220,6 +222,7 @@ export function Dashboard() {
 
   const handleLogout = useCallback(() => {
     storeLogout();
+    clearAccessToken();
     setCharacter(null);
     setShowAuthScreen(true);
   }, []);
@@ -710,8 +713,11 @@ export function Dashboard() {
         )}
 
         {tab === "quad" && (
-          <div className="-mx-4 w-[calc(100%+2rem)] sm:mx-0 sm:w-full">
-            <TheQuad character={character} onRefresh={refresh} />
+          <div className="space-y-4 sm:space-y-5">
+            <BackendDashboardPreview />
+            <div className="-mx-4 w-[calc(100%+2rem)] sm:mx-0 sm:w-full">
+              <TheQuad character={character} onRefresh={refresh} />
+            </div>
           </div>
         )}
 

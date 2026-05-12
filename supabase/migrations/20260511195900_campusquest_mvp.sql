@@ -91,6 +91,10 @@ create table if not exists public.quests (
   created_at timestamptz default now() not null
 );
 
+alter table public.quests
+  add column if not exists starts_at timestamptz,
+  add column if not exists ends_at timestamptz;
+
 create table if not exists public.user_quests (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
@@ -138,8 +142,21 @@ create table if not exists public.guilds (
 );
 
 alter table public.profiles
-  add constraint profiles_guild_id_fkey
-  foreign key (guild_id) references public.guilds(id) on delete set null;
+  add column if not exists guild_id uuid;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'profiles_guild_id_fkey'
+  ) then
+    alter table public.profiles
+      add constraint profiles_guild_id_fkey
+      foreign key (guild_id) references public.guilds(id) on delete set null;
+  end if;
+end
+$$;
 
 create table if not exists public.guild_members (
   guild_id uuid not null references public.guilds(id) on delete cascade,
