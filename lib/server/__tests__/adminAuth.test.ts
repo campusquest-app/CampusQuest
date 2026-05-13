@@ -56,6 +56,27 @@ describe("userHasModerationAdminAccess", () => {
     ).toBe(true);
   });
 
+  it("matches trimmed user emails and list entries", () => {
+    expect(
+      userHasModerationAdminAccess({
+        email: "  campusquest@campusquestapp.com  ",
+        email_confirmed_at: "2025-01-01",
+        confirmed_at: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("matches trimmed entries in MODERATION_ADMIN_EMAILS", () => {
+    process.env.MODERATION_ADMIN_EMAILS = "  campusquest@campusquestapp.com  , staff@example.com";
+    expect(
+      userHasModerationAdminAccess({
+        email: "campusquest@campusquestapp.com",
+        email_confirmed_at: "2025-01-01",
+        confirmed_at: null,
+      }),
+    ).toBe(true);
+  });
+
   it("matches case-insensitively against configured admin emails", () => {
     expect(
       userHasModerationAdminAccess({

@@ -8,6 +8,8 @@ export async function GET(request: Request) {
     enforceRateLimit({ userId: auth.user.id, routeKey: "internal:admin:access", limit: 30, windowMs: 60_000 });
     return ok({
       allowed: true,
+      /** Explicit flag for clients (same meaning as `allowed`). */
+      adminAccess: true,
       email: auth.normalizedEmail,
       userId: auth.user.id,
     });

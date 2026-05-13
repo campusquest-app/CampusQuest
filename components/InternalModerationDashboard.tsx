@@ -1,11 +1,23 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ApiRequestError, fetchAuthed } from "@/lib/client/dashboardApi";
 import { AppealsModerationCard } from "@/components/AppealsModerationCard";
 import { CampusContentModerationCard } from "@/components/CampusContentModerationCard";
 import { ModerationDashboardCard } from "@/components/ModerationDashboardCard";
 import { OrganizationModerationCard } from "@/components/OrganizationModerationCard";
+
+function BackToQuadLink() {
+  return (
+    <Link
+      href="/?tab=quad"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white"
+    >
+      ← Back to Quad
+    </Link>
+  );
+}
 
 export function InternalModerationDashboard() {
   const [loading, setLoading] = useState(true);
@@ -42,7 +54,8 @@ export function InternalModerationDashboard() {
   if (loading) {
     return (
       <main className="min-h-screen bg-uri-navy px-4 py-8 sm:py-10">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-4xl space-y-4">
+          <BackToQuadLink />
           <p className="text-sm text-white/70">Loading moderation dashboard...</p>
         </div>
       </main>
@@ -52,9 +65,10 @@ export function InternalModerationDashboard() {
   if (sessionExpired) {
     return (
       <main className="min-h-screen bg-uri-navy px-4 py-8 sm:py-10">
-        <div className="mx-auto max-w-3xl card p-5">
+        <div className="mx-auto max-w-3xl card p-5 space-y-4">
+          <BackToQuadLink />
           <h1 className="text-xl font-display font-bold text-white">Internal Moderation</h1>
-          <p className="mt-2 text-sm text-amber-200">Session expired. Please sign in again.</p>
+          <p className="text-sm text-amber-200">Session expired. Please sign in again.</p>
         </div>
       </main>
     );
@@ -63,9 +77,10 @@ export function InternalModerationDashboard() {
   if (forbidden) {
     return (
       <main className="min-h-screen bg-uri-navy px-4 py-8 sm:py-10">
-        <div className="mx-auto max-w-3xl card p-5">
+        <div className="mx-auto max-w-3xl card p-5 space-y-4">
+          <BackToQuadLink />
           <h1 className="text-xl font-display font-bold text-white">Internal Moderation</h1>
-          <p className="mt-2 text-sm text-rose-200">You do not have permission to access this area.</p>
+          <p className="text-sm text-rose-200">You do not have permission to access this area.</p>
         </div>
       </main>
     );
@@ -74,8 +89,11 @@ export function InternalModerationDashboard() {
   return (
     <main className="min-h-screen bg-uri-navy px-4 py-8 sm:py-10">
       <div className="mx-auto max-w-4xl space-y-4">
-        <h1 className="text-2xl font-display font-bold text-white">Internal Moderation</h1>
-        <p className="text-sm text-white/60">Review reported messages and appeals, then apply safety actions.</p>
+        <BackToQuadLink />
+        <div>
+          <h1 className="text-2xl font-display font-bold text-white">Internal Moderation</h1>
+          <p className="text-sm text-white/60">Review reported messages and appeals, then apply safety actions.</p>
+        </div>
         {error ? <p className="text-xs text-rose-200">{error}</p> : null}
         <AppealsModerationCard />
         <ModerationDashboardCard />
