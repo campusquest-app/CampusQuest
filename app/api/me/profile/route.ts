@@ -1,8 +1,24 @@
 import { ZodError } from "zod";
+import { userHasModerationAdminAccess } from "@/lib/server/adminAuth";
 import { fail, ok, ApiError } from "@/lib/server/http";
+import {
+  formatNextChangeDateLabel,
+  getNextIdentityChangeEligibleAt,
+  isProfileIdentityCooldownActive,
+  PROFILE_DISPLAY_NAME_COOLDOWN_MS,
+  PROFILE_USERNAME_COOLDOWN_MS,
+} from "@/lib/profileIdentityCooldown";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { patchMeProfileSchema, readJson } from "@/lib/server/validation";
+
+function normalizeDisplayName(value: string) {
+  return value.trim();
+}
+
+function normalizeUsername(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, "_");
+}
 
 export async function GET(request: Request) {
   try {
@@ -30,9 +46,74 @@ export async function PATCH(request: Request) {
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:profile:patch", limit: 30, windowMs: 60_000 });
     const input = await readJson(request, patchMeProfileSchema);
 
+    const { data: existing, error: loadError } = await auth.userClient
+      .from("profiles")
+      .select(
+        "id, display_name, username, onboarding_character_completed, display_name_changed_at, username_changed_at",
+      )
+      .eq("id", auth.user.id)
+      .single();
+
+    if (loadError || !existing) {
+      throw new ApiError(404, loadError?.message ?? "Profile not found.", "PROFILE_NOT_FOUND");
+    }
+
+    const postCharacterOnboarding = Boolean(existing.onboarding_character_completed);
+    const preserveIdentityTimestamps =
+      input.preserveIdentityCooldownTimestamps === true &&
+      userHasModerationAdminAccess({
+        email: auth.user.email,
+        email_confirmed_at: (auth.user as { email_confirmed_at?: string | null }).email_confirmed_at ?? null,
+        confirmed_at: (auth.user as { confirmed_at?: string | null }).confirmed_at ?? null,
+      });
+
+    const displayChanging =
+      input.displayName !== undefined &&
+      normalizeDisplayName(input.displayName) !== normalizeDisplayName(existing.display_name as string);
+    const usernameChanging =
+      input.username !== undefined &&
+      normalizeUsername(input.username) !== normalizeUsername(existing.username as string);
+
+    if (postCharacterOnboarding && !preserveIdentityTimestamps) {
+      if (
+        displayChanging &&
+        isProfileIdentityCooldownActive(
+          existing.display_name_changed_at as string | null | undefined,
+          PROFILE_DISPLAY_NAME_COOLDOWN_MS,
+        )
+      ) {
+        const next = getNextIdentityChangeEligibleAt(
+          existing.display_name_changed_at as string | null | undefined,
+          PROFILE_DISPLAY_NAME_COOLDOWN_MS,
+        );
+        const label = next ? formatNextChangeDateLabel(next) : "later";
+        throw new ApiError(
+          403,
+          `You can change your display name again on ${label}.`,
+          "DISPLAY_NAME_COOLDOWN",
+        );
+      }
+      if (
+        usernameChanging &&
+        isProfileIdentityCooldownActive(
+          existing.username_changed_at as string | null | undefined,
+          PROFILE_USERNAME_COOLDOWN_MS,
+        )
+      ) {
+        const next = getNextIdentityChangeEligibleAt(
+          existing.username_changed_at as string | null | undefined,
+          PROFILE_USERNAME_COOLDOWN_MS,
+        );
+        const label = next ? formatNextChangeDateLabel(next) : "later";
+        throw new ApiError(403, `You can change your username again on ${label}.`, "USERNAME_COOLDOWN");
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+
     const patch: Record<string, unknown> = {};
-    if (input.displayName !== undefined) patch.display_name = input.displayName;
-    if (input.username !== undefined) patch.username = input.username;
+    if (input.displayName !== undefined) patch.display_name = normalizeDisplayName(input.displayName);
+    if (input.username !== undefined) patch.username = normalizeUsername(input.username);
     if (input.avatarCustomJson !== undefined) patch.avatar_custom_json = input.avatarCustomJson;
     if (input.characterClassId !== undefined) patch.character_class_id = input.characterClassId;
     if (input.starterWeapon !== undefined) patch.starter_weapon = input.starterWeapon;
@@ -43,10 +124,15 @@ export async function PATCH(request: Request) {
       patch.onboarding_character_completed = true;
     }
 
+    if (!preserveIdentityTimestamps) {
+      if (displayChanging) patch.display_name_changed_at = nowIso;
+      if (usernameChanging) patch.username_changed_at = nowIso;
+    }
+
     if (input.beginnerChainCelebrationSeenReset === true && process.env.NODE_ENV !== "production") {
       patch.beginner_chain_celebration_seen_at = null;
     } else if (input.beginnerChainCelebrationSeen === true) {
-      patch.beginner_chain_celebration_seen_at = new Date().toISOString();
+      patch.beginner_chain_celebration_seen_at = nowIso;
     }
 
     if (Object.keys(patch).length === 0) {

@@ -54,6 +54,20 @@ export async function assertAccountCanSocialize(userClient: SupabaseClientLike, 
   }
 }
 
+/** Eligible for public leaderboard rows (excluding active suspension and bans). Mirrors expired-suspension uplift in {@link getAccountSafetyStatus}. */
+export function accountSafetyAllowsPublicLeaderboardExposure(
+  row: { status?: string | null; suspended_until?: string | null } | null | undefined,
+  nowMs = Date.now(),
+): boolean {
+  const status = (row?.status as string | null | undefined) ?? "active";
+  if (status === "banned") return false;
+  if (status === "suspended") {
+    const untilMs = row?.suspended_until ? new Date(row.suspended_until as string).getTime() : NaN;
+    return Number.isFinite(untilMs) && untilMs <= nowMs;
+  }
+  return status === "active";
+}
+
 export async function setAccountSafetyStatus(args: {
   userId: string;
   status: AccountStatus;

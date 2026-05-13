@@ -1,12 +1,10 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
-import { getFriends, getCharacterByUsername, getOutgoingRequests, sendFriendRequest, getCharacterById } from "@/lib/friendsStore";
-import { unfollow, isFollowing, follow, followByUsername } from "@/lib/followStore";
-import { getGuilds, getMaxGuildLevelForCharacter, GUILD_INTEREST_LABELS } from "@/lib/guildStore";
-import { CAMPUS_LEADERBOARD_PLACEHOLDERS } from "@/lib/campusLeaderboard";
+import { useMemo, useState, useEffect } from "react";
+import { getCharacterById } from "@/lib/friendsStore";
+import { getGuilds, GUILD_INTEREST_LABELS } from "@/lib/guildStore";
+import { fetchAuthed } from "@/lib/client/dashboardApi";
 import type { Character } from "@/lib/types";
-import type { Friend } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, STAT_ICONS } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
 
@@ -151,62 +149,32 @@ const SCHOLAR_GUILD_SEED_MEMBERS = [
   { guildId: "undecided", name: "Sasha Nguyen", totalXP: 110, avatar: "📎" },
 ];
 
-function getSortValueFriend(f: Friend, sortBy: SortBy, getGuildLevel: (userId: string) => number): number {
-  if (sortBy === "level") return f.level;
-  if (sortBy === "bossesDefeated") return f.bossesDefeatedCount ?? 0;
-  if (sortBy === "finalBossesDefeated") return f.finalBossesDefeatedCount ?? 0;
-  if (sortBy === "guildLevel") return getGuildLevel(f.userId);
-  return f.stats[sortBy] ?? 0;
-}
+type XpLeaderboardRowUi = {
+  rank: number;
+  userId: string;
+  username: string;
+  displayName: string;
+  level: number;
+  totalXp: number;
+  avatar: string;
+};
 
-function getSortLabel(sortBy: SortBy): string {
-  if (sortBy === "level") return "Level";
-  if (sortBy === "bossesDefeated") return "Bosses defeated";
-  if (sortBy === "finalBossesDefeated") return "Final bosses defeated";
-  if (sortBy === "guildLevel") return "Guild level";
-  return STAT_LABELS[sortBy];
-}
-
-function getSortValueCampus(
-  e: { level: number; stats: Record<string, number>; bossesDefeatedCount?: number; finalBossesDefeatedCount?: number; highestGuildLevel?: number },
-  sortBy: SortBy
-): number {
-  if (sortBy === "level") return e.level;
-  if (sortBy === "bossesDefeated") return e.bossesDefeatedCount ?? 0;
-  if (sortBy === "finalBossesDefeated") return e.finalBossesDefeatedCount ?? 0;
-  if (sortBy === "guildLevel") return e.highestGuildLevel ?? 0;
-  return e.stats[sortBy] ?? 0;
-}
+type XpLeaderboardPayload = {
+  topUsers: XpLeaderboardRowUi[];
+  currentUserRank: number | null;
+  currentUserEntry: XpLeaderboardRowUi | null;
+  totalRankedUsers: number;
+};
 
 export function Leaderboards({ character }: { character: Character }) {
   const [sortBy, setSortBy] = useState<SortBy>("level");
-  const [refreshKey, setRefreshKey] = useState(0);
   const [expandedGuildId, setExpandedGuildId] = useState<string | null>(null);
   const [expandedScholarGuildId, setExpandedScholarGuildId] = useState<string | null>(null);
-
-  const getGuildLevel = (userId: string) => getMaxGuildLevelForCharacter(userId);
-  const currentUserGuildLevel = getMaxGuildLevelForCharacter(character.id);
-
-  const friends = useMemo(() => {
-    const list = getFriends(character.id);
-    return [...list].sort((a, b) => {
-      const va = getSortValueFriend(a, sortBy, getGuildLevel);
-      const vb = getSortValueFriend(b, sortBy, getGuildLevel);
-      if (vb !== va) return vb - va;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-    });
-  }, [character.id, sortBy, refreshKey]);
-
-  const campusSorted = useMemo(() => {
-    return [...CAMPUS_LEADERBOARD_PLACEHOLDERS].sort((a, b) => {
-      const va = getSortValueCampus(a, sortBy);
-      const vb = getSortValueCampus(b, sortBy);
-      if (vb !== va) return vb - va;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-    });
-  }, [sortBy]);
-
-  const sortLabel = SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? "Level";
+  const [xpTab, setXpTab] = useState<"campus" | "friends">("campus");
+  const [campusLb, setCampusLb] = useState<XpLeaderboardPayload | null>(null);
+  const [friendsLb, setFriendsLb] = useState<XpLeaderboardPayload | null>(null);
+  const [xpLoading, setXpLoading] = useState(false);
+  const [xpError, setXpError] = useState<string | null>(null);
 
   const scholarGuildsRanked = useMemo(() => {
     return SCHOLAR_GUILDS.map((g) => {
@@ -241,7 +209,51 @@ export function Leaderboards({ character }: { character: Character }) {
     });
   }, []);
 
-  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  useEffect(() => {
+    if (sortBy === "guildLevel") return;
+    let cancelled = false;
+    setXpLoading(true);
+    setXpError(null);
+    (async () => {
+      try {
+        const [c, f] = await Promise.all([
+          fetchAuthed<XpLeaderboardPayload>("/api/leaderboards/campus"),
+          fetchAuthed<XpLeaderboardPayload>("/api/leaderboards/friends"),
+        ]);
+        if (cancelled) return;
+        setCampusLb(c);
+        setFriendsLb(f);
+      } catch (err) {
+        if (!cancelled) {
+          setXpError(err instanceof Error ? err.message : "Could not load leaderboards.");
+          setCampusLb(null);
+          setFriendsLb(null);
+        }
+      } finally {
+        if (!cancelled) setXpLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sortBy]);
+
+  const xpActive = xpTab === "campus" ? campusLb : friendsLb;
+  const xpFriendsEmpty =
+    xpTab === "friends" && !xpLoading && !xpError && (xpActive?.totalRankedUsers ?? 0) === 0;
+  const xpCampusEmpty = xpTab === "campus" && !xpLoading && !xpError && (xpActive?.totalRankedUsers ?? 0) === 0;
+  const xpHasBoard = Boolean(!xpLoading && !xpError && xpActive != null && xpActive.totalRankedUsers > 0);
+
+  const xpRankLine =
+    xpHasBoard && xpActive!.currentUserRank != null
+      ? xpTab === "campus"
+        ? `You are ranked #${xpActive!.currentUserRank} on campus.`
+        : `You are ranked #${xpActive!.currentUserRank} among friends.`
+      : null;
+
+  const xpInTopSlice = xpActive?.topUsers.some((row) => row.userId === character.id) ?? false;
+
+  const xpShowPinnedCard = xpHasBoard && xpActive?.currentUserEntry != null && !xpInTopSlice;
 
   return (
     <section className="space-y-6">
@@ -253,7 +265,7 @@ export function Leaderboards({ character }: { character: Character }) {
         <p className="text-sm text-white/50 mb-3">
           {sortBy === "guildLevel"
             ? "Guild level shows guilds only, sorted by highest level."
-            : "Filter leaderboards by stat or level."}
+            : "Campus and friends rankings use verified classmates and connections, sorted by total XP."}
         </p>
         <div className="flex flex-wrap gap-2">
           {SORT_OPTIONS.map((opt) => (
@@ -366,153 +378,110 @@ export function Leaderboards({ character }: { character: Character }) {
         </div>
       ) : (
         <>
-          {/* Friends leaderboard */}
-          <div className="card p-4 sm:p-5">
-            <h2 className="font-display font-semibold text-white mb-2 flex items-center gap-2">
-              <span aria-hidden>🦌</span> Friends leaderboard
-            </h2>
-            <p className="text-sm text-white/50 mb-4">
-              Ranked by {sortLabel}. Only your accepted friends.
-            </p>
-            {friends.length === 0 ? (
+          <div className="card p-4 sm:p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="font-display font-semibold text-white mb-2 flex flex-wrap items-center gap-2">
+                  <span aria-hidden>🏛️</span> Student rankings
+                </h2>
+                <p className="text-sm text-white/50">
+                  Total XP leaderboard for your verified campus. Friends view includes accepted campus connections only.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex rounded-xl bg-white/[0.06] border border-white/12 p-1 gap-1 w-full max-w-md">
+              <button
+                type="button"
+                onClick={() => setXpTab("campus")}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition-colors min-h-[44px] ${
+                  xpTab === "campus"
+                    ? "bg-uri-keaney text-white shadow-sm"
+                    : "text-white/75 hover:bg-white/10"
+                }`}
+              >
+                Campus
+              </button>
+              <button
+                type="button"
+                onClick={() => setXpTab("friends")}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition-colors min-h-[44px] ${
+                  xpTab === "friends"
+                    ? "bg-uri-keaney text-white shadow-sm"
+                    : "text-white/75 hover:bg-white/10"
+                }`}
+              >
+                Friends
+              </button>
+            </div>
+
+            {xpError ? (
+              <div className="rounded-xl border border-rose-400/35 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">{xpError}</div>
+            ) : null}
+
+            {xpLoading ? (
+              <XpLeaderboardSkeleton />
+            ) : xpFriendsEmpty ? (
               <div className="cq-empty-state rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center">
                 <p className="text-xl mb-1.5" aria-hidden>🤝</p>
-                <p className="text-sm font-semibold text-white/70">No friends on your board yet.</p>
-                <p className="text-xs text-white/50 mt-1">Add friends in Find Friends to unlock social leaderboards.</p>
+                <p className="text-sm font-semibold text-white/70">Add friends to compare progress.</p>
+                <p className="text-xs text-white/50 mt-1">Accepted campus-only connections appear here, ranked by total XP.</p>
               </div>
-            ) : (
-              <ul className="space-y-2">
-                {friends.map((friend, index) => {
-              const following = isFollowing(character.id, friend.userId);
-              return (
-                <LeaderboardRow
-                  key={friend.userId}
-                  rank={index + 1}
-                  name={friend.name}
-                  username={friend.username}
-                  avatar={friend.avatar}
-                  level={friend.level}
-                  totalXP={friend.totalXP}
-                  isCurrentUser={false}
-                  sortBy={sortBy}
-                  statValue={
-                    sortBy === "level"
-                      ? undefined
-                      : getSortValueFriend(friend, sortBy, getGuildLevel)
-                  }
-                  statLabel={sortBy === "level" ? undefined : getSortLabel(sortBy)}
-                  actions={
-                    <div className="flex flex-col items-end gap-1">
-                      {following ? (
-                        <button
-                          type="button"
-                          onClick={() => { unfollow(character.id, friend.userId); refresh(); }}
-                          className="text-xs font-medium text-white/70 hover:text-white px-2.5 py-1 rounded-lg border border-white/20 hover:bg-white/10"
-                        >
-                          Unfollow
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => { follow(character.id, friend.userId); refresh(); }}
-                          className="text-xs font-medium text-uri-keaney hover:bg-uri-keaney/15 px-2.5 py-1 rounded-lg border border-uri-keaney/30"
-                        >
-                          Follow
-                        </button>
-                      )}
-                    </div>
-                  }
-                />
-              );
-            })}
-          </ul>
-        )}
-      </div>
+            ) : xpCampusEmpty ? (
+              <div className="cq-empty-state rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center">
+                <p className="text-xl mb-1.5" aria-hidden>🏫</p>
+                <p className="text-sm font-semibold text-white/70">No campus rankings yet.</p>
+                <p className="text-xs text-white/50 mt-1">Campus leaderboard appears once classmates verify their school emails.</p>
+              </div>
+            ) : xpHasBoard && xpActive ? (
+              <div className="space-y-4">
+                {xpRankLine ? (
+                  <p className="text-sm font-medium text-white/85 border border-white/12 rounded-xl px-3 py-2 bg-white/[0.04]">
+                    {xpRankLine}{" "}
+                    <span className="text-xs font-normal text-white/45">
+                      ({xpActive.totalRankedUsers.toLocaleString()} ranked)
+                    </span>
+                  </p>
+                ) : null}
 
-      {/* Campus leaderboard */}
-      <div className="card p-4 sm:p-5">
-        <h2 className="font-display font-semibold text-white mb-2 flex items-center gap-2">
-          <span aria-hidden>🏛️</span> Campus leaderboard
-        </h2>
-        <p className="text-sm text-white/50 mb-4">
-          Top students by {sortLabel}. (Placeholder data.)
-        </p>
-        <ul className="space-y-2">
-          {campusSorted.map((entry, index) => {
-            const isCurrentUser = character.username.toLowerCase() === entry.username.toLowerCase();
-            const friendsList = getFriends(character.id);
-            const targetChar = getCharacterByUsername(entry.username);
-            const targetId = targetChar?.id;
-            const isFriend = friendsList.some((f) => f.username.toLowerCase() === entry.username.toLowerCase());
-            const outgoingRequests = getOutgoingRequests(character.id);
-            const hasOutgoingRequest = outgoingRequests.some((r) => r.toUsername === entry.username.toLowerCase());
-            const following = targetId != null && isFollowing(character.id, targetId);
-            const campusEntryForSort: Parameters<typeof getSortValueCampus>[0] = isCurrentUser
-              ? { level: character.level, stats: { ...character.stats }, bossesDefeatedCount: character.bossesDefeatedCount, finalBossesDefeatedCount: character.finalBossesDefeatedCount, highestGuildLevel: currentUserGuildLevel }
-              : entry;
-            const statValue = sortBy === "level" ? undefined : getSortValueCampus(campusEntryForSort, sortBy);
-            const statLabel = sortBy === "level" ? undefined : getSortLabel(sortBy);
-            return (
-              <LeaderboardRow
-                key={entry.id}
-                rank={index + 1}
-                name={entry.name}
-                username={entry.username}
-                avatar={entry.avatar}
-                level={entry.level}
-                totalXP={entry.totalXP}
-                isCurrentUser={isCurrentUser}
-                sortBy={sortBy}
-                statValue={statValue}
-                statLabel={statLabel}
-                actions={
-                  isCurrentUser ? undefined : (
-                    <div className="flex flex-col items-end gap-1">
-                      {!isFriend && (
-                        hasOutgoingRequest ? (
-                          <span className="text-xs text-white/50">Pending</span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              sendFriendRequest(character, entry.username);
-                              refresh();
-                            }}
-                            className="text-xs font-medium text-uri-keaney hover:bg-uri-keaney/15 px-2.5 py-1 rounded-lg border border-uri-keaney/30"
-                          >
-                            Add friend
-                          </button>
-                        )
-                      )}
-                      {targetId != null ? (
-                        following ? (
-                          <button
-                            type="button"
-                            onClick={() => { unfollow(character.id, targetId); refresh(); }}
-                            className="text-xs font-medium text-white/70 hover:text-white px-2.5 py-1 rounded-lg border border-white/20 hover:bg-white/10"
-                          >
-                            Unfollow
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              followByUsername(character.id, entry.username, getCharacterByUsername);
-                              refresh();
-                            }}
-                            className="text-xs font-medium text-uri-keaney hover:bg-uri-keaney/15 px-2.5 py-1 rounded-lg border border-uri-keaney/30"
-                          >
-                            Follow
-                          </button>
-                        )
-                      ) : null}
-                    </div>
-                  )
-                }
-              />
-            );
-          })}
-        </ul>
+                {xpShowPinnedCard && xpActive.currentUserEntry ? (
+                  <div className="rounded-xl border border-uri-keaney/45 bg-uri-keaney/15 p-3">
+                    <p className="text-[11px] font-semibold text-uri-keaney uppercase tracking-wide mb-2">Your rank</p>
+                    <LeaderboardRow
+                      rank={xpActive.currentUserEntry.rank}
+                      name={xpActive.currentUserEntry.displayName}
+                      username={xpActive.currentUserEntry.username}
+                      avatar={xpActive.currentUserEntry.avatar}
+                      level={xpActive.currentUserEntry.level}
+                      totalXP={xpActive.currentUserEntry.totalXp}
+                      isCurrentUser
+                      sortBy="level"
+                    />
+                  </div>
+                ) : null}
+
+                <div>
+                  <p className="text-xs font-semibold text-white/45 uppercase tracking-wider mb-2">
+                    Top-ranked · Total XP ({xpActive.topUsers.length.toLocaleString()} shown)
+                  </p>
+                  <ul className="space-y-2">
+                    {xpActive.topUsers.map((row) => (
+                      <LeaderboardRow
+                        key={row.userId}
+                        rank={row.rank}
+                        name={row.displayName}
+                        username={row.username}
+                        avatar={row.avatar}
+                        level={row.level}
+                        totalXP={row.totalXp}
+                        isCurrentUser={row.userId === character.id}
+                        sortBy="level"
+                      />
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {/* Scholars Guild leaderboard */}
@@ -590,6 +559,27 @@ export function Leaderboards({ character }: { character: Character }) {
   );
 }
 
+function XpLeaderboardSkeleton() {
+  return (
+    <ul className="space-y-2" aria-hidden>
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <li key={i} className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/5">
+          <div className="w-8 h-6 rounded bg-white/10 animate-pulse shrink-0" />
+          <div className="w-10 h-10 rounded-xl bg-white/10 animate-pulse shrink-0" />
+          <div className="flex-1 space-y-2 min-w-0">
+            <div className="h-4 w-36 max-w-full rounded bg-white/10 animate-pulse" />
+            <div className="h-3 w-28 max-w-full rounded bg-white/10 animate-pulse" />
+          </div>
+          <div className="space-y-2 text-right shrink-0 w-14">
+            <div className="h-4 w-full rounded bg-white/10 animate-pulse ml-auto" />
+            <div className="h-3 w-full rounded bg-white/10 animate-pulse ml-auto" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const RANK_GLOW = {
   1: "ring-2 ring-amber-300 shadow-[0_0_26px_rgba(251,191,36,0.55),0_0_14px_rgba(245,158,11,0.4)] border-amber-400/80 bg-gradient-to-br from-amber-400/20 to-amber-600/10",
   2: "ring-2 ring-slate-200 shadow-[0_0_24px_rgba(226,232,240,0.6),0_0_12px_rgba(203,213,225,0.5)] border-slate-300/80 bg-gradient-to-br from-slate-400/15 to-slate-500/10",
@@ -645,12 +635,14 @@ function LeaderboardRow({
         {sortBy !== "level" && statLabel != null && statValue != null ? (
           <>
             <p className="text-uri-keaney font-semibold text-sm">{statLabel} {statValue}</p>
-            <p className="text-xs text-white/50">Lv.{level} · {totalXP} XP</p>
+            <p className="text-xs text-white/50">
+              Lv.{level} · {totalXP.toLocaleString()} XP
+            </p>
           </>
         ) : (
           <>
             <p className="text-uri-keaney font-semibold">Lv.{level}</p>
-            <p className="text-xs text-white/50 font-mono">{totalXP} XP</p>
+            <p className="text-xs text-white/50 font-mono">{totalXP.toLocaleString()} XP</p>
           </>
         )}
       </div>

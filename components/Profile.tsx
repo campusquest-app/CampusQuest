@@ -19,6 +19,13 @@ import { FieldNoteCard } from "./FieldNoteCard";
 import { LootCodex } from "./LootCodex";
 import { EquipmentStrip } from "./EquipmentStrip";
 import { ViewGuildModal } from "./ViewGuildModal";
+import {
+  formatNextChangeDateLabel,
+  getNextIdentityChangeEligibleAt,
+  isProfileIdentityCooldownActive,
+  PROFILE_DISPLAY_NAME_COOLDOWN_MS,
+  PROFILE_USERNAME_COOLDOWN_MS,
+} from "@/lib/profileIdentityCooldown";
 
 const STAT_FILL: Record<StatKey, string> = {
   strength: "linear-gradient(90deg, #f59e0b, #fbbf24)",
@@ -67,6 +74,12 @@ export function Profile({
   const [identityUsernameDraft, setIdentityUsernameDraft] = useState(character.username);
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [identitySaving, setIdentitySaving] = useState(false);
+  const [cooldownSnap, setCooldownSnap] = useState<Pick<
+    MeProfileRow,
+    "onboarding_character_completed" | "display_name_changed_at" | "username_changed_at"
+  > | null>(null);
+  const [cooldownLoading, setCooldownLoading] = useState(false);
+  const [repairPreserveCooldown, setRepairPreserveCooldown] = useState(true);
   const [showLootCodex, setShowLootCodex] = useState(false);
   const [bioDraft, setBioDraft] = useState(character.bio ?? "");
 
@@ -78,6 +91,31 @@ export function Profile({
     refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (!moderationAdminAccess || !showEditIdentity) return;
+    let cancelled = false;
+    setCooldownLoading(true);
+    void fetchAuthed<MeProfileRow>("/api/me/profile")
+      .then((row) => {
+        if (!cancelled) {
+          setCooldownSnap({
+            onboarding_character_completed: row.onboarding_character_completed ?? null,
+            display_name_changed_at: row.display_name_changed_at ?? null,
+            username_changed_at: row.username_changed_at ?? null,
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCooldownSnap(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCooldownLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [moderationAdminAccess, showEditIdentity]);
+
   const identityUsernameNormalized = toUsername(identityUsernameDraft || identityNameDraft.trim());
   const identityNameOk =
     identityNameDraft.trim().length >= 1 && identityNameDraft.trim().length <= DISPLAY_NAME_MAX;
@@ -85,6 +123,31 @@ export function Profile({
     identityUsernameNormalized.length >= 3 &&
     identityUsernameNormalized.length <= USERNAME_MAX &&
     USERNAME_REGEX.test(identityUsernameNormalized);
+
+  const postCharacterOnboarding = Boolean(cooldownSnap?.onboarding_character_completed);
+  const displayNameLocked =
+    moderationAdminAccess &&
+    postCharacterOnboarding &&
+    !cooldownLoading &&
+    isProfileIdentityCooldownActive(
+      cooldownSnap?.display_name_changed_at ?? null,
+      PROFILE_DISPLAY_NAME_COOLDOWN_MS,
+    );
+  const usernameFieldLocked =
+    moderationAdminAccess &&
+    postCharacterOnboarding &&
+    !cooldownLoading &&
+    isProfileIdentityCooldownActive(cooldownSnap?.username_changed_at ?? null, PROFILE_USERNAME_COOLDOWN_MS);
+  const nextDisplayEligible =
+    cooldownSnap?.display_name_changed_at != null
+      ? getNextIdentityChangeEligibleAt(cooldownSnap.display_name_changed_at, PROFILE_DISPLAY_NAME_COOLDOWN_MS)
+      : null;
+  const nextUsernameEligible =
+    cooldownSnap?.username_changed_at != null
+      ? getNextIdentityChangeEligibleAt(cooldownSnap.username_changed_at, PROFILE_USERNAME_COOLDOWN_MS)
+      : null;
+  const identitySaveBlockedByCooldown =
+    moderationAdminAccess && postCharacterOnboarding && displayNameLocked && usernameFieldLocked;
 
   const saveIdentity = useCallback(async () => {
     if (!moderationAdminAccess) return;
@@ -102,13 +165,23 @@ export function Profile({
       setIdentityError(`Username must be 3–${USERNAME_MAX} characters (letters, numbers, underscores).`);
       return;
     }
+
+    const body: Record<string, unknown> = {};
+    if (!displayNameLocked) body.displayName = nameTrimmed;
+    if (!usernameFieldLocked) body.username = usernameNormalized;
+    const hasIdentityPatch = Object.prototype.hasOwnProperty.call(body, "displayName") || Object.prototype.hasOwnProperty.call(body, "username");
+    if (!hasIdentityPatch) {
+      setIdentityError("Both display name and username are on cooldown. Try again later.");
+      return;
+    }
+    if (repairPreserveCooldown && moderationAdminAccess) {
+      body.preserveIdentityCooldownTimestamps = true;
+    }
+
     setIdentityError(null);
     setIdentitySaving(true);
     try {
-      const mergedProfile = await patchAuthed<MeProfileRow, { displayName: string; username: string }>("/api/me/profile", {
-        displayName: nameTrimmed,
-        username: usernameNormalized,
-      });
+      const mergedProfile = await patchAuthed<MeProfileRow, Record<string, unknown>>("/api/me/profile", body);
       const stats = await fetchAuthed<MeStatsRow>("/api/me/stats");
       const next = buildLocalCharacterFromServer(mergedProfile, stats);
       replaceLocalCharacter({
@@ -126,6 +199,11 @@ export function Profile({
         starterWeapon: next.starterWeapon,
         scholarGuildId: next.scholarGuildId,
       });
+      setCooldownSnap({
+        onboarding_character_completed: mergedProfile.onboarding_character_completed ?? null,
+        display_name_changed_at: mergedProfile.display_name_changed_at ?? null,
+        username_changed_at: mergedProfile.username_changed_at ?? null,
+      });
       setShowEditIdentity(false);
       onRefresh?.();
     } catch (err) {
@@ -133,11 +211,24 @@ export function Profile({
         setIdentityError("That username is already taken. Pick another.");
         return;
       }
+      if (err instanceof ApiRequestError && (err.code === "DISPLAY_NAME_COOLDOWN" || err.code === "USERNAME_COOLDOWN")) {
+        setIdentityError(err.message);
+        return;
+      }
       setIdentityError(err instanceof Error ? err.message : "Could not save.");
     } finally {
       setIdentitySaving(false);
     }
-  }, [character, identityNameDraft, identityUsernameDraft, moderationAdminAccess, onRefresh]);
+  }, [
+    character,
+    identityNameDraft,
+    identityUsernameDraft,
+    moderationAdminAccess,
+    displayNameLocked,
+    usernameFieldLocked,
+    repairPreserveCooldown,
+    onRefresh,
+  ]);
 
   function handleNod(noteId: string) {
     nodFieldNote(noteId, character.id);
@@ -297,6 +388,8 @@ export function Profile({
                     setIdentityNameDraft(character.name);
                     setIdentityUsernameDraft(character.username);
                     setIdentityError(null);
+                    setRepairPreserveCooldown(true);
+                    setCooldownSnap(null);
                     setShowEditIdentity(true);
                   }}
                   className="px-4 py-2.5 rounded-xl text-sm font-medium text-emerald-100 hover:text-white bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/35 transition-colors"
@@ -555,37 +648,71 @@ export function Profile({
             <h2 id="edit-identity-title" className="font-display font-semibold text-lg text-white mb-1">
               Edit name & username
             </h2>
-            <p className="text-xs text-white/50 mb-4">Admin: updates your campus profile (same as student signup rules).</p>
+            <p className="text-xs text-white/50 mb-3">
+              Admin: updates your campus profile (same as student signup rules).
+            </p>
+            <p className="text-xs text-white/45 mb-1">Display name can be changed once every 7 days.</p>
+            <p className="text-xs text-white/45 mb-4">Username can be changed once every 30 days.</p>
+            {cooldownLoading ? (
+              <p className="text-[11px] text-white/45 mb-3">Checking change limits…</p>
+            ) : null}
+
             <label htmlFor="edit-identity-name" className="block text-[11px] font-medium text-white/55 mb-1">
               Display name
             </label>
             <input
               id="edit-identity-name"
               value={identityNameDraft}
+              disabled={identitySaving || displayNameLocked}
               onChange={(e) => {
                 setIdentityNameDraft(e.target.value.slice(0, DISPLAY_NAME_MAX));
                 setIdentityError(null);
               }}
-              className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 mb-3"
+              className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 mb-1 disabled:opacity-50 disabled:cursor-not-allowed"
               autoComplete="name"
             />
+            {displayNameLocked && nextDisplayEligible && !cooldownLoading ? (
+              <p className="text-[11px] text-uri-keaney/90 mb-3">
+                You can change this again on {formatNextChangeDateLabel(nextDisplayEligible)}.
+              </p>
+            ) : (
+              <div className="mb-3" />
+            )}
+
             <label htmlFor="edit-identity-username" className="block text-[11px] font-medium text-white/55 mb-1">
               Username
             </label>
             <input
               id="edit-identity-username"
               value={identityUsernameDraft}
+              disabled={identitySaving || usernameFieldLocked}
               onChange={(e) => {
                 setIdentityUsernameDraft(toUsername(e.target.value));
                 setIdentityError(null);
               }}
-              className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
+              className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 disabled:opacity-50 disabled:cursor-not-allowed"
               autoComplete="username"
               spellCheck={false}
             />
+            {usernameFieldLocked && nextUsernameEligible && !cooldownLoading ? (
+              <p className="text-[11px] text-uri-keaney/90 mt-1">
+                You can change this again on {formatNextChangeDateLabel(nextUsernameEligible)}.
+              </p>
+            ) : null}
             <p className="text-xs text-white/45 mt-1.5">
               You’ll appear as @{identityUsernameNormalized || "username"} · 3–{USERNAME_MAX} chars, a–z, 0–9, _
             </p>
+            <label className="flex items-start gap-2 mt-4 text-xs text-white/65 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={repairPreserveCooldown}
+                onChange={(e) => setRepairPreserveCooldown(e.target.checked)}
+                className="mt-0.5 rounded border-white/30"
+              />
+              <span>
+                Preserve name cooldown timestamps (moderator repairs). Uncheck when this should count as your normal rename and start/update the timer.
+              </span>
+            </label>
             {identityNameDraft.trim().length > 0 && !identityNameOk ? (
               <p className="text-xs text-amber-200 mt-2" role="alert">
                 Display name: 1–{DISPLAY_NAME_MAX} characters.
@@ -612,7 +739,13 @@ export function Profile({
               </button>
               <button
                 type="button"
-                disabled={identitySaving || !identityNameOk || !identityUsernameOk}
+                disabled={
+                  identitySaving ||
+                  cooldownLoading ||
+                  !identityNameOk ||
+                  !identityUsernameOk ||
+                  identitySaveBlockedByCooldown
+                }
                 onClick={() => void saveIdentity()}
                 className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/40 transition-colors disabled:opacity-50"
               >
