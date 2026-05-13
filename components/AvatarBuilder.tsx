@@ -1,37 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  getDefaultCustomAvatar,
-  parseAvatar,
-  serializeAvatar,
-  SKIN_TONES,
-  HAIR_STYLES,
-  HAIR_COLORS,
-  CLOTHES_STYLES,
-  CLOTHES_COLORS,
-  BODY_TYPES,
-  GENDERS,
-  FACE_STYLES,
-  HAT_STYLES,
-  GLASSES_STYLES,
-  BACKPACK_STYLES,
-  type CustomAvatarData,
-} from "@/lib/avatarOptions";
-import {
-  CHARACTER_CLASSES,
-  CLASS_AVATAR_PRESETS,
-  STARTER_WEAPONS,
-  type CharacterClassId,
-} from "@/lib/characterClasses";
-import { isCosmeticUnlocked } from "@/lib/cosmetics";
+  type DiceBearAvatarV2,
+  type DiceBearStyleId,
+  serializeDiceBearAvatar,
+  parseDiceBearAvatar,
+  getDefaultDiceBearAvatar,
+  randomDiceBearSeed,
+} from "@/lib/dicebearAvatar";
+import { DICEBEAR_STYLE_MODULES } from "@/lib/dicebearSvg";
+import { buildDiceBearForClass, CHARACTER_CLASSES, STARTER_WEAPONS, type CharacterClassId } from "@/lib/characterClasses";
 import { AvatarDisplay } from "./AvatarDisplay";
+import { DiceBearForgeControls } from "./DiceBearForgeControls";
+import { randomAppearanceOptions, randomBackgroundColors } from "@/lib/dicebearAdvancedOptions";
 
 type UnlockContext = {
   achievements: string[];
   level: number;
   unlockedCosmetics?: string[] | null;
 } | null;
+
+const STYLE_CHOICES: { id: DiceBearStyleId; label: string; icon: string; blurb: string }[] = [
+  { id: "lorelei", label: "Lorelei", icon: "✨", blurb: "Expressive · great hair & faces" },
+  { id: "loreleiNeutral", label: "Lorelei neutral", icon: "🌿", blurb: "Soft tones" },
+  { id: "pixelArt", label: "Pixel hero", icon: "🎮", blurb: "Retro RPG pixels" },
+  { id: "pixelArtNeutral", label: "Pixel neutral", icon: "👾", blurb: "Retro · neutral" },
+  { id: "openPeeps", label: "Open Peeps", icon: "🧑‍🎓", blurb: "Friendly illustrated" },
+  { id: "adventurer", label: "Adventurer", icon: "⚔️", blurb: "Quest-ready" },
+  { id: "adventurerNeutral", label: "Adventurer+", icon: "🛡️", blurb: "Bold shapes" },
+  { id: "micah", label: "Micah", icon: "📘", blurb: "Clean illustration" },
+];
+
+function cloneDice(d: DiceBearAvatarV2): DiceBearAvatarV2 {
+  return {
+    v: 2,
+    style: d.style,
+    seed: d.seed,
+    options: { ...d.options },
+  };
+}
 
 export function AvatarBuilder({
   value,
@@ -42,7 +50,8 @@ export function AvatarBuilder({
   onClassChange,
   selectedWeapon,
   onWeaponChange,
-  unlockContext,
+  unlockContext: _unlockContext,
+  preview,
 }: {
   value: string;
   onChange: (avatar: string) => void;
@@ -52,569 +61,297 @@ export function AvatarBuilder({
   onClassChange?: (classId: CharacterClassId | null) => void;
   selectedWeapon?: string | null;
   onWeaponChange?: (weaponId: string | null) => void;
+  /** Legacy prop from profile editor — DiceBear has no locked cosmetics. */
   unlockContext?: UnlockContext;
+  preview?: {
+    displayName: string;
+    username: string;
+    level: number;
+    totalXp: number;
+    classLabel: string;
+  };
 }) {
-  const [data, setData] = useState<CustomAvatarData>(() => {
-    const parsed = parseAvatar(value);
-    const out = parsed ?? getDefaultCustomAvatar();
-    if (out.face == null) (out as CustomAvatarData).face = "smile";
-    return out;
-  });
+  const [data, setData] = useState<DiceBearAvatarV2>(() => parseDiceBearAvatar(value) ?? getDefaultDiceBearAvatar());
 
-  const update = (next: Partial<CustomAvatarData>) => {
-    const nextData = { ...data, ...next };
-    setData(nextData);
-    onChange(serializeAvatar(nextData));
+  useEffect(() => {
+    const p = parseDiceBearAvatar(value);
+    if (p) setData(cloneDice(p));
+  }, [value]);
+
+  const commit = (next: DiceBearAvatarV2) => {
+    setData(next);
+    onChange(serializeDiceBearAvatar(next));
   };
 
-  function isUnlocked(slot: "hat" | "glasses" | "backpack", id: string): boolean {
-    if (id === "none") return true;
-    if (!unlockContext) return true;
-    return isCosmeticUnlocked({
-      cosmeticId: `${slot}:${id}`,
-      achievements: unlockContext.achievements ?? [],
-      level: unlockContext.level ?? 1,
-      unlockedCosmetics: unlockContext.unlockedCosmetics,
+  const randomize = () => {
+    const appearance = randomAppearanceOptions(data.style);
+    commit({
+      v: 2,
+      style: data.style,
+      seed: randomDiceBearSeed(),
+      options: {
+        backgroundColor: randomBackgroundColors(),
+        backgroundType: ["gradientLinear"],
+        ...appearance,
+      },
     });
-  }
+  };
+
+  const resetToDefault = () => {
+    commit(getDefaultDiceBearAvatar());
+  };
+
+  const setStyle = (style: DiceBearStyleId) => {
+    if (!(style in DICEBEAR_STYLE_MODULES)) return;
+    const bg = (data.options.backgroundColor as string[] | undefined) ?? ["041e42"];
+    const bt = (data.options.backgroundType as string[] | undefined) ?? ["gradientLinear"];
+    commit({
+      v: 2,
+      style,
+      seed: data.seed,
+      options: { backgroundColor: bg, backgroundType: bt },
+    });
+  };
+
+  const patchOptions = (partial: Record<string, unknown>) => {
+    commit({
+      ...cloneDice(data),
+      options: { ...data.options, ...partial },
+    });
+  };
+
+  const applyBg = (backgroundColor: string[]) => {
+    patchOptions({ backgroundColor, backgroundType: ["gradientLinear"] });
+  };
 
   const applyClassPreset = (classId: CharacterClassId) => {
-    const preset = CLASS_AVATAR_PRESETS[classId];
-    setData({ ...preset });
-    onChange(serializeAvatar(preset));
+    const next = buildDiceBearForClass(classId);
+    commit(next);
     onClassChange?.(classId);
   };
 
-  const previewSize = compact ? 72 : 132;
+  const previewSize = compact ? 80 : 128;
+  const pv = preview ?? {
+    displayName: "Adventurer",
+    username: "your_name",
+    level: 1,
+    totalXp: 0,
+    classLabel: "Choose your class",
+  };
 
-  // Compact version used inside small modals (e.g. edit avatar on character card)
-  if (compact) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-center">
-          <div
-            className="flex items-center justify-center rounded-2xl border border-white/15 bg-white/5 overflow-hidden"
-            style={{ width: previewSize + 16, height: previewSize + 16 }}
-          >
-            <AvatarDisplay avatar={serializeAvatar(data)} size={previewSize} />
-          </div>
-        </div>
+  const xpMax = Math.max(1, (pv.level - 1) * 100 + 100);
+  const xpPct = Math.min(100, (pv.totalXp / xpMax) * 100);
 
-        <div className="space-y-4 rounded-2xl bg-white/5 p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/60">
-            Appearance
+  const controls = (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 sm:px-3.5 sm:py-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:items-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-uri-keaney/85 whitespace-nowrap">
+            Roll a new face
           </p>
-
-          {/* Skin */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-              Skin tone
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {SKIN_TONES.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => update({ skin: t.id })}
-                  className={`h-7 w-7 rounded-full border-2 transition-all ${
-                    data.skin === t.id
-                      ? "border-uri-keaney scale-110 ring-2 ring-uri-keaney/40"
-                      : "border-white/30 hover:border-white/50"
-                  }`}
-                  style={{ backgroundColor: t.color }}
-                  title={t.label}
-                  aria-pressed={data.skin === t.id}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Hair + face (summary) */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-                Hair
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {HAIR_STYLES.map((h) => (
-                  <button
-                    key={h.id}
-                    type="button"
-                    onClick={() => update({ hair: h.id })}
-                    className={`rounded-xl px-2 py-1 text-[11px] font-medium transition-all ${
-                      data.hair === h.id
-                        ? "bg-uri-keaney text-white"
-                        : "bg-white/10 text-white/80 hover:bg-white/15"
-                    }`}
-                  >
-                    {h.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-                Face
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {FACE_STYLES.map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => update({ face: f.id })}
-                    className={`rounded-xl px-2 py-1 text-[11px] font-medium transition-all ${
-                      (data.face ?? "smile") === f.id
-                        ? "bg-uri-keaney text-white"
-                        : "bg-white/10 text-white/80 hover:bg-white/15"
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+          <p
+            className="text-[10px] text-white/45 leading-snug line-clamp-1 sm:line-clamp-none sm:whitespace-normal"
+            title="Randomize uses a new seed, remixed features for your current style, and a random backdrop."
+          >
+            New seed, full remix, random backdrop.
+          </p>
         </div>
-      </div>
-    );
-  }
-
-  // Full-screen CampusQuest-themed creator
-  return (
-    <div className="space-y-6">
-      {/* Preview */}
-      <div className="flex justify-center">
-        <div className="relative rounded-3xl border border-white/15 bg-gradient-to-br from-uri-navy via-uri-navy/90 to-uri-keaney/40 px-6 py-5 shadow-[0_18px_45px_rgba(0,0,0,0.6)] w-full max-w-md">
-          <div className="pointer-events-none absolute inset-0 rounded-[1.6rem] border border-white/10/5" />
-          <div className="pointer-events-none absolute inset-0 rounded-[1.7rem] bg-[radial-gradient(circle_at_0_0,rgba(255,255,255,0.12),transparent_55%),radial-gradient(circle_at_100%_100%,rgba(80,178,255,0.28),transparent_55%)] opacity-80 mix-blend-screen" />
-
-          <div className="relative flex flex-col items-center gap-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70">
-              Live Avatar Preview
-            </p>
-            <div className="relative flex items-center justify-center rounded-3xl bg-[radial-gradient(circle_at_50%_0,#ffffff1f,transparent_55%)] px-6 pt-4 pb-3">
-              <AvatarDisplay
-                avatar={serializeAvatar(data)}
-                size={previewSize}
-                className="drop-shadow-[0_12px_32px_rgba(0,0,0,0.75)]"
-              />
-            </div>
-            <p className="text-[11px] text-white/70">
-              Every change you make updates this CampusQuest hero instantly.
-            </p>
-          </div>
+        <div className="flex flex-wrap gap-2 shrink-0 sm:ml-1">
+          <button
+            type="button"
+            onClick={randomize}
+            title="Randomize uses a new seed, remixed features for your current style, and a random backdrop."
+            className="rounded-xl border border-uri-gold/50 bg-gradient-to-r from-uri-gold/25 to-amber-500/20 px-3 py-2 text-sm font-bold text-amber-100 shadow-[0_0_20px_rgba(245,158,11,0.12)] hover:from-uri-gold/35 hover:to-amber-500/30 min-h-[40px] sm:min-h-0"
+          >
+            🎲 Randomize
+          </button>
+          <button
+            type="button"
+            onClick={resetToDefault}
+            className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-white/85 hover:border-white/25 hover:bg-white/10 min-h-[40px] sm:min-h-0"
+          >
+            ↺ Reset default
+          </button>
         </div>
       </div>
 
-      {/* Class presets strip */}
-      {showClassPresets && (
-        <section className="space-y-3 rounded-2xl border border-white/10 bg-uri-navy/80 px-4 py-4 sm:px-5 sm:py-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">
-                Step 1 · Pick a vibe
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50 mb-2.5 leading-snug">
+          Portrait engine
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+          {STYLE_CHOICES.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setStyle(s.id)}
+              title={s.blurb}
+              className={`rounded-2xl border px-3 py-3 text-left transition-all min-h-[4.5rem] min-w-0 flex flex-col justify-center ${
+                data.style === s.id
+                  ? "border-uri-keaney bg-uri-keaney/25 ring-1 ring-uri-keaney/50"
+                  : "border-white/10 bg-white/[0.06] hover:border-white/20"
+              }`}
+            >
+              <span className="text-lg shrink-0" aria-hidden>
+                {s.icon}
+              </span>
+              <p className="text-xs font-semibold text-white mt-1 break-words leading-snug">{s.label}</p>
+              <p className="text-[10px] text-white/45 leading-snug mt-0.5 break-words [overflow-wrap:anywhere]">
+                {s.blurb}
               </p>
-              <h3 className="text-sm font-semibold text-white">
-                Class presets
-              </h3>
-              <p className="text-xs text-white/65">
-                Start from a curated look inspired by each CampusQuest class.
-              </p>
-            </div>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {CHARACTER_CLASSES.map((cls) => (
-              <button
-                key={cls.id}
-                type="button"
-                onClick={() => applyClassPreset(cls.id)}
-                className={`flex items-center gap-1.5 rounded-2xl border px-3 py-2 text-xs font-medium tracking-wide transition-all ${
-                  selectedClassId === cls.id
-                    ? "border-uri-gold/70 bg-uri-keaney/90 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.14),0_12px_28px_rgba(0,0,0,0.65)]"
-                    : "border-white/10 bg-white/5 text-white/80 hover:border-uri-keaney/60 hover:bg-uri-keaney/20"
-                }`}
-                title={`${cls.name} — ${cls.styleSub}`}
-              >
-                <span aria-hidden className="text-base">
-                  {cls.icon}
-                </span>
-                <span className="truncate">{cls.outfitLabel}</span>
-              </button>
-            ))}
-          </div>
-          {onWeaponChange && (
-            <div className="mt-3 border-t border-white/10 pt-3">
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
-                Starter weapon
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {STARTER_WEAPONS.map((w) => (
-                  <button
-                    key={w.id}
-                    type="button"
-                    onClick={() => onWeaponChange(selectedWeapon === w.id ? null : w.id)}
-                    className={`flex items-center gap-1.5 rounded-2xl border px-3 py-1.5 text-xs font-medium tracking-wide transition-all ${
-                      selectedWeapon === w.id
-                        ? "border-uri-gold/70 bg-uri-gold/20 text-uri-gold shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
-                        : "border-white/10 bg-white/5 text-white/80 hover:border-uri-gold/60 hover:bg-uri-gold/10"
-                    }`}
-                  >
-                    <span aria-hidden className="text-sm">
-                      {w.icon}
-                    </span>
-                    <span className="truncate">{w.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-      )}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {/* Main controls – tall, stacked sections for readability */}
-      <section className="space-y-5 rounded-3xl border border-white/10 bg-uri-navy/90 px-4 py-5 sm:px-6 sm:py-6">
-        {/* Appearance */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">
-                Step 2 · Appearance
-              </p>
-              <h3 className="text-sm font-semibold text-white">
-                Face & body
-              </h3>
-            </div>
-          </div>
+      <DiceBearForgeControls
+        data={data}
+        patchOptions={patchOptions}
+        applyBg={applyBg}
+        onSeedChange={(seed) => commit({ ...cloneDice(data), seed })}
+        compact={compact}
+      />
+    </div>
+  );
 
-          {/* Skin */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-              Skin tone
+  const classStrip =
+    showClassPresets && !compact ? (
+      <section className="space-y-3 rounded-2xl border border-white/10 bg-uri-navy/80 px-4 py-4 sm:px-5 sm:py-5">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">Class starter looks</p>
+          <h3 className="text-sm font-semibold text-white">Pick a vibe</h3>
+          <p className="text-xs text-white/65">Applies a curated DiceBear style + colors inspired by each class.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {CHARACTER_CLASSES.map((cls) => (
+            <button
+              key={cls.id}
+              type="button"
+              onClick={() => applyClassPreset(cls.id)}
+              className={`flex items-center gap-1.5 rounded-2xl border px-3 py-2 text-xs font-medium tracking-wide transition-all ${
+                selectedClassId === cls.id
+                  ? "border-uri-gold/70 bg-uri-keaney/90 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.14),0_12px_28px_rgba(0,0,0,0.65)]"
+                  : "border-white/10 bg-white/5 text-white/80 hover:border-uri-keaney/60 hover:bg-uri-keaney/20"
+              }`}
+            >
+              <span aria-hidden className="text-base">
+                {cls.icon}
+              </span>
+              <span className="truncate">{cls.outfitLabel}</span>
+            </button>
+          ))}
+        </div>
+        {onWeaponChange && (
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
+              Starter weapon
             </label>
             <div className="flex flex-wrap gap-2">
-              {SKIN_TONES.map((t) => (
+              {STARTER_WEAPONS.map((w) => (
                 <button
-                  key={t.id}
+                  key={w.id}
                   type="button"
-                  onClick={() => update({ skin: t.id })}
-                  className={`h-9 w-9 rounded-full border-2 transition-all ${
-                    data.skin === t.id
-                      ? "border-uri-keaney scale-110 ring-2 ring-uri-keaney/40"
-                      : "border-white/30 hover:border-white/50"
-                  }`}
-                  style={{ backgroundColor: t.color }}
-                  title={t.label}
-                  aria-pressed={data.skin === t.id}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Face */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-              Face
-            </label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
-              {FACE_STYLES.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => update({ face: f.id })}
-                  className={`rounded-2xl px-3 py-1.5 text-xs font-medium transition-all text-left ${
-                    (data.face ?? "smile") === f.id
-                      ? "bg-uri-keaney text-white shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
-                      : "bg-white/10 text-white/80 hover:bg-white/15"
+                  onClick={() => onWeaponChange(selectedWeapon === w.id ? null : w.id)}
+                  className={`flex items-center gap-1.5 rounded-2xl border px-3 py-1.5 text-xs font-medium tracking-wide transition-all ${
+                    selectedWeapon === w.id
+                      ? "border-uri-gold/70 bg-uri-gold/20 text-uri-gold shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+                      : "border-white/10 bg-white/5 text-white/80 hover:border-uri-gold/60 hover:bg-uri-gold/10"
                   }`}
                 >
-                  {f.label}
+                  <span aria-hidden className="text-sm">
+                    {w.icon}
+                  </span>
+                  <span className="truncate">{w.label}</span>
                 </button>
               ))}
             </div>
           </div>
+        )}
+      </section>
+    ) : null;
 
-          {/* Body & gender */}
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-                Body type
-              </label>
-              <div className="grid gap-2">
-                {BODY_TYPES.map((b) => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() => update({ body: b.id })}
-                    className={`rounded-2xl px-3 py-1.5 text-xs font-medium transition-all text-left ${
-                      data.body === b.id
-                        ? "bg-uri-keaney text-white shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
-                        : "bg-white/10 text-white/80 hover:bg-white/15"
-                    }`}
-                  >
-                    {b.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-                Gender expression
-              </label>
-              <div className="grid gap-2">
-                {GENDERS.map((g) => (
-                  <button
-                    key={g.id}
-                    type="button"
-                    onClick={() => update({ gender: g.id })}
-                    className={`rounded-2xl px-3 py-1.5 text-xs font-medium transition-all text-left ${
-                      data.gender === g.id
-                        ? "bg-uri-keaney text-white shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
-                        : "bg-white/10 text-white/80 hover:bg-white/15"
-                    }`}
-                  >
-                    {g.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+  const previewCard = (
+    <div className="relative overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br from-uri-navy via-[#0a1f3d] to-uri-keaney/35 px-4 py-5 sm:px-6 sm:py-6 shadow-[0_20px_50px_rgba(0,0,0,0.55)] ring-1 ring-white/10">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(104,171,232,0.25),transparent_60%)]" />
+      <div className="relative flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+        <div className="flex justify-center sm:justify-start">
+          <div
+            className="rounded-3xl border border-white/15 bg-black/25 p-2 shadow-inner"
+            style={{ width: previewSize + 24, height: previewSize + 24 }}
+          >
+            <AvatarDisplay avatar={serializeDiceBearAvatar(data)} size={previewSize} />
           </div>
         </div>
+        <div className="flex-1 min-w-0 text-center sm:text-left space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-uri-keaney/90">Hero card</p>
+          <p className="font-display text-lg sm:text-xl font-bold text-white truncate">{pv.displayName}</p>
+          <p className="text-xs text-uri-keaney/90 font-mono truncate">@{pv.username}</p>
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-[11px]">
+            <span className="rounded-lg bg-uri-gold/20 text-uri-gold border border-uri-gold/40 px-2 py-0.5 font-semibold">
+              Lv.{pv.level}
+            </span>
+            <span className="text-white/60 font-mono">{pv.totalXp.toLocaleString()} XP</span>
+            <span className="text-white/50">·</span>
+            <span className="text-white/80 truncate max-w-[12rem]">{pv.classLabel}</span>
+          </div>
+          <div className="h-2 rounded-full bg-black/40 overflow-hidden border border-white/10">
+            <div
+              className="h-full bg-gradient-to-r from-uri-keaney to-uri-gold/90 rounded-full transition-all"
+              style={{ width: `${xpPct}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-white/40">Portrait powered by DiceBear · stored as style + seed + options.</p>
+        </div>
+      </div>
+    </div>
+  );
 
-        {/* Hair */}
-        <div className="space-y-3 border-t border-white/10 pt-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">
-                Step 3 · Hair
-              </p>
-              <h3 className="text-sm font-semibold text-white">
-                Style & color
-              </h3>
+  if (compact) {
+    return (
+      <div className="space-y-4">
+        {preview ? (
+          <div className="rounded-2xl border border-white/12 bg-gradient-to-br from-uri-navy/95 to-black/40 px-3 py-3">
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl border border-white/10 bg-black/30 p-1.5 shrink-0">
+                <AvatarDisplay avatar={serializeDiceBearAvatar(data)} size={72} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white truncate">{preview.displayName}</p>
+                <p className="text-[11px] text-uri-keaney/90 font-mono truncate">@{preview.username}</p>
+                <p className="text-[10px] text-white/50 mt-0.5 truncate">
+                  Lv.{preview.level} · {preview.totalXp.toLocaleString()} XP · {preview.classLabel}
+                </p>
+              </div>
             </div>
           </div>
-
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-                Hair style
-              </label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {HAIR_STYLES.map((h) => (
-                  <button
-                    key={h.id}
-                    type="button"
-                    onClick={() => update({ hair: h.id })}
-                    className={`rounded-2xl px-3 py-1.5 text-xs font-medium transition-all text-left ${
-                      data.hair === h.id
-                        ? "bg-uri-keaney text-white shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
-                        : "bg-white/10 text-white/80 hover:bg-white/15"
-                    }`}
-                  >
-                    {h.label}
-                  </button>
-                ))}
-              </div>
+        ) : (
+          <div className="flex justify-center">
+            <div
+              className="rounded-2xl border border-white/15 bg-white/5 p-2"
+              style={{ width: previewSize + 20, height: previewSize + 20 }}
+            >
+              <AvatarDisplay avatar={serializeDiceBearAvatar(data)} size={previewSize} />
             </div>
+          </div>
+        )}
+        {controls}
+      </div>
+    );
+  }
 
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-                Hair color
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {HAIR_COLORS.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => update({ hairColor: c.id })}
-                    className={`h-9 w-9 rounded-full border-2 transition-all ${
-                      data.hairColor === c.id
-                        ? "border-uri-keaney scale-110 ring-2 ring-uri-keaney/40"
-                        : "border-white/30 hover:border-white/50"
-                    }`}
-                    style={{ backgroundColor: c.color }}
-                    title={c.label}
-                    aria-pressed={data.hairColor === c.id}
-                  />
-                ))}
-              </div>
-            </div>
+  return (
+    <div className="space-y-6">
+      {previewCard}
+      {classStrip}
+      <section className="rounded-3xl border border-white/10 bg-uri-navy/90 px-4 py-5 sm:px-6 sm:py-6 space-y-5">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">Forge your visage</p>
+            <h3 className="text-sm font-semibold text-white">DiceBear avatar lab</h3>
           </div>
         </div>
-
-        {/* Outfit */}
-        <div className="space-y-3 border-t border-white/10 pt-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">
-                Step 4 · Outfit
-              </p>
-              <h3 className="text-sm font-semibold text-white">
-                Clothes & colors
-              </h3>
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-                Clothes
-              </label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {CLOTHES_STYLES.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => update({ clothes: c.id })}
-                    className={`rounded-2xl px-3 py-1.5 text-xs font-medium transition-all text-left ${
-                      data.clothes === c.id
-                        ? "bg-uri-keaney text-white shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
-                        : "bg-white/10 text-white/80 hover:bg-white/15"
-                    }`}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-                Clothes color
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {CLOTHES_COLORS.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => update({ clothesColor: c.id })}
-                    className={`h-9 w-9 rounded-full border-2 transition-all ${
-                      data.clothesColor === c.id
-                        ? "border-uri-keaney scale-110 ring-2 ring-uri-keaney/40"
-                        : "border-white/30 hover:border-white/50"
-                    }`}
-                    style={{ backgroundColor: c.color }}
-                    aria-pressed={data.clothesColor === c.id}
-                    title={c.id === "keaney" ? "URI blue" : c.id === "gold" ? "URI gold" : undefined}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Accessories */}
-        <div className="space-y-3 border-t border-white/10 pt-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">
-                Step 5 · Accessories
-              </p>
-              <h3 className="text-sm font-semibold text-white">
-                Glasses, hats, backpacks
-              </h3>
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            {/* Glasses */}
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-                Glasses
-              </label>
-              <div className="grid gap-2">
-                {GLASSES_STYLES.map((g) => {
-                  const locked = !isUnlocked("glasses", g.id);
-                  const selected = (data.glasses ?? "none") === g.id;
-                  return (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => update({ glasses: g.id })}
-                      disabled={locked}
-                      className={`rounded-2xl px-3 py-1.5 text-[11px] font-medium transition-all text-left ${
-                        selected
-                          ? "bg-uri-keaney text-white shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
-                          : locked
-                            ? "cursor-not-allowed bg-white/5 text-white/30"
-                            : "bg-white/10 text-white/80 hover:bg-white/15"
-                      }`}
-                      title={locked ? "Locked — earn achievements to unlock" : g.label}
-                    >
-                      {g.label}
-                      {locked ? " 🔒" : ""}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Hat */}
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-                Hat
-              </label>
-              <div className="grid gap-2">
-                {HAT_STYLES.map((h) => {
-                  const locked = !isUnlocked("hat", h.id);
-                  const selected = (data.hat ?? "none") === h.id;
-                  return (
-                    <button
-                      key={h.id}
-                      type="button"
-                      onClick={() => update({ hat: h.id })}
-                      disabled={locked}
-                      className={`rounded-2xl px-3 py-1.5 text-[11px] font-medium transition-all text-left ${
-                        selected
-                          ? "bg-uri-keaney text-white shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
-                          : locked
-                            ? "cursor-not-allowed bg-white/5 text-white/30"
-                            : "bg-white/10 text-white/80 hover:bg-white/15"
-                      }`}
-                      title={locked ? "Locked — earn achievements to unlock" : h.label}
-                    >
-                      {h.label}
-                      {locked ? " 🔒" : ""}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Backpack */}
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-semibold text-white/70 uppercase tracking-wider">
-                Backpack
-              </label>
-              <div className="grid gap-2">
-                {BACKPACK_STYLES.map((b) => {
-                  const locked = !isUnlocked("backpack", b.id);
-                  const selected = (data.backpack ?? "none") === b.id;
-                  return (
-                    <button
-                      key={b.id}
-                      type="button"
-                      onClick={() => update({ backpack: b.id })}
-                      disabled={locked}
-                      className={`rounded-2xl px-3 py-1.5 text-[11px] font-medium transition-all text-left ${
-                        selected
-                          ? "bg-uri-keaney text-white shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
-                          : locked
-                            ? "cursor-not-allowed bg-white/5 text-white/30"
-                            : "bg-white/10 text-white/80 hover:bg-white/15"
-                      }`}
-                      title={locked ? "Locked — earn achievements to unlock" : b.label}
-                    >
-                      {b.label}
-                      {locked ? " 🔒" : ""}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
+        {controls}
       </section>
     </div>
   );
 }
-

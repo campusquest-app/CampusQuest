@@ -10,6 +10,28 @@ type SupabaseClientLike = ReturnType<typeof createAdminClient>;
 
 export const XP_LEADERBOARD_TOP_LIMIT = 50;
 
+const LEADERBOARD_SORT_MODES = [
+  "totalXp",
+  "level",
+  "strength",
+  "stamina",
+  "knowledge",
+  "social",
+  "focus",
+  "bossesDefeated",
+  "finalBossesDefeated",
+] as const;
+
+export type LeaderboardSortMode = (typeof LEADERBOARD_SORT_MODES)[number];
+
+export function parseLeaderboardSort(searchParams: URLSearchParams): LeaderboardSortMode {
+  const raw = searchParams.get("sort") ?? searchParams.get("by");
+  if (raw && (LEADERBOARD_SORT_MODES as readonly string[]).includes(raw)) {
+    return raw as LeaderboardSortMode;
+  }
+  return "level";
+}
+
 export type LeaderboardXpRow = {
   rank: number;
   userId: string;
@@ -18,6 +40,13 @@ export type LeaderboardXpRow = {
   level: number;
   totalXp: number;
   avatar: string;
+  strength: number;
+  stamina: number;
+  knowledge: number;
+  social: number;
+  focus: number;
+  bossesDefeated: number;
+  finalBossesDefeated: number;
 };
 
 export type LeaderboardXpResponse = {
@@ -42,8 +71,35 @@ function avatarPayload(p: {
   return "🎓";
 }
 
-function sortAndRank(entries: Omit<LeaderboardXpRow, "rank">[]): LeaderboardXpRow[] {
+function sortKeyValue(entry: Omit<LeaderboardXpRow, "rank">, mode: LeaderboardSortMode): number {
+  switch (mode) {
+    case "totalXp":
+      return entry.totalXp;
+    case "level":
+      return entry.level;
+    case "strength":
+      return entry.strength;
+    case "stamina":
+      return entry.stamina;
+    case "knowledge":
+      return entry.knowledge;
+    case "social":
+      return entry.social;
+    case "focus":
+      return entry.focus;
+    case "bossesDefeated":
+      return entry.bossesDefeated;
+    case "finalBossesDefeated":
+      return entry.finalBossesDefeated;
+    default:
+      return entry.totalXp;
+  }
+}
+
+function sortAndRank(entries: Omit<LeaderboardXpRow, "rank">[], mode: LeaderboardSortMode): LeaderboardXpRow[] {
   const sorted = [...entries].sort((a, b) => {
+    const diff = sortKeyValue(b, mode) - sortKeyValue(a, mode);
+    if (diff !== 0) return diff;
     if (b.totalXp !== a.totalXp) return b.totalXp - a.totalXp;
     return a.username.localeCompare(b.username, undefined, { sensitivity: "base" });
   });
@@ -75,18 +131,38 @@ type ProfileStatRow = {
   display_name: string;
   avatar_url: string | null;
   avatar_custom_json: string | null;
-  user_stats: { level: number; total_xp: number } | { level: number; total_xp: number }[] | null;
+  user_stats: UserStatsRow | UserStatsRow[] | null;
+};
+
+type UserStatsRow = {
+  level?: number | null;
+  total_xp?: number | null;
+  strength?: number | null;
+  stamina?: number | null;
+  knowledge?: number | null;
+  social?: number | null;
+  focus?: number | null;
+  bosses_defeated?: number | null;
+  final_bosses_defeated?: number | null;
 };
 
 function mapProfileToEntry(row: ProfileStatRow): Omit<LeaderboardXpRow, "rank"> | null {
   const stats = Array.isArray(row.user_stats) ? row.user_stats[0] : row.user_stats;
   if (!stats) return null;
+  const s = stats as UserStatsRow;
   return {
     userId: row.id,
     username: row.username,
     displayName: row.display_name,
-    level: Number(stats.level ?? 1),
-    totalXp: Number(stats.total_xp ?? 0),
+    level: Math.max(1, Number(s.level ?? 1)),
+    totalXp: Math.max(0, Number(s.total_xp ?? 0)),
+    strength: Math.max(0, Number(s.strength ?? 0)),
+    stamina: Math.max(0, Number(s.stamina ?? 0)),
+    knowledge: Math.max(0, Number(s.knowledge ?? 0)),
+    social: Math.max(0, Number(s.social ?? 0)),
+    focus: Math.max(0, Number(s.focus ?? 0)),
+    bossesDefeated: Math.max(0, Number(s.bosses_defeated ?? 0)),
+    finalBossesDefeated: Math.max(0, Number(s.final_bosses_defeated ?? 0)),
     avatar: avatarPayload(row),
   };
 }
@@ -95,7 +171,7 @@ async function fetchProfilesAndStats(admin: SupabaseClientLike, userIds: string[
   const { data: profiles, error } = await admin
     .from("profiles")
     .select(
-      "id, username, display_name, avatar_url, avatar_custom_json, user_stats(level, total_xp)",
+      "id, username, display_name, avatar_url, avatar_custom_json, user_stats(level, total_xp, strength, stamina, knowledge, social, focus, bosses_defeated, final_bosses_defeated)",
     )
     .in("id", userIds);
   if (error) throw new ApiError(400, error.message, "LEADERBOARD_PROFILES_FETCH_FAILED");
@@ -108,8 +184,9 @@ export async function fetchCampusXpLeaderboard(args: {
   userEmail?: string | null;
   emailConfirmedAt?: string | null;
   confirmedAt?: string | null;
+  sort: LeaderboardSortMode;
 }): Promise<LeaderboardXpResponse> {
-  const { userClient, userId, userEmail, emailConfirmedAt, confirmedAt } = args;
+  const { userClient, userId, userEmail, emailConfirmedAt, confirmedAt, sort } = args;
   const admin = createAdminClient();
   const nowMs = Date.now();
 
@@ -150,7 +227,7 @@ export async function fetchCampusXpLeaderboard(args: {
     if (mapped && allowedSafety.has(mapped.userId)) baseEntries.push(mapped);
   }
 
-  const ranked = sortAndRank(baseEntries);
+  const ranked = sortAndRank(baseEntries, sort);
   const totalRankedUsers = ranked.length;
   const me = ranked.find((r) => r.userId === userId);
 
@@ -170,8 +247,9 @@ export async function fetchFriendsXpLeaderboard(args: {
   userEmail?: string | null;
   emailConfirmedAt?: string | null;
   confirmedAt?: string | null;
+  sort: LeaderboardSortMode;
 }): Promise<LeaderboardXpResponse> {
-  const { userClient, userId, userEmail, emailConfirmedAt, confirmedAt } = args;
+  const { userClient, userId, userEmail, emailConfirmedAt, confirmedAt, sort } = args;
   const admin = createAdminClient();
   const nowMs = Date.now();
 
@@ -247,7 +325,7 @@ export async function fetchFriendsXpLeaderboard(args: {
     if (mapped && safetyAllowedSet.has(mapped.userId)) baseEntries.push(mapped);
   }
 
-  const ranked = sortAndRank(baseEntries);
+  const ranked = sortAndRank(baseEntries, sort);
   const totalRankedUsers = ranked.length;
   const me = ranked.find((r) => r.userId === userId);
 

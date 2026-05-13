@@ -26,6 +26,13 @@ export type MeProfileRow = {
   /** When display/username last changed — used for client-side cooldown UX. */
   display_name_changed_at?: string | null;
   username_changed_at?: string | null;
+  /** Present for allowlisted emails: rolling 7‑day caps on renames. */
+  weekly_identity_budget?: {
+    max_per_week: number;
+    window_days: number;
+    display_used: number;
+    username_used: number;
+  } | null;
 };
 
 export type MeStatsRow = {

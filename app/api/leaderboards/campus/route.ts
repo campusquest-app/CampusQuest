@@ -1,18 +1,21 @@
 import { fail, ok } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
-import { fetchCampusXpLeaderboard } from "@/lib/server/xpLeaderboards";
+import { fetchCampusXpLeaderboard, parseLeaderboardSort } from "@/lib/server/xpLeaderboards";
 
 export async function GET(request: Request) {
   try {
     const auth = await requireAuthUser(request as Request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "leaderboard:campus", limit: 60, windowMs: 60_000 });
+    const { searchParams } = new URL(request.url);
+    const sort = parseLeaderboardSort(searchParams);
     const data = await fetchCampusXpLeaderboard({
       userClient: auth.userClient as any,
       userId: auth.user.id,
       userEmail: auth.user.email ?? null,
       emailConfirmedAt: (auth.user as { email_confirmed_at?: string | null }).email_confirmed_at ?? null,
       confirmedAt: (auth.user as { confirmed_at?: string | null }).confirmed_at ?? null,
+      sort,
     });
     return ok(data);
   } catch (error) {

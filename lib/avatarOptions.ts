@@ -1,6 +1,11 @@
 /**
  * Custom avatar builder options. Stored as JSON string in character.avatar.
+ * - v:1 — legacy vector builder (CampusQuest SVG)
+ * - v:2 — DiceBear (see lib/dicebearAvatar.ts)
  */
+
+import type { DiceBearAvatarV2 } from "./dicebearAvatar";
+import { parseDiceBearAvatar } from "./dicebearAvatar";
 
 export const SKIN_TONES = [
   { id: "1", label: "Porcelain", color: "#fbe3d6" },
@@ -130,7 +135,9 @@ export function getDefaultCustomAvatar(): CustomAvatarData {
   return { ...DEFAULT_AVATAR };
 }
 
-export function parseAvatar(avatar: string): CustomAvatarData | null {
+export function parseAvatar(avatar: string): CustomAvatarData | DiceBearAvatarV2 | null {
+  const dice = parseDiceBearAvatar(avatar);
+  if (dice) return dice;
   if (typeof avatar !== "string" || !avatar.startsWith("{")) return null;
   try {
     const data = JSON.parse(avatar) as CustomAvatarData;
@@ -145,6 +152,14 @@ export function parseAvatar(avatar: string): CustomAvatarData | null {
     // ignore
   }
   return null;
+}
+
+export function isV1CustomAvatarData(data: CustomAvatarData | DiceBearAvatarV2 | null): data is CustomAvatarData {
+  return data != null && (data as CustomAvatarData).v === 1;
+}
+
+export function isDiceBearAvatarPayload(data: CustomAvatarData | DiceBearAvatarV2 | null): data is DiceBearAvatarV2 {
+  return data != null && (data as DiceBearAvatarV2).v === 2;
 }
 
 export function serializeAvatar(data: CustomAvatarData): string {

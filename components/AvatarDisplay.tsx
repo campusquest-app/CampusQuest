@@ -1,8 +1,10 @@
 "use client";
 
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   parseAvatar,
+  isV1CustomAvatarData,
+  isDiceBearAvatarPayload,
   SKIN_TONES,
   HAIR_STYLES,
   HAIR_COLORS,
@@ -10,6 +12,7 @@ import {
   CLOTHES_COLORS,
   type CustomAvatarData,
 } from "@/lib/avatarOptions";
+import type { DiceBearAvatarV2 } from "@/lib/dicebearAvatar";
 import { getPropIconForClass, getPropIconForWeapon } from "@/lib/characterClasses";
 
 function getSkinColor(id: string): string {
@@ -491,6 +494,41 @@ function CustomAvatarSvg({ data, size = 80 }: { data: CustomAvatarData; size?: n
   );
 }
 
+function DiceBearAvatarSvg({ data, size }: { data: DiceBearAvatarV2; size: number }) {
+  const [markup, setMarkup] = useState<string | null>(null);
+  const cacheKey = JSON.stringify(data);
+
+  useEffect(() => {
+    let cancelled = false;
+    void import("@/lib/dicebearSvg").then((mod) => {
+      if (cancelled) return;
+      setMarkup(mod.createDiceBearSvgString(data, size));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cacheKey = JSON.stringify(data)
+  }, [cacheKey, size]);
+
+  if (markup === null || markup === "") {
+    return (
+      <span
+        className="inline-flex items-center justify-center rounded-2xl bg-white/10 animate-pulse"
+        style={{ width: size, height: size }}
+        aria-hidden
+      />
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center justify-center [&>svg]:h-full [&>svg]:w-full [&>svg]:max-h-full [&>svg]:max-w-full"
+      style={{ width: size, height: size }}
+      // SVG is generated locally by DiceBear from validated JSON only (client).
+      dangerouslySetInnerHTML={{ __html: markup }}
+    />
+  );
+}
+
 function getPropIcon(classId?: string | null, starterWeapon?: string | null): string | null {
   return getPropIconForClass(classId ?? "") ?? getPropIconForWeapon(starterWeapon ?? "") ?? null;
 }
@@ -514,15 +552,35 @@ export function AvatarDisplay({
   showProp?: boolean;
 }) {
   const propIcon = showProp ? getPropIcon(classId, starterWeapon) : null;
-  const custom = parseAvatar(avatar);
+  const parsed = parseAvatar(avatar);
 
-  if (custom) {
+  if (parsed && isDiceBearAvatarPayload(parsed)) {
     return (
       <span
         className={`inline-block flex-shrink-0 relative ${className}`}
         style={{ width: size, height: size }}
       >
-        <CustomAvatarSvg data={custom} size={size} />
+        <DiceBearAvatarSvg data={parsed} size={size} />
+        {propIcon && (
+          <span
+            className="absolute bottom-0 right-0 flex items-center justify-center rounded-full bg-uri-navy/90 border border-uri-gold/50 text-white shadow"
+            style={{ width: size * 0.32, height: size * 0.32, fontSize: size * 0.2 }}
+            aria-hidden
+          >
+            {propIcon}
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  if (parsed && isV1CustomAvatarData(parsed)) {
+    return (
+      <span
+        className={`inline-block flex-shrink-0 relative ${className}`}
+        style={{ width: size, height: size }}
+      >
+        <CustomAvatarSvg data={parsed} size={size} />
         {propIcon && (
           <span
             className="absolute bottom-0 right-0 flex items-center justify-center rounded-full bg-uri-navy/90 border border-uri-gold/50 text-white shadow"

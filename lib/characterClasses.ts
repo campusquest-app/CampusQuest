@@ -1,10 +1,10 @@
 /**
- * CampusQuest character classes: base template (same head, eyes, body); swap hair, outfit, prop, color.
+ * CampusQuest character classes + DiceBear starter presets per class.
  */
 
 import type { CharacterStats } from "./types";
-import type { CustomAvatarData } from "./avatarOptions";
-import { serializeAvatar } from "./avatarOptions";
+import type { DiceBearAvatarV2 } from "./dicebearAvatar";
+import { serializeDiceBearAvatar } from "./dicebearAvatar";
 
 export const CHARACTER_CLASSES = [
   {
@@ -76,68 +76,39 @@ export const CHARACTER_CLASSES = [
 
 export type CharacterClassId = (typeof CHARACTER_CLASSES)[number]["id"];
 
-/**
- * Base avatar template: same head shape, eye style, body for all.
- * Swap only: hair, outfit, prop, color.
- * Presets match each class style (Gym Warrior = spiky hair, muscular; Knight = blue & gold; etc.)
- */
-export const CLASS_AVATAR_PRESETS: Record<CharacterClassId, CustomAvatarData> = {
+/** DiceBear seeds + styles for “class vibe” quick picks (see docs/DICEBEAR_LICENSES.md). */
+export const CLASS_DICEBEAR_BOOTSTRAP: Record<CharacterClassId, Pick<DiceBearAvatarV2, "style" | "seed" | "options">> = {
   gym: {
-    v: 1,
-    skin: "3",
-    hair: "short",
-    hairColor: "black",
-    clothes: "hoodie",
-    clothesColor: "gray",
-    body: "broad",
-    gender: "masculine",
-    face: "serious",
+    style: "adventurer",
+    seed: "CQ Iron Ram Gym",
+    options: { backgroundColor: ["041e42"], backgroundType: ["gradientLinear"] },
   },
   knight: {
-    v: 1,
-    skin: "2",
-    hair: "short",
-    hairColor: "brown",
-    clothes: "collared",
-    clothesColor: "navy",
-    body: "medium",
-    gender: "neutral",
-    face: "calm",
+    style: "lorelei",
+    seed: "CQ Rhody Knight",
+    options: { backgroundColor: ["68abe8", "041e42"], backgroundType: ["gradientLinear"] },
   },
   mage: {
-    v: 1,
-    skin: "2",
-    hair: "waves",
-    hairColor: "brown",
-    clothes: "sweater",
-    clothesColor: "navy",
-    body: "medium",
-    gender: "neutral",
-    face: "smile",
+    style: "loreleiNeutral",
+    seed: "CQ Library Sage",
+    options: { backgroundColor: ["1e3a5f"], backgroundType: ["gradientLinear"] },
   },
   bard: {
-    v: 1,
-    skin: "2",
-    hair: "curly",
-    hairColor: "auburn",
-    clothes: "hoodie",
-    clothesColor: "keaney",
-    body: "medium",
-    gender: "neutral",
-    face: "happy",
+    style: "micah",
+    seed: "CQ Quad Bard",
+    options: { backgroundColor: ["4a1942", "041e42"], backgroundType: ["gradientLinear"] },
   },
   rogue: {
-    v: 1,
-    skin: "3",
-    hair: "short",
-    hairColor: "black",
-    clothes: "collared",
-    clothesColor: "black",
-    body: "slim",
-    gender: "neutral",
-    face: "wink",
+    style: "openPeeps",
+    seed: "CQ Resume Rogue",
+    options: { backgroundColor: ["111827"], backgroundType: ["gradientLinear"] },
   },
 };
+
+export function buildDiceBearForClass(classId: CharacterClassId): DiceBearAvatarV2 {
+  const b = CLASS_DICEBEAR_BOOTSTRAP[classId];
+  return { v: 2, style: b.style, seed: b.seed, options: { ...b.options } };
+}
 
 export function getClassById(id: string) {
   return CHARACTER_CLASSES.find((c) => c.id === id) ?? null;
@@ -168,7 +139,7 @@ export function getPropIconForWeapon(weaponId: string): string | null {
 }
 
 export function getClassAvatarPreset(classId: CharacterClassId): string {
-  return serializeAvatar(CLASS_AVATAR_PRESETS[classId]);
+  return serializeDiceBearAvatar(buildDiceBearForClass(classId));
 }
 
 /** Apply a class's stat boost to base stats. */

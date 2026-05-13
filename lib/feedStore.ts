@@ -1,7 +1,7 @@
 "use client";
 
 import type { FieldNote, RamMark, FieldNoteSerialized, QuadComment, QuadPostVisibility } from "./types";
-import { getDefaultCustomAvatar, serializeAvatar, type CustomAvatarData } from "./avatarOptions";
+import { serializeDiceBearAvatar } from "./dicebearAvatar";
 import { getFriends } from "./friendsStore";
 import { addXpToCharacter, bumpQuadAssistForAuthor, getGuildIdsForCharacter } from "./store";
 import { recordGuildWeeklyRace } from "./guildWeeklyRace";
@@ -12,9 +12,13 @@ let comments: QuadComment[] = [];
 
 const BASE_TS = Date.now();
 
-function makeSeedAvatar(overrides: Partial<CustomAvatarData>): string {
-  const base = getDefaultCustomAvatar();
-  return serializeAvatar({ ...base, ...overrides });
+function makeFeedPersonaAvatar(seedKey: string): string {
+  return serializeDiceBearAvatar({
+    v: 2,
+    style: "lorelei",
+    seed: `cq-feed-${seedKey}`,
+    options: { backgroundColor: ["041e42"], backgroundType: ["gradientLinear"] },
+  });
 }
 
 /**
@@ -83,7 +87,7 @@ const SEED_FIELD_NOTES: FieldNote[] = [
     "seed-1",
     "Jordan Kim",
     "jordan_kim",
-    makeSeedAvatar({ skin: "3", hair: "waves", hairColor: "brown", clothes: "hoodie", clothesColor: "keaney" }),
+    makeFeedPersonaAvatar("alex"),
     "Went to the women's basketball game last night — the energy in the arena was unreal. URI played tough, the crowd was loud, and I left already counting down to the next home game. What a night. #wbb #ramnation #uri",
     [{ tag: "wbb" }, { tag: "ramnation" }, { tag: "uri" }],
     1,
@@ -110,7 +114,7 @@ const SEED_FIELD_NOTES: FieldNote[] = [
     "seed-2",
     "Alex Rivera",
     "alex_rivera",
-    makeSeedAvatar({ skin: "5", hair: "buzz", hairColor: "black", clothes: "tshirt", clothesColor: "navy", body: "broad" }),
+    makeFeedPersonaAvatar("sam"),
     "Morning lift at Keaney Gym — new PR on bench! Nothing like URI's home court energy. #gym #ramnation",
     [{ tag: "gym" }, { tag: "ramnation" }],
     3,
@@ -123,7 +127,7 @@ const SEED_FIELD_NOTES: FieldNote[] = [
     "seed-3",
     "Casey Lee",
     "casey_lee",
-    makeSeedAvatar({ skin: "2", hair: "bun", hairColor: "auburn", clothes: "sweater", clothesColor: "gray" }),
+    makeFeedPersonaAvatar("jordan"),
     "Coffee + flashcards at the union. Midterms are coming but we're ready. #study #coffee",
     [{ tag: "study" }, { tag: "coffee" }],
     5,
@@ -136,7 +140,7 @@ const SEED_FIELD_NOTES: FieldNote[] = [
     "seed-4",
     "Riley Morgan",
     "riley_morgan",
-    makeSeedAvatar({ skin: "4", hair: "ponytail", hairColor: "black", clothes: "tank", clothesColor: "green" }),
+    makeFeedPersonaAvatar("taylor"),
     "5K run around campus before class. Nothing like fresh air to wake you up. #running #campus",
     [{ tag: "running" }, { tag: "campus" }],
     8,
@@ -149,7 +153,7 @@ const SEED_FIELD_NOTES: FieldNote[] = [
     "seed-5",
     "Quinn Taylor",
     "quinn_taylor",
-    makeSeedAvatar({ skin: "1", hair: "long", hairColor: "blonde", clothes: "collared", clothesColor: "white" }),
+    makeFeedPersonaAvatar("riley"),
     "Group study for orgo in the science building. Shoutout to the squad for explaining mechanisms. #groupstudy #orgo",
     [{ tag: "groupstudy" }, { tag: "orgo" }],
     12,
@@ -163,7 +167,7 @@ const SEED_FIELD_NOTES: FieldNote[] = [
     "seed-7",
     "Morgan Blake",
     "morgan_blake",
-    makeSeedAvatar({ skin: "3", hair: "short", hairColor: "gray", clothes: "sweater", clothesColor: "maroon" }),
+    makeFeedPersonaAvatar("casey"),
     "Just wrapped up an incredible afternoon at the URI Career Fair 💼✨ Talked with a bunch of employers, got feedback on my resume, and even spotted a couple of dream internships I’m going to apply for tonight. It was so cool seeing how many paths are open to Rams if we put ourselves out there. #careerfair #internships",
     [{ tag: "careerfair" }, { tag: "internships" }],
     6,
@@ -176,7 +180,7 @@ const SEED_FIELD_NOTES: FieldNote[] = [
     "seed-8",
     "Sam Chen",
     "sam_chen",
-    makeSeedAvatar({ skin: "6", hair: "buzz", hairColor: "black", clothes: "hoodie", clothesColor: "black" }),
+    makeFeedPersonaAvatar("drew"),
     "Ram Run event was a blast. 200+ people showed up. URI spirit is real. #ramrun #uri",
     [{ tag: "ramrun" }, { tag: "uri" }],
     36,
@@ -189,7 +193,7 @@ const SEED_FIELD_NOTES: FieldNote[] = [
     "seed-9",
     "Jamie Foster",
     "jamie_foster",
-    makeSeedAvatar({ skin: "2", hair: "curly", hairColor: "red", clothes: "tshirt", clothesColor: "gold" }),
+    makeFeedPersonaAvatar("morgan"),
     "Club meeting tonight — we're planning the spring concert. So much to do but the team is amazing. #clublife #campus",
     [{ tag: "clublife" }, { tag: "campus" }],
     48,
@@ -202,7 +206,7 @@ const SEED_FIELD_NOTES: FieldNote[] = [
     "seed-10",
     "Drew Patel",
     "drew_patel",
-    makeSeedAvatar({ skin: "4", hair: "waves", hairColor: "brown", clothes: "hoodie", clothesColor: "navy" }),
+    makeFeedPersonaAvatar("quinn"),
     "Practiced for the open mic at the pub. Nerves are real but so is the excitement. #music #campuslife",
     [{ tag: "music" }, { tag: "campuslife" }],
     60,

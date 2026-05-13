@@ -82,7 +82,7 @@ export function Profile({
   const [identitySaving, setIdentitySaving] = useState(false);
   const [cooldownSnap, setCooldownSnap] = useState<Pick<
     MeProfileRow,
-    "onboarding_character_completed" | "display_name_changed_at" | "username_changed_at"
+    "onboarding_character_completed" | "display_name_changed_at" | "username_changed_at" | "weekly_identity_budget"
   > | null>(null);
   const [cooldownLoading, setCooldownLoading] = useState(false);
   const [repairPreserveCooldown, setRepairPreserveCooldown] = useState(true);
@@ -108,6 +108,7 @@ export function Profile({
             onboarding_character_completed: row.onboarding_character_completed ?? null,
             display_name_changed_at: row.display_name_changed_at ?? null,
             username_changed_at: row.username_changed_at ?? null,
+            weekly_identity_budget: row.weekly_identity_budget ?? null,
           });
         }
       })
@@ -131,25 +132,32 @@ export function Profile({
     USERNAME_REGEX.test(identityUsernameNormalized);
 
   const postCharacterOnboarding = Boolean(cooldownSnap?.onboarding_character_completed);
+  const weeklyBudget = cooldownSnap?.weekly_identity_budget ?? null;
+  const useWeeklyBudget = Boolean(weeklyBudget);
+
   const displayNameLocked =
     isOwnProfile &&
     postCharacterOnboarding &&
     !cooldownLoading &&
-    isProfileIdentityCooldownActive(
-      cooldownSnap?.display_name_changed_at ?? null,
-      PROFILE_DISPLAY_NAME_COOLDOWN_MS,
-    );
+    (useWeeklyBudget
+      ? (weeklyBudget?.display_used ?? 0) >= (weeklyBudget?.max_per_week ?? 10)
+      : isProfileIdentityCooldownActive(
+          cooldownSnap?.display_name_changed_at ?? null,
+          PROFILE_DISPLAY_NAME_COOLDOWN_MS,
+        ));
   const usernameFieldLocked =
     isOwnProfile &&
     postCharacterOnboarding &&
     !cooldownLoading &&
-    isProfileIdentityCooldownActive(cooldownSnap?.username_changed_at ?? null, PROFILE_USERNAME_COOLDOWN_MS);
+    (useWeeklyBudget
+      ? (weeklyBudget?.username_used ?? 0) >= (weeklyBudget?.max_per_week ?? 10)
+      : isProfileIdentityCooldownActive(cooldownSnap?.username_changed_at ?? null, PROFILE_USERNAME_COOLDOWN_MS));
   const nextDisplayEligible =
-    cooldownSnap?.display_name_changed_at != null
+    !useWeeklyBudget && cooldownSnap?.display_name_changed_at != null
       ? getNextIdentityChangeEligibleAt(cooldownSnap.display_name_changed_at, PROFILE_DISPLAY_NAME_COOLDOWN_MS)
       : null;
   const nextUsernameEligible =
-    cooldownSnap?.username_changed_at != null
+    !useWeeklyBudget && cooldownSnap?.username_changed_at != null
       ? getNextIdentityChangeEligibleAt(cooldownSnap.username_changed_at, PROFILE_USERNAME_COOLDOWN_MS)
       : null;
   const identitySaveBlockedByCooldown =
@@ -210,6 +218,7 @@ export function Profile({
         onboarding_character_completed: mergedProfile.onboarding_character_completed ?? null,
         display_name_changed_at: mergedProfile.display_name_changed_at ?? null,
         username_changed_at: mergedProfile.username_changed_at ?? null,
+        weekly_identity_budget: mergedProfile.weekly_identity_budget ?? null,
       });
       setShowEditIdentity(false);
       onRefresh?.();
@@ -218,7 +227,13 @@ export function Profile({
         setIdentityError("That username is already taken. Pick another.");
         return;
       }
-      if (err instanceof ApiRequestError && (err.code === "DISPLAY_NAME_COOLDOWN" || err.code === "USERNAME_COOLDOWN")) {
+      if (
+        err instanceof ApiRequestError &&
+        (err.code === "DISPLAY_NAME_COOLDOWN" ||
+          err.code === "USERNAME_COOLDOWN" ||
+          err.code === "DISPLAY_NAME_WEEKLY_LIMIT" ||
+          err.code === "USERNAME_WEEKLY_LIMIT")
+      ) {
         setIdentityError(err.message);
         return;
       }
@@ -664,8 +679,23 @@ export function Profile({
                 ? "Admin: updates this profile using the same rules as student signup."
                 : "This is how your name and handle appear across campus."}
             </p>
-            <p className="text-xs text-white/45 mb-1">Display name can be changed once every 7 days.</p>
-            <p className="text-xs text-white/45 mb-4">Username can be changed once every 30 days.</p>
+            {useWeeklyBudget && weeklyBudget ? (
+              <>
+                <p className="text-xs text-white/45 mb-1">
+                  Rolling 7 days: up to {weeklyBudget.max_per_week} display name changes and {weeklyBudget.max_per_week}{" "}
+                  username changes (separate limits).
+                </p>
+                <p className="text-xs text-white/45 mb-4">
+                  This window: {weeklyBudget.display_used}/{weeklyBudget.max_per_week} display ·{" "}
+                  {weeklyBudget.username_used}/{weeklyBudget.max_per_week} username.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-white/45 mb-1">Display name can be changed once every 7 days.</p>
+                <p className="text-xs text-white/45 mb-4">Username can be changed once every 30 days.</p>
+              </>
+            )}
             {cooldownLoading ? (
               <p className="text-[11px] text-white/45 mb-3">Checking change limits…</p>
             ) : null}
@@ -684,7 +714,11 @@ export function Profile({
               className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 mb-1 disabled:opacity-50 disabled:cursor-not-allowed"
               autoComplete="name"
             />
-            {displayNameLocked && nextDisplayEligible && !cooldownLoading ? (
+            {displayNameLocked && useWeeklyBudget && weeklyBudget && !cooldownLoading ? (
+              <p className="text-[11px] text-uri-keaney/90 mb-3">
+                Display name limit reached ({weeklyBudget.display_used}/{weeklyBudget.max_per_week} in the last 7 days).
+              </p>
+            ) : displayNameLocked && nextDisplayEligible && !cooldownLoading ? (
               <p className="text-[11px] text-uri-keaney/90 mb-3">
                 You can change this again on {formatNextChangeDateLabel(nextDisplayEligible)}.
               </p>
@@ -707,7 +741,11 @@ export function Profile({
               autoComplete="username"
               spellCheck={false}
             />
-            {usernameFieldLocked && nextUsernameEligible && !cooldownLoading ? (
+            {usernameFieldLocked && useWeeklyBudget && weeklyBudget && !cooldownLoading ? (
+              <p className="text-[11px] text-uri-keaney/90 mt-1">
+                Username limit reached ({weeklyBudget.username_used}/{weeklyBudget.max_per_week} in the last 7 days).
+              </p>
+            ) : usernameFieldLocked && nextUsernameEligible && !cooldownLoading ? (
               <p className="text-[11px] text-uri-keaney/90 mt-1">
                 You can change this again on {formatNextChangeDateLabel(nextUsernameEligible)}.
               </p>

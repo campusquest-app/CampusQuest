@@ -1,0 +1,32 @@
+"use client";
+
+/**
+ * Client-only DiceBear SVG generation. Keep `@dicebear/*` imports out of `dicebearAvatar.ts`
+ * so metadata/parsing never pulls the full collection into the server RSC/runtime graph.
+ */
+
+import { createAvatar } from "@dicebear/core";
+import * as collection from "@dicebear/collection";
+import type { DiceBearAvatarV2 } from "./dicebearAvatar";
+
+export const DICEBEAR_STYLE_MODULES = {
+  lorelei: collection.lorelei,
+  loreleiNeutral: collection.loreleiNeutral,
+  pixelArt: collection.pixelArt,
+  pixelArtNeutral: collection.pixelArtNeutral,
+  openPeeps: collection.openPeeps,
+  adventurer: collection.adventurer,
+  adventurerNeutral: collection.adventurerNeutral,
+  micah: collection.micah,
+} as const;
+
+export function createDiceBearSvgString(data: DiceBearAvatarV2, size: number): string {
+  const styleMod = DICEBEAR_STYLE_MODULES[data.style];
+  if (!styleMod) return "";
+  const avatar = createAvatar(styleMod as Parameters<typeof createAvatar>[0], {
+    seed: data.seed,
+    size,
+    ...data.options,
+  } as Record<string, unknown>);
+  return avatar.toString();
+}

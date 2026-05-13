@@ -8,6 +8,16 @@ import {
   PROFILE_DISPLAY_NAME_COOLDOWN_MS,
   PROFILE_USERNAME_COOLDOWN_MS,
 } from "@/lib/profileIdentityCooldown";
+import {
+  appendIdentityWeeklyEvents,
+  countWeeklyByKind,
+  enrichProfileRowForApiClient,
+  hasWeeklyIdentityBudget,
+  IDENTITY_WEEKLY_CHANGE_LIMIT,
+  IDENTITY_WEEKLY_WINDOW_MS,
+  parseIdentityWeeklyEvents,
+  type StoredIdentityChangeEvent,
+} from "@/lib/identityWeeklyBudget";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { patchMeProfileSchema, readJson } from "@/lib/server/validation";
@@ -34,7 +44,7 @@ export async function GET(request: Request) {
       throw new ApiError(404, error?.message ?? "Profile not found.", "PROFILE_NOT_FOUND");
     }
 
-    return ok(data);
+    return ok(enrichProfileRowForApiClient(data as unknown as Record<string, unknown>, auth.user.email));
   } catch (error) {
     return fail(error);
   }
@@ -48,15 +58,18 @@ export async function PATCH(request: Request) {
 
     const { data: existing, error: loadError } = await auth.userClient
       .from("profiles")
-      .select(
-        "id, display_name, username, onboarding_character_completed, display_name_changed_at, username_changed_at",
-      )
+      .select("*")
       .eq("id", auth.user.id)
       .single();
 
     if (loadError || !existing) {
       throw new ApiError(404, loadError?.message ?? "Profile not found.", "PROFILE_NOT_FOUND");
     }
+
+    const weeklyEventsColumnPresent = Object.prototype.hasOwnProperty.call(
+      existing as object,
+      "identity_weekly_change_events",
+    );
 
     const postCharacterOnboarding = Boolean(existing.onboarding_character_completed);
     const preserveIdentityTimestamps =
@@ -74,42 +87,74 @@ export async function PATCH(request: Request) {
       input.username !== undefined &&
       normalizeUsername(input.username) !== normalizeUsername(existing.username as string);
 
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+
+    let weeklyPrunedForUpdate: StoredIdentityChangeEvent[] | null = null;
+
     if (postCharacterOnboarding && !preserveIdentityTimestamps) {
-      if (
-        displayChanging &&
-        isProfileIdentityCooldownActive(
-          existing.display_name_changed_at as string | null | undefined,
-          PROFILE_DISPLAY_NAME_COOLDOWN_MS,
-        )
-      ) {
-        const next = getNextIdentityChangeEligibleAt(
-          existing.display_name_changed_at as string | null | undefined,
-          PROFILE_DISPLAY_NAME_COOLDOWN_MS,
-        );
-        const label = next ? formatNextChangeDateLabel(next) : "later";
-        throw new ApiError(
-          403,
-          `You can change your display name again on ${label}.`,
-          "DISPLAY_NAME_COOLDOWN",
-        );
-      }
-      if (
-        usernameChanging &&
-        isProfileIdentityCooldownActive(
-          existing.username_changed_at as string | null | undefined,
-          PROFILE_USERNAME_COOLDOWN_MS,
-        )
-      ) {
-        const next = getNextIdentityChangeEligibleAt(
-          existing.username_changed_at as string | null | undefined,
-          PROFILE_USERNAME_COOLDOWN_MS,
-        );
-        const label = next ? formatNextChangeDateLabel(next) : "later";
-        throw new ApiError(403, `You can change your username again on ${label}.`, "USERNAME_COOLDOWN");
+      if (hasWeeklyIdentityBudget(auth.user.email) && weeklyEventsColumnPresent) {
+        if (displayChanging || usernameChanging) {
+          const rawEvents = parseIdentityWeeklyEvents(
+            (existing as { identity_weekly_change_events?: unknown }).identity_weekly_change_events,
+          );
+          const { display_used, username_used, pruned } = countWeeklyByKind(
+            rawEvents,
+            nowMs,
+            IDENTITY_WEEKLY_WINDOW_MS,
+          );
+          weeklyPrunedForUpdate = pruned;
+
+          if (displayChanging && display_used >= IDENTITY_WEEKLY_CHANGE_LIMIT) {
+            throw new ApiError(
+              403,
+              `You can change your display name at most ${IDENTITY_WEEKLY_CHANGE_LIMIT} times per rolling 7-day period.`,
+              "DISPLAY_NAME_WEEKLY_LIMIT",
+            );
+          }
+          if (usernameChanging && username_used >= IDENTITY_WEEKLY_CHANGE_LIMIT) {
+            throw new ApiError(
+              403,
+              `You can change your username at most ${IDENTITY_WEEKLY_CHANGE_LIMIT} times per rolling 7-day period.`,
+              "USERNAME_WEEKLY_LIMIT",
+            );
+          }
+        }
+      } else {
+        if (
+          displayChanging &&
+          isProfileIdentityCooldownActive(
+            existing.display_name_changed_at as string | null | undefined,
+            PROFILE_DISPLAY_NAME_COOLDOWN_MS,
+          )
+        ) {
+          const next = getNextIdentityChangeEligibleAt(
+            existing.display_name_changed_at as string | null | undefined,
+            PROFILE_DISPLAY_NAME_COOLDOWN_MS,
+          );
+          const label = next ? formatNextChangeDateLabel(next) : "later";
+          throw new ApiError(
+            403,
+            `You can change your display name again on ${label}.`,
+            "DISPLAY_NAME_COOLDOWN",
+          );
+        }
+        if (
+          usernameChanging &&
+          isProfileIdentityCooldownActive(
+            existing.username_changed_at as string | null | undefined,
+            PROFILE_USERNAME_COOLDOWN_MS,
+          )
+        ) {
+          const next = getNextIdentityChangeEligibleAt(
+            existing.username_changed_at as string | null | undefined,
+            PROFILE_USERNAME_COOLDOWN_MS,
+          );
+          const label = next ? formatNextChangeDateLabel(next) : "later";
+          throw new ApiError(403, `You can change your username again on ${label}.`, "USERNAME_COOLDOWN");
+        }
       }
     }
-
-    const nowIso = new Date().toISOString();
 
     const patch: Record<string, unknown> = {};
     if (input.displayName !== undefined) patch.display_name = normalizeDisplayName(input.displayName);
@@ -127,6 +172,19 @@ export async function PATCH(request: Request) {
     if (!preserveIdentityTimestamps) {
       if (displayChanging) patch.display_name_changed_at = nowIso;
       if (usernameChanging) patch.username_changed_at = nowIso;
+    }
+
+    if (
+      weeklyPrunedForUpdate != null &&
+      hasWeeklyIdentityBudget(auth.user.email) &&
+      weeklyEventsColumnPresent &&
+      (displayChanging || usernameChanging)
+    ) {
+      patch.identity_weekly_change_events = appendIdentityWeeklyEvents(weeklyPrunedForUpdate, {
+        display: displayChanging,
+        username: usernameChanging,
+        nowIso,
+      });
     }
 
     if (input.beginnerChainCelebrationSeenReset === true && process.env.NODE_ENV !== "production") {
@@ -152,17 +210,37 @@ export async function PATCH(request: Request) {
       .select("*")
       .single();
 
-    if (error) {
-      const code = error.code ?? "";
-      const msg = error.message ?? "Could not update profile.";
+    let dataOut = data;
+    let errorOut = error;
+
+    if (
+      errorOut &&
+      typeof errorOut.message === "string" &&
+      errorOut.message.includes("identity_weekly_change_events") &&
+      patch.identity_weekly_change_events !== undefined
+    ) {
+      const { identity_weekly_change_events: _w, ...patchWithoutWeekly } = patch;
+      const second = await auth.userClient
+        .from("profiles")
+        .update(patchWithoutWeekly)
+        .eq("id", auth.user.id)
+        .select("*")
+        .single();
+      dataOut = second.data;
+      errorOut = second.error;
+    }
+
+    if (errorOut) {
+      const code = errorOut.code ?? "";
+      const msg = errorOut.message ?? "Could not update profile.";
       if (code === "23505" || msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("duplicate")) {
         throw new ApiError(409, "That username is already taken.", "USERNAME_TAKEN");
       }
       throw new ApiError(400, msg, "PROFILE_PATCH_FAILED");
     }
-    if (!data) throw new ApiError(404, "Profile not found after update.", "PROFILE_NOT_FOUND");
+    if (!dataOut) throw new ApiError(404, "Profile not found after update.", "PROFILE_NOT_FOUND");
 
-    let mergedProfile = data;
+    let mergedProfile = dataOut;
     if (input.characterOnboardingComplete === true) {
       const { data: existingPrefs } = await auth.userClient
         .from("user_onboarding_preferences")
@@ -183,7 +261,9 @@ export async function PATCH(request: Request) {
       }
     }
 
-    return ok(mergedProfile);
+    return ok(
+      enrichProfileRowForApiClient(mergedProfile as unknown as Record<string, unknown>, auth.user.email),
+    );
   } catch (error) {
     if (error instanceof ZodError) {
       return fail(new ApiError(400, error.issues[0]?.message ?? "Invalid payload.", "VALIDATION_ERROR"));

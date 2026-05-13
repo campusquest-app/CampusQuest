@@ -8,11 +8,14 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "run:prod": "next build && next start",
     "icons": "node scripts/generate-pwa-icons.cjs",
     "logo:transparent": "node scripts/make-logo-transparent.cjs"
   },
   "dependencies": {
+    "@dicebear/collection": "^9.4.2",
+    "@dicebear/core": "^9.4.2",
     "@supabase/supabase-js": "^2.105.4",
     "next": "^14.2.0",
     "react": "^18.2.0",

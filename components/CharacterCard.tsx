@@ -6,7 +6,7 @@ import type { Character, StatKey } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, STAT_ICONS, MAX_STAT } from "@/lib/types";
 import { xpProgressInLevel } from "@/lib/level";
 import { updateCharacter, prestigeStat } from "@/lib/store";
-import { getDefaultCustomAvatar, serializeAvatar } from "@/lib/avatarOptions";
+import { parseDiceBearAvatar, getDefaultDiceBearAvatar, serializeDiceBearAvatar } from "@/lib/dicebearAvatar";
 import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { getGuildById } from "@/lib/guildStore";
 import { AvatarDisplay } from "./AvatarDisplay";
@@ -67,7 +67,15 @@ export function CharacterCard({
   const xpPct = Math.min(100, (current / needed) * 100);
 
   function openEditModal() {
-    setEditingAvatarValue(character.avatar.startsWith("{") ? character.avatar : serializeAvatar(getDefaultCustomAvatar()));
+    const existing = parseDiceBearAvatar(character.avatar);
+    setEditingAvatarValue(
+      existing
+        ? character.avatar
+        : serializeDiceBearAvatar({
+            ...getDefaultDiceBearAvatar(),
+            seed: character.username.trim() || "campusquest-hero",
+          }),
+    );
     setEditingAvatar(true);
   }
 
@@ -121,10 +129,15 @@ export function CharacterCard({
                     value={editingAvatarValue}
                     onChange={setEditingAvatarValue}
                     compact
-                    unlockContext={{
-                      achievements: character.achievements ?? [],
-                      level: character.level ?? 1,
-                      unlockedCosmetics: character.unlockedCosmetics ?? [],
+                    preview={{
+                      displayName: character.name,
+                      username: character.username,
+                      level: character.level,
+                      totalXp: character.totalXP,
+                      classLabel:
+                        [getClassTitle(character.classId), getClassRealm(character.classId)]
+                          .filter(Boolean)
+                          .join(" · ") || "Adventurer",
                     }}
                   />
                 </div>

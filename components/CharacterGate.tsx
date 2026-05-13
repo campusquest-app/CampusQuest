@@ -4,8 +4,8 @@ import { useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { replaceLocalCharacter } from "@/lib/store";
 import { getAccessToken } from "@/lib/client/apiSession";
-import { getDefaultCustomAvatar, serializeAvatar } from "@/lib/avatarOptions";
-import { CHARACTER_CLASSES, getClassAvatarPreset, type CharacterClassId } from "@/lib/characterClasses";
+import { getDefaultDiceBearAvatar, serializeDiceBearAvatar } from "@/lib/dicebearAvatar";
+import { CHARACTER_CLASSES, getClassAvatarPreset, getClassTitle, type CharacterClassId } from "@/lib/characterClasses";
 import { AvatarBuilder } from "./AvatarBuilder";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
@@ -34,7 +34,7 @@ export function CharacterGate({
 }) {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
-  const [avatar, setAvatar] = useState(() => serializeAvatar(getDefaultCustomAvatar()));
+  const [avatar, setAvatar] = useState(() => serializeDiceBearAvatar(getDefaultDiceBearAvatar()));
   const [classId, setClassId] = useState<CharacterClassId | null>(null);
   const [starterWeapon, setStarterWeapon] = useState<string | null>(null);
   const [scholarGuildId, setScholarGuildId] = useState<string>("undecided");
@@ -366,6 +366,13 @@ export function CharacterGate({
                 onClassChange={setClassId}
                 selectedWeapon={starterWeapon}
                 onWeaponChange={setStarterWeapon}
+                preview={{
+                  displayName: nameTrimmed || "Adventurer",
+                  username: usernameNormalized || "username",
+                  level: 1,
+                  totalXp: 0,
+                  classLabel: classId ? getClassTitle(classId) ?? "CampusQuest class" : "Choose your class",
+                }}
               />
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
