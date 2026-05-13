@@ -1,13 +1,66 @@
 "use client";
 
 import { useState } from "react";
-import { setAccessToken } from "@/lib/client/apiSession";
+import { DEFAULT_POLICY_VERSION } from "@/lib/legal/policy";
+import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/client/apiSession";
+import { LegalConsentScreen } from "@/components/LegalConsentScreen";
+import { AccountSafetyStatusScreen } from "@/components/AccountSafetyStatusScreen";
+import { SchoolVerificationScreen } from "@/components/SchoolVerificationScreen";
 
 type Mode = "signin" | "signup";
+type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } };
+const IS_DEV = process.env.NODE_ENV !== "production";
 
 const inputClass =
   "w-full px-4 py-3 rounded-xl bg-white/8 border border-white/15 text-white placeholder-white/35 text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 focus:border-uri-keaney/50 focus:bg-white/10 transition-all";
 const labelClass = "block text-xs font-medium text-white/70 uppercase tracking-wider mb-2";
+
+class HttpRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly path: string,
+    public readonly status: number,
+    public readonly statusText: string,
+  ) {
+    super(message);
+  }
+}
+
+function formatRequestError(error: unknown, path: string, fallback: string) {
+  if (error instanceof HttpRequestError) {
+    if (IS_DEV) {
+      const base = `Backend request failed: ${path} returned ${error.status} ${error.statusText}.`;
+      return error.message && error.message !== fallback ? `${base} ${error.message}` : base;
+    }
+    return error.message || fallback;
+  }
+  if (error instanceof Error && error.message && !error.message.startsWith("NETWORK_ERROR:")) {
+    return error.message;
+  }
+  if (IS_DEV) {
+    return `Backend request failed: ${path} could not be reached.`;
+  }
+  return fallback;
+}
+
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
+  let response: Response;
+  try {
+    response = await fetch(path, init);
+  } catch {
+    throw new Error(`NETWORK_ERROR:${path}`);
+  }
+  const payload = (await response.json().catch(() => ({}))) as ApiResponse<T>;
+  if (!response.ok) {
+    throw new HttpRequestError(
+      payload?.error?.message ?? "Request failed.",
+      path,
+      response.status,
+      response.statusText || "Unknown",
+    );
+  }
+  return payload;
+}
 
 export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const [mode, setMode] = useState<Mode>("signin");
@@ -16,10 +69,127 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
+  const [resendNotice, setResendNotice] = useState<string | null>(null);
+  const [showResendConfirmation, setShowResendConfirmation] = useState(false);
+  const [needsConsent, setNeedsConsent] = useState(false);
+  const [consentVersion, setConsentVersion] = useState<string | null>(null);
+  const [isConsentSubmitting, setIsConsentSubmitting] = useState(false);
+  const [safetyBlock, setSafetyBlock] = useState<{
+    status: "suspended" | "banned";
+    reason?: string | null;
+    suspendedUntil?: string | null;
+  } | null>(null);
+  const [schoolVerificationBlock, setSchoolVerificationBlock] = useState<{
+    requiredSchoolName: string;
+    requiredSchoolDomain: string | null;
+    currentDomain: string | null;
+  } | null>(null);
+
+  async function checkSafetyStatus(accessToken: string) {
+    const payload = await fetchJson<{
+      status?: "active" | "suspended" | "banned";
+      reason?: string | null;
+      suspendedUntil?: string | null;
+    }>("/api/me/safety-status", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    const status = payload?.data?.status as "active" | "suspended" | "banned" | undefined;
+    if (status === "suspended" || status === "banned") {
+      setSafetyBlock({
+        status,
+        reason: (payload?.data?.reason as string | null | undefined) ?? null,
+        suspendedUntil: (payload?.data?.suspendedUntil as string | null | undefined) ?? null,
+      });
+      return false;
+    }
+    setSafetyBlock(null);
+    return true;
+  }
+
+  async function checkConsentStatus(accessToken: string) {
+    const payload = await fetchJson<{ acceptedCurrentVersion?: boolean; currentPolicyVersion?: string }>(
+      "/api/legal/consent/status",
+      {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+      },
+    );
+
+    const acceptedCurrentVersion = Boolean(payload?.data?.acceptedCurrentVersion);
+    const currentPolicyVersion = (payload?.data?.currentPolicyVersion as string | undefined) ?? DEFAULT_POLICY_VERSION;
+    setConsentVersion(currentPolicyVersion);
+    if (!acceptedCurrentVersion) {
+      setNeedsConsent(true);
+      return false;
+    }
+    return true;
+  }
+
+  async function checkSchoolVerification(accessToken: string) {
+    const payload = await fetchJson<{
+      verification?: {
+        status: "pending" | "verified";
+        schoolName: string | null;
+        schoolDomain: string | null;
+        requiredPilotDomain: string | null;
+        requiredPilotSchoolName: string;
+      };
+    }>("/api/me/school-verification", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+
+    const verification = payload?.data?.verification;
+    if (!verification || verification.status !== "verified") {
+      setSchoolVerificationBlock({
+        requiredSchoolName: verification?.requiredPilotSchoolName ?? "your school",
+        requiredSchoolDomain: verification?.requiredPilotDomain ?? null,
+        currentDomain: verification?.schoolDomain ?? null,
+      });
+      return false;
+    }
+
+    setSchoolVerificationBlock(null);
+    return true;
+  }
+
+  async function handleConsentContinue() {
+    setIsConsentSubmitting(true);
+    setError(null);
+    try {
+      const token = getAccessToken();
+      if (!token) {
+        throw new Error("Session expired. Please sign in again.");
+      }
+      await fetchJson("/api/legal/consent/accept", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          acceptedTerms: true,
+          acceptedPrivacy: true,
+          acceptedGuidelines: true,
+        }),
+      });
+      setNeedsConsent(false);
+      const verifiedForCampus = await checkSchoolVerification(token);
+      if (verifiedForCampus) onComplete();
+    } catch (consentError) {
+      setError(formatRequestError(consentError, "/api/legal/consent/accept", "Consent could not be saved."));
+    } finally {
+      setIsConsentSubmitting(false);
+    }
+  }
 
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setResendNotice(null);
+    setShowResendConfirmation(false);
     const u = username.trim().toLowerCase();
     const p = password.trim();
     if (!u || !p) {
@@ -33,25 +203,34 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
 
     setIsSubmitting(true);
     try {
-      const response = await fetch("/api/auth/login", {
+      const payload = await fetchJson<{ session?: { access_token?: string } }>("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: u, password: p }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setError(payload?.error?.message ?? "Sign in failed.");
-        return;
-      }
       const accessToken = payload?.data?.session?.access_token;
       if (!accessToken) {
         setError("Missing access token from login response.");
         return;
       }
       setAccessToken(accessToken);
-      onComplete();
-    } catch {
-      setError("Could not reach the backend. Try again.");
+      const canUseAccount = await checkSafetyStatus(accessToken);
+      if (!canUseAccount) return;
+      const canContinue = await checkConsentStatus(accessToken);
+      if (!canContinue) return;
+      const verifiedForCampus = await checkSchoolVerification(accessToken);
+      if (verifiedForCampus) onComplete();
+    } catch (signInError) {
+      if (signInError instanceof HttpRequestError) {
+        const rawError = String(signInError.message ?? "Sign in failed.");
+        const isUnconfirmed = rawError.toLowerCase().includes("email not confirmed");
+        if (isUnconfirmed) {
+          setError("Please confirm your email before signing in. Check your inbox for the confirmation link.");
+          setShowResendConfirmation(true);
+          return;
+        }
+      }
+      setError(formatRequestError(signInError, "/api/auth/login", "Could not reach the backend. Try again."));
     } finally {
       setIsSubmitting(false);
     }
@@ -60,6 +239,8 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setResendNotice(null);
+    setShowResendConfirmation(false);
     const eVal = email.trim().toLowerCase();
     const p = password.trim();
     if (!eVal || !p) {
@@ -70,33 +251,107 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setError("Enter a valid email address.");
       return;
     }
-    if (p.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (p.length < 8) {
+      setError("Password must be at least 8 characters.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const response = await fetch("/api/auth/signup", {
+      const payload = await fetchJson<{ session?: { access_token?: string }; user?: { id?: string } }>("/api/auth/signup", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: eVal, password: p }),
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setError(payload?.error?.message ?? "Sign up failed.");
+      const accessToken = payload?.data?.session?.access_token;
+      if (!accessToken) {
+        const createdUserId = payload?.data?.user?.id as string | undefined;
+        if (createdUserId) {
+          setUsername(eVal);
+          setMode("signin");
+          setPassword("");
+          setError("Account created. Please check your email to confirm your account, then sign in.");
+          setShowResendConfirmation(true);
+          return;
+        }
+        setError("Sign up completed, but no session is available yet. Please confirm your email and sign in.");
+        setShowResendConfirmation(true);
         return;
       }
-      const accessToken = payload?.data?.session?.access_token;
-      if (accessToken) {
-        setAccessToken(accessToken);
-      }
-      onComplete();
-    } catch {
-      setError("Could not reach the backend. Try again.");
+      setAccessToken(accessToken);
+      const canUseAccount = await checkSafetyStatus(accessToken);
+      if (!canUseAccount) return;
+      const canContinue = await checkConsentStatus(accessToken);
+      if (!canContinue) return;
+      const verifiedForCampus = await checkSchoolVerification(accessToken);
+      if (verifiedForCampus) onComplete();
+    } catch (signUpError) {
+      setError(formatRequestError(signUpError, "/api/auth/signup", "Could not reach the backend. Try again."));
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handleResendConfirmation() {
+    const targetEmail = (mode === "signin" ? username : email).trim().toLowerCase();
+    setResendNotice(null);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
+      setResendNotice("Enter a valid email address to resend confirmation.");
+      return;
+    }
+    setIsResendingConfirmation(true);
+    try {
+      await fetchJson("/api/auth/resend-confirmation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: targetEmail }),
+      });
+      setResendNotice("Confirmation email resent. Please check your inbox.");
+    } catch (resendError) {
+      setResendNotice(
+        formatRequestError(resendError, "/api/auth/resend-confirmation", "Could not reach the backend. Try again."),
+      );
+    } finally {
+      setIsResendingConfirmation(false);
+    }
+  }
+
+  if (needsConsent) {
+    return (
+      <LegalConsentScreen
+        onContinue={handleConsentContinue}
+        isSubmitting={isConsentSubmitting}
+        versionLabel={consentVersion ?? DEFAULT_POLICY_VERSION}
+      />
+    );
+  }
+
+  if (safetyBlock) {
+    return (
+      <AccountSafetyStatusScreen
+        status={safetyBlock.status}
+        reason={safetyBlock.reason}
+        suspendedUntil={safetyBlock.suspendedUntil}
+      />
+    );
+  }
+
+  if (schoolVerificationBlock) {
+    return (
+      <SchoolVerificationScreen
+        requiredSchoolName={schoolVerificationBlock.requiredSchoolName}
+        requiredSchoolDomain={schoolVerificationBlock.requiredSchoolDomain}
+        currentDomain={schoolVerificationBlock.currentDomain}
+        onUseDifferentAccount={() => {
+          clearAccessToken();
+          setSchoolVerificationBlock(null);
+          setMode("signin");
+          setUsername("");
+          setPassword("");
+          setError(null);
+        }}
+      />
+    );
   }
 
   return (
@@ -133,6 +388,8 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
               onClick={() => {
                 setMode("signin");
                 setError(null);
+                setResendNotice(null);
+                setShowResendConfirmation(false);
               }}
               className={`flex-1 py-4 text-sm font-semibold transition-all ${
                 mode === "signin"
@@ -147,6 +404,8 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
               onClick={() => {
                 setMode("signup");
                 setError(null);
+                setResendNotice(null);
+                setShowResendConfirmation(false);
               }}
               className={`flex-1 py-4 text-sm font-semibold transition-all ${
                 mode === "signup"
@@ -194,6 +453,17 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                     {error}
                   </p>
                 )}
+                {showResendConfirmation ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleResendConfirmation()}
+                    disabled={isResendingConfirmation}
+                    className="w-full py-2.5 rounded-lg border border-uri-keaney/40 text-uri-keaney text-xs font-semibold hover:bg-uri-keaney/10 disabled:opacity-60"
+                  >
+                    {isResendingConfirmation ? "Resending..." : "Resend confirmation email"}
+                  </button>
+                ) : null}
+                {resendNotice ? <p className="text-xs text-white/70">{resendNotice}</p> : null}
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -228,7 +498,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                     autoComplete="new-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 6 characters"
+                    placeholder="At least 8 characters"
                     className={inputClass}
                   />
                 </div>
@@ -237,6 +507,17 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                     {error}
                   </p>
                 )}
+                {showResendConfirmation ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleResendConfirmation()}
+                    disabled={isResendingConfirmation}
+                    className="w-full py-2.5 rounded-lg border border-uri-keaney/40 text-uri-keaney text-xs font-semibold hover:bg-uri-keaney/10 disabled:opacity-60"
+                  >
+                    {isResendingConfirmation ? "Resending..." : "Resend confirmation email"}
+                  </button>
+                ) : null}
+                {resendNotice ? <p className="text-xs text-white/70">{resendNotice}</p> : null}
                 <button
                   type="submit"
                   disabled={isSubmitting}
