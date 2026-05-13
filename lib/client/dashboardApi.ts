@@ -3,8 +3,44 @@
 import { clearAccessToken, getAccessToken } from "@/lib/client/apiSession";
 import { rememberSchoolVerificationSnapshot, type SchoolVerificationClientSnapshot } from "@/lib/client/schoolVerificationCache";
 
+/** Thrown client-side before any HTTP request when Bearer token is unavailable. */
+export const CQ_MISSING_SESSION_CODE = "MISSING_SESSION" as const;
+
 type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } };
 const IS_DEV = process.env.NODE_ENV !== "production";
+
+/** Thrown when an authed CampusQuest API responds with non-JSON success envelope or unauthorized. */
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code?: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Dev-only diagnostics; never logs tokens or cookies. */
+function logAuthedRequestDev(payload: {
+  phase: "pre" | "post";
+  method: string;
+  path: string;
+  sessionPresent: boolean;
+  statusCode?: number;
+  ok?: boolean;
+}) {
+  if (!IS_DEV) return;
+  console.info("[cq] authed-api", payload);
+}
+
+function missingSessionThrow(method: string, path: string): never {
+  logAuthedRequestDev({ phase: "pre", method, path, sessionPresent: false });
+  throw new ApiRequestError(
+    "Session required. Sign in from CampusQuest, then try again.",
+    401,
+    CQ_MISSING_SESSION_CODE,
+  );
+}
 
 function formatDevHttpMessage(path: string, status: number, statusText: string, fallback?: string) {
   if (!IS_DEV) return fallback ?? `Request failed (${status}).`;
@@ -196,16 +232,6 @@ export async function fetchMeSchoolVerification(
   return snapshot;
 }
 
-export class ApiRequestError extends Error {
-  constructor(
-    message: string,
-    public readonly status: number,
-    public readonly code?: string,
-  ) {
-    super(message);
-  }
-}
-
 async function parseApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
   return (await response.json().catch(() => ({}))) as ApiResponse<T>;
 }
@@ -213,8 +239,10 @@ async function parseApiResponse<T>(response: Response): Promise<ApiResponse<T>> 
 export async function fetchAuthed<T>(path: string): Promise<T> {
   const token = getAccessToken();
   if (!token) {
-    throw new Error("Sign in to load backend dashboard data.");
+    missingSessionThrow("GET", path);
   }
+
+  logAuthedRequestDev({ phase: "pre", method: "GET", path, sessionPresent: true });
 
   let response: Response;
   try {
@@ -227,6 +255,15 @@ export async function fetchAuthed<T>(path: string): Promise<T> {
   } catch {
     throw new Error(IS_DEV ? `Backend request failed: ${path} could not be reached.` : "Could not reach the backend. Try again.");
   }
+
+  logAuthedRequestDev({
+    phase: "post",
+    method: "GET",
+    path,
+    sessionPresent: true,
+    statusCode: response.status,
+    ok: response.ok,
+  });
 
   const payload = await parseApiResponse<T>(response);
   if (!response.ok) {
@@ -250,8 +287,10 @@ export async function fetchAuthed<T>(path: string): Promise<T> {
 export async function postAuthed<T, B extends Record<string, unknown>>(path: string, body: B): Promise<T> {
   const token = getAccessToken();
   if (!token) {
-    throw new Error("Sign in to call backend APIs.");
+    missingSessionThrow("POST", path);
   }
+
+  logAuthedRequestDev({ phase: "pre", method: "POST", path, sessionPresent: true });
 
   let response: Response;
   try {
@@ -267,6 +306,15 @@ export async function postAuthed<T, B extends Record<string, unknown>>(path: str
   } catch {
     throw new Error(IS_DEV ? `Backend request failed: ${path} could not be reached.` : "Could not reach the backend. Try again.");
   }
+
+  logAuthedRequestDev({
+    phase: "post",
+    method: "POST",
+    path,
+    sessionPresent: true,
+    statusCode: response.status,
+    ok: response.ok,
+  });
 
   const payload = await parseApiResponse<T>(response);
   if (!response.ok) {
@@ -290,8 +338,10 @@ export async function postAuthed<T, B extends Record<string, unknown>>(path: str
 export async function patchAuthed<T, B extends Record<string, unknown>>(path: string, body: B): Promise<T> {
   const token = getAccessToken();
   if (!token) {
-    throw new Error("Sign in to call backend APIs.");
+    missingSessionThrow("PATCH", path);
   }
+
+  logAuthedRequestDev({ phase: "pre", method: "PATCH", path, sessionPresent: true });
 
   let response: Response;
   try {
@@ -307,6 +357,15 @@ export async function patchAuthed<T, B extends Record<string, unknown>>(path: st
   } catch {
     throw new Error(IS_DEV ? `Backend request failed: ${path} could not be reached.` : "Could not reach the backend. Try again.");
   }
+
+  logAuthedRequestDev({
+    phase: "post",
+    method: "PATCH",
+    path,
+    sessionPresent: true,
+    statusCode: response.status,
+    ok: response.ok,
+  });
 
   const payload = await parseApiResponse<T>(response);
   if (!response.ok) {
@@ -330,8 +389,10 @@ export async function patchAuthed<T, B extends Record<string, unknown>>(path: st
 export async function deleteAuthed<T>(path: string): Promise<T> {
   const token = getAccessToken();
   if (!token) {
-    throw new Error("Sign in to call backend APIs.");
+    missingSessionThrow("DELETE", path);
   }
+
+  logAuthedRequestDev({ phase: "pre", method: "DELETE", path, sessionPresent: true });
 
   let response: Response;
   try {
@@ -345,6 +406,15 @@ export async function deleteAuthed<T>(path: string): Promise<T> {
   } catch {
     throw new Error(IS_DEV ? `Backend request failed: ${path} could not be reached.` : "Could not reach the backend. Try again.");
   }
+
+  logAuthedRequestDev({
+    phase: "post",
+    method: "DELETE",
+    path,
+    sessionPresent: true,
+    statusCode: response.status,
+    ok: response.ok,
+  });
 
   const payload = await parseApiResponse<T>(response);
   if (!response.ok) {

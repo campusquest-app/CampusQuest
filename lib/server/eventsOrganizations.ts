@@ -3,6 +3,9 @@ import { isAdminEmail } from "@/lib/server/adminAuth";
 import { ApiError } from "@/lib/server/http";
 import { createNotificationsBulk, createNotification } from "@/lib/server/notifications";
 import {
+  assertOrganizationEligibleForHostingEvents,
+  assertOrganizationStaffForManagedContent,
+  normalizeOrganizationRole,
   removeOrganizationFollowerMembership,
   requestOrganizationJoin,
   setOrganizationFollow,
@@ -39,7 +42,7 @@ export async function listEvents(args: {
   const query = userClient
     .from("campus_events")
     .select(
-      "id, title, description, category, location_name, starts_at, ends_at, is_paid, ticket_link, host_organization_id, created_by, is_cancelled, created_at, school_name, school_domain, student_organizations(id, name, logo_url)",
+      "id, title, description, category, location_name, starts_at, ends_at, is_paid, ticket_link, host_organization_id, host_type, host_user_id, created_by, is_cancelled, created_at, school_name, school_domain, student_organizations(id, name, logo_url)",
     )
     .eq("school_domain", school.schoolDomain)
     .order("starts_at", { ascending: true });
@@ -72,6 +75,27 @@ export async function listEvents(args: {
   if (error) throw new ApiError(400, error.message, "EVENTS_FETCH_FAILED");
   const eventRows = events ?? [];
   const eventIds = eventRows.map((row: any) => row.id);
+
+  const hostProfileUserIds = Array.from(
+    new Set(
+      eventRows
+        .filter((row: any) => !row.host_organization_id)
+        .map((row: any) => (row.host_user_id ?? row.created_by) as string)
+        .filter(Boolean),
+    ),
+  );
+  const hostProfilesById = new Map<string, { id: string; username: string; display_name: string }>();
+  if (hostProfileUserIds.length > 0) {
+    const { data: hostProfiles, error: hostProfileError } = await userClient
+      .from("profiles")
+      .select("id, username, display_name")
+      .in("id", hostProfileUserIds);
+    if (hostProfileError) throw new ApiError(400, hostProfileError.message, "EVENT_HOST_PROFILES_FAILED");
+    for (const row of hostProfiles ?? []) {
+      hostProfilesById.set((row as any).id, row as any);
+    }
+  }
+
   const [{ data: rsvps, error: rsvpError }, { data: myRsvps, error: myRsvpError }] = await Promise.all([
     eventIds.length > 0
       ? userClient.from("event_rsvps").select("event_id, status").in("event_id", eventIds)
@@ -92,22 +116,35 @@ export async function listEvents(args: {
     myMap.set(row.event_id, row.status);
   }
 
-  return eventRows.map((row: any) => ({
-    id: row.id,
-    title: row.title,
-    description: row.description,
-    category: row.category,
-    location: row.location_name,
-    startsAt: row.starts_at,
-    endsAt: row.ends_at,
-    isPaid: Boolean(row.is_paid),
-    ticketLink: row.ticket_link,
-    isCancelled: Boolean(row.is_cancelled),
-    createdBy: row.created_by,
-    hostOrganization: Array.isArray(row.student_organizations) ? row.student_organizations[0] ?? null : row.student_organizations ?? null,
-    rsvpCount: counts.get(row.id) ?? 0,
-    myRsvpStatus: myMap.get(row.id) ?? null,
-  }));
+  return eventRows.map((row: any) => {
+    const orgHost = Array.isArray(row.student_organizations) ? row.student_organizations[0] ?? null : row.student_organizations ?? null;
+    const hostProfileId = row.host_user_id ?? row.created_by;
+    const hostProfile = !row.host_organization_id && hostProfileId ? hostProfilesById.get(hostProfileId) ?? null : null;
+    return {
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      category: row.category,
+      location: row.location_name,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      isPaid: Boolean(row.is_paid),
+      ticketLink: row.ticket_link,
+      isCancelled: Boolean(row.is_cancelled),
+      createdBy: row.created_by,
+      hostType: row.host_type === "organization" ? "organization" : "user",
+      hostOrganization: orgHost,
+      hostProfile: hostProfile
+        ? {
+            id: hostProfile.id,
+            username: hostProfile.username,
+            displayName: hostProfile.display_name,
+          }
+        : null,
+      rsvpCount: counts.get(row.id) ?? 0,
+      myRsvpStatus: myMap.get(row.id) ?? null,
+    };
+  });
 }
 
 export async function getEventDetails(args: {
@@ -160,30 +197,17 @@ export async function createEvent(args: {
       confirmed_at: confirmedAt ?? null,
     },
   });
-  if (input.hostOrganizationId) {
-    const { data: membership, error: membershipError } = await userClient
-      .from("organization_members")
-      .select("org_role, role, status")
-      .eq("organization_id", input.hostOrganizationId)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (membershipError) throw new ApiError(400, membershipError.message, "ORG_MEMBERSHIP_CHECK_FAILED");
-    const { data: org, error: orgError } = await userClient
-      .from("student_organizations")
-      .select("created_by, name, is_frozen")
-      .eq("id", input.hostOrganizationId)
-      .maybeSingle();
-    if (orgError) throw new ApiError(400, orgError.message, "ORG_LOOKUP_FAILED");
-    if (!org) throw new ApiError(404, "Host organization not found.", "ORG_NOT_FOUND");
-    if (Boolean((org as any).is_frozen)) {
-      throw new ApiError(403, "Organization activity is currently frozen.", "ORGANIZATION_FROZEN");
-    }
-    const normalizedRole = membership ? ((membership as any).org_role ?? (membership as any).role ?? "member") : null;
-    const isOrgAdmin = Boolean(membership && (membership as any).status !== "denied" && (normalizedRole === "owner" || normalizedRole === "admin" || normalizedRole === "manager"));
-    if (org.created_by !== userId && !isOrgAdmin) {
-      throw new ApiError(403, "Only organization owners/managers can host org events.", "ORG_EVENT_FORBIDDEN");
-    }
+  const hostOrganizationId = input.hostOrganizationId ?? undefined;
+  if (hostOrganizationId) {
+    await assertOrganizationEligibleForHostingEvents({
+      userClient,
+      organizationId: hostOrganizationId,
+      userId,
+      expectedSchoolDomain: school.schoolDomain ?? "",
+    });
   }
+
+  const hostOrganizationIdStored = hostOrganizationId ?? null;
 
   const { data, error } = await userClient
     .from("campus_events")
@@ -196,7 +220,9 @@ export async function createEvent(args: {
       ends_at: input.endsAt ?? null,
       is_paid: Boolean(input.isPaid),
       ticket_link: input.ticketLink ?? null,
-      host_organization_id: input.hostOrganizationId ?? null,
+      host_organization_id: hostOrganizationIdStored,
+      host_type: hostOrganizationIdStored ? "organization" : "user",
+      host_user_id: hostOrganizationIdStored ? null : userId,
       created_by: userId,
       school_name: school.schoolName,
       school_domain: school.schoolDomain,
@@ -233,6 +259,9 @@ export async function createEvent(args: {
 export async function updateEvent(args: {
   userClient: SupabaseClientLike;
   userId: string;
+  userEmail?: string | null;
+  emailConfirmedAt?: string | null;
+  confirmedAt?: string | null;
   eventId: string;
   input: {
     title?: string;
@@ -247,57 +276,90 @@ export async function updateEvent(args: {
     isCancelled?: boolean;
   };
 }) {
-  const { userClient, userId, eventId, input } = args;
+  const { userClient, userId, userEmail, emailConfirmedAt, confirmedAt, eventId, input } = args;
   const admin = createAdminClient();
   await assertAccountCanSocialize(userClient, userId);
+  const school = await requireVerifiedSchoolForCoreAccess({
+    userClient,
+    user: {
+      id: userId,
+      email: userEmail ?? null,
+      email_confirmed_at: emailConfirmedAt ?? null,
+      confirmed_at: confirmedAt ?? null,
+    },
+  });
+
   const { data: existing, error: existingError } = await userClient
     .from("campus_events")
-    .select("id, created_by, host_organization_id")
+    .select("id, created_by, host_organization_id, school_domain")
     .eq("id", eventId)
     .maybeSingle();
   if (existingError) throw new ApiError(400, existingError.message, "EVENT_LOOKUP_FAILED");
   if (!existing) throw new ApiError(404, "Event not found.", "EVENT_NOT_FOUND");
+
+  const eventDomain = String((existing as any).school_domain ?? "")
+    .trim()
+    .toLowerCase();
+  const viewerDomain = String(school.schoolDomain ?? "")
+    .trim()
+    .toLowerCase();
+  if (eventDomain && viewerDomain && eventDomain !== viewerDomain) {
+    throw new ApiError(403, "This event is outside your verified campus.", "EVENT_SCHOOL_MISMATCH");
+  }
+
   let canEdit = existing.created_by === userId;
   if (!canEdit && existing.host_organization_id) {
-    const { data: membership, error: membershipError } = await userClient
-      .from("organization_members")
-      .select("org_role, role, status")
-      .eq("organization_id", existing.host_organization_id)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (membershipError) throw new ApiError(400, membershipError.message, "ORG_MEMBERSHIP_CHECK_FAILED");
-    const normalizedRole = membership ? ((membership as any).org_role ?? membership.role) : null;
-    const isOrgAdmin =
-      Boolean(membership && (membership as any).status !== "denied" && (normalizedRole === "owner" || normalizedRole === "admin" || normalizedRole === "manager"));
-    if (isOrgAdmin) {
-      const { data: org, error: orgError } = await userClient
-        .from("student_organizations")
-        .select("id, is_frozen")
-        .eq("id", existing.host_organization_id)
-        .maybeSingle();
-      if (orgError) throw new ApiError(400, orgError.message, "ORGANIZATION_LOOKUP_FAILED");
-      if (org && !Boolean((org as any).is_frozen)) canEdit = true;
+    try {
+      await assertOrganizationStaffForManagedContent({
+        userClient,
+        organizationId: existing.host_organization_id,
+        userId,
+        expectedSchoolDomain: school.schoolDomain ?? "",
+      });
+      canEdit = true;
+    } catch {
+      /* no org staff privileges */
     }
   }
   if (!canEdit) throw new ApiError(403, "Only event creators or organization admins can edit events.", "EVENT_EDIT_FORBIDDEN");
 
-  const { data, error } = await admin
-    .from("campus_events")
-    .update({
-      title: input.title,
-      description: input.description,
-      category: input.category,
-      location_name: input.locationName,
-      starts_at: input.startsAt,
-      ends_at: input.endsAt,
-      is_paid: input.isPaid,
-      ticket_link: input.ticketLink,
-      host_organization_id: input.hostOrganizationId,
-      is_cancelled: input.isCancelled,
-    })
-    .eq("id", eventId)
-    .select("id")
-    .single();
+  if (input.hostOrganizationId !== undefined) {
+    const nextOrgId = input.hostOrganizationId;
+    if (nextOrgId !== null && nextOrgId !== "") {
+      await assertOrganizationEligibleForHostingEvents({
+        userClient,
+        organizationId: nextOrgId,
+        userId,
+        expectedSchoolDomain: school.schoolDomain ?? "",
+      });
+    }
+  }
+
+  const updates: Record<string, unknown> = {};
+  if (input.title !== undefined) updates.title = input.title;
+  if (input.description !== undefined) updates.description = input.description;
+  if (input.category !== undefined) updates.category = input.category;
+  if (input.locationName !== undefined) updates.location_name = input.locationName;
+  if (input.startsAt !== undefined) updates.starts_at = input.startsAt;
+  if (input.endsAt !== undefined) updates.ends_at = input.endsAt;
+  if (input.isPaid !== undefined) updates.is_paid = input.isPaid;
+  if (input.ticketLink !== undefined) updates.ticket_link = input.ticketLink;
+  if (input.isCancelled !== undefined) updates.is_cancelled = input.isCancelled;
+
+  if (input.hostOrganizationId !== undefined) {
+    const next = input.hostOrganizationId;
+    if (next === null || next === "") {
+      updates.host_organization_id = null;
+      updates.host_type = "user";
+      updates.host_user_id = userId;
+    } else {
+      updates.host_organization_id = next;
+      updates.host_type = "organization";
+      updates.host_user_id = null;
+    }
+  }
+
+  const { data, error } = await admin.from("campus_events").update(updates).eq("id", eventId).select("id").single();
   if (error || !data) throw new ApiError(400, error?.message ?? "Could not update event.", "EVENT_UPDATE_FAILED");
   return data;
 }
@@ -306,33 +368,55 @@ export async function deleteEvent(args: {
   userClient: SupabaseClientLike;
   userId: string;
   userEmail?: string | null;
+  emailConfirmedAt?: string | null;
+  confirmedAt?: string | null;
   eventId: string;
 }) {
-  const { userClient, userId, userEmail, eventId } = args;
+  const { userClient, userId, userEmail, emailConfirmedAt, confirmedAt, eventId } = args;
   const admin = createAdminClient();
+  await assertAccountCanSocialize(userClient, userId);
+  const school = await requireVerifiedSchoolForCoreAccess({
+    userClient,
+    user: {
+      id: userId,
+      email: userEmail ?? null,
+      email_confirmed_at: emailConfirmedAt ?? null,
+      confirmed_at: confirmedAt ?? null,
+    },
+  });
+
   const { data: existing, error: existingError } = await userClient
     .from("campus_events")
-    .select("id, created_by, host_organization_id")
+    .select("id, created_by, host_organization_id, school_domain")
     .eq("id", eventId)
     .maybeSingle();
   if (existingError) throw new ApiError(400, existingError.message, "EVENT_LOOKUP_FAILED");
   if (!existing) throw new ApiError(404, "Event not found.", "EVENT_NOT_FOUND");
+
+  const eventDomain = String((existing as any).school_domain ?? "")
+    .trim()
+    .toLowerCase();
+  const viewerDomain = String(school.schoolDomain ?? "")
+    .trim()
+    .toLowerCase();
+  if (eventDomain && viewerDomain && eventDomain !== viewerDomain) {
+    throw new ApiError(403, "This event is outside your verified campus.", "EVENT_SCHOOL_MISMATCH");
+  }
+
   const adminAllowed = Boolean(userEmail && isAdminEmail(userEmail));
   let orgAdminAllowed = false;
   if (existing.host_organization_id && !adminAllowed && existing.created_by !== userId) {
-    const { data: membership, error: membershipError } = await userClient
-      .from("organization_members")
-      .select("org_role, role, status")
-      .eq("organization_id", existing.host_organization_id)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (membershipError) throw new ApiError(400, membershipError.message, "ORG_MEMBERSHIP_CHECK_FAILED");
-    const normalizedRole = membership ? ((membership as any).org_role ?? membership.role) : null;
-    orgAdminAllowed = Boolean(
-      membership &&
-        (membership as any).status !== "denied" &&
-        (normalizedRole === "owner" || normalizedRole === "admin" || normalizedRole === "manager"),
-    );
+    try {
+      await assertOrganizationStaffForManagedContent({
+        userClient,
+        organizationId: existing.host_organization_id,
+        userId,
+        expectedSchoolDomain: school.schoolDomain ?? "",
+      });
+      orgAdminAllowed = true;
+    } catch {
+      /* not org staff */
+    }
   }
   if (existing.created_by !== userId && !adminAllowed && !orgAdminAllowed) {
     throw new ApiError(403, "You do not have permission to remove this event.", "EVENT_DELETE_FORBIDDEN");
@@ -422,7 +506,7 @@ export async function listOrganizations(args: {
   userEmail?: string | null;
   emailConfirmedAt?: string | null;
   confirmedAt?: string | null;
-  filters: { category?: string; schoolName?: string; query?: string };
+  filters: { category?: string; schoolName?: string; query?: string; eligibleEventHostsOnly?: boolean };
 }) {
   const { userClient, userId, userEmail, emailConfirmedAt, confirmedAt, filters } = args;
   const school = await requireVerifiedSchoolForCoreAccess({
@@ -437,7 +521,7 @@ export async function listOrganizations(args: {
   const query = userClient
     .from("student_organizations")
     .select(
-      "id, name, description, category, logo_url, school_name, school_domain, contact_link, created_by, is_approved, created_at, require_join_approval, is_frozen",
+      "id, name, description, category, logo_url, school_name, school_domain, contact_link, created_by, is_approved, created_at, require_join_approval, is_frozen, is_removed_by_moderation",
     )
     .eq("is_approved", true)
     .eq("school_domain", school.schoolDomain)
@@ -509,7 +593,21 @@ export async function listOrganizations(args: {
     eventsByOrg.set(row.host_organization_id, list);
   }
 
-  return orgRows.map((row: any) => ({
+  let orgRowsFiltered = orgRows;
+  if (filters.eligibleEventHostsOnly) {
+    orgRowsFiltered = orgRows.filter((row: any) => {
+      if (Boolean(row.is_frozen)) return false;
+      if (Boolean(row.is_removed_by_moderation)) return false;
+      const status = myMembershipStatusByOrg.get(row.id);
+      if (status !== "approved") return false;
+      const kind = myMembershipKindByOrg.get(row.id);
+      if (!kind || kind === "follower") return false;
+      const role = normalizeOrganizationRole(myRoleByOrg.get(row.id) ?? "member");
+      return role === "owner" || role === "admin";
+    });
+  }
+
+  return orgRowsFiltered.map((row: any) => ({
     id: row.id,
     name: row.name,
     description: row.description,

@@ -22,6 +22,7 @@ export async function GET(request: Request) {
         category: url.searchParams.get("category") ?? undefined,
         schoolName: url.searchParams.get("school") ?? undefined,
         query: url.searchParams.get("query") ?? undefined,
+        eligibleEventHostsOnly: url.searchParams.get("eligibleEventHostsOnly") === "1",
       },
     });
     return ok({ organizations });

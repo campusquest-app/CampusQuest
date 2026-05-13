@@ -33,6 +33,9 @@ export async function PATCH(request: Request, context: { params: { eventId: stri
     const event = await updateEvent({
       userClient: auth.userClient as any,
       userId: auth.user.id,
+      userEmail: auth.user.email ?? null,
+      emailConfirmedAt: (auth.user as any).email_confirmed_at ?? null,
+      confirmedAt: (auth.user as any).confirmed_at ?? null,
       eventId: context.params.eventId,
       input,
     });
@@ -53,6 +56,8 @@ export async function DELETE(request: Request, context: { params: { eventId: str
       userClient: auth.userClient as any,
       userId: auth.user.id,
       userEmail: auth.user.email ?? null,
+      emailConfirmedAt: (auth.user as any).email_confirmed_at ?? null,
+      confirmedAt: (auth.user as any).confirmed_at ?? null,
       eventId: context.params.eventId,
     });
     return ok(deleted);

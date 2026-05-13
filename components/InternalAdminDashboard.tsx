@@ -81,7 +81,13 @@ export function InternalAdminDashboard() {
         <div className="mx-auto max-w-3xl card p-5 space-y-4">
           <BackToQuadLink />
           <h1 className="text-xl font-display font-bold text-white">Internal Admin</h1>
-          <p className="text-sm text-amber-200">Session expired. Please sign in again to access admin tools.</p>
+          <p className="text-sm text-amber-200">
+            CampusQuest session unavailable in this browser tab. Sign in from the{" "}
+            <Link href="/" className="font-semibold text-uri-keaney underline-offset-4 hover:underline">
+              home screen
+            </Link>
+            , then open Internal Admin again. If you were already signed in, your token may have expired—sign in once more.
+          </p>
         </div>
       </main>
     );

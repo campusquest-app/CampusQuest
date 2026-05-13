@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiRequestError, fetchAuthed } from "@/lib/client/dashboardApi";
+import { ApiRequestError, CQ_MISSING_SESSION_CODE, fetchAuthed } from "@/lib/client/dashboardApi";
+import { waitForClientAccessToken } from "@/lib/client/apiSession";
+
+const IS_DEV_PREVIEW = process.env.NODE_ENV !== "production";
 
 type ProfileData = {
   id: string;
@@ -85,6 +88,18 @@ export function BackendDashboardPreview() {
     setLoading(true);
     setError(null);
     try {
+      const sessionOk = await waitForClientAccessToken(720);
+      if (!sessionOk) {
+        if (IS_DEV_PREVIEW) {
+          console.info("[cq] backend-dashboard-preview", { sessionPresent: false, action: "skip_fetch_pending_session" });
+        }
+        setState(EMPTY_STATE);
+        return;
+      }
+      if (IS_DEV_PREVIEW) {
+        console.info("[cq] backend-dashboard-preview", { sessionPresent: true, action: "fetch_start" });
+      }
+
       const guildPromise = fetchAuthed<GuildData>("/api/guilds/me").catch((guildError: unknown) => {
         if (guildError instanceof ApiRequestError && guildError.status === 404) {
           return null;
@@ -112,9 +127,17 @@ export function BackendDashboardPreview() {
         bosses,
       });
     } catch (fetchError) {
-      const message = fetchError instanceof Error ? fetchError.message : "Failed to load backend dashboard preview.";
-      setError(message);
-      setState(EMPTY_STATE);
+      if (fetchError instanceof ApiRequestError && fetchError.code === CQ_MISSING_SESSION_CODE) {
+        if (IS_DEV_PREVIEW) {
+          console.info("[cq] backend-dashboard-preview", { sessionPresent: false, action: "missing_session_throw" });
+        }
+        setError(null);
+        setState(EMPTY_STATE);
+      } else {
+        const message = fetchError instanceof Error ? fetchError.message : "Failed to load backend dashboard preview.";
+        setError(message);
+        setState(EMPTY_STATE);
+      }
     } finally {
       setLoading(false);
     }

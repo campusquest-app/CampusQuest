@@ -1,5 +1,10 @@
+import { AdminRouteSessionGate } from "@/components/AdminRouteSessionGate";
 import { InternalModerationDashboard } from "@/components/InternalModerationDashboard";
 
 export default function InternalModerationPage() {
-  return <InternalModerationDashboard />;
+  return (
+    <AdminRouteSessionGate title="Internal Moderation">
+      <InternalModerationDashboard />
+    </AdminRouteSessionGate>
+  );
 }

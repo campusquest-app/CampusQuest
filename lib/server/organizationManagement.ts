@@ -7,7 +7,8 @@ import { createAdminClient } from "@/lib/server/supabase";
 type SupabaseClientLike = ReturnType<typeof createAdminClient>;
 type OrganizationRole = "owner" | "admin" | "member";
 
-function normalizeRole(value: string | null | undefined): OrganizationRole {
+/** Maps DB/org API role strings to canonical owner | admin | member (manager treated as admin). */
+export function normalizeOrganizationRole(value: string | null | undefined): OrganizationRole {
   if (value === "owner" || value === "admin" || value === "member") return value;
   if (value === "manager") return "admin";
   return "member";
@@ -29,7 +30,7 @@ async function getMembershipRow(args: {
   if (!data) return null;
   return {
     id: data.id as string,
-    orgRole: normalizeRole((data as any).org_role ?? (data as any).role),
+    orgRole: normalizeOrganizationRole((data as any).org_role ?? (data as any).role),
     membershipKind: ((data as any).membership_kind as "member" | "follower" | null) ?? "member",
     status: ((data as any).status as "pending" | "approved" | "denied" | null) ?? "approved",
   };
@@ -45,6 +46,117 @@ export async function assertOrganizationAdmin(args: {
     throw new ApiError(403, "Organization admin access required.", "ORGANIZATION_ADMIN_REQUIRED");
   }
   return membership;
+}
+
+/** Used when publishing campus events tied to an org — stricter than generic org membership checks. */
+export async function assertOrganizationEligibleForHostingEvents(args: {
+  userClient: SupabaseClientLike;
+  organizationId: string;
+  userId: string;
+  /** Canonical domain after verification (caller normalizes casing). */
+  expectedSchoolDomain: string;
+}) {
+  const { userClient, organizationId, userId, expectedSchoolDomain } = args;
+  const normalizedExpected = expectedSchoolDomain.trim().toLowerCase();
+  if (!normalizedExpected) {
+    throw new ApiError(400, "School scope is missing.", "SCHOOL_SCOPE_MISSING");
+  }
+
+  const membership = await getMembershipRow({ userClient, organizationId, userId });
+  if (!membership || membership.status !== "approved") {
+    throw new ApiError(403, "Approved organization membership is required to host events.", "ORG_MEMBERSHIP_REQUIRED");
+  }
+  if (membership.membershipKind === "follower") {
+    throw new ApiError(
+      403,
+      "Followers cannot publish organization-hosted events.",
+      "ORG_EVENT_HOST_FOLLOWER_FORBIDDEN",
+    );
+  }
+  if (membership.orgRole !== "owner" && membership.orgRole !== "admin") {
+    throw new ApiError(
+      403,
+      "Only organization owners or admins may host campus events under this organization.",
+      "ORG_EVENT_ADMIN_REQUIRED",
+    );
+  }
+
+  const { data: org, error: orgError } = await userClient
+    .from("student_organizations")
+    .select("id, school_domain, is_approved, is_frozen, is_removed_by_moderation")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (orgError) throw new ApiError(400, orgError.message, "ORG_LOOKUP_FAILED");
+  if (!org) throw new ApiError(404, "Host organization not found.", "ORG_NOT_FOUND");
+  if (!Boolean((org as any).is_approved)) {
+    throw new ApiError(403, "Only approved organizations may host campus events.", "ORG_NOT_APPROVED");
+  }
+  if (Boolean((org as any).is_removed_by_moderation)) {
+    throw new ApiError(403, "This organization cannot host events right now.", "ORG_REMOVED");
+  }
+  if (Boolean((org as any).is_frozen)) {
+    throw new ApiError(403, "Organization activity is currently frozen.", "ORGANIZATION_FROZEN");
+  }
+
+  const orgDomain = String((org as any).school_domain ?? "")
+    .trim()
+    .toLowerCase();
+  if (!orgDomain || orgDomain !== normalizedExpected) {
+    throw new ApiError(
+      403,
+      "You cannot host campus events outside your verified school community.",
+      "ORG_SCHOOL_MISMATCH",
+    );
+  }
+}
+
+/**
+ * Owner/admin with approved non-follower membership; org must be approved and not moderation-removed, same school.
+ * Unlike {@link assertOrganizationEligibleForHostingEvents}, frozen orgs may still manage existing content (e.g. cancel an event).
+ */
+export async function assertOrganizationStaffForManagedContent(args: {
+  userClient: SupabaseClientLike;
+  organizationId: string;
+  userId: string;
+  expectedSchoolDomain: string;
+}) {
+  const { userClient, organizationId, userId, expectedSchoolDomain } = args;
+  const normalizedExpected = expectedSchoolDomain.trim().toLowerCase();
+  if (!normalizedExpected) {
+    throw new ApiError(400, "School scope is missing.", "SCHOOL_SCOPE_MISSING");
+  }
+
+  const membership = await getMembershipRow({ userClient, organizationId, userId });
+  if (!membership || membership.status !== "approved") {
+    throw new ApiError(403, "Approved organization membership is required.", "ORG_MEMBERSHIP_REQUIRED");
+  }
+  if (membership.membershipKind === "follower") {
+    throw new ApiError(403, "Followers cannot manage organization content.", "ORG_CONTENT_FOLLOWER_FORBIDDEN");
+  }
+  if (membership.orgRole !== "owner" && membership.orgRole !== "admin") {
+    throw new ApiError(403, "Only organization owners or admins may manage this content.", "ORG_CONTENT_ADMIN_REQUIRED");
+  }
+
+  const { data: org, error: orgError } = await userClient
+    .from("student_organizations")
+    .select("id, school_domain, is_approved, is_removed_by_moderation")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (orgError) throw new ApiError(400, orgError.message, "ORG_LOOKUP_FAILED");
+  if (!org) throw new ApiError(404, "Organization not found.", "ORG_NOT_FOUND");
+  if (!Boolean((org as any).is_approved)) {
+    throw new ApiError(403, "This organization cannot manage campus events right now.", "ORG_NOT_APPROVED");
+  }
+  if (Boolean((org as any).is_removed_by_moderation)) {
+    throw new ApiError(403, "This organization cannot manage content right now.", "ORG_REMOVED");
+  }
+
+  const orgDomain = String((org as any).school_domain ?? "")
+    .trim()
+    .toLowerCase();
+  if (!orgDomain || orgDomain !== normalizedExpected) {
+    throw new ApiError(403, "You cannot manage content outside your verified school community.", "ORG_SCHOOL_MISMATCH");
+  }
 }
 
 export async function assertOrganizationOwner(args: {
@@ -166,7 +278,7 @@ export async function listOrganizationAdminDashboard(args: {
     members: memberRows.map((row: any) => ({
       id: row.id,
       userId: row.user_id,
-      role: normalizeRole(row.org_role ?? row.role),
+      role: normalizeOrganizationRole(row.org_role ?? row.role),
       membershipKind: row.membership_kind ?? "member",
       status: row.status ?? "approved",
       createdAt: row.created_at,
@@ -560,7 +672,6 @@ export async function createOrganizationEventManaged(args: {
 }) {
   const { userClient, organizationId, userId, userEmail, emailConfirmedAt, confirmedAt, input } = args;
   await assertAccountCanSocialize(userClient, userId);
-  await assertOrganizationAdmin({ userClient, organizationId, userId });
   const school = await requireVerifiedSchoolForCoreAccess({
     userClient,
     user: {
@@ -569,6 +680,12 @@ export async function createOrganizationEventManaged(args: {
       email_confirmed_at: emailConfirmedAt ?? null,
       confirmed_at: confirmedAt ?? null,
     },
+  });
+  await assertOrganizationEligibleForHostingEvents({
+    userClient,
+    organizationId,
+    userId,
+    expectedSchoolDomain: school.schoolDomain ?? "",
   });
   const { data, error } = await userClient
     .from("campus_events")
@@ -582,6 +699,8 @@ export async function createOrganizationEventManaged(args: {
       is_paid: Boolean(input.isPaid),
       ticket_link: input.ticketLink ?? null,
       host_organization_id: organizationId,
+      host_type: "organization",
+      host_user_id: null,
       created_by: userId,
       school_name: school.schoolName,
       school_domain: school.schoolDomain,

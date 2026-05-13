@@ -12,7 +12,9 @@ type EventItem = {
   startsAt: string;
   endsAt: string | null;
   isPaid: boolean;
+  hostType?: "user" | "organization";
   hostOrganization: { id: string; name: string; logo_url: string | null } | null;
+  hostProfile?: { id: string; username: string; displayName: string } | null;
   rsvpCount: number;
   myRsvpStatus: "going" | "interested" | "not_going" | null;
   isCancelled: boolean;
@@ -34,8 +36,16 @@ type CreateEventForm = {
   startsAt: string;
   endsAt: string;
   isPaid: boolean;
+  hostMode: "self" | "organization";
   hostOrganizationId: string;
 };
+
+function eventHostLabel(event: EventItem): string {
+  if (event.hostOrganization) return event.hostOrganization.name;
+  if (event.hostProfile?.displayName?.trim()) return event.hostProfile.displayName.trim();
+  if (event.hostProfile?.username) return event.hostProfile.username;
+  return "CampusQuest community";
+}
 
 const initialFilters: Filters = {
   category: "",
@@ -62,7 +72,7 @@ export function EventsFeed({
   const [rsvping, setRsvping] = useState<string | null>(null);
   const [reporting, setReporting] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [organizationOptions, setOrganizationOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [manageableOrganizations, setManageableOrganizations] = useState<Array<{ id: string; name: string }>>([]);
   const [createForm, setCreateForm] = useState<CreateEventForm>({
     title: "",
     description: "",
@@ -71,8 +81,11 @@ export function EventsFeed({
     startsAt: "",
     endsAt: "",
     isPaid: false,
+    hostMode: "self",
     hostOrganizationId: "",
   });
+
+  const canHostAsOrganization = manageableOrganizations.length > 0;
 
   async function loadEvents(nextFilters = filters) {
     setLoading(true);
@@ -101,15 +114,25 @@ export function EventsFeed({
   }, [filters.category, filters.organizationId, filters.isPaid, filters.location, filters.timeframe]);
 
   useEffect(() => {
-    async function loadOrganizations() {
+    if (manageableOrganizations.length === 0) {
+      setCreateForm((prev) =>
+        prev.hostMode === "organization" ? { ...prev, hostMode: "self", hostOrganizationId: "" } : prev,
+      );
+    }
+  }, [manageableOrganizations.length]);
+
+  useEffect(() => {
+    async function loadManageableOrganizations() {
       try {
-        const data = await fetchAuthed<{ organizations: Array<{ id: string; name: string }> }>("/api/organizations");
-        setOrganizationOptions((data.organizations ?? []).map((org) => ({ id: org.id, name: org.name })));
+        const data = await fetchAuthed<{ organizations: Array<{ id: string; name: string }> }>(
+          "/api/organizations?eligibleEventHostsOnly=1",
+        );
+        setManageableOrganizations((data.organizations ?? []).map((org) => ({ id: org.id, name: org.name })));
       } catch {
-        setOrganizationOptions([]);
+        setManageableOrganizations([]);
       }
     }
-    void loadOrganizations();
+    void loadManageableOrganizations();
   }, []);
 
   const categories = useMemo(() => Array.from(new Set(events.map((event) => event.category))).sort(), [events]);
@@ -154,9 +177,19 @@ export function EventsFeed({
 
   async function handleCreateEvent(event: FormEvent) {
     event.preventDefault();
+    if (createForm.hostMode === "organization") {
+      if (!createForm.hostOrganizationId.trim()) {
+        setError("Select an organization you manage to host under.");
+        return;
+      }
+    }
     setCreating(true);
     setError(null);
     try {
+      const hostOrganizationId =
+        createForm.hostMode === "organization" && createForm.hostOrganizationId
+          ? createForm.hostOrganizationId
+          : undefined;
       await postAuthed("/api/events", {
         title: createForm.title,
         description: createForm.description,
@@ -165,7 +198,7 @@ export function EventsFeed({
         startsAt: new Date(createForm.startsAt).toISOString(),
         endsAt: createForm.endsAt ? new Date(createForm.endsAt).toISOString() : undefined,
         isPaid: createForm.isPaid,
-        hostOrganizationId: createForm.hostOrganizationId || undefined,
+        ...(hostOrganizationId ? { hostOrganizationId } : {}),
       });
       setCreateForm({
         title: "",
@@ -175,6 +208,7 @@ export function EventsFeed({
         startsAt: "",
         endsAt: "",
         isPaid: false,
+        hostMode: "self",
         hostOrganizationId: "",
       });
       await loadEvents(filters);
@@ -233,18 +267,54 @@ export function EventsFeed({
             placeholder="Location"
             className="rounded-lg bg-white/10 border border-white/20 px-2 py-2 text-xs text-white placeholder-white/50"
           />
-          <select
-            value={createForm.hostOrganizationId}
-            onChange={(event) => setCreateForm((prev) => ({ ...prev, hostOrganizationId: event.target.value }))}
-            className="rounded-lg bg-white/10 border border-white/20 px-2 py-2 text-xs text-white"
-          >
-            <option value="">Host as myself</option>
-            {organizationOptions.map((organization) => (
-              <option key={organization.id} value={organization.id}>
-                {organization.name}
-              </option>
-            ))}
-          </select>
+          <fieldset className="rounded-lg border border-white/15 px-2 py-2 space-y-1.5 sm:col-span-2">
+            <legend className="text-[11px] text-white/55 px-1">Event host</legend>
+            <label className="flex items-center gap-2 text-xs text-white/85">
+              <input
+                type="radio"
+                name="eventHostMode"
+                checked={createForm.hostMode === "self"}
+                onChange={() =>
+                  setCreateForm((prev) => ({ ...prev, hostMode: "self", hostOrganizationId: "" }))
+                }
+              />
+              Host as myself
+            </label>
+            <label
+              className={`flex items-start gap-2 text-xs ${canHostAsOrganization ? "text-white/85" : "text-white/35"}`}
+            >
+              <input
+                type="radio"
+                name="eventHostMode"
+                disabled={!canHostAsOrganization}
+                checked={createForm.hostMode === "organization"}
+                onChange={() => setCreateForm((prev) => ({ ...prev, hostMode: "organization" }))}
+              />
+              <span>
+                Host as an organization you manage
+                {!canHostAsOrganization ? (
+                  <span className="block text-[10px] text-white/40 mt-0.5">
+                    You do not manage any approved organizations for your campus yet.
+                  </span>
+                ) : null}
+              </span>
+            </label>
+            {createForm.hostMode === "organization" && canHostAsOrganization ? (
+              <select
+                value={createForm.hostOrganizationId}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, hostOrganizationId: event.target.value }))}
+                required
+                className="w-full rounded-lg bg-white/10 border border-white/20 px-2 py-2 text-xs text-white"
+              >
+                <option value="">Select organization…</option>
+                {manageableOrganizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </fieldset>
           <input
             type="datetime-local"
             value={createForm.startsAt}
@@ -357,7 +427,7 @@ export function EventsFeed({
             </div>
             <p className="text-sm text-white/75 line-clamp-2">{event.description}</p>
             <p className="text-xs text-white/55">
-              Host: {event.hostOrganization?.name ?? "CampusQuest community"} · {event.isPaid ? "Paid" : "Free"} · RSVP {event.rsvpCount}
+              Host: {eventHostLabel(event)} · {event.isPaid ? "Paid" : "Free"} · RSVP {event.rsvpCount}
             </p>
             <div className="flex flex-wrap gap-2">
               <button
@@ -409,7 +479,7 @@ export function EventsFeed({
               {new Date(activeDetail.startsAt).toLocaleString()} · {activeDetail.location}
             </p>
             <p className="text-xs text-white/55">
-              Hosted by {activeDetail.hostOrganization?.name ?? "CampusQuest community"} · RSVP {activeDetail.rsvpCount}
+              Hosted by {eventHostLabel(activeDetail)} · RSVP {activeDetail.rsvpCount}
             </p>
             <div className="flex flex-wrap gap-2 pt-1">
               {(["going", "interested", "not_going"] as const).map((status) => (
