@@ -2,6 +2,48 @@ import { describe, expect, it } from "vitest";
 import { buildLocalCharacterFromServer } from "@/lib/client/profileCharacter";
 
 describe("buildLocalCharacterFromServer", () => {
+  it("restores bio, equipment, and boss counts from profile + stats + game_state_json", () => {
+    const uuid = "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
+    const c = buildLocalCharacterFromServer(
+      {
+        id: uuid,
+        username: "sam_rpg",
+        display_name: "Sam",
+        bio: "Hello campus",
+        streak_days: 5,
+        last_activity_date: "2026-05-10",
+        avatar_custom_json: '{"v":2}',
+        character_class_id: "rogue",
+        starter_weapon: "guitar",
+        scholar_guild_id: "arts",
+        game_state_json: {
+          equippedCosmetics: { hat: "h1", glasses: "g1", backpack: "b1" },
+          unlockedCosmetics: ["h1", "g1", "b1", "x2"],
+          finalBossesDefeatedCount: 2,
+        },
+      },
+      {
+        user_id: uuid,
+        level: 7,
+        total_xp: 900,
+        strength: 10,
+        stamina: 11,
+        knowledge: 12,
+        social: 13,
+        focus: 14,
+        bosses_defeated: 3,
+      },
+    );
+
+    expect(c.bio).toBe("Hello campus");
+    expect(c.equippedCosmetics).toEqual({ hat: "h1", glasses: "g1", backpack: "b1" });
+    expect(c.unlockedCosmetics).toEqual(["h1", "g1", "b1", "x2"]);
+    expect(c.finalBossesDefeatedCount).toBe(2);
+    expect(c.bossesDefeatedCount).toBe(3);
+    expect(c.totalXP).toBe(900);
+    expect(c.classId).toBe("rogue");
+  });
+
   it("uses Supabase id and avatar_custom_json when present", () => {
     const uuid = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
     const c = buildLocalCharacterFromServer(

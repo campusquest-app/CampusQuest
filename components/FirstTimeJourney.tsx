@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { addXpToCharacter, getActiveBossId, getActivityLogs, syncCharacterProgressFromBackend, updateCharacter } from "@/lib/store";
 import type { Character } from "@/lib/types";
-import { ApiRequestError, fetchAuthed, patchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { ApiRequestError, patchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import {
+  beginnerCelebrationAckKey,
+  beginnerClaimedKey,
+  loadBeginnerOnboardingHydrationBundle,
+  readBeginnerCelebrationSeenLocal,
+  type BeginnerClaimStatusResponse,
+  type BeginnerOnboardingHydrationBootstrap,
+} from "@/lib/client/beginnerOnboardingHydration";
 
 type AppTab =
   | "quad"
@@ -14,7 +22,7 @@ type AppTab =
   | "inbox"
   | "events"
   | "organizations";
-type QuestId = "profile" | "activity" | "boss" | "leaderboard" | "guild";
+type QuestId = BeginnerClaimStatusResponse["claims"][number]["questKey"];
 
 type BeginnerQuest = {
   id: QuestId;
@@ -43,35 +51,27 @@ type BeginnerClaimResponse = {
   };
 };
 
-type BeginnerClaimStatusResponse = {
-  claims: Array<{
-    questKey: QuestId;
-    claimedAt: string;
-    xpAwarded: number;
-  }>;
-  beginnerChainCompletedAt?: string | null;
-  beginnerChainCelebrationSeenAt?: string | null;
-};
-
-type MeStatsResponse = {
-  level?: number | null;
-  total_xp?: number | null;
-  strength?: number | null;
-  stamina?: number | null;
-  knowledge?: number | null;
-  social?: number | null;
-  focus?: number | null;
-};
-
-type MeProfileResponse = {
-  streak_days?: number | null;
-  last_activity_date?: string | null;
-};
-
 const ONBOARDING_INTRO_KEY = (characterId: string) => `cq_onboarding_intro_v1_${characterId}`;
-const CLAIMED_KEY = (characterId: string) => `cq_beginner_quests_claimed_v1_${characterId}`;
-const CELEBRATION_ACK_LS = (characterId: string) => `cq_beginner_chain_celebration_seen_v1_${characterId}`;
 const VISITED_LEADERBOARD_KEY = (characterId: string) => `cq_onboarding_visited_leaderboard_v1_${characterId}`;
+
+const BEGINNER_CHAIN_QUEST_IDS: QuestId[] = ["profile", "activity", "boss", "leaderboard", "guild"];
+
+function deriveClaimsFromBeginnerStatus(status: BeginnerClaimStatusResponse) {
+  const nextClaimed: QuestId[] = status.claims.map((c) => c.questKey);
+  const nextMeta = {} as Partial<Record<QuestId, { claimedAt: string; xpAwarded: number }>>;
+  status.claims.forEach((c) => {
+    nextMeta[c.questKey] = { claimedAt: c.claimedAt, xpAwarded: c.xpAwarded };
+  });
+  return { claimed: nextClaimed, claimMeta: nextMeta };
+}
+
+/**
+ * Manual checklist — beginner-chain completion banner:
+ * - Refresh after completion (seen on server): no banner flash / no lingering banner.
+ * - Log out and back in after completion: no banner.
+ * - First-time completion this session (last claim succeeds): banner shows once; dismiss/fade persists.
+ * Dev: append ?cq_reset_beginner_celebration=1 (non-production) to re-show after reset.
+ */
 
 const GUILD_SUGGESTIONS: { id: string; icon: string; title: string; subtitle: string }[] = [
   { id: "engineering", icon: "⚙️", title: "Builders Guild", subtitle: "For makers, coders, and systems thinkers." },
@@ -84,24 +84,34 @@ export function FirstTimeJourney({
   currentTab,
   onNavigateTab,
   onRefresh,
+  onboardingHydrationBootstrap,
 }: {
   character: Character;
   currentTab: AppTab;
   onNavigateTab: (tab: AppTab) => void;
   onRefresh: () => void;
+  /** Pre-fetched by parent (Dashboard): do not mount until this is ready — prevents completion UI before server/LS reconciliation. */
+  onboardingHydrationBootstrap: BeginnerOnboardingHydrationBootstrap;
 }) {
   const [showIntro, setShowIntro] = useState(false);
   const [introStep, setIntroStep] = useState(0);
-  const [claimed, setClaimed] = useState<QuestId[]>([]);
-  const [claimMeta, setClaimMeta] = useState<Partial<Record<QuestId, { claimedAt: string; xpAwarded: number }>>>({});
+  const [claimed, setClaimed] = useState<QuestId[]>(
+    () => deriveClaimsFromBeginnerStatus(onboardingHydrationBootstrap.beginnerStatus).claimed,
+  );
+  const [claimMeta, setClaimMeta] = useState<Partial<Record<QuestId, { claimedAt: string; xpAwarded: number }>>>(() =>
+    deriveClaimsFromBeginnerStatus(onboardingHydrationBootstrap.beginnerStatus).claimMeta,
+  );
   const [showReward, setShowReward] = useState<null | { xp: number; title: string }>(null);
   const [claimingQuestId, setClaimingQuestId] = useState<QuestId | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [visitedLeaderboard, setVisitedLeaderboard] = useState(false);
-  /** True once we know from server (+ optional local fallback) whether the completion banner was dismissed. */
-  const [celebrationAcknowledged, setCelebrationAcknowledged] = useState(false);
-  /** False until beginner status loads so we don't flash the banner on refresh before API answers. */
-  const [beginnerStatusLoaded, setBeginnerStatusLoaded] = useState(false);
+  const [celebrationAcknowledged, setCelebrationAcknowledged] = useState(() => onboardingHydrationBootstrap.celebrationAcknowledged);
+  const [beginnerStatusLoaded, setBeginnerStatusLoaded] = useState(true);
+  const [celebrationEligibilityChecked, setCelebrationEligibilityChecked] = useState(true);
+  const [celebrationSeenFromServer, setCelebrationSeenFromServer] = useState<string | null | undefined>(
+    () => onboardingHydrationBootstrap.celebrationSeenFromServer,
+  );
+  const [justCompletedChainThisSession, setJustCompletedChainThisSession] = useState(false);
   const [celebrationFadeOut, setCelebrationFadeOut] = useState(false);
   const celebrationPatchSentRef = useRef(false);
 
@@ -111,52 +121,30 @@ export function FirstTimeJourney({
     return isDev || isOffline;
   }
 
+  const applyHydrationBootstrap = useCallback(
+    (bundle: BeginnerOnboardingHydrationBootstrap) => {
+      const { claimed: c, claimMeta: m } = deriveClaimsFromBeginnerStatus(bundle.beginnerStatus);
+      setClaimed(c);
+      setClaimMeta(m);
+      setCelebrationSeenFromServer(bundle.celebrationSeenFromServer);
+      setCelebrationAcknowledged(bundle.celebrationAcknowledged);
+      setCelebrationEligibilityChecked(true);
+      setBeginnerStatusLoaded(true);
+    },
+    [],
+  );
+
   const loadClaimStatusFromBackend = useCallback(async () => {
-    const [status, stats, profile] = await Promise.all([
-      fetchAuthed<BeginnerClaimStatusResponse>("/api/onboarding/beginner-quests/status"),
-      fetchAuthed<MeStatsResponse>("/api/me/stats"),
-      fetchAuthed<MeProfileResponse>("/api/me/profile"),
-    ]);
-    const nextClaimed: QuestId[] = status.claims.map((c) => c.questKey);
-    const nextMeta = {} as Partial<Record<QuestId, { claimedAt: string; xpAwarded: number }>>;
-    status.claims.forEach((c) => {
-      nextMeta[c.questKey] = { claimedAt: c.claimedAt, xpAwarded: c.xpAwarded };
-    });
-    setClaimed(nextClaimed);
-    setClaimMeta(nextMeta);
-    try {
-      localStorage.setItem(CLAIMED_KEY(character.id), JSON.stringify(nextClaimed));
-    } catch {
-      // best effort only
-    }
-    syncCharacterProgressFromBackend(character.id, {
-      stats: {
-        level: stats.level ?? null,
-        total_xp: stats.total_xp ?? null,
-        strength: stats.strength ?? null,
-        stamina: stats.stamina ?? null,
-        knowledge: stats.knowledge ?? null,
-        social: stats.social ?? null,
-        focus: stats.focus ?? null,
-      },
-      profile: {
-        streak_days: profile.streak_days ?? null,
-        last_activity_date: profile.last_activity_date ?? null,
-      },
-    });
-    const serverSeen = Boolean(status.beginnerChainCelebrationSeenAt);
-    let lsSeen = false;
-    try {
-      lsSeen = localStorage.getItem(CELEBRATION_ACK_LS(character.id)) === "1";
-    } catch {
-      // ignore
-    }
-    setCelebrationAcknowledged(serverSeen || lsSeen);
-    setBeginnerStatusLoaded(true);
+    const bundle = await loadBeginnerOnboardingHydrationBundle(character.id);
+    applyHydrationBootstrap(bundle);
     onRefresh();
-  }, [character.id, onRefresh]);
+  }, [character.id, onRefresh, applyHydrationBootstrap]);
 
   useEffect(() => {
+    setCelebrationFadeOut(false);
+    setJustCompletedChainThisSession(false);
+    applyHydrationBootstrap(onboardingHydrationBootstrap);
+
     try {
       const seenIntro = localStorage.getItem(ONBOARDING_INTRO_KEY(character.id)) === "1";
       if (!seenIntro) setShowIntro(true);
@@ -165,38 +153,7 @@ export function FirstTimeJourney({
       setShowIntro(true);
       setVisitedLeaderboard(false);
     }
-
-    let isMounted = true;
-    (async () => {
-      try {
-        await loadClaimStatusFromBackend();
-      } catch {
-        if (!isMounted) return;
-        try {
-          if (localStorage.getItem(CELEBRATION_ACK_LS(character.id)) === "1") {
-            setCelebrationAcknowledged(true);
-          }
-        } catch {
-          // ignore
-        }
-        if (!canUseLocalFallback()) {
-          setBeginnerStatusLoaded(true);
-          return;
-        }
-        try {
-          const rawClaimed = localStorage.getItem(CLAIMED_KEY(character.id));
-          if (rawClaimed) setClaimed(JSON.parse(rawClaimed) as QuestId[]);
-        } catch {
-          // best effort only
-        }
-        setBeginnerStatusLoaded(true);
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [character.id, loadClaimStatusFromBackend]);
+  }, [character.id, onboardingHydrationBootstrap, applyHydrationBootstrap]);
 
   useEffect(() => {
     if (currentTab !== "leaderboards") return;
@@ -258,7 +215,44 @@ export function FirstTimeJourney({
   const completionPct = Math.round((quests.filter((q) => claimed.includes(q.id)).length / quests.length) * 100);
   const nextQuest = quests.find((q) => q.done && !claimed.includes(q.id)) ?? quests.find((q) => !q.done);
   const allClaimed = quests.every((q) => claimed.includes(q.id));
-  const showCelebration = beginnerStatusLoaded && allClaimed && !celebrationAcknowledged;
+  /** Never show banner if server persisted celebration_seen_at (strict even if acknowledgement state desynced). */
+  const serverSaysCelebrationRecorded =
+    typeof celebrationSeenFromServer === "string" && celebrationSeenFromServer.length > 0;
+
+  /** Do not render celebration until onboarding status + acknowledgment reconciliation ran; LS bootstrap blocks seen users before fetch. */
+  const showCelebration =
+    beginnerStatusLoaded &&
+    celebrationEligibilityChecked &&
+    allClaimed &&
+    !celebrationAcknowledged &&
+    !serverSaysCelebrationRecorded &&
+    (justCompletedChainThisSession || celebrationSeenFromServer === null);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    console.info("[cq] FirstTimeJourney.celebration", {
+      component: "FirstTimeJourney",
+      showCelebration,
+      beginnerStatusLoaded,
+      celebrationEligibilityChecked,
+      celebrationAcknowledged,
+      celebrationSeenFromServer,
+      justCompletedChainThisSession,
+      serverSaysCelebrationRecorded,
+    });
+  }, [
+    showCelebration,
+    beginnerStatusLoaded,
+    celebrationEligibilityChecked,
+    celebrationAcknowledged,
+    celebrationSeenFromServer,
+    justCompletedChainThisSession,
+    serverSaysCelebrationRecorded,
+  ]);
+
+  useEffect(() => {
+    if (celebrationAcknowledged) setJustCompletedChainThisSession(false);
+  }, [celebrationAcknowledged]);
 
   useEffect(() => {
     celebrationPatchSentRef.current = false;
@@ -274,7 +268,7 @@ export function FirstTimeJourney({
       return;
     }
     try {
-      localStorage.setItem(CELEBRATION_ACK_LS(character.id), "1");
+      localStorage.setItem(beginnerCelebrationAckKey(character.id), "1");
     } catch {
       // best effort only
     }
@@ -291,9 +285,12 @@ export function FirstTimeJourney({
       try {
         const u = new URL(window.location.href);
         if (u.searchParams.get("cq_reset_beginner_celebration") === "1") {
-          localStorage.removeItem(CELEBRATION_ACK_LS(character.id));
+          localStorage.removeItem(beginnerCelebrationAckKey(character.id));
           setCelebrationFadeOut(false);
+          setCelebrationEligibilityChecked(false);
+          setCelebrationSeenFromServer(undefined);
           setCelebrationAcknowledged(false);
+          setJustCompletedChainThisSession(false);
           celebrationPatchSentRef.current = false;
           u.searchParams.delete("cq_reset_beginner_celebration");
           window.history.replaceState({}, "", `${u.pathname}${u.search}${u.hash}`);
@@ -331,7 +328,7 @@ export function FirstTimeJourney({
         if (prev.includes(quest.id)) return prev;
         const next = [...prev, quest.id];
         try {
-          localStorage.setItem(CLAIMED_KEY(character.id), JSON.stringify(next));
+          localStorage.setItem(beginnerClaimedKey(character.id), JSON.stringify(next));
         } catch {
           // best effort only
         }
@@ -354,6 +351,9 @@ export function FirstTimeJourney({
       }));
       syncCharacterProgressFromBackend(character.id, result.player);
       onRefresh();
+      if (BEGINNER_CHAIN_QUEST_IDS.every((id) => id === quest.id || claimed.includes(id))) {
+        setJustCompletedChainThisSession(true);
+      }
       setShowReward({ xp: result.claim.xp_awarded, title: quest.title });
     } catch (error) {
       if (error instanceof ApiRequestError && error.code === "BEGINNER_QUEST_ALREADY_CLAIMED") {
@@ -372,6 +372,9 @@ export function FirstTimeJourney({
         }));
         addXpToCharacter(character.id, quest.xp);
         onRefresh();
+        if (BEGINNER_CHAIN_QUEST_IDS.every((id) => id === quest.id || claimed.includes(id))) {
+          setJustCompletedChainThisSession(true);
+        }
         setShowReward({ xp: quest.xp, title: quest.title });
       } else {
         const message = error instanceof Error ? error.message : "Could not claim reward right now.";

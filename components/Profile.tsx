@@ -10,7 +10,9 @@ import { getFeedByAuthorId, nodFieldNote, hypeFieldNote, verifyFieldNote, assist
 import { getFriends, getCharacterById, removeFriend } from "@/lib/friendsStore";
 import { getFollowing, unfollow } from "@/lib/followStore";
 import { getGuildById, leaveGuild } from "@/lib/guildStore";
-import { getUserBosses, updateCharacter } from "@/lib/store";
+import { getUserBosses, replaceLocalCharacter, updateCharacter } from "@/lib/store";
+import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
+import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { FieldNoteCard } from "./FieldNoteCard";
@@ -28,21 +30,43 @@ const STAT_FILL: Record<StatKey, string> = {
 
 const BIO_MAX_LENGTH = 150;
 
+const USERNAME_REGEX = /^[a-z0-9_]+$/;
+/** Matches `/api/me/profile` patch schema (`max(24)`) and DB constraint. */
+const USERNAME_MAX = 24;
+const DISPLAY_NAME_MAX = 60;
+
+function toUsername(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "")
+    .slice(0, USERNAME_MAX);
+}
+
 export function Profile({
   character,
   onLogout,
   onRefresh,
   /** When true, hides the large Character stats panel (used when CharacterCard already shows stats on the same screen). */
   omitCharacterStatPanel = false,
+  /** Moderation allow-list accounts can change display name and @username from this screen. */
+  moderationAdminAccess = false,
 }: {
   character: Character;
   onLogout?: () => void;
   onRefresh?: () => void;
   omitCharacterStatPanel?: boolean;
+  moderationAdminAccess?: boolean;
 }) {
   const [posts, setPosts] = useState<FieldNote[]>([]);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showEditBio, setShowEditBio] = useState(false);
+  const [showEditIdentity, setShowEditIdentity] = useState(false);
+  const [identityNameDraft, setIdentityNameDraft] = useState(character.name);
+  const [identityUsernameDraft, setIdentityUsernameDraft] = useState(character.username);
+  const [identityError, setIdentityError] = useState<string | null>(null);
+  const [identitySaving, setIdentitySaving] = useState(false);
   const [showLootCodex, setShowLootCodex] = useState(false);
   const [bioDraft, setBioDraft] = useState(character.bio ?? "");
 
@@ -53,6 +77,67 @@ export function Profile({
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  const identityUsernameNormalized = toUsername(identityUsernameDraft || identityNameDraft.trim());
+  const identityNameOk =
+    identityNameDraft.trim().length >= 1 && identityNameDraft.trim().length <= DISPLAY_NAME_MAX;
+  const identityUsernameOk =
+    identityUsernameNormalized.length >= 3 &&
+    identityUsernameNormalized.length <= USERNAME_MAX &&
+    USERNAME_REGEX.test(identityUsernameNormalized);
+
+  const saveIdentity = useCallback(async () => {
+    if (!moderationAdminAccess) return;
+    const nameTrimmed = identityNameDraft.trim();
+    const usernameNormalized = toUsername(identityUsernameDraft || nameTrimmed);
+    if (nameTrimmed.length < 1 || nameTrimmed.length > DISPLAY_NAME_MAX) {
+      setIdentityError(`Display name must be 1–${DISPLAY_NAME_MAX} characters.`);
+      return;
+    }
+    if (
+      usernameNormalized.length < 3 ||
+      usernameNormalized.length > USERNAME_MAX ||
+      !USERNAME_REGEX.test(usernameNormalized)
+    ) {
+      setIdentityError(`Username must be 3–${USERNAME_MAX} characters (letters, numbers, underscores).`);
+      return;
+    }
+    setIdentityError(null);
+    setIdentitySaving(true);
+    try {
+      const mergedProfile = await patchAuthed<MeProfileRow, { displayName: string; username: string }>("/api/me/profile", {
+        displayName: nameTrimmed,
+        username: usernameNormalized,
+      });
+      const stats = await fetchAuthed<MeStatsRow>("/api/me/stats");
+      const next = buildLocalCharacterFromServer(mergedProfile, stats);
+      replaceLocalCharacter({
+        ...character,
+        id: next.id,
+        name: next.name,
+        username: next.username,
+        avatar: next.avatar,
+        level: next.level,
+        totalXP: next.totalXP,
+        stats: next.stats,
+        streakDays: next.streakDays,
+        lastActivityDate: next.lastActivityDate,
+        classId: next.classId,
+        starterWeapon: next.starterWeapon,
+        scholarGuildId: next.scholarGuildId,
+      });
+      setShowEditIdentity(false);
+      onRefresh?.();
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 409) {
+        setIdentityError("That username is already taken. Pick another.");
+        return;
+      }
+      setIdentityError(err instanceof Error ? err.message : "Could not save.");
+    } finally {
+      setIdentitySaving(false);
+    }
+  }, [character, identityNameDraft, identityUsernameDraft, moderationAdminAccess, onRefresh]);
 
   function handleNod(noteId: string) {
     nodFieldNote(noteId, character.id);
@@ -205,6 +290,20 @@ export function Profile({
               </button>
             </div>
             <div className="flex flex-wrap gap-3 mt-4">
+              {moderationAdminAccess ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIdentityNameDraft(character.name);
+                    setIdentityUsernameDraft(character.username);
+                    setIdentityError(null);
+                    setShowEditIdentity(true);
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-sm font-medium text-emerald-100 hover:text-white bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/35 transition-colors"
+                >
+                  Edit name & username
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => { setBioDraft(character.bio ?? ""); setShowEditBio(true); }}
@@ -440,6 +539,86 @@ export function Profile({
                       );
                     })}
             </ul>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {showEditIdentity && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="edit-identity-title">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => !identitySaving && setShowEditIdentity(false)}
+            aria-hidden
+          />
+          <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/15 bg-uri-navy shadow-xl shadow-black/40 p-5">
+            <h2 id="edit-identity-title" className="font-display font-semibold text-lg text-white mb-1">
+              Edit name & username
+            </h2>
+            <p className="text-xs text-white/50 mb-4">Admin: updates your campus profile (same as student signup rules).</p>
+            <label htmlFor="edit-identity-name" className="block text-[11px] font-medium text-white/55 mb-1">
+              Display name
+            </label>
+            <input
+              id="edit-identity-name"
+              value={identityNameDraft}
+              onChange={(e) => {
+                setIdentityNameDraft(e.target.value.slice(0, DISPLAY_NAME_MAX));
+                setIdentityError(null);
+              }}
+              className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 mb-3"
+              autoComplete="name"
+            />
+            <label htmlFor="edit-identity-username" className="block text-[11px] font-medium text-white/55 mb-1">
+              Username
+            </label>
+            <input
+              id="edit-identity-username"
+              value={identityUsernameDraft}
+              onChange={(e) => {
+                setIdentityUsernameDraft(toUsername(e.target.value));
+                setIdentityError(null);
+              }}
+              className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
+              autoComplete="username"
+              spellCheck={false}
+            />
+            <p className="text-xs text-white/45 mt-1.5">
+              You’ll appear as @{identityUsernameNormalized || "username"} · 3–{USERNAME_MAX} chars, a–z, 0–9, _
+            </p>
+            {identityNameDraft.trim().length > 0 && !identityNameOk ? (
+              <p className="text-xs text-amber-200 mt-2" role="alert">
+                Display name: 1–{DISPLAY_NAME_MAX} characters.
+              </p>
+            ) : null}
+            {identityUsernameDraft.length > 0 && !identityUsernameOk ? (
+              <p className="text-xs text-amber-200 mt-1" role="alert">
+                Username must be 3–{USERNAME_MAX} valid characters.
+              </p>
+            ) : null}
+            {identityError ? (
+              <p className="text-xs text-rose-200 mt-2" role="alert">
+                {identityError}
+              </p>
+            ) : null}
+            <div className="flex gap-3 justify-end mt-5">
+              <button
+                type="button"
+                disabled={identitySaving}
+                onClick={() => setShowEditIdentity(false)}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/80 hover:text-white bg-white/10 hover:bg-white/15 border border-white/15 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={identitySaving || !identityNameOk || !identityUsernameOk}
+                onClick={() => void saveIdentity()}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/40 transition-colors disabled:opacity-50"
+              >
+                {identitySaving ? "Saving…" : "Save"}
+              </button>
+            </div>
           </div>
         </div>,
         document.body

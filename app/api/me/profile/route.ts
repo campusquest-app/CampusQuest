@@ -37,6 +37,8 @@ export async function PATCH(request: Request) {
     if (input.characterClassId !== undefined) patch.character_class_id = input.characterClassId;
     if (input.starterWeapon !== undefined) patch.starter_weapon = input.starterWeapon;
     if (input.scholarGuildId !== undefined) patch.scholar_guild_id = input.scholarGuildId;
+    if (input.bio !== undefined) patch.bio = input.bio;
+    if (input.gameStateJson !== undefined) patch.game_state_json = input.gameStateJson;
     if (input.characterOnboardingComplete === true) {
       patch.onboarding_character_completed = true;
     }

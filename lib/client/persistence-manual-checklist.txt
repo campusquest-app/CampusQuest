@@ -1,0 +1,16 @@
+Manual persistence regression (student account)
+
+1. Sign in, finish onboarding if needed, and create or load your character.
+2. Set display name, @username, class/title, scholars guild, bio.
+3. Gain XP (any activity that awards XP); note total XP and level.
+4. Equip loot (hat / glasses / backpack) and confirm loadout in profile or character sheet.
+5. Note counts shown for posts/friends/following if applicable.
+6. Log out from the app.
+7. Log back in with the same account.
+8. Confirm all of the following match pre-logout: display name, @username, class, level, total XP, stats
+   (strength/stamina/knowledge/social/focus), bio, equipment loadout, bosses/final bosses tallies, streak if shown.
+9. Hard-refresh the browser (full reload).
+10. Confirm the same fields again.
+
+Expected: only the auth session and ephemeral UI caches reset on logout; Supabase-backed profile, stats,
+and game_state_json restore the full character after login and after refresh.

@@ -8,6 +8,8 @@ export type MeProfileRow = {
   username: string;
   display_name: string;
   avatar_url?: string | null;
+  bio?: string | null;
+  game_state_json?: Record<string, unknown> | null;
   streak_days?: number | null;
   last_activity_date?: string | null;
   onboarding_completed?: boolean | null;
@@ -28,6 +30,7 @@ export type MeStatsRow = {
   knowledge: number;
   social: number;
   focus: number;
+  bosses_defeated?: number | null;
 };
 
 function defaultStats(s: Partial<CharacterStats>): CharacterStats {
@@ -50,7 +53,30 @@ export function buildLocalCharacterFromServer(profile: MeProfileRow, stats: MeSt
         ? profile.avatar_url.trim()
         : "🎓";
 
-  return {
+  const gs = profile.game_state_json;
+  const achievements =
+    gs && Array.isArray((gs as { achievements?: unknown }).achievements)
+      ? ((gs as { achievements: string[] }).achievements)
+      : [];
+  const unlockedCosmetics =
+    gs && Array.isArray((gs as { unlockedCosmetics?: unknown }).unlockedCosmetics)
+      ? ((gs as { unlockedCosmetics: string[] }).unlockedCosmetics)
+      : [];
+  const guildIds =
+    gs && Array.isArray((gs as { guildIds?: unknown }).guildIds)
+      ? ((gs as { guildIds: string[] }).guildIds)
+      : [];
+  const unlockedSkillNodes =
+    gs && Array.isArray((gs as { unlockedSkillNodes?: unknown }).unlockedSkillNodes)
+      ? ((gs as { unlockedSkillNodes: string[] }).unlockedSkillNodes)
+      : [];
+
+  const equipped =
+    gs && typeof (gs as { equippedCosmetics?: unknown }).equippedCosmetics === "object" && (gs as { equippedCosmetics?: unknown }).equippedCosmetics != null
+      ? ((gs as { equippedCosmetics: Character["equippedCosmetics"] }).equippedCosmetics)
+      : undefined;
+
+  const base: Character = {
     id: profile.id,
     name: profile.display_name?.trim() || "Student",
     username: profile.username?.trim().toLowerCase().replace(/\s+/g, "_") || "student",
@@ -66,14 +92,52 @@ export function buildLocalCharacterFromServer(profile: MeProfileRow, stats: MeSt
     }),
     streakDays: Math.max(0, Number(profile.streak_days ?? 0)),
     lastActivityDate: profile.last_activity_date ?? null,
-    achievements: [],
-    unlockedCosmetics: [],
+    achievements,
+    unlockedCosmetics,
     createdAt: Date.now(),
     classId: profile.character_class_id ?? undefined,
     starterWeapon: profile.starter_weapon ?? undefined,
     scholarGuildId: profile.scholar_guild_id ?? undefined,
-    unlockedSkillNodes: [],
-    streakFreezes: 0,
-    quadAssistScore: 0,
+    unlockedSkillNodes,
+    streakFreezes: typeof (gs as { streakFreezes?: unknown })?.streakFreezes === "number" ? Number((gs as { streakFreezes: number }).streakFreezes) : 0,
+    quadAssistScore:
+      typeof (gs as { quadAssistScore?: unknown })?.quadAssistScore === "number" ? Number((gs as { quadAssistScore: number }).quadAssistScore) : 0,
+    guildIds,
+    bossesDefeatedCount: Math.max(0, Number(stats.bosses_defeated ?? 0)),
+    finalBossesDefeatedCount:
+      typeof (gs as { finalBossesDefeatedCount?: unknown })?.finalBossesDefeatedCount === "number"
+        ? Number((gs as { finalBossesDefeatedCount: number }).finalBossesDefeatedCount)
+        : 0,
+    equippedCosmetics: equipped,
+    miniGameTraining:
+      gs && typeof gs === "object"
+        ? (gs as { miniGameTraining?: Character["miniGameTraining"] }).miniGameTraining
+        : undefined,
+    statPrestige:
+      gs && typeof gs === "object"
+        ? (gs as { statPrestige?: Character["statPrestige"] }).statPrestige
+        : undefined,
+    streakBonusXpByDate:
+      gs && typeof gs === "object"
+        ? (gs as { streakBonusXpByDate?: Character["streakBonusXpByDate"] }).streakBonusXpByDate
+        : undefined,
+    lastSurpriseQuestCompletedDay:
+      gs && typeof gs === "object"
+        ? (gs as { lastSurpriseQuestCompletedDay?: string }).lastSurpriseQuestCompletedDay
+        : undefined,
+    surpriseQuestDay: gs && typeof gs === "object" ? (gs as { surpriseQuestDay?: string }).surpriseQuestDay : undefined,
+    completedSpecialQuests:
+      gs && Array.isArray((gs as { completedSpecialQuests?: unknown }).completedSpecialQuests)
+        ? ((gs as { completedSpecialQuests: string[] }).completedSpecialQuests)
+        : undefined,
+    specialQuestProofs:
+      gs && typeof (gs as { specialQuestProofs?: unknown }).specialQuestProofs === "object"
+        ? ((gs as { specialQuestProofs: Character["specialQuestProofs"] }).specialQuestProofs)
+        : undefined,
   };
+
+  const bioTrim = typeof profile.bio === "string" ? profile.bio.trim() : "";
+  if (bioTrim) base.bio = bioTrim;
+
+  return base;
 }

@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { getCharacter, logActivity, logout as storeLogout, replaceLocalCharacter } from "@/lib/store";
+import { getCharacter, logActivity, logout as storeLogout, replaceLocalCharacter, clearPersistedCharacter } from "@/lib/store";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 import type { Character } from "@/lib/types";
 import { CharacterCard } from "./CharacterCard";
@@ -47,14 +48,29 @@ import {
 } from "@/lib/client/dashboardApi";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { clearSchoolVerificationSnapshot, peekSchoolVerificationSnapshot } from "@/lib/client/schoolVerificationCache";
+import {
+  loadBeginnerOnboardingHydrationBundle,
+  type BeginnerOnboardingHydrationBootstrap,
+} from "@/lib/client/beginnerOnboardingHydration";
 import { SchoolVerificationScreen } from "./SchoolVerificationScreen";
 
 type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations";
+
+const TAB_QUERY_VALUES: Tab[] = ["quad", "friends", "battle", "leaderboards", "character", "inbox", "events", "organizations"];
 
 type PilotCampusState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; snapshot: MeSchoolVerificationResponse };
+
+/** Whether to show internal admin links (moderation allow-list accounts). Uses live snapshot or cached school verification. */
+function moderationAdminNavVisible(pilotCampusState: PilotCampusState): boolean {
+  if (pilotCampusState.status === "ready") {
+    return pilotCampusState.snapshot.moderationAdminAccess;
+  }
+  const token = getAccessToken();
+  return Boolean(token && peekSchoolVerificationSnapshot(token)?.moderationAdminAccess);
+}
 
 type BootstrapStatus = "bootstrapping" | "unauthenticated" | "authenticated";
 
@@ -83,6 +99,7 @@ function Header({
   onOpenInbox,
   onOpenNotifications,
   unreadNotificationCount,
+  showAdminNav,
 }: {
   username: string | null;
   character: Character | null;
@@ -90,6 +107,8 @@ function Header({
   onOpenInbox?: () => void;
   onOpenNotifications?: () => void;
   unreadNotificationCount?: number;
+  /** Moderation admins only — links to internal tooling. */
+  showAdminNav?: boolean;
 }) {
   const [questsOpen, setQuestsOpen] = useState(false);
   const [specialQuestsOpen, setSpecialQuestsOpen] = useState(false);
@@ -123,6 +142,16 @@ function Header({
 
           {/* Right: Quick actions */}
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            {showAdminNav ? (
+              <div className="flex items-center gap-1.5" role="navigation" aria-label="Internal admin">
+                <Link
+                  href="/internal/admin"
+                  className="rounded-lg border border-emerald-400/45 bg-emerald-500/[0.12] px-2 py-1.5 sm:px-2.5 text-[11px] sm:text-xs font-semibold text-emerald-100 hover:bg-emerald-500/20 whitespace-nowrap"
+                >
+                  Admin
+                </Link>
+              </div>
+            ) : null}
             {character && (
               <div
                 className="flex items-center rounded-xl border border-white/15 bg-white/5 p-1 gap-0.5 shadow-inner"
@@ -246,6 +275,7 @@ function Header({
 }
 
 export function Dashboard() {
+  const searchParams = useSearchParams();
   const [character, setCharacter] = useState<Character | null>(null);
   const [mounted, setMounted] = useState(false);
   const [showWelcomeSplash, setShowWelcomeSplash] = useState(true);
@@ -284,8 +314,17 @@ export function Dashboard() {
   const [campusFetchNonce, setCampusFetchNonce] = useState(0);
   const [showCampusSlowNotice, setShowCampusSlowNotice] = useState(false);
   const campusFetchGenRef = useRef(0);
+  /** Beginner onboarding bundle: parent fetches before mounting FirstTimeJourney to avoid completion UI flashing before server/LS reconciliation. */
+  const [beginnerJourneyHydration, setBeginnerJourneyHydration] = useState<BeginnerOnboardingHydrationBootstrap | null>(null);
   /** Last `/api/me/school-verification` HTTP status for this fetch attempt (dev logging only). */
   const schoolVerificationLastHttpRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t && TAB_QUERY_VALUES.includes(t as Tab)) {
+      setTab(t as Tab);
+    }
+  }, [searchParams]);
 
   const XP300_POPUP_KEY = "campusquest_300xp_celebrated";
 
@@ -369,17 +408,26 @@ export function Dashboard() {
   }, []);
 
   const handleLogout = useCallback(() => {
-    storeLogout();
-    clearAccessToken();
-    setCharacter(null);
-    setGatePrefillProfile(null);
-    setOnboardingPreferences(null);
-    setNeedsOnboardingPreferences(false);
-    setBootstrapStatus("bootstrapping");
-    setShowWelcomeSplash(false);
-    setCampusFetchNonce(0);
-    setPilotCampusState({ status: "loading" });
-    setBootstrapNonce((n) => n + 1);
+    void (async () => {
+      try {
+        const { flushGameStateSync } = await import("@/lib/client/gameStateSync");
+        await flushGameStateSync(getCharacter);
+      } catch {
+        /* best-effort sync before token clear */
+      }
+      clearAccessToken();
+      clearSchoolVerificationSnapshot();
+      storeLogout();
+      setCharacter(null);
+      setGatePrefillProfile(null);
+      setOnboardingPreferences(null);
+      setNeedsOnboardingPreferences(false);
+      setBootstrapStatus("bootstrapping");
+      setShowWelcomeSplash(false);
+      setCampusFetchNonce(0);
+      setPilotCampusState({ status: "loading" });
+      setBootstrapNonce((n) => n + 1);
+    })();
   }, []);
 
   useEffect(() => {
@@ -446,6 +494,22 @@ export function Dashboard() {
   }, [bootstrapStatus, character?.id]);
 
   useEffect(() => {
+    if (bootstrapStatus !== "authenticated" || !character?.id) {
+      setBeginnerJourneyHydration(null);
+      return;
+    }
+    let cancelled = false;
+    const characterId = character.id;
+    setBeginnerJourneyHydration(null);
+    void loadBeginnerOnboardingHydrationBundle(characterId).then((hydrationPayload) => {
+      if (!cancelled) setBeginnerJourneyHydration(hydrationPayload);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrapStatus, character?.id]);
+
+  useEffect(() => {
     if (!mounted) return;
     let cancelled = false;
 
@@ -472,8 +536,7 @@ export function Dashboard() {
         return;
       }
 
-      // Block stale local character until server confirms profile (no char-* bypass without auth).
-      storeLogout();
+      // Server fetch below will replace/merge local character; keep existing blob for same-user re-login.
 
       let profileSnap: MeProfileRow | null = null;
 
@@ -482,6 +545,26 @@ export function Dashboard() {
           fetchAuthed<MeProfileRow>("/api/me/profile"),
           fetchAuthed<MeStatsRow>("/api/me/stats"),
         ]);
+
+        let profileMerged: MeProfileRow = profile;
+        let statsMerged: MeStatsRow = stats;
+
+        const localPre = getCharacter();
+        if (
+          localPre &&
+          localPre.id === profile.id &&
+          !localPre.id.startsWith("char-") &&
+          Number(localPre.totalXP) > Number(stats.total_xp ?? 0)
+        ) {
+          const { pushCharacterProgressToServer } = await import("@/lib/client/gameStateSync");
+          await pushCharacterProgressToServer(localPre);
+          const [p2, s2] = await Promise.all([
+            fetchAuthed<MeProfileRow>("/api/me/profile"),
+            fetchAuthed<MeStatsRow>("/api/me/stats"),
+          ]);
+          profileMerged = p2;
+          statsMerged = s2;
+        }
 
         let prefs: {
           exists: boolean;
@@ -498,12 +581,12 @@ export function Dashboard() {
           prefs = { exists: false, preferences: null };
         }
 
-        profileSnap = profile;
+        profileSnap = profileMerged;
 
         if (cancelled) return;
 
-        const onboardingDone = Boolean(profile.onboarding_completed);
-        const characterDone = Boolean(profile.onboarding_character_completed);
+        const onboardingDone = Boolean(profileMerged.onboarding_completed);
+        const characterDone = Boolean(profileMerged.onboarding_character_completed);
 
         const applyPrefsState = () => {
           if (prefs.preferences) {
@@ -520,8 +603,8 @@ export function Dashboard() {
 
         const clearLegacyLocalMismatch = () => {
           const local = getCharacter();
-          if (local && (local.id !== profile.id || local.id.startsWith("char-"))) {
-            storeLogout();
+          if (local && (local.id !== profileMerged.id || local.id.startsWith("char-"))) {
+            clearPersistedCharacter();
           }
         };
 
@@ -529,7 +612,7 @@ export function Dashboard() {
 
         if (onboardingDone) {
           clearLegacyLocalMismatch();
-          replaceLocalCharacter(buildLocalCharacterFromServer(profile, stats));
+          replaceLocalCharacter(buildLocalCharacterFromServer(profileMerged, statsMerged));
           setNeedsOnboardingPreferences(false);
           applyPrefsState();
           setGatePrefillProfile(null);
@@ -539,7 +622,7 @@ export function Dashboard() {
           routeDecision = "app";
         } else if (characterDone) {
           clearLegacyLocalMismatch();
-          replaceLocalCharacter(buildLocalCharacterFromServer(profile, stats));
+          replaceLocalCharacter(buildLocalCharacterFromServer(profileMerged, statsMerged));
           setNeedsOnboardingPreferences(!prefs.exists);
           applyPrefsState();
           setGatePrefillProfile(null);
@@ -550,7 +633,7 @@ export function Dashboard() {
         } else {
           clearLegacyLocalMismatch();
           setNeedsOnboardingPreferences(false);
-          setGatePrefillProfile(profile);
+          setGatePrefillProfile(profileMerged);
           setShowWelcomeSplash(false);
           refresh();
           routeDecision = "character_gate";
@@ -559,7 +642,7 @@ export function Dashboard() {
         logBootstrapDecision({
           sessionFound: true,
           sessionValidated: true,
-          onboardingCompleted: profile.onboarding_completed ?? null,
+          onboardingCompleted: profileMerged.onboarding_completed ?? null,
           route: routeDecision === "character_gate" ? "character_gate" : "app",
         });
 
@@ -594,7 +677,7 @@ export function Dashboard() {
   }, [pilotCampusState.status]);
 
   useEffect(() => {
-    if (bootstrapStatus !== "authenticated" || !character) return;
+    if (bootstrapStatus !== "authenticated") return;
 
     const token = getAccessToken();
     if (!token) {
@@ -668,7 +751,7 @@ export function Dashboard() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- campusFetchNonce forces retry; scope user via character.id
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- campusFetchNonce forces retry; character.id optional for same session
   }, [bootstrapStatus, character?.id, campusFetchNonce]);
 
   useEffect(() => {
@@ -825,7 +908,12 @@ export function Dashboard() {
   if (!character) {
     return (
       <>
-        <Header username={null} character={null} onRefresh={refresh} />
+        <Header
+          username={null}
+          character={null}
+          onRefresh={refresh}
+          showAdminNav={moderationAdminNavVisible(pilotCampusState)}
+        />
         <CharacterGate
           prefillProfile={gatePrefillProfile}
           onReady={() => {
@@ -912,7 +1000,6 @@ export function Dashboard() {
     { tab: "quad", icon: "📋", label: "Quad" },
     { tab: "events", icon: "📅", label: "Events" },
     { tab: "organizations", icon: "🏛️", label: "Orgs" },
-    { tab: "inbox", icon: "📬", label: "Inbox" },
     { tab: "friends", icon: "👋", label: "Friends" },
     { tab: "battle", icon: "🐉", label: "Battle" },
     { tab: "leaderboards", icon: "🏆", label: "Rank" },
@@ -931,6 +1018,7 @@ export function Dashboard() {
           setTab("inbox");
         }}
         unreadNotificationCount={unreadNotificationCount}
+        showAdminNav={moderationAdminNavVisible(pilotCampusState)}
       />
       <div
         className={screenShake ? "cq-screen-shake" : undefined}
@@ -938,7 +1026,25 @@ export function Dashboard() {
       >
         {character && (
           <div className="mb-4 sm:mb-5">
-            <FirstTimeJourney character={character} currentTab={tab} onNavigateTab={setTab} onRefresh={refresh} />
+            {beginnerJourneyHydration ? (
+              <FirstTimeJourney
+                character={character}
+                currentTab={tab}
+                onNavigateTab={setTab}
+                onRefresh={refresh}
+                onboardingHydrationBootstrap={beginnerJourneyHydration}
+              />
+            ) : (
+              <div
+                className="card min-h-[7rem] rounded-2xl border border-uri-gold/20 bg-white/[0.02] p-4 cq-skeleton-wrap overflow-hidden"
+                aria-busy="true"
+                aria-label="Loading beginner quest status"
+              >
+                <div className="cq-skeleton mb-3 h-4 w-44 rounded-lg" />
+                <div className="cq-skeleton mb-2 h-3 w-full rounded-lg" />
+                <div className="cq-skeleton h-3 max-w-[92%] rounded-lg" />
+              </div>
+            )}
           </div>
         )}
         {gainToast?.lastBossDrop && typeof document !== "undefined" && createPortal(
@@ -1384,7 +1490,12 @@ export function Dashboard() {
                   </div>
                 </div>
               ) : (
-                <Profile character={character} onLogout={handleLogout} onRefresh={refresh} />
+                <Profile
+                  character={character}
+                  onLogout={handleLogout}
+                  onRefresh={refresh}
+                  moderationAdminAccess={moderationAdminNavVisible(pilotCampusState)}
+                />
               )}
             </div>
           </section>
@@ -1392,14 +1503,13 @@ export function Dashboard() {
       </div>
       </div>
 
-      {/* Bottom nav — width aligned with main content */}
+      {/* Bottom nav — aligned with content max width; items share row evenly */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-20 flex justify-center"
-        style={{ paddingBottom: 0 }}
+        className="fixed bottom-0 left-0 right-0 z-20 flex justify-center px-3 sm:px-4"
       >
         <nav
-          className="w-full sm:max-w-2xl sm:mx-auto flex items-center justify-start overflow-x-auto rounded-t-2xl bg-uri-navy/95 border border-b-0 border-uri-keaney/25 shadow-[0_-4px_24px_-4px_rgba(0,0,0,0.45),0_-1px_0_0_rgba(104,171,232,0.12)] backdrop-blur-md"
-          style={{ paddingTop: "0.5rem", paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
+          className="w-full max-w-2xl flex items-stretch justify-evenly gap-0.5 sm:gap-1 rounded-t-2xl border border-b-0 border-uri-keaney/25 bg-uri-navy/95 px-1.5 pt-2 shadow-[0_-4px_24px_-4px_rgba(0,0,0,0.45),0_-1px_0_0_rgba(104,171,232,0.12)] backdrop-blur-md sm:px-3 sm:pt-2.5"
+          style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom, 0px))" }}
           aria-label="Main navigation"
         >
         {navItems.map(({ tab: t, icon, label }) => (
@@ -1407,7 +1517,7 @@ export function Dashboard() {
             key={t}
             type="button"
             onClick={() => setTab(t)}
-            className={`flex flex-col items-center justify-center gap-0.5 min-w-[4.75rem] py-2.5 px-1 rounded-xl transition-all touch-manipulation ${
+            className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2.5 transition-all touch-manipulation sm:px-2 ${
               tab === t
                 ? "text-uri-keaney bg-gradient-to-b from-uri-keaney/25 to-uri-keaney/10 shadow-[0_6px_18px_-6px_rgba(104,171,232,0.9)]"
                 : "text-white/60 hover:text-white/85 hover:bg-white/5 active:text-white/90"
@@ -1415,7 +1525,7 @@ export function Dashboard() {
             aria-current={tab === t ? "page" : undefined}
           >
             <span className="text-xl leading-none" aria-hidden>{icon}</span>
-            <span className={`text-[11px] font-semibold tracking-wide truncate w-full text-center ${tab === t ? "text-uri-keaney" : "text-white/80"}`}>{label}</span>
+            <span className={`w-full truncate text-center text-[10px] font-semibold tracking-wide sm:text-[11px] ${tab === t ? "text-uri-keaney" : "text-white/80"}`}>{label}</span>
           </button>
         ))}
         </nav>

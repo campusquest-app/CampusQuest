@@ -346,6 +346,9 @@ export const patchMeProfileSchema = z
     characterClassId: z.string().trim().max(64).nullable().optional(),
     starterWeapon: z.string().trim().max(64).nullable().optional(),
     scholarGuildId: z.string().trim().max(64).nullable().optional(),
+    bio: z.string().trim().max(280).optional(),
+    /** Serialized gameplay snapshot (equipment, extra counters); merged server-side. */
+    gameStateJson: z.record(z.string(), z.unknown()).optional(),
     /** When true, server marks character onboarding saved (requires identity + avatar payload). */
     characterOnboardingComplete: z.literal(true).optional(),
     /** One-time acknowledgment: hides beginner-chain celebration on future loads/login. */
@@ -364,6 +367,23 @@ export const patchMeProfileSchema = z
       if (!val.avatarCustomJson) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "avatarCustomJson is required to finish character setup." });
       }
+    }
+  });
+
+export const patchMeStatsSchema = z
+  .object({
+    totalXp: z.number().int().min(0).max(9_007_199_254_740_991).optional(),
+    strength: z.number().int().min(0).max(1_000_000).optional(),
+    stamina: z.number().int().min(0).max(1_000_000).optional(),
+    knowledge: z.number().int().min(0).max(1_000_000).optional(),
+    social: z.number().int().min(0).max(1_000_000).optional(),
+    focus: z.number().int().min(0).max(1_000_000).optional(),
+    bossesDefeated: z.number().int().min(0).max(1_000_000).optional(),
+  })
+  .superRefine((val, ctx) => {
+    const keys = ["totalXp", "strength", "stamina", "knowledge", "social", "focus", "bossesDefeated"] as const;
+    if (!keys.some((k) => val[k] !== undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide at least one stat field to update." });
     }
   });
 

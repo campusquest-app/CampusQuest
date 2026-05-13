@@ -100,6 +100,7 @@ function saveCharacter(c: Character): void {
     // Persistence may fail on some mobile browsers (e.g. QuotaExceededError / blocked storage).
   }
   registerCharacterInFriends(c);
+  void import("@/lib/client/gameStateSync").then((m) => m.scheduleCharacterSync(c));
 }
 
 function loadLogs(): ActivityLog[] {
@@ -359,18 +360,24 @@ export function syncCharacterProgressFromBackend(
   return c;
 }
 
-/** Clear character from storage; next getCharacter() will return null (shows CharacterGate). */
+/** Persist full character snapshot (used after Supabase profile+stats hydration). */
 export function replaceLocalCharacter(character: Character): void {
   saveCharacter(character);
 }
 
-export function logout(): void {
+/** Remove only the persisted character blob (e.g. different signed-in user). Session/logout should not call this by default. */
+export function clearPersistedCharacter(): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(STORAGE_KEY_CHARACTER);
   } catch {
-    // Ignore persistence failure.
+    // Ignore.
   }
+}
+
+/** Clear local boss event contributon caches; does not remove saved character progress. */
+export function logout(): void {
+  if (typeof window === "undefined") return;
   clearCampusBossContributors();
   clearGuildBossContributors();
 }
