@@ -23,3 +23,6 @@ yarn-error.log*
 
 # Vercel
 .vercel
+
+# Supabase local metadata
+supabase/.temp
