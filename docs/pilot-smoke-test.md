@@ -18,6 +18,10 @@ Use this checklist to manually verify pilot readiness for school verification, s
 
 ## 1) Campus Email Verification
 
+- [ ] Sign up a brand-new user and confirm signup succeeds without profile foreign key errors.
+- [ ] Verify `auth.users.id` matches `profiles.id` for that user.
+- [ ] Repeat signup attempt with the same email and confirm no profile FK regression is introduced.
+- [ ] With email confirmation enabled, verify signup may return no session but still creates/keeps the matching profile row.
 - [ ] Sign in with a confirmed non-`uri.edu` account.
 - [ ] Confirm the user is blocked from campus features and sees the school verification gate.
 - [ ] Sign in with a confirmed `uri.edu` account.

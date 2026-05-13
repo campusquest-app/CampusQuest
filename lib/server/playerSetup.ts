@@ -16,6 +16,24 @@ function buildUsername(email: string, userId: string) {
   return `${base}_${userId.slice(0, 6)}`.slice(0, 24);
 }
 
+async function waitForAuthUser(admin: ReturnType<typeof createAdminClient>, userId: string) {
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const { data, error } = await admin.auth.admin.getUserById(userId);
+    if (!error && data?.user?.id === userId) {
+      return;
+    }
+    if (attempt < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, 120 * attempt));
+    }
+  }
+  throw new ApiError(
+    400,
+    "Auth account was created but is not available yet. Please try signing in again in a moment.",
+    "AUTH_USER_NOT_READY",
+  );
+}
+
 export async function ensurePlayerSetup(args: {
   userId: string;
   email?: string | null;
@@ -23,6 +41,7 @@ export async function ensurePlayerSetup(args: {
 }) {
   const { userId, email, displayName } = args;
   const admin = createAdminClient();
+  await waitForAuthUser(admin, userId);
 
   const username = buildUsername(email ?? userId, userId);
   const defaultName = displayName?.trim() || (email ? email.split("@")[0] : "CampusQuest Player");

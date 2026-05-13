@@ -43,6 +43,29 @@ function formatRequestError(error: unknown, path: string, fallback: string) {
   return fallback;
 }
 
+function getEmailDomainOnly(email: string) {
+  const normalized = email.trim().toLowerCase();
+  const atIndex = normalized.lastIndexOf("@");
+  if (atIndex <= 0 || atIndex === normalized.length - 1) return "invalid";
+  return normalized.slice(atIndex + 1);
+}
+
+function logAuthFailureDev(args: {
+  endpoint: string;
+  status: number;
+  message: string;
+  email: string;
+}) {
+  if (!IS_DEV) return;
+  const { endpoint, status, message, email } = args;
+  console.warn("[Auth failure]", {
+    endpoint,
+    status,
+    message,
+    emailDomain: getEmailDomainOnly(email),
+  });
+}
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
   let response: Response;
   try {
@@ -70,8 +93,9 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [resendNotice, setResendNotice] = useState<string | null>(null);
-  const [showResendConfirmation, setShowResendConfirmation] = useState(false);
+  const [showRecoveryActions, setShowRecoveryActions] = useState(false);
   const [needsConsent, setNeedsConsent] = useState(false);
   const [consentVersion, setConsentVersion] = useState<string | null>(null);
   const [isConsentSubmitting, setIsConsentSubmitting] = useState(false);
@@ -189,7 +213,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     e.preventDefault();
     setError(null);
     setResendNotice(null);
-    setShowResendConfirmation(false);
+    setShowRecoveryActions(false);
     const u = username.trim().toLowerCase();
     const p = password.trim();
     if (!u || !p) {
@@ -223,10 +247,25 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     } catch (signInError) {
       if (signInError instanceof HttpRequestError) {
         const rawError = String(signInError.message ?? "Sign in failed.");
+        logAuthFailureDev({
+          endpoint: signInError.path,
+          status: signInError.status,
+          message: rawError,
+          email: u,
+        });
+        const isInvalidCredentials =
+          signInError.status === 401 && rawError.toLowerCase().includes("invalid login credentials");
         const isUnconfirmed = rawError.toLowerCase().includes("email not confirmed");
+        if (isInvalidCredentials) {
+          setError(
+            "We couldn't sign you in. Please check your email and password. If you just created your account, confirm your email first or reset your password.",
+          );
+          setShowRecoveryActions(true);
+          return;
+        }
         if (isUnconfirmed) {
           setError("Please confirm your email before signing in. Check your inbox for the confirmation link.");
-          setShowResendConfirmation(true);
+          setShowRecoveryActions(true);
           return;
         }
       }
@@ -240,7 +279,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     e.preventDefault();
     setError(null);
     setResendNotice(null);
-    setShowResendConfirmation(false);
+    setShowRecoveryActions(false);
     const eVal = email.trim().toLowerCase();
     const p = password.trim();
     if (!eVal || !p) {
@@ -271,11 +310,11 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
           setMode("signin");
           setPassword("");
           setError("Account created. Please check your email to confirm your account, then sign in.");
-          setShowResendConfirmation(true);
+          setShowRecoveryActions(true);
           return;
         }
         setError("Sign up completed, but no session is available yet. Please confirm your email and sign in.");
-        setShowResendConfirmation(true);
+        setShowRecoveryActions(true);
         return;
       }
       setAccessToken(accessToken);
@@ -289,6 +328,28 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setError(formatRequestError(signUpError, "/api/auth/signup", "Could not reach the backend. Try again."));
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleResetPassword() {
+    const targetEmail = username.trim().toLowerCase();
+    setResendNotice(null);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
+      setResendNotice("Enter a valid email address to reset your password.");
+      return;
+    }
+    setIsResettingPassword(true);
+    try {
+      await fetchJson("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: targetEmail }),
+      });
+      setResendNotice("Password reset email sent. Please check your inbox.");
+    } catch (resetError) {
+      setResendNotice(formatRequestError(resetError, "/api/auth/reset-password", "Could not reach the backend. Try again."));
+    } finally {
+      setIsResettingPassword(false);
     }
   }
 
@@ -389,7 +450,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                 setMode("signin");
                 setError(null);
                 setResendNotice(null);
-                setShowResendConfirmation(false);
+                setShowRecoveryActions(false);
               }}
               className={`flex-1 py-4 text-sm font-semibold transition-all ${
                 mode === "signin"
@@ -405,7 +466,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                 setMode("signup");
                 setError(null);
                 setResendNotice(null);
-                setShowResendConfirmation(false);
+                setShowRecoveryActions(false);
               }}
               className={`flex-1 py-4 text-sm font-semibold transition-all ${
                 mode === "signup"
@@ -453,15 +514,25 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                     {error}
                   </p>
                 )}
-                {showResendConfirmation ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleResendConfirmation()}
-                    disabled={isResendingConfirmation}
-                    className="w-full py-2.5 rounded-lg border border-uri-keaney/40 text-uri-keaney text-xs font-semibold hover:bg-uri-keaney/10 disabled:opacity-60"
-                  >
-                    {isResendingConfirmation ? "Resending..." : "Resend confirmation email"}
-                  </button>
+                {showRecoveryActions ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleResendConfirmation()}
+                      disabled={isResendingConfirmation}
+                      className="w-full py-2.5 rounded-lg border border-uri-keaney/40 text-uri-keaney text-xs font-semibold hover:bg-uri-keaney/10 disabled:opacity-60"
+                    >
+                      {isResendingConfirmation ? "Resending..." : "Resend confirmation email"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleResetPassword()}
+                      disabled={isResettingPassword}
+                      className="w-full py-2.5 rounded-lg border border-white/25 text-white text-xs font-semibold hover:bg-white/10 disabled:opacity-60"
+                    >
+                      {isResettingPassword ? "Sending..." : "Reset password"}
+                    </button>
+                  </div>
                 ) : null}
                 {resendNotice ? <p className="text-xs text-white/70">{resendNotice}</p> : null}
                 <button
@@ -507,7 +578,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                     {error}
                   </p>
                 )}
-                {showResendConfirmation ? (
+                {showRecoveryActions ? (
                   <button
                     type="button"
                     onClick={() => void handleResendConfirmation()}

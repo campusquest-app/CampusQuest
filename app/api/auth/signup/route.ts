@@ -8,21 +8,48 @@ export async function POST(request: Request) {
   try {
     const input = await readJson(request, authSignupSchema);
     const supabase = createPublicClient();
+    const isDev = process.env.NODE_ENV !== "production";
 
     const { data, error } = await supabase.auth.signUp({
       email: input.email,
       password: input.password,
       options: input.displayName ? { data: { display_name: input.displayName } } : undefined,
     });
-    if (error || !data.user) {
-      throw new ApiError(400, error?.message ?? "Sign up failed.", "SIGNUP_FAILED");
+    if (error) {
+      throw new ApiError(400, error.message, "SIGNUP_FAILED");
+    }
+    if (!data.user?.id) {
+      throw new ApiError(
+        400,
+        "We couldn't finish creating your account right now. Please try again in a moment.",
+        "SIGNUP_USER_MISSING",
+      );
     }
 
-    const player = await ensurePlayerSetup({
-      userId: data.user.id,
-      email: data.user.email,
-      displayName: input.displayName,
-    });
+    let player;
+    try {
+      player = await ensurePlayerSetup({
+        userId: data.user.id,
+        email: data.user.email,
+        displayName: input.displayName,
+      });
+    } catch (setupError) {
+      if (setupError instanceof ApiError) {
+        if (isDev) {
+          throw new ApiError(
+            400,
+            `Auth signup succeeded, but profile setup failed (${setupError.code ?? "PROFILE_SETUP_FAILED"}): ${setupError.message}`,
+            "SIGNUP_PROFILE_SETUP_FAILED",
+          );
+        }
+        throw new ApiError(
+          400,
+          "Your account was created, but profile setup is still finishing. Please sign in again shortly.",
+          "SIGNUP_PROFILE_SETUP_FAILED",
+        );
+      }
+      throw setupError;
+    }
 
     return ok(
       {
