@@ -1,11 +1,13 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { fetchAuthed, postAuthed, deleteAuthed } from "@/lib/client/dashboardApi";
 import { OrganizationAdminPortal } from "@/components/OrganizationAdminPortal";
 import {
   ORGANIZATION_REQUEST_CATEGORIES,
   ORGANIZATION_REQUEST_CATEGORY_LABELS,
+  organizationRequestCategoryLabel,
+  type OrganizationRequestCategory,
 } from "@/lib/organizationRequestCategories";
 
 type Organization = {
@@ -19,6 +21,7 @@ type Organization = {
   memberCount: number;
   followerCount: number;
   isFollowing: boolean;
+  myMembershipKind: "follower" | "member" | null;
   myRole: "owner" | "admin" | "member" | null;
   myMembershipStatus: "pending" | "approved" | "denied" | null;
   requiresApproval: boolean;
@@ -43,6 +46,9 @@ type RequestForm = {
   category: (typeof ORGANIZATION_REQUEST_CATEGORIES)[number] | "";
   logoUrl: string;
   contactLink: string;
+  /** UI only: when `url`, show URL field */
+  contactLinkMode: "none" | "url";
+  logoUrlMode: "none" | "url";
 };
 
 const emptyRequestForm: RequestForm = {
@@ -51,7 +57,24 @@ const emptyRequestForm: RequestForm = {
   category: "",
   logoUrl: "",
   contactLink: "",
+  contactLinkMode: "none",
+  logoUrlMode: "none",
 };
+
+/** Shared field chrome so selects, URL fields, and text areas match the org category dropdown. */
+const ORG_REQ_SELECT_CLASS =
+  "w-full appearance-none rounded-lg border border-white/20 bg-black/25 px-3 py-2.5 pr-10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-uri-keaney/40";
+const ORG_REQ_INPUT_CLASS =
+  "w-full rounded-lg border border-white/20 bg-black/25 px-3 py-2.5 text-sm text-white placeholder:text-white/45 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40";
+const ORG_REQ_TEXTAREA_CLASS = `${ORG_REQ_INPUT_CLASS} min-h-[5.5rem] resize-y`;
+
+function ChevronDownIcon() {
+  return (
+    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-white/45" aria-hidden>
+      ▾
+    </span>
+  );
+}
 
 export function OrganizationsHub({
   personalization,
@@ -64,9 +87,11 @@ export function OrganizationsHub({
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<"" | OrganizationRequestCategory>("");
   const [submitting, setSubmitting] = useState(false);
   const [reportingOrgId, setReportingOrgId] = useState<string | null>(null);
   const [form, setForm] = useState<RequestForm>(emptyRequestForm);
+  const [requestNewOrgOpen, setRequestNewOrgOpen] = useState(false);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(null);
   const [adminPortalOrg, setAdminPortalOrg] = useState<Organization | null>(null);
 
@@ -86,12 +111,13 @@ export function OrganizationsHub({
     void loadMyRequests();
   }, []);
 
-  async function loadOrganizations(nextQuery = query) {
+  async function loadOrganizations() {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (nextQuery.trim()) params.set("query", nextQuery.trim());
+      if (query.trim()) params.set("query", query.trim());
+      if (categoryFilter) params.set("category", categoryFilter);
       const data = await fetchAuthed<{ organizations: Organization[] }>(
         `/api/organizations${params.toString() ? `?${params.toString()}` : ""}`,
       );
@@ -105,11 +131,11 @@ export function OrganizationsHub({
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void loadOrganizations(query);
+      void loadOrganizations();
     }, 250);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [query, categoryFilter]);
 
   async function handleSubmitOrganizationRequest(event: FormEvent) {
     event.preventDefault();
@@ -126,11 +152,12 @@ export function OrganizationsHub({
         requestedCategory: form.category,
         description: form.description.trim(),
       };
-      if (form.logoUrl.trim()) payload.logoUrl = form.logoUrl.trim();
-      if (form.contactLink.trim()) payload.contactLink = form.contactLink.trim();
+      if (form.logoUrlMode === "url" && form.logoUrl.trim()) payload.logoUrl = form.logoUrl.trim();
+      if (form.contactLinkMode === "url" && form.contactLink.trim()) payload.contactLink = form.contactLink.trim();
       await postAuthed("/api/organizations/creation-requests", payload);
       setForm(emptyRequestForm);
-      await Promise.all([loadOrganizations(query), loadMyRequests()]);
+      setRequestNewOrgOpen(false);
+      await Promise.all([loadOrganizations(), loadMyRequests()]);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Could not submit request.");
     } finally {
@@ -148,17 +175,34 @@ export function OrganizationsHub({
     }
   }
 
+  async function syncModalOrgIfOpen(organizationId: string) {
+    try {
+      const data = await fetchAuthed<{ organization: Organization }>(`/api/organizations/${organizationId}`);
+      setActiveOrg((prev) => (prev?.id === organizationId ? data.organization : prev));
+    } catch {
+      /* modal state stays on previous snapshot */
+    }
+  }
+
   async function handleFollow(organizationId: string, role: "follower" | "member") {
     setError(null);
     try {
       await postAuthed(`/api/organizations/${organizationId}/follow`, { role });
-      await loadOrganizations(query);
-      if (activeOrg?.id === organizationId) {
-        const updated = organizations.find((org) => org.id === organizationId);
-        if (updated) setActiveOrg(updated);
-      }
+      await loadOrganizations();
+      await syncModalOrgIfOpen(organizationId);
     } catch (followError) {
       setError(followError instanceof Error ? followError.message : "Could not update organization follow.");
+    }
+  }
+
+  async function handleUnfollow(organizationId: string) {
+    setError(null);
+    try {
+      await deleteAuthed(`/api/organizations/${organizationId}/follow`);
+      await loadOrganizations();
+      await syncModalOrgIfOpen(organizationId);
+    } catch (unfollowError) {
+      setError(unfollowError instanceof Error ? unfollowError.message : "Could not unfollow organization.");
     }
   }
 
@@ -233,98 +277,237 @@ export function OrganizationsHub({
         <p className="text-xs text-white/55">
           Showing organizations in your verified campus community{personalization?.schoolName ? ` (${personalization.schoolName})` : ""}.
         </p>
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by name or description"
-          className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50"
-        />
-
-        <div className="border-t border-white/10 pt-3 space-y-2">
-          <h4 className="text-sm font-semibold text-white">Request New Organization</h4>
-          <p className="text-[11px] text-white/50">
-            Pilot safety: requests are reviewed before an org appears. You’ll get an in-app notification when your request is decided.
-          </p>
-          <form onSubmit={handleSubmitOrganizationRequest} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
+          <div className="min-w-0 flex-1 space-y-1">
+            <label htmlFor="org-hub-search" className="text-[11px] text-white/50">
+              Search
+            </label>
             <input
-              value={form.name}
-              onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-              placeholder="Requested organization name"
-              className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50 sm:col-span-2"
-              required
+              id="org-hub-search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Name or description"
+              className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50"
             />
-            <label className="sm:col-span-2 text-[11px] text-white/50">
-              <span className="sr-only">Category</span>
+          </div>
+          <div className="shrink-0 space-y-1 sm:w-52">
+            <label htmlFor="org-hub-category" className="text-[11px] text-white/50">
+              Category
+            </label>
+            <div className="relative">
               <select
-                value={form.category}
+                id="org-hub-category"
+                value={categoryFilter}
                 onChange={(event) =>
-                  setForm((prev) => ({ ...prev, category: event.target.value as RequestForm["category"] }))
+                  setCategoryFilter(event.target.value as "" | OrganizationRequestCategory)
                 }
-                className="mt-1 w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white"
-                required
+                className={ORG_REQ_SELECT_CLASS}
               >
-                <option value="">Select category…</option>
+                <option value="" className="bg-uri-navy text-white">
+                  All categories
+                </option>
                 {ORGANIZATION_REQUEST_CATEGORIES.map((c) => (
-                  <option key={c} value={c} className="bg-uri-navy">
+                  <option key={c} value={c} className="bg-uri-navy text-white">
                     {ORGANIZATION_REQUEST_CATEGORY_LABELS[c]}
                   </option>
                 ))}
               </select>
-            </label>
-            <input
-              value={form.contactLink}
-              onChange={(event) => setForm((prev) => ({ ...prev, contactLink: event.target.value }))}
-              placeholder="Contact link (optional, URL)"
-              className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50 sm:col-span-2"
-            />
-            <input
-              value={form.logoUrl}
-              onChange={(event) => setForm((prev) => ({ ...prev, logoUrl: event.target.value }))}
-              placeholder="Logo URL (optional)"
-              className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50 sm:col-span-2"
-            />
-            <textarea
-              value={form.description}
-              onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-              placeholder="Description"
-              rows={3}
-              className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50 sm:col-span-2"
-              required
-            />
+              <ChevronDownIcon />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-white/10 pt-3">
+          <button
+            type="button"
+            id="request-new-org-trigger"
+            aria-expanded={requestNewOrgOpen}
+            aria-controls="request-new-org-panel"
+            onClick={() => setRequestNewOrgOpen((open) => !open)}
+            className={`flex w-full items-center justify-between gap-2 rounded-lg border border-white/20 bg-black/25 px-3 py-2.5 text-left transition-colors hover:border-uri-keaney/35 hover:bg-black/35 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 ${requestNewOrgOpen ? "border-uri-keaney/40" : ""}`}
+          >
+            <span className="text-sm font-semibold text-white">Request New Organization</span>
+            <span
+              className={`shrink-0 text-xs text-white/50 transition-transform ${requestNewOrgOpen ? "-rotate-180" : ""}`}
+              aria-hidden
+            >
+              ▾
+            </span>
+          </button>
+
+          <div
+            id="request-new-org-panel"
+            role="region"
+            aria-labelledby="request-new-org-trigger"
+            hidden={!requestNewOrgOpen}
+            className="mt-3 space-y-2"
+          >
+            <p className="text-[11px] text-white/50">
+              Pilot safety: requests are reviewed before an org appears. You’ll get an in-app notification when your request is
+              decided.
+            </p>
+          <form onSubmit={handleSubmitOrganizationRequest} className="flex flex-col gap-3">
+            <div className="space-y-1">
+              <label htmlFor="org-req-name" className="text-[11px] text-white/50">
+                Organization name
+              </label>
+              <input
+                id="org-req-name"
+                value={form.name}
+                onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+                placeholder="e.g. URI Chess Club"
+                className={ORG_REQ_INPUT_CLASS}
+                required
+                autoComplete="organization"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <span id="org-req-category-label" className="text-[11px] text-white/50">
+                Category
+              </span>
+              <div className="relative">
+                <select
+                  id="org-req-category"
+                  aria-labelledby="org-req-category-label"
+                  value={form.category}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, category: event.target.value as RequestForm["category"] }))
+                  }
+                  className={ORG_REQ_SELECT_CLASS}
+                  required
+                >
+                  <option value="">Select category…</option>
+                  {ORGANIZATION_REQUEST_CATEGORIES.map((c) => (
+                    <option key={c} value={c} className="bg-uri-navy text-white">
+                      {ORGANIZATION_REQUEST_CATEGORY_LABELS[c]}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDownIcon />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <span id="org-req-contact-label" className="text-[11px] text-white/50">
+                Contact link
+              </span>
+              <div className="relative">
+                <select
+                  id="org-req-contact-mode"
+                  aria-labelledby="org-req-contact-label"
+                  value={form.contactLinkMode}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      contactLinkMode: event.target.value as RequestForm["contactLinkMode"],
+                      ...(event.target.value === "none" ? { contactLink: "" } : {}),
+                    }))
+                  }
+                  className={ORG_REQ_SELECT_CLASS}
+                >
+                  <option value="none">No contact link</option>
+                  <option value="url">Add a website or social URL…</option>
+                </select>
+                <ChevronDownIcon />
+              </div>
+              {form.contactLinkMode === "url" ? (
+                <input
+                  value={form.contactLink}
+                  onChange={(event) => setForm((prev) => ({ ...prev, contactLink: event.target.value }))}
+                  placeholder="https://…"
+                  type="url"
+                  className={ORG_REQ_INPUT_CLASS}
+                  inputMode="url"
+                />
+              ) : null}
+            </div>
+
+            <div className="space-y-1">
+              <span id="org-req-logo-label" className="text-[11px] text-white/50">
+                Logo
+              </span>
+              <div className="relative">
+                <select
+                  id="org-req-logo-mode"
+                  aria-labelledby="org-req-logo-label"
+                  value={form.logoUrlMode}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      logoUrlMode: event.target.value as RequestForm["logoUrlMode"],
+                      ...(event.target.value === "none" ? { logoUrl: "" } : {}),
+                    }))
+                  }
+                  className={ORG_REQ_SELECT_CLASS}
+                >
+                  <option value="none">No logo</option>
+                  <option value="url">Add logo image URL…</option>
+                </select>
+                <ChevronDownIcon />
+              </div>
+              {form.logoUrlMode === "url" ? (
+                <input
+                  value={form.logoUrl}
+                  onChange={(event) => setForm((prev) => ({ ...prev, logoUrl: event.target.value }))}
+                  placeholder="https://… (image URL)"
+                  type="url"
+                  className={ORG_REQ_INPUT_CLASS}
+                  inputMode="url"
+                />
+              ) : null}
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="org-req-description" className="text-[11px] text-white/50">
+                Description
+              </label>
+              <textarea
+                id="org-req-description"
+                value={form.description}
+                onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+                placeholder="What does this organization do? Who is it for?"
+                rows={4}
+                className={ORG_REQ_TEXTAREA_CLASS}
+                required
+              />
+            </div>
+
             <button
               type="submit"
               disabled={submitting}
-              className="sm:col-span-2 rounded-lg bg-uri-keaney text-uri-navy font-semibold py-2.5 text-sm disabled:opacity-60"
+              className="rounded-lg bg-uri-keaney text-uri-navy font-semibold py-2.5 text-sm disabled:opacity-60"
             >
               {submitting ? "Submitting…" : "Submit Organization Request"}
             </button>
           </form>
-        </div>
-      </div>
 
-      <div className="card p-4 space-y-2">
-        <h4 className="text-sm font-semibold text-white">Your organization requests</h4>
-        {requestsLoading ? (
-          <p className="text-xs text-white/50">Loading…</p>
-        ) : myRequests.length === 0 ? (
-          <p className="text-xs text-white/50">No requests yet.</p>
-        ) : (
-          <ul className="space-y-3">
-            {myRequests.map((r) => (
-              <li key={r.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-                <div className="flex justify-between gap-2">
-                  <p className="text-sm font-medium text-white">{r.requestedName}</p>
-                  <span className="text-[10px] uppercase tracking-wide text-white/45">{r.status}</span>
-                </div>
-                <p className="text-[11px] text-white/45 mt-0.5">
-                  {r.schoolName} · {ORGANIZATION_REQUEST_CATEGORY_LABELS[r.requestedCategory as keyof typeof ORGANIZATION_REQUEST_CATEGORY_LABELS] ?? r.requestedCategory}
-                </p>
-                <p className="text-[11px] text-white/35">Submitted {new Date(r.createdAt).toLocaleString()}</p>
-                {requestStatusBlock(r)}
-              </li>
-            ))}
-          </ul>
-        )}
+            <div className="border-t border-white/15 pt-4 mt-4 space-y-2">
+              <h4 className="text-sm font-semibold text-white">Your organization requests</h4>
+              {requestsLoading ? (
+                <p className="text-xs text-white/50">Loading…</p>
+              ) : myRequests.length === 0 ? (
+                <p className="text-xs text-white/50">No requests yet.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {myRequests.map((r) => (
+                    <li key={r.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                      <div className="flex justify-between gap-2">
+                        <p className="text-sm font-medium text-white">{r.requestedName}</p>
+                        <span className="text-[10px] uppercase tracking-wide text-white/45">{r.status}</span>
+                      </div>
+                      <p className="text-[11px] text-white/45 mt-0.5">
+                        {r.schoolName} · {organizationRequestCategoryLabel(r.requestedCategory)}
+                      </p>
+                      <p className="text-[11px] text-white/35">Submitted {new Date(r.createdAt).toLocaleString()}</p>
+                      {requestStatusBlock(r)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {error ? <div className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</div> : null}
@@ -334,7 +517,13 @@ export function OrganizationsHub({
           <div className="h-20 rounded-xl bg-white/10 animate-pulse" />
         </div>
       ) : null}
-      {!loading && organizations.length === 0 ? <p className="text-sm text-white/60">No organizations found yet.</p> : null}
+      {!loading && organizations.length === 0 ? (
+        <p className="text-sm text-white/60">
+          {query.trim() || categoryFilter
+            ? "No organizations match your search or category."
+            : "No organizations found yet."}
+        </p>
+      ) : null}
 
       <div className="space-y-3">
         {prioritizedOrganizations.map((organization) => (
@@ -343,7 +532,7 @@ export function OrganizationsHub({
               <div>
                 <h4 className="text-white font-semibold">{organization.name}</h4>
                 <p className="text-xs text-white/60 mt-1">
-                  {organization.schoolName} · {organization.category}
+                  {organization.schoolName} · {organizationRequestCategoryLabel(organization.category)}
                 </p>
               </div>
               <span className="text-[11px] rounded-full border border-uri-keaney/35 px-2 py-0.5 text-uri-keaney">
@@ -355,17 +544,23 @@ export function OrganizationsHub({
               <p className="text-xs text-amber-200">This organization is temporarily frozen by moderation.</p>
             ) : null}
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void handleFollow(organization.id, "follower")}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${
-                  organization.isFollowing
-                    ? "border-uri-keaney/50 text-uri-keaney bg-uri-keaney/15"
-                    : "border-white/20 text-white/80 hover:bg-white/10"
-                }`}
-              >
-                {organization.isFollowing ? "Following" : "Follow"}
-              </button>
+              {organization.myMembershipStatus === "approved" && organization.myMembershipKind === "member" ? null : (
+                <button
+                  type="button"
+                  onClick={() =>
+                    organization.myMembershipKind === "follower"
+                      ? void handleUnfollow(organization.id)
+                      : void handleFollow(organization.id, "follower")
+                  }
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${
+                    organization.myMembershipKind === "follower"
+                      ? "border-white/25 text-white/90 hover:bg-white/10"
+                      : "border-white/20 text-white/80 hover:bg-white/10"
+                  }`}
+                >
+                  {organization.myMembershipKind === "follower" ? "Unfollow" : "Follow"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => void handleFollow(organization.id, "member")}
@@ -422,7 +617,7 @@ export function OrganizationsHub({
             </div>
             <p className="text-sm text-white/75">{activeOrg.description}</p>
             <p className="text-xs text-white/65">
-              {activeOrg.schoolName} · {activeOrg.category} · {activeOrg.memberCount} members · {activeOrg.followerCount} followers
+              {activeOrg.schoolName} · {organizationRequestCategoryLabel(activeOrg.category)} · {activeOrg.memberCount} members · {activeOrg.followerCount} followers
             </p>
             {activeOrg.contactLink ? (
               <a

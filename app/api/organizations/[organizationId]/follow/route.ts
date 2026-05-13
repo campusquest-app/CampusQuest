@@ -1,6 +1,6 @@
 import { ZodError } from "zod";
 import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
-import { followOrganization } from "@/lib/server/eventsOrganizations";
+import { followOrganization, unfollowOrganization } from "@/lib/server/eventsOrganizations";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
@@ -26,6 +26,25 @@ export async function POST(request: Request, context: { params: { organizationId
     if (error instanceof ZodError) {
       return fail(new ApiError(400, error.issues[0]?.message ?? "Invalid payload.", "VALIDATION_ERROR"));
     }
+    return fail(error);
+  }
+}
+
+export async function DELETE(request: Request, context: { params: { organizationId: string } }) {
+  try {
+    const auth = await requireAuthUser(request);
+    await assertAccountCanSocialize(auth.userClient as any, auth.user.id);
+    enforceRateLimit({ userId: auth.user.id, routeKey: "organizations:unfollow", limit: 40, windowMs: 60_000 });
+    const result = await unfollowOrganization({
+      userClient: auth.userClient as any,
+      userId: auth.user.id,
+      userEmail: auth.user.email ?? null,
+      emailConfirmedAt: (auth.user as any).email_confirmed_at ?? null,
+      confirmedAt: (auth.user as any).confirmed_at ?? null,
+      organizationId: context.params.organizationId,
+    });
+    return ok(result);
+  } catch (error) {
     return fail(error);
   }
 }

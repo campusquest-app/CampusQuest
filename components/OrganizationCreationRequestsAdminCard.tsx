@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ApiRequestError, fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
-import { ORGANIZATION_REQUEST_CATEGORY_LABELS } from "@/lib/organizationRequestCategories";
+import { organizationRequestCategoryLabel } from "@/lib/organizationRequestCategories";
 
 type OrgCreationRequest = {
   id: string;
@@ -76,10 +76,6 @@ export function OrganizationCreationRequestsAdminCard() {
     }
   }
 
-  function categoryLabel(cat: string) {
-    return ORGANIZATION_REQUEST_CATEGORY_LABELS[cat as keyof typeof ORGANIZATION_REQUEST_CATEGORY_LABELS] ?? cat;
-  }
-
   return (
     <div className="card p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
@@ -131,7 +127,7 @@ export function OrganizationCreationRequestsAdminCard() {
                 <span className="text-white/40">({r.schoolDomain})</span>
               </p>
               <p className="text-xs text-white/70">
-                <span className="text-white/45">Category:</span> {categoryLabel(r.requestedCategory)}
+                <span className="text-white/45">Category:</span> {organizationRequestCategoryLabel(r.requestedCategory)}
               </p>
               <p className="text-xs text-white/75">{r.description}</p>
               {r.contactLink ? (

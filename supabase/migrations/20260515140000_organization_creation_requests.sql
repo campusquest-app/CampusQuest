@@ -1,4 +1,5 @@
 -- Admin-approved organization creation workflow (students submit requests).
+-- Idempotent: `create table/index if not exists`, `drop policy/trigger if exists`, `create or replace function`.
 
 create table if not exists public.organization_creation_requests (
   id uuid primary key default gen_random_uuid(),

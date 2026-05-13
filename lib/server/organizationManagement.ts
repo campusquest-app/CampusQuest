@@ -294,6 +294,41 @@ export async function setOrganizationFollow(args: {
   return { id: data.id, role: "follower" as const };
 }
 
+export async function removeOrganizationFollowerMembership(args: {
+  userClient: SupabaseClientLike;
+  organizationId: string;
+  userId: string;
+}) {
+  const { userClient, organizationId, userId } = args;
+  await assertAccountCanSocialize(userClient, userId);
+  const { data: row, error } = await userClient
+    .from("organization_members")
+    .select("id, membership_kind, status")
+    .eq("organization_id", organizationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new ApiError(400, error.message, "ORGANIZATION_MEMBERSHIP_LOOKUP_FAILED");
+  if (!row) throw new ApiError(404, "You are not following this organization.", "ORGANIZATION_NOT_FOLLOWING");
+  const status = row.status ?? "approved";
+  if (status !== "approved") {
+    throw new ApiError(400, "Organization membership is not active.", "ORGANIZATION_MEMBERSHIP_INACTIVE");
+  }
+  if ((row.membership_kind ?? "member") !== "follower") {
+    throw new ApiError(
+      400,
+      "You are a member of this organization. Leave from your member tools if available.",
+      "ORGANIZATION_UNFOLLOW_NOT_FOLLOWER",
+    );
+  }
+  const { error: deleteError } = await userClient
+    .from("organization_members")
+    .delete()
+    .eq("organization_id", organizationId)
+    .eq("user_id", userId);
+  if (deleteError) throw new ApiError(400, deleteError.message, "ORGANIZATION_UNFOLLOW_FAILED");
+  return { unfollowed: true as const };
+}
+
 export async function reviewJoinRequest(args: {
   userClient: SupabaseClientLike;
   organizationId: string;

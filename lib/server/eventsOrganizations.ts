@@ -2,7 +2,11 @@ import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
 import { isAdminEmail } from "@/lib/server/adminAuth";
 import { ApiError } from "@/lib/server/http";
 import { createNotificationsBulk, createNotification } from "@/lib/server/notifications";
-import { requestOrganizationJoin, setOrganizationFollow } from "@/lib/server/organizationManagement";
+import {
+  removeOrganizationFollowerMembership,
+  requestOrganizationJoin,
+  setOrganizationFollow,
+} from "@/lib/server/organizationManagement";
 import { requireVerifiedSchoolForCoreAccess } from "@/lib/server/schoolVerification";
 import { createAdminClient } from "@/lib/server/supabase";
 
@@ -471,6 +475,7 @@ export async function listOrganizations(args: {
   const membershipMap = new Map<string, boolean>();
   const myRoleByOrg = new Map<string, string>();
   const myMembershipStatusByOrg = new Map<string, string>();
+  const myMembershipKindByOrg = new Map<string, "follower" | "member">();
   for (const row of members ?? []) {
     const status = row.status ?? "approved";
     if (status === "approved") {
@@ -484,6 +489,12 @@ export async function listOrganizations(args: {
       membershipMap.set(row.organization_id, status === "approved");
       myRoleByOrg.set(row.organization_id, row.org_role ?? row.role ?? "member");
       myMembershipStatusByOrg.set(row.organization_id, status);
+      if (status === "approved") {
+        myMembershipKindByOrg.set(
+          row.organization_id,
+          (row.membership_kind ?? "member") === "follower" ? "follower" : "member",
+        );
+      }
     }
   }
   const eventsByOrg = new Map<string, any[]>();
@@ -510,6 +521,7 @@ export async function listOrganizations(args: {
     memberCount: memberCounts.get(row.id) ?? 0,
     followerCount: followerCounts.get(row.id) ?? 0,
     isFollowing: Boolean(membershipMap.get(row.id)),
+    myMembershipKind: myMembershipKindByOrg.get(row.id) ?? null,
     myRole: myRoleByOrg.get(row.id) ?? null,
     myMembershipStatus: myMembershipStatusByOrg.get(row.id) ?? null,
     requiresApproval: Boolean((row as any).require_join_approval),
@@ -717,4 +729,35 @@ export async function followOrganization(args: {
     return setOrganizationFollow({ userClient, organizationId, userId });
   }
   return requestOrganizationJoin({ userClient, organizationId, userId });
+}
+
+export async function unfollowOrganization(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  userEmail?: string | null;
+  emailConfirmedAt?: string | null;
+  confirmedAt?: string | null;
+  organizationId: string;
+}) {
+  const { userClient, userId, userEmail, emailConfirmedAt, confirmedAt, organizationId } = args;
+  const school = await requireVerifiedSchoolForCoreAccess({
+    userClient,
+    user: {
+      id: userId,
+      email: userEmail ?? null,
+      email_confirmed_at: emailConfirmedAt ?? null,
+      confirmed_at: confirmedAt ?? null,
+    },
+  });
+  const { data: org, error: orgError } = await userClient
+    .from("student_organizations")
+    .select("id, school_domain")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (orgError) throw new ApiError(400, orgError.message, "ORGANIZATION_LOOKUP_FAILED");
+  if (!org) throw new ApiError(404, "Organization not found.", "ORGANIZATION_NOT_FOUND");
+  if (org.school_domain !== school.schoolDomain) {
+    throw new ApiError(403, "This organization is outside your campus community.", "CAMPUS_SCOPE_RESTRICTED");
+  }
+  return removeOrganizationFollowerMembership({ userClient, organizationId, userId });
 }
