@@ -4,10 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiRequestError, fetchAuthed } from "@/lib/client/dashboardApi";
 import { AdminAuditLogsCard } from "@/components/AdminAuditLogsCard";
 import { AppealsModerationCard } from "@/components/AppealsModerationCard";
+import { BackendDashboardPreview } from "@/components/BackendDashboardPreview";
 import { CampusContentModerationCard } from "@/components/CampusContentModerationCard";
 import { LegalPolicyVersionCard } from "@/components/LegalPolicyVersionCard";
 import { ModerationDashboardCard } from "@/components/ModerationDashboardCard";
 import { OrganizationModerationCard } from "@/components/OrganizationModerationCard";
+import { OrganizationCreationRequestsAdminCard } from "@/components/OrganizationCreationRequestsAdminCard";
 import { PilotAnalyticsCard } from "@/components/PilotAnalyticsCard";
 import { UserSafetyManagementCard } from "@/components/UserSafetyManagementCard";
 
@@ -95,11 +97,16 @@ export function InternalAdminDashboard() {
         <ModerationDashboardCard />
         <CampusContentModerationCard />
         <OrganizationModerationCard />
+        <OrganizationCreationRequestsAdminCard />
         <UserSafetyManagementCard />
         <AppealsModerationCard />
         <PilotAnalyticsCard />
         <LegalPolicyVersionCard />
         <AdminAuditLogsCard />
+        <p className="text-xs text-white/50">
+          Backend preview below uses your signed-in admin session (same APIs as the student app). For rollout checks only.
+        </p>
+        <BackendDashboardPreview />
       </div>
     </main>
   );

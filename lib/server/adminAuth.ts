@@ -15,8 +15,20 @@ function listAdminEmails() {
     .filter(Boolean);
 }
 
-function isVerifiedEmailUser(user: { email_confirmed_at?: string | null; confirmed_at?: string | null }) {
+export function isAuthEmailConfirmed(user: { email_confirmed_at?: string | null; confirmed_at?: string | null }) {
   return Boolean(user.email_confirmed_at ?? user.confirmed_at);
+}
+
+/** True when email is verified and listed in `MODERATION_ADMIN_EMAILS`; used for internal tooling auth and moderator campus-eligibility shortcuts. */
+export function userHasModerationAdminAccess(user: {
+  email?: string | null;
+  email_confirmed_at?: string | null;
+  confirmed_at?: string | null;
+}): boolean {
+  const email = user.email?.trim();
+  if (!email) return false;
+  if (!isAuthEmailConfirmed(user)) return false;
+  return isAdminEmail(email);
 }
 
 export function isAdminEmail(email: string): boolean {
@@ -37,7 +49,7 @@ export async function requireAdminUser(request?: Request): Promise<AuthedUser & 
   if (!email) {
     throw new ApiError(401, "Unauthorized.", "UNAUTHORIZED");
   }
-  if (!isVerifiedEmailUser(auth.user)) {
+  if (!isAuthEmailConfirmed(auth.user)) {
     throw new ApiError(401, "Unauthorized.", "UNAUTHORIZED");
   }
   if (!isAdminEmail(email)) {

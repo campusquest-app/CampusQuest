@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:onboarding:get", limit: 60, windowMs: 60_000 });
     const { data, error } = await auth.userClient
       .from("user_onboarding_preferences")
-      .select("school_name, interests, discovery_focus, completed_at")
+      .select("school_name, interests, discovery_focus, major, completed_at")
       .eq("user_id", auth.user.id)
       .maybeSingle();
     if (error) throw new ApiError(400, error.message, "ONBOARDING_PREFS_FETCH_FAILED");
@@ -21,6 +21,7 @@ export async function GET(request: Request) {
             schoolName: data.school_name,
             interests: Array.isArray(data.interests) ? data.interests : [],
             discoveryFocus: Array.isArray(data.discovery_focus) ? data.discovery_focus : [],
+            major: data.major ?? null,
             completedAt: data.completed_at,
           }
         : null,
@@ -35,6 +36,8 @@ export async function POST(request: Request) {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:onboarding:post", limit: 20, windowMs: 60_000 });
     const input = await readJson(request, onboardingPreferencesSchema);
+    const majorTrimmed = typeof input.major === "string" && input.major.trim().length > 0 ? input.major.trim() : null;
+
     const { data, error } = await auth.userClient
       .from("user_onboarding_preferences")
       .upsert(
@@ -43,20 +46,44 @@ export async function POST(request: Request) {
           school_name: input.schoolName,
           interests: input.interests,
           discovery_focus: input.discoveryFocus,
+          major: majorTrimmed,
           completed_at: new Date().toISOString(),
         },
         { onConflict: "user_id" },
       )
-      .select("school_name, interests, discovery_focus, completed_at")
+      .select("school_name, interests, discovery_focus, major, completed_at")
       .single();
     if (error || !data) {
       throw new ApiError(400, error?.message ?? "Could not save onboarding preferences.", "ONBOARDING_PREFS_SAVE_FAILED");
     }
+
+    const { data: profileRow, error: profileErr } = await auth.userClient
+      .from("profiles")
+      .select("onboarding_character_completed")
+      .eq("id", auth.user.id)
+      .single();
+    if (profileErr || !profileRow) {
+      throw new ApiError(400, profileErr?.message ?? "Could not verify profile for onboarding.", "PROFILE_FETCH_FAILED");
+    }
+    if (profileRow.onboarding_character_completed) {
+      const { error: doneErr } = await auth.userClient
+        .from("profiles")
+        .update({
+          onboarding_completed: true,
+          onboarding_completed_at: new Date().toISOString(),
+        })
+        .eq("id", auth.user.id);
+      if (doneErr) {
+        throw new ApiError(400, doneErr.message, "ONBOARDING_COMPLETE_UPDATE_FAILED");
+      }
+    }
+
     return ok({
       preferences: {
         schoolName: data.school_name,
         interests: Array.isArray(data.interests) ? data.interests : [],
         discoveryFocus: Array.isArray(data.discovery_focus) ? data.discovery_focus : [],
+        major: data.major ?? null,
         completedAt: data.completed_at,
       },
     });

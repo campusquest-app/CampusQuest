@@ -17,6 +17,8 @@ Confirm your admin email is listed in `MODERATION_ADMIN_EMAILS` (in `.env.local`
 
 Then sign in normally through the app UI.
 
+Listed moderators **do not** need a `@uri.edu` address: pilot campus features (events, clubs, Friends, inbox) resolve as campus-eligible, scoped like the pilot school. Internal tooling (`/internal/admin`, `/internal/moderation`, `/api/internal/admin/*`) still requires `MODERATION_ADMIN_EMAILS` plus authenticated, confirmed email.
+
 ## 2) Visit admin pages
 
 Open:

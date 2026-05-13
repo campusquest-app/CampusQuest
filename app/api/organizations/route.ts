@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
+import { isAdminEmail } from "@/lib/server/adminAuth";
 import { createOrganization, listOrganizations } from "@/lib/server/eventsOrganizations";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
@@ -32,6 +33,15 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const auth = await requireAuthUser(request);
+    if (!isAdminEmail(auth.user.email ?? "")) {
+      return fail(
+        new ApiError(
+          403,
+          "Submit an organization request for admin review from the Organizations tab.",
+          "ORG_CREATE_STUDENT_DISABLED",
+        ),
+      );
+    }
     await assertAccountCanSocialize(auth.userClient as any, auth.user.id);
     enforceRateLimit({ userId: auth.user.id, routeKey: "organizations:create", limit: 20, windowMs: 60_000 });
     const input = await readJson(request, createOrganizationSchema);

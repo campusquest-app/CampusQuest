@@ -5,10 +5,10 @@ import type { Character } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { DirectMessageThread } from "./DirectMessageThread";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { NotificationsCenter } from "./NotificationsCenter";
 
-type InboxSubTab = "notifications" | "messages";
+export type InboxSubTab = "messages" | "notifications";
 
-const STORAGE_STARRED_NOTIFICATIONS = "campusquest_inbox_starred_notifications";
 const STORAGE_STARRED_MESSAGES = "campusquest_inbox_starred_messages";
 
 function loadStarredSet(key: string): Set<string> {
@@ -27,15 +27,6 @@ function saveStarredSet(key: string, set: Set<string>): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(key, JSON.stringify(Array.from(set)));
 }
-
-type NotificationItem = {
-  id: string;
-  type: string;
-  title: string;
-  body: string;
-  readAt: string | null;
-  createdAt: string;
-};
 
 type ConversationItem = {
   conversationId: string;
@@ -69,42 +60,32 @@ export function Inbox({
   onBack,
   onOpenDm,
   personalization,
+  subTab,
+  onSubTabChange,
+  onUnreadCountChange,
 }: {
   character: Character;
   onBack: () => void;
   onOpenDm?: (other: { userId: string; username: string; name: string; avatar: string }) => void;
   personalization?: { schoolName?: string; discoveryFocus?: string[] } | null;
+  subTab: InboxSubTab;
+  onSubTabChange: (tab: InboxSubTab) => void;
+  onUnreadCountChange?: (count: number) => void;
 }) {
-  const [subTab, setSubTab] = useState<InboxSubTab>("notifications");
   const [messageSearch, setMessageSearch] = useState("");
   const [dmWith, setDmWith] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
   const [connectionUsername, setConnectionUsername] = useState("");
   const [messageLoading, setMessageLoading] = useState(false);
-  const [notificationLoading, setNotificationLoading] = useState(false);
   const [messageError, setMessageError] = useState<string | null>(null);
-  const [notificationError, setNotificationError] = useState<string | null>(null);
   const [sendingRequest, setSendingRequest] = useState(false);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<IncomingConnectionRequest[]>([]);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [starredNotifications, setStarredNotifications] = useState<Set<string>>(() => loadStarredSet(STORAGE_STARRED_NOTIFICATIONS));
   const [starredMessages, setStarredMessages] = useState<Set<string>>(() => loadStarredSet(STORAGE_STARRED_MESSAGES));
 
-  useEffect(() => {
-    saveStarredSet(STORAGE_STARRED_NOTIFICATIONS, starredNotifications);
-  }, [starredNotifications]);
   useEffect(() => {
     saveStarredSet(STORAGE_STARRED_MESSAGES, starredMessages);
   }, [starredMessages]);
 
-  const toggleStarNotification = useCallback((id: string) => {
-    setStarredNotifications((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
   const toggleStarMessage = useCallback((id: string) => {
     setStarredMessages((prev) => {
       const next = new Set(prev);
@@ -113,15 +94,6 @@ export function Inbox({
       return next;
     });
   }, []);
-
-  const sortedNotifications = useMemo(() => {
-    return [...notifications].sort((a, b) => {
-      const aStar = starredNotifications.has(a.id) ? 0 : 1;
-      const bStar = starredNotifications.has(b.id) ? 0 : 1;
-      if (aStar !== bStar) return aStar - bStar;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-  }, [notifications, starredNotifications]);
 
   const sortedMessages = useMemo(() => {
     return [...conversations].sort((a, b) => {
@@ -169,27 +141,6 @@ export function Inbox({
       void loadMessageCenter();
     }
   }, [subTab, loadMessageCenter]);
-
-  useEffect(() => {
-    if (subTab !== "notifications") return;
-    let cancelled = false;
-    async function loadNotifications() {
-      setNotificationLoading(true);
-      setNotificationError(null);
-      try {
-        const payload = await fetchAuthed<{ notifications: NotificationItem[] }>("/api/notifications?limit=50");
-        if (!cancelled) setNotifications(payload.notifications ?? []);
-      } catch (loadError) {
-        if (!cancelled) setNotificationError(loadError instanceof Error ? loadError.message : "Could not load notifications.");
-      } finally {
-        if (!cancelled) setNotificationLoading(false);
-      }
-    }
-    void loadNotifications();
-    return () => {
-      cancelled = true;
-    };
-  }, [subTab]);
 
   function handleOpenDm(userId: string, username: string, name: string, avatar: string) {
     if (onOpenDm) {
@@ -246,22 +197,11 @@ export function Inbox({
         <h2 className="font-display font-bold text-lg text-white">Inbox</h2>
       </div>
 
-      {/* Sub-tabs */}
+      {/* Sub-tabs: Messages first, then unified notifications */}
       <div className="flex rounded-xl border border-white/15 bg-white/5 p-1 mb-4">
         <button
           type="button"
-          onClick={() => setSubTab("notifications")}
-          className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-            subTab === "notifications"
-              ? "bg-uri-keaney/25 text-uri-keaney border border-uri-keaney/40"
-              : "text-white/70 hover:text-white border border-transparent"
-          }`}
-        >
-          Notifications
-        </button>
-        <button
-          type="button"
-          onClick={() => setSubTab("messages")}
+          onClick={() => onSubTabChange("messages")}
           className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
             subTab === "messages"
               ? "bg-uri-keaney/25 text-uri-keaney border border-uri-keaney/40"
@@ -270,43 +210,27 @@ export function Inbox({
         >
           Messages
         </button>
+        <button
+          type="button"
+          onClick={() => onSubTabChange("notifications")}
+          className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+            subTab === "notifications"
+              ? "bg-uri-keaney/25 text-uri-keaney border border-uri-keaney/40"
+              : "text-white/70 hover:text-white border border-transparent"
+          }`}
+        >
+          Notifications
+        </button>
       </div>
 
       {/* Content */}
       <div className="flex-1 card overflow-hidden p-0">
         {subTab === "notifications" && (
-          <ul className="divide-y divide-white/10 max-h-[50vh] overflow-y-auto">
-            {notificationLoading ? (
-              <li className="px-4 py-10 text-center text-sm text-white/55">Loading notifications...</li>
-            ) : null}
-            {!notificationLoading && notificationError ? (
-              <li className="px-4 py-4 text-xs text-rose-200">{notificationError}</li>
-            ) : null}
-            {!notificationLoading && !notificationError && sortedNotifications.length === 0 ? (
-              <li className="px-4 py-10 text-center text-sm text-white/55">No notifications yet. We’ll let you know when something important happens.</li>
-            ) : null}
-            {sortedNotifications.map((n) => (
-              <li key={n.id} className="p-4 hover:bg-white/[0.04] transition-colors flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-xl flex-shrink-0">
-                  {n.type.includes("event") ? "📅" : n.type.includes("message") ? "💬" : "🔔"}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white text-sm">{n.title}</p>
-                  <p className="text-white/70 text-sm mt-0.5 line-clamp-2">{n.body}</p>
-                  <p className="text-white/40 text-xs mt-1">{new Date(n.createdAt).toLocaleString()}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleStarNotification(n.id); }}
-                  className={`flex-shrink-0 p-2 rounded-lg transition-colors ${starredNotifications.has(n.id) ? "text-uri-gold" : "text-white/50 hover:text-uri-gold"} hover:bg-uri-gold/10`}
-                  aria-label={starredNotifications.has(n.id) ? "Unstar" : "Star"}
-                  title={starredNotifications.has(n.id) ? "Unstar" : "Star to keep at top"}
-                >
-                  {starredNotifications.has(n.id) ? "★" : "☆"}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <NotificationsCenter
+            embedded
+            onUnreadCountChange={onUnreadCountChange}
+            personalization={personalization}
+          />
         )}
 
         {subTab === "messages" && (

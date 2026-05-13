@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ORGANIZATION_REQUEST_CATEGORIES } from "@/lib/organizationRequestCategories";
 
 export const uuidSchema = z.string().uuid();
 
@@ -247,6 +248,21 @@ export const createOrganizationSchema = z.object({
   contactLink: z.string().trim().url().optional(),
 });
 
+export const organizationCreationRequestSchema = z.object({
+  requestedName: z.string().trim().min(2).max(120),
+  requestedCategory: z.string().refine(
+    (val) => (ORGANIZATION_REQUEST_CATEGORIES as readonly string[]).includes(val),
+    "Choose a category from the list.",
+  ),
+  description: z.string().trim().min(1).max(2000),
+  contactLink: z.union([z.literal(""), z.undefined(), z.null(), z.string().trim().url()]).optional(),
+  logoUrl: z.union([z.literal(""), z.undefined(), z.null(), z.string().trim().url()]).optional(),
+});
+
+export const organizationCreationRequestDenySchema = z.object({
+  adminReason: z.string().trim().max(1000).optional(),
+});
+
 export const updateOrganizationSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   description: z.string().trim().min(1).max(2000).optional(),
@@ -319,7 +335,33 @@ export const onboardingPreferencesSchema = z.object({
     .array(z.enum(["events", "organizations", "meet_students"]))
     .min(1)
     .max(3),
+  major: z.union([z.literal(""), z.string().trim().min(2).max(120)]).optional(),
 });
+
+export const patchMeProfileSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(60).optional(),
+    username: z.string().trim().min(3).max(24).regex(/^[a-z0-9_]+$/).optional(),
+    avatarCustomJson: z.string().trim().min(2).max(120_000).optional(),
+    characterClassId: z.string().trim().max(64).nullable().optional(),
+    starterWeapon: z.string().trim().max(64).nullable().optional(),
+    scholarGuildId: z.string().trim().max(64).nullable().optional(),
+    /** When true, server marks character onboarding saved (requires identity + avatar payload). */
+    characterOnboardingComplete: z.literal(true).optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.characterOnboardingComplete) {
+      if (!val.displayName) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "displayName is required to finish character setup." });
+      }
+      if (!val.username) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "username is required to finish character setup." });
+      }
+      if (!val.avatarCustomJson) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "avatarCustomJson is required to finish character setup." });
+      }
+    }
+  });
 
 export const verifySchoolEmailSchema = z.object({
   acknowledge: z.literal(true).optional(),

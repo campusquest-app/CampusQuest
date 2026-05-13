@@ -2,9 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiRequestError, fetchAuthed } from "@/lib/client/dashboardApi";
-import { AppealsModerationCard } from "@/components/AppealsModerationCard";
-import { LegalPolicyVersionCard } from "@/components/LegalPolicyVersionCard";
-import { ModerationDashboardCard } from "@/components/ModerationDashboardCard";
 
 type ProfileData = {
   id: string;
@@ -75,6 +72,10 @@ const EMPTY_STATE: PreviewState = {
   bosses: null,
 };
 
+/**
+ * Rolls up live `/api/me/*`, quests, leaderboard, inventory, bosses for internal QA.
+ * Intended only behind admin verification (see Internal Admin), not student dashboards.
+ */
 export function BackendDashboardPreview() {
   const [state, setState] = useState<PreviewState>(EMPTY_STATE);
   const [loading, setLoading] = useState(false);
@@ -139,11 +140,7 @@ export function BackendDashboardPreview() {
   const bossPreview = (state.bosses?.bosses ?? []).slice(0, 2);
 
   return (
-    <div className="space-y-4">
-      <AppealsModerationCard />
-      <ModerationDashboardCard />
-      <LegalPolicyVersionCard />
-      <section className="card p-4 sm:p-5 space-y-4">
+    <section className="card p-4 sm:p-5 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="font-display font-semibold text-white flex items-center gap-2">
@@ -261,7 +258,6 @@ export function BackendDashboardPreview() {
             </div>
           </div>
         )}
-      </section>
-    </div>
+    </section>
   );
 }

@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { createCharacter } from "@/lib/store";
+import { replaceLocalCharacter } from "@/lib/store";
+import { getAccessToken } from "@/lib/client/apiSession";
 import { getDefaultCustomAvatar, serializeAvatar } from "@/lib/avatarOptions";
 import { CHARACTER_CLASSES, getClassAvatarPreset, type CharacterClassId } from "@/lib/characterClasses";
 import { AvatarBuilder } from "./AvatarBuilder";
 import { AvatarDisplay } from "./AvatarDisplay";
+import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
+import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 
 const USERNAME_REGEX = /^[a-z0-9_]+$/;
 const USERNAME_MAX = 25;
@@ -21,7 +24,13 @@ function toUsername(value: string): string {
     .slice(0, USERNAME_MAX);
 }
 
-export function CharacterGate({ onReady }: { onReady: () => void }) {
+export function CharacterGate({
+  prefillProfile,
+  onReady,
+}: {
+  prefillProfile?: MeProfileRow | null;
+  onReady: () => void;
+}) {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [avatar, setAvatar] = useState(() => serializeAvatar(getDefaultCustomAvatar()));
@@ -32,11 +41,31 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
   const [step, setStep] = useState<"info" | "avatar">("info");
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!prefillProfile) return;
+    const hasClassPreset =
+      prefillProfile.character_class_id &&
+      CHARACTER_CLASSES.some((c) => c.id === prefillProfile.character_class_id);
+    const nextGuild = prefillProfile.scholar_guild_id?.trim() || "undecided";
+    setName(prefillProfile.display_name?.trim() || "");
+    setUsername(toUsername(prefillProfile.username ?? ""));
+    if (prefillProfile.avatar_custom_json?.trim()) {
+      setAvatar(prefillProfile.avatar_custom_json.trim());
+    }
+    setScholarGuildId(nextGuild);
+    if (hasClassPreset && prefillProfile.character_class_id) {
+      const cid = prefillProfile.character_class_id as CharacterClassId;
+      const cls = CHARACTER_CLASSES.find((c) => c.id === cid);
+      setClassId(cid);
+      setStarterWeapon(cls?.starterWeapon ?? prefillProfile.starter_weapon ?? null);
+    }
+  }, [prefillProfile]);
+
   const nameTrimmed = name.trim();
   const usernameNormalized = toUsername(username || nameTrimmed);
   const nameValid = nameTrimmed.length >= 1 && nameTrimmed.length <= NAME_MAX;
   const usernameValid =
-    usernameNormalized.length >= 1 &&
+    usernameNormalized.length >= 3 &&
     usernameNormalized.length <= USERNAME_MAX &&
     USERNAME_REGEX.test(usernameNormalized);
 
@@ -64,24 +93,39 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
     e.preventDefault();
     setSubmitError(null);
     if (!nameValid || !usernameValid) return;
-    // move to avatar step instead of finishing immediately
     setStep("avatar");
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
     if (!canSubmit) return;
+    setSubmitError(null);
     try {
-      createCharacter(nameTrimmed, avatar, undefined, {
+      const mergedProfile = await patchAuthed<MeProfileRow, Record<string, unknown>>("/api/me/profile", {
+        displayName: nameTrimmed,
         username: usernameNormalized,
-        classId: classId ?? undefined,
-        starterWeapon: starterWeapon ?? undefined,
-        scholarGuildId,
+        avatarCustomJson: avatar,
+        characterClassId: classId ?? null,
+        starterWeapon: starterWeapon ?? null,
+        scholarGuildId: scholarGuildId || null,
+        characterOnboardingComplete: true,
       });
+      const stats = await fetchAuthed<MeStatsRow>("/api/me/stats");
+      replaceLocalCharacter(buildLocalCharacterFromServer(mergedProfile, stats));
       setShowConfirm(false);
       onReady();
     } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 409) {
+        setSubmitError("That username is already taken. Pick another.");
+        return;
+      }
       setSubmitError(err instanceof Error ? err.message : "Something went wrong. Try again.");
     }
+  }
+
+  if (typeof window !== "undefined" && !getAccessToken()) {
+    return (
+      <p className="text-center text-sm text-white/70 py-12 px-4">Sign in to create your character.</p>
+    );
   }
 
   const confirmModal =
@@ -125,41 +169,31 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
             </button>
             <button
               type="button"
-              onClick={handleConfirm}
+              onClick={() => void handleConfirm()}
               className="flex-1 py-2.5 rounded-xl font-semibold text-white bg-uri-keaney hover:bg-uri-keaney/90 focus:outline-none focus:ring-2 focus:ring-uri-keaney focus:ring-offset-2 focus:ring-offset-uri-navy"
             >
-              Create character
+              Save & continue
             </button>
           </div>
         </div>
       </div>,
-      document.body
+      document.body,
     );
 
   return (
     <>
       {step === "info" ? (
-        <section
-          className="max-w-lg mx-auto mt-6 sm:mt-10 px-4"
-          aria-label="Create your character"
-        >
+        <section className="max-w-lg mx-auto mt-6 sm:mt-10 px-4" aria-label="Create your character">
           <div className="rounded-2xl border border-uri-keaney/30 bg-uri-navy/80 shadow-xl overflow-hidden">
-            {/* Header */}
             <div className="p-6 sm:p-8 pb-4 text-center border-b border-white/10">
               <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-uri-keaney/30 to-uri-navy border border-uri-keaney/40 flex items-center justify-center text-3xl">
                 🐏
               </div>
-              <h1 className="font-display font-bold text-2xl text-white mb-1">
-                Create your character
-              </h1>
-              <p className="text-sm text-white/60">
-                First pick your name and username.
-              </p>
+              <h1 className="font-display font-bold text-2xl text-white mb-1">Create your character</h1>
+              <p className="text-sm text-white/60">First pick your name and username.</p>
             </div>
 
-            {/* Form – basic info only */}
             <form onSubmit={handleSubmit} className="p-6 sm:p-8 pt-4 space-y-6">
-              {/* Step 1: Name */}
               <div className="space-y-2">
                 <label htmlFor="char-name" className="block text-xs font-semibold text-white/70 uppercase tracking-wider">
                   Display name <span className="text-amber-400">*</span>
@@ -176,14 +210,14 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
                   aria-required
                   aria-invalid={name.length > 0 && !nameValid}
                 />
-                {name.length > 0 && !nameValid && (
-                  <p className="text-xs text-amber-400">Use 1–40 characters.</p>
-                )}
+                {name.length > 0 && !nameValid && <p className="text-xs text-amber-400">Use 1–40 characters.</p>}
               </div>
 
-              {/* Step 2: Username */}
               <div className="space-y-2">
-                <label htmlFor="char-username" className="block text-xs font-semibold text-white/70 uppercase tracking-wider">
+                <label
+                  htmlFor="char-username"
+                  className="block text-xs font-semibold text-white/70 uppercase tracking-wider"
+                >
                   Username <span className="text-amber-400">*</span>
                 </label>
                 <input
@@ -202,7 +236,9 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
                   Letters, numbers, underscores only. You’ll appear as @{usernameNormalized || "username"}
                 </p>
                 {usernameNormalized.length > 0 && !usernameValid && (
-                  <p className="text-xs text-amber-400">Username must be 1–25 characters, only a–z, 0–9, and _.</p>
+                  <p className="text-xs text-amber-400">
+                    Username must be 3–25 characters (letters, numbers, underscores).
+                  </p>
                 )}
               </div>
 
@@ -234,9 +270,11 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
                 <p className="text-xs text-white/50">You can fully customize this later in the next step.</p>
               </div>
 
-              {/* Step 3: Scholars Guild */}
               <div className="space-y-2">
-                <label htmlFor="char-scholar-guild" className="block text-xs font-semibold text-white/70 uppercase tracking-wider">
+                <label
+                  htmlFor="char-scholar-guild"
+                  className="block text-xs font-semibold text-white/70 uppercase tracking-wider"
+                >
                   Scholars Guild
                 </label>
                 <select
@@ -271,20 +309,12 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
           </div>
         </section>
       ) : (
-        <section
-          className="max-w-4xl mx-auto mt-6 sm:mt-10 px-4"
-          aria-label="Customize your avatar"
-        >
+        <section className="max-w-4xl mx-auto mt-6 sm:mt-10 px-4" aria-label="Customize your avatar">
           <div className="rounded-3xl border border-uri-keaney/40 bg-gradient-to-br from-uri-navy via-uri-navy/90 to-uri-keaney/30 shadow-2xl overflow-hidden">
-            {/* Header with basic info + mini preview */}
             <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 sm:px-8 sm:py-6 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-uri-keaney/80 mb-1">
-                  Step 2 · Avatar
-                </p>
-                <h2 className="font-display font-bold text-xl sm:text-2xl text-white">
-                  CREATE YOUR CAMPUSQUEST AVATAR
-                </h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-uri-keaney/80 mb-1">Step 2 · Avatar</p>
+                <h2 className="font-display font-bold text-xl sm:text-2xl text-white">CREATE YOUR CAMPUSQUEST AVATAR</h2>
                 <p className="text-sm text-white/70 mt-1">
                   Choose a look that feels like you. Every change updates your character instantly.
                 </p>
@@ -292,9 +322,7 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <p className="text-xs text-white/60">You as</p>
-                  <p className="font-medium text-white">
-                    {nameTrimmed || "Your name"}
-                  </p>
+                  <p className="font-medium text-white">{nameTrimmed || "Your name"}</p>
                   <p className="text-xs text-uri-keaney/90">@{usernameNormalized || "username"}</p>
                 </div>
                 <div className="w-16 h-16 rounded-2xl bg-white/10 border border-uri-keaney/40 flex items-center justify-center overflow-hidden">
@@ -303,7 +331,6 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
               </div>
             </div>
 
-            {/* Avatar builder full-screen style */}
             <div className="px-4 py-4 sm:px-6 sm:py-6 md:px-8 md:py-7 bg-[radial-gradient(circle_at_0_0,rgba(255,255,255,0.08),transparent_55%),radial-gradient(circle_at_100%_100%,rgba(80,178,255,0.25),transparent_55%)]">
               <div className="mb-5 rounded-2xl border border-uri-keaney/30 bg-uri-keaney/10 p-3 sm:p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/85">Starter avatars</p>
@@ -359,6 +386,11 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
                   Finish character
                 </button>
               </div>
+              {submitError && step === "avatar" && (
+                <p className="mt-3 text-xs text-center text-amber-400" role="alert">
+                  {submitError}
+                </p>
+              )}
             </div>
           </div>
         </section>

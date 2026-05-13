@@ -565,7 +565,8 @@ export async function createOrganization(args: {
       confirmed_at: confirmedAt ?? null,
     },
   });
-  const { data, error } = await userClient
+  const admin = createAdminClient();
+  const { data, error } = await admin
     .from("student_organizations")
     .insert({
       name: input.name,
@@ -573,7 +574,7 @@ export async function createOrganization(args: {
       category: input.category,
       logo_url: input.logoUrl ?? null,
       school_name: school.schoolName,
-      school_domain: school.schoolDomain,
+      school_domain: school.schoolDomain ? school.schoolDomain.toLowerCase() : null,
       contact_link: input.contactLink ?? null,
       created_by: userId,
       is_approved: true,
@@ -582,7 +583,7 @@ export async function createOrganization(args: {
     .single();
   if (error || !data) throw new ApiError(400, error?.message ?? "Could not create organization.", "ORGANIZATION_CREATE_FAILED");
 
-  await userClient.from("organization_members").upsert(
+  const { error: memberError } = await admin.from("organization_members").upsert(
     {
       organization_id: data.id,
       user_id: userId,
@@ -593,6 +594,7 @@ export async function createOrganization(args: {
     },
     { onConflict: "organization_id,user_id" },
   );
+  if (memberError) throw new ApiError(400, memberError.message, "ORGANIZATION_MEMBER_CREATE_FAILED");
   return data;
 }
 

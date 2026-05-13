@@ -1,5 +1,7 @@
 "use client";
 
+import { clearSchoolVerificationSnapshot } from "@/lib/client/schoolVerificationCache";
+
 const ACCESS_TOKEN_KEY = "campusquest_access_token";
 
 export function getAccessToken(): string | null {
@@ -28,4 +30,5 @@ export function clearAccessToken(): void {
   } catch {
     // Ignore storage errors so logout still succeeds.
   }
+  clearSchoolVerificationSnapshot();
 }

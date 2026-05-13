@@ -3,6 +3,10 @@
 import { FormEvent, useEffect, useState } from "react";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { OrganizationAdminPortal } from "@/components/OrganizationAdminPortal";
+import {
+  ORGANIZATION_REQUEST_CATEGORIES,
+  ORGANIZATION_REQUEST_CATEGORY_LABELS,
+} from "@/lib/organizationRequestCategories";
 
 type Organization = {
   id: string;
@@ -22,21 +26,30 @@ type Organization = {
   upcomingEvents: Array<{ id: string; title: string; startsAt: string; location: string }>;
 };
 
-type CreateForm = {
+type MyOrgCreationRequest = {
+  id: string;
+  schoolName: string;
+  requestedName: string;
+  requestedCategory: string;
+  status: "pending" | "approved" | "denied";
+  adminReason: string | null;
+  createdOrganizationId: string | null;
+  createdAt: string;
+};
+
+type RequestForm = {
   name: string;
   description: string;
-  category: string;
+  category: (typeof ORGANIZATION_REQUEST_CATEGORIES)[number] | "";
   logoUrl: string;
-  schoolName: string;
   contactLink: string;
 };
 
-const initialForm: CreateForm = {
+const emptyRequestForm: RequestForm = {
   name: "",
   description: "",
   category: "",
   logoUrl: "",
-  schoolName: "",
   contactLink: "",
 };
 
@@ -46,19 +59,32 @@ export function OrganizationsHub({
   personalization?: { schoolName?: string; interests?: string[]; discoveryFocus?: string[] } | null;
 }) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [myRequests, setMyRequests] = useState<MyOrgCreationRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [requestsLoading, setRequestsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [reportingOrgId, setReportingOrgId] = useState<string | null>(null);
-  const [form, setForm] = useState<CreateForm>(initialForm);
+  const [form, setForm] = useState<RequestForm>(emptyRequestForm);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(null);
   const [adminPortalOrg, setAdminPortalOrg] = useState<Organization | null>(null);
 
+  async function loadMyRequests() {
+    setRequestsLoading(true);
+    try {
+      const data = await fetchAuthed<{ requests: MyOrgCreationRequest[] }>("/api/organizations/creation-requests");
+      setMyRequests(data.requests ?? []);
+    } catch {
+      setMyRequests([]);
+    } finally {
+      setRequestsLoading(false);
+    }
+  }
+
   useEffect(() => {
-    if (!personalization?.schoolName) return;
-    setForm((prev) => ({ ...prev, schoolName: prev.schoolName || personalization.schoolName! }));
-  }, [personalization?.schoolName]);
+    void loadMyRequests();
+  }, []);
 
   async function loadOrganizations(nextQuery = query) {
     setLoading(true);
@@ -85,25 +111,40 @@ export function OrganizationsHub({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
-  async function handleCreateOrganization(event: FormEvent) {
+  async function handleSubmitOrganizationRequest(event: FormEvent) {
     event.preventDefault();
     setSubmitting(true);
     setError(null);
+    if (!form.category) {
+      setError("Choose a category.");
+      setSubmitting(false);
+      return;
+    }
     try {
-      await postAuthed("/api/organizations", {
-        name: form.name,
-        description: form.description,
-        category: form.category,
-        logoUrl: form.logoUrl || undefined,
-        schoolName: form.schoolName,
-        contactLink: form.contactLink || undefined,
-      });
-      setForm(initialForm);
-      await loadOrganizations(query);
+      const payload: Record<string, unknown> = {
+        requestedName: form.name.trim(),
+        requestedCategory: form.category,
+        description: form.description.trim(),
+      };
+      if (form.logoUrl.trim()) payload.logoUrl = form.logoUrl.trim();
+      if (form.contactLink.trim()) payload.contactLink = form.contactLink.trim();
+      await postAuthed("/api/organizations/creation-requests", payload);
+      setForm(emptyRequestForm);
+      await Promise.all([loadOrganizations(query), loadMyRequests()]);
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Could not create organization.");
+      setError(createError instanceof Error ? createError.message : "Could not submit request.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function openOrganizationById(organizationId: string) {
+    setError(null);
+    try {
+      const data = await fetchAuthed<{ organization: Organization }>(`/api/organizations/${organizationId}`);
+      setActiveOrg(data.organization);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load organization.");
     }
   }
 
@@ -151,6 +192,40 @@ export function OrganizationsHub({
     return b.memberCount - a.memberCount;
   });
 
+  function requestStatusBlock(r: MyOrgCreationRequest) {
+    if (r.status === "pending") {
+      return (
+        <p className="text-xs text-amber-100/90 mt-1">
+          Pending evaluation — CampusQuest will review this organization before it becomes visible.
+        </p>
+      );
+    }
+    if (r.status === "approved") {
+      return (
+        <div className="mt-2 space-y-2">
+          <p className="text-xs text-emerald-200/90">Approved — your organization has been created.</p>
+          {r.createdOrganizationId ? (
+            <button
+              type="button"
+              onClick={() => void openOrganizationById(r.createdOrganizationId!)}
+              className="text-xs font-semibold text-uri-keaney underline"
+            >
+              Open your organization
+            </button>
+          ) : null}
+        </div>
+      );
+    }
+    return (
+      <div className="mt-2 space-y-1">
+        <p className="text-xs text-white/70">Not approved — review the feedback and submit again if appropriate.</p>
+        {r.adminReason ? (
+          <p className="text-xs text-amber-100/90 border border-amber-400/20 rounded-lg p-2 bg-amber-400/5">{r.adminReason}</p>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <section className="space-y-4">
       <div className="card p-4 space-y-3">
@@ -164,53 +239,92 @@ export function OrganizationsHub({
           placeholder="Search by name or description"
           className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50"
         />
-        <form onSubmit={handleCreateOrganization} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <input
-            value={form.name}
-            onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-            placeholder="Organization name"
-            className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50"
-          />
-          <input
-            value={form.category}
-            onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))}
-            placeholder="Category"
-            className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50"
-          />
-          <input
-            value={form.schoolName}
-            onChange={(event) => setForm((prev) => ({ ...prev, schoolName: event.target.value }))}
-            placeholder="School/University"
-            readOnly={Boolean(personalization?.schoolName)}
-            className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50"
-          />
-          <input
-            value={form.contactLink}
-            onChange={(event) => setForm((prev) => ({ ...prev, contactLink: event.target.value }))}
-            placeholder="Contact link (optional)"
-            className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50"
-          />
-          <input
-            value={form.logoUrl}
-            onChange={(event) => setForm((prev) => ({ ...prev, logoUrl: event.target.value }))}
-            placeholder="Logo URL (optional)"
-            className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50 sm:col-span-2"
-          />
-          <textarea
-            value={form.description}
-            onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-            placeholder="Description"
-            rows={3}
-            className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50 sm:col-span-2"
-          />
-          <button
-            type="submit"
-            disabled={submitting}
-            className="sm:col-span-2 rounded-lg bg-uri-keaney text-uri-navy font-semibold py-2.5 text-sm disabled:opacity-60"
-          >
-            {submitting ? "Creating..." : "Create organization"}
-          </button>
-        </form>
+
+        <div className="border-t border-white/10 pt-3 space-y-2">
+          <h4 className="text-sm font-semibold text-white">Request New Organization</h4>
+          <p className="text-[11px] text-white/50">
+            Pilot safety: requests are reviewed before an org appears. You’ll get an in-app notification when your request is decided.
+          </p>
+          <form onSubmit={handleSubmitOrganizationRequest} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input
+              value={form.name}
+              onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+              placeholder="Requested organization name"
+              className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50 sm:col-span-2"
+              required
+            />
+            <label className="sm:col-span-2 text-[11px] text-white/50">
+              <span className="sr-only">Category</span>
+              <select
+                value={form.category}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, category: event.target.value as RequestForm["category"] }))
+                }
+                className="mt-1 w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white"
+                required
+              >
+                <option value="">Select category…</option>
+                {ORGANIZATION_REQUEST_CATEGORIES.map((c) => (
+                  <option key={c} value={c} className="bg-uri-navy">
+                    {ORGANIZATION_REQUEST_CATEGORY_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <input
+              value={form.contactLink}
+              onChange={(event) => setForm((prev) => ({ ...prev, contactLink: event.target.value }))}
+              placeholder="Contact link (optional, URL)"
+              className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50 sm:col-span-2"
+            />
+            <input
+              value={form.logoUrl}
+              onChange={(event) => setForm((prev) => ({ ...prev, logoUrl: event.target.value }))}
+              placeholder="Logo URL (optional)"
+              className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50 sm:col-span-2"
+            />
+            <textarea
+              value={form.description}
+              onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+              placeholder="Description"
+              rows={3}
+              className="rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50 sm:col-span-2"
+              required
+            />
+            <button
+              type="submit"
+              disabled={submitting}
+              className="sm:col-span-2 rounded-lg bg-uri-keaney text-uri-navy font-semibold py-2.5 text-sm disabled:opacity-60"
+            >
+              {submitting ? "Submitting…" : "Submit Organization Request"}
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div className="card p-4 space-y-2">
+        <h4 className="text-sm font-semibold text-white">Your organization requests</h4>
+        {requestsLoading ? (
+          <p className="text-xs text-white/50">Loading…</p>
+        ) : myRequests.length === 0 ? (
+          <p className="text-xs text-white/50">No requests yet.</p>
+        ) : (
+          <ul className="space-y-3">
+            {myRequests.map((r) => (
+              <li key={r.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex justify-between gap-2">
+                  <p className="text-sm font-medium text-white">{r.requestedName}</p>
+                  <span className="text-[10px] uppercase tracking-wide text-white/45">{r.status}</span>
+                </div>
+                <p className="text-[11px] text-white/45 mt-0.5">
+                  {r.schoolName} · {ORGANIZATION_REQUEST_CATEGORY_LABELS[r.requestedCategory as keyof typeof ORGANIZATION_REQUEST_CATEGORY_LABELS] ?? r.requestedCategory}
+                </p>
+                <p className="text-[11px] text-white/35">Submitted {new Date(r.createdAt).toLocaleString()}</p>
+                {requestStatusBlock(r)}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {error ? <div className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</div> : null}
@@ -220,7 +334,7 @@ export function OrganizationsHub({
           <div className="h-20 rounded-xl bg-white/10 animate-pulse" />
         </div>
       ) : null}
-      {!loading && organizations.length === 0 ? <p className="text-sm text-white/60">No organizations found. Start a student group.</p> : null}
+      {!loading && organizations.length === 0 ? <p className="text-sm text-white/60">No organizations found yet.</p> : null}
 
       <div className="space-y-3">
         {prioritizedOrganizations.map((organization) => (
@@ -342,11 +456,7 @@ export function OrganizationsHub({
         <div className="space-y-2">
           <div className="flex justify-between items-center">
             <p className="text-xs text-white/60">Managing {adminPortalOrg.name}</p>
-            <button
-              type="button"
-              onClick={() => setAdminPortalOrg(null)}
-              className="text-xs text-white/65 hover:text-white"
-            >
+            <button type="button" onClick={() => setAdminPortalOrg(null)} className="text-xs text-white/65 hover:text-white">
               Close portal
             </button>
           </div>

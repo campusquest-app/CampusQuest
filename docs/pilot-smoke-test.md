@@ -14,6 +14,8 @@ Use this checklist to manually verify pilot readiness for school verification, s
   - One confirmed non-`@uri.edu` student account (non-URI user)
   - One admin account listed in `MODERATION_ADMIN_EMAILS`
 
+**Moderators on non-campus email:** A user listed in `MODERATION_ADMIN_EMAILS` remains fully campus-eligible (student tabs and campus APIs scope to pilot school) without a `@uri.edu` email, while non-admin pilots still must match `PILOT_SCHOOL_DOMAIN`.
+
 ---
 
 ## 1) Campus Email Verification
@@ -22,8 +24,8 @@ Use this checklist to manually verify pilot readiness for school verification, s
 - [ ] Verify `auth.users.id` matches `profiles.id` for that user.
 - [ ] Repeat signup attempt with the same email and confirm no profile FK regression is introduced.
 - [ ] With email confirmation enabled, verify signup may return no session but still creates/keeps the matching profile row.
-- [ ] Sign in with a confirmed non-`uri.edu` account.
-- [ ] Confirm the user is blocked from campus features and sees the school verification gate.
+- [ ] Sign in with a confirmed non-`uri.edu` account that is **not** in `MODERATION_ADMIN_EMAILS`.
+- [ ] Confirm the user is blocked from campus features on those tabs (see school verification gate in-app after login completes).
 - [ ] Sign in with a confirmed `uri.edu` account.
 - [ ] Confirm the user passes school verification and can access events/org/discovery features.
 - [ ] Log out and sign back in as the same `uri.edu` account.

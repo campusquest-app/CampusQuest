@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { getCharacter, logActivity, logout as storeLogout } from "@/lib/store";
+import { getCharacter, logActivity, logout as storeLogout, replaceLocalCharacter } from "@/lib/store";
+import Link from "next/link";
+
 import type { Character } from "@/lib/types";
 import { CharacterCard } from "./CharacterCard";
 import { CharacterGate } from "./CharacterGate";
@@ -21,10 +23,9 @@ import { Profile } from "./Profile";
 import { WeeklyRecapCard } from "./WeeklyRecapCard";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { DirectMessageThread } from "./DirectMessageThread";
-import { Inbox } from "./Inbox";
+import { Inbox, type InboxSubTab } from "./Inbox";
 import { EventsFeed } from "./EventsFeed";
 import { OrganizationsHub } from "./OrganizationsHub";
-import { NotificationsCenter } from "./NotificationsCenter";
 import { STAT_KEYS, STAT_ICONS, STAT_LABELS } from "@/lib/types";
 import { getActivityById } from "@/lib/activities";
 import { AvatarDisplay } from "./AvatarDisplay";
@@ -35,13 +36,42 @@ import { SurpriseQuestBanner } from "./SurpriseQuestBanner";
 import { DailyTrainingGames } from "./DailyTrainingGames";
 import { LoreArchiveCard } from "./LoreArchiveCard";
 import { FirstTimeJourney } from "./FirstTimeJourney";
-import { BackendDashboardPreview } from "./BackendDashboardPreview";
 import { OnboardingPreferencesModal } from "./OnboardingPreferencesModal";
 import type { StatKey } from "@/lib/types";
-import { clearAccessToken } from "@/lib/client/apiSession";
-import { fetchAuthed } from "@/lib/client/dashboardApi";
+import { clearAccessToken, getAccessToken } from "@/lib/client/apiSession";
+import {
+  fetchAuthed,
+  fetchMeSchoolVerification,
+  type MeSchoolVerificationResponse,
+  SchoolVerificationHttpError,
+} from "@/lib/client/dashboardApi";
+import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
+import { clearSchoolVerificationSnapshot, peekSchoolVerificationSnapshot } from "@/lib/client/schoolVerificationCache";
+import { SchoolVerificationScreen } from "./SchoolVerificationScreen";
 
-type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations" | "notifications";
+type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations";
+
+type PilotCampusState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; snapshot: MeSchoolVerificationResponse };
+
+type BootstrapStatus = "bootstrapping" | "unauthenticated" | "authenticated";
+
+function logBootstrapDecision(info: {
+  sessionFound: boolean;
+  sessionValidated?: boolean;
+  onboardingCompleted?: boolean | null;
+  route: "unauthenticated" | "character_gate" | "app";
+}) {
+  if (process.env.NODE_ENV === "production") return;
+  console.info("[cq] bootstrap", {
+    sessionFound: info.sessionFound,
+    ...(info.sessionValidated !== undefined ? { sessionValidated: info.sessionValidated } : {}),
+    ...(info.onboardingCompleted !== undefined ? { onboardingCompleted: info.onboardingCompleted } : {}),
+    route: info.route,
+  });
+}
 
 /** Sub-view on the Character tab (Quad-style toggle). */
 type CharacterPane = "sheet" | "profile";
@@ -197,7 +227,7 @@ function Header({
                     title="Notifications"
                   >
                     <span aria-hidden>🔔</span>
-                    <span className="hidden sm:inline">Alerts</span>
+                    <span className="hidden sm:inline">Notifications</span>
                     {(unreadNotificationCount ?? 0) > 0 ? (
                       <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[10px] font-bold text-white flex items-center justify-center">
                         {Math.min(99, unreadNotificationCount ?? 0)}
@@ -219,8 +249,8 @@ export function Dashboard() {
   const [character, setCharacter] = useState<Character | null>(null);
   const [mounted, setMounted] = useState(false);
   const [showWelcomeSplash, setShowWelcomeSplash] = useState(true);
-  const [showAuthScreen, setShowAuthScreen] = useState(true);
   const [tab, setTab] = useState<Tab>("quad");
+  const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
   const [characterPane, setCharacterPane] = useState<CharacterPane>("sheet");
   const [gainToast, setGainToast] = useState<null | {
     xp: number;
@@ -244,10 +274,95 @@ export function Dashboard() {
     schoolName: string;
     interests: string[];
     discoveryFocus: string[];
+    major?: string | null;
   } | null>(null);
   const [needsOnboardingPreferences, setNeedsOnboardingPreferences] = useState(false);
+  const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("bootstrapping");
+  const [bootstrapNonce, setBootstrapNonce] = useState(0);
+  const [gatePrefillProfile, setGatePrefillProfile] = useState<MeProfileRow | null>(null);
+  const [pilotCampusState, setPilotCampusState] = useState<PilotCampusState>({ status: "loading" });
+  const [campusFetchNonce, setCampusFetchNonce] = useState(0);
+  const [showCampusSlowNotice, setShowCampusSlowNotice] = useState(false);
+  const campusFetchGenRef = useRef(0);
+  /** Last `/api/me/school-verification` HTTP status for this fetch attempt (dev logging only). */
+  const schoolVerificationLastHttpRef = useRef<number | null>(null);
 
   const XP300_POPUP_KEY = "campusquest_300xp_celebrated";
+
+  const pilotCampusFeaturesUnlocked = useCallback((snapshot: MeSchoolVerificationResponse) => {
+    if (snapshot.moderationAdminAccess) return true;
+    const v = snapshot.verification;
+    return v.status === "verified" && Boolean(v.schoolDomain) && Boolean(v.schoolName);
+  }, []);
+
+  const renderPilotCampusGate = useCallback(
+    (node: ReactNode): ReactNode => {
+      if (pilotCampusState.status === "loading") {
+        const tokenForPeek = getAccessToken();
+        const peekSnap = tokenForPeek ? peekSchoolVerificationSnapshot(tokenForPeek) : null;
+        if (peekSnap && pilotCampusFeaturesUnlocked(peekSnap)) {
+          return node;
+        }
+        if (!showCampusSlowNotice) {
+          return (
+            <div
+              className="min-h-[28vh] rounded-2xl border border-white/[0.06] bg-white/[0.02] cq-skeleton-wrap overflow-hidden"
+              aria-busy="true"
+              aria-label="Loading campus access"
+            >
+              <div className="p-4 space-y-3">
+                <div className="cq-skeleton h-4 rounded-lg w-2/3 max-w-xs" />
+                <div className="cq-skeleton h-3 rounded-lg w-full" />
+                <div className="cq-skeleton h-3 rounded-lg w-5/6" />
+              </div>
+            </div>
+          );
+        }
+        return <p className="text-sm text-white/65 py-10 text-center px-4">Checking campus eligibility…</p>;
+      }
+      if (pilotCampusState.status === "error") {
+        return (
+          <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-6 text-center space-y-3">
+            <p className="text-sm text-amber-100">{pilotCampusState.message}</p>
+            <button
+              type="button"
+              onClick={() => setCampusFetchNonce((n) => n + 1)}
+              className="rounded-xl border border-uri-keaney/50 bg-uri-keaney/20 px-4 py-2 text-sm font-semibold text-uri-keaney hover:bg-uri-keaney/30"
+            >
+              Try again
+            </button>
+          </div>
+        );
+      }
+      const snap = pilotCampusState.snapshot;
+      if (!pilotCampusFeaturesUnlocked(snap)) {
+        return (
+          <SchoolVerificationScreen
+            requiredSchoolName={snap.verification.requiredPilotSchoolName ?? "your school"}
+            requiredSchoolDomain={snap.verification.requiredPilotDomain ?? null}
+            currentDomain={snap.verification.schoolDomain ?? null}
+            supplementalContent={
+              snap.moderationAdminAccess ? (
+                <p>
+                  Verified staff accounts are campus-eligible automatically. Tools:{" "}
+                  <Link href="/internal/admin" className="font-semibold text-uri-keaney underline-offset-2 hover:underline">
+                    Internal Admin
+                  </Link>
+                  ,{" "}
+                  <Link href="/internal/moderation" className="font-semibold text-uri-keaney underline-offset-2 hover:underline">
+                    Moderation
+                  </Link>
+                  .
+                </p>
+              ) : undefined
+            }
+          />
+        );
+      }
+      return node;
+    },
+    [pilotCampusState, pilotCampusFeaturesUnlocked, showCampusSlowNotice],
+  );
 
   const refresh = useCallback(() => {
     setCharacter(getCharacter());
@@ -257,16 +372,22 @@ export function Dashboard() {
     storeLogout();
     clearAccessToken();
     setCharacter(null);
-    setShowAuthScreen(true);
+    setGatePrefillProfile(null);
+    setOnboardingPreferences(null);
+    setNeedsOnboardingPreferences(false);
+    setBootstrapStatus("bootstrapping");
+    setShowWelcomeSplash(false);
+    setCampusFetchNonce(0);
+    setPilotCampusState({ status: "loading" });
+    setBootstrapNonce((n) => n + 1);
   }, []);
 
   useEffect(() => {
     setMounted(true);
-    refresh();
-  }, [refresh]);
+  }, []);
 
   useEffect(() => {
-    if (!character) return;
+    if (bootstrapStatus !== "authenticated" || !character) return;
     let cancelled = false;
     async function loadUnread() {
       try {
@@ -284,19 +405,33 @@ export function Dashboard() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [character?.id]);
+  }, [bootstrapStatus, character?.id]);
 
   useEffect(() => {
-    if (!character) return;
+    if (bootstrapStatus !== "authenticated" || !character) return;
     let cancelled = false;
     async function loadOnboardingPreferences() {
       try {
         const data = await fetchAuthed<{
           exists: boolean;
-          preferences: { schoolName: string; interests: string[]; discoveryFocus: string[] } | null;
+          preferences: {
+            schoolName: string;
+            interests: string[];
+            discoveryFocus: string[];
+            major?: string | null;
+          } | null;
         }>("/api/me/onboarding-preferences");
         if (cancelled) return;
-        setOnboardingPreferences(data.preferences ?? null);
+        setOnboardingPreferences(
+          data.preferences
+            ? {
+                schoolName: data.preferences.schoolName,
+                interests: data.preferences.interests,
+                discoveryFocus: data.preferences.discoveryFocus,
+                major: data.preferences.major ?? null,
+              }
+            : null,
+        );
         setNeedsOnboardingPreferences(!data.exists);
       } catch {
         if (cancelled) return;
@@ -308,7 +443,256 @@ export function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [character?.id]);
+  }, [bootstrapStatus, character?.id]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    let cancelled = false;
+
+    async function bootstrap() {
+      setBootstrapStatus("bootstrapping");
+      setCharacter(null);
+
+      const tokenAtStart = getAccessToken();
+
+      const failUnauthenticated = (opts?: { invalidateToken?: boolean }) => {
+        if (opts?.invalidateToken) clearAccessToken();
+        storeLogout();
+        clearSchoolVerificationSnapshot();
+        setGatePrefillProfile(null);
+        setNeedsOnboardingPreferences(false);
+        setOnboardingPreferences(null);
+        refresh();
+      };
+
+      if (!tokenAtStart) {
+        failUnauthenticated({ invalidateToken: false });
+        logBootstrapDecision({ sessionFound: false, route: "unauthenticated" });
+        setBootstrapStatus("unauthenticated");
+        return;
+      }
+
+      // Block stale local character until server confirms profile (no char-* bypass without auth).
+      storeLogout();
+
+      let profileSnap: MeProfileRow | null = null;
+
+      try {
+        const [profile, stats] = await Promise.all([
+          fetchAuthed<MeProfileRow>("/api/me/profile"),
+          fetchAuthed<MeStatsRow>("/api/me/stats"),
+        ]);
+
+        let prefs: {
+          exists: boolean;
+          preferences: {
+            schoolName: string;
+            interests: string[];
+            discoveryFocus: string[];
+            major?: string | null;
+          } | null;
+        };
+        try {
+          prefs = await fetchAuthed("/api/me/onboarding-preferences");
+        } catch {
+          prefs = { exists: false, preferences: null };
+        }
+
+        profileSnap = profile;
+
+        if (cancelled) return;
+
+        const onboardingDone = Boolean(profile.onboarding_completed);
+        const characterDone = Boolean(profile.onboarding_character_completed);
+
+        const applyPrefsState = () => {
+          if (prefs.preferences) {
+            setOnboardingPreferences({
+              schoolName: prefs.preferences.schoolName,
+              interests: prefs.preferences.interests,
+              discoveryFocus: prefs.preferences.discoveryFocus,
+              major: prefs.preferences.major ?? null,
+            });
+          } else {
+            setOnboardingPreferences(null);
+          }
+        };
+
+        const clearLegacyLocalMismatch = () => {
+          const local = getCharacter();
+          if (local && (local.id !== profile.id || local.id.startsWith("char-"))) {
+            storeLogout();
+          }
+        };
+
+        let routeDecision: "character_gate" | "app" = "character_gate";
+
+        if (onboardingDone) {
+          clearLegacyLocalMismatch();
+          replaceLocalCharacter(buildLocalCharacterFromServer(profile, stats));
+          setNeedsOnboardingPreferences(false);
+          applyPrefsState();
+          setGatePrefillProfile(null);
+          setShowWelcomeSplash(false);
+          setTab("quad");
+          refresh();
+          routeDecision = "app";
+        } else if (characterDone) {
+          clearLegacyLocalMismatch();
+          replaceLocalCharacter(buildLocalCharacterFromServer(profile, stats));
+          setNeedsOnboardingPreferences(!prefs.exists);
+          applyPrefsState();
+          setGatePrefillProfile(null);
+          setShowWelcomeSplash(false);
+          setTab("quad");
+          refresh();
+          routeDecision = "app";
+        } else {
+          clearLegacyLocalMismatch();
+          setNeedsOnboardingPreferences(false);
+          setGatePrefillProfile(profile);
+          setShowWelcomeSplash(false);
+          refresh();
+          routeDecision = "character_gate";
+        }
+
+        logBootstrapDecision({
+          sessionFound: true,
+          sessionValidated: true,
+          onboardingCompleted: profile.onboarding_completed ?? null,
+          route: routeDecision === "character_gate" ? "character_gate" : "app",
+        });
+
+        setBootstrapStatus("authenticated");
+      } catch {
+        if (!cancelled) {
+          failUnauthenticated({ invalidateToken: true });
+          logBootstrapDecision({
+            sessionFound: true,
+            sessionValidated: false,
+            onboardingCompleted: profileSnap?.onboarding_completed ?? null,
+            route: "unauthenticated",
+          });
+          setBootstrapStatus("unauthenticated");
+        }
+      }
+    }
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, bootstrapNonce, refresh]);
+
+  useEffect(() => {
+    if (pilotCampusState.status !== "loading") {
+      setShowCampusSlowNotice(false);
+      return;
+    }
+    const t = window.setTimeout(() => setShowCampusSlowNotice(true), 180);
+    return () => window.clearTimeout(t);
+  }, [pilotCampusState.status]);
+
+  useEffect(() => {
+    if (bootstrapStatus !== "authenticated" || !character) return;
+
+    const token = getAccessToken();
+    if (!token) {
+      setPilotCampusState({ status: "error", message: "Session missing. Please sign in again." });
+      return;
+    }
+
+    campusFetchGenRef.current += 1;
+    const myGen = campusFetchGenRef.current;
+    schoolVerificationLastHttpRef.current = null;
+
+    const cached = peekSchoolVerificationSnapshot(token);
+    if (cached) {
+      setPilotCampusState({ status: "ready", snapshot: cached });
+    } else {
+      setPilotCampusState({ status: "loading" });
+    }
+
+    let cancelled = false;
+    let settled = false;
+
+    void (async () => {
+      try {
+        const snapshot = await fetchMeSchoolVerification(token);
+        if (!cancelled && myGen === campusFetchGenRef.current) {
+          schoolVerificationLastHttpRef.current = 200;
+          setPilotCampusState({ status: "ready", snapshot });
+          settled = true;
+        }
+      } catch (e) {
+        if (cancelled || myGen !== campusFetchGenRef.current) return;
+        if (e instanceof SchoolVerificationHttpError) {
+          schoolVerificationLastHttpRef.current = e.status;
+        }
+        if (e instanceof SchoolVerificationHttpError && e.status === 401) {
+          storeLogout();
+          clearAccessToken();
+          setCharacter(null);
+          setBootstrapStatus("bootstrapping");
+          setPilotCampusState({ status: "loading" });
+          setBootstrapNonce((n) => n + 1);
+          settled = true;
+          return;
+        }
+        const fallback = peekSchoolVerificationSnapshot(token);
+        if (fallback && myGen === campusFetchGenRef.current) {
+          setPilotCampusState({ status: "ready", snapshot: fallback });
+          settled = true;
+          return;
+        }
+        const message =
+          e instanceof SchoolVerificationHttpError
+            ? e.message
+            : "Could not verify campus eligibility. Please try again.";
+        if (myGen === campusFetchGenRef.current) {
+          setPilotCampusState({ status: "error", message });
+          settled = true;
+        }
+      } finally {
+        if (!cancelled && !settled && myGen === campusFetchGenRef.current) {
+          const again = peekSchoolVerificationSnapshot(token);
+          setPilotCampusState(
+            again
+              ? { status: "ready", snapshot: again }
+              : { status: "error", message: "Could not verify campus eligibility. Please try again." },
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- campusFetchNonce forces retry; scope user via character.id
+  }, [bootstrapStatus, character?.id, campusFetchNonce]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (tab !== "friends") return;
+    const peekTok = getAccessToken();
+    const peekSnap = peekTok ? peekSchoolVerificationSnapshot(peekTok) : null;
+    console.info("[cq] Friends eligibility", {
+      httpStatus: schoolVerificationLastHttpRef.current,
+      pilotStatus: pilotCampusState.status,
+      ...(pilotCampusState.status === "ready"
+        ? {
+            verified: pilotCampusState.snapshot.verification.status === "verified",
+            moderationAdminAccess: pilotCampusState.snapshot.moderationAdminAccess,
+          }
+        : peekSnap
+          ? {
+              peekVerified: peekSnap.verification.status === "verified",
+              peekModerationAdminAccess: peekSnap.moderationAdminAccess,
+              peekUnlocksPilotTabs: pilotCampusFeaturesUnlocked(peekSnap),
+            }
+          : { peekPresent: false }),
+    });
+  }, [tab, pilotCampusState, pilotCampusFeaturesUnlocked]);
 
   useEffect(() => {
     if (!character || character.totalXP < 300) return;
@@ -410,19 +794,46 @@ export function Dashboard() {
     );
   }
 
-  if (!character) {
+  if (bootstrapStatus === "bootstrapping") {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center px-6 text-center">
+        <div
+          className="w-14 h-14 rounded-2xl bg-uri-keaney/20 border border-uri-keaney/40 flex items-center justify-center text-3xl mb-4"
+          aria-hidden
+        >
+          🐏
+        </div>
+        <p className="text-base font-semibold text-white tracking-wide">Loading CampusQuest…</p>
+        <p className="mt-2 text-sm text-white/55">Checking your session</p>
+      </div>
+    );
+  }
+
+  if (bootstrapStatus === "unauthenticated") {
     if (showWelcomeSplash) {
       return <WelcomeSplash onComplete={() => setShowWelcomeSplash(false)} />;
     }
-    if (showAuthScreen) {
-      return (
-        <AuthScreen onComplete={() => setShowAuthScreen(false)} />
-      );
-    }
+    return (
+      <AuthScreen
+        onComplete={() => {
+          setBootstrapNonce((n) => n + 1);
+        }}
+      />
+    );
+  }
+
+  if (!character) {
     return (
       <>
         <Header username={null} character={null} onRefresh={refresh} />
-        <CharacterGate onReady={() => { refresh(); setTab("quad"); }} />
+        <CharacterGate
+          prefillProfile={gatePrefillProfile}
+          onReady={() => {
+            refresh();
+            setTab("quad");
+            setBootstrapNonce((n) => n + 1);
+          }}
+        />
       </>
     );
   }
@@ -501,7 +912,7 @@ export function Dashboard() {
     { tab: "quad", icon: "📋", label: "Quad" },
     { tab: "events", icon: "📅", label: "Events" },
     { tab: "organizations", icon: "🏛️", label: "Orgs" },
-    { tab: "notifications", icon: "🔔", label: "Alerts" },
+    { tab: "inbox", icon: "📬", label: "Inbox" },
     { tab: "friends", icon: "👋", label: "Friends" },
     { tab: "battle", icon: "🐉", label: "Battle" },
     { tab: "leaderboards", icon: "🏆", label: "Rank" },
@@ -515,7 +926,10 @@ export function Dashboard() {
         character={character}
         onRefresh={refresh}
         onOpenInbox={() => setTab("inbox")}
-        onOpenNotifications={() => setTab("notifications")}
+        onOpenNotifications={() => {
+          setInboxSubTab("notifications");
+          setTab("inbox");
+        }}
         unreadNotificationCount={unreadNotificationCount}
       />
       <div
@@ -799,35 +1213,32 @@ export function Dashboard() {
       )}
 
       <div key={tab} className="tab-content-enter space-y-5 sm:space-y-6">
-        {tab === "inbox" && character && (
+        {tab === "inbox" && character && renderPilotCampusGate(
           <Inbox
             character={character}
             onBack={() => setTab("quad")}
             onOpenDm={setDmWithOther}
             personalization={onboardingPreferences}
-          />
+            subTab={inboxSubTab}
+            onSubTabChange={setInboxSubTab}
+            onUnreadCountChange={setUnreadNotificationCount}
+          />,
         )}
 
         {tab === "quad" && (
           <div className="space-y-4 sm:space-y-5">
-            <BackendDashboardPreview />
             <div className="-mx-4 w-[calc(100%+2rem)] sm:mx-0 sm:w-full">
               <TheQuad character={character} onRefresh={refresh} />
             </div>
           </div>
         )}
 
-        {tab === "friends" && (
-          <FindFriends character={character} onRefresh={refresh} onOpenDm={setDmWithOther} />
-        )}
+        {tab === "friends" &&
+          renderPilotCampusGate(<FindFriends character={character} onRefresh={refresh} onOpenDm={setDmWithOther} />)}
 
-        {tab === "events" && <EventsFeed personalization={onboardingPreferences} />}
+        {tab === "events" && renderPilotCampusGate(<EventsFeed personalization={onboardingPreferences} />)}
 
-        {tab === "organizations" && <OrganizationsHub personalization={onboardingPreferences} />}
-
-        {tab === "notifications" && (
-          <NotificationsCenter onUnreadCountChange={setUnreadNotificationCount} personalization={onboardingPreferences} />
-        )}
+        {tab === "organizations" && renderPilotCampusGate(<OrganizationsHub personalization={onboardingPreferences} />)}
 
         {tab === "leaderboards" && (
           <Leaderboards character={character} />
@@ -1019,11 +1430,12 @@ export function Dashboard() {
         />
       )}
 
-      {needsOnboardingPreferences ? (
+      {bootstrapStatus === "authenticated" && needsOnboardingPreferences && character ? (
         <OnboardingPreferencesModal
           onCompleted={(preferences) => {
             setOnboardingPreferences(preferences);
             setNeedsOnboardingPreferences(false);
+            setBootstrapNonce((n) => n + 1);
           }}
         />
       ) : null}

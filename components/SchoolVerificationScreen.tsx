@@ -1,10 +1,14 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 type Props = {
   requiredSchoolName: string;
   requiredSchoolDomain: string | null;
   currentDomain: string | null;
   onUseDifferentAccount?: () => void;
+  /** Optional caption for staff (never shown to unrelated students unless they see this screen). */
+  supplementalContent?: ReactNode;
 };
 
 export function SchoolVerificationScreen({
@@ -12,6 +16,7 @@ export function SchoolVerificationScreen({
   requiredSchoolDomain,
   currentDomain,
   onUseDifferentAccount,
+  supplementalContent,
 }: Props) {
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-10 sm:py-14">
@@ -32,6 +37,7 @@ export function SchoolVerificationScreen({
           Sign in with a confirmed campus email address to unlock events, organizations, and student discovery.
           Personal email addresses are never shared publicly in CampusQuest.
         </p>
+        {supplementalContent ? <div className="mt-6 text-xs sm:text-sm text-white/60 leading-relaxed">{supplementalContent}</div> : null}
         {onUseDifferentAccount ? (
           <button
             type="button"

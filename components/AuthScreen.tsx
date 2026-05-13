@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { DEFAULT_POLICY_VERSION } from "@/lib/legal/policy";
+import { fetchMeSchoolVerification, SchoolVerificationHttpError } from "@/lib/client/dashboardApi";
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/client/apiSession";
 import { LegalConsentScreen } from "@/components/LegalConsentScreen";
 import { AccountSafetyStatusScreen } from "@/components/AccountSafetyStatusScreen";
@@ -152,25 +153,15 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   }
 
   async function checkSchoolVerification(accessToken: string) {
-    const payload = await fetchJson<{
-      verification?: {
-        status: "pending" | "verified";
-        schoolName: string | null;
-        schoolDomain: string | null;
-        requiredPilotDomain: string | null;
-        requiredPilotSchoolName: string;
-      };
-    }>("/api/me/school-verification", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      cache: "no-store",
-    });
-
-    const verification = payload?.data?.verification;
-    if (!verification || verification.status !== "verified") {
+    const { verification, moderationAdminAccess } = await fetchMeSchoolVerification(accessToken);
+    const campusOk =
+      moderationAdminAccess ||
+      (verification.status === "verified" && Boolean(verification.schoolDomain) && Boolean(verification.schoolName));
+    if (!campusOk) {
       setSchoolVerificationBlock({
-        requiredSchoolName: verification?.requiredPilotSchoolName ?? "your school",
-        requiredSchoolDomain: verification?.requiredPilotDomain ?? null,
-        currentDomain: verification?.schoolDomain ?? null,
+        requiredSchoolName: verification.requiredPilotSchoolName ?? "your school",
+        requiredSchoolDomain: verification.requiredPilotDomain ?? null,
+        currentDomain: verification.schoolDomain ?? null,
       });
       return false;
     }
@@ -203,7 +194,12 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       const verifiedForCampus = await checkSchoolVerification(token);
       if (verifiedForCampus) onComplete();
     } catch (consentError) {
-      setError(formatRequestError(consentError, "/api/legal/consent/accept", "Consent could not be saved."));
+      if (consentError instanceof SchoolVerificationHttpError) {
+        if (consentError.status === 401) clearAccessToken();
+        setError(consentError.message);
+      } else {
+        setError(formatRequestError(consentError, "/api/legal/consent/accept", "Consent could not be saved."));
+      }
     } finally {
       setIsConsentSubmitting(false);
     }
@@ -245,6 +241,11 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       const verifiedForCampus = await checkSchoolVerification(accessToken);
       if (verifiedForCampus) onComplete();
     } catch (signInError) {
+      if (signInError instanceof SchoolVerificationHttpError) {
+        if (signInError.status === 401) clearAccessToken();
+        setError(signInError.message);
+        return;
+      }
       if (signInError instanceof HttpRequestError) {
         const rawError = String(signInError.message ?? "Sign in failed.");
         logAuthFailureDev({
@@ -325,6 +326,11 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       const verifiedForCampus = await checkSchoolVerification(accessToken);
       if (verifiedForCampus) onComplete();
     } catch (signUpError) {
+      if (signUpError instanceof SchoolVerificationHttpError) {
+        if (signUpError.status === 401) clearAccessToken();
+        setError(signUpError.message);
+        return;
+      }
       setError(formatRequestError(signUpError, "/api/auth/signup", "Could not reach the backend. Try again."));
     } finally {
       setIsSubmitting(false);

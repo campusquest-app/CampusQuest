@@ -1,3 +1,4 @@
+import { userHasModerationAdminAccess } from "@/lib/server/adminAuth";
 import { ApiError } from "@/lib/server/http";
 import { extractEmailDomain, getPilotSchoolConfig } from "@/lib/server/pilotMode";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -23,6 +24,31 @@ export type SchoolVerificationState = {
 
 function isVerifiedEmailUser(user: { email_confirmed_at?: string | null; confirmed_at?: string | null }) {
   return Boolean(user.email_confirmed_at ?? user.confirmed_at);
+}
+
+/** Pilot-aligned scope for moderation admins (eligible for campus APIs without `@uri.edu`). */
+export function syntheticPilotVerificationForModerationAdmin(): SchoolVerificationState {
+  const pilot = getPilotSchoolConfig();
+  return {
+    status: "verified",
+    schoolName: pilot.schoolName,
+    schoolDomain: pilot.schoolDomain ?? null,
+    verifiedAt: new Date().toISOString(),
+    requiredPilotDomain: pilot.schoolDomain,
+    requiredPilotSchoolName: pilot.schoolName,
+  };
+}
+
+async function userIdHasModerationAdminAccess(userId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data, error } = await admin.auth.admin.getUserById(userId);
+  if (error || !data.user) return false;
+  const u = data.user;
+  return userHasModerationAdminAccess({
+    email: u.email,
+    email_confirmed_at: u.email_confirmed_at,
+    confirmed_at: (u as { confirmed_at?: string | null }).confirmed_at,
+  });
 }
 
 function mapRowToState(row: VerificationRow | null): SchoolVerificationState {
@@ -86,6 +112,9 @@ export async function requireVerifiedSchoolForCoreAccess(args: {
   };
 }) {
   const { userClient, user } = args;
+  if (userHasModerationAdminAccess(user)) {
+    return syntheticPilotVerificationForModerationAdmin();
+  }
   const existing = await userClient
     .from("user_school_verifications")
     .select("user_id, school_name, school_domain, status, verified_at")
@@ -114,6 +143,13 @@ export async function requireMatchingVerifiedSchool(args: {
   otherUserId: string;
 }) {
   const { userId, otherUserId } = args;
+  const [initiatorIsAdmin, otherIsAdmin] = await Promise.all([
+    userIdHasModerationAdminAccess(userId),
+    userIdHasModerationAdminAccess(otherUserId),
+  ]);
+  if (initiatorIsAdmin || otherIsAdmin) {
+    return;
+  }
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("user_school_verifications")

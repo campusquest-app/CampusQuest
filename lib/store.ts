@@ -360,6 +360,10 @@ export function syncCharacterProgressFromBackend(
 }
 
 /** Clear character from storage; next getCharacter() will return null (shows CharacterGate). */
+export function replaceLocalCharacter(character: Character): void {
+  saveCharacter(character);
+}
+
 export function logout(): void {
   if (typeof window === "undefined") return;
   try {

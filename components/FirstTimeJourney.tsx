@@ -13,8 +13,7 @@ type AppTab =
   | "character"
   | "inbox"
   | "events"
-  | "organizations"
-  | "notifications";
+  | "organizations";
 type QuestId = "profile" | "activity" | "boss" | "leaderboard" | "guild";
 
 type BeginnerQuest = {
@@ -96,6 +95,9 @@ export function FirstTimeJourney({
   const [claimingQuestId, setClaimingQuestId] = useState<QuestId | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [visitedLeaderboard, setVisitedLeaderboard] = useState(false);
+  /** After beginner chain completes, celebration fades away after a delay. */
+  const [chainCompleteFadeOut, setChainCompleteFadeOut] = useState(false);
+  const [chainCompleteRemoved, setChainCompleteRemoved] = useState(false);
 
   function canUseLocalFallback() {
     const isDev = process.env.NODE_ENV !== "production";
@@ -229,6 +231,18 @@ export function FirstTimeJourney({
   const completionPct = Math.round((quests.filter((q) => claimed.includes(q.id)).length / quests.length) * 100);
   const nextQuest = quests.find((q) => q.done && !claimed.includes(q.id)) ?? quests.find((q) => !q.done);
   const allClaimed = quests.every((q) => claimed.includes(q.id));
+
+  useEffect(() => {
+    if (!allClaimed) {
+      setChainCompleteFadeOut(false);
+      setChainCompleteRemoved(false);
+      return;
+    }
+    setChainCompleteFadeOut(false);
+    setChainCompleteRemoved(false);
+    const t = window.setTimeout(() => setChainCompleteFadeOut(true), 10_000);
+    return () => window.clearTimeout(t);
+  }, [allClaimed, character.id]);
 
   function dismissIntro() {
     setShowIntro(false);
@@ -461,13 +475,23 @@ export function FirstTimeJourney({
         </section>
       )}
 
-      {allClaimed && (
-        <section className="card p-4 text-center border-emerald-400/35 bg-emerald-900/15">
+      {allClaimed && !chainCompleteRemoved ? (
+        <section
+          className={`card p-4 text-center border-emerald-400/35 bg-emerald-900/15 transition-opacity duration-500 ease-out ${
+            chainCompleteFadeOut ? "opacity-0" : "opacity-100"
+          }`}
+          aria-live="polite"
+          onTransitionEnd={(e) => {
+            if (e.target !== e.currentTarget) return;
+            if (e.propertyName !== "opacity" || !chainCompleteFadeOut) return;
+            setChainCompleteRemoved(true);
+          }}
+        >
           <p className="text-xl" aria-hidden>🎉</p>
           <p className="mt-1 text-sm font-semibold text-emerald-200">Beginner chain complete</p>
           <p className="mt-1 text-xs text-white/60">You are now fully initiated. Keep stacking quests to maintain momentum.</p>
         </section>
-      )}
+      ) : null}
 
       {nextQuest && !allClaimed && (
         <div className="cq-onboarding-tip fixed bottom-[5.8rem] left-1/2 z-20 w-[min(24rem,92vw)] -translate-x-1/2 rounded-xl border border-uri-keaney/45 bg-uri-navy/95 p-3 shadow-xl">

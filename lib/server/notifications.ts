@@ -8,7 +8,10 @@ export type CampusNotificationType =
   | "connection_accepted"
   | "event_rsvp_reminder"
   | "organization_event_announcement"
-  | "moderation_safety_update";
+  | "moderation_safety_update"
+  | "organization_request_submitted"
+  | "organization_request_approved"
+  | "organization_request_denied";
 
 export async function createNotification(args: {
   userId: string;

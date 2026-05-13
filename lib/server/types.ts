@@ -4,8 +4,17 @@ export type ProfileRow = {
   display_name: string;
   avatar_url: string | null;
   bio: string;
+  streak_days?: number | null;
+  last_activity_date?: string | null;
   created_at: string;
   updated_at: string;
+  onboarding_completed?: boolean | null;
+  onboarding_completed_at?: string | null;
+  onboarding_character_completed?: boolean | null;
+  avatar_custom_json?: string | null;
+  character_class_id?: string | null;
+  starter_weapon?: string | null;
+  scholar_guild_id?: string | null;
 };
 
 export type UserStatsRow = {
