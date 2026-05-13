@@ -113,7 +113,8 @@ export function isServerBackedUserId(id: string): boolean {
   return UUID_RE.test(id);
 }
 
-function characterToGameStateJson(character: Character): Record<string, unknown> {
+/** Character-derived keys stored in `profiles.game_state_json` (equipment, unlocks, streak metadata, etc.). */
+export function getCharacterGameStateJson(character: Character): Record<string, unknown> {
   return {
     equippedCosmetics: character.equippedCosmetics ?? {},
     unlockedCosmetics: character.unlockedCosmetics ?? [],
@@ -150,7 +151,7 @@ export function buildUserStatePatchBodies(character: Character): {
   };
 
   const profile: Record<string, unknown> = {
-    gameStateJson: characterToGameStateJson(character),
+    gameStateJson: getCharacterGameStateJson(character),
   };
 
   const displayName = character.name?.trim();
@@ -161,7 +162,7 @@ export function buildUserStatePatchBodies(character: Character): {
   if (userHandle) profile.username = userHandle;
 
   const av = character.avatar?.trim();
-  if (av && av.length >= 2) profile.avatarCustomJson = av;
+  if (av && av.length >= 1) profile.avatarCustomJson = av;
 
   if (character.classId !== undefined) {
     profile.characterClassId = character.classId ?? null;
@@ -195,6 +196,20 @@ function runSerialized(fn: () => Promise<void>): Promise<void> {
   return next;
 }
 
+/** Best-effort profile PATCH with only avatar (used during logout salvage so avatar persists if the full bundle fails). */
+async function persistAvatarLogoutPatch(character: Character | null): Promise<void> {
+  if (typeof window === "undefined") return;
+  const token = getAccessToken();
+  if (!character || !token || !isServerBackedUserId(character.id)) return;
+
+  const av = character.avatar?.trim();
+  if (!av || av.length < 1) return;
+
+  await patchAuthed<MeProfileRow, { avatarCustomJson: string }>("/api/me/profile", {
+    avatarCustomJson: av,
+  });
+}
+
 async function executePush(character: Character): Promise<void> {
   if (typeof window === "undefined") return;
   if (!getAccessToken()) return;
@@ -207,6 +222,8 @@ async function executePush(character: Character): Promise<void> {
 
   try {
     const { stats, profile } = buildUserStatePatchBodies(character);
+    const store = await import("@/lib/store");
+    profile.gameStateJson = store.getFullGameStateJsonForServerSync(character);
     await Promise.all([
       patchAuthed<MeStatsRow, Record<string, unknown>>("/api/me/stats", stats),
       patchAuthed<MeProfileRow, Record<string, unknown>>("/api/me/profile", profile),
@@ -265,11 +282,30 @@ export async function flushUserStateToBackend(getCharacter: () => Character | nu
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
-  const c = getCharacter();
-  if (!c) return;
-  if (!getAccessToken()) return;
-  if (!isServerBackedUserId(c.id)) return;
-  await runSerialized(() => executePush(c));
+
+  await runSerialized(async () => {
+    const c = getCharacter();
+    if (!c || !getAccessToken() || !isServerBackedUserId(c.id)) return;
+
+    let fullPushError: unknown;
+    try {
+      await executePush(c);
+    } catch (e) {
+      fullPushError = e;
+    }
+
+    // Always PATCH avatar alone so DiceBear/custom avatar survives stats/gameState failures during logout flush.
+    try {
+      await persistAvatarLogoutPatch(getCharacter() ?? c);
+    } catch {
+      if (!fullPushError) {
+        // Full flush already persisted profile stats + avatar; redundant avatar PATCH is best-effort.
+      }
+      // When fullPush failed, salvage either succeeded (avatar persisted) or not — primary error reflects the bundle failure below.
+    }
+
+    if (fullPushError) throw fullPushError;
+  });
 }
 
 /** @deprecated Use flushUserStateToBackend */

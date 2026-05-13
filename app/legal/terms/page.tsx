@@ -58,7 +58,7 @@ const sections = [
 
 export default function TermsPage() {
   return (
-    <main className="min-h-screen bg-uri-navy px-4 py-8 sm:py-12">
+    <main className="mx-auto w-full max-w-3xl px-4 pb-12 sm:pb-16">
       <div className="mx-auto w-full max-w-3xl rounded-3xl border border-white/10 bg-white/[0.04] p-6 sm:p-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-white">Terms of Service</h1>
         <p className="mt-2 text-sm text-white/70">Effective Date: May 12, 2026</p>

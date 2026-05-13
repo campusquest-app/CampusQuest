@@ -49,3 +49,10 @@ export function addLootDrop(entry: Omit<LootDropEntry, "id">): void {
   entries.unshift(newEntry);
   saveLootLog(entries);
 }
+
+/** Replace server-backed entries for one character (used when hydrating from Supabase `clientMirror`). */
+export function replaceLootEntriesForCharacter(characterId: string, entries: LootDropEntry[]): void {
+  if (typeof window === "undefined") return;
+  const rest = loadLootLog().filter((e) => e.characterId !== characterId);
+  saveLootLog([...rest, ...entries]);
+}

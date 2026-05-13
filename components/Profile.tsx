@@ -16,6 +16,7 @@ import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboar
 import { LOGOUT_BLOCKED_SAVE_MESSAGE, resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
 import { registerLogoutPrepare } from "@/lib/client/logoutPrepare";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
+import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { FieldNoteCard } from "./FieldNoteCard";
@@ -90,27 +91,43 @@ export function Profile({
   const [repairPreserveCooldown, setRepairPreserveCooldown] = useState(true);
   const [showLootCodex, setShowLootCodex] = useState(false);
   const [bioDraft, setBioDraft] = useState(character.bio ?? "");
+  const [profileQuadPostsReady, setProfileQuadPostsReady] = useState(false);
+
+  useEffect(() => {
+    setProfileQuadPostsReady(false);
+  }, [character.id]);
 
   const refresh = useCallback(() => {
     void (async () => {
       try {
         if (isOwnProfile) {
+          const t0 = typeof performance !== "undefined" ? performance.now() : 0;
           const mine = await fetchMyQuadPosts(50);
+          if (typeof performance !== "undefined") {
+            console.log("[cq:load] profile my quad posts", Math.round(performance.now() - t0), "ms");
+          }
           mergeRemoteQuadPostsForMutations(mine);
           setPosts(mine);
         } else {
+          const t0 = typeof performance !== "undefined" ? performance.now() : 0;
           const theirs = await fetchQuadPostsByAuthor(character.id, 40);
+          if (typeof performance !== "undefined") {
+            console.log("[cq:load] profile author quad posts", Math.round(performance.now() - t0), "ms");
+          }
           mergeRemoteQuadPostsForMutations(theirs);
           setPosts(theirs);
         }
       } catch {
         setPosts(getFeedByAuthorId(character.id));
+      } finally {
+        setProfileQuadPostsReady(true);
       }
     })();
   }, [character.id, isOwnProfile]);
 
   useEffect(() => {
-    refresh();
+    const tid = scheduleNonCriticalWork(() => refresh());
+    return () => window.clearTimeout(tid);
   }, [refresh]);
 
   useEffect(() => {
@@ -411,7 +428,11 @@ export function Profile({
             )}
             <div className="flex justify-center sm:justify-start gap-4 mt-5 flex-wrap">
               <div className="game-stat-pill rounded-xl px-4 py-2.5 min-w-[4rem] text-center">
-                <span className="font-bold text-white text-lg block leading-tight">{posts.length}</span>
+                {profileQuadPostsReady ? (
+                  <span className="font-bold text-white text-lg block leading-tight">{posts.length}</span>
+                ) : (
+                  <span className="cq-skeleton block h-7 w-10 rounded-md mx-auto mb-0.5" aria-hidden />
+                )}
                 <span className="text-white/60 text-xs uppercase tracking-wider">Posts</span>
               </div>
               <button
@@ -601,7 +622,12 @@ export function Profile({
             Posts to the Quad
           </h3>
         </div>
-        {posts.length === 0 ? (
+        {!profileQuadPostsReady ? (
+          <div className="card cq-skeleton-wrap p-8 space-y-3" aria-busy="true" aria-label="Loading posts">
+            <div className="cq-skeleton h-4 rounded w-2/3 max-w-xs" />
+            <div className="cq-skeleton h-24 rounded-xl w-full" />
+          </div>
+        ) : posts.length === 0 ? (
           <div className="card p-8 text-center">
             <p className="text-white/60 text-sm">No posts yet. Share something on The Quad!</p>
           </div>

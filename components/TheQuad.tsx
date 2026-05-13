@@ -13,6 +13,7 @@ import {
   type QuadFeedType,
 } from "@/lib/feedStore";
 import { fetchQuadHomePosts } from "@/lib/client/quadPostsClient";
+import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { getCharacterById } from "@/lib/friendsStore";
 import type { FieldNote, Character } from "@/lib/types";
 import { FieldNoteComposer } from "@/components/FieldNoteComposer";
@@ -42,7 +43,10 @@ export function TheQuad({
   const refresh = useCallback(() => {
     void (async () => {
       try {
+        const t0 = typeof performance !== "undefined" ? performance.now() : 0;
         const remote = await fetchQuadHomePosts(80);
+        const ms = typeof performance !== "undefined" ? performance.now() - t0 : 0;
+        console.log("[cq:load] quad home posts", Math.round(ms), "ms");
         setRemoteQuadPostsCache(remote);
       } catch {
         setRemoteQuadPostsCache([]);
@@ -53,7 +57,8 @@ export function TheQuad({
   }, [character.id, feedType, onRefresh]);
 
   useEffect(() => {
-    refresh();
+    const tid = scheduleNonCriticalWork(() => refresh());
+    return () => window.clearTimeout(tid);
   }, [refresh]);
 
   function handleNod(noteId: string) {

@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
+import { armLegalConsentResumeFromGate } from "@/lib/legal/legalResumeGate";
 import { LEGAL_DOC_LINKS } from "@/lib/legal/policy";
 
 type Props = {
@@ -38,15 +40,27 @@ export function LegalConsentScreen({ onContinue, isSubmitting = false, versionLa
         </p>
 
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <a href={LEGAL_DOC_LINKS.privacy} target="_blank" rel="noopener noreferrer" className={linkClass}>
+          <Link
+            href={LEGAL_DOC_LINKS.privacy}
+            className={linkClass}
+            onClick={() => armLegalConsentResumeFromGate()}
+          >
             Privacy Policy
-          </a>
-          <a href={LEGAL_DOC_LINKS.terms} target="_blank" rel="noopener noreferrer" className={linkClass}>
+          </Link>
+          <Link
+            href={LEGAL_DOC_LINKS.terms}
+            className={linkClass}
+            onClick={() => armLegalConsentResumeFromGate()}
+          >
             Terms of Service
-          </a>
-          <a href={LEGAL_DOC_LINKS.guidelines} target="_blank" rel="noopener noreferrer" className={linkClass}>
+          </Link>
+          <Link
+            href={LEGAL_DOC_LINKS.guidelines}
+            className={linkClass}
+            onClick={() => armLegalConsentResumeFromGate()}
+          >
             Community Guidelines
-          </a>
+          </Link>
         </div>
 
         <div className="mt-6 rounded-2xl border border-white/15 bg-white/[0.03] p-4 sm:p-5">

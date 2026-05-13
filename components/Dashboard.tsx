@@ -2,7 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { getCharacter, logActivity, logout as storeLogout, replaceLocalCharacter, clearPersistedCharacter } from "@/lib/store";
+import {
+  getCharacter,
+  logActivity,
+  logout as storeLogout,
+  replaceLocalCharacter,
+  clearPersistedCharacter,
+  hydrateClientMirrorFromGameState,
+} from "@/lib/store";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -46,6 +53,13 @@ import {
   type MeSchoolVerificationResponse,
   SchoolVerificationHttpError,
 } from "@/lib/client/dashboardApi";
+import {
+  commitMeSessionSnapshot,
+  fetchMeProfileAndStatsDeduped,
+  getMeSessionSnapshot,
+  invalidateMeSessionCache,
+} from "@/lib/client/meSessionCache";
+import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { clearSchoolVerificationSnapshot, peekSchoolVerificationSnapshot } from "@/lib/client/schoolVerificationCache";
 import {
@@ -56,6 +70,7 @@ import { LOGOUT_BLOCKED_SAVE_MESSAGE, isServerBackedUserId, resetUserSaveSyncAft
 import { useSaveStatus } from "@/lib/client/useSaveStatus";
 import { SchoolVerificationScreen } from "./SchoolVerificationScreen";
 import { WelcomeBackCommunityReminder, communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
+import { DashboardBootstrapShellSkeleton } from "./DashboardBootstrapShellSkeleton";
 
 type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations";
 
@@ -431,6 +446,7 @@ export function Dashboard() {
       }
     }
     clearAccessToken();
+    invalidateMeSessionCache();
     clearSchoolVerificationSnapshot();
     storeLogout();
     setCharacter(null);
@@ -451,59 +467,26 @@ export function Dashboard() {
   useEffect(() => {
     if (bootstrapStatus !== "authenticated" || !character) return;
     let cancelled = false;
+    let intervalId = 0;
     async function loadUnread() {
+      const t0 = typeof performance !== "undefined" ? performance.now() : 0;
       try {
         const data = await fetchAuthed<{ notifications: unknown[]; unreadCount: number }>("/api/notifications?limit=1");
+        const ms = typeof performance !== "undefined" ? performance.now() - t0 : 0;
+        console.log("[cq:load] notifications", Math.round(ms), "ms");
         if (!cancelled) setUnreadNotificationCount(Number(data.unreadCount ?? 0));
       } catch {
         if (!cancelled) setUnreadNotificationCount(0);
       }
     }
-    void loadUnread();
-    const intervalId = window.setInterval(() => {
+    const tid = scheduleNonCriticalWork(() => void loadUnread());
+    intervalId = window.setInterval(() => {
       void loadUnread();
     }, 45000);
     return () => {
       cancelled = true;
+      window.clearTimeout(tid);
       window.clearInterval(intervalId);
-    };
-  }, [bootstrapStatus, character?.id]);
-
-  useEffect(() => {
-    if (bootstrapStatus !== "authenticated" || !character) return;
-    let cancelled = false;
-    async function loadOnboardingPreferences() {
-      try {
-        const data = await fetchAuthed<{
-          exists: boolean;
-          preferences: {
-            schoolName: string;
-            interests: string[];
-            discoveryFocus: string[];
-            major?: string | null;
-          } | null;
-        }>("/api/me/onboarding-preferences");
-        if (cancelled) return;
-        setOnboardingPreferences(
-          data.preferences
-            ? {
-                schoolName: data.preferences.schoolName,
-                interests: data.preferences.interests,
-                discoveryFocus: data.preferences.discoveryFocus,
-                major: data.preferences.major ?? null,
-              }
-            : null,
-        );
-        setNeedsOnboardingPreferences(!data.exists);
-      } catch {
-        if (cancelled) return;
-        setOnboardingPreferences(null);
-        setNeedsOnboardingPreferences(true);
-      }
-    }
-    void loadOnboardingPreferences();
-    return () => {
-      cancelled = true;
     };
   }, [bootstrapStatus, character?.id]);
 
@@ -515,7 +498,7 @@ export function Dashboard() {
     let cancelled = false;
     const characterId = character.id;
     setBeginnerJourneyHydration(null);
-    void loadBeginnerOnboardingHydrationBundle(characterId).then((hydrationPayload) => {
+    void loadBeginnerOnboardingHydrationBundle(characterId, getMeSessionSnapshot()).then((hydrationPayload) => {
       if (!cancelled) setBeginnerJourneyHydration(hydrationPayload);
     });
     return () => {
@@ -573,7 +556,7 @@ export function Dashboard() {
           starterIntroSeenReset: true,
           beginnerChainCelebrationSeenReset: true,
         });
-        const next = await loadHydration(id);
+        const next = await loadHydration(id, getMeSessionSnapshot());
         setBeginnerJourneyHydration(next);
       } catch {
         setBeginnerJourneyHydration(null);
@@ -593,6 +576,7 @@ export function Dashboard() {
 
       const failUnauthenticated = (opts?: { invalidateToken?: boolean }) => {
         if (opts?.invalidateToken) clearAccessToken();
+        invalidateMeSessionCache();
         storeLogout();
         clearSchoolVerificationSnapshot();
         setGatePrefillProfile(null);
@@ -610,47 +594,32 @@ export function Dashboard() {
 
       // Server fetch below will replace/merge local character; keep existing blob for same-user re-login.
 
+      invalidateMeSessionCache();
+
       let profileSnap: MeProfileRow | null = null;
 
       try {
-        const [profile, stats] = await Promise.all([
-          fetchAuthed<MeProfileRow>("/api/me/profile"),
-          fetchAuthed<MeStatsRow>("/api/me/stats"),
-        ]);
-
-        let profileMerged: MeProfileRow = profile;
-        let statsMerged: MeStatsRow = stats;
+        const tCrit = typeof performance !== "undefined" ? performance.now() : 0;
+        const snap0 = await fetchMeProfileAndStatsDeduped();
+        let profileMerged = snap0.profile;
+        let statsMerged = snap0.stats;
 
         const localPre = getCharacter();
         if (
           localPre &&
-          localPre.id === profile.id &&
+          localPre.id === profileMerged.id &&
           !localPre.id.startsWith("char-") &&
-          Number(localPre.totalXP) > Number(stats.total_xp ?? 0)
+          Number(localPre.totalXP) > Number(statsMerged.total_xp ?? 0)
         ) {
           const { pushCharacterProgressToServer } = await import("@/lib/client/gameStateSync");
           await pushCharacterProgressToServer(localPre);
-          const [p2, s2] = await Promise.all([
-            fetchAuthed<MeProfileRow>("/api/me/profile"),
-            fetchAuthed<MeStatsRow>("/api/me/stats"),
-          ]);
-          profileMerged = p2;
-          statsMerged = s2;
+          const snap1 = await fetchMeProfileAndStatsDeduped();
+          profileMerged = snap1.profile;
+          statsMerged = snap1.stats;
         }
 
-        let prefs: {
-          exists: boolean;
-          preferences: {
-            schoolName: string;
-            interests: string[];
-            discoveryFocus: string[];
-            major?: string | null;
-          } | null;
-        };
-        try {
-          prefs = await fetchAuthed("/api/me/onboarding-preferences");
-        } catch {
-          prefs = { exists: false, preferences: null };
+        if (typeof performance !== "undefined") {
+          console.log("[cq:load] bootstrap critical (profile+stats+LSPush)", Math.round(performance.now() - tCrit), "ms");
         }
 
         profileSnap = profileMerged;
@@ -660,17 +629,12 @@ export function Dashboard() {
         const onboardingDone = Boolean(profileMerged.onboarding_completed);
         const characterDone = Boolean(profileMerged.onboarding_character_completed);
 
-        const applyPrefsState = () => {
-          if (prefs.preferences) {
-            setOnboardingPreferences({
-              schoolName: prefs.preferences.schoolName,
-              interests: prefs.preferences.interests,
-              discoveryFocus: prefs.preferences.discoveryFocus,
-              major: prefs.preferences.major ?? null,
-            });
-          } else {
-            setOnboardingPreferences(null);
-          }
+        const commitSnap = () => {
+          commitMeSessionSnapshot({
+            userId: profileMerged.id,
+            profile: profileMerged,
+            stats: statsMerged,
+          });
         };
 
         const clearLegacyLocalMismatch = () => {
@@ -680,38 +644,90 @@ export function Dashboard() {
           }
         };
 
+        const scheduleDeferredOnboardingPrefs = () => {
+          scheduleNonCriticalWork(() => {
+            void (async () => {
+              if (cancelled) return;
+              const tp = typeof performance !== "undefined" ? performance.now() : 0;
+              try {
+                const prefsResp = await fetchAuthed<{
+                  exists: boolean;
+                  preferences: {
+                    schoolName: string;
+                    interests: string[];
+                    discoveryFocus: string[];
+                    major?: string | null;
+                  } | null;
+                }>("/api/me/onboarding-preferences");
+                if (typeof performance !== "undefined") {
+                  console.log("[cq:load] onboarding-preferences deferred", Math.round(performance.now() - tp), "ms");
+                }
+                if (cancelled) return;
+                if (prefsResp.preferences) {
+                  setOnboardingPreferences({
+                    schoolName: prefsResp.preferences.schoolName,
+                    interests: prefsResp.preferences.interests,
+                    discoveryFocus: prefsResp.preferences.discoveryFocus,
+                    major: prefsResp.preferences.major ?? null,
+                  });
+                } else {
+                  setOnboardingPreferences(null);
+                }
+                if (onboardingDone) {
+                  setNeedsOnboardingPreferences(false);
+                } else if (characterDone) {
+                  setNeedsOnboardingPreferences(!prefsResp.exists);
+                } else {
+                  setNeedsOnboardingPreferences(false);
+                }
+              } catch {
+                if (cancelled) return;
+                setOnboardingPreferences(null);
+                if (characterDone && !onboardingDone) setNeedsOnboardingPreferences(true);
+              }
+            })();
+          });
+        };
+
         let routeDecision: "character_gate" | "app" = "character_gate";
 
         if (onboardingDone) {
           clearLegacyLocalMismatch();
-          replaceLocalCharacter(buildLocalCharacterFromServer(profileMerged, statsMerged), { skipRemoteSync: true });
+          commitSnap();
+          const merged = buildLocalCharacterFromServer(profileMerged, statsMerged);
+          hydrateClientMirrorFromGameState(profileMerged.game_state_json ?? undefined, profileMerged.id);
+          replaceLocalCharacter(merged, { skipRemoteSync: true });
+          setCharacter(merged);
           resetUserSaveSyncAfterHydrate();
           setNeedsOnboardingPreferences(false);
-          applyPrefsState();
           setGatePrefillProfile(null);
           setShowWelcomeSplash(false);
           setTab("quad");
-          refresh();
           routeDecision = "app";
         } else if (characterDone) {
           clearLegacyLocalMismatch();
-          replaceLocalCharacter(buildLocalCharacterFromServer(profileMerged, statsMerged), { skipRemoteSync: true });
+          commitSnap();
+          const merged = buildLocalCharacterFromServer(profileMerged, statsMerged);
+          hydrateClientMirrorFromGameState(profileMerged.game_state_json ?? undefined, profileMerged.id);
+          replaceLocalCharacter(merged, { skipRemoteSync: true });
+          setCharacter(merged);
           resetUserSaveSyncAfterHydrate();
-          setNeedsOnboardingPreferences(!prefs.exists);
-          applyPrefsState();
+          setNeedsOnboardingPreferences(false);
           setGatePrefillProfile(null);
           setShowWelcomeSplash(false);
           setTab("quad");
-          refresh();
           routeDecision = "app";
         } else {
           clearLegacyLocalMismatch();
+          commitSnap();
           setNeedsOnboardingPreferences(false);
           setGatePrefillProfile(profileMerged);
           setShowWelcomeSplash(false);
           refresh();
           routeDecision = "character_gate";
         }
+
+        scheduleDeferredOnboardingPrefs();
 
         logBootstrapDecision({
           sessionFound: true,
@@ -789,6 +805,7 @@ export function Dashboard() {
         if (e instanceof SchoolVerificationHttpError && e.status === 401) {
           storeLogout();
           clearAccessToken();
+          invalidateMeSessionCache();
           setCharacter(null);
           setBootstrapStatus("bootstrapping");
           setPilotCampusState({ status: "loading" });
@@ -952,6 +969,9 @@ export function Dashboard() {
   }
 
   if (bootstrapStatus === "bootstrapping") {
+    if (typeof window !== "undefined" && getAccessToken()) {
+      return <DashboardBootstrapShellSkeleton />;
+    }
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center px-6 text-center">
         <div

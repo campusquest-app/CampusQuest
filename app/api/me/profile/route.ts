@@ -165,7 +165,14 @@ export async function PATCH(request: Request) {
     if (input.starterWeapon !== undefined) patch.starter_weapon = input.starterWeapon;
     if (input.scholarGuildId !== undefined) patch.scholar_guild_id = input.scholarGuildId;
     if (input.bio !== undefined) patch.bio = input.bio;
-    if (input.gameStateJson !== undefined) patch.game_state_json = input.gameStateJson;
+    if (input.gameStateJson !== undefined) {
+      const existingGsRaw = (existing as { game_state_json?: unknown }).game_state_json;
+      const existingGs =
+        existingGsRaw && typeof existingGsRaw === "object" && !Array.isArray(existingGsRaw)
+          ? (existingGsRaw as Record<string, unknown>)
+          : {};
+      patch.game_state_json = { ...existingGs, ...input.gameStateJson };
+    }
     if (input.characterOnboardingComplete === true) {
       patch.onboarding_character_completed = true;
     }

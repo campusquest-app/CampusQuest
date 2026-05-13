@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { addXpToCharacter, getActiveBossId, getActivityLogs, syncCharacterProgressFromBackend, updateCharacter } from "@/lib/store";
 import type { Character } from "@/lib/types";
 import { ApiRequestError, patchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { getMeSessionSnapshot } from "@/lib/client/meSessionCache";
 import {
   beginnerCelebrationAckKey,
   beginnerClaimedKey,
@@ -146,7 +147,7 @@ export function FirstTimeJourney({
   );
 
   const loadClaimStatusFromBackend = useCallback(async () => {
-    const bundle = await loadBeginnerOnboardingHydrationBundle(character.id);
+    const bundle = await loadBeginnerOnboardingHydrationBundle(character.id, getMeSessionSnapshot());
     applyHydrationBootstrap(bundle);
     onRefresh();
   }, [character.id, onRefresh, applyHydrationBootstrap]);

@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from "react";
 import { getCharacterById } from "@/lib/friendsStore";
 import { getGuilds, GUILD_INTEREST_LABELS } from "@/lib/guildStore";
 import { fetchAuthed } from "@/lib/client/dashboardApi";
+import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import type { Character } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, STAT_ICONS } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
@@ -239,30 +240,39 @@ export function Leaderboards({ character }: { character: Character }) {
   useEffect(() => {
     if (sortBy === "guildLevel") return;
     let cancelled = false;
+    let deferId = 0;
     setXpLoading(true);
     setXpError(null);
-    (async () => {
-      try {
-        const qs = new URLSearchParams({ sort: sortBy }).toString();
-        const [c, f] = await Promise.all([
-          fetchAuthed<XpLeaderboardPayload>(`/api/leaderboards/campus?${qs}`),
-          fetchAuthed<XpLeaderboardPayload>(`/api/leaderboards/friends?${qs}`),
-        ]);
-        if (cancelled) return;
-        setCampusLb(c);
-        setFriendsLb(f);
-      } catch (err) {
-        if (!cancelled) {
-          setXpError(err instanceof Error ? err.message : "Could not load leaderboards.");
-          setCampusLb(null);
-          setFriendsLb(null);
+    deferId = scheduleNonCriticalWork(() => {
+      if (cancelled) return;
+      void (async () => {
+        const t0 = typeof performance !== "undefined" ? performance.now() : 0;
+        try {
+          const qs = new URLSearchParams({ sort: sortBy }).toString();
+          const [c, f] = await Promise.all([
+            fetchAuthed<XpLeaderboardPayload>(`/api/leaderboards/campus?${qs}`),
+            fetchAuthed<XpLeaderboardPayload>(`/api/leaderboards/friends?${qs}`),
+          ]);
+          if (cancelled) return;
+          setCampusLb(c);
+          setFriendsLb(f);
+          if (typeof performance !== "undefined") {
+            console.log("[cq:load] leaderboards campus+friends", Math.round(performance.now() - t0), "ms");
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setXpError(err instanceof Error ? err.message : "Could not load leaderboards.");
+            setCampusLb(null);
+            setFriendsLb(null);
+          }
+        } finally {
+          if (!cancelled) setXpLoading(false);
         }
-      } finally {
-        if (!cancelled) setXpLoading(false);
-      }
-    })();
+      })();
+    });
     return () => {
       cancelled = true;
+      window.clearTimeout(deferId);
     };
   }, [sortBy]);
 

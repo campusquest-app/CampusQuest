@@ -1,4 +1,5 @@
 import { fetchAuthed } from "@/lib/client/dashboardApi";
+import type { MeSessionSnapshot } from "@/lib/client/meSessionCache";
 import type { MeProfileRow } from "@/lib/client/profileCharacter";
 import { syncCharacterProgressFromBackend } from "@/lib/store";
 import {
@@ -96,111 +97,153 @@ export type BeginnerOnboardingHydrationBootstrap = {
   welcomeBackReminderEligible: boolean;
 };
 
+function mergeBeginnerHydrationPieces(
+  characterId: string,
+  status: BeginnerClaimStatusResponse,
+  stats: MeStatsResponse,
+  profile: MeProfileResponse,
+): BeginnerOnboardingHydrationBootstrap {
+  const nextClaimed: BeginnerQuestClaimKey[] = status.claims.map((c) => c.questKey);
+  try {
+    localStorage.setItem(beginnerClaimedKey(characterId), JSON.stringify(nextClaimed));
+  } catch {
+    // best effort only
+  }
+  syncCharacterProgressFromBackend(characterId, {
+    stats: {
+      level: stats.level ?? null,
+      total_xp: stats.total_xp ?? null,
+      strength: stats.strength ?? null,
+      stamina: stats.stamina ?? null,
+      knowledge: stats.knowledge ?? null,
+      social: stats.social ?? null,
+      focus: stats.focus ?? null,
+    },
+    profile: {
+      streak_days: profile.streak_days ?? null,
+      last_activity_date: profile.last_activity_date ?? null,
+    },
+  });
+
+  const lsCelebrationSeen = readBeginnerCelebrationSeenLocal(characterId);
+  const serverSeenAt = status.beginnerChainCelebrationSeenAt ?? profile.beginner_chain_celebration_seen_at ?? null;
+  const celebrationSeenFromServer: string | null = serverSeenAt;
+  const celebrationAcknowledgedMerged = Boolean(serverSeenAt) || lsCelebrationSeen;
+
+  const profileFlagsForIntro: Partial<Pick<
+    MeProfileRow,
+    | "onboarding_completed"
+    | "starter_intro_seen_at"
+    | "beginner_chain_completed_at"
+    | "beginner_chain_celebration_seen_at"
+  >> = {
+    onboarding_completed: profile.onboarding_completed ?? null,
+    starter_intro_seen_at: profile.starter_intro_seen_at ?? null,
+    beginner_chain_completed_at:
+      profile.beginner_chain_completed_at ?? status.beginnerChainCompletedAt ?? null,
+    beginner_chain_celebration_seen_at:
+      profile.beginner_chain_celebration_seen_at ?? status.beginnerChainCelebrationSeenAt ?? null,
+  };
+
+  const skipStarterIntroOverlay = shouldSkipStarterIntroOverlay({
+    profile: profileFlagsForIntro,
+    claimCountFromServer: status.claims.length,
+    lsIntroMarkedSeen: readOnboardingIntroSeenLocal(characterId),
+  });
+
+  const hideBeginnerStarterPanel = isTutorialChainUiComplete({
+    beginnerStatus: {
+      claims: status.claims,
+      beginnerChainCelebrationSeenAt: celebrationSeenFromServer ?? undefined,
+      beginnerChainCompletedAt: status.beginnerChainCompletedAt ?? profile.beginner_chain_completed_at ?? null,
+    },
+    celebrationAcknowledgedMerged,
+  });
+
+  const onboarding_completed_flag = Boolean(profile.onboarding_completed);
+  const tutorial_completed_flag = hideBeginnerStarterPanel;
+
+  const hasReturningProfileSignals =
+    onboarding_completed_flag ||
+    Boolean(typeof profile.starter_intro_seen_at === "string" && profile.starter_intro_seen_at.trim().length > 0) ||
+    Boolean(
+      typeof profile.beginner_chain_celebration_seen_at === "string" &&
+        profile.beginner_chain_celebration_seen_at.trim().length > 0,
+    ) ||
+    Boolean(
+      typeof profile.beginner_chain_completed_at === "string" && profile.beginner_chain_completed_at.trim().length > 0,
+    );
+
+  const welcomeBackReminderEligible = hideBeginnerStarterPanel && hasReturningProfileSignals;
+  logTutorialGating("bundleLoadedOk", {
+    onboarding_completed_flag,
+    tutorial_completed_flag,
+    skipStarterIntroOverlay,
+    hideBeginnerStarterPanel,
+    welcomeBackReminderEligible,
+    claimCount: status.claims.length,
+    lsIntroMarkedSeen: readOnboardingIntroSeenLocal(characterId),
+  });
+
+  return {
+    beginnerStatus: status,
+    celebrationSeenFromServer,
+    celebrationAcknowledged: celebrationAcknowledgedMerged,
+    onboarding_completed_flag,
+    tutorial_completed_flag,
+    skipStarterIntroOverlay,
+    hideBeginnerStarterPanel,
+    welcomeBackReminderEligible,
+  };
+}
+
 /**
  * Fetches onboarding status + merges celebration ack from LS. Syncs XP/streak into client store when API succeeds.
+ * When `preloadedSession` matches `characterId`, reuses cached profile/stats from MeSessionSnapshot (only hits beginner-quests status).
  */
-export async function loadBeginnerOnboardingHydrationBundle(characterId: string): Promise<BeginnerOnboardingHydrationBootstrap> {
-  let lsCelebrationSeen = readBeginnerCelebrationSeenLocal(characterId);
+export async function loadBeginnerOnboardingHydrationBundle(
+  characterId: string,
+  preloadedSession?: MeSessionSnapshot | null,
+): Promise<BeginnerOnboardingHydrationBootstrap> {
   try {
+    if (preloadedSession?.userId === characterId) {
+      const t0 = typeof performance !== "undefined" ? performance.now() : 0;
+      const status = await fetchAuthed<BeginnerClaimStatusResponse>("/api/onboarding/beginner-quests/status");
+      const ms = typeof performance !== "undefined" ? performance.now() - t0 : 0;
+      console.log(`[cq:load] beginner-quests/status (reuse profile+stats cache) ${Math.round(ms)}ms`);
+      const p = preloadedSession.profile;
+      const profile: MeProfileResponse = {
+        streak_days: p.streak_days ?? null,
+        last_activity_date: p.last_activity_date ?? null,
+        onboarding_completed: p.onboarding_completed ?? null,
+        starter_intro_seen_at: p.starter_intro_seen_at ?? null,
+        beginner_chain_completed_at: p.beginner_chain_completed_at ?? null,
+        beginner_chain_celebration_seen_at: p.beginner_chain_celebration_seen_at ?? null,
+      };
+      const s = preloadedSession.stats;
+      const stats: MeStatsResponse = {
+        level: s.level ?? null,
+        total_xp: s.total_xp ?? null,
+        strength: s.strength ?? null,
+        stamina: s.stamina ?? null,
+        knowledge: s.knowledge ?? null,
+        social: s.social ?? null,
+        focus: s.focus ?? null,
+      };
+      return mergeBeginnerHydrationPieces(characterId, status, stats, profile);
+    }
+
+    const t0Bundle = typeof performance !== "undefined" ? performance.now() : 0;
     const [status, stats, profile] = await Promise.all([
       fetchAuthed<BeginnerClaimStatusResponse>("/api/onboarding/beginner-quests/status"),
       fetchAuthed<MeStatsResponse>("/api/me/stats"),
       fetchAuthed<MeProfileResponse>("/api/me/profile"),
     ]);
-    const nextClaimed: BeginnerQuestClaimKey[] = status.claims.map((c) => c.questKey);
-    try {
-      localStorage.setItem(beginnerClaimedKey(characterId), JSON.stringify(nextClaimed));
-    } catch {
-      // best effort only
-    }
-    syncCharacterProgressFromBackend(characterId, {
-      stats: {
-        level: stats.level ?? null,
-        total_xp: stats.total_xp ?? null,
-        strength: stats.strength ?? null,
-        stamina: stats.stamina ?? null,
-        knowledge: stats.knowledge ?? null,
-        social: stats.social ?? null,
-        focus: stats.focus ?? null,
-      },
-      profile: {
-        streak_days: profile.streak_days ?? null,
-        last_activity_date: profile.last_activity_date ?? null,
-      },
-    });
-
-    lsCelebrationSeen = readBeginnerCelebrationSeenLocal(characterId);
-    const serverSeenAt = status.beginnerChainCelebrationSeenAt ?? profile.beginner_chain_celebration_seen_at ?? null;
-    const celebrationSeenFromServer: string | null = serverSeenAt;
-    const celebrationAcknowledgedMerged = Boolean(serverSeenAt) || lsCelebrationSeen;
-
-    const profileFlagsForIntro: Partial<Pick<
-      MeProfileRow,
-      | "onboarding_completed"
-      | "starter_intro_seen_at"
-      | "beginner_chain_completed_at"
-      | "beginner_chain_celebration_seen_at"
-    >> = {
-      onboarding_completed: profile.onboarding_completed ?? null,
-      starter_intro_seen_at: profile.starter_intro_seen_at ?? null,
-      beginner_chain_completed_at:
-        profile.beginner_chain_completed_at ?? status.beginnerChainCompletedAt ?? null,
-      beginner_chain_celebration_seen_at:
-        profile.beginner_chain_celebration_seen_at ?? status.beginnerChainCelebrationSeenAt ?? null,
-    };
-
-    const skipStarterIntroOverlay = shouldSkipStarterIntroOverlay({
-      profile: profileFlagsForIntro,
-      claimCountFromServer: status.claims.length,
-      lsIntroMarkedSeen: readOnboardingIntroSeenLocal(characterId),
-    });
-
-    const hideBeginnerStarterPanel = isTutorialChainUiComplete({
-      beginnerStatus: {
-        claims: status.claims,
-        beginnerChainCelebrationSeenAt: celebrationSeenFromServer ?? undefined,
-        beginnerChainCompletedAt: status.beginnerChainCompletedAt ?? profile.beginner_chain_completed_at ?? null,
-      },
-      celebrationAcknowledgedMerged,
-    });
-
-    const onboarding_completed_flag = Boolean(profile.onboarding_completed);
-    const tutorial_completed_flag = hideBeginnerStarterPanel;
-
-    const hasReturningProfileSignals =
-      onboarding_completed_flag ||
-      Boolean(typeof profile.starter_intro_seen_at === "string" && profile.starter_intro_seen_at.trim().length > 0) ||
-      Boolean(
-        typeof profile.beginner_chain_celebration_seen_at === "string" &&
-          profile.beginner_chain_celebration_seen_at.trim().length > 0,
-      ) ||
-      Boolean(
-        typeof profile.beginner_chain_completed_at === "string" && profile.beginner_chain_completed_at.trim().length > 0,
-      );
-
-    const welcomeBackReminderEligible = hideBeginnerStarterPanel && hasReturningProfileSignals;
-    logTutorialGating("bundleLoadedOk", {
-      onboarding_completed_flag,
-      tutorial_completed_flag,
-      skipStarterIntroOverlay,
-      hideBeginnerStarterPanel,
-      welcomeBackReminderEligible,
-      claimCount: status.claims.length,
-      lsIntroMarkedSeen: readOnboardingIntroSeenLocal(characterId),
-    });
-
-    return {
-      beginnerStatus: status,
-      celebrationSeenFromServer,
-      celebrationAcknowledged: celebrationAcknowledgedMerged,
-      onboarding_completed_flag,
-      tutorial_completed_flag,
-      skipStarterIntroOverlay,
-      hideBeginnerStarterPanel,
-      welcomeBackReminderEligible,
-    };
+    const msBundle = typeof performance !== "undefined" ? performance.now() - t0Bundle : 0;
+    console.log(`[cq:load] beginner bundle full parallel (status+stats+profile) ${Math.round(msBundle)}ms`);
+    return mergeBeginnerHydrationPieces(characterId, status, stats, profile);
   } catch {
-    lsCelebrationSeen = readBeginnerCelebrationSeenLocal(characterId);
+    const lsCelebrationSeen = readBeginnerCelebrationSeenLocal(characterId);
     if (!canUseLocalFallback()) {
       const onboarding_completed_flag = false;
       const tutorial_completed_flag = false;

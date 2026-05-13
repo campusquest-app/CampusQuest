@@ -1,6 +1,6 @@
 "use client";
 
-import { isServerBackedUserId } from "@/lib/client/gameStateSync";
+import { getCharacterGameStateJson, isServerBackedUserId } from "@/lib/client/gameStateSync";
 import type { Character, CharacterStats, ActivityLog, BossProgress as BossProgressType, CurrentBoss, UserBoss, StatKey } from "./types";
 import { STAT_KEYS, MAX_STAT } from "./types";
 import { xpToLevel, DAILY_MINIMUM_XP } from "./level";
@@ -9,7 +9,7 @@ import { getSampleBosses } from "./bosses";
 import { registerCharacter as registerCharacterInFriends, getCharacterById } from "./friendsStore";
 import { applyClassStats, type CharacterClassId } from "./characterClasses";
 import { pickLootCosmetic, type CosmeticItem } from "./cosmetics";
-import { addLootDrop } from "./lootLog";
+import { addLootDrop, getLootLogForCharacter, replaceLootEntriesForCharacter, type LootDropEntry } from "./lootLog";
 import { getSpecialQuestById } from "./specialQuests";
 import { computeXpBreakdown, type XpBreakdown } from "./xpEngine";
 import { contributeCampusBossDamage, clearCampusBossContributors } from "./campusBossEvent";
@@ -980,4 +980,99 @@ export function addXpToCharacter(characterId: string, amount: number): void {
     updateStreakFromTodaysXp(c, characterId, td);
     registerCharacterInFriends(c);
   }
+}
+
+const MAX_SYNCED_ACTIVITY_LOGS = 450;
+const MAX_SYNCED_LOOT_ENTRIES = 400;
+
+export type ClientMirrorV1 = {
+  v: 1;
+  activityLogs: ActivityLog[];
+  lootEntries: LootDropEntry[];
+  bossProgress: BossProgressRecord;
+  userBosses: UserBoss[];
+  activeBossId: string | null;
+  currentBoss: CurrentBoss | null;
+};
+
+function bossProgressSliceForCharacter(characterId: string): BossProgressRecord {
+  const all = loadBossProgress();
+  const prefix = `${characterId}:`;
+  const out: BossProgressRecord = {};
+  for (const [k, v] of Object.entries(all)) {
+    if (k.startsWith(prefix)) out[k] = v;
+  }
+  return out;
+}
+
+function buildClientMirrorPayload(characterId: string): ClientMirrorV1 | null {
+  if (!isServerBackedUserId(characterId)) return null;
+  const activityLogs = loadLogs()
+    .filter((l) => l.characterId === characterId)
+    .slice(-MAX_SYNCED_ACTIVITY_LOGS);
+  const lootEntries = getLootLogForCharacter(characterId).slice(0, MAX_SYNCED_LOOT_ENTRIES);
+  return {
+    v: 1,
+    activityLogs,
+    lootEntries,
+    bossProgress: bossProgressSliceForCharacter(characterId),
+    userBosses: loadUserBosses(),
+    activeBossId: loadActiveBossId(),
+    currentBoss: loadCurrentBoss(),
+  };
+}
+
+/**
+ * Full `game_state_json` row for PATCH: character snapshot plus `clientMirror` (activity log, loot, bosses)
+ * so secondary devices can rebuild local UI cache after Supabase hydrate.
+ */
+export function getFullGameStateJsonForServerSync(character: Character): Record<string, unknown> {
+  const base = getCharacterGameStateJson(character);
+  const mirror = buildClientMirrorPayload(character.id);
+  if (!mirror) return base;
+  return { ...base, clientMirror: mirror };
+}
+
+function isClientMirrorV1(x: unknown): x is ClientMirrorV1 {
+  if (typeof x !== "object" || x === null) return false;
+  const o = x as Record<string, unknown>;
+  if (o.v !== 1) return false;
+  if (!Array.isArray(o.activityLogs)) return false;
+  if (!Array.isArray(o.lootEntries)) return false;
+  if (typeof o.bossProgress !== "object" || o.bossProgress === null || Array.isArray(o.bossProgress)) return false;
+  if (!Array.isArray(o.userBosses)) return false;
+  if (o.activeBossId !== null && typeof o.activeBossId !== "string") return false;
+  if (o.currentBoss !== undefined && o.currentBoss !== null && typeof o.currentBoss !== "object") return false;
+  return true;
+}
+
+/**
+ * Apply `clientMirror` from `profiles.game_state_json` into localStorage-backed caches (not the character blob).
+ * Call before `replaceLocalCharacter` during session bootstrap.
+ */
+export function hydrateClientMirrorFromGameState(
+  gameStateJson: Record<string, unknown> | null | undefined,
+  userId: string,
+): void {
+  if (typeof window === "undefined") return;
+  if (!gameStateJson || typeof gameStateJson !== "object") return;
+  const raw = gameStateJson.clientMirror;
+  if (!isClientMirrorV1(raw)) return;
+
+  const otherLogs = loadLogs().filter((l) => l.characterId !== userId);
+  saveLogs([...otherLogs, ...raw.activityLogs]);
+
+  replaceLootEntriesForCharacter(userId, raw.lootEntries);
+
+  const allBp = loadBossProgress();
+  const prefix = `${userId}:`;
+  for (const k of Object.keys(allBp)) {
+    if (k.startsWith(prefix)) delete allBp[k];
+  }
+  Object.assign(allBp, raw.bossProgress);
+  saveBossProgress(allBp);
+
+  saveUserBosses(raw.userBosses);
+  saveActiveBossId(raw.activeBossId);
+  saveCurrentBoss(raw.currentBoss);
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DEFAULT_POLICY_VERSION } from "@/lib/legal/policy";
+import { takeLegalConsentResumeToken } from "@/lib/legal/legalResumeGate";
 import { fetchMeSchoolVerification, SchoolVerificationHttpError } from "@/lib/client/dashboardApi";
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/client/apiSession";
 import { LegalConsentScreen } from "@/components/LegalConsentScreen";
@@ -133,7 +134,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     return true;
   }
 
-  async function checkConsentStatus(accessToken: string) {
+  const checkConsentStatus = useCallback(async (accessToken: string) => {
     const payload = await fetchJson<{ acceptedCurrentVersion?: boolean; currentPolicyVersion?: string }>(
       "/api/legal/consent/status",
       {
@@ -149,8 +150,15 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setNeedsConsent(true);
       return false;
     }
+    setNeedsConsent(false);
     return true;
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!takeLegalConsentResumeToken()) return;
+    const token = getAccessToken();
+    if (token) void checkConsentStatus(token);
+  }, [checkConsentStatus]);
 
   async function checkSchoolVerification(accessToken: string) {
     const { verification, moderationAdminAccess } = await fetchMeSchoolVerification(accessToken);

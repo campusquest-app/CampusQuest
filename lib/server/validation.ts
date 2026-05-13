@@ -347,7 +347,7 @@ export const patchMeProfileSchema = z
   .object({
     displayName: z.string().trim().min(1).max(60).optional(),
     username: z.string().trim().min(3).max(24).regex(/^[a-z0-9_]+$/).optional(),
-    avatarCustomJson: z.string().trim().min(2).max(120_000).optional(),
+    avatarCustomJson: z.string().trim().min(1).max(120_000).optional(),
     characterClassId: z.string().trim().max(64).nullable().optional(),
     starterWeapon: z.string().trim().max(64).nullable().optional(),
     scholarGuildId: z.string().trim().max(64).nullable().optional(),
