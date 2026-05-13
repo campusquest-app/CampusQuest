@@ -39,8 +39,10 @@ export function enforceRateLimit(args: {
   routeKey: string;
   limit: number;
   windowMs: number;
+  message?: string;
+  code?: string;
 }) {
-  const { userId, routeKey, limit, windowMs } = args;
+  const { userId, routeKey, limit, windowMs, message, code } = args;
   const now = Date.now();
   const key = `${userId}:${routeKey}`;
   const existing = globalRateStore.get(key);
@@ -51,7 +53,7 @@ export function enforceRateLimit(args: {
   }
 
   if (existing.count >= limit) {
-    throw new ApiError(429, "Too many requests. Try again shortly.", "RATE_LIMITED");
+    throw new ApiError(429, message ?? "Too many requests. Try again shortly.", code ?? "RATE_LIMITED");
   }
 
   existing.count += 1;

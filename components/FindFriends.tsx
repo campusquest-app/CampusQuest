@@ -326,7 +326,7 @@ export function FindFriends({
           <span aria-hidden>🦌</span> Friends ({friends.length})
         </h3>
         {friends.length === 0 ? (
-          <p className="text-sm text-white/50">No friends yet. Send a request or accept one above. You're friends only when you both accept.</p>
+          <p className="text-sm text-white/50">No friends yet. Send a request or accept one above. You&apos;re friends only when you both accept.</p>
         ) : (
           <ul className="space-y-4">
             {friends.map((friend) => (

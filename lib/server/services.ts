@@ -1,4 +1,5 @@
 import { User } from "@supabase/supabase-js";
+import { DEFAULT_POLICY_VERSION } from "@/lib/legal/policy";
 import { ApiError } from "@/lib/server/http";
 import {
   calculateActivityXp,
@@ -23,6 +24,161 @@ type AddXpArgs = {
   activityId?: string;
   note?: string;
 };
+
+const BEGINNER_QUEST_XP: Record<"profile" | "activity" | "boss" | "leaderboard" | "guild", number> = {
+  profile: 25,
+  activity: 40,
+  boss: 55,
+  leaderboard: 35,
+  guild: 45,
+};
+
+function getClientIp(request: Request) {
+  const forwarded = request.headers.get("x-forwarded-for");
+  const normalize = (raw: string) => {
+    const candidate = raw.trim();
+    if (!candidate) return null;
+    const ipv4WithPort = candidate.match(/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/);
+    if (ipv4WithPort?.[1]) return ipv4WithPort[1];
+    if (/^[a-fA-F0-9:.]+$/.test(candidate)) return candidate;
+    return null;
+  };
+
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) {
+      const normalized = normalize(first);
+      if (normalized) return normalized;
+    }
+  }
+  const realIp = request.headers.get("x-real-ip");
+  return realIp ? normalize(realIp) : null;
+}
+
+export async function getLegalConsentStatus(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+}) {
+  const { userClient, userId } = args;
+  const currentPolicyVersion = await getActivePolicyVersion(userClient);
+  const { data, error } = await userClient
+    .from("user_legal_consents")
+    .select("policy_version, consented_at")
+    .eq("user_id", userId)
+    .order("consented_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(400, error.message, "LEGAL_CONSENT_STATUS_FAILED");
+  }
+
+  const acceptedCurrentVersion = data?.policy_version === currentPolicyVersion;
+  return {
+    acceptedCurrentVersion,
+    requiredReacceptance: !acceptedCurrentVersion,
+    currentPolicyVersion,
+    latestAcceptedVersion: data?.policy_version ?? null,
+    latestConsentedAt: data?.consented_at ?? null,
+  };
+}
+
+export async function acceptLegalConsent(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  request: Request;
+}) {
+  const { userClient, userId, request } = args;
+  const currentPolicyVersion = await getActivePolicyVersion(userClient);
+  const ipAddress = getClientIp(request);
+  const userAgent = request.headers.get("user-agent");
+  const nowIso = new Date().toISOString();
+
+  const { data, error } = await userClient
+    .from("user_legal_consents")
+    .upsert(
+      {
+        user_id: userId,
+        policy_version: currentPolicyVersion,
+        accepted_terms: true,
+        accepted_privacy: true,
+        accepted_guidelines: true,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        consented_at: nowIso,
+      },
+      { onConflict: "user_id,policy_version" },
+    )
+    .select("policy_version, consented_at, accepted_terms, accepted_privacy, accepted_guidelines")
+    .single();
+
+  if (error || !data) {
+    throw new ApiError(400, error?.message ?? "Could not save legal consent.", "LEGAL_CONSENT_SAVE_FAILED");
+  }
+
+  return {
+    policyVersion: data.policy_version as string,
+    consentedAt: data.consented_at as string,
+    acceptedTerms: Boolean(data.accepted_terms),
+    acceptedPrivacy: Boolean(data.accepted_privacy),
+    acceptedGuidelines: Boolean(data.accepted_guidelines),
+  };
+}
+
+export async function getActivePolicyVersion(userClient: SupabaseClientLike) {
+  const { data, error } = await userClient
+    .from("legal_policy_versions")
+    .select("version")
+    .eq("is_active", true)
+    .order("activated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(400, error.message, "LEGAL_POLICY_VERSION_FETCH_FAILED");
+  }
+
+  return (data?.version as string | undefined) ?? DEFAULT_POLICY_VERSION;
+}
+
+export async function activatePolicyVersion(args: {
+  version: string;
+}) {
+  const admin = createAdminClient();
+  const { version } = args;
+  const nowIso = new Date().toISOString();
+
+  const { error: deactivateError } = await admin
+    .from("legal_policy_versions")
+    .update({ is_active: false })
+    .eq("is_active", true);
+  if (deactivateError) {
+    throw new ApiError(400, deactivateError.message, "LEGAL_POLICY_DEACTIVATE_FAILED");
+  }
+
+  const { data, error } = await admin
+    .from("legal_policy_versions")
+    .upsert(
+      {
+        version,
+        is_active: true,
+        activated_at: nowIso,
+      },
+      { onConflict: "version" },
+    )
+    .select("version, is_active, activated_at")
+    .single();
+
+  if (error || !data) {
+    throw new ApiError(400, error?.message ?? "Could not activate policy version.", "LEGAL_POLICY_ACTIVATE_FAILED");
+  }
+
+  return {
+    version: data.version as string,
+    isActive: Boolean(data.is_active),
+    activatedAt: data.activated_at as string,
+  };
+}
 
 export async function createUserProfile(userClient: SupabaseClientLike, user: User, input: {
   username: string;
@@ -100,6 +256,84 @@ export async function addXp(args: AddXpArgs) {
     activityId,
     note,
   });
+}
+
+export async function claimBeginnerQuestReward(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  questId: "profile" | "activity" | "boss" | "leaderboard" | "guild";
+}) {
+  const { userClient, userId, questId } = args;
+  const xpAmount = BEGINNER_QUEST_XP[questId];
+
+  const { data: existing, error: existingError } = await userClient
+    .from("user_beginner_quest_claims")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("quest_key", questId)
+    .maybeSingle();
+  if (existingError) {
+    throw new ApiError(400, existingError.message, "BEGINNER_QUEST_CHECK_FAILED");
+  }
+  if (existing) {
+    throw new ApiError(409, "Beginner quest already claimed.", "BEGINNER_QUEST_ALREADY_CLAIMED");
+  }
+
+  const { data: claim, error: claimError } = await userClient
+    .from("user_beginner_quest_claims")
+    .insert({
+      user_id: userId,
+      quest_key: questId,
+      xp_awarded: xpAmount,
+    })
+    .select("*")
+    .single();
+
+  if (claimError || !claim) {
+    const message = claimError?.message ?? "Could not claim beginner quest.";
+    if (message.toLowerCase().includes("duplicate") || message.toLowerCase().includes("unique")) {
+      throw new ApiError(409, "Beginner quest already claimed.", "BEGINNER_QUEST_ALREADY_CLAIMED");
+    }
+    throw new ApiError(400, message, "BEGINNER_QUEST_CLAIM_FAILED");
+  }
+
+  try {
+    const xp = await addXpInternal({
+      userClient,
+      userId,
+      amount: xpAmount,
+      sourceType: "manual",
+      sourceId: claim.id,
+      note: `Beginner quest reward: ${questId}`,
+    });
+    const player = await getPlayerProgressSnapshot(userClient, userId);
+    return { claim, xp, player };
+  } catch (error) {
+    await userClient.from("user_beginner_quest_claims").delete().eq("id", claim.id);
+    throw error;
+  }
+}
+
+export async function getBeginnerQuestClaimStatuses(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+}) {
+  const { userClient, userId } = args;
+  const { data, error } = await userClient
+    .from("user_beginner_quest_claims")
+    .select("quest_key, created_at, xp_awarded")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new ApiError(400, error.message, "BEGINNER_QUEST_STATUS_FETCH_FAILED");
+  }
+
+  return (data ?? []).map((row) => ({
+    questKey: row.quest_key as "profile" | "activity" | "boss" | "leaderboard" | "guild",
+    claimedAt: row.created_at as string,
+    xpAwarded: Number(row.xp_awarded ?? 0),
+  }));
 }
 
 export async function logActivity(args: {

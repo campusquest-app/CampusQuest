@@ -13,6 +13,10 @@ export const authLoginSchema = z.object({
   password: z.string().min(8).max(128),
 });
 
+export const authResendConfirmationSchema = z.object({
+  email: z.string().trim().email(),
+});
+
 export const createProfileSchema = z.object({
   username: z
     .string()
@@ -50,6 +54,102 @@ export const addXpSchema = z.object({
 
 export const completeQuestSchema = z.object({
   userQuestId: uuidSchema,
+});
+
+export const beginnerQuestClaimSchema = z.object({
+  questId: z.enum(["profile", "activity", "boss", "leaderboard", "guild"]),
+});
+
+export const legalConsentAcceptSchema = z.object({
+  acceptedTerms: z.literal(true),
+  acceptedPrivacy: z.literal(true),
+  acceptedGuidelines: z.literal(true),
+});
+
+export const legalPolicyVersionSchema = z.object({
+  version: z.string().trim().min(1).max(64),
+});
+
+export const connectionRequestSchema = z.object({
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9_]{3,24}$/, "Username must be 3-24 chars (a-z, 0-9, _)."),
+});
+
+export const connectionRespondSchema = z.object({
+  requestId: uuidSchema,
+  action: z.enum(["accept", "decline"]),
+});
+
+export const directConversationSchema = z.object({
+  otherUserId: uuidSchema,
+});
+
+export const sendDirectMessageSchema = z.object({
+  content: z.string().trim().min(1).max(2000),
+});
+
+export const blockUserSchema = z.object({
+  userId: uuidSchema,
+  reason: z.string().trim().max(200).optional(),
+});
+
+export const reportMessageSchema = z.object({
+  reason: z.enum(["harassment", "threat", "scam", "impersonation", "discrimination", "unsafe", "other"]),
+  details: z.string().trim().max(1000).optional(),
+});
+
+export const reportCampusContentSchema = z.object({
+  reason: z.enum(["unsafe", "harassment", "scam", "inappropriate", "spam", "other"]),
+  details: z.string().trim().max(1000).optional(),
+});
+
+export const resolveCampusContentReportSchema = z.object({
+  reportId: uuidSchema,
+  status: z.enum(["resolved", "dismissed"]),
+  moderatorNote: z.string().trim().max(1000).optional(),
+  reviewerUserId: uuidSchema.optional(),
+  reviewerEmail: z.string().trim().email().optional(),
+});
+
+export const moderateCampusContentSchema = z.object({
+  entityType: z.enum(["event", "organization"]),
+  entityId: uuidSchema,
+  action: z.enum(["remove", "restore"]),
+  moderatorNote: z.string().trim().max(1000).optional(),
+  reviewerUserId: uuidSchema.optional(),
+  reviewerEmail: z.string().trim().email().optional(),
+});
+
+export const resolveMessageReportSchema = z.object({
+  reportId: uuidSchema,
+  status: z.enum(["resolved", "dismissed"]),
+  moderatorNote: z.string().trim().max(1000).optional(),
+  reviewerUserId: uuidSchema.optional(),
+  reviewerEmail: z.string().trim().email().optional(),
+});
+
+export const setUserSafetyStatusSchema = z.object({
+  userId: uuidSchema,
+  status: z.enum(["active", "suspended", "banned"]),
+  reason: z.string().trim().max(500).optional(),
+  suspendedUntil: z.string().datetime().optional(),
+  updatedBy: uuidSchema.optional(),
+  adminEmail: z.string().trim().email().optional(),
+});
+
+export const safetyAppealSchema = z.object({
+  message: z.string().trim().min(10).max(2000),
+});
+
+export const reviewSafetyAppealSchema = z.object({
+  appealId: uuidSchema,
+  status: z.enum(["approved", "denied", "reviewed"]),
+  moderatorNote: z.string().trim().max(1000).optional(),
+  reviewerUserId: uuidSchema.optional(),
+  reviewerEmail: z.string().trim().email().optional(),
 });
 
 export const qrScanSchema = z.object({
@@ -107,6 +207,122 @@ export const attemptBossSchema = z.object({
 export const addInventoryItemSchema = z.object({
   itemId: uuidSchema,
   quantity: z.number().int().min(1).max(9999).default(1),
+});
+
+export const eventRsvpSchema = z.object({
+  status: z.enum(["going", "interested", "not_going"]),
+});
+
+export const createEventSchema = z.object({
+  title: z.string().trim().min(3).max(180),
+  description: z.string().trim().min(1).max(3000),
+  category: z.string().trim().min(2).max(80),
+  locationName: z.string().trim().min(2).max(180),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime().optional(),
+  isPaid: z.boolean().optional().default(false),
+  ticketLink: z.string().trim().url().optional(),
+  hostOrganizationId: uuidSchema.optional(),
+});
+
+export const updateEventSchema = z.object({
+  title: z.string().trim().min(3).max(180).optional(),
+  description: z.string().trim().min(1).max(3000).optional(),
+  category: z.string().trim().min(2).max(80).optional(),
+  locationName: z.string().trim().min(2).max(180).optional(),
+  startsAt: z.string().datetime().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
+  isPaid: z.boolean().optional(),
+  ticketLink: z.string().trim().url().nullable().optional(),
+  hostOrganizationId: uuidSchema.nullable().optional(),
+  isCancelled: z.boolean().optional(),
+});
+
+export const createOrganizationSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  description: z.string().trim().min(1).max(2000),
+  category: z.string().trim().min(2).max(80),
+  logoUrl: z.string().trim().url().optional(),
+  schoolName: z.string().trim().min(2).max(120).optional(),
+  contactLink: z.string().trim().url().optional(),
+});
+
+export const updateOrganizationSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  description: z.string().trim().min(1).max(2000).optional(),
+  category: z.string().trim().min(2).max(80).optional(),
+  logoUrl: z.string().trim().url().nullable().optional(),
+  schoolName: z.string().trim().min(2).max(120).optional(),
+  contactLink: z.string().trim().url().nullable().optional(),
+  isApproved: z.boolean().optional(),
+});
+
+export const followOrganizationSchema = z.object({
+  role: z.enum(["follower", "member"]).optional().default("follower"),
+});
+
+export const organizationDashboardSettingsSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  description: z.string().trim().min(1).max(2000).optional(),
+  category: z.string().trim().min(2).max(80).optional(),
+  logoUrl: z.string().trim().url().nullable().optional(),
+  contactLink: z.string().trim().url().nullable().optional(),
+  requireJoinApproval: z.boolean().optional(),
+});
+
+export const organizationAnnouncementSchema = z.object({
+  title: z.string().trim().min(3).max(180),
+  message: z.string().trim().min(1).max(2000),
+});
+
+export const organizationMemberModerationSchema = z.object({
+  action: z.enum(["approve_join", "deny_join", "set_role", "remove_member"]),
+  requestId: uuidSchema.optional(),
+  memberUserId: uuidSchema.optional(),
+  role: z.enum(["owner", "admin", "member"]).optional(),
+});
+
+export const organizationEventCreateSchema = z.object({
+  title: z.string().trim().min(3).max(180),
+  description: z.string().trim().min(1).max(3000),
+  category: z.string().trim().min(2).max(80),
+  locationName: z.string().trim().min(2).max(180),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime().optional(),
+  isPaid: z.boolean().optional().default(false),
+  ticketLink: z.string().trim().url().optional(),
+});
+
+export const organizationEventUpdateSchema = z.object({
+  title: z.string().trim().min(3).max(180).optional(),
+  description: z.string().trim().min(1).max(3000).optional(),
+  category: z.string().trim().min(2).max(80).optional(),
+  locationName: z.string().trim().min(2).max(180).optional(),
+  startsAt: z.string().datetime().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
+  isPaid: z.boolean().optional(),
+  ticketLink: z.string().trim().url().nullable().optional(),
+  isCancelled: z.boolean().optional(),
+});
+
+export const organizationAdminModerationSchema = z.object({
+  action: z.enum(["freeze", "unfreeze", "transfer_owner", "remove", "restore"]),
+  organizationId: uuidSchema,
+  reason: z.string().trim().max(500).optional(),
+  newOwnerUserId: uuidSchema.optional(),
+});
+
+export const onboardingPreferencesSchema = z.object({
+  schoolName: z.string().trim().min(2).max(120),
+  interests: z.array(z.string().trim().min(2).max(40)).min(1).max(8),
+  discoveryFocus: z
+    .array(z.enum(["events", "organizations", "meet_students"]))
+    .min(1)
+    .max(3),
+});
+
+export const verifySchoolEmailSchema = z.object({
+  acknowledge: z.literal(true).optional(),
 });
 
 export async function readJson<T>(request: Request, schema: z.ZodSchema<T>): Promise<T> {
