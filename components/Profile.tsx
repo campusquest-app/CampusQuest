@@ -57,13 +57,16 @@ export function Profile({
   onRefresh,
   /** When true, hides the large Character stats panel (used when CharacterCard already shows stats on the same screen). */
   omitCharacterStatPanel = false,
-  /** Moderation allow-list accounts can change display name and @username from this screen. */
+  /** When true, signed-in viewer owns this profile — show name/username edit. */
+  isOwnProfile = false,
+  /** Moderation allow-list: optional preserve-cooldown check when patching identity. */
   moderationAdminAccess = false,
 }: {
   character: Character;
   onLogout?: () => void;
   onRefresh?: () => void;
   omitCharacterStatPanel?: boolean;
+  isOwnProfile?: boolean;
   moderationAdminAccess?: boolean;
 }) {
   const [posts, setPosts] = useState<FieldNote[]>([]);
@@ -92,7 +95,7 @@ export function Profile({
   }, [refresh]);
 
   useEffect(() => {
-    if (!moderationAdminAccess || !showEditIdentity) return;
+    if (!isOwnProfile || !showEditIdentity) return;
     let cancelled = false;
     setCooldownLoading(true);
     void fetchAuthed<MeProfileRow>("/api/me/profile")
@@ -114,7 +117,7 @@ export function Profile({
     return () => {
       cancelled = true;
     };
-  }, [moderationAdminAccess, showEditIdentity]);
+  }, [isOwnProfile, showEditIdentity]);
 
   const identityUsernameNormalized = toUsername(identityUsernameDraft || identityNameDraft.trim());
   const identityNameOk =
@@ -126,7 +129,7 @@ export function Profile({
 
   const postCharacterOnboarding = Boolean(cooldownSnap?.onboarding_character_completed);
   const displayNameLocked =
-    moderationAdminAccess &&
+    isOwnProfile &&
     postCharacterOnboarding &&
     !cooldownLoading &&
     isProfileIdentityCooldownActive(
@@ -134,7 +137,7 @@ export function Profile({
       PROFILE_DISPLAY_NAME_COOLDOWN_MS,
     );
   const usernameFieldLocked =
-    moderationAdminAccess &&
+    isOwnProfile &&
     postCharacterOnboarding &&
     !cooldownLoading &&
     isProfileIdentityCooldownActive(cooldownSnap?.username_changed_at ?? null, PROFILE_USERNAME_COOLDOWN_MS);
@@ -147,10 +150,10 @@ export function Profile({
       ? getNextIdentityChangeEligibleAt(cooldownSnap.username_changed_at, PROFILE_USERNAME_COOLDOWN_MS)
       : null;
   const identitySaveBlockedByCooldown =
-    moderationAdminAccess && postCharacterOnboarding && displayNameLocked && usernameFieldLocked;
+    isOwnProfile && postCharacterOnboarding && displayNameLocked && usernameFieldLocked;
 
   const saveIdentity = useCallback(async () => {
-    if (!moderationAdminAccess) return;
+    if (!isOwnProfile) return;
     const nameTrimmed = identityNameDraft.trim();
     const usernameNormalized = toUsername(identityUsernameDraft || nameTrimmed);
     if (nameTrimmed.length < 1 || nameTrimmed.length > DISPLAY_NAME_MAX) {
@@ -223,6 +226,7 @@ export function Profile({
     character,
     identityNameDraft,
     identityUsernameDraft,
+    isOwnProfile,
     moderationAdminAccess,
     displayNameLocked,
     usernameFieldLocked,
@@ -381,7 +385,7 @@ export function Profile({
               </button>
             </div>
             <div className="flex flex-wrap gap-3 mt-4">
-              {moderationAdminAccess ? (
+              {isOwnProfile ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -392,7 +396,7 @@ export function Profile({
                     setCooldownSnap(null);
                     setShowEditIdentity(true);
                   }}
-                  className="px-4 py-2.5 rounded-xl text-sm font-medium text-emerald-100 hover:text-white bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/35 transition-colors"
+                  className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/90 hover:text-white bg-white/10 hover:bg-white/15 border border-white/20 transition-colors"
                 >
                   Edit name & username
                 </button>
@@ -649,7 +653,9 @@ export function Profile({
               Edit name & username
             </h2>
             <p className="text-xs text-white/50 mb-3">
-              Admin: updates your campus profile (same as student signup rules).
+              {moderationAdminAccess
+                ? "Admin: updates this profile using the same rules as student signup."
+                : "This is how your name and handle appear across campus."}
             </p>
             <p className="text-xs text-white/45 mb-1">Display name can be changed once every 7 days.</p>
             <p className="text-xs text-white/45 mb-4">Username can be changed once every 30 days.</p>
@@ -702,17 +708,19 @@ export function Profile({
             <p className="text-xs text-white/45 mt-1.5">
               You’ll appear as @{identityUsernameNormalized || "username"} · 3–{USERNAME_MAX} chars, a–z, 0–9, _
             </p>
-            <label className="flex items-start gap-2 mt-4 text-xs text-white/65 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={repairPreserveCooldown}
-                onChange={(e) => setRepairPreserveCooldown(e.target.checked)}
-                className="mt-0.5 rounded border-white/30"
-              />
-              <span>
-                Preserve name cooldown timestamps (moderator repairs). Uncheck when this should count as your normal rename and start/update the timer.
-              </span>
-            </label>
+            {moderationAdminAccess ? (
+              <label className="flex items-start gap-2 mt-4 text-xs text-white/65 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={repairPreserveCooldown}
+                  onChange={(e) => setRepairPreserveCooldown(e.target.checked)}
+                  className="mt-0.5 rounded border-white/30"
+                />
+                <span>
+                  Preserve name cooldown timestamps (moderator repairs). Uncheck when this should count as your normal rename and start/update the timer.
+                </span>
+              </label>
+            ) : null}
             {identityNameDraft.trim().length > 0 && !identityNameOk ? (
               <p className="text-xs text-amber-200 mt-2" role="alert">
                 Display name: 1–{DISPLAY_NAME_MAX} characters.

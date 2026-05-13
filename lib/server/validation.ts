@@ -355,6 +355,10 @@ export const patchMeProfileSchema = z
     beginnerChainCelebrationSeen: z.literal(true).optional(),
     /** Dev-only (ignored in production): clear celebration ack for retesting. */
     beginnerChainCelebrationSeenReset: z.literal(true).optional(),
+    /** Persist first-time beginner intro overlay dismissal (cross-device). */
+    starterIntroSeen: z.literal(true).optional(),
+    /** Dev-only: clear persisted intro dismissal for onboarding QA. */
+    starterIntroSeenReset: z.literal(true).optional(),
     /** When true and caller is moderation-admin, skips cooldown enforcement and does not bump name-change timestamps (repairs/migrations via API only). Ignored for other users. */
     preserveIdentityCooldownTimestamps: z.literal(true).optional(),
   })

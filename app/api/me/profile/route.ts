@@ -135,6 +135,12 @@ export async function PATCH(request: Request) {
       patch.beginner_chain_celebration_seen_at = nowIso;
     }
 
+    if (input.starterIntroSeenReset === true && process.env.NODE_ENV !== "production") {
+      patch.starter_intro_seen_at = null;
+    } else if (input.starterIntroSeen === true) {
+      patch.starter_intro_seen_at = nowIso;
+    }
+
     if (Object.keys(patch).length === 0) {
       throw new ApiError(400, "No profile fields to update.", "PROFILE_PATCH_EMPTY");
     }

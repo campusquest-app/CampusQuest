@@ -53,6 +53,7 @@ import {
   type BeginnerOnboardingHydrationBootstrap,
 } from "@/lib/client/beginnerOnboardingHydration";
 import { SchoolVerificationScreen } from "./SchoolVerificationScreen";
+import { WelcomeBackCommunityReminder, communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
 
 type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations";
 
@@ -97,7 +98,6 @@ function Header({
   character,
   onRefresh,
   onOpenInbox,
-  onOpenNotifications,
   unreadNotificationCount,
   showAdminNav,
 }: {
@@ -105,7 +105,7 @@ function Header({
   character: Character | null;
   onRefresh?: () => void;
   onOpenInbox?: () => void;
-  onOpenNotifications?: () => void;
+  /** Shown on Inbox — includes unread notifications viewed in Inbox ▸ Notifications */
   unreadNotificationCount?: number;
   /** Moderation admins only — links to internal tooling. */
   showAdminNav?: boolean;
@@ -241,22 +241,11 @@ function Header({
                   <button
                     type="button"
                     onClick={onOpenInbox}
-                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white border border-transparent transition-all"
-                    title="Inbox"
+                    className="relative flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white border border-transparent transition-all"
+                    title="Inbox — messages and notifications"
                   >
                     <span aria-hidden>📬</span>
                     <span className="hidden sm:inline">Inbox</span>
-                  </button>
-                )}
-                {onOpenNotifications && (
-                  <button
-                    type="button"
-                    onClick={onOpenNotifications}
-                    className="relative flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white border border-transparent transition-all"
-                    title="Notifications"
-                  >
-                    <span aria-hidden>🔔</span>
-                    <span className="hidden sm:inline">Notifications</span>
                     {(unreadNotificationCount ?? 0) > 0 ? (
                       <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[10px] font-bold text-white flex items-center justify-center">
                         {Math.min(99, unreadNotificationCount ?? 0)}
@@ -318,6 +307,8 @@ export function Dashboard() {
   const [beginnerJourneyHydration, setBeginnerJourneyHydration] = useState<BeginnerOnboardingHydrationBootstrap | null>(null);
   /** Last `/api/me/school-verification` HTTP status for this fetch attempt (dev logging only). */
   const schoolVerificationLastHttpRef = useRef<number | null>(null);
+  /** Dev-only: prevents double-reset from React strict mode duplicate effects. */
+  const onboardingQcResetRanRef = useRef(false);
 
   useEffect(() => {
     const t = searchParams.get("tab");
@@ -508,6 +499,64 @@ export function Dashboard() {
       cancelled = true;
     };
   }, [bootstrapStatus, character?.id]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production" || !beginnerJourneyHydration || !character) return;
+    console.info("[cq] onboardingUiDecision", {
+      onboarding_completed_flag: beginnerJourneyHydration.onboarding_completed_flag,
+      tutorial_completed_flag: beginnerJourneyHydration.tutorial_completed_flag,
+      skipStarterIntroOverlay: beginnerJourneyHydration.skipStarterIntroOverlay,
+      hideBeginnerStarterPanel: beginnerJourneyHydration.hideBeginnerStarterPanel,
+      welcomeBackReminderEligible: beginnerJourneyHydration.welcomeBackReminderEligible,
+      beginnerPanel: beginnerJourneyHydration.hideBeginnerStarterPanel ? "hidden:tutorial_complete" : "shown:chain_active",
+      firstTimeJourneyMounted: !beginnerJourneyHydration.hideBeginnerStarterPanel,
+    });
+  }, [character?.id, beginnerJourneyHydration]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (searchParams.get("qc_reset_onboarding") !== "1") return;
+    if (bootstrapStatus !== "authenticated" || !character?.id) return;
+    if (onboardingQcResetRanRef.current) return;
+    onboardingQcResetRanRef.current = true;
+
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("qc_reset_onboarding");
+      window.history.replaceState({}, "", `${u.pathname}${u.search}${u.hash}`);
+    } catch {
+      // ignore
+    }
+
+    void (async () => {
+      const id = character.id;
+      try {
+        const { patchAuthed } = await import("@/lib/client/dashboardApi");
+        const {
+          onboardingIntroLsKey,
+          beginnerCelebrationAckKey,
+          beginnerClaimedKey,
+          loadBeginnerOnboardingHydrationBundle: loadHydration,
+        } = await import("@/lib/client/beginnerOnboardingHydration");
+        try {
+          localStorage.removeItem(onboardingIntroLsKey(id));
+          localStorage.removeItem(beginnerCelebrationAckKey(id));
+          localStorage.removeItem(beginnerClaimedKey(id));
+          localStorage.removeItem(communityReminderStorageKey(id));
+        } catch {
+          /* ignore */
+        }
+        await patchAuthed("/api/me/profile", {
+          starterIntroSeenReset: true,
+          beginnerChainCelebrationSeenReset: true,
+        });
+        const next = await loadHydration(id);
+        setBeginnerJourneyHydration(next);
+      } catch {
+        setBeginnerJourneyHydration(null);
+      }
+    })();
+  }, [searchParams, bootstrapStatus, character?.id]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -1013,10 +1062,6 @@ export function Dashboard() {
         character={character}
         onRefresh={refresh}
         onOpenInbox={() => setTab("inbox")}
-        onOpenNotifications={() => {
-          setInboxSubTab("notifications");
-          setTab("inbox");
-        }}
         unreadNotificationCount={unreadNotificationCount}
         showAdminNav={moderationAdminNavVisible(pilotCampusState)}
       />
@@ -1024,17 +1069,12 @@ export function Dashboard() {
         className={screenShake ? "cq-screen-shake" : undefined}
         style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom, 0px))" }}
       >
-        {character && (
-          <div className="mb-4 sm:mb-5">
-            {beginnerJourneyHydration ? (
-              <FirstTimeJourney
-                character={character}
-                currentTab={tab}
-                onNavigateTab={setTab}
-                onRefresh={refresh}
-                onboardingHydrationBootstrap={beginnerJourneyHydration}
-              />
-            ) : (
+        {character && beginnerJourneyHydration?.welcomeBackReminderEligible ? (
+          <WelcomeBackCommunityReminder characterId={character.id} />
+        ) : null}
+        {character &&
+          (beginnerJourneyHydration === null ? (
+            <div className="mb-4 sm:mb-5">
               <div
                 className="card min-h-[7rem] rounded-2xl border border-uri-gold/20 bg-white/[0.02] p-4 cq-skeleton-wrap overflow-hidden"
                 aria-busy="true"
@@ -1044,9 +1084,18 @@ export function Dashboard() {
                 <div className="cq-skeleton mb-2 h-3 w-full rounded-lg" />
                 <div className="cq-skeleton h-3 max-w-[92%] rounded-lg" />
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          ) : beginnerJourneyHydration.hideBeginnerStarterPanel ? null : (
+            <div className="mb-4 sm:mb-5">
+              <FirstTimeJourney
+                character={character}
+                currentTab={tab}
+                onNavigateTab={setTab}
+                onRefresh={refresh}
+                onboardingHydrationBootstrap={beginnerJourneyHydration}
+              />
+            </div>
+          ))}
         {gainToast?.lastBossDrop && typeof document !== "undefined" && createPortal(
           bossDefeatPhase === "teaser" ? (
             <div
@@ -1494,6 +1543,7 @@ export function Dashboard() {
                   character={character}
                   onLogout={handleLogout}
                   onRefresh={refresh}
+                  isOwnProfile
                   moderationAdminAccess={moderationAdminNavVisible(pilotCampusState)}
                 />
               )}

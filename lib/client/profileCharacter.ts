@@ -15,6 +15,10 @@ export type MeProfileRow = {
   onboarding_completed?: boolean | null;
   onboarding_completed_at?: string | null;
   onboarding_character_completed?: boolean | null;
+  /** Server: starter "New Player Protocol" overlay suppressed after first dismiss or backfill. */
+  starter_intro_seen_at?: string | null;
+  beginner_chain_completed_at?: string | null;
+  beginner_chain_celebration_seen_at?: string | null;
   avatar_custom_json?: string | null;
   character_class_id?: string | null;
   starter_weapon?: string | null;

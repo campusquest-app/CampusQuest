@@ -8,10 +8,14 @@ import {
   beginnerCelebrationAckKey,
   beginnerClaimedKey,
   loadBeginnerOnboardingHydrationBundle,
-  readBeginnerCelebrationSeenLocal,
+  onboardingIntroLsKey,
   type BeginnerClaimStatusResponse,
   type BeginnerOnboardingHydrationBootstrap,
 } from "@/lib/client/beginnerOnboardingHydration";
+import {
+  BEGINNER_CHAIN_QUEST_IDS,
+  logTutorialGating,
+} from "@/lib/client/onboardingTutorialGating";
 
 type AppTab =
   | "quad"
@@ -51,10 +55,15 @@ type BeginnerClaimResponse = {
   };
 };
 
-const ONBOARDING_INTRO_KEY = (characterId: string) => `cq_onboarding_intro_v1_${characterId}`;
 const VISITED_LEADERBOARD_KEY = (characterId: string) => `cq_onboarding_visited_leaderboard_v1_${characterId}`;
 
-const BEGINNER_CHAIN_QUEST_IDS: QuestId[] = ["profile", "activity", "boss", "leaderboard", "guild"];
+function readLsIntro(characterId: string): boolean {
+  try {
+    return localStorage.getItem(onboardingIntroLsKey(characterId)) === "1";
+  } catch {
+    return false;
+  }
+}
 
 function deriveClaimsFromBeginnerStatus(status: BeginnerClaimStatusResponse) {
   const nextClaimed: QuestId[] = status.claims.map((c) => c.questKey);
@@ -93,7 +102,9 @@ export function FirstTimeJourney({
   /** Pre-fetched by parent (Dashboard): do not mount until this is ready — prevents completion UI before server/LS reconciliation. */
   onboardingHydrationBootstrap: BeginnerOnboardingHydrationBootstrap;
 }) {
-  const [showIntro, setShowIntro] = useState(false);
+  const [showIntro, setShowIntro] = useState(
+    () => !onboardingHydrationBootstrap.skipStarterIntroOverlay && !readLsIntro(character.id),
+  );
   const [introStep, setIntroStep] = useState(0);
   const [claimed, setClaimed] = useState<QuestId[]>(
     () => deriveClaimsFromBeginnerStatus(onboardingHydrationBootstrap.beginnerStatus).claimed,
@@ -145,12 +156,30 @@ export function FirstTimeJourney({
     setJustCompletedChainThisSession(false);
     applyHydrationBootstrap(onboardingHydrationBootstrap);
 
+    if (process.env.NODE_ENV !== "production") {
+      logTutorialGating("firstTimeJourneyHydrateEffect", {
+        component: "FirstTimeJourney",
+        skipStarterIntroOverlay: onboardingHydrationBootstrap.skipStarterIntroOverlay,
+        hideBeginnerStarterPanel: onboardingHydrationBootstrap.hideBeginnerStarterPanel,
+        onboarding_completed_flag: onboardingHydrationBootstrap.onboarding_completed_flag,
+        tutorial_completed_flag: onboardingHydrationBootstrap.tutorial_completed_flag,
+      });
+    }
+
+    if (onboardingHydrationBootstrap.skipStarterIntroOverlay) {
+      setShowIntro(false);
+      try {
+        localStorage.setItem(onboardingIntroLsKey(character.id), "1");
+      } catch {
+        // ignore
+      }
+    } else {
+      setShowIntro(!readLsIntro(character.id));
+    }
+
     try {
-      const seenIntro = localStorage.getItem(ONBOARDING_INTRO_KEY(character.id)) === "1";
-      if (!seenIntro) setShowIntro(true);
       setVisitedLeaderboard(localStorage.getItem(VISITED_LEADERBOARD_KEY(character.id)) === "1");
     } catch {
-      setShowIntro(true);
       setVisitedLeaderboard(false);
     }
   }, [character.id, onboardingHydrationBootstrap, applyHydrationBootstrap]);
@@ -312,10 +341,11 @@ export function FirstTimeJourney({
   function dismissIntro() {
     setShowIntro(false);
     try {
-      localStorage.setItem(ONBOARDING_INTRO_KEY(character.id), "1");
+      localStorage.setItem(onboardingIntroLsKey(character.id), "1");
     } catch {
       // best effort only
     }
+    void patchAuthed("/api/me/profile", { starterIntroSeen: true }).catch(() => {});
   }
 
   async function claimQuest(quest: BeginnerQuest) {
