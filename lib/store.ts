@@ -91,7 +91,7 @@ function loadCharacter(): Character | null {
   }
 }
 
-function saveCharacter(c: Character): void {
+function saveCharacter(c: Character, opts?: { skipRemoteSync?: boolean }): void {
   if (typeof window === "undefined") return;
   c.level = xpToLevel(c.totalXP);
   try {
@@ -100,7 +100,9 @@ function saveCharacter(c: Character): void {
     // Persistence may fail on some mobile browsers (e.g. QuotaExceededError / blocked storage).
   }
   registerCharacterInFriends(c);
-  void import("@/lib/client/gameStateSync").then((m) => m.scheduleCharacterSync(c));
+  if (!opts?.skipRemoteSync) {
+    void import("@/lib/client/gameStateSync").then((m) => m.scheduleCharacterSync(c));
+  }
 }
 
 function loadLogs(): ActivityLog[] {
@@ -361,8 +363,8 @@ export function syncCharacterProgressFromBackend(
 }
 
 /** Persist full character snapshot (used after Supabase profile+stats hydration). */
-export function replaceLocalCharacter(character: Character): void {
-  saveCharacter(character);
+export function replaceLocalCharacter(character: Character, opts?: { skipRemoteSync?: boolean }): void {
+  saveCharacter(character, opts);
 }
 
 /** Remove only the persisted character blob (e.g. different signed-in user). Session/logout should not call this by default. */

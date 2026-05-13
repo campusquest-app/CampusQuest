@@ -9,6 +9,7 @@ import { CHARACTER_CLASSES, getClassAvatarPreset, type CharacterClassId } from "
 import { AvatarBuilder } from "./AvatarBuilder";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
+import { resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 
 const USERNAME_REGEX = /^[a-z0-9_]+$/;
@@ -110,7 +111,8 @@ export function CharacterGate({
         characterOnboardingComplete: true,
       });
       const stats = await fetchAuthed<MeStatsRow>("/api/me/stats");
-      replaceLocalCharacter(buildLocalCharacterFromServer(mergedProfile, stats));
+      replaceLocalCharacter(buildLocalCharacterFromServer(mergedProfile, stats), { skipRemoteSync: true });
+      resetUserSaveSyncAfterHydrate();
       setShowConfirm(false);
       onReady();
     } catch (err) {

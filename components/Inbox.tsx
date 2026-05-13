@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import type { Character } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { DirectMessageThread } from "./DirectMessageThread";
@@ -8,25 +8,6 @@ import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { NotificationsCenter } from "./NotificationsCenter";
 
 export type InboxSubTab = "messages" | "notifications";
-
-const STORAGE_STARRED_MESSAGES = "campusquest_inbox_starred_messages";
-
-function loadStarredSet(key: string): Set<string> {
-  if (typeof window === "undefined") return new Set();
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw) as string[];
-    return new Set(Array.isArray(arr) ? arr : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveStarredSet(key: string, set: Set<string>): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(Array.from(set)));
-}
 
 type ConversationItem = {
   conversationId: string;
@@ -80,43 +61,22 @@ export function Inbox({
   const [sendingRequest, setSendingRequest] = useState(false);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<IncomingConnectionRequest[]>([]);
-  const [starredMessages, setStarredMessages] = useState<Set<string>>(() => loadStarredSet(STORAGE_STARRED_MESSAGES));
-
-  useEffect(() => {
-    saveStarredSet(STORAGE_STARRED_MESSAGES, starredMessages);
-  }, [starredMessages]);
-
-  const toggleStarMessage = useCallback((id: string) => {
-    setStarredMessages((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const sortedMessages = useMemo(() => {
-    return [...conversations].sort((a, b) => {
-      const aStar = starredMessages.has(a.conversationId) ? 0 : 1;
-      const bStar = starredMessages.has(b.conversationId) ? 0 : 1;
-      if (aStar !== bStar) return aStar - bStar;
-      return (
-        new Date(b.latestMessage?.createdAt ?? 0).getTime() -
-        new Date(a.latestMessage?.createdAt ?? 0).getTime()
-      );
-    });
-  }, [conversations, starredMessages]);
 
   const filteredMessages = useMemo(() => {
     const q = messageSearch.trim().toLowerCase();
-    if (!q) return sortedMessages;
-    return sortedMessages.filter((m) => {
+    const sorted = [...conversations].sort(
+      (a, b) =>
+        new Date(b.latestMessage?.createdAt ?? 0).getTime() -
+        new Date(a.latestMessage?.createdAt ?? 0).getTime(),
+    );
+    if (!q) return sorted;
+    return sorted.filter((m) => {
       return (
         m.otherUser.displayName.toLowerCase().includes(q) ||
         m.otherUser.username.toLowerCase().includes(q)
       );
     });
-  }, [sortedMessages, messageSearch]);
+  }, [conversations, messageSearch]);
 
   const loadMessageCenter = useCallback(async () => {
     setMessageLoading(true);
@@ -308,7 +268,7 @@ export function Inbox({
               </li>
             ) : (
               filteredMessages.map((m) => (
-              <li key={m.conversationId} className="flex items-center gap-2">
+              <li key={m.conversationId}>
                   <button
                     type="button"
                     onClick={() =>
@@ -319,7 +279,7 @@ export function Inbox({
                         m.otherUser.avatarUrl ?? "🎓",
                       )
                     }
-                    className="flex-1 min-w-0 flex items-center gap-3 p-4 hover:bg-white/[0.04] text-left transition-colors"
+                    className="w-full flex items-center gap-3 p-4 hover:bg-white/[0.04] text-left transition-colors"
                   >
                     <div className="w-11 h-11 rounded-xl bg-white/10 border border-uri-keaney/30 flex items-center justify-center overflow-hidden flex-shrink-0">
                       <AvatarDisplay avatar={m.otherUser.avatarUrl ?? "🎓"} size={44} />
@@ -334,15 +294,6 @@ export function Inbox({
                       </p>
                     </div>
                   </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleStarMessage(m.conversationId); }}
-                  className={`flex-shrink-0 p-2 rounded-lg transition-colors ${starredMessages.has(m.conversationId) ? "text-uri-gold" : "text-white/50 hover:text-uri-gold"} hover:bg-uri-gold/10`}
-                  aria-label={starredMessages.has(m.conversationId) ? "Unstar" : "Star"}
-                  title={starredMessages.has(m.conversationId) ? "Unstar" : "Star to keep at top"}
-                >
-                  {starredMessages.has(m.conversationId) ? "★" : "☆"}
-                </button>
               </li>
               ))
             )}

@@ -52,6 +52,8 @@ import {
   loadBeginnerOnboardingHydrationBundle,
   type BeginnerOnboardingHydrationBootstrap,
 } from "@/lib/client/beginnerOnboardingHydration";
+import { LOGOUT_BLOCKED_SAVE_MESSAGE, isServerBackedUserId, resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
+import { useSaveStatus } from "@/lib/client/useSaveStatus";
 import { SchoolVerificationScreen } from "./SchoolVerificationScreen";
 import { WelcomeBackCommunityReminder, communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
 
@@ -113,6 +115,20 @@ function Header({
   const [questsOpen, setQuestsOpen] = useState(false);
   const [specialQuestsOpen, setSpecialQuestsOpen] = useState(false);
   const questsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const saveSnap = useSaveStatus();
+
+  const saveLabel =
+    character && isServerBackedUserId(character.id)
+      ? saveSnap.status === "saving"
+        ? "Saving…"
+        : saveSnap.status === "saved"
+          ? "Saved"
+          : saveSnap.status === "failed"
+            ? "Save failed"
+            : saveSnap.dirty
+              ? "Unsaved changes"
+              : null
+      : null;
 
   return (
     <>
@@ -137,6 +153,11 @@ function Header({
               <p className="text-[10px] sm:text-xs text-uri-keaney/80 font-medium truncate">
                 {username ? `@${username}` : "URI · Level up for real"}
               </p>
+              {saveLabel ? (
+                <p className="text-[10px] text-white/45 mt-0.5 truncate" aria-live="polite">
+                  {saveLabel}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -398,27 +419,29 @@ export function Dashboard() {
     setCharacter(getCharacter());
   }, []);
 
-  const handleLogout = useCallback(() => {
-    void (async () => {
+  const handleLogout = useCallback(async () => {
+    const token = getAccessToken();
+    const c = getCharacter();
+    if (token && c && isServerBackedUserId(c.id)) {
       try {
-        const { flushGameStateSync } = await import("@/lib/client/gameStateSync");
-        await flushGameStateSync(getCharacter);
+        const { flushUserStateToBackend } = await import("@/lib/client/gameStateSync");
+        await flushUserStateToBackend(getCharacter);
       } catch {
-        /* best-effort sync before token clear */
+        throw new Error(LOGOUT_BLOCKED_SAVE_MESSAGE);
       }
-      clearAccessToken();
-      clearSchoolVerificationSnapshot();
-      storeLogout();
-      setCharacter(null);
-      setGatePrefillProfile(null);
-      setOnboardingPreferences(null);
-      setNeedsOnboardingPreferences(false);
-      setBootstrapStatus("bootstrapping");
-      setShowWelcomeSplash(false);
-      setCampusFetchNonce(0);
-      setPilotCampusState({ status: "loading" });
-      setBootstrapNonce((n) => n + 1);
-    })();
+    }
+    clearAccessToken();
+    clearSchoolVerificationSnapshot();
+    storeLogout();
+    setCharacter(null);
+    setGatePrefillProfile(null);
+    setOnboardingPreferences(null);
+    setNeedsOnboardingPreferences(false);
+    setBootstrapStatus("bootstrapping");
+    setShowWelcomeSplash(false);
+    setCampusFetchNonce(0);
+    setPilotCampusState({ status: "loading" });
+    setBootstrapNonce((n) => n + 1);
   }, []);
 
   useEffect(() => {
@@ -661,7 +684,8 @@ export function Dashboard() {
 
         if (onboardingDone) {
           clearLegacyLocalMismatch();
-          replaceLocalCharacter(buildLocalCharacterFromServer(profileMerged, statsMerged));
+          replaceLocalCharacter(buildLocalCharacterFromServer(profileMerged, statsMerged), { skipRemoteSync: true });
+          resetUserSaveSyncAfterHydrate();
           setNeedsOnboardingPreferences(false);
           applyPrefsState();
           setGatePrefillProfile(null);
@@ -671,7 +695,8 @@ export function Dashboard() {
           routeDecision = "app";
         } else if (characterDone) {
           clearLegacyLocalMismatch();
-          replaceLocalCharacter(buildLocalCharacterFromServer(profileMerged, statsMerged));
+          replaceLocalCharacter(buildLocalCharacterFromServer(profileMerged, statsMerged), { skipRemoteSync: true });
+          resetUserSaveSyncAfterHydrate();
           setNeedsOnboardingPreferences(!prefs.exists);
           applyPrefsState();
           setGatePrefillProfile(null);

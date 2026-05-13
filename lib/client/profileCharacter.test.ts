@@ -74,4 +74,30 @@ describe("buildLocalCharacterFromServer", () => {
     expect(c.username).toBe("alex_test");
     expect(c.scholarGuildId).toBe("engineering");
   });
+
+  it("prefers max of stats.final_bosses_defeated and game_state_json counter", () => {
+    const uuid = "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33";
+    const c = buildLocalCharacterFromServer(
+      {
+        id: uuid,
+        username: "boss_killer",
+        display_name: "Boss Killer",
+        streak_days: 0,
+        last_activity_date: null,
+        game_state_json: { finalBossesDefeatedCount: 1 },
+      },
+      {
+        user_id: uuid,
+        level: 10,
+        total_xp: 5000,
+        strength: 1,
+        stamina: 1,
+        knowledge: 1,
+        social: 1,
+        focus: 1,
+        final_bosses_defeated: 4,
+      },
+    );
+    expect(c.finalBossesDefeatedCount).toBe(4);
+  });
 });

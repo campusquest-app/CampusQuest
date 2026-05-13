@@ -12,6 +12,7 @@ import { getFollowing, unfollow } from "@/lib/followStore";
 import { getGuildById, leaveGuild } from "@/lib/guildStore";
 import { getUserBosses, replaceLocalCharacter, updateCharacter } from "@/lib/store";
 import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
+import { LOGOUT_BLOCKED_SAVE_MESSAGE, resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { AvatarDisplay } from "./AvatarDisplay";
@@ -63,7 +64,7 @@ export function Profile({
   moderationAdminAccess = false,
 }: {
   character: Character;
-  onLogout?: () => void;
+  onLogout?: () => void | Promise<void>;
   onRefresh?: () => void;
   omitCharacterStatPanel?: boolean;
   isOwnProfile?: boolean;
@@ -71,6 +72,8 @@ export function Profile({
 }) {
   const [posts, setPosts] = useState<FieldNote[]>([]);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [logoutWorking, setLogoutWorking] = useState(false);
+  const [logoutSaveError, setLogoutSaveError] = useState<string | null>(null);
   const [showEditBio, setShowEditBio] = useState(false);
   const [showEditIdentity, setShowEditIdentity] = useState(false);
   const [identityNameDraft, setIdentityNameDraft] = useState(character.name);
@@ -201,7 +204,8 @@ export function Profile({
         classId: next.classId,
         starterWeapon: next.starterWeapon,
         scholarGuildId: next.scholarGuildId,
-      });
+      }, { skipRemoteSync: true });
+      resetUserSaveSyncAfterHydrate();
       setCooldownSnap({
         onboarding_character_completed: mergedProfile.onboarding_character_completed ?? null,
         display_name_changed_at: mergedProfile.display_name_changed_at ?? null,
@@ -535,7 +539,10 @@ export function Profile({
         <div className="card p-4">
           <button
             type="button"
-            onClick={() => setShowLogoutConfirm(true)}
+            onClick={() => {
+              setLogoutSaveError(null);
+              setShowLogoutConfirm(true);
+            }}
             className="w-full py-3 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 border border-white/10 transition-colors"
           >
             Log out
@@ -839,30 +846,59 @@ export function Profile({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="logout-dialog-title">
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setShowLogoutConfirm(false)}
+            onClick={() => {
+              if (!logoutWorking) {
+                setShowLogoutConfirm(false);
+                setLogoutSaveError(null);
+              }
+            }}
             aria-hidden
           />
           <div className="relative z-10 w-full max-w-[20rem] rounded-2xl border border-white/15 bg-uri-navy shadow-xl shadow-black/40 p-6">
             <h2 id="logout-dialog-title" className="font-display font-semibold text-lg text-white mb-2">
               Leave CampusQuest?
             </h2>
-            <p className="text-sm text-white/70 mb-6">
+            <p className="text-sm text-white/70 mb-4">
               The Quad shall wait for your return.
             </p>
+            {logoutSaveError ? (
+              <p className="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/25 rounded-lg px-3 py-2 mb-4">
+                {logoutSaveError}
+              </p>
+            ) : null}
             <div className="flex gap-3 justify-end">
               <button
                 type="button"
-                onClick={() => setShowLogoutConfirm(false)}
-                className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/80 hover:text-white bg-white/10 hover:bg-white/15 border border-white/15 transition-colors"
+                disabled={logoutWorking}
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  setLogoutSaveError(null);
+                }}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/80 hover:text-white bg-white/10 hover:bg-white/15 border border-white/15 transition-colors disabled:opacity-45"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={() => { setShowLogoutConfirm(false); onLogout(); }}
-                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-uri-keaney hover:bg-uri-keaney/90 border border-uri-keaney/40 transition-colors"
+                disabled={logoutWorking}
+                onClick={() => {
+                  void (async () => {
+                    setLogoutSaveError(null);
+                    setLogoutWorking(true);
+                    try {
+                      await onLogout();
+                      setShowLogoutConfirm(false);
+                      setLogoutSaveError(null);
+                    } catch (err) {
+                      setLogoutSaveError(err instanceof Error ? err.message : LOGOUT_BLOCKED_SAVE_MESSAGE);
+                    } finally {
+                      setLogoutWorking(false);
+                    }
+                  })();
+                }}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-uri-keaney hover:bg-uri-keaney/90 border border-uri-keaney/40 transition-colors disabled:opacity-55 disabled:pointer-events-none"
               >
-                Log out
+                {logoutWorking ? "Saving…" : "Log out"}
               </button>
             </div>
           </div>

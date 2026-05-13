@@ -475,7 +475,20 @@ export async function listConversationMessages(args: {
       .eq("user_id", userId),
   ]);
 
-  return (data ?? []).reverse().map((message) => ({
+  const msgRows = data ?? [];
+  const messageIds = msgRows.map((m) => m.id);
+  const favSet = new Set<string>();
+  if (messageIds.length > 0) {
+    const { data: favRows, error: favErr } = await userClient
+      .from("direct_message_favorites")
+      .select("message_id")
+      .eq("user_id", userId)
+      .in("message_id", messageIds);
+    if (favErr) throw new ApiError(400, favErr.message, "MESSAGE_FAVORITES_FETCH_FAILED");
+    for (const r of favRows ?? []) favSet.add((r as { message_id: string }).message_id);
+  }
+
+  return msgRows.reverse().map((message) => ({
     id: message.id,
     conversationId: message.conversation_id,
     senderId: message.sender_id,
@@ -483,7 +496,46 @@ export async function listConversationMessages(args: {
     content: message.content,
     createdAt: message.created_at,
     readAt: message.read_at,
+    isFavorited: favSet.has(message.id),
   }));
+}
+
+export async function setDirectMessageFavorite(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  messageId: string;
+  favorited: boolean;
+}) {
+  const { userClient, userId, messageId, favorited } = args;
+
+  const { data: msg, error: msgErr } = await userClient
+    .from("direct_messages")
+    .select("id, conversation_id")
+    .eq("id", messageId)
+    .maybeSingle();
+  if (msgErr) throw new ApiError(400, msgErr.message, "MESSAGE_LOOKUP_FAILED");
+  if (!msg) throw new ApiError(404, "Message not found.", "MESSAGE_NOT_FOUND");
+
+  await assertConversationParticipant(userClient, userId, msg.conversation_id);
+
+  const nowIso = new Date().toISOString();
+
+  if (favorited) {
+    const { error: upErr } = await userClient.from("direct_message_favorites").upsert(
+      { user_id: userId, message_id: messageId, favorited_at: nowIso },
+      { onConflict: "user_id,message_id" },
+    );
+    if (upErr) throw new ApiError(400, upErr.message, "MESSAGE_FAVORITE_FAILED");
+  } else {
+    const { error: delErr } = await userClient
+      .from("direct_message_favorites")
+      .delete()
+      .eq("user_id", userId)
+      .eq("message_id", messageId);
+    if (delErr) throw new ApiError(400, delErr.message, "MESSAGE_UNFAVORITE_FAILED");
+  }
+
+  return { messageId, favorited };
 }
 
 export async function hideConversation(args: {
@@ -616,6 +668,7 @@ export async function sendConversationMessage(args: {
     content: inserted.content,
     createdAt: inserted.created_at,
     readAt: inserted.read_at,
+    isFavorited: false,
   };
 }
 

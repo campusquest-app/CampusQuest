@@ -38,6 +38,7 @@ export type MeStatsRow = {
   social: number;
   focus: number;
   bosses_defeated?: number | null;
+  final_bosses_defeated?: number | null;
 };
 
 function defaultStats(s: Partial<CharacterStats>): CharacterStats {
@@ -111,10 +112,15 @@ export function buildLocalCharacterFromServer(profile: MeProfileRow, stats: MeSt
       typeof (gs as { quadAssistScore?: unknown })?.quadAssistScore === "number" ? Number((gs as { quadAssistScore: number }).quadAssistScore) : 0,
     guildIds,
     bossesDefeatedCount: Math.max(0, Number(stats.bosses_defeated ?? 0)),
-    finalBossesDefeatedCount:
-      typeof (gs as { finalBossesDefeatedCount?: unknown })?.finalBossesDefeatedCount === "number"
-        ? Number((gs as { finalBossesDefeatedCount: number }).finalBossesDefeatedCount)
-        : 0,
+    finalBossesDefeatedCount: (() => {
+      const fromStats =
+        stats.final_bosses_defeated != null ? Math.max(0, Number(stats.final_bosses_defeated)) : null;
+      const fromGs =
+        typeof (gs as { finalBossesDefeatedCount?: unknown })?.finalBossesDefeatedCount === "number"
+          ? Math.max(0, Number((gs as { finalBossesDefeatedCount: number }).finalBossesDefeatedCount))
+          : 0;
+      return fromStats != null ? Math.max(fromStats, fromGs) : fromGs;
+    })(),
     equippedCosmetics: equipped,
     miniGameTraining:
       gs && typeof gs === "object"

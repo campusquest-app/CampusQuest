@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { Character } from "@/lib/types";
 import type { Friend } from "@/lib/types";
@@ -25,6 +25,7 @@ export function DirectMessageThread({
     content: string;
     createdAt: string;
     readAt: string | null;
+    isFavorited?: boolean;
   }>>([]);
   const [input, setInput] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -37,7 +38,15 @@ export function DirectMessageThread({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [favBusy, setFavBusy] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  const pinnedMessages = useMemo(() => {
+    const fav = messages.filter((m) => m.isFavorited);
+    return [...fav].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [messages]);
+
+  const threadMessages = useMemo(() => messages.filter((m) => !m.isFavorited), [messages]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,6 +93,7 @@ export function DirectMessageThread({
           content: string;
           createdAt: string;
           readAt: string | null;
+          isFavorited?: boolean;
         }> }>(`/api/social/conversations/${nextConversationId}/messages?limit=100`);
         if (cancelled) return;
         setMessages(messagesPayload.messages);
@@ -119,10 +129,11 @@ export function DirectMessageThread({
         content: string;
         createdAt: string;
         readAt: string | null;
+        isFavorited?: boolean;
       } }, { content: string }>(`/api/social/conversations/${conversationId}/messages`, {
         content: trimmed,
       });
-      setMessages((prev) => [...prev, payload.message]);
+      setMessages((prev) => [...prev, { ...payload.message, isFavorited: payload.message.isFavorited ?? false }]);
       setInput("");
       setError(null);
       onMessageSent?.();
@@ -196,6 +207,86 @@ export function DirectMessageThread({
       const message = reportError instanceof Error ? reportError.message : "Could not report message.";
       setError(message);
     }
+  }
+
+  function toggleMessageFavorite(messageId: string, nextFavorited: boolean) {
+    setFavBusy(messageId);
+    void (async () => {
+      try {
+        await postAuthed(`/api/social/messages/${messageId}/favorite`, { favorited: nextFavorited });
+        setMessages((prev) => prev.map((x) => (x.id === messageId ? { ...x, isFavorited: nextFavorited } : x)));
+        setError(null);
+      } catch (favoriteErr) {
+        setError(favoriteErr instanceof Error ? favoriteErr.message : "Could not update favorite.");
+      } finally {
+        setFavBusy(null);
+      }
+    })();
+  }
+
+  type ThreadMsg = {
+    id: string;
+    senderId: string;
+    recipientId: string;
+    content: string;
+    createdAt: string;
+    readAt: string | null;
+    isFavorited?: boolean;
+  };
+
+  function MessageBubbleRow({ m }: { m: ThreadMsg }) {
+    const isMe = m.senderId !== otherUser.userId;
+    const favorited = Boolean(m.isFavorited);
+    const busy = favBusy === m.id;
+
+    return (
+      <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+        <div
+          className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${
+            favorited ? "ring-1 ring-uri-gold/55 ring-offset-1 ring-offset-uri-navy/40 " : ""
+          } ${
+            isMe
+              ? "bg-uri-keaney text-uri-navy rounded-br-md"
+              : "bg-white/15 text-white border border-white/10 rounded-bl-md"
+          }`}
+        >
+          <p className="text-sm whitespace-pre-wrap break-words">{m.content}</p>
+          <p className={`text-[10px] mt-1 ${isMe ? "text-uri-navy/70" : "text-white/50"}`}>
+            {new Date(m.createdAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+            {isMe && m.readAt ? " · Read" : ""}
+          </p>
+          <div className="flex flex-wrap gap-2 mt-1.5 items-center">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => toggleMessageFavorite(m.id, !favorited)}
+              className={`text-[10px] font-semibold rounded-md px-1.5 py-0.5 border transition-colors disabled:opacity-50 ${
+                favorited
+                  ? isMe
+                    ? "border-uri-navy/40 text-uri-navy bg-uri-navy/10"
+                    : "border-uri-gold/45 text-uri-gold bg-uri-gold/15"
+                  : isMe
+                    ? "border-uri-navy/30 text-uri-navy/80 hover:bg-uri-navy/10"
+                    : "border-white/25 text-white/75 hover:bg-white/10"
+              }`}
+              aria-pressed={favorited}
+              title={favorited ? "Unfavorite" : "Favorite"}
+            >
+              {favorited ? "Unfavorite" : "Favorite"}
+            </button>
+            {!isMe && (
+              <button
+                type="button"
+                onClick={() => void handleReportMessage(m.id)}
+                className="text-[10px] underline text-rose-300/95 hover:text-rose-100"
+              >
+                Report safety issue
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const content = (
@@ -281,43 +372,22 @@ export function DirectMessageThread({
               {blockedByMe ? "You blocked this user. Unblock from settings to message again." : "You cannot message this user."}
             </p>
           )}
-          {messages.length === 0 && (
-            <p className="text-sm text-white/50 text-center py-6">
-              {canMessage ? "No messages yet. Say hi!" : "No messages yet."}
-            </p>
+          {canMessage &&
+            messages.length === 0 &&
+            !loading && (
+              <p className="text-sm text-white/50 text-center py-6">No messages yet. Say hi!</p>
+            )}
+          {pinnedMessages.length > 0 && canMessage && !blockedByMe && !blockedByOther && (
+            <div className="mb-4 pb-4 border-b border-uri-gold/25 space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-uri-gold/90">Pinned favorites</p>
+              {pinnedMessages.map((m) => (
+                <MessageBubbleRow key={`pin-${m.id}`} m={m} />
+              ))}
+            </div>
           )}
-          {messages.map((m) => {
-            const isMe = m.senderId !== otherUser.userId;
-            return (
-              <div
-                key={m.id}
-                className={`flex ${isMe ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${
-                    isMe
-                      ? "bg-uri-keaney text-uri-navy rounded-br-md"
-                      : "bg-white/15 text-white border border-white/10 rounded-bl-md"
-                  }`}
-                >
-                  <p className="text-sm whitespace-pre-wrap break-words">{m.content}</p>
-                  <p className={`text-[10px] mt-1 ${isMe ? "text-uri-navy/70" : "text-white/50"}`}>
-                    {new Date(m.createdAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
-                    {isMe && m.readAt ? " · Read" : ""}
-                  </p>
-                  {!isMe && (
-                    <button
-                      type="button"
-                      onClick={() => void handleReportMessage(m.id)}
-                      className="mt-1 text-[10px] underline text-white/60 hover:text-rose-200"
-                    >
-                      Report
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {threadMessages.map((m) => (
+            <MessageBubbleRow key={m.id} m={m} />
+          ))}
         </div>
 
         {/* Input */}

@@ -102,6 +102,11 @@ export const reportMessageSchema = z.object({
   details: z.string().trim().max(1000).optional(),
 });
 
+/** Favorite / unfavorite inbox items (notifications & DMs); not moderation report. */
+export const toggleFavoritedSchema = z.object({
+  favorited: z.boolean(),
+});
+
 export const reportCampusContentSchema = z.object({
   reason: z.enum(["unsafe", "harassment", "scam", "inappropriate", "spam", "other"]),
   details: z.string().trim().max(1000).optional(),
@@ -385,9 +390,19 @@ export const patchMeStatsSchema = z
     social: z.number().int().min(0).max(1_000_000).optional(),
     focus: z.number().int().min(0).max(1_000_000).optional(),
     bossesDefeated: z.number().int().min(0).max(1_000_000).optional(),
+    finalBossesDefeated: z.number().int().min(0).max(1_000_000).optional(),
   })
   .superRefine((val, ctx) => {
-    const keys = ["totalXp", "strength", "stamina", "knowledge", "social", "focus", "bossesDefeated"] as const;
+    const keys = [
+      "totalXp",
+      "strength",
+      "stamina",
+      "knowledge",
+      "social",
+      "focus",
+      "bossesDefeated",
+      "finalBossesDefeated",
+    ] as const;
     if (!keys.some((k) => val[k] !== undefined)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Provide at least one stat field to update." });
     }

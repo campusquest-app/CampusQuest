@@ -76,8 +76,11 @@ export async function listMyNotifications(args: {
   const safeOffset = Math.max(0, offset);
   const { data, error } = await userClient
     .from("notifications")
-    .select("id, type, title, body, related_entity_type, related_entity_id, read_at, created_at")
+    .select(
+      "id, type, title, body, related_entity_type, related_entity_id, read_at, created_at, is_favorited, favorited_at",
+    )
     .eq("user_id", userId)
+    .order("is_favorited", { ascending: false })
     .order("created_at", { ascending: false })
     .range(safeOffset, safeOffset + safeLimit - 1);
   if (error) throw new ApiError(400, error.message, "NOTIFICATIONS_FETCH_FAILED");
@@ -99,6 +102,8 @@ export async function listMyNotifications(args: {
       relatedEntityId: row.related_entity_id,
       readAt: row.read_at,
       createdAt: row.created_at,
+      isFavorited: Boolean(row.is_favorited),
+      favoritedAt: row.favorited_at ?? null,
     })),
     unreadCount: count ?? 0,
   };
@@ -121,6 +126,45 @@ export async function markNotificationRead(args: {
   if (error) throw new ApiError(400, error.message, "NOTIFICATION_READ_FAILED");
   if (!data) throw new ApiError(404, "Notification not found.", "NOTIFICATION_NOT_FOUND");
   return { id: data.id, readAt: data.read_at };
+}
+
+export async function setNotificationFavorite(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  notificationId: string;
+  favorited: boolean;
+}) {
+  const { userClient, userId, notificationId, favorited } = args;
+  const nowIso = new Date().toISOString();
+  const patch = favorited
+    ? ({ is_favorited: true, favorited_at: nowIso } as const)
+    : ({ is_favorited: false, favorited_at: null } as const);
+
+  const { data, error } = await userClient
+    .from("notifications")
+    .update(patch)
+    .eq("id", notificationId)
+    .eq("user_id", userId)
+    .select(
+      "id, type, title, body, related_entity_type, related_entity_id, read_at, created_at, is_favorited, favorited_at",
+    )
+    .maybeSingle();
+
+  if (error) throw new ApiError(400, error.message, "NOTIFICATION_FAVORITE_FAILED");
+  if (!data) throw new ApiError(404, "Notification not found.", "NOTIFICATION_NOT_FOUND");
+
+  return {
+    id: data.id,
+    type: data.type,
+    title: data.title,
+    body: data.body,
+    relatedEntityType: data.related_entity_type,
+    relatedEntityId: data.related_entity_id,
+    readAt: data.read_at,
+    createdAt: data.created_at,
+    isFavorited: Boolean(data.is_favorited),
+    favoritedAt: data.favorited_at ?? null,
+  };
 }
 
 export async function markAllNotificationsRead(args: {

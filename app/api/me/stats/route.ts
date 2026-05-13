@@ -43,6 +43,7 @@ export async function PATCH(request: Request) {
     if (input.social !== undefined) updates.social = input.social;
     if (input.focus !== undefined) updates.focus = input.focus;
     if (input.bossesDefeated !== undefined) updates.bosses_defeated = input.bossesDefeated;
+    if (input.finalBossesDefeated !== undefined) updates.final_bosses_defeated = input.finalBossesDefeated;
 
     const { data, error } = await auth.userClient
       .from("user_stats")

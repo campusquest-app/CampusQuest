@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 
 type NotificationItem = {
@@ -12,11 +12,13 @@ type NotificationItem = {
   relatedEntityId: string | null;
   readAt: string | null;
   createdAt: string;
+  isFavorited?: boolean;
+  favoritedAt?: string | null;
 };
 
 export function NotificationsCenter({
   onUnreadCountChange,
-  personalization,
+  personalization: _personalization,
   embedded,
 }: {
   onUnreadCountChange?: (count: number) => void;
@@ -28,6 +30,7 @@ export function NotificationsCenter({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const unreadCount = notifications.filter((notification) => !notification.readAt).length;
 
@@ -50,6 +53,15 @@ export function NotificationsCenter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const sortedNotifications = useMemo(() => {
+    return [...notifications].sort((a, b) => {
+      const fa = a.isFavorited ? 1 : 0;
+      const fb = b.isFavorited ? 1 : 0;
+      if (fa !== fb) return fb - fa;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [notifications]);
+
   async function markRead(notificationId: string) {
     try {
       await postAuthed(`/api/notifications/${notificationId}/read`, {});
@@ -62,6 +74,37 @@ export function NotificationsCenter({
       });
     } catch (markError) {
       setError(markError instanceof Error ? markError.message : "Could not mark notification as read.");
+    }
+  }
+
+  async function toggleFavorite(notificationId: string, next: boolean) {
+    setTogglingId(notificationId);
+    setError(null);
+    try {
+      const updated = await postAuthed<
+        Omit<NotificationItem, "relatedEntityType" | "relatedEntityId"> & {
+          relatedEntityType: string | null;
+          relatedEntityId: string | null;
+          isFavorited: boolean;
+          favoritedAt: string | null;
+        },
+        { favorited: boolean }
+      >(`/api/notifications/${notificationId}/favorite`, { favorited: next });
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === notificationId
+            ? {
+                ...n,
+                isFavorited: updated.isFavorited,
+                favoritedAt: updated.favoritedAt ?? null,
+              }
+            : n,
+        ),
+      );
+    } catch (favoriteError) {
+      setError(favoriteError instanceof Error ? favoriteError.message : "Could not update favorite.");
+    } finally {
+      setTogglingId(null);
     }
   }
 
@@ -78,18 +121,6 @@ export function NotificationsCenter({
       setMarkingAll(false);
     }
   }
-
-  const prioritizedNotifications = [...notifications].sort((a, b) => {
-    const focus = new Set(personalization?.discoveryFocus ?? []);
-    const score = (type: string) => {
-      if (focus.has("events") && (type === "event_rsvp_reminder" || type === "organization_event_announcement")) return 0;
-      if (focus.has("meet_students") && (type === "direct_message" || type === "connection_accepted")) return 1;
-      return 2;
-    };
-    const scoreDiff = score(a.type) - score(b.type);
-    if (scoreDiff !== 0) return scoreDiff;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
 
   const headerRow = embedded ? (
     <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10">
@@ -160,19 +191,36 @@ export function NotificationsCenter({
       ) : null}
 
       <div className={listWrapClass}>
-        {prioritizedNotifications.map((notification) => (
+        {sortedNotifications.map((notification) => (
           <article key={notification.id} className={itemClass(Boolean(notification.readAt))}>
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-white font-semibold text-sm">{notification.title}</p>
-              {!notification.readAt ? (
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-white font-semibold text-sm min-w-0 flex-1">{notification.title}</p>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => void markRead(notification.id)}
-                  className="px-2.5 py-1 rounded-md text-[11px] font-semibold border border-white/20 text-white/80 hover:bg-white/10 flex-shrink-0"
+                  disabled={togglingId === notification.id}
+                  onClick={() => void toggleFavorite(notification.id, !notification.isFavorited)}
+                  className={`p-2 rounded-lg text-sm transition-colors disabled:opacity-50 ${
+                    notification.isFavorited
+                      ? "text-uri-gold bg-uri-gold/15 border border-uri-gold/35"
+                      : "text-white/55 hover:text-uri-gold border border-white/15 hover:bg-white/10"
+                  }`}
+                  title={notification.isFavorited ? "Unfavorite" : "Favorite"}
+                  aria-label={notification.isFavorited ? "Unfavorite" : "Favorite"}
+                  aria-pressed={notification.isFavorited ?? false}
                 >
-                  Mark read
+                  ★
                 </button>
-              ) : null}
+                {!notification.readAt ? (
+                  <button
+                    type="button"
+                    onClick={() => void markRead(notification.id)}
+                    className="px-2.5 py-1 rounded-md text-[11px] font-semibold border border-white/20 text-white/80 hover:bg-white/10"
+                  >
+                    Mark read
+                  </button>
+                ) : null}
+              </div>
             </div>
             <p className="text-sm text-white/75">{notification.body}</p>
             <p className="text-[11px] text-white/50">{new Date(notification.createdAt).toLocaleString()}</p>
