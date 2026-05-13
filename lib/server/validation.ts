@@ -348,6 +348,10 @@ export const patchMeProfileSchema = z
     scholarGuildId: z.string().trim().max(64).nullable().optional(),
     /** When true, server marks character onboarding saved (requires identity + avatar payload). */
     characterOnboardingComplete: z.literal(true).optional(),
+    /** One-time acknowledgment: hides beginner-chain celebration on future loads/login. */
+    beginnerChainCelebrationSeen: z.literal(true).optional(),
+    /** Dev-only (ignored in production): clear celebration ack for retesting. */
+    beginnerChainCelebrationSeenReset: z.literal(true).optional(),
   })
   .superRefine((val, ctx) => {
     if (val.characterOnboardingComplete) {

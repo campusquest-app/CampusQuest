@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { addXpToCharacter, getActiveBossId, getActivityLogs, syncCharacterProgressFromBackend, updateCharacter } from "@/lib/store";
 import type { Character } from "@/lib/types";
-import { ApiRequestError, fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { ApiRequestError, fetchAuthed, patchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 
 type AppTab =
   | "quad"
@@ -49,6 +49,8 @@ type BeginnerClaimStatusResponse = {
     claimedAt: string;
     xpAwarded: number;
   }>;
+  beginnerChainCompletedAt?: string | null;
+  beginnerChainCelebrationSeenAt?: string | null;
 };
 
 type MeStatsResponse = {
@@ -68,6 +70,7 @@ type MeProfileResponse = {
 
 const ONBOARDING_INTRO_KEY = (characterId: string) => `cq_onboarding_intro_v1_${characterId}`;
 const CLAIMED_KEY = (characterId: string) => `cq_beginner_quests_claimed_v1_${characterId}`;
+const CELEBRATION_ACK_LS = (characterId: string) => `cq_beginner_chain_celebration_seen_v1_${characterId}`;
 const VISITED_LEADERBOARD_KEY = (characterId: string) => `cq_onboarding_visited_leaderboard_v1_${characterId}`;
 
 const GUILD_SUGGESTIONS: { id: string; icon: string; title: string; subtitle: string }[] = [
@@ -95,9 +98,12 @@ export function FirstTimeJourney({
   const [claimingQuestId, setClaimingQuestId] = useState<QuestId | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [visitedLeaderboard, setVisitedLeaderboard] = useState(false);
-  /** After beginner chain completes, celebration fades away after a delay. */
-  const [chainCompleteFadeOut, setChainCompleteFadeOut] = useState(false);
-  const [chainCompleteRemoved, setChainCompleteRemoved] = useState(false);
+  /** True once we know from server (+ optional local fallback) whether the completion banner was dismissed. */
+  const [celebrationAcknowledged, setCelebrationAcknowledged] = useState(false);
+  /** False until beginner status loads so we don't flash the banner on refresh before API answers. */
+  const [beginnerStatusLoaded, setBeginnerStatusLoaded] = useState(false);
+  const [celebrationFadeOut, setCelebrationFadeOut] = useState(false);
+  const celebrationPatchSentRef = useRef(false);
 
   function canUseLocalFallback() {
     const isDev = process.env.NODE_ENV !== "production";
@@ -105,7 +111,7 @@ export function FirstTimeJourney({
     return isDev || isOffline;
   }
 
-  async function loadClaimStatusFromBackend() {
+  const loadClaimStatusFromBackend = useCallback(async () => {
     const [status, stats, profile] = await Promise.all([
       fetchAuthed<BeginnerClaimStatusResponse>("/api/onboarding/beginner-quests/status"),
       fetchAuthed<MeStatsResponse>("/api/me/stats"),
@@ -138,8 +144,17 @@ export function FirstTimeJourney({
         last_activity_date: profile.last_activity_date ?? null,
       },
     });
+    const serverSeen = Boolean(status.beginnerChainCelebrationSeenAt);
+    let lsSeen = false;
+    try {
+      lsSeen = localStorage.getItem(CELEBRATION_ACK_LS(character.id)) === "1";
+    } catch {
+      // ignore
+    }
+    setCelebrationAcknowledged(serverSeen || lsSeen);
+    setBeginnerStatusLoaded(true);
     onRefresh();
-  }
+  }, [character.id, onRefresh]);
 
   useEffect(() => {
     try {
@@ -156,20 +171,32 @@ export function FirstTimeJourney({
       try {
         await loadClaimStatusFromBackend();
       } catch {
-        if (!isMounted || !canUseLocalFallback()) return;
+        if (!isMounted) return;
+        try {
+          if (localStorage.getItem(CELEBRATION_ACK_LS(character.id)) === "1") {
+            setCelebrationAcknowledged(true);
+          }
+        } catch {
+          // ignore
+        }
+        if (!canUseLocalFallback()) {
+          setBeginnerStatusLoaded(true);
+          return;
+        }
         try {
           const rawClaimed = localStorage.getItem(CLAIMED_KEY(character.id));
           if (rawClaimed) setClaimed(JSON.parse(rawClaimed) as QuestId[]);
         } catch {
           // best effort only
         }
+        setBeginnerStatusLoaded(true);
       }
     })();
 
     return () => {
       isMounted = false;
     };
-  }, [character.id]);
+  }, [character.id, loadClaimStatusFromBackend]);
 
   useEffect(() => {
     if (currentTab !== "leaderboards") return;
@@ -231,18 +258,59 @@ export function FirstTimeJourney({
   const completionPct = Math.round((quests.filter((q) => claimed.includes(q.id)).length / quests.length) * 100);
   const nextQuest = quests.find((q) => q.done && !claimed.includes(q.id)) ?? quests.find((q) => !q.done);
   const allClaimed = quests.every((q) => claimed.includes(q.id));
+  const showCelebration = beginnerStatusLoaded && allClaimed && !celebrationAcknowledged;
 
   useEffect(() => {
-    if (!allClaimed) {
-      setChainCompleteFadeOut(false);
-      setChainCompleteRemoved(false);
+    celebrationPatchSentRef.current = false;
+  }, [character.id]);
+
+  useEffect(() => {
+    if (!allClaimed) celebrationPatchSentRef.current = false;
+  }, [allClaimed]);
+
+  useEffect(() => {
+    if (!showCelebration) {
+      setCelebrationFadeOut(false);
       return;
     }
-    setChainCompleteFadeOut(false);
-    setChainCompleteRemoved(false);
-    const t = window.setTimeout(() => setChainCompleteFadeOut(true), 10_000);
+    try {
+      localStorage.setItem(CELEBRATION_ACK_LS(character.id), "1");
+    } catch {
+      // best effort only
+    }
+    if (!celebrationPatchSentRef.current) {
+      celebrationPatchSentRef.current = true;
+      void patchAuthed("/api/me/profile", { beginnerChainCelebrationSeen: true }).catch(() => {});
+    }
+    const t = window.setTimeout(() => setCelebrationFadeOut(true), 10_000);
     return () => window.clearTimeout(t);
-  }, [allClaimed, character.id]);
+  }, [character.id, showCelebration]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      try {
+        const u = new URL(window.location.href);
+        if (u.searchParams.get("cq_reset_beginner_celebration") === "1") {
+          localStorage.removeItem(CELEBRATION_ACK_LS(character.id));
+          setCelebrationFadeOut(false);
+          setCelebrationAcknowledged(false);
+          celebrationPatchSentRef.current = false;
+          u.searchParams.delete("cq_reset_beginner_celebration");
+          window.history.replaceState({}, "", `${u.pathname}${u.search}${u.hash}`);
+          void (async () => {
+            try {
+              await patchAuthed("/api/me/profile", { beginnerChainCelebrationSeenReset: true });
+              await loadClaimStatusFromBackend();
+            } catch {
+              // ignore
+            }
+          })();
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [character.id, loadClaimStatusFromBackend]);
 
   function dismissIntro() {
     setShowIntro(false);
@@ -475,16 +543,16 @@ export function FirstTimeJourney({
         </section>
       )}
 
-      {allClaimed && !chainCompleteRemoved ? (
+      {showCelebration ? (
         <section
           className={`card p-4 text-center border-emerald-400/35 bg-emerald-900/15 transition-opacity duration-500 ease-out ${
-            chainCompleteFadeOut ? "opacity-0" : "opacity-100"
+            celebrationFadeOut ? "opacity-0" : "opacity-100"
           }`}
           aria-live="polite"
           onTransitionEnd={(e) => {
             if (e.target !== e.currentTarget) return;
-            if (e.propertyName !== "opacity" || !chainCompleteFadeOut) return;
-            setChainCompleteRemoved(true);
+            if (e.propertyName !== "opacity" || !celebrationFadeOut) return;
+            setCelebrationAcknowledged(true);
           }}
         >
           <p className="text-xl" aria-hidden>🎉</p>

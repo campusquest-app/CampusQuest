@@ -307,11 +307,26 @@ export async function claimBeginnerQuestReward(args: {
       note: `Beginner quest reward: ${questId}`,
     });
     const player = await getPlayerProgressSnapshot(userClient, userId);
+    await maybeMarkBeginnerChainCompletedAdmin(userId);
     return { claim, xp, player };
   } catch (error) {
     await userClient.from("user_beginner_quest_claims").delete().eq("id", claim.id);
     throw error;
   }
+}
+
+async function maybeMarkBeginnerChainCompletedAdmin(userId: string) {
+  const admin = createAdminClient();
+  const { data: rows, error } = await admin.from("user_beginner_quest_claims").select("quest_key").eq("user_id", userId);
+  if (error) return;
+  const keys = new Set((rows ?? []).map((row) => row.quest_key as string));
+  const allFive = (["profile", "activity", "boss", "leaderboard", "guild"] as const).every((q) => keys.has(q));
+  if (!allFive) return;
+  await admin
+    .from("profiles")
+    .update({ beginner_chain_completed_at: new Date().toISOString() })
+    .eq("id", userId)
+    .is("beginner_chain_completed_at", null);
 }
 
 export async function getBeginnerQuestClaimStatuses(args: {
