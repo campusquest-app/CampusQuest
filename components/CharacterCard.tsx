@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { Character, StatKey } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, STAT_ICONS, MAX_STAT } from "@/lib/types";
 import { xpProgressInLevel } from "@/lib/level";
 import { updateCharacter, prestigeStat } from "@/lib/store";
+import { registerLogoutPrepare } from "@/lib/client/logoutPrepare";
 import { parseDiceBearAvatar, getDefaultDiceBearAvatar, serializeDiceBearAvatar } from "@/lib/dicebearAvatar";
 import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { getGuildById } from "@/lib/guildStore";
@@ -65,6 +66,13 @@ export function CharacterCard({
   const [editingAvatarValue, setEditingAvatarValue] = useState(character.avatar);
   const { current, needed } = xpProgressInLevel(character.totalXP);
   const xpPct = Math.min(100, (current / needed) * 100);
+
+  useEffect(() => {
+    return registerLogoutPrepare(() => {
+      if (!editingAvatar) return;
+      updateCharacter({ avatar: editingAvatarValue });
+    });
+  }, [editingAvatar, editingAvatarValue]);
 
   function openEditModal() {
     const existing = parseDiceBearAvatar(character.avatar);

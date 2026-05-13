@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { createFieldNote, normalizeRamMarkTag } from "@/lib/feedStore";
+import { normalizeRamMarkTag, prependRemoteQuadPost } from "@/lib/feedStore";
+import { createQuadPostRequest } from "@/lib/client/quadPostsClient";
 import type { Character } from "@/lib/types";
 import type { QuadPostVisibility } from "@/lib/types";
 import { FIELD_NOTE_MAX_CHARS, RAMMARK_MAX_LENGTH, RAMMARK_MAX_PER_POST } from "@/lib/types";
@@ -60,7 +61,7 @@ export function FieldNoteComposer({
     e.target.value = "";
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     const trimmed = body.trim();
@@ -72,24 +73,22 @@ export function FieldNoteComposer({
       setError(`Keep it under ${FIELD_NOTE_MAX_CHARS} characters.`);
       return;
     }
-    const note = createFieldNote({
-      authorId: character.id,
-      authorName: character.name,
-      authorUsername: character.username,
-      authorAvatar: character.avatar,
-      body: trimmed,
-      ramMarks,
-      proofUrl: proofUrl.trim() || undefined,
-      visibility,
-      authorStreakDays: character.streakDays ?? 0,
-    });
-    if (note) {
+    setError(null);
+    try {
+      const note = await createQuadPostRequest({
+        body: trimmed,
+        proofUrl: proofUrl.trim() || undefined,
+        visibility,
+        ramMarks,
+        authorStreakDays: character.streakDays ?? 0,
+      });
+      prependRemoteQuadPost(note);
       setBody("");
       setRamMarks([]);
       setProofUrl("");
       onPosted();
-    } else {
-      setError("Could not post.");
+    } catch {
+      setError("Could not post right now. Check your connection and try again.");
     }
   }
 

@@ -412,6 +412,39 @@ export const verifySchoolEmailSchema = z.object({
   acknowledge: z.literal(true).optional(),
 });
 
+const cosmeticIdSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(90)
+  .regex(/^[\w:-]+$/);
+
+/** Equip / unequip cosmetic slots (Loot Codex). Empty string clears a slot. */
+export const patchMeEquipmentSchema = z.object({
+  hat: z.union([cosmeticIdSchema, z.literal(""), z.null()]).optional(),
+  glasses: z.union([cosmeticIdSchema, z.literal(""), z.null()]).optional(),
+  backpack: z.union([cosmeticIdSchema, z.literal(""), z.null()]).optional(),
+  extraSlots: z.record(z.string().min(1).max(40), z.union([cosmeticIdSchema, z.literal(""), z.null()])).optional(),
+});
+
+export const postQuadPostSchema = z.object({
+  body: z.string().trim().min(1).max(300),
+  proofUrl: z.string().max(120_000).nullable().optional(),
+  visibility: z.enum(["public", "friends"]).optional(),
+  ramMarks: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        tag: z.string().trim().min(1).max(15),
+      }),
+    )
+    .max(10)
+    .optional(),
+  relatedActivityId: z.string().trim().max(120).nullable().optional(),
+  relatedQuestSlug: z.string().trim().max(120).nullable().optional(),
+  authorStreakDays: z.number().int().min(0).max(10_000).optional(),
+});
+
 export async function readJson<T>(request: Request, schema: z.ZodSchema<T>): Promise<T> {
   const json = await request.json();
   return schema.parse(json);

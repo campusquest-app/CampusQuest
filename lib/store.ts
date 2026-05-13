@@ -1,5 +1,6 @@
 "use client";
 
+import { isServerBackedUserId } from "@/lib/client/gameStateSync";
 import type { Character, CharacterStats, ActivityLog, BossProgress as BossProgressType, CurrentBoss, UserBoss, StatKey } from "./types";
 import { STAT_KEYS, MAX_STAT } from "./types";
 import { xpToLevel, DAILY_MINIMUM_XP } from "./level";
@@ -882,6 +883,12 @@ export function setEquippedCosmeticSlot(
   else delete next[slot];
   c.equippedCosmetics = Object.keys(next).length ? next : undefined;
   saveCharacter(c);
+  if (typeof window !== "undefined" && isServerBackedUserId(c.id)) {
+    const patch: Record<string, string | null> = { [slot]: cosmeticId };
+    void import("@/lib/client/dashboardApi").then(({ patchAuthed }) =>
+      patchAuthed<unknown, Record<string, unknown>>("/api/me/equipment", patch).catch(() => {}),
+    );
+  }
   return c;
 }
 

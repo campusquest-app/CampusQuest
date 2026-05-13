@@ -9,8 +9,10 @@ import {
   assistFieldNote,
   getCommentsByNoteId,
   addComment,
+  setRemoteQuadPostsCache,
   type QuadFeedType,
 } from "@/lib/feedStore";
+import { fetchQuadHomePosts } from "@/lib/client/quadPostsClient";
 import { getCharacterById } from "@/lib/friendsStore";
 import type { FieldNote, Character } from "@/lib/types";
 import { FieldNoteComposer } from "@/components/FieldNoteComposer";
@@ -38,8 +40,16 @@ export function TheQuad({
   const [composerOpen, setComposerOpen] = useState(false);
 
   const refresh = useCallback(() => {
-    setNotes(getFeed(character.id, feedType).map(enrichNote));
-    onRefresh?.();
+    void (async () => {
+      try {
+        const remote = await fetchQuadHomePosts(80);
+        setRemoteQuadPostsCache(remote);
+      } catch {
+        setRemoteQuadPostsCache([]);
+      }
+      setNotes(getFeed(character.id, feedType).map(enrichNote));
+      onRefresh?.();
+    })();
   }, [character.id, feedType, onRefresh]);
 
   useEffect(() => {

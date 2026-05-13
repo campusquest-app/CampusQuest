@@ -4,6 +4,7 @@ import type { Character } from "@/lib/types";
 import { getAccessToken } from "@/lib/client/apiSession";
 import { patchAuthed } from "@/lib/client/dashboardApi";
 import type { MeProfileRow, MeStatsRow } from "@/lib/client/profileCharacter";
+import { runLogoutPrepares } from "@/lib/client/logoutPrepare";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -259,6 +260,7 @@ export function scheduleCharacterSync(character: Character): void {
  * Supabase is source of truth — call this before logout. Rejects if the save fails.
  */
 export async function flushUserStateToBackend(getCharacter: () => Character | null): Promise<void> {
+  await runLogoutPrepares();
   if (debounceTimer) {
     clearTimeout(debounceTimer);
     debounceTimer = null;

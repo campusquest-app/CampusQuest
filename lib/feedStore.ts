@@ -9,6 +9,25 @@ import { FIELD_NOTE_MAX_CHARS, RAMMARK_MAX_LENGTH, RAMMARK_MAX_PER_POST, QUAD_CO
 
 let feed: FieldNote[] = [];
 let comments: QuadComment[] = [];
+/** Latest server-backed posts (Quad tab fetch); enables reactions on persisted notes. */
+let remoteQuadPostsCache: FieldNote[] = [];
+
+export function setRemoteQuadPostsCache(posts: FieldNote[]): void {
+  remoteQuadPostsCache = posts;
+}
+
+export function prependRemoteQuadPost(note: FieldNote): void {
+  remoteQuadPostsCache = [note, ...remoteQuadPostsCache.filter((n) => n.id !== note.id)];
+}
+
+/** Merge posts into the mutation cache (e.g. Profile “my posts” fetch). */
+export function mergeRemoteQuadPostsForMutations(posts: FieldNote[]): void {
+  const byId = new Map(remoteQuadPostsCache.map((n) => [n.id, n]));
+  for (const p of posts) {
+    byId.set(p.id, p);
+  }
+  remoteQuadPostsCache = Array.from(byId.values());
+}
 
 const BASE_TS = Date.now();
 
@@ -276,6 +295,8 @@ function syncAssistCount(note: FieldNote) {
  * are not in `feed` until someone reacts — so we clone the seed into `feed` on first mutation.
  */
 function getNoteForMutation(noteId: string): FieldNote | null {
+  const fromRemote = remoteQuadPostsCache.find((n) => n.id === noteId);
+  if (fromRemote) return fromRemote;
   const existing = feed.find((n) => n.id === noteId);
   if (existing) return existing;
   const seed = SEED_FIELD_NOTES.find((n) => n.id === noteId);
@@ -313,8 +334,12 @@ export type QuadFeedType = "public" | "friends";
 export function getFeed(viewerId: string | undefined, feedType: QuadFeedType): FieldNote[] {
   if (viewerId == null) return [];
   let list: FieldNote[];
+  const remoteForMerge = remoteQuadPostsCache.map(migrateNote);
   if (feedType === "public") {
-    list = feed.filter((n) => (n.visibility ?? "public") === "public").map(migrateNote);
+    list = [
+      ...feed.filter((n) => (n.visibility ?? "public") === "public").map(migrateNote),
+      ...remoteForMerge.filter((n) => (n.visibility ?? "public") === "public"),
+    ];
     const listIds = new Set(list.map((n) => n.id));
     SEED_FIELD_NOTES.forEach((n) => {
       if (!listIds.has(n.id)) {
@@ -324,17 +349,24 @@ export function getFeed(viewerId: string | undefined, feedType: QuadFeedType): F
     });
   } else {
     const friendIds = new Set(getFriends(viewerId).map((f) => f.userId));
-    list = feed
-      .filter((n) => n.visibility === "friends" && (n.authorId === viewerId || friendIds.has(n.authorId)))
-      .map(migrateNote);
+    const remoteFriends = remoteForMerge.filter(
+      (n) => n.visibility === "friends" && (n.authorId === viewerId || friendIds.has(n.authorId)),
+    );
+    list = [
+      ...feed.filter(
+        (n) => n.visibility === "friends" && (n.authorId === viewerId || friendIds.has(n.authorId)),
+      ).map(migrateNote),
+      ...remoteFriends,
+    ];
   }
   return list.sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export function getFeedByAuthorId(authorId: string): FieldNote[] {
-  return [...feed]
-    .filter((n) => n.authorId === authorId)
-    .map(migrateNote)
+  return [
+    ...feed.filter((n) => n.authorId === authorId).map(migrateNote),
+    ...remoteQuadPostsCache.filter((n) => n.authorId === authorId).map(migrateNote),
+  ]
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
@@ -494,3 +526,5 @@ export function addComment(noteId: string, params: AddCommentParams): QuadCommen
   comments.push(comment);
   return comment;
 }
+
+export { SEED_FIELD_NOTES };

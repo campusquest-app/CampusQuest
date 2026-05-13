@@ -20,6 +20,7 @@ import {
 } from "@/lib/identityWeeklyBudget";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
+import { syncEquipmentTableFromGameState } from "@/lib/server/equipmentLoadoutDb";
 import { patchMeProfileSchema, readJson } from "@/lib/server/validation";
 
 function normalizeDisplayName(value: string) {
@@ -239,6 +240,14 @@ export async function PATCH(request: Request) {
       throw new ApiError(400, msg, "PROFILE_PATCH_FAILED");
     }
     if (!dataOut) throw new ApiError(404, "Profile not found after update.", "PROFILE_NOT_FOUND");
+
+    if (patch.game_state_json !== undefined) {
+      await syncEquipmentTableFromGameState(
+        auth.userClient,
+        auth.user.id,
+        dataOut.game_state_json as Record<string, unknown> | null | undefined,
+      );
+    }
 
     let mergedProfile = dataOut;
     if (input.characterOnboardingComplete === true) {

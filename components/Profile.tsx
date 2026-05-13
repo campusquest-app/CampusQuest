@@ -6,13 +6,15 @@ import type { Character, Guild } from "@/lib/types";
 import type { FieldNote } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, STAT_ICONS, MAX_STAT, type StatKey } from "@/lib/types";
 import { xpProgressInLevel } from "@/lib/level";
-import { getFeedByAuthorId, nodFieldNote, hypeFieldNote, verifyFieldNote, assistFieldNote, getCommentsByNoteId, addComment } from "@/lib/feedStore";
+import { getFeedByAuthorId, mergeRemoteQuadPostsForMutations, nodFieldNote, hypeFieldNote, verifyFieldNote, assistFieldNote, getCommentsByNoteId, addComment } from "@/lib/feedStore";
+import { fetchMyQuadPosts, fetchQuadPostsByAuthor } from "@/lib/client/quadPostsClient";
 import { getFriends, getCharacterById, removeFriend } from "@/lib/friendsStore";
 import { getFollowing, unfollow } from "@/lib/followStore";
 import { getGuildById, leaveGuild } from "@/lib/guildStore";
 import { getUserBosses, replaceLocalCharacter, updateCharacter } from "@/lib/store";
 import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
 import { LOGOUT_BLOCKED_SAVE_MESSAGE, resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
+import { registerLogoutPrepare } from "@/lib/client/logoutPrepare";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { AvatarDisplay } from "./AvatarDisplay";
@@ -90,12 +92,38 @@ export function Profile({
   const [bioDraft, setBioDraft] = useState(character.bio ?? "");
 
   const refresh = useCallback(() => {
-    setPosts(getFeedByAuthorId(character.id));
-  }, [character.id]);
+    void (async () => {
+      try {
+        if (isOwnProfile) {
+          const mine = await fetchMyQuadPosts(50);
+          mergeRemoteQuadPostsForMutations(mine);
+          setPosts(mine);
+        } else {
+          const theirs = await fetchQuadPostsByAuthor(character.id, 40);
+          mergeRemoteQuadPostsForMutations(theirs);
+          setPosts(theirs);
+        }
+      } catch {
+        setPosts(getFeedByAuthorId(character.id));
+      }
+    })();
+  }, [character.id, isOwnProfile]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!isOwnProfile) return;
+    return registerLogoutPrepare(() => {
+      if (!showEditBio) return;
+      const next = bioDraft.trim();
+      const cur = (character.bio ?? "").trim();
+      if (next !== cur) {
+        updateCharacter({ bio: bioDraft });
+      }
+    });
+  }, [isOwnProfile, showEditBio, bioDraft, character.bio]);
 
   useEffect(() => {
     if (!isOwnProfile || !showEditIdentity) return;
