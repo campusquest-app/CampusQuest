@@ -1,23 +1,21 @@
 import { ZodError } from "zod";
-import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
 import { ApiError, fail, ok } from "@/lib/server/http";
-import { joinGuild } from "@/lib/server/services";
+import { claimBeginnerQuestReward } from "@/lib/server/services";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
-import { joinGuildSchema, readJson } from "@/lib/server/validation";
+import { beginnerQuestClaimSchema, readJson } from "@/lib/server/validation";
 
 export async function POST(request: Request) {
   try {
     const auth = await requireAuthUser(request as any);
-    await assertAccountCanSocialize(auth.userClient as any, auth.user.id);
-    enforceRateLimit({ userId: auth.user.id, routeKey: "guild:join", limit: 5, windowMs: 60_000 });
-    const input = await readJson(request, joinGuildSchema);
-    const result = await joinGuild({
+    enforceRateLimit({ userId: auth.user.id, routeKey: "onboarding:beginner-claim", limit: 15, windowMs: 60_000 });
+    const input = await readJson(request, beginnerQuestClaimSchema);
+    const result = await claimBeginnerQuestReward({
       userClient: auth.userClient,
       userId: auth.user.id,
-      guildId: input.guildId,
+      questId: input.questId,
     });
-    return ok(result);
+    return ok(result, 201);
   } catch (error) {
     if (error instanceof ZodError) {
       return fail(new ApiError(400, error.issues[0]?.message ?? "Invalid payload.", "VALIDATION_ERROR"));

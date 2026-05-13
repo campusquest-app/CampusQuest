@@ -1,4 +1,5 @@
 import { ZodError } from "zod";
+import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { likeSchema, readJson } from "@/lib/server/validation";
@@ -11,6 +12,7 @@ export async function POST(
 ) {
   try {
     const auth = await requireAuthUser(request as any);
+    await assertAccountCanSocialize(auth.userClient as any, auth.user.id);
     enforceRateLimit({ userId: auth.user.id, routeKey: "post:like", limit: 60, windowMs: 60_000 });
     const input = await readJson(request, likeSchema);
     const result = await setPostLike({

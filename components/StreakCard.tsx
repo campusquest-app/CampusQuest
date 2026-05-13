@@ -15,7 +15,7 @@ export function StreakCard({ character }: { character: Character }) {
     const xp = getTodaysXpForStreak(character.id, character, today);
     const risk = hasStreak && xp < DAILY_MINIMUM_XP;
     return { todayXp: xp, atRisk: risk };
-  }, [character, character.id, character.streakDays, hasStreak]);
+  }, [character, hasStreak]);
 
   const fireScale = 1 + Math.min(0.5, days * 0.03);
 

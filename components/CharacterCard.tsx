@@ -177,10 +177,10 @@ export function CharacterCard({
           <div className="mt-3">
             <div className="flex justify-between text-xs text-white/60 mb-1">
               <span>Level progress</span>
-              <span className="font-mono text-uri-keaney/95">{current} / {needed} XP</span>
+              <span className="font-mono text-uri-keaney/95">{current} / {needed} XP · {Math.round(xpPct)}%</span>
             </div>
             <div className="xp-bar-track h-2.5 rounded-full overflow-hidden">
-              <div className="xp-bar-fill h-full rounded-full transition-all duration-500" style={{ width: `${xpPct}%` }} />
+              <div className="xp-bar-fill xp-bar-fill-animated h-full rounded-full transition-all duration-700" style={{ width: `${xpPct}%` }} />
             </div>
           </div>
         </div>
@@ -193,14 +193,14 @@ export function CharacterCard({
             Stats
           </h3>
         </div>
-        <div className="grid gap-3">
+        <div className="grid gap-2.5 sm:gap-3">
           {STAT_KEYS.map((key) => {
             const value = character.stats[key] ?? 0;
             const pct = Math.min(100, (value / MAX_STAT) * 100);
             const atMax = value >= MAX_STAT;
             const prestigeCount = character.statPrestige?.[key] ?? 0;
             return (
-              <div key={key} className="flex items-center gap-3">
+              <div key={key} className="stat-card-row flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2 sm:px-3">
                 <span className="text-base w-6 flex-shrink-0" title={STAT_LABELS[key]}>
                   {STAT_ICONS[key]}
                 </span>
@@ -233,7 +233,7 @@ export function CharacterCard({
                   </div>
                   <div className="stat-bar-game h-2.5 rounded-full overflow-hidden">
                     <div
-                      className={`stat-fill-game rounded-full ${atMax ? "bg-gradient-to-r from-uri-gold via-amber-400 to-uri-gold shadow-[0_0_6px_rgba(197,165,40,0.4)]" : STAT_FILL_COLORS[key]}`}
+                      className={`stat-fill-game stat-fill-animated rounded-full ${atMax ? "bg-gradient-to-r from-uri-gold via-amber-400 to-uri-gold shadow-[0_0_6px_rgba(197,165,40,0.4)]" : STAT_FILL_COLORS[key]}`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>

@@ -38,7 +38,7 @@ export function FieldNoteComposer({
     }
     setRamMarks((prev) => [...prev, { id: `rm-${Date.now()}-${tag}`, tag }]);
     setRamMarkInput("");
-  }, [ramMarkInput, ramMarks.length]);
+  }, [ramMarkInput, ramMarks]);
 
   const removeRamMark = useCallback((tag: string) => {
     setRamMarks((prev) => prev.filter((r) => r.tag !== tag));

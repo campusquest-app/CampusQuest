@@ -177,6 +177,29 @@
   @apply rounded-2xl border border-uri-keaney/20 bg-white/[0.06] shadow-lg shadow-black/10;
 }
 
+/* Shared loading polish */
+@keyframes cq-skeleton-shimmer {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+.cq-skeleton-wrap {
+  opacity: 0;
+  animation: tab-fade-in 0.28s ease-out forwards;
+}
+.cq-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
+}
+.cq-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.3) 45%, transparent 100%);
+  transform: translateX(-120%);
+  animation: cq-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
 .stat-bar {
   @apply h-2.5 rounded-full bg-white/15 overflow-hidden;
 }
@@ -294,6 +317,29 @@
   background: linear-gradient(180deg, #f87171 0%, #dc2626 50%, #991b1b 100%);
   box-shadow: 0 0 8px rgba(220, 38, 38, 0.5);
 }
+.cq-hp-fill-animated {
+  position: relative;
+  overflow: hidden;
+}
+.cq-hp-fill-animated::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -60deg,
+    rgba(255, 255, 255, 0.2) 0 8px,
+    rgba(255, 255, 255, 0.02) 8px 16px
+  );
+  mix-blend-mode: screen;
+  animation: lootbox-stars-drift 2.8s linear infinite;
+}
+.cq-boss-card {
+  transition: transform 220ms ease, box-shadow 220ms ease;
+}
+.cq-boss-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px -12px rgba(104, 171, 232, 0.45);
+}
 .boss-card-active {
   background: linear-gradient(135deg, rgba(254, 202, 202, 0.08) 0%, rgba(30, 58, 138, 0.15) 50%, rgba(4, 30, 66, 0.4) 100%);
   border: 1px solid rgba(248, 113, 113, 0.25);
@@ -367,6 +413,51 @@
 }
 .tab-content-enter {
   animation: tab-fade-in 0.25s ease-out forwards;
+}
+
+/* First-time onboarding + beginner questline */
+@keyframes onboarding-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.95);
+    filter: blur(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+@keyframes onboarding-tip-pulse {
+  0%, 100% {
+    box-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.6), 0 0 0 0 rgba(104, 171, 232, 0.28);
+  }
+  50% {
+    box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.65), 0 0 0 6px rgba(104, 171, 232, 0.07);
+  }
+}
+@keyframes quest-reward-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(10px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.05) translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.onboarding-enter {
+  animation: onboarding-enter 0.4s cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+.cq-onboarding-tip {
+  animation: onboarding-tip-pulse 2.2s ease-in-out infinite;
+}
+.quest-reward-pop {
+  animation: quest-reward-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 /* Gain toast entrance */
@@ -852,6 +943,18 @@
   background: linear-gradient(90deg, rgba(104, 171, 232, 0.9), rgba(104, 171, 232, 1));
   box-shadow: 0 0 12px rgba(104, 171, 232, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
+.xp-bar-fill-animated {
+  position: relative;
+  overflow: hidden;
+}
+.xp-bar-fill-animated::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.45) 45%, transparent 100%);
+  transform: translateX(-130%);
+  animation: cq-skeleton-shimmer 2.4s ease-in-out infinite;
+}
 .stat-bar-game {
   display: flex;
   align-items: stretch;
@@ -900,6 +1003,13 @@
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
+}
+.stat-card-row {
+  transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+.stat-card-row:hover {
+  border-color: rgba(104, 171, 232, 0.28);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 /* Game juice: screen shake, level-up, stat bursts */
@@ -986,6 +1096,41 @@
   animation: cq-level-ring 0.45s cubic-bezier(0.34, 1.4, 0.64, 1) both;
   box-shadow: 0 0 60px rgba(104, 171, 232, 0.35);
 }
+.cq-level-up-crown::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(circle at 20% 20%, rgba(250, 204, 21, 0.28), transparent 40%),
+    radial-gradient(circle at 85% 80%, rgba(104, 171, 232, 0.2), transparent 46%);
+}
+.cq-level-up-sparkle {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.cq-level-up-sparkle::before,
+.cq-level-up-sparkle::after {
+  content: "";
+  position: absolute;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: rgba(255, 245, 220, 0.9);
+  box-shadow:
+    -40px 20px 0 rgba(250, 204, 21, 0.8),
+    36px 28px 0 rgba(104, 171, 232, 0.75),
+    -18px 56px 0 rgba(250, 204, 21, 0.7),
+    14px 68px 0 rgba(255, 255, 255, 0.7);
+  left: 50%;
+  top: 20%;
+  animation: cq-streak-float 2.4s ease-in-out infinite;
+}
+.cq-level-up-sparkle::after {
+  transform: translate(12px, 10px) scale(0.7);
+  opacity: 0.8;
+}
 .cq-level-up-emoji {
   animation: cq-xp-pop 0.6s ease-out 0.1s both;
 }
@@ -1018,6 +1163,44 @@
 }
 .cq-tap-pulse:active {
   animation: cq-tap-pulse 0.35s ease-out;
+}
+
+/* Leaderboards + empty states polish */
+.cq-empty-state {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.cq-chip-pop:active {
+  transform: scale(0.98);
+}
+.cq-leaderboard-row {
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+.cq-leaderboard-row:hover {
+  transform: translateY(-1px);
+  border-color: rgba(104, 171, 232, 0.3);
+}
+.cq-rank-badge {
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 640px) {
+  .cq-leaderboard-row {
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-skeleton::after,
+  .xp-bar-fill-animated::after,
+  .cq-hp-fill-animated::after,
+  .cq-level-up-sparkle::before,
+  .cq-level-up-sparkle::after,
+  .onboarding-enter,
+  .cq-onboarding-tip,
+  .quest-reward-pop {
+    animation: none !important;
+  }
 }
 
 .stat-aura-strength {

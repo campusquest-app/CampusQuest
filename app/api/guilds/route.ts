@@ -1,4 +1,5 @@
 import { ZodError } from "zod";
+import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { createGuild, listGuilds } from "@/lib/server/services";
 import { enforceRateLimit } from "@/lib/server/security";
@@ -19,6 +20,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const auth = await requireAuthUser(request);
+    await assertAccountCanSocialize(auth.userClient as any, auth.user.id);
     enforceRateLimit({ userId: auth.user.id, routeKey: "guild:create", limit: 5, windowMs: 60_000 });
     const input = await readJson(request, createGuildSchema);
     const guild = await createGuild({

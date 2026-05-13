@@ -90,7 +90,7 @@ export function GuildBossBattle({
   character: Character;
   embedded?: boolean;
 }) {
-  const guildIds = character.guildIds ?? [];
+  const guildIds = useMemo(() => character.guildIds ?? [], [character.guildIds]);
 
   const cards = useMemo(() => {
     return guildIds.map((gid) => {
@@ -99,7 +99,7 @@ export function GuildBossBattle({
       const guildLabel = g?.name ?? "Guild";
       return { guildId: gid, guildLabel, entry };
     });
-  }, [guildIds.join(","), character.totalXP, character.id]);
+  }, [guildIds]);
 
   const inner =
     guildIds.length === 0 ? (

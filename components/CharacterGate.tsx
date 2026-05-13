@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { createCharacter } from "@/lib/store";
 import { getDefaultCustomAvatar, serializeAvatar } from "@/lib/avatarOptions";
-import type { CharacterClassId } from "@/lib/characterClasses";
+import { CHARACTER_CLASSES, getClassAvatarPreset, type CharacterClassId } from "@/lib/characterClasses";
 import { AvatarBuilder } from "./AvatarBuilder";
 import { AvatarDisplay } from "./AvatarDisplay";
 
@@ -41,6 +41,12 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
     USERNAME_REGEX.test(usernameNormalized);
 
   const canSubmit = nameValid && usernameValid && avatar.length > 0;
+  const starterAvatars = CHARACTER_CLASSES.slice(0, 5).map((cls) => ({
+    id: cls.id,
+    label: cls.name,
+    icon: cls.icon,
+    avatar: getClassAvatarPreset(cls.id),
+  }));
 
   const handleNameChange = useCallback((value: string) => {
     const next = value.slice(0, NAME_MAX);
@@ -200,6 +206,34 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
                 )}
               </div>
 
+              <div className="space-y-2">
+                <p className="block text-xs font-semibold text-white/70 uppercase tracking-wider">Starter archetype</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {CHARACTER_CLASSES.map((cls) => (
+                    <button
+                      key={cls.id}
+                      type="button"
+                      onClick={() => {
+                        setClassId(cls.id);
+                        setStarterWeapon(cls.starterWeapon);
+                        setAvatar(getClassAvatarPreset(cls.id));
+                      }}
+                      className={`rounded-xl border px-2.5 py-2 text-left transition-colors ${
+                        classId === cls.id
+                          ? "border-uri-gold/60 bg-uri-gold/20 text-uri-gold"
+                          : "border-white/15 bg-white/[0.05] text-white/85 hover:bg-white/[0.1]"
+                      }`}
+                    >
+                      <p className="text-sm font-semibold">
+                        {cls.icon} {cls.name}
+                      </p>
+                      <p className="mt-1 text-[11px] text-white/60">{cls.realm}</p>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-white/50">You can fully customize this later in the next step.</p>
+              </div>
+
               {/* Step 3: Scholars Guild */}
               <div className="space-y-2">
                 <label htmlFor="char-scholar-guild" className="block text-xs font-semibold text-white/70 uppercase tracking-wider">
@@ -271,6 +305,30 @@ export function CharacterGate({ onReady }: { onReady: () => void }) {
 
             {/* Avatar builder full-screen style */}
             <div className="px-4 py-4 sm:px-6 sm:py-6 md:px-8 md:py-7 bg-[radial-gradient(circle_at_0_0,rgba(255,255,255,0.08),transparent_55%),radial-gradient(circle_at_100%_100%,rgba(80,178,255,0.25),transparent_55%)]">
+              <div className="mb-5 rounded-2xl border border-uri-keaney/30 bg-uri-keaney/10 p-3 sm:p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/85">Starter avatars</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+                  {starterAvatars.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setAvatar(preset.avatar);
+                        setClassId(preset.id);
+                      }}
+                      className="rounded-xl border border-white/15 bg-white/[0.05] p-2 text-left hover:border-uri-keaney/50 hover:bg-white/[0.08]"
+                    >
+                      <div className="flex justify-center rounded-lg bg-black/20 py-1.5">
+                        <AvatarDisplay avatar={preset.avatar} size={48} />
+                      </div>
+                      <p className="mt-1 text-[11px] font-semibold text-white truncate">
+                        {preset.icon} {preset.label}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <AvatarBuilder
                 value={avatar}
                 onChange={setAvatar}

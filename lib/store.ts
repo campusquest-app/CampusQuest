@@ -321,6 +321,44 @@ export function getCharacter(): Character | null {
   return loadCharacter();
 }
 
+/** Sync local character progression from backend snapshot after authenticated rewards. */
+export function syncCharacterProgressFromBackend(
+  userId: string,
+  payload: {
+    profile?: { streak_days?: number | null; last_activity_date?: string | null };
+    stats?: {
+      level?: number | null;
+      total_xp?: number | null;
+      strength?: number | null;
+      stamina?: number | null;
+      knowledge?: number | null;
+      social?: number | null;
+      focus?: number | null;
+    };
+  }
+): Character | null {
+  const c = loadCharacter();
+  if (!c || c.id !== userId) return null;
+
+  if (payload.stats) {
+    if (payload.stats.level != null) c.level = Math.max(1, Number(payload.stats.level));
+    if (payload.stats.total_xp != null) c.totalXP = Math.max(0, Number(payload.stats.total_xp));
+    if (payload.stats.strength != null) c.stats.strength = Math.max(0, Number(payload.stats.strength));
+    if (payload.stats.stamina != null) c.stats.stamina = Math.max(0, Number(payload.stats.stamina));
+    if (payload.stats.knowledge != null) c.stats.knowledge = Math.max(0, Number(payload.stats.knowledge));
+    if (payload.stats.social != null) c.stats.social = Math.max(0, Number(payload.stats.social));
+    if (payload.stats.focus != null) c.stats.focus = Math.max(0, Number(payload.stats.focus));
+  }
+
+  if (payload.profile) {
+    if (payload.profile.streak_days != null) c.streakDays = Math.max(0, Number(payload.profile.streak_days));
+    c.lastActivityDate = payload.profile.last_activity_date ?? c.lastActivityDate ?? null;
+  }
+
+  saveCharacter(c);
+  return c;
+}
+
 /** Clear character from storage; next getCharacter() will return null (shows CharacterGate). */
 export function logout(): void {
   if (typeof window === "undefined") return;
@@ -380,7 +418,7 @@ export function createCharacter(
 }
 
 export function updateCharacter(
-  updates: Partial<Pick<Character, "name" | "avatar" | "username" | "classId" | "starterWeapon" | "bio">>
+  updates: Partial<Pick<Character, "name" | "avatar" | "username" | "classId" | "starterWeapon" | "bio" | "scholarGuildId">>
 ): Character | null {
   const c = loadCharacter();
   if (!c) return null;
@@ -390,6 +428,7 @@ export function updateCharacter(
   if (updates.classId !== undefined) c.classId = updates.classId;
   if (updates.starterWeapon !== undefined) c.starterWeapon = updates.starterWeapon;
   if (updates.bio !== undefined) c.bio = updates.bio.trim() || undefined;
+  if (updates.scholarGuildId !== undefined) c.scholarGuildId = updates.scholarGuildId || "undecided";
   saveCharacter(c);
   return c;
 }

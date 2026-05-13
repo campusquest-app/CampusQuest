@@ -261,7 +261,7 @@ export function Leaderboards({ character }: { character: Character }) {
               key={opt.value}
               type="button"
               onClick={() => setSortBy(opt.value)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+              className={`cq-chip-pop flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
                 sortBy === opt.value
                   ? "bg-uri-keaney text-white"
                   : "bg-white/10 text-white/80 hover:bg-white/15 border border-white/15"
@@ -284,7 +284,11 @@ export function Leaderboards({ character }: { character: Character }) {
             Guilds ranked by level (highest first). Ties sorted by name.
           </p>
           {guildsSorted.length === 0 ? (
-            <p className="text-sm text-white/50 py-4">No guilds yet.</p>
+            <div className="cq-empty-state rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center">
+              <p className="text-xl mb-1.5" aria-hidden>🛡️</p>
+              <p className="text-sm font-semibold text-white/70">No guilds yet.</p>
+              <p className="text-xs text-white/50 mt-1">Create or join one in Find Friends to start climbing rankings.</p>
+            </div>
           ) : (
             <ul className="space-y-2">
               {guildsSorted.map((guild, index) => {
@@ -371,7 +375,11 @@ export function Leaderboards({ character }: { character: Character }) {
               Ranked by {sortLabel}. Only your accepted friends.
             </p>
             {friends.length === 0 ? (
-              <p className="text-sm text-white/50 py-4">No friends yet. Add friends in Find Friends to see them here.</p>
+              <div className="cq-empty-state rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center">
+                <p className="text-xl mb-1.5" aria-hidden>🤝</p>
+                <p className="text-sm font-semibold text-white/70">No friends on your board yet.</p>
+                <p className="text-xs text-white/50 mt-1">Add friends in Find Friends to unlock social leaderboards.</p>
+              </div>
             ) : (
               <ul className="space-y-2">
                 {friends.map((friend, index) => {
@@ -617,11 +625,11 @@ function LeaderboardRow({
   const podiumGlow = rank <= 3 ? RANK_GLOW[rank as 1 | 2 | 3] : "";
   return (
     <li
-      className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+      className={`cq-leaderboard-row flex items-center gap-2.5 sm:gap-3 p-3 rounded-xl border transition-colors ${
         rank <= 3 ? podiumGlow : isCurrentUser ? "bg-uri-keaney/15 border-uri-keaney/40" : "bg-white/5 border-white/10"
       }`}
     >
-      <span className={`w-8 text-sm ${rankStyle}`}>#{rank}</span>
+      <span className={`cq-rank-badge w-8 text-center text-sm ${rankStyle}`}>#{rank}</span>
       <span className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0 border border-white/15 overflow-hidden">
         <AvatarDisplay avatar={avatar} size={40} />
       </span>
@@ -631,8 +639,9 @@ function LeaderboardRow({
           {isCurrentUser && <span className="text-xs text-uri-keaney font-normal">(you)</span>}
         </p>
         <p className="text-xs text-white/50 truncate">@{username}</p>
+        {actions != null && <div className="mt-1.5 sm:hidden">{actions}</div>}
       </div>
-      <div className="flex-shrink-0 text-right">
+      <div className="flex-shrink-0 text-right min-w-[5.5rem] sm:min-w-[6rem]">
         {sortBy !== "level" && statLabel != null && statValue != null ? (
           <>
             <p className="text-uri-keaney font-semibold text-sm">{statLabel} {statValue}</p>
@@ -645,7 +654,7 @@ function LeaderboardRow({
           </>
         )}
       </div>
-      {actions != null && <div className="flex-shrink-0">{actions}</div>}
+      {actions != null && <div className="flex-shrink-0 hidden sm:block">{actions}</div>}
     </li>
   );
 }

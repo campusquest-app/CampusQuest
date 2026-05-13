@@ -13,7 +13,7 @@ export function CampusBossRaid({
   /** When true, omit outer frame (parent section provides the chrome). */
   embedded?: boolean;
 }) {
-  const state = useMemo(() => loadCampusBossEvent(), [character.totalXP, character.id]);
+  const state = useMemo(() => loadCampusBossEvent(), []);
   const pctRemaining = campusBossPercentHp(state);
   const damagedPct = Math.max(0, Math.min(100, 100 - pctRemaining));
   const top = topContributors(state, 6);

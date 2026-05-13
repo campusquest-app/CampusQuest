@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchAuthed } from "@/lib/client/dashboardApi";
+import { ApiRequestError, fetchAuthed } from "@/lib/client/dashboardApi";
+import { AppealsModerationCard } from "@/components/AppealsModerationCard";
+import { LegalPolicyVersionCard } from "@/components/LegalPolicyVersionCard";
+import { ModerationDashboardCard } from "@/components/ModerationDashboardCard";
 
 type ProfileData = {
   id: string;
@@ -81,11 +84,18 @@ export function BackendDashboardPreview() {
     setLoading(true);
     setError(null);
     try {
+      const guildPromise = fetchAuthed<GuildData>("/api/guilds/me").catch((guildError: unknown) => {
+        if (guildError instanceof ApiRequestError && guildError.status === 404) {
+          return null;
+        }
+        throw guildError;
+      });
+
       const [profile, stats, quests, guild, leaderboards, inventory, bosses] = await Promise.all([
         fetchAuthed<ProfileData>("/api/me/profile"),
         fetchAuthed<StatsData>("/api/me/stats"),
         fetchAuthed<{ quests: ActiveQuestData[] }>("/api/quests/active?limit=3"),
-        fetchAuthed<GuildData>("/api/guilds/me"),
+        guildPromise,
         fetchAuthed<LeaderboardsData>("/api/leaderboards"),
         fetchAuthed<InventoryData>("/api/inventory"),
         fetchAuthed<ActiveBossesData>("/api/bosses/active"),
@@ -129,124 +139,129 @@ export function BackendDashboardPreview() {
   const bossPreview = (state.bosses?.bosses ?? []).slice(0, 2);
 
   return (
-    <section className="card p-4 sm:p-5 space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-display font-semibold text-white flex items-center gap-2">
-            <span aria-hidden>🔌</span> Backend preview
-          </h2>
-          <p className="text-xs text-white/55 mt-1">
-            Live data from API routes for dashboard rollout.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={loading}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-uri-keaney/40 text-uri-keaney hover:bg-uri-keaney/10 disabled:opacity-60"
-        >
-          {loading ? "Loading..." : "Refresh"}
-        </button>
-      </div>
-
-      {error && (
-        <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
-          {error}
-        </div>
-      )}
-
-      {!error && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-            <p className="text-xs text-white/55 mb-1">Current profile</p>
-            <p className="text-white font-medium">
-              {state.profile?.display_name ?? state.profile?.username ?? "No profile data"}
+    <div className="space-y-4">
+      <AppealsModerationCard />
+      <ModerationDashboardCard />
+      <LegalPolicyVersionCard />
+      <section className="card p-4 sm:p-5 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-display font-semibold text-white flex items-center gap-2">
+              <span aria-hidden>🔌</span> Backend preview
+            </h2>
+            <p className="text-xs text-white/55 mt-1">
+              Live data from API routes for dashboard rollout.
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={loading}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-uri-keaney/40 text-uri-keaney hover:bg-uri-keaney/10 disabled:opacity-60"
+          >
+            {loading ? "Loading..." : "Refresh"}
+          </button>
+        </div>
 
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-            <p className="text-xs text-white/55 mb-1">Current stats</p>
-            <p className="text-white font-medium">
-              Lv.{state.stats?.level ?? 1} · {(state.stats?.total_xp ?? 0).toLocaleString()} XP
-            </p>
+        {error && (
+          <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+            {error}
           </div>
+        )}
 
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3 sm:col-span-2">
-            <p className="text-xs text-white/55 mb-1">XP + level progress</p>
-            <p className="text-white/90 text-xs mb-2">
-              {xpProgress.current} / {xpProgress.needed} XP to next level
-            </p>
-            <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-              <div className="h-full bg-uri-keaney rounded-full" style={{ width: `${xpProgress.pct}%` }} />
+        {!error && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="text-xs text-white/55 mb-1">Current profile</p>
+              <p className="text-white font-medium">
+                {state.profile?.display_name ?? state.profile?.username ?? "No profile data"}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="text-xs text-white/55 mb-1">Current stats</p>
+              <p className="text-white font-medium">
+                Lv.{state.stats?.level ?? 1} · {(state.stats?.total_xp ?? 0).toLocaleString()} XP
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3 sm:col-span-2">
+              <p className="text-xs text-white/55 mb-1">XP + level progress</p>
+              <p className="text-white/90 text-xs mb-2">
+                {xpProgress.current} / {xpProgress.needed} XP to next level
+              </p>
+              <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                <div className="h-full bg-uri-keaney rounded-full" style={{ width: `${xpProgress.pct}%` }} />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="text-xs text-white/55 mb-1">Active quests</p>
+              {state.quests.length === 0 ? (
+                <p className="text-white/60 text-xs">No active quests.</p>
+              ) : (
+                <ul className="space-y-1 text-xs text-white/90">
+                  {state.quests.map((quest) => (
+                    <li key={quest.id}>
+                      {quest.quest?.title ?? "Untitled quest"} ({quest.progress_count}/{quest.quest?.target_count ?? 1})
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="text-xs text-white/55 mb-1">Current guild</p>
+              <p className="text-white font-medium">{state.guild?.guild.name ?? "No guild joined"}</p>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="text-xs text-white/55 mb-1">Leaderboard preview</p>
+              {topPlayers.length === 0 ? (
+                <p className="text-white/60 text-xs">No leaderboard data.</p>
+              ) : (
+                <ul className="space-y-1 text-xs text-white/90">
+                  {topPlayers.map((player) => (
+                    <li key={player.user_id}>
+                      #{player.rank} {player.profiles?.display_name ?? player.profiles?.username ?? "Student"}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <p className="text-xs text-white/55 mb-1">Inventory preview</p>
+              {inventoryPreview.length === 0 ? (
+                <p className="text-white/60 text-xs">Inventory is empty.</p>
+              ) : (
+                <ul className="space-y-1 text-xs text-white/90">
+                  {inventoryPreview.map((item) => (
+                    <li key={item.item_id}>
+                      {item.item?.name ?? item.item_id} x{item.quantity}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3 sm:col-span-2">
+              <p className="text-xs text-white/55 mb-1">Active bosses preview</p>
+              {bossPreview.length === 0 ? (
+                <p className="text-white/60 text-xs">No active bosses.</p>
+              ) : (
+                <ul className="space-y-1 text-xs text-white/90">
+                  {bossPreview.map((boss) => (
+                    <li key={boss.id}>
+                      {boss.name} ({boss.bossProgress.remainingHp}/{boss.bossProgress.maxHp} HP)
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
-
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-            <p className="text-xs text-white/55 mb-1">Active quests</p>
-            {state.quests.length === 0 ? (
-              <p className="text-white/60 text-xs">No active quests.</p>
-            ) : (
-              <ul className="space-y-1 text-xs text-white/90">
-                {state.quests.map((quest) => (
-                  <li key={quest.id}>
-                    {quest.quest?.title ?? "Untitled quest"} ({quest.progress_count}/{quest.quest?.target_count ?? 1})
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-            <p className="text-xs text-white/55 mb-1">Current guild</p>
-            <p className="text-white font-medium">{state.guild?.guild.name ?? "No guild joined"}</p>
-          </div>
-
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-            <p className="text-xs text-white/55 mb-1">Leaderboard preview</p>
-            {topPlayers.length === 0 ? (
-              <p className="text-white/60 text-xs">No leaderboard data.</p>
-            ) : (
-              <ul className="space-y-1 text-xs text-white/90">
-                {topPlayers.map((player) => (
-                  <li key={player.user_id}>
-                    #{player.rank} {player.profiles?.display_name ?? player.profiles?.username ?? "Student"}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-            <p className="text-xs text-white/55 mb-1">Inventory preview</p>
-            {inventoryPreview.length === 0 ? (
-              <p className="text-white/60 text-xs">Inventory is empty.</p>
-            ) : (
-              <ul className="space-y-1 text-xs text-white/90">
-                {inventoryPreview.map((item) => (
-                  <li key={item.item_id}>
-                    {item.item?.name ?? item.item_id} x{item.quantity}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3 sm:col-span-2">
-            <p className="text-xs text-white/55 mb-1">Active bosses preview</p>
-            {bossPreview.length === 0 ? (
-              <p className="text-white/60 text-xs">No active bosses.</p>
-            ) : (
-              <ul className="space-y-1 text-xs text-white/90">
-                {bossPreview.map((boss) => (
-                  <li key={boss.id}>
-                    {boss.name} ({boss.bossProgress.remainingHp}/{boss.bossProgress.maxHp} HP)
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
-    </section>
+        )}
+      </section>
+    </div>
   );
 }

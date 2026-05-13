@@ -1,4 +1,5 @@
 import { ZodError } from "zod";
+import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { addComment, listPostComments } from "@/lib/server/services";
 import { enforceRateLimit } from "@/lib/server/security";
@@ -51,6 +52,7 @@ export async function POST(
 ) {
   try {
     const auth = await requireAuthUser(request);
+    await assertAccountCanSocialize(auth.userClient as any, auth.user.id);
     enforceRateLimit({ userId: auth.user.id, routeKey: "post:comment", limit: 30, windowMs: 60_000 });
     const input = await readJson(request, commentSchema);
     const comment = await addComment({

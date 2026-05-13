@@ -22,6 +22,9 @@ import { WeeklyRecapCard } from "./WeeklyRecapCard";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { DirectMessageThread } from "./DirectMessageThread";
 import { Inbox } from "./Inbox";
+import { EventsFeed } from "./EventsFeed";
+import { OrganizationsHub } from "./OrganizationsHub";
+import { NotificationsCenter } from "./NotificationsCenter";
 import { STAT_KEYS, STAT_ICONS, STAT_LABELS } from "@/lib/types";
 import { getActivityById } from "@/lib/activities";
 import { AvatarDisplay } from "./AvatarDisplay";
@@ -31,11 +34,14 @@ import { SkillTreePanel } from "./SkillTreePanel";
 import { SurpriseQuestBanner } from "./SurpriseQuestBanner";
 import { DailyTrainingGames } from "./DailyTrainingGames";
 import { LoreArchiveCard } from "./LoreArchiveCard";
+import { FirstTimeJourney } from "./FirstTimeJourney";
 import { BackendDashboardPreview } from "./BackendDashboardPreview";
+import { OnboardingPreferencesModal } from "./OnboardingPreferencesModal";
 import type { StatKey } from "@/lib/types";
 import { clearAccessToken } from "@/lib/client/apiSession";
+import { fetchAuthed } from "@/lib/client/dashboardApi";
 
-type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox";
+type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations" | "notifications";
 
 /** Sub-view on the Character tab (Quad-style toggle). */
 type CharacterPane = "sheet" | "profile";
@@ -45,11 +51,15 @@ function Header({
   character,
   onRefresh,
   onOpenInbox,
+  onOpenNotifications,
+  unreadNotificationCount,
 }: {
   username: string | null;
   character: Character | null;
   onRefresh?: () => void;
   onOpenInbox?: () => void;
+  onOpenNotifications?: () => void;
+  unreadNotificationCount?: number;
 }) {
   const [questsOpen, setQuestsOpen] = useState(false);
   const [specialQuestsOpen, setSpecialQuestsOpen] = useState(false);
@@ -179,6 +189,22 @@ function Header({
                     <span className="hidden sm:inline">Inbox</span>
                   </button>
                 )}
+                {onOpenNotifications && (
+                  <button
+                    type="button"
+                    onClick={onOpenNotifications}
+                    className="relative flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white border border-transparent transition-all"
+                    title="Notifications"
+                  >
+                    <span aria-hidden>🔔</span>
+                    <span className="hidden sm:inline">Alerts</span>
+                    {(unreadNotificationCount ?? 0) > 0 ? (
+                      <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[10px] font-bold text-white flex items-center justify-center">
+                        {Math.min(99, unreadNotificationCount ?? 0)}
+                      </span>
+                    ) : null}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -213,6 +239,13 @@ export function Dashboard() {
   const [dmWithOther, setDmWithOther] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
   const [screenShake, setScreenShake] = useState(false);
   const [levelUpModal, setLevelUpModal] = useState<number | null>(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [onboardingPreferences, setOnboardingPreferences] = useState<{
+    schoolName: string;
+    interests: string[];
+    discoveryFocus: string[];
+  } | null>(null);
+  const [needsOnboardingPreferences, setNeedsOnboardingPreferences] = useState(false);
 
   const XP300_POPUP_KEY = "campusquest_300xp_celebrated";
 
@@ -231,6 +264,51 @@ export function Dashboard() {
     setMounted(true);
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!character) return;
+    let cancelled = false;
+    async function loadUnread() {
+      try {
+        const data = await fetchAuthed<{ notifications: unknown[]; unreadCount: number }>("/api/notifications?limit=1");
+        if (!cancelled) setUnreadNotificationCount(Number(data.unreadCount ?? 0));
+      } catch {
+        if (!cancelled) setUnreadNotificationCount(0);
+      }
+    }
+    void loadUnread();
+    const intervalId = window.setInterval(() => {
+      void loadUnread();
+    }, 45000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [character?.id]);
+
+  useEffect(() => {
+    if (!character) return;
+    let cancelled = false;
+    async function loadOnboardingPreferences() {
+      try {
+        const data = await fetchAuthed<{
+          exists: boolean;
+          preferences: { schoolName: string; interests: string[]; discoveryFocus: string[] } | null;
+        }>("/api/me/onboarding-preferences");
+        if (cancelled) return;
+        setOnboardingPreferences(data.preferences ?? null);
+        setNeedsOnboardingPreferences(!data.exists);
+      } catch {
+        if (cancelled) return;
+        setOnboardingPreferences(null);
+        setNeedsOnboardingPreferences(true);
+      }
+    }
+    void loadOnboardingPreferences();
+    return () => {
+      cancelled = true;
+    };
+  }, [character?.id]);
 
   useEffect(() => {
     if (!character || character.totalXP < 300) return;
@@ -309,24 +387,24 @@ export function Dashboard() {
 
   if (!mounted) {
     return (
-      <div className="space-y-4">
-        <div className="h-12 rounded-xl bg-white/10 w-3/4 max-w-xs" />
+      <div className="space-y-4 cq-skeleton-wrap">
+        <div className="cq-skeleton h-12 rounded-xl w-3/4 max-w-xs" />
         <div className="card p-5 space-y-4">
           <div className="flex gap-4">
-            <div className="w-20 h-20 rounded-2xl bg-white/10" />
+            <div className="cq-skeleton w-20 h-20 rounded-2xl" />
             <div className="flex-1 space-y-2">
-              <div className="h-5 bg-white/10 rounded w-32" />
-              <div className="h-4 bg-white/10 rounded w-24" />
-              <div className="h-3 bg-white/10 rounded w-full mt-3" />
+              <div className="cq-skeleton h-5 rounded w-32" />
+              <div className="cq-skeleton h-4 rounded w-24" />
+              <div className="cq-skeleton h-3 rounded w-full mt-3" />
             </div>
           </div>
-          <div className="h-3 bg-white/10 rounded w-full" />
-          <div className="h-3 bg-white/10 rounded w-5/6" />
+          <div className="cq-skeleton h-3 rounded w-full" />
+          <div className="cq-skeleton h-3 rounded w-5/6" />
         </div>
         <div className="card p-4 space-y-2">
-          <div className="h-4 bg-white/10 rounded w-40" />
-          <div className="h-11 bg-white/10 rounded-xl" />
-          <div className="h-11 bg-white/10 rounded-xl" />
+          <div className="cq-skeleton h-4 rounded w-40" />
+          <div className="cq-skeleton h-11 rounded-xl" />
+          <div className="cq-skeleton h-11 rounded-xl" />
         </div>
       </div>
     );
@@ -421,6 +499,9 @@ export function Dashboard() {
 
   const navItems: { tab: Tab; icon: string; label: string }[] = [
     { tab: "quad", icon: "📋", label: "Quad" },
+    { tab: "events", icon: "📅", label: "Events" },
+    { tab: "organizations", icon: "🏛️", label: "Orgs" },
+    { tab: "notifications", icon: "🔔", label: "Alerts" },
     { tab: "friends", icon: "👋", label: "Friends" },
     { tab: "battle", icon: "🐉", label: "Battle" },
     { tab: "leaderboards", icon: "🏆", label: "Rank" },
@@ -429,11 +510,23 @@ export function Dashboard() {
 
   return (
     <>
-      <Header username={character?.username ?? null} character={character} onRefresh={refresh} onOpenInbox={() => setTab("inbox")} />
+      <Header
+        username={character?.username ?? null}
+        character={character}
+        onRefresh={refresh}
+        onOpenInbox={() => setTab("inbox")}
+        onOpenNotifications={() => setTab("notifications")}
+        unreadNotificationCount={unreadNotificationCount}
+      />
       <div
         className={screenShake ? "cq-screen-shake" : undefined}
         style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom, 0px))" }}
       >
+        {character && (
+          <div className="mb-4 sm:mb-5">
+            <FirstTimeJourney character={character} currentTab={tab} onNavigateTab={setTab} onRefresh={refresh} />
+          </div>
+        )}
         {gainToast?.lastBossDrop && typeof document !== "undefined" && createPortal(
           bossDefeatPhase === "teaser" ? (
             <div
@@ -685,12 +778,14 @@ export function Dashboard() {
       {levelUpModal != null && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={() => setLevelUpModal(null)} aria-hidden />
-          <div className="relative z-10 w-full max-w-sm rounded-3xl border-2 border-uri-keaney/60 bg-uri-navy p-8 text-center cq-level-up-burst overflow-hidden">
+          <div className="relative z-10 w-full max-w-sm rounded-3xl border-2 border-uri-keaney/60 bg-uri-navy p-8 text-center cq-level-up-burst cq-level-up-crown overflow-hidden">
+            <span className="cq-level-up-sparkle" aria-hidden />
             <div className="text-6xl mb-2 cq-level-up-emoji" aria-hidden>
               ⭐
             </div>
             <p className="text-uri-keaney font-black text-3xl font-display">LEVEL {levelUpModal}</p>
-            <p className="text-white/80 text-sm mt-3 mb-6">New skill point unlocked — open Skill tree on your Character tab.</p>
+            <p className="text-white/80 text-sm mt-3 mb-1">New skill point unlocked — open Skill tree on your Character tab.</p>
+            <p className="text-uri-gold/90 text-xs mb-6">Your legend grows stronger.</p>
             <button
               type="button"
               onClick={() => setLevelUpModal(null)}
@@ -709,6 +804,7 @@ export function Dashboard() {
             character={character}
             onBack={() => setTab("quad")}
             onOpenDm={setDmWithOther}
+            personalization={onboardingPreferences}
           />
         )}
 
@@ -723,6 +819,14 @@ export function Dashboard() {
 
         {tab === "friends" && (
           <FindFriends character={character} onRefresh={refresh} onOpenDm={setDmWithOther} />
+        )}
+
+        {tab === "events" && <EventsFeed personalization={onboardingPreferences} />}
+
+        {tab === "organizations" && <OrganizationsHub personalization={onboardingPreferences} />}
+
+        {tab === "notifications" && (
+          <NotificationsCenter onUnreadCountChange={setUnreadNotificationCount} personalization={onboardingPreferences} />
         )}
 
         {tab === "leaderboards" && (
@@ -883,7 +987,7 @@ export function Dashboard() {
         style={{ paddingBottom: 0 }}
       >
         <nav
-          className="w-full sm:max-w-2xl sm:mx-auto flex items-center justify-around rounded-t-2xl bg-uri-navy/95 border border-b-0 border-uri-keaney/25 shadow-[0_-4px_24px_-4px_rgba(0,0,0,0.45),0_-1px_0_0_rgba(104,171,232,0.12)] backdrop-blur-md"
+          className="w-full sm:max-w-2xl sm:mx-auto flex items-center justify-start overflow-x-auto rounded-t-2xl bg-uri-navy/95 border border-b-0 border-uri-keaney/25 shadow-[0_-4px_24px_-4px_rgba(0,0,0,0.45),0_-1px_0_0_rgba(104,171,232,0.12)] backdrop-blur-md"
           style={{ paddingTop: "0.5rem", paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
           aria-label="Main navigation"
         >
@@ -892,7 +996,7 @@ export function Dashboard() {
             key={t}
             type="button"
             onClick={() => setTab(t)}
-            className={`flex flex-col items-center justify-center gap-0.5 min-w-0 flex-1 py-2.5 px-1 rounded-xl transition-all touch-manipulation ${
+            className={`flex flex-col items-center justify-center gap-0.5 min-w-[4.75rem] py-2.5 px-1 rounded-xl transition-all touch-manipulation ${
               tab === t
                 ? "text-uri-keaney bg-gradient-to-b from-uri-keaney/25 to-uri-keaney/10 shadow-[0_6px_18px_-6px_rgba(104,171,232,0.9)]"
                 : "text-white/60 hover:text-white/85 hover:bg-white/5 active:text-white/90"
@@ -914,6 +1018,15 @@ export function Dashboard() {
           onMessageSent={refresh}
         />
       )}
+
+      {needsOnboardingPreferences ? (
+        <OnboardingPreferencesModal
+          onCompleted={(preferences) => {
+            setOnboardingPreferences(preferences);
+            setNeedsOnboardingPreferences(false);
+          }}
+        />
+      ) : null}
     </>
   );
 }

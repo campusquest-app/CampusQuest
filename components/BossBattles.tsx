@@ -142,7 +142,7 @@ function BossFightRow({
         : "border-white/20 bg-white/10 text-white hover:border-uri-keaney/45 hover:bg-uri-keaney/15 hover:text-uri-keaney";
 
   return (
-    <article className={`${shell} flex flex-col gap-3 sm:gap-4`}>
+    <article className={`${shell} cq-boss-card flex flex-col gap-3 sm:gap-4`}>
       <div className="flex min-w-0 gap-3 sm:gap-4">
         <div
           className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border text-xl shadow-lg sm:h-16 sm:w-16 sm:rounded-2xl sm:text-3xl ${
@@ -214,11 +214,11 @@ function BossFightRow({
               </div>
               {isFinal ? (
                 <div className="final-boss-hp-bar h-4 w-full min-w-0 min-h-[1rem] sm:h-3 sm:min-h-0">
-                  <div className="final-boss-hp-fill" style={{ width: `${hpPct}%` }} />
+                  <div className="final-boss-hp-fill cq-hp-fill-animated" style={{ width: `${hpPct}%` }} />
                 </div>
               ) : (
                 <div className="boss-hp-bar h-4 w-full min-w-0 min-h-[1rem] sm:h-3 sm:min-h-0">
-                  <div className="boss-hp-fill" style={{ width: `${hpPct}%` }} />
+                  <div className="boss-hp-fill cq-hp-fill-animated" style={{ width: `${hpPct}%` }} />
                 </div>
               )}
             </div>
@@ -536,7 +536,8 @@ export function BossBattles({ character, onRefresh }: { character: Character; on
             <div className="final-boss-box rounded-lg p-2.5 sm:rounded-xl sm:p-4">
               {finalBosses.length === 0 ? (
                 <div className="rounded-lg border border-uri-gold/25 bg-black/25 py-8 text-center sm:py-10">
-                  <p className="text-sm text-white/60">No final boss yet.</p>
+                  <p className="text-2xl mb-2" aria-hidden>👑</p>
+                  <p className="text-sm text-white/70 font-semibold">No final boss yet.</p>
                   <p className="mt-2 px-2 text-xs text-uri-gold/85">
                     Open <strong className="text-uri-gold">Recruit a boss</strong> above with <strong className="text-uri-gold">{FINAL_BOSS_HP}+ HP</strong>.
                   </p>
@@ -567,12 +568,14 @@ export function BossBattles({ character, onRefresh }: { character: Character; on
           >
             {bosses.length === 0 ? (
               <div className="rounded-xl border border-white/10 bg-white/[0.03] py-10 text-center sm:py-12">
-                <p className="text-sm text-white/55">No bosses yet.</p>
+                <p className="text-2xl mb-2" aria-hidden>🪄</p>
+                <p className="text-sm text-white/70 font-semibold">No bosses yet.</p>
                 <p className="mt-2 px-3 text-xs text-white/45">Open <strong className="text-white/70">Recruit a boss</strong> above.</p>
               </div>
             ) : regularBosses.length === 0 ? (
               <div className="rounded-xl border border-white/10 bg-white/[0.03] py-8 text-center">
-                <p className="text-sm text-white/55">All bosses are final-tier.</p>
+                <p className="text-2xl mb-2" aria-hidden>🏆</p>
+                <p className="text-sm text-white/70 font-semibold">All bosses are final-tier.</p>
                 <p className="mt-1 text-xs text-white/45 md:hidden">See <strong className="text-white/60">Final bosses</strong> above.</p>
                 <p className="mt-1 hidden text-xs text-white/45 md:block">See the <strong className="text-white/60">Final bosses</strong> column.</p>
               </div>
