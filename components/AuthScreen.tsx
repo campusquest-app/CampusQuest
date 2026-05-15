@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { DEFAULT_POLICY_VERSION } from "@/lib/legal/policy";
-import { takeLegalConsentResumeToken } from "@/lib/legal/legalResumeGate";
 import { fetchMeSchoolVerification, SchoolVerificationHttpError } from "@/lib/client/dashboardApi";
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/client/apiSession";
+import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/agreementAccess";
 import { LegalConsentScreen } from "@/components/LegalConsentScreen";
 import { AccountSafetyStatusScreen } from "@/components/AccountSafetyStatusScreen";
 import { SchoolVerificationScreen } from "@/components/SchoolVerificationScreen";
@@ -135,7 +135,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   }
 
   const checkConsentStatus = useCallback(async (accessToken: string) => {
-    const payload = await fetchJson<{ acceptedCurrentVersion?: boolean; currentPolicyVersion?: string }>(
+    const payload = await fetchJson<LegalConsentPayload & { currentPolicyVersion?: string }>(
       "/api/legal/consent/status",
       {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -143,22 +143,16 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       },
     );
 
-    const acceptedCurrentVersion = Boolean(payload?.data?.acceptedCurrentVersion);
-    const currentPolicyVersion = (payload?.data?.currentPolicyVersion as string | undefined) ?? DEFAULT_POLICY_VERSION;
+    const d = payload?.data;
+    const currentPolicyVersion = d?.currentPolicyVersion ?? DEFAULT_POLICY_VERSION;
     setConsentVersion(currentPolicyVersion);
-    if (!acceptedCurrentVersion) {
+    if (mustRedirectToAgreement(d)) {
       setNeedsConsent(true);
       return false;
     }
     setNeedsConsent(false);
     return true;
   }, []);
-
-  useEffect(() => {
-    if (!takeLegalConsentResumeToken()) return;
-    const token = getAccessToken();
-    if (token) void checkConsentStatus(token);
-  }, [checkConsentStatus]);
 
   async function checkSchoolVerification(accessToken: string) {
     const { verification, moderationAdminAccess } = await fetchMeSchoolVerification(accessToken);

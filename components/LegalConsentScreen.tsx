@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { armLegalConsentResumeFromGate } from "@/lib/legal/legalResumeGate";
 import { LEGAL_DOC_LINKS } from "@/lib/legal/policy";
 
 type Props = {
@@ -40,25 +39,13 @@ export function LegalConsentScreen({ onContinue, isSubmitting = false, versionLa
         </p>
 
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Link
-            href={LEGAL_DOC_LINKS.privacy}
-            className={linkClass}
-            onClick={() => armLegalConsentResumeFromGate()}
-          >
+          <Link href={LEGAL_DOC_LINKS.privacy} className={linkClass}>
             Privacy Policy
           </Link>
-          <Link
-            href={LEGAL_DOC_LINKS.terms}
-            className={linkClass}
-            onClick={() => armLegalConsentResumeFromGate()}
-          >
+          <Link href={LEGAL_DOC_LINKS.terms} className={linkClass}>
             Terms of Service
           </Link>
-          <Link
-            href={LEGAL_DOC_LINKS.guidelines}
-            className={linkClass}
-            onClick={() => armLegalConsentResumeFromGate()}
-          >
+          <Link href={LEGAL_DOC_LINKS.guidelines} className={linkClass}>
             Community Guidelines
           </Link>
         </div>

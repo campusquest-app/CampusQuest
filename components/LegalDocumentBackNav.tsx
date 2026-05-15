@@ -9,11 +9,7 @@ export function LegalDocumentBackNav() {
   const router = useRouter();
 
   const handleBack = useCallback(() => {
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      router.back();
-    } else {
-      router.push("/agreement");
-    }
+    router.push("/agreement");
   }, [router]);
 
   return (
@@ -22,7 +18,7 @@ export function LegalDocumentBackNav() {
         type="button"
         onClick={handleBack}
         className="group relative flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/14 bg-white/[0.06] p-3 text-white/92 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-sm transition-[color,background-color,border-color,opacity,transform] duration-150 hover:border-uri-keaney/45 hover:bg-uri-keaney/[0.12] hover:text-white active:translate-y-[0.5px] active:scale-[0.97] active:opacity-98 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-uri-keaney/70 focus-visible:ring-offset-2 focus-visible:ring-offset-uri-navy touch-manipulation"
-        aria-label="Go back"
+        aria-label="Back to agreement"
       >
         <ArrowLeft
           className="h-5 w-5 shrink-0 transition-transform duration-150 group-hover:-translate-x-0.5 group-active:-translate-x-0.5"

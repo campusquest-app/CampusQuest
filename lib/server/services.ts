@@ -1,6 +1,6 @@
 import { User } from "@supabase/supabase-js";
-import { DEFAULT_POLICY_VERSION } from "@/lib/legal/policy";
 import { ApiError } from "@/lib/server/http";
+import { getActivePolicyVersion } from "@/lib/server/legalConsentStatus";
 import {
   calculateActivityXp,
   calculateBossDamage,
@@ -55,33 +55,7 @@ function getClientIp(request: Request) {
   return realIp ? normalize(realIp) : null;
 }
 
-export async function getLegalConsentStatus(args: {
-  userClient: SupabaseClientLike;
-  userId: string;
-}) {
-  const { userClient, userId } = args;
-  const currentPolicyVersion = await getActivePolicyVersion(userClient);
-  const { data, error } = await userClient
-    .from("user_legal_consents")
-    .select("policy_version, consented_at")
-    .eq("user_id", userId)
-    .order("consented_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new ApiError(400, error.message, "LEGAL_CONSENT_STATUS_FAILED");
-  }
-
-  const acceptedCurrentVersion = data?.policy_version === currentPolicyVersion;
-  return {
-    acceptedCurrentVersion,
-    requiredReacceptance: !acceptedCurrentVersion,
-    currentPolicyVersion,
-    latestAcceptedVersion: data?.policy_version ?? null,
-    latestConsentedAt: data?.consented_at ?? null,
-  };
-}
+export { getLegalConsentStatus, getActivePolicyVersion } from "@/lib/server/legalConsentStatus";
 
 export async function acceptLegalConsent(args: {
   userClient: SupabaseClientLike;
@@ -123,22 +97,6 @@ export async function acceptLegalConsent(args: {
     acceptedPrivacy: Boolean(data.accepted_privacy),
     acceptedGuidelines: Boolean(data.accepted_guidelines),
   };
-}
-
-export async function getActivePolicyVersion(userClient: SupabaseClientLike) {
-  const { data, error } = await userClient
-    .from("legal_policy_versions")
-    .select("version")
-    .eq("is_active", true)
-    .order("activated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new ApiError(400, error.message, "LEGAL_POLICY_VERSION_FETCH_FAILED");
-  }
-
-  return (data?.version as string | undefined) ?? DEFAULT_POLICY_VERSION;
 }
 
 export async function activatePolicyVersion(args: {

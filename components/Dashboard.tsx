@@ -11,7 +11,7 @@ import {
   hydrateClientMirrorFromGameState,
 } from "@/lib/store";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 import type { Character } from "@/lib/types";
 import { CharacterCard } from "./CharacterCard";
@@ -47,6 +47,7 @@ import { FirstTimeJourney } from "./FirstTimeJourney";
 import { OnboardingPreferencesModal } from "./OnboardingPreferencesModal";
 import type { StatKey } from "@/lib/types";
 import { clearAccessToken, getAccessToken } from "@/lib/client/apiSession";
+import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/agreementAccess";
 import {
   fetchAuthed,
   fetchMeSchoolVerification,
@@ -71,6 +72,9 @@ import { useSaveStatus } from "@/lib/client/useSaveStatus";
 import { SchoolVerificationScreen } from "./SchoolVerificationScreen";
 import { WelcomeBackCommunityReminder, communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
 import { DashboardBootstrapShellSkeleton } from "./DashboardBootstrapShellSkeleton";
+import { LevelUpOverlay } from "@/components/xp/LevelUpOverlay";
+import { XPGainBanner } from "@/components/xp/XPGainBanner";
+import type { ActivityXPGainSession } from "@/components/xp/xpGainTypes";
 
 type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations";
 
@@ -301,6 +305,7 @@ function Header({
 
 export function Dashboard() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [character, setCharacter] = useState<Character | null>(null);
   const [mounted, setMounted] = useState(false);
   const [showWelcomeSplash, setShowWelcomeSplash] = useState(true);
@@ -321,6 +326,7 @@ export function Dashboard() {
   const bossVictoryTimerRef = useRef<number | null>(null);
   const bossChestSequenceTimersRef = useRef<number[]>([]);
   const [showLevel3Popup, setShowLevel3Popup] = useState(false);
+  const [xpGainSession, setXpGainSession] = useState<ActivityXPGainSession | null>(null);
   const [dmWithOther, setDmWithOther] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
   const [screenShake, setScreenShake] = useState(false);
   const [levelUpModal, setLevelUpModal] = useState<number | null>(null);
@@ -434,6 +440,19 @@ export function Dashboard() {
     setCharacter(getCharacter());
   }, []);
 
+  const finishXpGainOverlay = useCallback((finished: ActivityXPGainSession) => {
+    const ms = finished.modifierLines && finished.modifierLines.length > 2 ? 5200 : 3800;
+    setGainToast({
+      xp: finished.xpGained,
+      stats: finished.stats,
+      title: finished.title,
+      modifierLines: finished.modifierLines,
+      primaryStat: finished.primaryStat,
+    });
+    window.setTimeout(() => setGainToast(null), ms);
+    setXpGainSession(null);
+  }, []);
+
   const handleLogout = useCallback(async () => {
     const token = getAccessToken();
     const c = getCharacter();
@@ -453,6 +472,7 @@ export function Dashboard() {
     setGatePrefillProfile(null);
     setOnboardingPreferences(null);
     setNeedsOnboardingPreferences(false);
+    setXpGainSession(null);
     setBootstrapStatus("bootstrapping");
     setShowWelcomeSplash(false);
     setCampusFetchNonce(0);
@@ -589,6 +609,40 @@ export function Dashboard() {
         failUnauthenticated({ invalidateToken: false });
         logBootstrapDecision({ sessionFound: false, route: "unauthenticated" });
         setBootstrapStatus("unauthenticated");
+        return;
+      }
+
+      // Current Terms / Privacy / Community Guidelines must be accepted before any app data loads.
+      try {
+        const consentRes = await fetch("/api/legal/consent/status", {
+          headers: { Authorization: `Bearer ${tokenAtStart}` },
+          cache: "no-store",
+        });
+        const consentJson = (await consentRes.json()) as {
+          data?: LegalConsentPayload;
+          error?: { message?: string };
+        };
+
+        if (consentRes.status === 401) {
+          if (!cancelled) {
+            failUnauthenticated({ invalidateToken: true });
+            logBootstrapDecision({
+              sessionFound: true,
+              sessionValidated: false,
+              onboardingCompleted: null,
+              route: "unauthenticated",
+            });
+            setBootstrapStatus("unauthenticated");
+          }
+          return;
+        }
+
+        if (!consentRes.ok || mustRedirectToAgreement(consentJson.data)) {
+          if (!cancelled) router.replace("/agreement");
+          return;
+        }
+      } catch {
+        if (!cancelled) router.replace("/agreement");
         return;
       }
 
@@ -755,7 +809,7 @@ export function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [mounted, bootstrapNonce, refresh]);
+  }, [mounted, bootstrapNonce, refresh, router]);
 
   useEffect(() => {
     if (pilotCampusState.status !== "loading") {
@@ -1040,28 +1094,42 @@ export function Dashboard() {
           : undefined;
       playXpDing();
       const modLines = result.xpBreakdown?.lines?.map((l) => ({ label: l.label, emoji: l.emoji }));
-      setGainToast({
-        xp,
-        stats,
-        title: def ? `${def.icon} ${def.label}` : "Activity logged",
-        modifierLines: modLines,
-        primaryStat: def?.stat,
-        lastBossDrop: result.lastBossDrop
-          ? {
-              bossName: result.lastBossDrop.bossName,
-              loot:
-                result.lastBossDrop.loot != null
-                  ? {
-                      icon: result.lastBossDrop.loot.icon,
-                      label: result.lastBossDrop.loot.label,
-                      rarity: rarityLabel ?? result.lastBossDrop.loot.rarity,
-                      equipEffect: describeCosmeticEquipEffect(result.lastBossDrop.loot.id),
-                    }
-                  : undefined,
-            }
-          : undefined,
-      });
-      if (result.leveledUp) {
+
+      if (result.lastBossDrop) {
+        setGainToast({
+          xp,
+          stats,
+          title: def ? `${def.icon} ${def.label}` : "Activity logged",
+          modifierLines: modLines,
+          primaryStat: def?.stat,
+          lastBossDrop: result.lastBossDrop
+            ? {
+                bossName: result.lastBossDrop.bossName,
+                loot:
+                  result.lastBossDrop.loot != null
+                    ? {
+                        icon: result.lastBossDrop.loot.icon,
+                        label: result.lastBossDrop.loot.label,
+                        rarity: rarityLabel ?? result.lastBossDrop.loot.rarity,
+                        equipEffect: describeCosmeticEquipEffect(result.lastBossDrop.loot.id),
+                      }
+                    : undefined,
+              }
+            : undefined,
+        });
+      } else {
+        setXpGainSession({
+          beforeTotalXP: before.totalXP,
+          afterTotalXP: updated.totalXP,
+          xpGained: xp,
+          title: def ? `${def.icon} ${def.label}` : "Activity logged",
+          stats,
+          modifierLines: modLines,
+          primaryStat: def?.stat,
+          leveledUp: Boolean(result.leveledUp),
+        });
+      }
+      if (result.leveledUp && result.lastBossDrop) {
         playLevelUpFanfare();
         setLevelUpModal(updated.level);
         setScreenShake(true);
@@ -1070,10 +1138,6 @@ export function Dashboard() {
       if (result.lastBossDrop) {
         setBossChestPhase("idle");
         setBossDefeatPhase("teaser");
-      }
-      if (!result.lastBossDrop) {
-        const ms = modLines && modLines.length > 2 ? 5200 : 3800;
-        window.setTimeout(() => setGainToast(null), ms);
       }
       // Show 300 XP celebration when they just reached 300 total XP
       if (before.totalXP < 300 && updated.totalXP >= 300) {
@@ -1141,6 +1205,9 @@ export function Dashboard() {
               />
             </div>
           ))}
+        {xpGainSession && (
+          <LevelUpOverlay session={xpGainSession} onComplete={finishXpGainOverlay} />
+        )}
         {gainToast?.lastBossDrop && typeof document !== "undefined" && createPortal(
           bossDefeatPhase === "teaser" ? (
             <div
@@ -1308,58 +1375,24 @@ export function Dashboard() {
           ),
           document.body
         )}
-        {gainToast && !gainToast.lastBossDrop && (
-          <div className="fixed left-1/2 top-20 -translate-x-1/2 z-40 w-[min(28rem,92vw)] toast-enter">
-            <div className="card px-4 py-3 border border-uri-keaney/40 bg-uri-navy shadow-keaney">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-white font-semibold truncate">{gainToast.title}</div>
-                  <div className="text-xs text-white/60 mt-0.5">
-                    <span
-                      className={`font-mono text-uri-keaney font-bold cq-xp-burst ${
-                        gainToast.primaryStat === "strength"
-                          ? "stat-burst-strength"
-                          : gainToast.primaryStat === "knowledge"
-                            ? "stat-burst-knowledge"
-                            : ""
-                      }`}
-                    >
-                      +{gainToast.xp} XP
-                    </span>
-                    {Object.keys(gainToast.stats).length > 0 && <span className="text-white/40"> · </span>}
-                    {STAT_KEYS.filter((k) => (gainToast.stats as any)[k] > 0).map((k) => (
-                      <span key={k} className="mr-2">
-                        {STAT_ICONS[k]} <span className="text-white/80">+{(gainToast.stats as any)[k]}</span>
-                        <span className="text-white/40"> {STAT_LABELS[k]}</span>
-                      </span>
-                    ))}
-                  </div>
-                  {gainToast.modifierLines && gainToast.modifierLines.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {gainToast.modifierLines.map((l, i) => (
-                        <span
-                          key={`${l.label}-${i}`}
-                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-uri-gold/15 text-uri-gold border border-uri-gold/35"
-                        >
-                          {l.emoji ? `${l.emoji} ` : ""}
-                          {l.label}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setGainToast(null)}
-                  className="text-white/40 hover:text-white/70"
-                  aria-label="Dismiss"
-                >
-                  ✕
-                </button>
+        {gainToast &&
+          !gainToast.lastBossDrop &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <div className="pointer-events-none fixed inset-x-0 top-20 z-[120] flex justify-center px-3">
+              <div className="pointer-events-auto w-full max-w-[min(28rem,92vw)]">
+                <XPGainBanner
+                  title={gainToast.title}
+                  xp={gainToast.xp}
+                  stats={gainToast.stats}
+                  primaryStat={gainToast.primaryStat}
+                  modifierLines={gainToast.modifierLines}
+                  onDismiss={() => setGainToast(null)}
+                />
               </div>
-            </div>
-          </div>
-        )}
+            </div>,
+            document.body
+          )}
 
       {showLevel3Popup && character && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="xp300-title">
@@ -1464,49 +1497,6 @@ export function Dashboard() {
                 boxShadow: "0 1px 0 0 rgba(104, 171, 232, 0.12)",
               }}
             >
-              <div className="mb-4 flex items-start gap-3 sm:mb-5 sm:gap-4">
-                <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl border border-uri-keaney/45 bg-white shadow-[0_0_20px_rgba(104,171,232,0.2),inset_0_1px_0_rgba(255,255,255,0.08)] sm:h-24 sm:w-24">
-                  <img
-                    src="/rhody-ai-ram.png"
-                    alt="Rhody AI mascot"
-                    className="h-full w-full object-contain object-left"
-                    width={96}
-                    height={96}
-                  />
-                </div>
-                <div className="min-w-0 flex-1 pt-0.5">
-                  <h2 className="font-display text-lg font-bold leading-tight tracking-tight text-white sm:text-xl">Your Ram</h2>
-                  <p className="mt-1 text-xs leading-relaxed text-white/60 sm:text-[13px] sm:text-white/55">
-                    Level up, equip loot, and manage how you show up on the Quad.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mb-4 rounded-2xl border border-uri-gold/35 bg-gradient-to-br from-uri-gold/[0.12] via-uri-gold/[0.04] to-transparent p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:mb-5 sm:p-4">
-                <div className="mb-2.5 flex items-center gap-2">
-                  <span className="text-sm" aria-hidden>
-                    ⚡
-                  </span>
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-uri-gold/95 sm:text-xs">Quick stats</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                  <div className="rounded-xl border border-white/12 bg-black/25 px-2 py-2.5 text-center shadow-inner sm:px-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-wide text-white/45">Level</div>
-                    <div className="mt-0.5 font-display text-lg font-bold text-uri-keaney sm:text-xl">{character.level}</div>
-                  </div>
-                  <div className="rounded-xl border border-white/12 bg-black/25 px-2 py-2.5 text-center shadow-inner sm:px-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-wide text-white/45">Streak</div>
-                    <div className="mt-0.5 font-display text-lg font-bold text-white sm:text-xl">{character.streakDays}d</div>
-                  </div>
-                  <div className="rounded-xl border border-white/12 bg-black/25 px-2 py-2.5 text-center shadow-inner sm:px-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-wide text-white/45">XP</div>
-                    <div className="mt-0.5 truncate font-mono text-sm font-bold text-uri-keaney/95 sm:text-base">
-                      {character.totalXP.toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               <div className="rounded-2xl border border-white/10 bg-black/25 p-1 shadow-inner">
                 <div className="grid grid-cols-2 gap-1">
                   <button
@@ -1551,6 +1541,69 @@ export function Dashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                   <div className="md:col-span-2">
                     <CharacterCard character={character} onRefresh={refresh} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <div
+                      className="overflow-hidden rounded-xl border border-white/[0.08] sm:rounded-2xl"
+                      style={{
+                        background: "linear-gradient(180deg, rgba(104, 171, 232, 0.12) 0%, rgba(3, 22, 48, 0.92) 100%)",
+                        boxShadow: "0 8px 32px -8px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)",
+                      }}
+                    >
+                      <div className="px-3 pt-4 sm:px-5 sm:pt-5">
+                        <div className="mb-4 flex items-start gap-3 sm:mb-5 sm:gap-4">
+                          <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl border border-uri-keaney/45 bg-white shadow-[0_0_20px_rgba(104,171,232,0.2),inset_0_1px_0_rgba(255,255,255,0.08)] sm:h-20 sm:w-20">
+                            <img
+                              src="/rhody-ai-ram.png"
+                              alt="Rhody AI mascot"
+                              className="h-full w-full object-contain object-left"
+                              width={80}
+                              height={80}
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1 pt-0.5">
+                            <h2 className="font-display text-base font-bold leading-tight tracking-tight text-white sm:text-lg">
+                              Your Ram
+                            </h2>
+                            <p className="mt-1 text-xs leading-relaxed text-white/60 sm:text-[13px] sm:text-white/55">
+                              Level up, equip loot, and manage how you show up on the Quad.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="border-t border-uri-gold/25 px-3 pb-4 pt-3 sm:px-5 sm:pb-5 sm:pt-4">
+                        <div className="rounded-2xl border border-uri-gold/35 bg-gradient-to-br from-uri-gold/[0.12] via-uri-gold/[0.04] to-transparent p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:p-4">
+                          <div className="mb-2.5 flex items-center gap-2">
+                            <span className="text-sm" aria-hidden>
+                              ⚡
+                            </span>
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-uri-gold/95 sm:text-xs">
+                              Quick stats
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                            <div className="rounded-xl border border-white/12 bg-black/25 px-2 py-2.5 text-center shadow-inner sm:px-3">
+                              <div className="text-[10px] font-semibold uppercase tracking-wide text-white/45">Level</div>
+                              <div className="mt-0.5 font-display text-lg font-bold text-uri-keaney sm:text-xl">
+                                {character.level}
+                              </div>
+                            </div>
+                            <div className="rounded-xl border border-white/12 bg-black/25 px-2 py-2.5 text-center shadow-inner sm:px-3">
+                              <div className="text-[10px] font-semibold uppercase tracking-wide text-white/45">Streak</div>
+                              <div className="mt-0.5 font-display text-lg font-bold text-white sm:text-xl">
+                                {character.streakDays}d
+                              </div>
+                            </div>
+                            <div className="rounded-xl border border-white/12 bg-black/25 px-2 py-2.5 text-center shadow-inner sm:px-3">
+                              <div className="text-[10px] font-semibold uppercase tracking-wide text-white/45">XP</div>
+                              <div className="mt-0.5 truncate font-mono text-sm font-bold text-uri-keaney/95 sm:text-base">
+                                {character.totalXP.toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   <div className="md:col-span-2">
                     <ActivityList onLog={handleLog} />
