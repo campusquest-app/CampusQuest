@@ -6,7 +6,7 @@ import { rememberSchoolVerificationSnapshot, type SchoolVerificationClientSnapsh
 /** Thrown client-side before any HTTP request when Bearer token is unavailable. */
 export const CQ_MISSING_SESSION_CODE = "MISSING_SESSION" as const;
 
-type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } };
+type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string; details?: unknown } };
 const IS_DEV = process.env.NODE_ENV !== "production";
 
 /** Thrown when an authed CampusQuest API responds with non-JSON success envelope or unauthorized. */
@@ -15,6 +15,7 @@ export class ApiRequestError extends Error {
     message: string,
     public readonly status: number,
     public readonly code?: string,
+    public readonly details?: unknown,
   ) {
     super(message);
   }
@@ -276,6 +277,7 @@ export async function fetchAuthed<T>(path: string): Promise<T> {
       formatDevHttpMessage(path, response.status, response.statusText, fallback),
       response.status,
       payload.error?.code,
+      payload.error?.details,
     );
   }
   if (payload.data === undefined) {
@@ -327,6 +329,7 @@ export async function postAuthed<T, B extends Record<string, unknown>>(path: str
       formatDevHttpMessage(path, response.status, response.statusText, fallback),
       response.status,
       payload.error?.code,
+      payload.error?.details,
     );
   }
   if (payload.data === undefined) {
@@ -378,6 +381,7 @@ export async function patchAuthed<T, B extends Record<string, unknown>>(path: st
       formatDevHttpMessage(path, response.status, response.statusText, fallback),
       response.status,
       payload.error?.code,
+      payload.error?.details,
     );
   }
   if (payload.data === undefined) {
@@ -427,6 +431,7 @@ export async function deleteAuthed<T>(path: string): Promise<T> {
       formatDevHttpMessage(path, response.status, response.statusText, fallback),
       response.status,
       payload.error?.code,
+      payload.error?.details,
     );
   }
   if (payload.data === undefined) {

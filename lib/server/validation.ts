@@ -219,30 +219,83 @@ export const eventRsvpSchema = z.object({
   status: z.enum(["going", "interested", "not_going"]),
 });
 
-export const createEventSchema = z.object({
-  title: z.string().trim().min(3).max(180),
-  description: z.string().trim().min(1).max(3000),
-  category: z.string().trim().min(2).max(80),
-  locationName: z.string().trim().min(2).max(180),
-  startsAt: z.string().datetime(),
-  endsAt: z.string().datetime().optional(),
-  isPaid: z.boolean().optional().default(false),
-  ticketLink: z.string().trim().url().optional(),
-  hostOrganizationId: uuidSchema.optional(),
-});
+export const createEventSchema = z
+  .object({
+    title: z.string().trim().min(3, "Title is required.").max(180),
+    description: z.string().trim().min(1, "Description is required.").max(3000),
+    category: z.string().trim().min(2, "Category is required.").max(80),
+    locationName: z.string().trim().min(2, "Location is required.").max(180),
+    startsAt: z
+      .string()
+      .trim()
+      .min(1, "Start time is required.")
+      .refine((value) => !Number.isNaN(Date.parse(value)), "Start time is invalid."),
+    endsAt: z
+      .string()
+      .trim()
+      .refine((value) => !Number.isNaN(Date.parse(value)), "End time is invalid.")
+      .optional(),
+    isPaid: z.boolean().optional().default(false),
+    ticketPriceCents: z.number().int().min(1).max(10_000_000).optional(),
+    ticketLink: z.string().trim().url().optional(),
+    hostOrganizationId: uuidSchema.optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.endsAt && new Date(val.endsAt).getTime() <= new Date(val.startsAt).getTime()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endsAt"],
+        message: "End time must be after start time.",
+      });
+    }
+    if (val.isPaid && !val.ticketPriceCents) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ticketPriceCents"],
+        message: "Price is required for paid events.",
+      });
+    }
+  });
 
-export const updateEventSchema = z.object({
-  title: z.string().trim().min(3).max(180).optional(),
-  description: z.string().trim().min(1).max(3000).optional(),
-  category: z.string().trim().min(2).max(80).optional(),
-  locationName: z.string().trim().min(2).max(180).optional(),
-  startsAt: z.string().datetime().optional(),
-  endsAt: z.string().datetime().nullable().optional(),
-  isPaid: z.boolean().optional(),
-  ticketLink: z.string().trim().url().nullable().optional(),
-  hostOrganizationId: uuidSchema.nullable().optional(),
-  isCancelled: z.boolean().optional(),
-});
+export const updateEventSchema = z
+  .object({
+    title: z.string().trim().min(3).max(180).optional(),
+    description: z.string().trim().min(1).max(3000).optional(),
+    category: z.string().trim().min(2).max(80).optional(),
+    locationName: z.string().trim().min(2).max(180).optional(),
+    startsAt: z
+      .string()
+      .trim()
+      .refine((value) => !Number.isNaN(Date.parse(value)), "Start time is invalid.")
+      .optional(),
+    endsAt: z
+      .string()
+      .trim()
+      .refine((value) => !Number.isNaN(Date.parse(value)), "End time is invalid.")
+      .nullable()
+      .optional(),
+    isPaid: z.boolean().optional(),
+    ticketPriceCents: z.number().int().min(1).max(10_000_000).nullable().optional(),
+    ticketLink: z.string().trim().url().nullable().optional(),
+    hostOrganizationId: uuidSchema.nullable().optional(),
+    isCancelled: z.boolean().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.startsAt && val.endsAt && new Date(val.endsAt).getTime() <= new Date(val.startsAt).getTime()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endsAt"],
+        message: "End time must be after start time.",
+      });
+    }
+    if (val.isPaid === true && !val.ticketPriceCents) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ticketPriceCents"],
+        message: "Price is required for paid events.",
+      });
+    }
+  });
 
 export const createOrganizationSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -357,6 +410,10 @@ export const patchMeProfileSchema = z
     major: z.union([z.literal(""), z.string().trim().min(2).max(120)]).optional(),
     year: z.number().int().min(1900).max(3000).nullable().optional(),
     classYear: z.number().int().min(1900).max(3000).nullable().optional(),
+    streakDays: z.number().int().min(0).max(10_000).optional(),
+    streak_days: z.number().int().min(0).max(10_000).optional(),
+    lastActivityDate: z.string().date().nullable().optional(),
+    last_activity_date: z.string().date().nullable().optional(),
     /** Serialized gameplay snapshot (equipment, extra counters); merged server-side. */
     gameStateJson: z.record(z.string(), z.unknown()).optional(),
     /** When true, server marks character onboarding saved (requires identity + avatar payload). */

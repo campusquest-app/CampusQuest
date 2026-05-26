@@ -58,7 +58,7 @@ function cameraDeniedMessage(err: unknown): string | "permission_blocked" {
 
 function friendlyBannerForParseCode(code: ParseQrActivityErrorCode, message: string): string {
   if (code === "invalid_json")
-    return "That mark isn’t a CampusQuest sigil — CQ Scanner reads only official crests.";
+    return "That code isn’t a CampusQuest QR code — CQ Scanner reads only official CampusQuest QR codes.";
   return message;
 }
 
@@ -325,7 +325,7 @@ export function QRScannerModal({ open, onClose, onPayloadValidated }: QRScannerM
                 {camState === "starting" ? (
                   <div className="absolute inset-0 z-[22] flex flex-col items-center justify-center gap-2 bg-[#020b1f]/92 text-[13px] text-cyan-50/92">
                     <span className="cq-qr-spinner h-11 w-11 rounded-full border-2 border-cyan-900/55 border-t-cyan-200" aria-hidden />
-                    <span>CQ Scanner validating sigil…</span>
+                    <span>CQ Scanner validating QR code…</span>
                   </div>
                 ) : null}
               </MagicalScannerFrame>

@@ -540,7 +540,7 @@ export function DiceBearForgeControls({
           ))}
         </OptionGrid>
       </ForgeSection>
-      <ForgeSection icon="🛡️" title="Face accessories" subtitle="Spectacles & sigils">
+      <ForgeSection icon="🛡️" title="Face accessories" subtitle="Spectacles & badges">
         <OptionGrid>
           {U.PEEPS_ACCESSORIES.map((h) => (
             <button

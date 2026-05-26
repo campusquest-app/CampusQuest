@@ -14,11 +14,11 @@ type CQScannerScreenProps = {
 };
 
 const HUD_WHISPERS = [
-  "CQ Scanner validating sigil glyphs… standby.",
+  "CQ Scanner validating QR code data… standby.",
   "Arcane validation active.",
-  "CampusQuest sigils honor one claim per crest — forged marks are refused.",
+  "CampusQuest QR codes honor one claim per code — invalid copies are rejected.",
   "The realm recognizes your progress.",
-  "Twin sigils collapse — CQ Scanner rejects duplicate crests.",
+  "Duplicate QR scans are blocked to keep rewards fair.",
 ] as const;
 
 export function CQScannerScreen({ onClose, frameSlot, bannerSlot, loreFootnote }: CQScannerScreenProps) {
@@ -57,7 +57,7 @@ export function CQScannerScreen({ onClose, frameSlot, bannerSlot, loreFootnote }
               animate={{ opacity: 1 }}
               transition={{ delay: 0.18 }}
             >
-              Align a CampusQuest sigil within the frame to reveal its power.
+              Align a CampusQuest QR code in the frame to claim rewards.
             </motion.p>
             <p className="mt-2 text-[11px] font-medium italic text-uri-keaney/88">&ldquo;{whisper}&rdquo;</p>
           </div>
@@ -107,7 +107,7 @@ export function CQScannerScreen({ onClose, frameSlot, bannerSlot, loreFootnote }
         >
           {loreFootnote ?? (
             <p className="text-xs leading-relaxed text-cyan-100/80">
-              Each authentic CampusQuest sigil channels XP and one campus stat blessing. Runes with a bound nonce can only seal once — CQ Scanner syncs with The Quad so your journey stays legendary.
+              Each CampusQuest QR code gives XP and boosts one campus stat. Some QR codes are one-time only, and every valid scan syncs to your profile instantly so your progress stays up to date.
             </p>
           )}
         </motion.div>

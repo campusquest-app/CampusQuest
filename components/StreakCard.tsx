@@ -1,13 +1,38 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Character } from "@/lib/types";
 import { getTodaysXpForStreak } from "@/lib/store";
 import { DAILY_MINIMUM_XP } from "@/lib/level";
 import { todayString } from "@/lib/dateUtils";
+import { fetchAuthed } from "@/lib/client/dashboardApi";
+import type { MeProfileRow } from "@/lib/client/profileCharacter";
 
 export function StreakCard({ character }: { character: Character }) {
-  const days = character.streakDays ?? 0;
+  const [serverStreakDays, setServerStreakDays] = useState<number | null>(null);
+  const [sourceLabel, setSourceLabel] = useState<"backend" | "local fallback">("local fallback");
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAuthed<MeProfileRow>("/api/me/profile")
+      .then((profile) => {
+        if (!cancelled) {
+          setServerStreakDays(Number(profile.streak_days ?? 0));
+          setSourceLabel("backend");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setServerStreakDays(null);
+          setSourceLabel("local fallback");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [character.id]);
+
+  const days = serverStreakDays ?? character.streakDays ?? 0;
   const hasStreak = days > 0;
 
   const { todayXp, atRisk } = useMemo(() => {
@@ -44,6 +69,9 @@ export function StreakCard({ character }: { character: Character }) {
           <div className="text-[11px] text-uri-keaney/90 font-mono mt-2">
             Today: {todayXp}/{DAILY_MINIMUM_XP} XP toward streak credit
           </div>
+          {process.env.NODE_ENV !== "production" && (
+            <div className="mt-1 text-[10px] font-mono text-white/40">streak source: {sourceLabel}</div>
+          )}
           {atRisk && (
             <div className="mt-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-100 font-semibold flex items-center gap-2">
               <span aria-hidden>⚠️</span>

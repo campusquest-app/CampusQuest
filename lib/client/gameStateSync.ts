@@ -161,6 +161,9 @@ export function buildUserStatePatchBodies(character: Character): {
   if (bioTrim) profile.bio = bioTrim;
   else profile.bio = "";
 
+  profile.streakDays = Math.max(0, Math.floor(character.streakDays ?? 0));
+  profile.lastActivityDate = character.lastActivityDate ?? null;
+
   return { stats, profile };
 }
 

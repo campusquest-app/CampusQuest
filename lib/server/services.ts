@@ -23,6 +23,7 @@ type AddXpArgs = {
   questCompletionId?: string;
   activityId?: string;
   note?: string;
+  applyStreakUpdate?: boolean;
 };
 
 const BEGINNER_QUEST_XP: Record<"profile" | "activity" | "boss" | "leaderboard" | "guild", number> = {
@@ -204,7 +205,7 @@ export async function updateProfile(userClient: SupabaseClientLike, userId: stri
 export async function addXp(args: AddXpArgs) {
   const { userClient, userId, amount, sourceType, sourceId, questCompletionId, activityId, note } = args;
   assertSafeXpGrant(sourceType, amount);
-  return addXpInternal({
+  const xp = await addXpInternal({
     userClient,
     userId,
     amount,
@@ -213,7 +214,19 @@ export async function addXp(args: AddXpArgs) {
     questCompletionId,
     activityId,
     note,
+    applyStreakUpdate: true,
   });
+  const { data: profile } = await userClient
+    .from("profiles")
+    .select("streak_days, last_activity_date")
+    .eq("id", userId)
+    .single();
+  const streak = {
+    streakDays: Number(profile?.streak_days ?? 0),
+    lastActivityDate: (profile?.last_activity_date as string | null | undefined) ?? null,
+  };
+  const player = await getPlayerProgressSnapshot(userClient, userId);
+  return { ...xp, streak, player };
 }
 
 export async function claimBeginnerQuestReward(args: {
@@ -263,10 +276,20 @@ export async function claimBeginnerQuestReward(args: {
       sourceType: "manual",
       sourceId: claim.id,
       note: `Beginner quest reward: ${questId}`,
+      applyStreakUpdate: true,
     });
+    const { data: profile } = await userClient
+      .from("profiles")
+      .select("streak_days, last_activity_date")
+      .eq("id", userId)
+      .single();
+    const streak = {
+      streakDays: Number(profile?.streak_days ?? 0),
+      lastActivityDate: (profile?.last_activity_date as string | null | undefined) ?? null,
+    };
     const player = await getPlayerProgressSnapshot(userClient, userId);
     await maybeMarkBeginnerChainCompletedAdmin(userId);
-    return { claim, xp, player };
+    return { claim, xp, streak, player };
   } catch (error) {
     await userClient.from("user_beginner_quest_claims").delete().eq("id", claim.id);
     throw error;
@@ -1420,6 +1443,7 @@ export async function attemptBossBattle(args: {
         sourceType: "boss",
         sourceId: bossId,
         note: `Defeated ${boss.name}`,
+        applyStreakUpdate: true,
       });
       rewardEarned = true;
 
@@ -1609,7 +1633,7 @@ export async function fetchLeaderboards(userClient: SupabaseClientLike) {
 }
 
 async function addXpInternal(args: AddXpArgs) {
-  const { userClient, userId, amount, sourceType, sourceId, questCompletionId, activityId, note } = args;
+  const { userClient, userId, amount, sourceType, sourceId, questCompletionId, activityId, note, applyStreakUpdate } = args;
   assertSafeXpGrant(sourceType, amount);
   const { data: stats, error: statsError } = await userClient
     .from("user_stats")
@@ -1641,6 +1665,10 @@ async function addXpInternal(args: AddXpArgs) {
     .select("*")
     .single();
   if (logError) throw new ApiError(400, logError.message, "XP_LOG_FAILED");
+
+  if (applyStreakUpdate) {
+    await updatePlayerStreakOnQuest(userClient, userId);
+  }
 
   return { xpLog: log, progression: levelInfo };
 }

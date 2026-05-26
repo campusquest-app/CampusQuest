@@ -444,7 +444,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
             />
           </div>
           <p className="text-uri-keaney/80 text-xs font-medium tracking-[0.2em] uppercase">
-            URI · Level up for real
+            URI · Level Up Your College Experience
           </p>
         </div>
 

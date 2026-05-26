@@ -1,4 +1,5 @@
 import { ZodError } from "zod";
+import { NextResponse } from "next/server";
 import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
 import { createEvent, listEvents } from "@/lib/server/eventsOrganizations";
 import { ApiError, fail, ok } from "@/lib/server/http";
@@ -49,7 +50,28 @@ export async function POST(request: Request) {
     return ok({ event }, 201);
   } catch (error) {
     if (error instanceof ZodError) {
-      return fail(new ApiError(400, error.issues[0]?.message ?? "Invalid payload.", "VALIDATION_ERROR"));
+      const message = error.issues[0]?.message ?? "Invalid payload.";
+      const details = error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+      }));
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[cq] events:create validation", {
+          status: 400,
+          code: "VALIDATION_ERROR",
+          details,
+        });
+      }
+      return NextResponse.json(
+        {
+          error: {
+            message,
+            code: "VALIDATION_ERROR",
+            details,
+          },
+        },
+        { status: 400 },
+      );
     }
     return fail(error);
   }

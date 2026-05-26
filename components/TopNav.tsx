@@ -160,8 +160,8 @@ export function TopNav({
               <button
                 type="button"
                 onClick={onOpenQrScanner}
-                aria-label="Open CQ Scanner to capture CampusQuest sigils and channel XP"
-                title="CQ Scanner — capture official CampusQuest sigils for XP and blessings"
+                aria-label="Open CQ Scanner to scan CampusQuest QR codes for XP"
+                title="CQ Scanner — scan official CampusQuest QR codes for XP and stat boosts"
                 className="cq-qr-nav-glow group flex h-11 max-w-[min(100%,11rem)] min-h-[44px] shrink-0 items-center justify-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full border border-uri-keaney/55 bg-gradient-to-r from-uri-keaney/45 via-[#4a90c8]/35 to-uri-keaney/40 px-3 text-white shadow-[0_0_22px_-4px_rgba(104,171,232,0.65),inset_0_1px_0_rgba(255,255,255,0.1)] hover:border-uri-keaney/85 hover:brightness-[1.06] active:scale-[0.97] touch-manipulation transition-transform sm:max-w-none sm:gap-2 sm:px-4"
               >
                 <Camera className="h-[18px] w-[18px] shrink-0 text-sky-100 sm:h-5 sm:w-5" strokeWidth={2.2} aria-hidden />
@@ -176,7 +176,9 @@ export function TopNav({
               <h1 className="font-display font-bold text-white text-xs sm:text-sm md:text-base tracking-tight truncate">
                 CampusQuest
               </h1>
-              <p className="text-[10px] sm:text-xs text-uri-keaney/80 font-medium truncate">{username ? `@${username}` : "URI · Level up"}</p>
+              <p className="text-[10px] sm:text-xs text-uri-keaney/80 font-medium truncate">
+                {username ? `@${username}` : "Level Up Your College Experience"}
+              </p>
               {saveLabel ? (
                 <p className="truncate text-[9px] text-white/45 sm:text-[10px]" aria-live="polite">
                   {saveLabel}

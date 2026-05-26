@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { ApiRequestError, fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 
 type EventItem = {
   id: string;
@@ -36,9 +36,29 @@ type CreateEventForm = {
   startsAt: string;
   endsAt: string;
   isPaid: boolean;
+  ticketPrice: string;
   hostMode: "self" | "organization";
   hostOrganizationId: string;
 };
+
+type CreateEventFieldErrorKey =
+  | "title"
+  | "description"
+  | "category"
+  | "locationName"
+  | "startsAt"
+  | "endsAt"
+  | "host"
+  | "ticketPrice";
+
+const EVENT_CATEGORY_OPTIONS = [
+  "Meeting",
+  "Networking",
+  "Campus Event",
+  "Workshop",
+  "Social",
+  "Study Group",
+] as const;
 
 function eventHostLabel(event: EventItem): string {
   if (event.hostOrganization) return event.hostOrganization.name;
@@ -81,9 +101,11 @@ export function EventsFeed({
     startsAt: "",
     endsAt: "",
     isPaid: false,
+    ticketPrice: "",
     hostMode: "self",
     hostOrganizationId: "",
   });
+  const [createFieldErrors, setCreateFieldErrors] = useState<Partial<Record<CreateEventFieldErrorKey, string>>>({});
 
   const canHostAsOrganization = manageableOrganizations.length > 0;
 
@@ -177,27 +199,56 @@ export function EventsFeed({
 
   async function handleCreateEvent(event: FormEvent) {
     event.preventDefault();
-    if (createForm.hostMode === "organization") {
-      if (!createForm.hostOrganizationId.trim()) {
-        setError("Select an organization you manage to host under.");
-        return;
+    const nextErrors: Partial<Record<CreateEventFieldErrorKey, string>> = {};
+    const startsAtDate = createForm.startsAt ? new Date(createForm.startsAt) : null;
+    const endsAtDate = createForm.endsAt ? new Date(createForm.endsAt) : null;
+
+    if (!createForm.title.trim()) nextErrors.title = "Title is required.";
+    if (!createForm.category.trim()) nextErrors.category = "Category is required.";
+    if (!createForm.locationName.trim()) nextErrors.locationName = "Location is required.";
+    if (!createForm.description.trim()) nextErrors.description = "Description is required.";
+    if (!createForm.startsAt.trim() || !startsAtDate || Number.isNaN(startsAtDate.getTime())) {
+      nextErrors.startsAt = "Start time is required.";
+    }
+    if (createForm.endsAt.trim() && (!endsAtDate || Number.isNaN(endsAtDate.getTime()))) {
+      nextErrors.endsAt = "End time is invalid.";
+    }
+    if (startsAtDate && endsAtDate && endsAtDate.getTime() <= startsAtDate.getTime()) {
+      nextErrors.endsAt = "End time must be after start time.";
+    }
+    if (createForm.hostMode === "organization" && !createForm.hostOrganizationId.trim()) {
+      nextErrors.host = "Select an organization you manage to host under.";
+    }
+    if (createForm.isPaid) {
+      const cents = Math.round(Number(createForm.ticketPrice) * 100);
+      if (!Number.isFinite(cents) || cents <= 0) {
+        nextErrors.ticketPrice = "Enter a valid price for a paid event.";
       }
+    }
+
+    setCreateFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      setError("Please fix the highlighted event fields.");
+      return;
     }
     setCreating(true);
     setError(null);
+    setCreateFieldErrors({});
     try {
       const hostOrganizationId =
         createForm.hostMode === "organization" && createForm.hostOrganizationId
           ? createForm.hostOrganizationId
           : undefined;
+      const ticketPriceCents = createForm.isPaid ? Math.round(Number(createForm.ticketPrice) * 100) : undefined;
       await postAuthed("/api/events", {
-        title: createForm.title,
-        description: createForm.description,
-        category: createForm.category,
-        locationName: createForm.locationName,
+        title: createForm.title.trim(),
+        description: createForm.description.trim(),
+        category: createForm.category.trim(),
+        locationName: createForm.locationName.trim(),
         startsAt: new Date(createForm.startsAt).toISOString(),
         endsAt: createForm.endsAt ? new Date(createForm.endsAt).toISOString() : undefined,
         isPaid: createForm.isPaid,
+        ticketPriceCents,
         ...(hostOrganizationId ? { hostOrganizationId } : {}),
       });
       setCreateForm({
@@ -208,11 +259,42 @@ export function EventsFeed({
         startsAt: "",
         endsAt: "",
         isPaid: false,
+        ticketPrice: "",
         hostMode: "self",
         hostOrganizationId: "",
       });
       await loadEvents(filters);
     } catch (createError) {
+      if (createError instanceof ApiRequestError && createError.code === "VALIDATION_ERROR") {
+        const details = Array.isArray(createError.details)
+          ? (createError.details as Array<{ path?: string; message?: string }>)
+          : [];
+        const mappedErrors: Partial<Record<CreateEventFieldErrorKey, string>> = {};
+        for (const detail of details) {
+          const path = String(detail.path ?? "");
+          const message = detail.message ?? "Invalid field.";
+          if (path === "title" && !mappedErrors.title) mappedErrors.title = message;
+          else if (path === "description" && !mappedErrors.description) mappedErrors.description = message;
+          else if (path === "category" && !mappedErrors.category) mappedErrors.category = message;
+          else if (path === "locationName" && !mappedErrors.locationName) mappedErrors.locationName = message;
+          else if (path === "startsAt" && !mappedErrors.startsAt) mappedErrors.startsAt = message;
+          else if (path === "endsAt" && !mappedErrors.endsAt) mappedErrors.endsAt = message;
+          else if (path === "hostOrganizationId" && !mappedErrors.host) mappedErrors.host = message;
+          else if (path === "ticketPriceCents" && !mappedErrors.ticketPrice) mappedErrors.ticketPrice = message;
+        }
+        if (Object.keys(mappedErrors).length > 0) {
+          setCreateFieldErrors(mappedErrors);
+          setError("Please fix the highlighted event fields.");
+          if (process.env.NODE_ENV !== "production") {
+            console.info("[cq] events:create validation-ui", {
+              status: createError.status,
+              code: createError.code,
+              details: createError.details,
+            });
+          }
+          return;
+        }
+      }
       setError(createError instanceof Error ? createError.message : "Could not create event.");
     } finally {
       setCreating(false);
@@ -251,22 +333,42 @@ export function EventsFeed({
         <form onSubmit={handleCreateEvent} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <input
             value={createForm.title}
-            onChange={(event) => setCreateForm((prev) => ({ ...prev, title: event.target.value }))}
+            onChange={(event) => {
+              setCreateForm((prev) => ({ ...prev, title: event.target.value }));
+              setCreateFieldErrors((prev) => ({ ...prev, title: undefined }));
+            }}
             placeholder="Create event title"
             className="rounded-lg bg-white/10 border border-white/20 px-2 py-2 text-xs text-white placeholder-white/50"
           />
-          <input
+          {createFieldErrors.title ? <p className="text-[11px] text-rose-300 sm:col-span-2">{createFieldErrors.title}</p> : null}
+          <select
             value={createForm.category}
-            onChange={(event) => setCreateForm((prev) => ({ ...prev, category: event.target.value }))}
-            placeholder="Category"
+            onChange={(event) => {
+              setCreateForm((prev) => ({ ...prev, category: event.target.value }));
+              setCreateFieldErrors((prev) => ({ ...prev, category: undefined }));
+            }}
             className="rounded-lg bg-white/10 border border-white/20 px-2 py-2 text-xs text-white placeholder-white/50"
-          />
+          >
+            <option value="">Category</option>
+            {EVENT_CATEGORY_OPTIONS.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+          {createFieldErrors.category ? <p className="text-[11px] text-rose-300 sm:col-span-2">{createFieldErrors.category}</p> : null}
           <input
             value={createForm.locationName}
-            onChange={(event) => setCreateForm((prev) => ({ ...prev, locationName: event.target.value }))}
+            onChange={(event) => {
+              setCreateForm((prev) => ({ ...prev, locationName: event.target.value }));
+              setCreateFieldErrors((prev) => ({ ...prev, locationName: undefined }));
+            }}
             placeholder="Location"
             className="rounded-lg bg-white/10 border border-white/20 px-2 py-2 text-xs text-white placeholder-white/50"
           />
+          {createFieldErrors.locationName ? (
+            <p className="text-[11px] text-rose-300 sm:col-span-2">{createFieldErrors.locationName}</p>
+          ) : null}
           <fieldset className="rounded-lg border border-white/15 px-2 py-2 space-y-1.5 sm:col-span-2">
             <legend className="text-[11px] text-white/55 px-1">Event host</legend>
             <label className="flex items-center gap-2 text-xs text-white/85">
@@ -288,7 +390,10 @@ export function EventsFeed({
                 name="eventHostMode"
                 disabled={!canHostAsOrganization}
                 checked={createForm.hostMode === "organization"}
-                onChange={() => setCreateForm((prev) => ({ ...prev, hostMode: "organization" }))}
+                onChange={() => {
+                  setCreateForm((prev) => ({ ...prev, hostMode: "organization" }));
+                  setCreateFieldErrors((prev) => ({ ...prev, host: undefined }));
+                }}
               />
               <span>
                 Host as an organization you manage
@@ -302,7 +407,10 @@ export function EventsFeed({
             {createForm.hostMode === "organization" && canHostAsOrganization ? (
               <select
                 value={createForm.hostOrganizationId}
-                onChange={(event) => setCreateForm((prev) => ({ ...prev, hostOrganizationId: event.target.value }))}
+                onChange={(event) => {
+                  setCreateForm((prev) => ({ ...prev, hostOrganizationId: event.target.value }));
+                  setCreateFieldErrors((prev) => ({ ...prev, host: undefined }));
+                }}
                 required
                 className="w-full rounded-lg bg-white/10 border border-white/20 px-2 py-2 text-xs text-white"
               >
@@ -314,34 +422,71 @@ export function EventsFeed({
                 ))}
               </select>
             ) : null}
+            {createFieldErrors.host ? <p className="text-[11px] text-rose-300">{createFieldErrors.host}</p> : null}
           </fieldset>
           <input
             type="datetime-local"
             value={createForm.startsAt}
-            onChange={(event) => setCreateForm((prev) => ({ ...prev, startsAt: event.target.value }))}
+            onChange={(event) => {
+              setCreateForm((prev) => ({ ...prev, startsAt: event.target.value }));
+              setCreateFieldErrors((prev) => ({ ...prev, startsAt: undefined }));
+            }}
             className="rounded-lg bg-white/10 border border-white/20 px-2 py-2 text-xs text-white"
           />
+          {createFieldErrors.startsAt ? <p className="text-[11px] text-rose-300 sm:col-span-2">{createFieldErrors.startsAt}</p> : null}
           <input
             type="datetime-local"
             value={createForm.endsAt}
-            onChange={(event) => setCreateForm((prev) => ({ ...prev, endsAt: event.target.value }))}
+            onChange={(event) => {
+              setCreateForm((prev) => ({ ...prev, endsAt: event.target.value }));
+              setCreateFieldErrors((prev) => ({ ...prev, endsAt: undefined }));
+            }}
             className="rounded-lg bg-white/10 border border-white/20 px-2 py-2 text-xs text-white"
           />
+          {createFieldErrors.endsAt ? <p className="text-[11px] text-rose-300 sm:col-span-2">{createFieldErrors.endsAt}</p> : null}
           <textarea
             value={createForm.description}
-            onChange={(event) => setCreateForm((prev) => ({ ...prev, description: event.target.value }))}
+            onChange={(event) => {
+              setCreateForm((prev) => ({ ...prev, description: event.target.value }));
+              setCreateFieldErrors((prev) => ({ ...prev, description: undefined }));
+            }}
             rows={2}
             placeholder="Short description"
             className="rounded-lg bg-white/10 border border-white/20 px-2 py-2 text-xs text-white placeholder-white/50 sm:col-span-2"
           />
+          {createFieldErrors.description ? (
+            <p className="text-[11px] text-rose-300 sm:col-span-2">{createFieldErrors.description}</p>
+          ) : null}
           <label className="flex items-center gap-2 text-xs text-white/75">
             <input
               type="checkbox"
               checked={createForm.isPaid}
-              onChange={(event) => setCreateForm((prev) => ({ ...prev, isPaid: event.target.checked }))}
+              onChange={(event) =>
+                setCreateForm((prev) => ({
+                  ...prev,
+                  isPaid: event.target.checked,
+                  ticketPrice: event.target.checked ? prev.ticketPrice : "",
+                }))
+              }
             />
             Paid event
           </label>
+          {createForm.isPaid ? (
+            <input
+              value={createForm.ticketPrice}
+              onChange={(event) => {
+                setCreateForm((prev) => ({ ...prev, ticketPrice: event.target.value }));
+                setCreateFieldErrors((prev) => ({ ...prev, ticketPrice: undefined }));
+              }}
+              placeholder="Price (USD)"
+              className="rounded-lg bg-white/10 border border-white/20 px-2 py-2 text-xs text-white placeholder-white/50"
+            />
+          ) : (
+            <div className="text-[11px] text-white/55 self-center">Free event · price set to 0</div>
+          )}
+          {createFieldErrors.ticketPrice ? (
+            <p className="text-[11px] text-rose-300 sm:col-span-2">{createFieldErrors.ticketPrice}</p>
+          ) : null}
           <button
             type="submit"
             disabled={creating}

@@ -169,6 +169,8 @@ export function Dashboard() {
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
   /** Mount scanner module after first open so AnimatePresence can exit; chunk still loads on first tap only. */
   const [qrScannerEverOpened, setQrScannerEverOpened] = useState(false);
+  const streakHydrationTimerRef = useRef<number | null>(null);
+  const prevTotalXpRef = useRef<number | null>(null);
   /** Last `/api/me/school-verification` HTTP status for this fetch attempt (dev logging only). */
   const schoolVerificationLastHttpRef = useRef<number | null>(null);
   /** Dev-only: prevents double-reset from React strict mode duplicate effects. */
@@ -262,6 +264,35 @@ export function Dashboard() {
     setCharacter(getCharacter());
   }, []);
 
+  const scheduleStreakHydrationFromBackend = useCallback((delayMs = 1300) => {
+    if (typeof window === "undefined") return;
+    const current = getCharacter();
+    if (!current || !isServerBackedUserId(current.id) || !getAccessToken()) return;
+    if (streakHydrationTimerRef.current != null) {
+      window.clearTimeout(streakHydrationTimerRef.current);
+      streakHydrationTimerRef.current = null;
+    }
+    streakHydrationTimerRef.current = window.setTimeout(() => {
+      streakHydrationTimerRef.current = null;
+      if (!getAccessToken()) return;
+      void fetchAuthed<MeProfileRow>("/api/me/profile")
+        .then((profile) => {
+          const latest = getCharacter();
+          if (!latest || latest.id !== profile.id) return;
+          const next: Character = {
+            ...latest,
+            streakDays: Math.max(0, Number(profile.streak_days ?? 0)),
+            lastActivityDate: profile.last_activity_date ?? null,
+          };
+          replaceLocalCharacter(next, { skipRemoteSync: true });
+          setCharacter(next);
+        })
+        .catch(() => {
+          // Keep local streak as fallback when backend profile cannot be loaded.
+        });
+    }, delayMs);
+  }, []);
+
   const finishXpGainOverlay = useCallback((finished: ActivityXPGainSession) => {
     const ms = finished.modifierLines && finished.modifierLines.length > 2 ? 5200 : 3800;
     setGainToast({
@@ -311,6 +342,27 @@ export function Dashboard() {
   useEffect(() => {
     if (qrScannerOpen) setQrScannerEverOpened(true);
   }, [qrScannerOpen]);
+
+  useEffect(() => {
+    if (!character) {
+      prevTotalXpRef.current = null;
+      return;
+    }
+    const prev = prevTotalXpRef.current;
+    if (prev != null && character.totalXP > prev) {
+      scheduleStreakHydrationFromBackend();
+    }
+    prevTotalXpRef.current = character.totalXP;
+  }, [character?.id, character?.totalXP, scheduleStreakHydrationFromBackend]);
+
+  useEffect(() => {
+    return () => {
+      if (streakHydrationTimerRef.current != null) {
+        window.clearTimeout(streakHydrationTimerRef.current);
+        streakHydrationTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (bootstrapStatus !== "authenticated" || !character) return;
@@ -987,6 +1039,7 @@ export function Dashboard() {
         title: def ? `${def.icon} ${def.label}` : "Activity logged",
         primaryStat: def?.stat,
       });
+      scheduleStreakHydrationFromBackend();
       return result.character;
     }
     return null;
@@ -998,7 +1051,7 @@ export function Dashboard() {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       return {
         ok: false as const,
-        banner: "CQ Scanner lost the Quad link — check your connection, then seal the sigil again.",
+        banner: "CQ Scanner lost the Quad link — check your connection, then scan the QR code again.",
       };
     }
     const before = character;
@@ -1007,16 +1060,17 @@ export function Dashboard() {
       if (out.reason === "duplicate")
         return {
           ok: false as const,
-          banner: "CQ Scanner: this crest is already inscribed — no twin claims on CampusQuest.",
+          banner: "CQ Scanner: this QR code was already claimed — duplicate scans are blocked.",
         };
       if (out.reason === "expired")
-        return { ok: false as const, banner: "This CampusQuest sigil has expired — request a refreshed mark." };
-      return { ok: false as const, banner: "CQ Scanner could not seal this blessing — try again." };
+        return { ok: false as const, banner: "This CampusQuest QR code has expired — request a refreshed code." };
+      return { ok: false as const, banner: "CQ Scanner could not validate this QR code — try again." };
     }
     presentLogResult(before, out.result, {
       title: `✦ CQ · ${payload.activityName}`,
       primaryStat: payload.stat,
     });
+    scheduleStreakHydrationFromBackend();
     const updated = out.result.character;
     const xp = Math.max(0, updated.totalXP - before.totalXP);
     return {

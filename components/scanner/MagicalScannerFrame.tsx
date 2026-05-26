@@ -145,7 +145,7 @@ export function MagicalScannerFrame({ children, detecting = false, absorbing = f
           {/* CQ Scanner ward hint */}
           <div className="pointer-events-none absolute bottom-3 left-1/2 z-[20] max-w-[92%] -translate-x-1/2 rounded-full border border-cyan-300/40 bg-uri-navy/75 px-3 py-2 text-center shadow-lg backdrop-blur-md">
             <p className="text-[11px] font-semibold leading-snug text-cyan-100/95 drop-shadow-[0_0_8px_rgba(56,189,248,0.35)]">
-              Center your CampusQuest sigil in the ward ring — CQ Scanner locks resonance in real time.
+              Center your CampusQuest QR code in the ring — CQ Scanner locks and validates it in real time.
             </p>
           </div>
         </div>

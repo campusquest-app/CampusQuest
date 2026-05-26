@@ -153,7 +153,7 @@ const PIXEL_HAT = [
 
 const PIXEL_ACCESSORIES = [
   { label: "None", v: null },
-  { label: "Sigil", v: "variant04" },
+  { label: "Badge", v: "variant04" },
   { label: "Charm", v: "variant03" },
   { label: "Medallion", v: "variant02" },
   { label: "Badge", v: "variant01" },

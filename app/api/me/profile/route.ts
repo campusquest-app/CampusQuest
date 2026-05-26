@@ -64,6 +64,8 @@ export async function PATCH(request: Request) {
     const displayNameInput = identitySuppressedForSync ? undefined : (input.displayName ?? input.display_name);
     const usernameInput = identitySuppressedForSync ? undefined : input.username;
     const classYearInput = input.classYear ?? input.year;
+    const streakDaysInput = input.streakDays ?? input.streak_days;
+    const lastActivityDateInput = input.lastActivityDate ?? input.last_activity_date;
 
     const { data: existing, error: loadError } = await auth.userClient
       .from("profiles")
@@ -179,6 +181,8 @@ export async function PATCH(request: Request) {
     if (input.starterWeapon !== undefined) patch.starter_weapon = input.starterWeapon;
     if (input.scholarGuildId !== undefined) patch.scholar_guild_id = input.scholarGuildId;
     if (input.bio !== undefined) patch.bio = input.bio;
+    if (streakDaysInput !== undefined) patch.streak_days = streakDaysInput;
+    if (lastActivityDateInput !== undefined) patch.last_activity_date = lastActivityDateInput;
     if (input.gameStateJson !== undefined) {
       const existingGsRaw = (existing as { game_state_json?: unknown }).game_state_json;
       const existingGs =

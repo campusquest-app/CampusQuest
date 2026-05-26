@@ -72,7 +72,7 @@ export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
           className="welcome-splash-word w-full max-w-[220px] sm:max-w-[260px] md:max-w-[280px] h-auto object-contain drop-shadow-[0_0_24px_rgba(104,171,232,0.25)]"
         />
         <p className="welcome-splash-tagline text-uri-keaney/90 text-sm sm:text-base font-medium tracking-widest uppercase">
-          URI · Level up for real
+          URI · Level Up Your College Experience
         </p>
       </div>
 
