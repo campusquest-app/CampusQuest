@@ -29,6 +29,10 @@ export function WeeklyRecapCard({ character }: { character: Character }) {
       focus: 0,
     };
     for (const l of inWeek) {
+      if (l.qrStatContribution) {
+        statTotals[l.qrStatContribution.stat] += l.qrStatContribution.gain;
+        continue;
+      }
       const def = getActivityById(l.activityId);
       if (!def) continue;
       const m = l.minutes ?? 0;

@@ -460,15 +460,15 @@
   animation: quest-reward-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
-/* Gain toast entrance */
+/* Gain toast entrance (right-aligned HUD — no -50% shift) */
 @keyframes toast-slide-in {
   from {
     opacity: 0;
-    transform: translate(-50%, -12px);
+    transform: translate(10px, -12px);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, 0);
+    transform: translate(0, 0);
   }
 }
 .toast-enter {
@@ -1198,7 +1198,16 @@
   .cq-level-up-sparkle::after,
   .onboarding-enter,
   .cq-onboarding-tip,
-  .quest-reward-pop {
+  .quest-reward-pop,
+  .cq-qr-nav-glow,
+  .cq-qr-spinner,
+  .cq-qr-scan-line,
+  .cq-qr-scanner-shell,
+  .cq-qr-corner,
+  .cq-qr-particles::before,
+  .cq-qr-particles::after,
+  .cq-sigil-scanner-shell,
+  .cq-sigil-h-beam::before {
     animation: none !important;
   }
 }
@@ -1208,4 +1217,191 @@
 }
 .stat-aura-knowledge {
   box-shadow: 0 0 14px rgba(104, 171, 232, 0.45);
+}
+
+/* —— QR quick log —— */
+@keyframes cq-qr-nav-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 22px -4px rgba(104, 171, 232, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+  50% {
+    box-shadow: 0 0 34px -2px rgba(104, 171, 232, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+}
+.cq-qr-nav-glow {
+  animation: cq-qr-nav-pulse-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes cq-qr-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.cq-qr-spinner {
+  animation: cq-qr-spinner 0.85s linear infinite;
+}
+
+@keyframes cq-qr-scan-sweep {
+  0% {
+    top: 14%;
+    opacity: 0.55;
+  }
+  50% {
+    top: 78%;
+    opacity: 1;
+  }
+  100% {
+    top: 14%;
+    opacity: 0.55;
+  }
+}
+.cq-qr-scan-line {
+  animation: cq-qr-scan-sweep 2.85s ease-in-out infinite;
+}
+
+@keyframes cq-qr-shell-shimmer {
+  0%, 100% {
+    filter: hue-rotate(-8deg);
+  }
+  50% {
+    filter: hue-rotate(10deg);
+  }
+}
+.cq-qr-scanner-shell {
+  background: linear-gradient(
+    125deg,
+    rgba(104, 171, 232, 0.55),
+    rgba(56, 189, 248, 0.22),
+    rgba(104, 171, 232, 0.52)
+  );
+  animation: cq-qr-shell-shimmer 4.5s ease-in-out infinite;
+}
+
+@keyframes cq-qr-corner-pulse {
+  0%, 100% {
+    opacity: 0.78;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+.cq-qr-corner {
+  animation: cq-qr-corner-pulse 2.8s ease-in-out infinite;
+}
+.cq-qr-corner-br {
+  animation-delay: 0.55s;
+}
+
+@keyframes cq-qr-p-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.38;
+  }
+  50% {
+    transform: translate3d(14px, 18px, 0);
+    opacity: 0.85;
+  }
+}
+.cq-qr-particles::before,
+.cq-qr-particles::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(186, 230, 253, 0.95), transparent 62%);
+  filter: blur(0.35px);
+  animation: cq-qr-p-float 5.5s ease-in-out infinite;
+}
+.cq-qr-particles::before {
+  left: 12%;
+  top: -8%;
+}
+.cq-qr-particles::after {
+  right: 16%;
+  bottom: -16%;
+  animation-delay: 1.4s;
+}
+
+/* ——— CampusQuest CQ Scanner — CSS ambiance (Framer Motion handles UI physics) ——— */
+@keyframes cq-sigil-h-weave {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translate3d(-6%, -50%, 0) scaleX(0.88);
+    filter: hue-rotate(-6deg);
+  }
+  50% {
+    opacity: 1;
+    transform: translate3d(6%, -50%, 0) scaleX(1);
+    filter: hue-rotate(14deg);
+  }
+}
+@keyframes cq-sigil-shell-wave {
+  0%,
+  100% {
+    filter: hue-rotate(-10deg) brightness(1);
+  }
+  50% {
+    filter: hue-rotate(14deg) brightness(1.08);
+  }
+}
+.cq-sigil-scanner-shell {
+  background: linear-gradient(
+    138deg,
+    rgba(132, 204, 255, 0.58),
+    rgba(56, 189, 248, 0.28),
+    rgba(103, 232, 249, 0.38),
+    rgba(104, 171, 232, 0.55)
+  );
+  animation: cq-sigil-shell-wave 5.2s ease-in-out infinite;
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.22),
+    0 0 48px -10px rgba(56, 189, 248, 0.45),
+    inset 0 1px 0 rgba(186, 230, 253, 0.12);
+}
+.cq-sigil-h-beam::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 3px;
+  margin-top: -1.5px;
+  transform: translate3d(-4%, -50%, 0);
+  border-radius: 9999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(186, 230, 253, 0.2) 36%,
+    rgba(254, 249, 195, 0.55) 50%,
+    rgba(103, 232, 249, 0.6) 64%,
+    transparent
+  );
+  box-shadow:
+    0 0 18px rgba(186, 230, 253, 0.55),
+    0 0 36px rgba(56, 189, 248, 0.25);
+  animation: cq-sigil-h-weave 3.25s ease-in-out infinite;
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+}
+.cq-sigil-light-rays {
+  background: conic-gradient(
+    from 220deg,
+    transparent 0deg,
+    rgba(103, 232, 249, 0.12) 54deg,
+    transparent 112deg,
+    rgba(104, 171, 232, 0.1) 200deg,
+    transparent 284deg,
+    rgba(186, 230, 253, 0.1) 320deg,
+    transparent 360deg
+  );
+}
+.cq-sigil-fog {
+  background:
+    radial-gradient(ellipse at 48% 20%, rgba(56, 189, 248, 0.18), transparent 48%),
+    radial-gradient(ellipse at 72% 80%, rgba(15, 23, 42, 0.75), transparent 55%),
+    radial-gradient(circle at 30% 60%, rgba(104, 171, 232, 0.12), transparent 40%);
 }

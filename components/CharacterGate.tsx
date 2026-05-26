@@ -101,7 +101,7 @@ export function CharacterGate({
     if (!canSubmit) return;
     setSubmitError(null);
     try {
-      const mergedProfile = await patchAuthed<MeProfileRow, Record<string, unknown>>("/api/me/profile", {
+      await patchAuthed<MeProfileRow, Record<string, unknown>>("/api/me/profile", {
         displayName: nameTrimmed,
         username: usernameNormalized,
         avatarCustomJson: avatar,
@@ -110,6 +110,7 @@ export function CharacterGate({
         scholarGuildId: scholarGuildId || null,
         characterOnboardingComplete: true,
       });
+      const mergedProfile = await fetchAuthed<MeProfileRow>("/api/me/profile");
       const stats = await fetchAuthed<MeStatsRow>("/api/me/stats");
       replaceLocalCharacter(buildLocalCharacterFromServer(mergedProfile, stats), { skipRemoteSync: true });
       resetUserSaveSyncAfterHydrate();

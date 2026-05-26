@@ -21,7 +21,9 @@ export function RecentActivities({ characterId }: { characterId: string }) {
       <ul className="space-y-1.5">
         {logs.map((log) => {
           const def = getActivityById(log.activityId);
-          const label = def?.label ?? log.activityId;
+          const isQrLog = log.tags?.[0] === "cq-qr";
+          const qrLabel = isQrLog ? log.tags?.[1]?.trim() : "";
+          const label = qrLabel ? qrLabel : def?.label ?? log.activityId;
           const date = new Date(log.createdAt);
           const timeStr = date.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
           return (

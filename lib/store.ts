@@ -11,7 +11,9 @@ import { applyClassStats, type CharacterClassId } from "./characterClasses";
 import { pickLootCosmetic, type CosmeticItem } from "./cosmetics";
 import { addLootDrop, getLootLogForCharacter, replaceLootEntriesForCharacter, type LootDropEntry } from "./lootLog";
 import { getSpecialQuestById } from "./specialQuests";
-import { computeXpBreakdown, type XpBreakdown } from "./xpEngine";
+import { computeXpBreakdown, type XpBreakdown, type XpModifierLine } from "./xpEngine";
+import type { CampusQuestQrActivityPayloadParsed } from "./qrCampusQuestActivity";
+import { qrRedemptionKeyFromPayload } from "./qrCampusQuestActivity";
 import { contributeCampusBossDamage, clearCampusBossContributors } from "./campusBossEvent";
 import { contributeGuildBossDamage, clearGuildBossContributors } from "./guildBossEvent";
 import { recordGuildWeeklyRace, getGuildWeeklyXpBoostPercent } from "./guildWeeklyRace";
@@ -39,6 +41,7 @@ const STORAGE_KEY_BOSS_PROGRESS = "campusquest_boss_progress";
 const STORAGE_KEY_CURRENT_BOSS = "campusquest_current_boss";
 const STORAGE_KEY_USER_BOSSES = "campusquest_user_bosses";
 const STORAGE_KEY_ACTIVE_BOSS_ID = "campusquest_active_boss_id";
+const STORAGE_KEY_QR_REDEMPTIONS = "campusquest_qr_redemptions";
 
 const MAX_USER_BOSSES = 4;
 const MIN_BOSS_HP = 250;
@@ -241,6 +244,36 @@ function saveActiveBossId(id: string | null): void {
     else localStorage.setItem(STORAGE_KEY_ACTIVE_BOSS_ID, id);
   } catch {
     inMemoryActiveBossId = id;
+  }
+}
+
+function loadAllQrRedemptions(): Record<string, string[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_QR_REDEMPTIONS);
+    if (!raw) return {};
+    const data = JSON.parse(raw) as Record<string, string[]>;
+    return data && typeof data === "object" ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+function loadQrRedemptionKeys(characterId: string): Set<string> {
+  const arr = loadAllQrRedemptions()[characterId];
+  return new Set(Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : []);
+}
+
+function persistQrRedemption(characterId: string, key: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const all = loadAllQrRedemptions();
+    const prev = Array.isArray(all[characterId]) ? all[characterId] : [];
+    if (prev.includes(key)) return;
+    all[characterId] = [...prev, key];
+    localStorage.setItem(STORAGE_KEY_QR_REDEMPTIONS, JSON.stringify(all));
+  } catch {
+    /* ignore persistence failure — duplicate prevention best-effort */
   }
 }
 
@@ -630,6 +663,123 @@ export function logActivity(
   return { character: c, lastBossDrop, xpBreakdown: breakdownOut, surpriseBonusXp: surpriseBonusXp || undefined, leveledUp };
 }
 
+export type LogQrActivityOutcome =
+  | { ok: true; result: LogActivityResult }
+  | { ok: false; reason: "duplicate" | "character" | "expired" };
+
+/**
+ * Award XP + stat gains from a validated CampusQuest activity QR payload.
+ * Dedupes locally per character using `nonce` (one-time) or once per UTC day per `activityId`.
+ */
+export function logQrActivity(
+  characterId: string,
+  payload: CampusQuestQrActivityPayloadParsed,
+): LogQrActivityOutcome {
+  if (payload.expiresAt != null && Date.now() > payload.expiresAt) {
+    return { ok: false, reason: "expired" };
+  }
+
+  const c = loadCharacter();
+  if (!c || c.id !== characterId) return { ok: false, reason: "character" };
+
+  const redeemKey = qrRedemptionKeyFromPayload(payload);
+  if (loadQrRedemptionKeys(characterId).has(redeemKey)) {
+    return { ok: false, reason: "duplicate" };
+  }
+
+  let xpEarned = payload.xp;
+  let surpriseBonusXp = 0;
+  const today = todayString();
+  const surprise = getTodaysSurpriseQuest(characterId);
+  if (
+    c.lastSurpriseQuestCompletedDay !== today &&
+    surprise.matchingActivityIds.includes(payload.activityId)
+  ) {
+    surpriseBonusXp = surprise.xpReward;
+    xpEarned += surpriseBonusXp;
+    c.lastSurpriseQuestCompletedDay = today;
+  }
+
+  const beforeStat = (c.stats[payload.stat] ?? 0) as number;
+  c.stats[payload.stat] = Math.min(MAX_STAT, beforeStat + payload.statIncrease);
+  const appliedStatGain = (c.stats[payload.stat] ?? 0) - beforeStat;
+
+  const logs = loadLogs();
+  const log: ActivityLog = {
+    id: `log-qr-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    characterId,
+    activityId: payload.activityId,
+    createdAt: Date.now(),
+    proofUrl: `cq-qr-scan:${encodeURIComponent(payload.activityId)}`,
+    tags: ["cq-qr", payload.activityName],
+    xpEarned,
+    qrStatContribution: appliedStatGain > 0 ? { stat: payload.stat, gain: appliedStatGain } : undefined,
+  };
+  logs.push(log);
+  saveLogs(logs);
+
+  c.totalXP += xpEarned;
+  const prevLevel = c.level;
+  c.level = xpToLevel(c.totalXP);
+  const leveledUp = c.level > prevLevel;
+
+  contributeCampusBossDamage(characterId, Math.max(1, Math.floor(xpEarned * 1.15)));
+  const guildDmg = Math.max(1, Math.floor(xpEarned * 1.05));
+  for (const gid of c.guildIds ?? []) {
+    contributeGuildBossDamage(characterId, gid, guildDmg);
+  }
+  recordGuildWeeklyRace(characterId, c.guildIds ?? [], xpEarned);
+  const guildIdsForXp = [...(c.guildIds ?? [])];
+  void import("./guildStore").then((m) => {
+    for (const gid of guildIdsForXp) {
+      m.addGuildXp(gid, Math.max(1, Math.floor(xpEarned / 20)));
+    }
+  });
+
+  const bossDrop = applyQrActivityDamageToCurrentBoss(c, payload.activityId, payload.stat, payload.statIncrease);
+
+  updateStreakFromTodaysXp(c, characterId, today);
+  ensureAchievement(c, "First Quest Completed");
+  if (leveledUp) ensureAchievement(c, `Reached Level ${c.level}`);
+
+  persistQrRedemption(characterId, redeemKey);
+  saveCharacter(c);
+
+  const lastBossDrop =
+    bossDrop?.defeatedBossName != null
+      ? { bossName: bossDrop.defeatedBossName, loot: bossDrop.droppedLoot ?? undefined }
+      : undefined;
+
+  const lines: XpModifierLine[] = [
+    { label: `${payload.activityName} · QR check-in`, multiplier: 1, emoji: "📷" },
+  ];
+  if (surpriseBonusXp > 0) {
+    lines.push({
+      label: `Surprise quest +${surpriseBonusXp} XP`,
+      multiplier: 1,
+      emoji: surprise.icon,
+    });
+  }
+
+  const breakdownOut: XpBreakdown = {
+    baseAfterMinutes: payload.xp,
+    lines,
+    compoundFactor: 1,
+    finalXp: xpEarned,
+  };
+
+  return {
+    ok: true,
+    result: {
+      character: c,
+      lastBossDrop,
+      xpBreakdown: breakdownOut,
+      surpriseBonusXp: surpriseBonusXp || undefined,
+      leveledUp,
+    },
+  };
+}
+
 function applyActivityDamageToCurrentBoss(
   c: Character,
   activityId: string,
@@ -710,6 +860,84 @@ function applyActivityDamageToCurrentBoss(
       ensureAchievement(c, "Earned: Streak Freeze (rare drop)");
     }
     // Remove defeated boss after rewarding XP so it disappears from the list
+    const remaining = bosses.filter((b) => b.id !== boss.id);
+    saveUserBosses(remaining);
+    if (loadActiveBossId() === boss.id) saveActiveBossId(null);
+    c.bossesDefeatedCount = (c.bossesDefeatedCount ?? 0) + 1;
+    if (boss.maxHp > 500) c.finalBossesDefeatedCount = (c.finalBossesDefeatedCount ?? 0) + 1;
+    return { droppedLoot: loot ?? null, defeatedBossName: boss.name };
+  }
+  saveUserBosses(bosses);
+  return undefined;
+}
+
+function applyQrActivityDamageToCurrentBoss(
+  c: Character,
+  catalogActivityHintId: string,
+  statKey: StatKey,
+  statGainEquivalent: number,
+): { droppedLoot: CosmeticItem | null; defeatedBossName: string | null } | undefined {
+  const activeId = loadActiveBossId();
+  if (!activeId) return undefined;
+  const bosses = loadUserBosses();
+  const boss = bosses.find((b) => b.id === activeId);
+  if (!boss || boss.defeated) return undefined;
+
+  const statVal = (c.stats[statKey] ?? 0) as number;
+  let damage = 6 + statVal * 1.25 + statGainEquivalent * 8;
+
+  if (isStudyActivityForBoss(catalogActivityHintId)) {
+    damage += (c.stats.knowledge ?? 0) * 0.9 + (c.stats.focus ?? 0) * 0.9;
+  }
+
+  if (boss.weaknessStat && boss.weaknessStat === statKey) {
+    damage *= 1.6;
+  }
+
+  const actualDamage = Math.max(1, Math.floor(damage));
+  boss.currentHp = Math.max(0, boss.currentHp - actualDamage);
+
+  if (boss.currentHp <= 0) {
+    boss.currentHp = 0;
+    boss.defeated = true;
+    boss.defeatedAt = Date.now();
+    const xp = boss.xpReward ?? bossXpReward(boss.maxHp);
+    c.totalXP += xp;
+    creditStreakBonusXp(c, todayString(), xp);
+    const guildIdsForBossXp = [...(c.guildIds ?? [])];
+    if (guildIdsForBossXp.length > 0) {
+      void import("./guildStore").then((m) => {
+        const amt = Math.max(1, Math.floor(xp / 20));
+        for (const gid of guildIdsForBossXp) {
+          m.addGuildXp(gid, amt);
+        }
+      });
+    }
+    c.level = xpToLevel(c.totalXP);
+    ensureAchievement(c, `Defeated ${boss.name} Boss (+${xp} XP)`);
+    const isFinalBoss = boss.maxHp > 500;
+    const loot = pickLootCosmetic({
+      isFinalBoss,
+      achievements: c.achievements,
+      level: c.level,
+      unlockedCosmetics: c.unlockedCosmetics,
+    });
+    if (loot) {
+      boss.loot = [...(boss.loot ?? []), loot.id];
+      ensureUnlockedCosmetic(c, loot.id);
+      ensureAchievement(c, `Looted: ${loot.icon} ${loot.label}`);
+      addLootDrop({
+        characterId: c.id,
+        cosmeticId: loot.id,
+        bossName: boss.name,
+        isFinalBoss,
+        rarity: loot.rarity,
+        obtainedAt: Date.now(),
+      });
+    } else if (Math.random() < 0.16) {
+      c.streakFreezes = (c.streakFreezes ?? 0) + 1;
+      ensureAchievement(c, "Earned: Streak Freeze (rare drop)");
+    }
     const remaining = bosses.filter((b) => b.id !== boss.id);
     saveUserBosses(remaining);
     if (loadActiveBossId() === boss.id) saveActiveBossId(null);

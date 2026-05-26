@@ -5,11 +5,14 @@ import { createPortal } from "react-dom";
 import {
   getCharacter,
   logActivity,
+  logQrActivity,
+  type LogActivityResult,
   logout as storeLogout,
   replaceLocalCharacter,
   clearPersistedCharacter,
   hydrateClientMirrorFromGameState,
 } from "@/lib/store";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 
@@ -20,8 +23,6 @@ import { WelcomeSplash } from "./WelcomeSplash";
 import { AuthScreen } from "./AuthScreen";
 import { ActivityList } from "./ActivityList";
 import { TheQuad } from "./TheQuad";
-import { DailyQuests } from "./DailyQuests";
-import { SpecialQuests } from "./SpecialQuests";
 import { StreakCard } from "./StreakCard";
 import { BossBattles } from "./BossBattles";
 import { RecentActivities } from "./RecentActivities";
@@ -68,13 +69,20 @@ import {
   type BeginnerOnboardingHydrationBootstrap,
 } from "@/lib/client/beginnerOnboardingHydration";
 import { LOGOUT_BLOCKED_SAVE_MESSAGE, isServerBackedUserId, resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
-import { useSaveStatus } from "@/lib/client/useSaveStatus";
 import { SchoolVerificationScreen } from "./SchoolVerificationScreen";
 import { WelcomeBackCommunityReminder, communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
 import { DashboardBootstrapShellSkeleton } from "./DashboardBootstrapShellSkeleton";
 import { LevelUpOverlay } from "@/components/xp/LevelUpOverlay";
 import { XPGainBanner } from "@/components/xp/XPGainBanner";
 import type { ActivityXPGainSession } from "@/components/xp/xpGainTypes";
+import type { CampusQuestQrActivityPayloadParsed } from "@/lib/qrCampusQuestActivity";
+import { TopNav } from "@/components/TopNav";
+
+/** Load camera + CQ Scanner bundle only after the player taps CQ Scan (avoid mount/worker on cold start). */
+const QRScannerModalLazy = dynamic(
+  () => import("@/components/QRScannerModal").then((mod) => ({ default: mod.QRScannerModal })),
+  { ssr: false },
+);
 
 type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations";
 
@@ -113,195 +121,6 @@ function logBootstrapDecision(info: {
 
 /** Sub-view on the Character tab (Quad-style toggle). */
 type CharacterPane = "sheet" | "profile";
-
-function Header({
-  username,
-  character,
-  onRefresh,
-  onOpenInbox,
-  unreadNotificationCount,
-  showAdminNav,
-}: {
-  username: string | null;
-  character: Character | null;
-  onRefresh?: () => void;
-  onOpenInbox?: () => void;
-  /** Shown on Inbox — includes unread notifications viewed in Inbox ▸ Notifications */
-  unreadNotificationCount?: number;
-  /** Moderation admins only — links to internal tooling. */
-  showAdminNav?: boolean;
-}) {
-  const [questsOpen, setQuestsOpen] = useState(false);
-  const [specialQuestsOpen, setSpecialQuestsOpen] = useState(false);
-  const questsButtonRef = useRef<HTMLButtonElement | null>(null);
-  const saveSnap = useSaveStatus();
-
-  const saveLabel =
-    character && isServerBackedUserId(character.id)
-      ? saveSnap.status === "saving"
-        ? "Saving…"
-        : saveSnap.status === "saved"
-          ? "Saved"
-          : saveSnap.status === "failed"
-            ? "Save failed"
-            : saveSnap.dirty
-              ? "Unsaved changes"
-              : null
-      : null;
-
-  return (
-    <>
-    <header
-      className={`sticky top-0 -mx-4 -mt-4 mb-4 sm:mb-5 transition-z-index ${questsOpen || specialQuestsOpen ? "z-[110]" : "z-10"}`}
-      style={{
-        background: "linear-gradient(180deg, rgba(4, 30, 66, 0.98) 0%, rgba(3, 22, 48, 0.97) 100%)",
-        boxShadow: "0 1px 0 0 rgba(104, 171, 232, 0.15), 0 4px 20px -4px rgba(0,0,0,0.4)",
-      }}
-    >
-      <div className="backdrop-blur-sm border-b border-white/[0.08]">
-        <div className="max-w-2xl mx-auto px-4 py-3 sm:py-3.5 flex items-center justify-between gap-3">
-          {/* Left: Brand + user */}
-          <div className="min-w-0 flex items-center gap-3 flex-shrink-0">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-uri-keaney/30 to-uri-keaney/10 border border-uri-keaney/40 flex items-center justify-center flex-shrink-0 shadow-[0_0_12px_rgba(104,171,232,0.2)]">
-              <span className="text-base font-bold text-uri-keaney leading-none">CQ</span>
-            </div>
-            <div className="min-w-0">
-              <h1 className="font-display font-bold text-white text-sm sm:text-base tracking-tight truncate">
-                CampusQuest
-              </h1>
-              <p className="text-[10px] sm:text-xs text-uri-keaney/80 font-medium truncate">
-                {username ? `@${username}` : "URI · Level up for real"}
-              </p>
-              {saveLabel ? (
-                <p className="text-[10px] text-white/45 mt-0.5 truncate" aria-live="polite">
-                  {saveLabel}
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          {/* Right: Quick actions */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-            {showAdminNav ? (
-              <div className="flex items-center gap-1.5" role="navigation" aria-label="Internal admin">
-                <Link
-                  href="/internal/admin"
-                  className="rounded-lg border border-emerald-400/45 bg-emerald-500/[0.12] px-2 py-1.5 sm:px-2.5 text-[11px] sm:text-xs font-semibold text-emerald-100 hover:bg-emerald-500/20 whitespace-nowrap"
-                >
-                  Admin
-                </Link>
-              </div>
-            ) : null}
-            {character && (
-              <div
-                className="flex items-center rounded-xl border border-white/15 bg-white/5 p-1 gap-0.5 shadow-inner"
-                role="group"
-                aria-label="Quick actions"
-              >
-                <div className="relative">
-                  <button
-                    ref={questsButtonRef}
-                    type="button"
-                    onClick={() => {
-                      setSpecialQuestsOpen(false);
-                      setQuestsOpen((v) => !v);
-                    }}
-                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                      questsOpen
-                        ? "bg-uri-keaney/25 text-uri-keaney border border-uri-keaney/40 shadow-sm"
-                        : "text-white/90 hover:bg-white/10 hover:text-white border border-transparent"
-                    }`}
-                    aria-haspopup="dialog"
-                    aria-expanded={questsOpen}
-                    title="Daily quests"
-                  >
-                    <span aria-hidden>📋</span>
-                    <span className="hidden sm:inline">Daily</span>
-                    <span className="text-[10px] opacity-70" aria-hidden>{questsOpen ? "▴" : "▾"}</span>
-                  </button>
-                  {questsOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-[100] bg-black/30 cursor-default"
-                        onClick={() => setQuestsOpen(false)}
-                        aria-hidden
-                      />
-                      <div className="fixed left-3 right-3 top-14 z-[101] max-h-[calc(100vh-4rem)] overflow-y-auto sm:left-1/2 sm:right-auto sm:top-full sm:mt-2 sm:w-[min(34rem,92vw)] sm:max-h-[70vh] sm:-translate-x-1/2">
-                        <div className="rounded-2xl border border-uri-keaney/40 bg-[#041E42] shadow-xl shadow-black/40 ring-1 ring-black/20 overflow-hidden">
-                          <DailyQuests character={character} compact />
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setQuestsOpen(false);
-                      setSpecialQuestsOpen((v) => !v);
-                    }}
-                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                      specialQuestsOpen
-                        ? "bg-uri-gold/20 text-uri-gold border border-uri-gold/50 shadow-sm"
-                        : "text-white/90 hover:bg-white/10 hover:text-white border border-transparent"
-                    }`}
-                    aria-haspopup="dialog"
-                    aria-expanded={specialQuestsOpen}
-                    title="Special quests"
-                  >
-                    <span aria-hidden>⭐</span>
-                    <span className="hidden sm:inline">Special</span>
-                    <span className="text-[10px] opacity-70" aria-hidden>{specialQuestsOpen ? "▴" : "▾"}</span>
-                  </button>
-                  {specialQuestsOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-[100] bg-black/30 cursor-default"
-                        onClick={() => setSpecialQuestsOpen(false)}
-                        aria-hidden
-                      />
-                      <div className="fixed left-3 right-3 top-14 z-[101] max-h-[calc(100vh-4rem)] overflow-y-auto sm:left-1/2 sm:right-auto sm:top-full sm:mt-2 sm:w-[min(34rem,92vw)] sm:max-h-[70vh] sm:-translate-x-1/2">
-                        <div
-                          className="rounded-2xl overflow-hidden border-2 border-uri-gold/60 bg-[#041E42] ring-1 ring-black/20"
-                          style={{
-                            boxShadow: "0 0 0 1px rgba(197, 165, 40, 0.25), 0 12px 40px -8px rgba(0,0,0,0.5), 0 0 40px rgba(197, 165, 40, 0.12)",
-                            background: "linear-gradient(175deg, rgba(197, 165, 40, 0.12) 0%, rgba(197, 165, 40, 0.04) 8%, #041E42 18%, #041E42 100%)",
-                          }}
-                        >
-                          <div className="h-1.5 bg-gradient-to-r from-transparent via-amber-400/70 to-transparent" aria-hidden />
-                          <div className="h-px bg-gradient-to-r from-transparent via-uri-gold/40 to-transparent" aria-hidden />
-                          <SpecialQuests character={character} compact onClaim={onRefresh ?? undefined} />
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-                {onOpenInbox && (
-                  <button
-                    type="button"
-                    onClick={onOpenInbox}
-                    className="relative flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-medium text-white/90 hover:bg-white/10 hover:text-white border border-transparent transition-all"
-                    title="Inbox — messages and notifications"
-                  >
-                    <span aria-hidden>📬</span>
-                    <span className="hidden sm:inline">Inbox</span>
-                    {(unreadNotificationCount ?? 0) > 0 ? (
-                      <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-[10px] font-bold text-white flex items-center justify-center">
-                        {Math.min(99, unreadNotificationCount ?? 0)}
-                      </span>
-                    ) : null}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </header>
-    </>
-  );
-}
 
 export function Dashboard() {
   const searchParams = useSearchParams();
@@ -347,6 +166,9 @@ export function Dashboard() {
   const campusFetchGenRef = useRef(0);
   /** Beginner onboarding bundle: parent fetches before mounting FirstTimeJourney to avoid completion UI flashing before server/LS reconciliation. */
   const [beginnerJourneyHydration, setBeginnerJourneyHydration] = useState<BeginnerOnboardingHydrationBootstrap | null>(null);
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
+  /** Mount scanner module after first open so AnimatePresence can exit; chunk still loads on first tap only. */
+  const [qrScannerEverOpened, setQrScannerEverOpened] = useState(false);
   /** Last `/api/me/school-verification` HTTP status for this fetch attempt (dev logging only). */
   const schoolVerificationLastHttpRef = useRef<number | null>(null);
   /** Dev-only: prevents double-reset from React strict mode duplicate effects. */
@@ -473,6 +295,8 @@ export function Dashboard() {
     setOnboardingPreferences(null);
     setNeedsOnboardingPreferences(false);
     setXpGainSession(null);
+    setQrScannerOpen(false);
+    setQrScannerEverOpened(false);
     setBootstrapStatus("bootstrapping");
     setShowWelcomeSplash(false);
     setCampusFetchNonce(0);
@@ -483,6 +307,10 @@ export function Dashboard() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (qrScannerOpen) setQrScannerEverOpened(true);
+  }, [qrScannerOpen]);
 
   useEffect(() => {
     if (bootstrapStatus !== "authenticated" || !character) return;
@@ -1056,7 +884,7 @@ export function Dashboard() {
   if (!character) {
     return (
       <>
-        <Header
+        <TopNav
           username={null}
           character={null}
           onRefresh={refresh}
@@ -1074,84 +902,134 @@ export function Dashboard() {
     );
   }
 
+  function presentLogResult(
+    before: Character,
+    result: LogActivityResult,
+    opts: { title: string; primaryStat?: StatKey },
+  ) {
+    const updated = result.character;
+    setCharacter(updated);
+    const xp = Math.max(0, updated.totalXP - before.totalXP);
+    const stats: Partial<Record<keyof Character["stats"], number>> = {};
+    for (const k of STAT_KEYS) {
+      const delta = (updated.stats?.[k] ?? 0) - (before.stats?.[k] ?? 0);
+      if (delta > 0) stats[k] = delta;
+    }
+    const rarityLabel =
+      result.lastBossDrop?.loot != null
+        ? result.lastBossDrop.loot.rarity.charAt(0).toUpperCase() + result.lastBossDrop.loot.rarity.slice(1)
+        : undefined;
+    playXpDing();
+    const modLines = result.xpBreakdown?.lines?.map((l) => ({ label: l.label, emoji: l.emoji }));
+
+    if (result.lastBossDrop) {
+      setGainToast({
+        xp,
+        stats,
+        title: opts.title,
+        modifierLines: modLines,
+        primaryStat: opts.primaryStat,
+        lastBossDrop: result.lastBossDrop
+          ? {
+              bossName: result.lastBossDrop.bossName,
+              loot:
+                result.lastBossDrop.loot != null
+                  ? {
+                      icon: result.lastBossDrop.loot.icon,
+                      label: result.lastBossDrop.loot.label,
+                      rarity: rarityLabel ?? result.lastBossDrop.loot.rarity,
+                      equipEffect: describeCosmeticEquipEffect(result.lastBossDrop.loot.id),
+                    }
+                  : undefined,
+            }
+          : undefined,
+      });
+    } else {
+      setXpGainSession({
+        beforeTotalXP: before.totalXP,
+        afterTotalXP: updated.totalXP,
+        xpGained: xp,
+        title: opts.title,
+        stats,
+        modifierLines: modLines,
+        primaryStat: opts.primaryStat,
+        leveledUp: Boolean(result.leveledUp),
+      });
+    }
+    if (result.leveledUp && result.lastBossDrop) {
+      playLevelUpFanfare();
+      setLevelUpModal(updated.level);
+      setScreenShake(true);
+      window.setTimeout(() => setScreenShake(false), 700);
+    }
+    if (result.lastBossDrop) {
+      setBossChestPhase("idle");
+      setBossDefeatPhase("teaser");
+    }
+    if (before.totalXP < 300 && updated.totalXP >= 300) {
+      try {
+        if (typeof window !== "undefined" && !localStorage.getItem(XP300_POPUP_KEY)) {
+          setShowLevel3Popup(true);
+        }
+      } catch {
+        setShowLevel3Popup(true);
+      }
+    }
+  }
+
   function handleLog(activityId: string, options?: { minutes?: number; proofUrl?: string; tags?: string[] }) {
     if (!character) return null;
     const before = character;
     const result = logActivity(character.id, activityId, options);
     if (result) {
-      const updated = result.character;
-      setCharacter(updated);
       const def = getActivityById(activityId);
-      const xp = Math.max(0, updated.totalXP - before.totalXP);
-      const stats: Partial<Record<keyof Character["stats"], number>> = {};
-      for (const k of STAT_KEYS) {
-        const delta = (updated.stats?.[k] ?? 0) - (before.stats?.[k] ?? 0);
-        if (delta > 0) stats[k] = delta;
-      }
-      const rarityLabel =
-        result.lastBossDrop?.loot != null
-          ? result.lastBossDrop.loot.rarity.charAt(0).toUpperCase() + result.lastBossDrop.loot.rarity.slice(1)
-          : undefined;
-      playXpDing();
-      const modLines = result.xpBreakdown?.lines?.map((l) => ({ label: l.label, emoji: l.emoji }));
-
-      if (result.lastBossDrop) {
-        setGainToast({
-          xp,
-          stats,
-          title: def ? `${def.icon} ${def.label}` : "Activity logged",
-          modifierLines: modLines,
-          primaryStat: def?.stat,
-          lastBossDrop: result.lastBossDrop
-            ? {
-                bossName: result.lastBossDrop.bossName,
-                loot:
-                  result.lastBossDrop.loot != null
-                    ? {
-                        icon: result.lastBossDrop.loot.icon,
-                        label: result.lastBossDrop.loot.label,
-                        rarity: rarityLabel ?? result.lastBossDrop.loot.rarity,
-                        equipEffect: describeCosmeticEquipEffect(result.lastBossDrop.loot.id),
-                      }
-                    : undefined,
-              }
-            : undefined,
-        });
-      } else {
-        setXpGainSession({
-          beforeTotalXP: before.totalXP,
-          afterTotalXP: updated.totalXP,
-          xpGained: xp,
-          title: def ? `${def.icon} ${def.label}` : "Activity logged",
-          stats,
-          modifierLines: modLines,
-          primaryStat: def?.stat,
-          leveledUp: Boolean(result.leveledUp),
-        });
-      }
-      if (result.leveledUp && result.lastBossDrop) {
-        playLevelUpFanfare();
-        setLevelUpModal(updated.level);
-        setScreenShake(true);
-        window.setTimeout(() => setScreenShake(false), 700);
-      }
-      if (result.lastBossDrop) {
-        setBossChestPhase("idle");
-        setBossDefeatPhase("teaser");
-      }
-      // Show 300 XP celebration when they just reached 300 total XP
-      if (before.totalXP < 300 && updated.totalXP >= 300) {
-        try {
-          if (typeof window !== "undefined" && !localStorage.getItem(XP300_POPUP_KEY)) {
-            setShowLevel3Popup(true);
-          }
-        } catch {
-          setShowLevel3Popup(true);
-        }
-      }
+      presentLogResult(before, result, {
+        title: def ? `${def.icon} ${def.label}` : "Activity logged",
+        primaryStat: def?.stat,
+      });
       return result.character;
     }
     return null;
+  }
+
+  function handleQrPayloadValidated(payload: CampusQuestQrActivityPayloadParsed) {
+    if (!character)
+      return { ok: false as const, banner: "Create your CampusQuest profile before opening CQ Scanner." };
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      return {
+        ok: false as const,
+        banner: "CQ Scanner lost the Quad link — check your connection, then seal the sigil again.",
+      };
+    }
+    const before = character;
+    const out = logQrActivity(character.id, payload);
+    if (out.ok === false) {
+      if (out.reason === "duplicate")
+        return {
+          ok: false as const,
+          banner: "CQ Scanner: this crest is already inscribed — no twin claims on CampusQuest.",
+        };
+      if (out.reason === "expired")
+        return { ok: false as const, banner: "This CampusQuest sigil has expired — request a refreshed mark." };
+      return { ok: false as const, banner: "CQ Scanner could not seal this blessing — try again." };
+    }
+    presentLogResult(before, out.result, {
+      title: `✦ CQ · ${payload.activityName}`,
+      primaryStat: payload.stat,
+    });
+    const updated = out.result.character;
+    const xp = Math.max(0, updated.totalXP - before.totalXP);
+    return {
+      ok: true as const,
+      reward: {
+        xp,
+        statLabel: STAT_LABELS[payload.stat],
+        statIncrease: payload.statIncrease,
+        leveledUp: Boolean(out.result.leveledUp),
+        levelAfter: updated.level,
+        sigilName: payload.activityName,
+      },
+    };
   }
 
   const navItems: { tab: Tab; icon: string; label: string }[] = [
@@ -1166,13 +1044,14 @@ export function Dashboard() {
 
   return (
     <>
-      <Header
+      <TopNav
         username={character?.username ?? null}
         character={character}
         onRefresh={refresh}
         onOpenInbox={() => setTab("inbox")}
         unreadNotificationCount={unreadNotificationCount}
         showAdminNav={moderationAdminNavVisible(pilotCampusState)}
+        onOpenQrScanner={() => setQrScannerOpen(true)}
       />
       <div
         className={screenShake ? "cq-screen-shake" : undefined}
@@ -1379,8 +1258,8 @@ export function Dashboard() {
           !gainToast.lastBossDrop &&
           typeof document !== "undefined" &&
           createPortal(
-            <div className="pointer-events-none fixed inset-x-0 top-20 z-[120] flex justify-center px-3">
-              <div className="pointer-events-auto w-full max-w-[min(28rem,92vw)]">
+            <div className="pointer-events-none fixed inset-x-0 top-20 z-[120] flex justify-end px-3 sm:px-4">
+              <div className="pointer-events-auto w-[min(28rem,calc(100vw-1.5rem))] shrink-0 sm:w-[min(28rem,calc(100vw-2rem))]">
                 <XPGainBanner
                   title={gainToast.title}
                   xp={gainToast.xp}
@@ -1687,6 +1566,14 @@ export function Dashboard() {
           onMessageSent={refresh}
         />
       )}
+
+      {character && qrScannerEverOpened ? (
+        <QRScannerModalLazy
+          open={qrScannerOpen}
+          onClose={() => setQrScannerOpen(false)}
+          onPayloadValidated={handleQrPayloadValidated}
+        />
+      ) : null}
 
       {bootstrapStatus === "authenticated" && needsOnboardingPreferences && character ? (
         <OnboardingPreferencesModal

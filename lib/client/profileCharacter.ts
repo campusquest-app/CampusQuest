@@ -9,6 +9,8 @@ export type MeProfileRow = {
   display_name: string;
   avatar_url?: string | null;
   bio?: string | null;
+  major?: string | null;
+  class_year?: number | null;
   game_state_json?: Record<string, unknown> | null;
   streak_days?: number | null;
   last_activity_date?: string | null;

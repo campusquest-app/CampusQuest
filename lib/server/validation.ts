@@ -346,12 +346,17 @@ export const onboardingPreferencesSchema = z.object({
 export const patchMeProfileSchema = z
   .object({
     displayName: z.string().trim().min(1).max(60).optional(),
+    display_name: z.string().trim().min(1).max(60).optional(),
     username: z.string().trim().min(3).max(24).regex(/^[a-z0-9_]+$/).optional(),
     avatarCustomJson: z.string().trim().min(1).max(120_000).optional(),
+    avatar_url: z.string().trim().url().max(120_000).optional(),
     characterClassId: z.string().trim().max(64).nullable().optional(),
     starterWeapon: z.string().trim().max(64).nullable().optional(),
     scholarGuildId: z.string().trim().max(64).nullable().optional(),
     bio: z.string().trim().max(280).optional(),
+    major: z.union([z.literal(""), z.string().trim().min(2).max(120)]).optional(),
+    year: z.number().int().min(1900).max(3000).nullable().optional(),
+    classYear: z.number().int().min(1900).max(3000).nullable().optional(),
     /** Serialized gameplay snapshot (equipment, extra counters); merged server-side. */
     gameStateJson: z.record(z.string(), z.unknown()).optional(),
     /** When true, server marks character onboarding saved (requires identity + avatar payload). */
@@ -368,8 +373,9 @@ export const patchMeProfileSchema = z
     preserveIdentityCooldownTimestamps: z.literal(true).optional(),
   })
   .superRefine((val, ctx) => {
+    const displayNameValue = val.displayName ?? val.display_name;
     if (val.characterOnboardingComplete) {
-      if (!val.displayName) {
+      if (!displayNameValue) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "displayName is required to finish character setup." });
       }
       if (!val.username) {
@@ -378,6 +384,13 @@ export const patchMeProfileSchema = z
       if (!val.avatarCustomJson) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "avatarCustomJson is required to finish character setup." });
       }
+    }
+
+    if (displayNameValue && (/<script\b|javascript:|[<>]/i.test(displayNameValue) || /[\u0000-\u001F\u007F]/.test(displayNameValue))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "displayName contains unsafe characters." });
+    }
+    if (val.bio && (/<script\b|javascript:|[<>]/i.test(val.bio) || /[\u0000-\u001F\u007F]/.test(val.bio))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "bio contains unsafe characters." });
     }
   });
 

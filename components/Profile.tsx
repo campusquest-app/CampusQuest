@@ -240,7 +240,8 @@ export function Profile({
     setIdentityError(null);
     setIdentitySaving(true);
     try {
-      const mergedProfile = await patchAuthed<MeProfileRow, Record<string, unknown>>("/api/me/profile", body);
+      await patchAuthed<MeProfileRow, Record<string, unknown>>("/api/me/profile", body);
+      const mergedProfile = await fetchAuthed<MeProfileRow>("/api/me/profile");
       const stats = await fetchAuthed<MeStatsRow>("/api/me/stats");
       const next = buildLocalCharacterFromServer(mergedProfile, stats);
       replaceLocalCharacter({

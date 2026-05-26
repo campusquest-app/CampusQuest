@@ -56,6 +56,14 @@ export async function PATCH(request: Request) {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:profile:patch", limit: 30, windowMs: 60_000 });
     const input = await readJson(request, patchMeProfileSchema);
+    // Gameplay autosync payloads should not overwrite identity fields.
+    const identitySuppressedForSync =
+      input.gameStateJson !== undefined &&
+      input.characterOnboardingComplete !== true &&
+      input.preserveIdentityCooldownTimestamps !== true;
+    const displayNameInput = identitySuppressedForSync ? undefined : (input.displayName ?? input.display_name);
+    const usernameInput = identitySuppressedForSync ? undefined : input.username;
+    const classYearInput = input.classYear ?? input.year;
 
     const { data: existing, error: loadError } = await auth.userClient
       .from("profiles")
@@ -81,12 +89,15 @@ export async function PATCH(request: Request) {
         confirmed_at: (auth.user as { confirmed_at?: string | null }).confirmed_at ?? null,
       });
 
+    const currentDisplayName = typeof existing.display_name === "string" ? existing.display_name : "";
+    const currentUsername = typeof existing.username === "string" ? existing.username : "";
+
     const displayChanging =
-      input.displayName !== undefined &&
-      normalizeDisplayName(input.displayName) !== normalizeDisplayName(existing.display_name as string);
+      displayNameInput !== undefined &&
+      normalizeDisplayName(displayNameInput) !== normalizeDisplayName(currentDisplayName);
     const usernameChanging =
-      input.username !== undefined &&
-      normalizeUsername(input.username) !== normalizeUsername(existing.username as string);
+      usernameInput !== undefined &&
+      normalizeUsername(usernameInput) !== normalizeUsername(currentUsername);
 
     const nowMs = Date.now();
     const nowIso = new Date(nowMs).toISOString();
@@ -158,9 +169,12 @@ export async function PATCH(request: Request) {
     }
 
     const patch: Record<string, unknown> = {};
-    if (input.displayName !== undefined) patch.display_name = normalizeDisplayName(input.displayName);
-    if (input.username !== undefined) patch.username = normalizeUsername(input.username);
+    if (displayNameInput !== undefined) patch.display_name = normalizeDisplayName(displayNameInput);
+    if (usernameInput !== undefined) patch.username = normalizeUsername(usernameInput);
+    if (input.avatar_url !== undefined) patch.avatar_url = input.avatar_url || null;
     if (input.avatarCustomJson !== undefined) patch.avatar_custom_json = input.avatarCustomJson;
+    if (input.major !== undefined) patch.major = input.major || null;
+    if (classYearInput !== undefined) patch.class_year = classYearInput;
     if (input.characterClassId !== undefined) patch.character_class_id = input.characterClassId;
     if (input.starterWeapon !== undefined) patch.starter_weapon = input.starterWeapon;
     if (input.scholarGuildId !== undefined) patch.scholar_guild_id = input.scholarGuildId;

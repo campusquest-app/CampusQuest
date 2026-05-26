@@ -202,6 +202,8 @@ export interface ActivityLog {
   tags?: string[];
   /** XP actually awarded for this log (for streak daily minimum) */
   xpEarned?: number;
+  /** When set (QR check-ins), recap cards can attribute stat gains without a catalog activity id. */
+  qrStatContribution?: { stat: StatKey; gain: number };
 }
 
 // —— The Quad (social feed) ——

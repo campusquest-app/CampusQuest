@@ -9,8 +9,6 @@ import { runLogoutPrepares } from "@/lib/client/logoutPrepare";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const USERNAME_SYNC_RE = /^[a-z0-9_]{3,24}$/;
-
 /** Debounced autosave after local mutations (XP, bio, cosmetics, etc.). */
 export const USER_STATE_SAVE_DEBOUNCE_MS = 900;
 
@@ -98,17 +96,6 @@ export function isUserStateDirty(): boolean {
   return dirty || debounceTimer != null;
 }
 
-function safeUsernameForPatch(username: string): string | undefined {
-  const n = username
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "")
-    .slice(0, 24);
-  if (!USERNAME_SYNC_RE.test(n)) return undefined;
-  return n;
-}
-
 export function isServerBackedUserId(id: string): boolean {
   return UUID_RE.test(id);
 }
@@ -153,13 +140,8 @@ export function buildUserStatePatchBodies(character: Character): {
   const profile: Record<string, unknown> = {
     gameStateJson: getCharacterGameStateJson(character),
   };
-
-  const displayName = character.name?.trim();
-  if (displayName && displayName.length >= 1 && displayName.length <= 60) {
-    profile.displayName = displayName;
-  }
-  const userHandle = safeUsernameForPatch(character.username ?? "");
-  if (userHandle) profile.username = userHandle;
+  // Identity fields are edited via dedicated /api/me/profile UX flows.
+  // Do not sync name/username from local gameplay state, so server remains source of truth.
 
   const av = character.avatar?.trim();
   if (av && av.length >= 1) profile.avatarCustomJson = av;

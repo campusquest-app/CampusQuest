@@ -53,7 +53,7 @@ export async function ensurePlayerSetup(args: {
       display_name: defaultName.slice(0, 50),
       bio: "",
     },
-    { onConflict: "id" },
+    { onConflict: "id", ignoreDuplicates: true },
   );
   if (profileError) {
     throw new ApiError(400, profileError.message, "PROFILE_SETUP_FAILED");
@@ -70,7 +70,7 @@ export async function ensurePlayerSetup(args: {
       social: 0,
       focus: 0,
     },
-    { onConflict: "user_id" },
+    { onConflict: "user_id", ignoreDuplicates: true },
   );
   if (statsError) {
     throw new ApiError(400, statsError.message, "STATS_SETUP_FAILED");
