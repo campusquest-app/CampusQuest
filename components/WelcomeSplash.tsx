@@ -1,18 +1,25 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-
-const SPLASH_HOLD_MS = 4700;
-const SPLASH_FADEOUT_MS = 700;
+import { motion, useReducedMotion } from "framer-motion";
+import { ArcaneSplashLoader } from "@/components/welcome/ArcaneSplashLoader";
+import { SplashMagicalBackdrop } from "@/components/welcome/SplashMagicalBackdrop";
+import {
+  SPLASH_COMPLETE_DWELL_MS,
+  SPLASH_FADEOUT_MS,
+  SPLASH_PROGRESS_MS,
+  splashProgressEase,
+} from "@/components/welcome/splashTiming";
 
 export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
+  const reduceMotion = useReducedMotion();
   const [phase, setPhase] = useState<"visible" | "fading">("visible");
   const [progress, setProgress] = useState(0);
   const startRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const holdTimer = setTimeout(() => setPhase("fading"), SPLASH_HOLD_MS);
-    return () => clearTimeout(holdTimer);
+    const fadeTimer = setTimeout(() => setPhase("fading"), SPLASH_PROGRESS_MS + SPLASH_COMPLETE_DWELL_MS);
+    return () => clearTimeout(fadeTimer);
   }, []);
 
   useEffect(() => {
@@ -21,122 +28,135 @@ export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
     return () => clearTimeout(doneTimer);
   }, [phase, onComplete]);
 
-  // Animate progress 0 → 100 over SPLASH_HOLD_MS
   useEffect(() => {
     startRef.current = performance.now();
     let rafId: number;
     function tick(now: number) {
       const elapsed = startRef.current != null ? now - startRef.current : 0;
-      const p = Math.min(100, (elapsed / SPLASH_HOLD_MS) * 100);
+      const t = Math.min(1, elapsed / SPLASH_PROGRESS_MS);
+      const p = t >= 1 ? 100 : splashProgressEase(t) * 100;
       setProgress(p);
-      if (p < 100) rafId = requestAnimationFrame(tick);
+      if (t < 1) rafId = requestAnimationFrame(tick);
     }
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
   }, []);
 
   return (
-    <div
-      className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-uri-navy transition-opacity duration-700 ease-out ${
-        phase === "fading" ? "opacity-0" : "opacity-100"
-      }`}
+    <motion.div
+      className="fixed inset-0 z-50 flex flex-col bg-uri-navy"
+      initial={false}
+      animate={{ opacity: phase === "fading" ? 0 : 1 }}
+      transition={{ duration: SPLASH_FADEOUT_MS / 1000, ease: [0.4, 0, 0.2, 1] }}
       aria-hidden="true"
     >
-      {/* Subtle radial glow behind text */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background: "radial-gradient(ellipse 80% 50% at 50% 45%, rgba(104, 171, 232, 0.2) 0%, transparent 60%)",
-        }}
-      />
-      {/* Soft starfield + orbital glow */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="welcome-splash-stars" />
-        <div className="welcome-splash-orbit" />
-      </div>
-      {/* Accent rays */}
-      <div
-        className="absolute inset-0 pointer-events-none opacity-30"
-        style={{
-          background: "linear-gradient(135deg, transparent 40%, rgba(104, 171, 232, 0.08) 50%, transparent 60%)",
-        }}
-      />
+      <SplashMagicalBackdrop variant="full" />
 
-      <div className="relative flex flex-col items-center justify-center gap-5 px-4 -translate-y-16 sm:-translate-y-20">
-        <p className="welcome-splash-title text-uri-keaney/95 text-sm sm:text-base font-semibold tracking-[0.3em] uppercase">
-          Welcome to
-        </p>
-        <img
-          src="/campusquest-logo.png"
-          alt="CampusQuest RPG — University of Rhode Island"
-          className="welcome-splash-word w-full max-w-[220px] sm:max-w-[260px] md:max-w-[280px] h-auto object-contain drop-shadow-[0_0_24px_rgba(104,171,232,0.25)]"
-        />
-        <p className="welcome-splash-tagline text-uri-keaney/90 text-sm sm:text-base font-medium tracking-widest uppercase">
-          URI · Level Up Your College Experience
-        </p>
-      </div>
-
-      {/* Loading bar: ram walking across grass field */}
-      <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-[min(300px,88vw)] flex flex-col items-center gap-2">
-        <p className="text-sm font-semibold text-white/90 tracking-[0.18em] uppercase">
-          Loading CampusQuest
-          <span className="inline-block w-4 text-center welcome-splash-dots" aria-hidden>
-            ...
-          </span>
-        </p>
-        <p className="text-[11px] sm:text-xs text-white/70 tracking-wide">
-          {Math.round(progress)}% ready · Daily training keeps your streak alive
-        </p>
-        {/* Track: clean pill bar */}
+      <div className="pointer-events-none absolute inset-0 cq-splash-ambient-shift" aria-hidden>
+        <div className="cq-splash-cinematic-vignette absolute inset-0" />
         <div
-          className="relative w-full h-10 rounded-full overflow-hidden border border-white/20 bg-white/5"
+          className="absolute inset-0"
           style={{
-            boxShadow: "inset 0 2px 6px rgba(0,0,0,0.25), 0 1px 0 rgba(255,255,255,0.06)",
+            background:
+              "radial-gradient(ellipse 95% 65% at 50% 38%, rgba(104, 171, 232, 0.28) 0%, transparent 62%), radial-gradient(ellipse 70% 50% at 50% 72%, rgba(56, 189, 248, 0.14) 0%, transparent 58%)",
           }}
-        >
-          {/* Grass: single smooth gradient + very subtle texture */}
-          <div
-            className="absolute inset-0"
-            style={{
-              background: "linear-gradient(180deg, #234a23 0%, #1a3a1c 50%, #122d14 100%)",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
-            }}
-          />
-          <div
-            className="absolute inset-0 opacity-30"
-            style={{
-              backgroundImage: "repeating-linear-gradient(90deg, transparent 0, transparent 6px, rgba(255,255,255,0.03) 6px, rgba(255,255,255,0.03) 7px)",
-            }}
-          />
-          {/* Progress fill: clear Keaney bar */}
-          <div
-            className="absolute left-0 top-0 h-full rounded-full transition-none min-w-[4px]"
-            style={{
-              width: `${Math.max(progress, 2)}%`,
-              background: "linear-gradient(180deg, #7ab8f0 0%, #5a9dd9 50%, #68ABE8 100%)",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -1px 0 rgba(0,0,0,0.1), 0 0 12px rgba(104, 171, 232, 0.25)",
-            }}
-          />
-          {/* Ram */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 transition-none z-10"
-            style={{
-              left: `${progress}%`,
-              animation: "welcome-ram-walk 0.4s ease-in-out infinite",
-            }}
-          >
-            <span className="text-2xl drop-shadow-lg inline-block scale-x-[-1] filter brightness-110" aria-hidden>🐏</span>
+        />
+        <div className="cq-splash-screen-mist absolute inset-0" />
+      </div>
+
+      <div className="cq-splash-viewport relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center px-[max(1rem,5vw)] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
+        <div className="cq-splash-stack flex flex-col items-center justify-center text-center">
+          <div className="welcome-splash-stack-hero flex w-full flex-col items-center text-center">
+            <div className="welcome-splash-effects pointer-events-none absolute inset-0 -z-0" aria-hidden>
+              <motion.div
+                className="welcome-splash-logo-aura-pulse absolute inset-0 rounded-full"
+                animate={
+                  reduceMotion
+                    ? undefined
+                    : {
+                        scale: [1, 1.06, 1],
+                        opacity: [0.45, 0.72, 0.45],
+                      }
+                }
+                transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <div className="welcome-splash-energy-swirl" />
+              <div className="welcome-splash-light-rays" />
+              <div className="welcome-splash-stars rounded-[9999px]" />
+              <div className="welcome-splash-bubble-glow" />
+              <div className="welcome-splash-orbit" />
+            </div>
+
+            <p className="welcome-splash-title relative z-10 mb-2 w-full shrink-0 font-semibold uppercase text-uri-keaney/95">
+              Welcome to
+            </p>
+
+            <motion.div
+              className="relative z-10 mb-2 w-full shrink-0"
+              animate={
+                reduceMotion
+                  ? undefined
+                  : {
+                      filter: [
+                        "drop-shadow(0 0 24px rgba(104, 171, 232, 0.4))",
+                        "drop-shadow(0 0 40px rgba(56, 189, 248, 0.65))",
+                        "drop-shadow(0 0 24px rgba(104, 171, 232, 0.4))",
+                      ],
+                    }
+              }
+              transition={{ duration: 4.2, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <img
+                src="/campusquest-logo.png"
+                alt="CampusQuest"
+                width={560}
+                height={200}
+                className="welcome-splash-word mx-auto block h-auto w-full object-contain object-center"
+              />
+            </motion.div>
+
+            <p className="welcome-splash-tagline relative z-10 mb-8 w-full shrink-0 text-balance font-medium leading-snug tracking-[0.12em] text-uri-keaney/92 sm:tracking-[0.16em]">
+              Level Up Your College Experience
+            </p>
           </div>
-          {/* Animated shine sweeping across the grass track */}
-          <div className="welcome-splash-scanline pointer-events-none" />
+
+          <div className="cq-splash-loader-zone relative">
+            <SplashMagicalBackdrop variant="loader" />
+            <div className="relative z-10 mb-4 w-full overflow-visible">
+              <ArcaneSplashLoader progress={progress} className="mx-auto w-full" />
+            </div>
+            {progress >= 99.5 && !reduceMotion ? (
+              <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center overflow-visible" aria-hidden>
+                {[0, 1, 2, 3, 4, 5].map((i) => (
+                  <motion.span
+                    key={`flare-${i}`}
+                    className="cq-splash-magic-star cq-splash-magic-star--lg absolute"
+                    initial={{ opacity: 0, scale: 0 }}
+                    animate={{
+                      opacity: [0, 1, 0],
+                      scale: [0.2, 1.2, 0.4],
+                      x: `calc(${i - 2.5} * clamp(18px, 5vw, 28px))`,
+                      y: `calc(-1 * clamp(14px, 4vw, 20px) - ${(i % 3) * 10}px)`,
+                    }}
+                    transition={{ duration: 0.7, delay: i * 0.04, ease: "easeOut" }}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
-      {/* Bottom decorative line */}
-      <div
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 h-px w-48 rounded-full"
-        style={{ background: "linear-gradient(90deg, transparent, rgba(104, 171, 232, 0.6), transparent)" }}
+      <motion.div
+        className="pointer-events-none absolute bottom-3 left-0 right-0 mx-auto h-px w-[min(70%,16rem)] rounded-full sm:bottom-4"
+        style={{
+          width: "min(70%, clamp(12rem, 56vw, 16rem))",
+          background: "linear-gradient(90deg, transparent, rgba(104, 171, 232, 0.75), transparent)",
+        }}
+        animate={reduceMotion ? undefined : { opacity: [0.4, 0.9, 0.4] }}
+        transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
+        aria-hidden
       />
-    </div>
+    </motion.div>
   );
 }

@@ -8,6 +8,7 @@ import {
   type CampusQuestQrActivityPayloadParsed,
   type ParseQrActivityErrorCode,
 } from "@/lib/qrCampusQuestActivity";
+import { extractCampusQuestQrCode, isLegacyCampusQuestActivityJson } from "@/lib/qrCodeExtract";
 import { MagicalScannerFrame } from "@/components/scanner/MagicalScannerFrame";
 import { CQScannerScreen } from "@/components/scanner/CQScannerScreen";
 import { ScanSuccessOverlay } from "@/components/scanner/ScanSuccessOverlay";
@@ -24,6 +25,10 @@ export type QRScannerModalProps = {
   onClose: () => void;
   /** CampusQuest ledger — persist rewards; return immersive errors or blessing summary for CQ Scanner. */
   onPayloadValidated: (payload: CampusQuestQrActivityPayloadParsed) => QrScannerValidationResult;
+  /** Server-validated secure QR token (`cq_…` or `/scan?code=`). */
+  onSecureCodeScanned?: (code: string) => QrScannerValidationResult | Promise<QrScannerValidationResult>;
+  /** Deep-link token to validate once when the scanner opens. */
+  pendingScanCode?: string | null;
 };
 
 type CamState = "idle" | "starting" | "ready" | "denied";
@@ -62,7 +67,13 @@ function friendlyBannerForParseCode(code: ParseQrActivityErrorCode, message: str
   return message;
 }
 
-export function QRScannerModal({ open, onClose, onPayloadValidated }: QRScannerModalProps) {
+export function QRScannerModal({
+  open,
+  onClose,
+  onPayloadValidated,
+  onSecureCodeScanned,
+  pendingScanCode = null,
+}: QRScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   type ScannerApi = {
     start: () => Promise<void>;
@@ -114,6 +125,29 @@ export function QRScannerModal({ open, onClose, onPayloadValidated }: QRScannerM
     }
   }, []);
 
+  const celebrateScanSuccess = useCallback(
+    (verdict: Extract<QrScannerValidationResult, { ok: true }>) => {
+      playSigilScanLock();
+      feedbackSigilAbsorption();
+      void scannerRef.current?.pause?.();
+      setAbsorbing(true);
+      if (!reduceMotion) {
+        setScreenJolt(true);
+        window.setTimeout(() => setScreenJolt(false), 420);
+      }
+      setSuccessBlessing(verdict.reward);
+      if (successCloseTimer.current) window.clearTimeout(successCloseTimer.current);
+      successCloseTimer.current = window.setTimeout(() => {
+        successCloseTimer.current = null;
+        setSuccessBlessing(null);
+        setAbsorbing(false);
+        lastHitRef.current = "";
+        onClose();
+      }, 2800);
+    },
+    [onClose, reduceMotion],
+  );
+
   const handleDecodedPayload = useCallback(
     (text: string) => {
       pulseSigilProximity();
@@ -122,6 +156,36 @@ export function QRScannerModal({ open, onClose, onPayloadValidated }: QRScannerM
       if (!trimmed || trimmed === lastHitRef.current) return;
 
       lastHitRef.current = trimmed;
+
+      const secureCode = extractCampusQuestQrCode(trimmed);
+      if (secureCode && onSecureCodeScanned) {
+        void (async () => {
+          const verdict = await onSecureCodeScanned(secureCode);
+          if (!verdict.ok) {
+            setBanner(verdict.banner);
+            if (reopenClearTimer.current) window.clearTimeout(reopenClearTimer.current);
+            reopenClearTimer.current = window.setTimeout(() => {
+              lastHitRef.current = "";
+            }, 2200);
+            return;
+          }
+          celebrateScanSuccess(verdict);
+        })();
+        return;
+      }
+
+      if (!isLegacyCampusQuestActivityJson(trimmed)) {
+        setBanner(
+          secureCode
+            ? "This CampusQuest QR must be scanned while signed in — open CQ Scanner from your dashboard."
+            : "That code isn’t a CampusQuest QR code — CQ Scanner reads only official CampusQuest QR codes.",
+        );
+        if (reopenClearTimer.current) window.clearTimeout(reopenClearTimer.current);
+        reopenClearTimer.current = window.setTimeout(() => {
+          lastHitRef.current = "";
+        }, 1700);
+        return;
+      }
 
       const parsed = parseCampusQuestQrPayload(trimmed);
       if (!parsed.ok) {
@@ -140,27 +204,19 @@ export function QRScannerModal({ open, onClose, onPayloadValidated }: QRScannerM
         return;
       }
 
-      playSigilScanLock();
-      feedbackSigilAbsorption();
-      void scannerRef.current?.pause?.();
-      setAbsorbing(true);
-      if (!reduceMotion) {
-        setScreenJolt(true);
-        window.setTimeout(() => setScreenJolt(false), 420);
-      }
-
-      setSuccessBlessing(verdict.reward);
-      if (successCloseTimer.current) window.clearTimeout(successCloseTimer.current);
-      successCloseTimer.current = window.setTimeout(() => {
-        successCloseTimer.current = null;
-        setSuccessBlessing(null);
-        setAbsorbing(false);
-        lastHitRef.current = "";
-        onClose();
-      }, 2800);
+      celebrateScanSuccess(verdict);
     },
-    [onClose, onPayloadValidated, pulseSigilProximity, reduceMotion],
+    [celebrateScanSuccess, onPayloadValidated, onSecureCodeScanned, pulseSigilProximity],
   );
+
+  useEffect(() => {
+    if (!open || !pendingScanCode?.trim() || !onSecureCodeScanned) return;
+    const code = pendingScanCode.trim();
+    const t = window.setTimeout(() => {
+      handleDecodedPayload(code.startsWith("http") ? code : `https://campusquest.local/scan?code=${encodeURIComponent(code)}`);
+    }, 600);
+    return () => window.clearTimeout(t);
+  }, [open, pendingScanCode, onSecureCodeScanned, handleDecodedPayload]);
 
   useEffect(() => {
     if (!open) {
@@ -320,14 +376,21 @@ export function QRScannerModal({ open, onClose, onPayloadValidated }: QRScannerM
               onClose();
             }}
             frameSlot={
-              <MagicalScannerFrame detecting={sigilNear} absorbing={absorbing} camBusy={camState === "starting"}>
+              <MagicalScannerFrame
+                detecting={sigilNear}
+                absorbing={absorbing}
+                camBusy={camState === "starting"}
+                cameraActive={camState === "ready"}
+                busyOverlay={
+                  camState === "starting" ? (
+                    <div className="flex h-full flex-col items-center justify-center gap-2 bg-[#020b1f]/92 text-[13px] text-cyan-50/92">
+                      <span className="cq-qr-spinner h-11 w-11 rounded-full border-2 border-cyan-900/55 border-t-cyan-200" aria-hidden />
+                      <span>CQ Scanner awakening the lens…</span>
+                    </div>
+                  ) : undefined
+                }
+              >
                 <video ref={videoRef} className="h-full w-full object-cover opacity-[0.97]" muted playsInline />
-                {camState === "starting" ? (
-                  <div className="absolute inset-0 z-[22] flex flex-col items-center justify-center gap-2 bg-[#020b1f]/92 text-[13px] text-cyan-50/92">
-                    <span className="cq-qr-spinner h-11 w-11 rounded-full border-2 border-cyan-900/55 border-t-cyan-200" aria-hidden />
-                    <span>CQ Scanner validating QR code…</span>
-                  </div>
-                ) : null}
               </MagicalScannerFrame>
             }
             bannerSlot={

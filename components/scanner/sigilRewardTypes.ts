@@ -5,6 +5,7 @@ export type SigilScannerReward = {
   leveledUp: boolean;
   levelAfter: number;
   sigilName: string;
+  milestonesUnlocked?: string[];
 };
 
 export type QrScannerValidationResult =

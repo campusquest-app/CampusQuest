@@ -663,6 +663,54 @@ export function logActivity(
   return { character: c, lastBossDrop, xpBreakdown: breakdownOut, surpriseBonusXp: surpriseBonusXp || undefined, leveledUp };
 }
 
+/**
+ * Record a QR check-in in the local activity log and boss race without changing XP
+ * (authoritative XP already applied on the server).
+ */
+export function recordQrLinkedActivityLog(
+  characterId: string,
+  opts: { activityId: string; xpEarned: number; activityLabel: string },
+): LogActivityResult | null {
+  const activity = getActivityById(opts.activityId);
+  if (!activity) return null;
+
+  const c = loadCharacter();
+  if (!c || c.id !== characterId) return null;
+
+  const logs = loadLogs();
+  const log: ActivityLog = {
+    id: `log-qr-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    characterId,
+    activityId: opts.activityId,
+    createdAt: Date.now(),
+    proofUrl: `cq-qr-scan:${opts.activityId}`,
+    tags: ["cq-qr-scan", opts.activityLabel],
+    xpEarned: opts.xpEarned,
+  };
+  logs.push(log);
+  saveLogs(logs);
+
+  contributeCampusBossDamage(characterId, Math.max(1, Math.floor(opts.xpEarned * 1.15)));
+  const guildDmg = Math.max(1, Math.floor(opts.xpEarned * 1.05));
+  for (const gid of c.guildIds ?? []) {
+    contributeGuildBossDamage(characterId, gid, guildDmg);
+  }
+  recordGuildWeeklyRace(characterId, c.guildIds ?? [], opts.xpEarned);
+
+  const today = todayString();
+  updateStreakFromTodaysXp(c, characterId, today);
+  saveCharacter(c);
+
+  const breakdownOut: XpBreakdown = {
+    baseAfterMinutes: opts.xpEarned,
+    lines: [{ label: `${opts.activityLabel} · QR check-in`, multiplier: 1, emoji: activity.icon }],
+    compoundFactor: 1,
+    finalXp: opts.xpEarned,
+  };
+
+  return { character: c, xpBreakdown: breakdownOut };
+}
+
 export type LogQrActivityOutcome =
   | { ok: true; result: LogActivityResult }
   | { ok: false; reason: "duplicate" | "character" | "expired" };

@@ -119,6 +119,12 @@ export function InternalAdminDashboard() {
             >
               Moderation workspace →
             </Link>
+            <Link
+              href="/internal/admin/qr"
+              className="inline-flex items-center rounded-lg border border-cyan-400/35 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20"
+            >
+              CQ QR codes →
+            </Link>
           </div>
           {allowedEmail ? <p className="text-xs text-white/45">Signed in as {allowedEmail}</p> : null}
           {error ? <p className="text-xs text-rose-200">{error}</p> : null}

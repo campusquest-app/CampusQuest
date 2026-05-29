@@ -515,6 +515,51 @@ export const postQuadPostSchema = z.object({
   authorStreakDays: z.number().int().min(0).max(10_000).optional(),
 });
 
+export const campusQrScanSchema = z.object({
+  code: z.string().trim().min(4).max(128),
+  deviceHint: z.string().trim().max(120).optional(),
+});
+
+export const qrCodeTypeSchema = z.enum([
+  "event",
+  "quest",
+  "permanent_location",
+  "tutoring",
+  "advising",
+]);
+
+export const createQrCodeSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(500).optional(),
+  type: qrCodeTypeSchema,
+  eventId: uuidSchema.optional(),
+  questId: uuidSchema.optional(),
+  locationName: z.string().trim().max(120).optional(),
+  xpReward: z.number().int().min(0).max(500),
+  isActive: z.boolean().optional(),
+  isPermanent: z.boolean().optional(),
+  cooldownHours: z.number().int().min(0).max(24 * 30).optional(),
+  maxScansPerDay: z.number().int().min(0).max(50).optional(),
+  requiresStaffApproval: z.boolean().optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+  activityName: z.string().trim().max(120).optional(),
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(32)
+    .regex(/^[A-Za-z][A-Za-z0-9_]*$/)
+    .optional(),
+});
+
+export const updateQrCodeSchema = createQrCodeSchema.partial().extend({
+  isActive: z.boolean().optional(),
+});
+
+export const adminQrScansQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
 export async function readJson<T>(request: Request, schema: z.ZodSchema<T>): Promise<T> {
   const json = await request.json();
   return schema.parse(json);

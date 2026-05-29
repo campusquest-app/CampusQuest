@@ -1632,7 +1632,7 @@ export async function fetchLeaderboards(userClient: SupabaseClientLike) {
   };
 }
 
-async function addXpInternal(args: AddXpArgs) {
+export async function addXpInternal(args: AddXpArgs) {
   const { userClient, userId, amount, sourceType, sourceId, questCompletionId, activityId, note, applyStreakUpdate } = args;
   assertSafeXpGrant(sourceType, amount);
   const { data: stats, error: statsError } = await userClient
@@ -1705,7 +1705,7 @@ async function updatePlayerStreakOnQuest(userClient: SupabaseClientLike, userId:
   };
 }
 
-async function getPlayerProgressSnapshot(userClient: SupabaseClientLike, userId: string): Promise<PlayerProgressSnapshot> {
+export async function getPlayerProgressSnapshot(userClient: SupabaseClientLike, userId: string): Promise<PlayerProgressSnapshot> {
   const [{ data: profile, error: profileError }, { data: stats, error: statsError }] = await Promise.all([
     userClient.from("profiles").select("id, streak_days, last_activity_date").eq("id", userId).single(),
     userClient.from("user_stats").select("*").eq("user_id", userId).single(),

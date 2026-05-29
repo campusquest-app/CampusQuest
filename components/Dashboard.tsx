@@ -6,6 +6,7 @@ import {
   getCharacter,
   logActivity,
   logQrActivity,
+  recordQrLinkedActivityLog,
   type LogActivityResult,
   logout as storeLogout,
   replaceLocalCharacter,
@@ -38,7 +39,7 @@ import { OrganizationsHub } from "./OrganizationsHub";
 import { STAT_KEYS, STAT_ICONS, STAT_LABELS } from "@/lib/types";
 import { getActivityById } from "@/lib/activities";
 import { AvatarDisplay } from "./AvatarDisplay";
-import { playXpDing, playLevelUpFanfare } from "@/lib/playGameSound";
+import { isGameMusicMuted, playXpDing, playLevelUpFanfare, setGameMusicMuted } from "@/lib/playGameSound";
 import { describeCosmeticEquipEffect } from "@/lib/gameBuffs";
 import { SkillTreePanel } from "./SkillTreePanel";
 import { SurpriseQuestBanner } from "./SurpriseQuestBanner";
@@ -50,8 +51,10 @@ import type { StatKey } from "@/lib/types";
 import { clearAccessToken, getAccessToken } from "@/lib/client/apiSession";
 import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/agreementAccess";
 import {
+  ApiRequestError,
   fetchAuthed,
   fetchMeSchoolVerification,
+  postAuthed,
   type MeSchoolVerificationResponse,
   SchoolVerificationHttpError,
 } from "@/lib/client/dashboardApi";
@@ -164,11 +167,13 @@ export function Dashboard() {
   const [campusFetchNonce, setCampusFetchNonce] = useState(0);
   const [showCampusSlowNotice, setShowCampusSlowNotice] = useState(false);
   const campusFetchGenRef = useRef(0);
+  const [musicMuted, setMusicMuted] = useState(false);
   /** Beginner onboarding bundle: parent fetches before mounting FirstTimeJourney to avoid completion UI flashing before server/LS reconciliation. */
   const [beginnerJourneyHydration, setBeginnerJourneyHydration] = useState<BeginnerOnboardingHydrationBootstrap | null>(null);
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
   /** Mount scanner module after first open so AnimatePresence can exit; chunk still loads on first tap only. */
   const [qrScannerEverOpened, setQrScannerEverOpened] = useState(false);
+  const [pendingScanCode, setPendingScanCode] = useState<string | null>(null);
   const streakHydrationTimerRef = useRef<number | null>(null);
   const prevTotalXpRef = useRef<number | null>(null);
   /** Last `/api/me/school-verification` HTTP status for this fetch attempt (dev logging only). */
@@ -182,6 +187,14 @@ export function Dashboard() {
       setTab(t as Tab);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    const deepLinkCode = searchParams.get("scan")?.trim();
+    if (!deepLinkCode || !character || bootstrapStatus !== "authenticated") return;
+    setPendingScanCode(deepLinkCode);
+    setQrScannerEverOpened(true);
+    setQrScannerOpen(true);
+  }, [searchParams, character, bootstrapStatus]);
 
   const XP300_POPUP_KEY = "campusquest_300xp_celebrated";
 
@@ -337,6 +350,7 @@ export function Dashboard() {
 
   useEffect(() => {
     setMounted(true);
+    setMusicMuted(isGameMusicMuted());
   }, []);
 
   useEffect(() => {
@@ -1045,6 +1059,108 @@ export function Dashboard() {
     return null;
   }
 
+  async function handleSecureQrCode(code: string) {
+    if (!character) {
+      return { ok: false as const, banner: "Create your CampusQuest profile before opening CQ Scanner." };
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      return {
+        ok: false as const,
+        banner: "CQ Scanner lost the Quad link — check your connection, then scan the QR code again.",
+      };
+    }
+    const before = character;
+    try {
+      const data = await postAuthed<
+        {
+          scan: {
+            title: string;
+            xpAwarded: number;
+            bypassedLimits?: boolean;
+            activityId?: string | null;
+            activityLabel?: string | null;
+            statBoost?: { stat: string; statGain: number } | null;
+          };
+          xpAwarded: number;
+          milestonesUnlocked: string[];
+          leveledUp: boolean;
+          level: number;
+        },
+        { code: string; deviceHint?: string }
+      >("/api/qr/scan", {
+        code,
+        deviceHint:
+          typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 100) : undefined,
+      });
+
+      invalidateMeSessionCache();
+      const snap = await fetchMeProfileAndStatsDeduped();
+      if (snap?.profile && snap?.stats) {
+        const merged = buildLocalCharacterFromServer(snap.profile, snap.stats);
+        replaceLocalCharacter(merged, { skipRemoteSync: true });
+        setCharacter(merged);
+      }
+      const updated = getCharacter() ?? before;
+      const xp = Math.max(0, data.xpAwarded);
+      const activityId = data.scan.activityId ?? "gym";
+      const activityLabel = data.scan.activityLabel ?? "Hitting the Gym";
+      const statIncrease = data.scan.statBoost?.statGain ?? 0;
+      const gymDef = getActivityById(activityId);
+
+      const logResult = recordQrLinkedActivityLog(character.id, {
+        activityId,
+        xpEarned: xp,
+        activityLabel,
+      });
+
+      if (logResult) {
+        presentLogResult(
+          before,
+          { ...logResult, character: updated, leveledUp: data.leveledUp },
+          {
+            title: gymDef ? `${gymDef.icon} ${activityLabel} logged!` : `${activityLabel} logged!`,
+            primaryStat: gymDef?.stat ?? "strength",
+          },
+        );
+      } else if (xp > 0) {
+        playXpDing();
+        setXpGainSession({
+          beforeTotalXP: before.totalXP,
+          afterTotalXP: updated.totalXP,
+          xpGained: xp,
+          title: `✦ ${activityLabel} logged!`,
+          stats: updated.stats,
+          modifierLines: [{ label: activityLabel, emoji: "📷" }],
+          leveledUp: data.leveledUp,
+        });
+        if (data.leveledUp) {
+          playLevelUpFanfare();
+          setLevelUpModal(updated.level);
+        }
+      }
+      scheduleStreakHydrationFromBackend();
+
+      return {
+        ok: true as const,
+        reward: {
+          xp,
+          statLabel: STAT_LABELS[gymDef?.stat ?? "strength"],
+          statIncrease,
+          leveledUp: data.leveledUp,
+          levelAfter: data.level,
+          sigilName: activityLabel,
+          milestonesUnlocked: data.milestonesUnlocked,
+        },
+      };
+    } catch (error) {
+      const message =
+        error instanceof ApiRequestError
+          ? error.message
+          : "CQ Scanner could not validate this QR code — try again.";
+      return { ok: false as const, banner: message };
+    }
+  }
+
   function handleQrPayloadValidated(payload: CampusQuestQrActivityPayloadParsed) {
     if (!character)
       return { ok: false as const, banner: "Create your CampusQuest profile before opening CQ Scanner." };
@@ -1584,6 +1700,23 @@ export function Dashboard() {
       </div>
       </div>
 
+      {character ? (
+        <button
+          type="button"
+          onClick={() => {
+            const next = !musicMuted;
+            setMusicMuted(next);
+            setGameMusicMuted(next);
+          }}
+          className="fixed bottom-[calc(5.2rem+env(safe-area-inset-bottom,0px))] right-2 z-20 h-6 w-6 rounded-full border border-white/10 bg-black/25 text-[10px] text-white/45 backdrop-blur-sm transition hover:text-white/80"
+          title={musicMuted ? "Unmute game music" : "Mute game music"}
+          aria-label={musicMuted ? "Unmute game music" : "Mute game music"}
+          aria-pressed={musicMuted}
+        >
+          {musicMuted ? "🔇" : "🔊"}
+        </button>
+      ) : null}
+
       {/* Bottom nav — aligned with content max width; items share row evenly */}
       <div
         className="fixed bottom-0 left-0 right-0 z-20 flex justify-center px-3 sm:px-4"
@@ -1624,8 +1757,13 @@ export function Dashboard() {
       {character && qrScannerEverOpened ? (
         <QRScannerModalLazy
           open={qrScannerOpen}
-          onClose={() => setQrScannerOpen(false)}
+          onClose={() => {
+            setQrScannerOpen(false);
+            setPendingScanCode(null);
+          }}
           onPayloadValidated={handleQrPayloadValidated}
+          onSecureCodeScanned={handleSecureQrCode}
+          pendingScanCode={pendingScanCode}
         />
       ) : null}
 

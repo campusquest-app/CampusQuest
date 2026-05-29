@@ -1,38 +1,19 @@
 import { ApiError } from "@/lib/server/http";
+import {
+  isAdminEmail,
+  isAuthEmailConfirmed,
+  userHasModerationAdminAccess,
+} from "@/lib/server/adminEmails";
+import { fetchProfileRole, roleAtLeast, userHasPlatformAdminAccess } from "@/lib/server/permissions";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { headers } from "next/headers";
+
+export { isAdminEmail, isAuthEmailConfirmed, userHasModerationAdminAccess } from "@/lib/server/adminEmails";
 
 type AuthedUser = Awaited<ReturnType<typeof requireAuthUser>>;
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
-}
-
-function listAdminEmails() {
-  return (process.env.MODERATION_ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((email) => normalizeEmail(email))
-    .filter(Boolean);
-}
-
-export function isAuthEmailConfirmed(user: { email_confirmed_at?: string | null; confirmed_at?: string | null }) {
-  return Boolean(user.email_confirmed_at ?? user.confirmed_at);
-}
-
-/** True when email is verified and listed in `MODERATION_ADMIN_EMAILS`; used for internal tooling auth and moderator campus-eligibility shortcuts. */
-export function userHasModerationAdminAccess(user: {
-  email?: string | null;
-  email_confirmed_at?: string | null;
-  confirmed_at?: string | null;
-}): boolean {
-  const email = user.email?.trim();
-  if (!email) return false;
-  if (!isAuthEmailConfirmed(user)) return false;
-  return isAdminEmail(email);
-}
-
-export function isAdminEmail(email: string): boolean {
-  return listAdminEmails().includes(normalizeEmail(email));
 }
 
 function getRequestFromServerHeaders() {
@@ -52,11 +33,21 @@ export async function requireAdminUser(request?: Request): Promise<AuthedUser & 
   if (!isAuthEmailConfirmed(auth.user)) {
     throw new ApiError(401, "Unauthorized.", "UNAUTHORIZED");
   }
-  if (!isAdminEmail(email)) {
+  const profileRole = await fetchProfileRole(auth.userClient, auth.user.id, { email: auth.user.email });
+  if (!userHasPlatformAdminAccess(auth.user, profileRole)) {
     throw new ApiError(403, "Unauthorized.", "FORBIDDEN");
   }
   return {
     ...auth,
     normalizedEmail: normalizeEmail(email),
   };
+}
+
+export async function requireQrAdminUser(request?: Request) {
+  const auth = await requireAdminUser(request);
+  const profileRole = await fetchProfileRole(auth.userClient, auth.user.id, { email: auth.user.email });
+  if (!roleAtLeast(profileRole, "admin") && !isAdminEmail(auth.normalizedEmail)) {
+    throw new ApiError(403, "QR admin access required.", "FORBIDDEN");
+  }
+  return { ...auth, profileRole };
 }

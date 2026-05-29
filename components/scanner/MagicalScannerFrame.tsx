@@ -1,32 +1,43 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
+import { ScannerFrameMagic } from "@/components/scanner/ScannerFrameMagic";
 import { ScannerParticles } from "@/components/scanner/ScannerParticles";
+import { ScannerScanLine } from "@/components/scanner/ScannerScanLine";
 
 type MagicalScannerFrameProps = {
-  /** Camera stream + overlays live here */
   children: React.ReactNode;
+  busyOverlay?: React.ReactNode;
   detecting?: boolean;
   absorbing?: boolean;
   camBusy?: boolean;
+  cameraActive?: boolean;
 };
 
-export function MagicalScannerFrame({ children, detecting = false, absorbing = false, camBusy = false }: MagicalScannerFrameProps) {
+export function MagicalScannerFrame({
+  children,
+  busyOverlay,
+  detecting = false,
+  absorbing = false,
+  camBusy = false,
+  cameraActive = false,
+}: MagicalScannerFrameProps) {
   const reduce = useReducedMotion();
   const boost = detecting || absorbing;
+  const camOn = cameraActive && !camBusy;
 
   return (
     <motion.div
-      className="cq-sigil-scanner-shell relative aspect-square w-full max-h-[52vh] mx-auto rounded-[1.65rem] p-[3px] will-change-transform"
+      className="cq-sigil-scanner-shell relative mx-auto aspect-square w-full max-h-[52vh] rounded-[1.65rem] p-[3px] will-change-transform"
       animate={
         reduce
           ? {}
           : {
-              scale: absorbing ? 0.97 : detecting ? [1, 1.022, 1] : boost ? [1, 1.012, 1] : [1, 1.008, 1],
+              scale: absorbing ? 0.97 : detecting ? [1, 1.024, 1] : [1, 1.01, 1],
               filter: absorbing
-                ? ["brightness(1.02)", "brightness(1.2)", "brightness(1.05)"]
+                ? ["brightness(1.02)", "brightness(1.18)", "brightness(1.05)"]
                 : detecting
-                  ? ["brightness(1)", "brightness(1.12)", "brightness(1.03)"]
+                  ? ["brightness(1)", "brightness(1.1)", "brightness(1.02)"]
                   : ["brightness(1)", "brightness(1.06)", "brightness(1)"],
             }
       }
@@ -35,119 +46,133 @@ export function MagicalScannerFrame({ children, detecting = false, absorbing = f
           ? {}
           : {
               repeat: absorbing ? 0 : Infinity,
-              duration: absorbing ? 0.85 : detecting ? 0.65 : 3.8,
+              duration: absorbing ? 0.85 : detecting ? 0.55 : 3.6,
               ease: absorbing ? [0.22, 1, 0.36, 1] : "easeInOut",
             }
       }
     >
-      {/* Energy crackle halo */}
       {!reduce && (
         <motion.span
-          className="pointer-events-none absolute -inset-1 rounded-[1.85rem] bg-gradient-to-br from-sky-400/35 via-uri-keaney/15 to-transparent opacity-75 blur-[1px]"
+          className="cq-sigil-shell-halo pointer-events-none absolute -inset-1 rounded-[1.85rem] bg-gradient-to-br from-sky-400/40 via-uri-keaney/18 to-transparent blur-[1px]"
           animate={{
-            opacity: boost ? [0.45, 0.92, 0.55] : [0.3, 0.55, 0.38],
+            opacity: boost
+              ? [0.5, 0.9, 0.55]
+              : camOn
+                ? [0.38, 0.52, 0.42]
+                : [0.42, 0.58, 0.45],
           }}
-          transition={{ repeat: Infinity, duration: boost ? 0.85 : 2.9, ease: "easeInOut" }}
+          transition={{ repeat: Infinity, duration: boost ? 0.75 : 2.6, ease: "easeInOut" }}
           aria-hidden
         />
       )}
 
-      <div className="relative h-full w-full rounded-[inherit]">
-        {/* Inner vignette */}
-        <div className="pointer-events-none absolute inset-[2px] z-[14] rounded-[1.38rem] ring-2 ring-black/55 shadow-[inset_0_0_80px_rgba(4,18,54,0.65)] mix-blend-multiply opacity-95" />
-
-        <div className="cq-sigil-scanner-inner cq-qr-scanner-shell-inner relative h-full w-full overflow-hidden rounded-[1.38rem] bg-black shadow-[inset_0_0_0_1px_rgba(104,171,232,0.38)]">
-          <ScannerParticles boosted={boost} className="z-[6]" />
-
-          {/* Light rays */}
-          {!reduce ? (
-            <motion.div
-              className="pointer-events-none absolute -inset-[40%] z-[4] cq-sigil-light-rays opacity-55 mix-blend-screen"
-              animate={{ rotate: [0, 360] }}
-              transition={{ repeat: Infinity, duration: 48, ease: "linear" }}
-            />
-          ) : null}
-
-          {/* Fog wash */}
+      <div
+        className="cq-sigil-scanner-inner cq-qr-scanner-shell-inner relative h-full w-full overflow-hidden rounded-[1.38rem] bg-black shadow-[inset_0_0_0_1px_rgba(104,171,232,0.42)]"
+        data-camera-active={camOn ? "true" : "false"}
+        data-cam-busy={camBusy ? "true" : "false"}
+        data-detecting={detecting ? "true" : "false"}
+        data-absorbing={absorbing ? "true" : "false"}
+      >
+        {/* 1 — Camera feed */}
+        <div className="absolute inset-0 z-[1] overflow-hidden rounded-[inherit] bg-black">
           <motion.div
-            className="pointer-events-none absolute inset-0 z-[5] cq-sigil-fog opacity-55"
-            animate={reduce ? {} : { opacity: [0.35, 0.55, 0.42] }}
-            transition={{ repeat: Infinity, duration: 4.2 }}
-          />
+            className="relative h-full w-full"
+            animate={
+              reduce || camBusy
+                ? {}
+                : {
+                    x: [0, 2.5, -2, 1.2, 0],
+                    y: [0, -1.8, 1.2, -1, 0],
+                  }
+            }
+            transition={{ repeat: Infinity, duration: 9.8, ease: "easeInOut" }}
+          >
+            {children}
+          </motion.div>
+        </div>
 
-          <div className="relative z-[8] h-full w-full cq-sigil-video-parallax">
-            {/* Camera subtle sway applied to video stack */}
-            <motion.div
-              className="relative h-full w-full"
-              animate={
-                reduce || camBusy
-                  ? {}
-                  : {
-                      x: [0, 2.5, -2, 1.2, 0],
-                      y: [0, -1.8, 1.2, -1, 0],
-                    }
-              }
-              transition={{ repeat: Infinity, duration: 9.8, ease: "easeInOut" }}
-            >
-              {children}
-            </motion.div>
-          </div>
+        {/* 2 — Dark overlay (very subtle when live) */}
+        <div className="cq-sigil-scan-dim pointer-events-none absolute inset-0 z-[2] rounded-[inherit]" aria-hidden />
 
-          {/* Vertical scan line */}
-          <div
-            className="cq-qr-scan-line pointer-events-none absolute left-[9%] right-[9%] z-12 h-[2px] rounded-full bg-gradient-to-r from-transparent via-cyan-100 to-transparent opacity-95 shadow-[0_0_16px_rgba(186,230,253,0.95)] cq-sigil-scan-line-v"
-            aria-hidden
-          />
-          {/* Horizontal energy beam */}
-          <div className="pointer-events-none absolute left-[6%] right-[6%] top-[52%] z-11 cq-sigil-h-beam opacity-95" aria-hidden />
+        <motion.div
+          className="cq-sigil-fog pointer-events-none absolute inset-0 z-[3]"
+          animate={reduce ? {} : { opacity: camOn ? [0.18, 0.28, 0.2] : [0.32, 0.45, 0.35] }}
+          transition={{ repeat: Infinity, duration: 4.2 }}
+          aria-hidden
+        />
 
-          {/* Corners */}
-          <div className="pointer-events-none absolute inset-[5.25%] z-[13] rounded-2xl" aria-hidden>
-            {(
-              [
-                [0, "left-0 top-0 border-l-4 border-t-4 rounded-tl-[1rem]", 0],
-                [1, "right-0 top-0 border-r-4 border-t-4 rounded-tr-[1rem]", 0.2],
-                [2, "left-0 bottom-0 border-l-4 border-b-4 rounded-bl-[1rem]", 0.45],
-                [3, "right-0 bottom-0 border-r-4 border-b-4 rounded-br-[1rem]", 0.65],
-              ] as const
-            ).map(([id, positioning, stagger]) =>
-              reduce ? (
-                <span key={id} className={`cq-qr-corner absolute ${positioning as string} h-11 w-11 border-sky-200/95`} />
-              ) : (
-                <motion.span
-                  key={id}
-                  className={`cq-qr-corner absolute ${positioning as string} h-11 w-11 border-sky-200`}
-                  initial={false}
-                  animate={{
-                    boxShadow:
-                      detecting || absorbing
+        {/* 3 — Runes */}
+        <ScannerParticles boosted={boost} cameraActive={camOn} className="z-[4]" />
+
+        {/* 4 — Scan line (always animating when live) */}
+        <ScannerScanLine detecting={detecting} absorbing={absorbing} cameraActive={camOn} />
+
+        {/* 5 — Frame magic + corners */}
+        <ScannerFrameMagic detecting={detecting} cameraActive={camOn} />
+        <div className="pointer-events-none absolute inset-[5.25%] z-[7] rounded-2xl" aria-hidden>
+          {(
+            [
+              [0, "left-0 top-0 border-l-4 border-t-4 rounded-tl-[1rem]", 0],
+              [1, "right-0 top-0 border-r-4 border-t-4 rounded-tr-[1rem]", 0.2],
+              [2, "left-0 bottom-0 border-l-4 border-b-4 rounded-bl-[1rem]", 0.45],
+              [3, "right-0 bottom-0 border-r-4 border-b-4 rounded-br-[1rem]", 0.65],
+            ] as const
+          ).map(([id, positioning, stagger]) =>
+            reduce ? (
+              <span key={id} className={`cq-qr-corner absolute ${positioning as string} h-11 w-11 border-sky-200/95`} />
+            ) : (
+              <motion.span
+                key={id}
+                className={`cq-qr-corner absolute ${positioning as string} h-11 w-11 border-sky-200`}
+                initial={false}
+                animate={{
+                  boxShadow:
+                    absorbing
+                      ? [
+                          "0 0 20px rgba(125,211,252,0.95), inset 0 0 28px rgba(186,230,253,0.28)",
+                          "0 0 40px rgba(56,189,248,0.9), inset 0 0 32px rgba(125,211,252,0.22)",
+                          "0 0 18px rgba(56,189,248,0.55), inset 0 0 20px rgba(56,189,248,0.14)",
+                        ]
+                      : detecting
                         ? [
-                            "0 0 16px rgba(56,189,248,0.55), inset 0 0 22px rgba(56,189,248,0.15)",
-                            "0 0 36px rgba(125,211,252,0.85), inset 0 0 28px rgba(186,230,253,0.22)",
+                            "0 0 18px rgba(56,189,248,0.65), inset 0 0 22px rgba(56,189,248,0.18)",
+                            "0 0 36px rgba(125,211,252,0.9), inset 0 0 26px rgba(186,230,253,0.24)",
+                            "0 0 16px rgba(56,189,248,0.5), inset 0 0 18px rgba(56,189,248,0.12)",
                           ]
-                        : [
-                            "0 0 12px rgba(56,189,248,0.35), inset 0 0 12px rgba(56,189,248,0.08)",
-                            "0 0 26px rgba(56,189,248,0.55), inset 0 0 18px rgba(56,189,248,0.12)",
-                          ],
-                    scale: detecting ? [1, 1.07, 1] : absorbing ? [1, 1.12, 0.94] : [1, 1.035, 1],
-                  }}
-                  transition={{
-                    repeat: absorbing ? 1 : Infinity,
-                    duration: absorbing ? 0.42 : detecting ? 0.72 : 2.85,
-                    delay: stagger + (detecting ? 0 : absorbing ? 0 : 0),
-                    ease: "easeInOut",
-                  }}
-                />
-              ),
-            )}
-          </div>
+                        : camOn
+                          ? [
+                              "0 0 12px rgba(56,189,248,0.45), inset 0 0 16px rgba(56,189,248,0.12)",
+                              "0 0 28px rgba(56,189,248,0.62), inset 0 0 20px rgba(56,189,248,0.16)",
+                              "0 0 12px rgba(56,189,248,0.45), inset 0 0 16px rgba(56,189,248,0.12)",
+                            ]
+                          : [
+                              "0 0 12px rgba(56,189,248,0.4), inset 0 0 12px rgba(56,189,248,0.1)",
+                              "0 0 30px rgba(56,189,248,0.55), inset 0 0 18px rgba(56,189,248,0.14)",
+                              "0 0 12px rgba(56,189,248,0.4), inset 0 0 12px rgba(56,189,248,0.1)",
+                            ],
+                  scale: detecting ? [1, 1.08, 1] : absorbing ? [1, 1.14, 0.96] : [1, 1.04, 1],
+                  opacity: camOn ? [0.85, 1, 0.88] : [0.78, 0.95, 0.82],
+                }}
+                transition={{
+                  repeat: absorbing ? 0 : Infinity,
+                  duration: absorbing ? 0.55 : detecting ? 0.5 : 2.4,
+                  delay: stagger,
+                  ease: "easeInOut",
+                }}
+              />
+            ),
+          )}
+        </div>
 
-          {/* CQ Scanner ward hint */}
-          <div className="pointer-events-none absolute bottom-3 left-1/2 z-[20] max-w-[92%] -translate-x-1/2 rounded-full border border-cyan-300/40 bg-uri-navy/75 px-3 py-2 text-center shadow-lg backdrop-blur-md">
-            <p className="text-[11px] font-semibold leading-snug text-cyan-100/95 drop-shadow-[0_0_8px_rgba(56,189,248,0.35)]">
-              Center your CampusQuest QR code in the ring — CQ Scanner locks and validates it in real time.
-            </p>
-          </div>
+        {busyOverlay ? (
+          <div className="absolute inset-0 z-[35] overflow-hidden rounded-[inherit]">{busyOverlay}</div>
+        ) : null}
+
+        {/* 6 — Instructions */}
+        <div className="pointer-events-none absolute bottom-3 left-1/2 z-[30] max-w-[92%] -translate-x-1/2 rounded-full border border-cyan-300/45 bg-uri-navy/78 px-3 py-2 text-center shadow-lg backdrop-blur-md">
+          <p className="text-[11px] font-semibold leading-snug text-cyan-100/95 drop-shadow-[0_0_8px_rgba(56,189,248,0.4)]">
+            Center your CampusQuest QR code in the ring — CQ Scanner locks and validates it in real time.
+          </p>
         </div>
       </div>
     </motion.div>

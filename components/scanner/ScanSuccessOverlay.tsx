@@ -116,12 +116,26 @@ export function ScanSuccessOverlay({ reward }: ScanSuccessOverlayProps) {
               sub="XP blessing received."
               delay={0.12}
             />
-            <FloatingRewardText
-              tone="stat"
-              label={`${reward.statLabel} +${reward.statIncrease}`}
-              sub="Campus stat attuned on your CQ sheet."
-              delay={0.22}
-            />
+            {reward.statIncrease > 0 ? (
+              <FloatingRewardText
+                tone="stat"
+                label={`${reward.statLabel} +${reward.statIncrease}`}
+                sub="Campus stat attuned on your CQ sheet."
+                delay={0.22}
+              />
+            ) : null}
+            {reward.milestonesUnlocked && reward.milestonesUnlocked.length > 0 ? (
+              <FloatingRewardText
+                tone="stat"
+                label={reward.milestonesUnlocked[0]!}
+                sub={
+                  reward.milestonesUnlocked.length > 1
+                    ? `+${reward.milestonesUnlocked.length - 1} more milestone${reward.milestonesUnlocked.length > 2 ? "s" : ""} unlocked`
+                    : "Location milestone unlocked."
+                }
+                delay={0.32}
+              />
+            ) : null}
             {reward.leveledUp ? (
               <motion.div
                 initial={{ opacity: 0, scale: 0.75, rotate: -8 }}

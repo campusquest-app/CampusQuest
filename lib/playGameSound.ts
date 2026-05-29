@@ -1,6 +1,8 @@
 /** Lightweight Web Audio "blips" — no asset files. */
 
 let sharedAudioContext: AudioContext | null = null;
+const GAME_MUSIC_MUTED_KEY = "campusquest_game_music_muted";
+const LEGACY_GAME_AUDIO_MUTED_KEY = "campusquest_game_audio_muted";
 
 function ctx(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -11,6 +13,30 @@ function ctx(): AudioContext | null {
     return sharedAudioContext;
   } catch {
     return null;
+  }
+}
+
+export function isGameMusicMuted(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      window.localStorage.getItem(GAME_MUSIC_MUTED_KEY) === "1" ||
+      window.localStorage.getItem(LEGACY_GAME_AUDIO_MUTED_KEY) === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function setGameMusicMuted(muted: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (muted) window.localStorage.setItem(GAME_MUSIC_MUTED_KEY, "1");
+    else window.localStorage.removeItem(GAME_MUSIC_MUTED_KEY);
+    // Clear old shared-audio key so SFX are never accidentally muted by stale state.
+    window.localStorage.removeItem(LEGACY_GAME_AUDIO_MUTED_KEY);
+  } catch {
+    // Ignore storage failures (private mode / quota).
   }
 }
 
