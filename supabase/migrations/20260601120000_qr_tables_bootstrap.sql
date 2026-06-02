@@ -108,7 +108,7 @@ values (
   'permanent_location',
   'URI Gym',
   'Hitting the Gym',
-  10,
+  80,
   true,
   true,
   24,

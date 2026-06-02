@@ -3,6 +3,7 @@ import { canBypassQrScanLimits, fetchProfileRole, type ProfileRole } from "@/lib
 import { applyQrActivityStatBoost, resolveQrActivityLink } from "@/lib/server/qrActivityLink";
 import { applyQrLocationMilestones } from "@/lib/server/qrMilestones";
 import { normalizeQrCode } from "@/lib/qrCodeExtract";
+import { logQrScanServer } from "@/lib/server/qrScanServerLog";
 import { auditQrScanPatterns } from "@/lib/server/qrSuspiciousActivity";
 import { addXpInternal, completeQuest, getPlayerProgressSnapshot } from "@/lib/server/services";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -56,7 +57,12 @@ function isMissingQrTablesError(error: { message?: string; code?: string } | nul
   if (!error) return false;
   const msg = error.message ?? "";
   if (error.code === "PGRST205") return true;
-  return /qr_codes/i.test(msg) && /(schema cache|does not exist|Could not find the table)/i.test(msg);
+  // Postgres column errors also contain "does not exist" — do not treat those as missing tables.
+  if (/column\s+.+\s+does not exist/i.test(msg)) return false;
+  return (
+    /(schema cache|Could not find the table)/i.test(msg) &&
+    /(qr_codes|qr_scans)/i.test(msg)
+  );
 }
 
 async function insertScanLog(args: {
@@ -118,17 +124,49 @@ async function tryCompleteLinkedQuest(args: {
   }
 }
 
+function isUriGymQr(qr: Pick<QrCodeRow, "code" | "location_name">): boolean {
+  return (
+    qr.code === "GYM" ||
+    qr.code === "URI_GYM_CHECKIN_V1" ||
+    /uri gym/i.test(qr.location_name ?? "")
+  );
+}
+
 function scanFailureMessage(reason: ScanFailReason, qr: QrCodeRow): string {
-  if (reason === "cooldown" && (qr.code === "GYM" || /uri gym/i.test(qr.location_name ?? ""))) {
-    return "You already checked in at the URI Gym today. Come back tomorrow to earn more XP.";
+  if (reason === "cooldown" && isUriGymQr(qr)) {
+    return "You already checked in at the URI Gym today. Come back tomorrow.";
   }
-  if (reason === "daily_limit" && qr.code === "GYM") {
-    return "You already checked in at the URI Gym today. Come back tomorrow to earn more XP.";
+  if (reason === "daily_limit" && isUriGymQr(qr)) {
+    return "You already checked in at the URI Gym today. Come back tomorrow.";
   }
   return FAIL_MESSAGES[reason];
 }
 
-function evaluateScanEligibility(args: {
+const QR_CODE_LOOKUP_SELECT =
+  "id, code, title, description, type, location_name, activity_name, xp_reward, is_active, is_permanent, cooldown_hours, max_scans_per_day, expires_at";
+
+function mapQrCodeRow(row: Record<string, unknown>): QrCodeRow {
+  return {
+    id: String(row.id),
+    code: String(row.code),
+    title: String(row.title),
+    description: (row.description as string | null) ?? null,
+    type: String(row.type),
+    event_id: (row.event_id as string | null) ?? null,
+    quest_id: (row.quest_id as string | null) ?? null,
+    location_name: (row.location_name as string | null) ?? null,
+    activity_name: (row.activity_name as string | null) ?? null,
+    xp_reward: Number(row.xp_reward ?? 0),
+    is_active: Boolean(row.is_active),
+    is_permanent: Boolean(row.is_permanent),
+    cooldown_hours: Number(row.cooldown_hours ?? 0),
+    max_scans_per_day: Number(row.max_scans_per_day ?? 0),
+    requires_staff_approval: Boolean(row.requires_staff_approval ?? false),
+    expires_at: (row.expires_at as string | null) ?? null,
+  };
+}
+
+export function evaluateScanEligibility(args: {
   row: QrCodeRow;
   role: ProfileRole;
   lastSuccessAt: string | null;
@@ -170,6 +208,8 @@ export async function scanCampusQuestQrCode(args: {
 }) {
   const { userClient, userId } = args;
   const code = normalizeQrCode(args.code);
+  logQrScanServer("validation_request", { code, userId: userId.slice(0, 8) });
+
   if (!code || code.length > 128) {
     throw new ApiError(400, FAIL_MESSAGES.invalid, "INVALID_QR_CODE");
   }
@@ -179,11 +219,16 @@ export async function scanCampusQuestQrCode(args: {
 
   const { data: row, error: lookupError } = await admin
     .from("qr_codes")
-    .select(
-      "id, code, title, description, type, event_id, quest_id, location_name, activity_name, xp_reward, is_active, is_permanent, cooldown_hours, max_scans_per_day, requires_staff_approval, expires_at",
-    )
+    .select(QR_CODE_LOOKUP_SELECT)
     .eq("code", code)
     .maybeSingle();
+
+  logQrScanServer("supabase_lookup", {
+    code,
+    found: Boolean(row),
+    lookupError: lookupError?.message ?? null,
+    lookupCode: lookupError?.code ?? null,
+  });
 
   if (lookupError) {
     if (isMissingQrTablesError(lookupError)) {
@@ -193,13 +238,20 @@ export async function scanCampusQuestQrCode(args: {
         "QR_TABLES_NOT_READY",
       );
     }
+    if (/column\s+.+\s+does not exist/i.test(lookupError.message ?? "")) {
+      throw new ApiError(
+        500,
+        "CampusQuest QR check-in schema is out of date. Apply the latest Supabase migrations, then try again.",
+        "QR_SCHEMA_OUT_OF_DATE",
+      );
+    }
     throw new ApiError(400, lookupError.message, "QR_LOOKUP_FAILED");
   }
   if (!row) {
-    throw new ApiError(404, FAIL_MESSAGES.invalid, "INVALID_QR_CODE");
+    throw new ApiError(404, "This QR code is not part of CampusQuest.", "ACTIVITY_NOT_FOUND");
   }
 
-  const qr = row as QrCodeRow;
+  const qr = mapQrCodeRow(row as Record<string, unknown>);
 
   const dayStart = utcDayStartIso();
   const { data: priorScans } = await admin
@@ -313,7 +365,14 @@ export async function scanCampusQuestQrCode(args: {
 
   let statBoost: { stat: string; statGain: number } | null = null;
   if (activityLink) {
-    statBoost = (await applyQrActivityStatBoost({ userClient, userId, link: activityLink })) ?? null;
+    try {
+      statBoost = (await applyQrActivityStatBoost({ userClient, userId, link: activityLink })) ?? null;
+    } catch (statError) {
+      logQrScanServer("stat_boost_failed", {
+        code: qr.code,
+        message: statError instanceof Error ? statError.message : String(statError),
+      });
+    }
   }
 
   const questCompletion = await tryCompleteLinkedQuest({
@@ -343,6 +402,15 @@ export async function scanCampusQuestQrCode(args: {
 
   const player = await getPlayerProgressSnapshot(userClient, userId);
   const leveledUp = xpResult ? player.progression.level > levelBefore : false;
+
+  logQrScanServer("validation_response", {
+    ok: true,
+    code: qr.code,
+    xpAwarded: xpAmount,
+    activityId: activityLink?.activityId ?? null,
+    statBoost,
+    leveledUp,
+  });
 
   return {
     scan: {

@@ -6,7 +6,7 @@ Reference for the four core activity types and game logic (aligned with the Pyth
 
 | Type   | Base XP | Stat gain              | Minutes scaling      |
 |--------|---------|------------------------|----------------------|
-| **gym**   | 25  | Strength +2            | —                    |
+| **gym**   | 80  | Strength +2            | —                    |
 | **study** | 20  | Knowledge +max(1, min/20) | +5 XP per 10 min |
 | **focus** | 15  | Focus +max(1, min/25)  | +5 XP per 10 min     |
 | **social**| 10  | Social +1              | —                    |

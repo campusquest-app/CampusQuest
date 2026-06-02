@@ -2023,17 +2023,13 @@
   .cq-qr-nav-glow,
   .cq-qr-spinner,
   .cq-qr-scan-line,
-  .cq-sigil-scan-line-v,
-  .cq-sigil-scan-trail,
   .cq-qr-scanner-shell,
-  .cq-qr-corner,
   .cq-qr-particles::before,
   .cq-qr-particles::after,
-  .cq-sigil-scanner-shell,
-  .cq-sigil-border-shimmer,
   .cq-sigil-h-beam::before {
     animation: none !important;
   }
+  /* CQ Scanner lens FX keep animating — softened below in .cq-scanner-anim-zone */
 }
 
 .stat-aura-strength {
@@ -2093,41 +2089,107 @@
     opacity: 0.42;
   }
 }
+/* Scan line — top% sweep inside .cq-scan-track (Safari-safe; no CSS vars in keyframes) */
+.cq-scan-track {
+  position: absolute;
+  min-height: 5rem;
+}
+@keyframes cq-scanner-sweep-line {
+  0%,
+  100% {
+    top: 0;
+    opacity: 0.72;
+  }
+  50% {
+    top: calc(100% - 3px);
+    opacity: 0.88;
+  }
+}
+@keyframes cq-scanner-sweep-trail {
+  0%,
+  100% {
+    top: 0;
+    opacity: 0.5;
+  }
+  50% {
+    top: calc(100% - 2.5rem);
+    opacity: 0.72;
+  }
+}
+.cq-scanner-scan-sweep {
+  position: absolute;
+  left: 0;
+  right: 0;
+  width: 100%;
+  animation-play-state: running;
+  -webkit-animation-play-state: running;
+  will-change: top, opacity;
+}
+.cq-scanner-scan-beam {
+  top: 0;
+  height: 3px;
+  animation: cq-scanner-sweep-line var(--cq-scan-duration, 2s) linear infinite;
+  -webkit-animation: cq-scanner-sweep-line var(--cq-scan-duration, 2s) linear infinite;
+}
+.cq-scanner-scan-trail {
+  top: 0;
+  height: 2.5rem;
+  animation: cq-scanner-sweep-trail var(--cq-scan-duration, 2s) linear infinite;
+  -webkit-animation: cq-scanner-sweep-trail var(--cq-scan-duration, 2s) linear infinite;
+}
+/* Legacy class hooks */
+.cq-sigil-scan-sweep-css.cq-sigil-scan-line-v {
+  top: 0;
+  animation: cq-scanner-sweep-line var(--cq-scan-duration, 2s) linear infinite;
+  -webkit-animation: cq-scanner-sweep-line var(--cq-scan-duration, 2s) linear infinite;
+  will-change: top, opacity;
+}
+.cq-sigil-scan-sweep-css.cq-sigil-scan-trail {
+  top: 0;
+  animation: cq-scanner-sweep-trail var(--cq-scan-duration, 2s) linear infinite;
+  -webkit-animation: cq-scanner-sweep-trail var(--cq-scan-duration, 2s) linear infinite;
+  will-change: top, opacity;
+}
+.cq-scanner-scan-beam,
 .cq-sigil-scan-line-v {
+  position: absolute;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(186, 230, 253, 0.35) 18%,
-    rgba(224, 242, 254, 0.95) 50%,
-    rgba(186, 230, 253, 0.35) 82%,
+    rgba(125, 211, 252, 0.45) 12%,
+    rgba(224, 242, 254, 1) 50%,
+    rgba(125, 211, 252, 0.45) 88%,
     transparent 100%
   );
   box-shadow:
-    0 0 14px rgba(125, 211, 252, 0.85),
-    0 0 28px rgba(56, 189, 248, 0.45);
-  animation: cq-qr-scan-sweep 2.85s ease-in-out infinite;
+    0 0 12px rgba(125, 211, 252, 0.95),
+    0 0 24px rgba(56, 189, 248, 0.65),
+    0 0 40px rgba(56, 189, 248, 0.35);
 }
-.cq-sigil-scanner-inner[data-camera-active="true"] .cq-sigil-scan-line-v {
-  animation: cq-qr-scan-sweep-cam 2.35s ease-in-out infinite;
+.cq-sigil-scanner-inner[data-camera-active="true"] .cq-sigil-scan-line-v,
+.cq-sigil-scanner-inner[data-cam-busy="true"] .cq-sigil-scan-line-v,
+.cq-sigil-scan-line--live .cq-sigil-scan-line-v {
+  height: 3px;
+  filter: brightness(1.15);
 }
+.cq-scanner-scan-trail,
 .cq-sigil-scan-trail {
-  top: 0;
+  position: absolute;
   background: linear-gradient(
     180deg,
-    transparent,
-    rgba(56, 189, 248, 0.35) 35%,
-    rgba(186, 230, 253, 0.55) 50%,
-    rgba(56, 189, 248, 0.35) 65%,
-    transparent
+    transparent 0%,
+    rgba(56, 189, 248, 0.25) 30%,
+    rgba(186, 230, 253, 0.7) 50%,
+    rgba(56, 189, 248, 0.25) 70%,
+    transparent 100%
   );
-  filter: blur(5px);
-  opacity: 0.45;
-  animation: cq-qr-scan-sweep-cam 2.35s ease-in-out infinite;
-  animation-delay: -0.4s;
+  filter: blur(8px);
   pointer-events: none;
 }
-.cq-sigil-scanner-inner[data-camera-active="true"] .cq-sigil-scan-trail {
-  opacity: 0.5;
+.cq-sigil-scanner-inner[data-camera-active="true"] .cq-sigil-scan-trail,
+.cq-sigil-scanner-inner[data-cam-busy="true"] .cq-sigil-scan-trail,
+.cq-sigil-scan-line--live .cq-sigil-scan-trail {
+  filter: blur(10px) brightness(1.2);
 }
 .cq-sigil-scan-line--detecting .cq-sigil-scan-line-v,
 .cq-sigil-scanner-inner[data-detecting="true"] .cq-sigil-scan-line-v {
@@ -2144,23 +2206,19 @@
   opacity: 0.65;
   filter: blur(6px) brightness(1.2);
 }
-.cq-sigil-scan-line-v,
-.cq-sigil-scan-trail {
-  top: 6%;
-}
+.cq-sigil-scan-line--absorbing .cq-scanner-scan-beam,
 .cq-sigil-scan-line--absorbing .cq-sigil-scan-line-v,
+.cq-sigil-scanner-inner[data-absorbing="true"] .cq-scanner-scan-beam,
 .cq-sigil-scanner-inner[data-absorbing="true"] .cq-sigil-scan-line-v {
+  height: 4px;
   animation:
-    cq-qr-scan-sweep-cam 2.35s ease-in-out infinite,
-    cq-sigil-scan-lock-pulse 0.55s ease-out;
+    cq-scanner-sweep-line var(--cq-scan-duration, 2s) linear infinite,
+    cq-sigil-scan-lock-glow 0.55s ease-out;
+  -webkit-animation:
+    cq-scanner-sweep-line var(--cq-scan-duration, 2s) linear infinite,
+    cq-sigil-scan-lock-glow 0.55s ease-out;
 }
-.cq-sigil-scanner-inner[data-camera-active="false"] .cq-sigil-scan-line--absorbing .cq-sigil-scan-line-v,
-.cq-sigil-scanner-inner[data-camera-active="false"][data-absorbing="true"] .cq-sigil-scan-line-v {
-  animation:
-    cq-qr-scan-sweep 2.85s ease-in-out infinite,
-    cq-sigil-scan-lock-pulse 0.55s ease-out;
-}
-@keyframes cq-sigil-scan-lock-pulse {
+@keyframes cq-sigil-scan-lock-glow {
   0% {
     filter: brightness(1.15);
     box-shadow: 0 0 18px rgba(125, 211, 252, 0.75);
@@ -2181,7 +2239,12 @@
   opacity: 0.48;
 }
 .cq-sigil-scanner-inner[data-camera-active="true"] .cq-sigil-scan-dim {
-  opacity: 0.28;
+  opacity: 0.22;
+  background: radial-gradient(
+    ellipse 70% 66% at 50% 50%,
+    transparent 44%,
+    rgba(4, 14, 32, 0.35) 100%
+  );
 }
 .cq-sigil-scanner-inner[data-camera-active="false"]:not([data-cam-busy="true"]) .cq-sigil-scan-dim {
   opacity: 0.45;
@@ -2191,11 +2254,105 @@
 }
 .cq-sigil-rune--edge {
   text-shadow:
-    0 0 8px rgba(125, 211, 252, 0.65),
-    0 0 16px rgba(56, 189, 248, 0.35);
+    0 0 10px rgba(125, 211, 252, 0.9),
+    0 0 18px rgba(56, 189, 248, 0.55),
+    0 0 28px rgba(56, 189, 248, 0.25);
 }
 .cq-sigil-runes-layer {
-  mask-image: radial-gradient(ellipse 58% 58% at 50% 48%, transparent 38%, #000 72%);
+  mask-image: radial-gradient(ellipse 58% 58% at 50% 50%, transparent 26%, #000 82%);
+  -webkit-mask-image: radial-gradient(ellipse 58% 58% at 50% 50%, transparent 26%, #000 82%);
+}
+@keyframes cq-rune-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(4px, -10px, 0) rotate(var(--rune-rotate-deg, 6deg));
+  }
+}
+@keyframes cq-rune-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.68;
+  }
+}
+.cq-scanner-rune-anim {
+  animation:
+    cq-rune-float var(--rune-float-dur, 5s) ease-in-out infinite,
+    cq-rune-pulse var(--rune-pulse-dur, 3.4s) ease-in-out infinite;
+  animation-delay: var(--rune-delay, 0s), calc(var(--rune-delay, 0s) + 0.12s);
+  -webkit-animation:
+    cq-rune-float var(--rune-float-dur, 5s) ease-in-out infinite,
+    cq-rune-pulse var(--rune-pulse-dur, 3.4s) ease-in-out infinite;
+  -webkit-animation-delay: var(--rune-delay, 0s), calc(var(--rune-delay, 0s) + 0.12s);
+  animation-play-state: running;
+  -webkit-animation-play-state: running;
+  will-change: transform, opacity;
+}
+.cq-sigil-runes-layer--live .cq-scanner-rune-anim {
+  animation-duration: var(--rune-float-dur, 5s), var(--rune-pulse-dur, 3.4s);
+}
+.cq-sigil-runes-layer--boosted .cq-scanner-rune-anim {
+  animation-duration: calc(var(--rune-float-dur, 5s) * 0.9), calc(var(--rune-pulse-dur, 3.4s) * 0.9);
+}
+/* Scanner anim zone — always runs; beats global reduced-motion kills */
+.cq-scanner-anim-zone .cq-scanner-scan-beam,
+.cq-scanner-anim-zone .cq-scanner-scan-trail,
+.cq-scanner-anim-zone .cq-scanner-scan-sweep,
+.cq-scanner-anim-zone .cq-scanner-rune-anim,
+.cq-scanner-anim-zone .cq-sigil-scan-sweep-css,
+.cq-scanner-anim-zone .cq-qr-corner {
+  animation-play-state: running !important;
+  -webkit-animation-play-state: running !important;
+}
+.cq-scanner-anim-zone .cq-scanner-scan-beam {
+  opacity: 0.8;
+}
+.cq-scanner-anim-zone .cq-scanner-rune-anim {
+  opacity: 0.6;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cq-scanner-anim-zone .cq-scanner-scan-beam,
+  .cq-scanner-anim-zone .cq-scanner-scan-trail {
+    animation: cq-scanner-sweep-line calc(var(--cq-scan-duration, 2s) * 1.25) linear infinite !important;
+    -webkit-animation: cq-scanner-sweep-line calc(var(--cq-scan-duration, 2s) * 1.25) linear infinite !important;
+    opacity: 0.64;
+  }
+  .cq-scanner-anim-zone .cq-scanner-scan-trail {
+    animation-name: cq-scanner-sweep-trail !important;
+    -webkit-animation-name: cq-scanner-sweep-trail !important;
+  }
+  .cq-scanner-anim-zone .cq-scanner-rune-anim {
+    animation:
+      cq-rune-float calc(var(--rune-float-dur, 5s) * 1.2) ease-in-out infinite,
+      cq-rune-pulse calc(var(--rune-pulse-dur, 3.4s) * 1.2) ease-in-out infinite !important;
+    -webkit-animation:
+      cq-rune-float calc(var(--rune-float-dur, 5s) * 1.2) ease-in-out infinite,
+      cq-rune-pulse calc(var(--rune-pulse-dur, 3.4s) * 1.2) ease-in-out infinite !important;
+    opacity: 0.48;
+  }
+}
+.cq-sigil-rune-glyph {
+  mix-blend-mode: normal;
+  filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.55)) drop-shadow(0 0 12px rgba(125, 211, 252, 0.35));
+}
+.cq-rune-glyph-svg {
+  display: block;
+  overflow: visible;
+}
+.cq-sigil-scanner-inner[data-camera-active="true"] .cq-sigil-rune-glyph,
+.cq-sigil-scanner-inner[data-cam-busy="true"] .cq-sigil-rune-glyph {
+  filter: drop-shadow(0 0 7px rgba(186, 230, 253, 0.75)) drop-shadow(0 0 14px rgba(56, 189, 248, 0.5));
+}
+.cq-sigil-scanner-inner[data-camera-active="true"] .cq-sigil-rune--edge,
+.cq-sigil-scanner-inner[data-cam-busy="true"] .cq-sigil-rune--edge {
+  text-shadow:
+    0 0 12px rgba(186, 230, 253, 0.95),
+    0 0 22px rgba(56, 189, 248, 0.65);
 }
 .cq-sigil-frame-glow {
   box-shadow:
@@ -2362,6 +2519,91 @@
     0 0 0 1px rgba(56, 189, 248, 0.22),
     0 0 48px -10px rgba(56, 189, 248, 0.45),
     inset 0 1px 0 rgba(186, 230, 253, 0.12);
+}
+
+/* CQ Scanner — mobile Safari / Chrome compositing (video below effects) */
+.cq-scanner-portal {
+  min-height: 100dvh;
+  min-height: 100svh;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.cq-scanner-portal--ios {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: #010810 !important;
+}
+.cq-scanner-camera-layer {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+.cq-scanner-camera-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 0;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+/* iOS: hidden video for qr-scanner; visible canvas feed (native video covers HTML overlays) */
+.cq-scanner-camera-video--ios-source {
+  opacity: 0.001 !important;
+  z-index: 0 !important;
+  pointer-events: none;
+}
+.cq-scanner-camera-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+.cq-sigil-scanner-inner--ios .cq-scanner-effects-overlay {
+  z-index: 30;
+  transform: translate3d(0, 0, 4px);
+  -webkit-transform: translate3d(0, 0, 4px);
+}
+.cq-sigil-scanner-inner--ios .cq-sigil-runes-layer--ios {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.cq-sigil-scanner-inner--ios .cq-scanner-scan-beam {
+  opacity: 0.8;
+}
+.cq-sigil-scanner-inner--ios .cq-scanner-rune-anim {
+  opacity: 0.6;
+}
+.cq-sigil-scanner-inner--ios .cq-sigil-rune-glyph {
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.85))
+    drop-shadow(0 0 14px rgba(125, 211, 252, 0.5));
+}
+.cq-scanner-effects-overlay {
+  transform: translate3d(0, 0, 2px);
+  -webkit-transform: translate3d(0, 0, 2px);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+@media (max-width: 768px) {
+  .cq-sigil-scanner-shell {
+    width: min(86vw, 420px);
+    max-height: none;
+  }
+  .cq-sigil-scan-trail {
+    filter: blur(5px) brightness(1.15);
+  }
+  .cq-sigil-rune-glyph {
+    filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.75))
+      drop-shadow(0 0 12px rgba(125, 211, 252, 0.45));
+  }
+  .cq-sigil-rune-glyph--static {
+    opacity: 0.48 !important;
+  }
 }
 .cq-sigil-h-beam::before {
   content: "";

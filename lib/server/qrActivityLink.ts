@@ -19,6 +19,7 @@ const ACTIVITY_NAME_TO_LINK: Record<string, QrActivityLink> = {
 
 const CODE_TO_LINK: Record<string, QrActivityLink> = {
   GYM: ACTIVITY_NAME_TO_LINK["hitting the gym"]!,
+  URI_GYM_CHECKIN_V1: ACTIVITY_NAME_TO_LINK["hitting the gym"]!,
 };
 
 export function resolveQrActivityLink(args: {

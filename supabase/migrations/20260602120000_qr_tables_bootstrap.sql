@@ -21,6 +21,10 @@ create table if not exists public.qr_codes (
   created_at timestamptz not null default now()
 );
 
+alter table public.qr_codes add column if not exists event_id uuid;
+alter table public.qr_codes add column if not exists quest_id uuid;
+alter table public.qr_codes add column if not exists requires_staff_approval boolean not null default false;
+
 create table if not exists public.qr_scans (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -99,7 +103,7 @@ values (
   'permanent_location',
   'URI Gym',
   'Hitting the Gym',
-  10,
+  80,
   true,
   true,
   24,

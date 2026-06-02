@@ -11,6 +11,7 @@ describe("qrCodeExtract", () => {
   it("reads GYM from scan URLs", () => {
     expect(extractCampusQuestQrCode("https://campusquest.app/scan?code=GYM")).toBe("GYM");
     expect(extractCampusQuestQrCode("http://localhost:3000/scan?code=GYM")).toBe("GYM");
+    expect(extractCampusQuestQrCode("campusquest://scan?code=GYM")).toBe("GYM");
   });
 
   it("reads legacy cq_* tokens from scan URLs", () => {
@@ -20,6 +21,13 @@ describe("qrCodeExtract", () => {
   it("accepts raw GYM token", () => {
     expect(extractCampusQuestQrCode("GYM")).toBe("GYM");
     expect(normalizeQrCode("gym")).toBe("GYM");
+  });
+
+  it("accepts legacy URI gym token", () => {
+    expect(extractCampusQuestQrCode("URI_GYM_CHECKIN_V1")).toBe("URI_GYM_CHECKIN_V1");
+    expect(
+      extractCampusQuestQrCode("https://campusquest.app/scan?code=URI_GYM_CHECKIN_V1"),
+    ).toBe("URI_GYM_CHECKIN_V1");
   });
 
   it("rejects non-campusquest strings", () => {

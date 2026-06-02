@@ -3,35 +3,93 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import {
-  parseCampusQuestQrPayload,
-  type CampusQuestQrActivityPayloadParsed,
-  type ParseQrActivityErrorCode,
-} from "@/lib/qrCampusQuestActivity";
-import { extractCampusQuestQrCode, isLegacyCampusQuestActivityJson } from "@/lib/qrCodeExtract";
+import type { CampusQuestQrActivityPayloadParsed } from "@/lib/qrCampusQuestActivity";
 import { MagicalScannerFrame } from "@/components/scanner/MagicalScannerFrame";
+import { ScannerCameraFeed } from "@/components/scanner/ScannerCameraFeed";
+import { isIosLike } from "@/lib/client/isIosDevice";
 import { CQScannerScreen } from "@/components/scanner/CQScannerScreen";
 import { ScanSuccessOverlay } from "@/components/scanner/ScanSuccessOverlay";
+import { ScanValidatedCinematic } from "@/components/scanner/ScanValidatedCinematic";
 import type { QrScannerValidationResult, SigilScannerReward } from "@/components/scanner/sigilRewardTypes";
+import type { ActivityXPGainSession } from "@/components/xp/xpGainTypes";
+import { classifyQrScanText } from "@/lib/client/qrScanClassify";
+import { normalizeQrScanInput } from "@/lib/client/normalizeQrScanInput";
+import { logQrScanDebug, logQrScanRawResult } from "@/lib/client/qrScanDebug";
+import {
+  QR_SCAN_USER_MESSAGES,
+  qrScanBannerFromUnknownError,
+  userMessageForParseError,
+} from "@/lib/client/qrScanUserMessages";
 import {
   feedbackSigilAbsorption,
   playSigilScanLock,
 } from "@/lib/client/scannerFantasyFeedback";
+import {
+  isScanRewardFlowActive,
+  SCAN_TRANSITION_TO_XP_MS,
+  SCAN_VALIDATED_MS,
+  SCAN_XP_HANDOFF_MS,
+  type ScanRewardState,
+} from "@/lib/client/scanRewardFlow";
 
 export type { SigilScannerReward, QrScannerValidationResult };
 
 export type QRScannerModalProps = {
   open: boolean;
   onClose: () => void;
-  /** CampusQuest ledger — persist rewards; return immersive errors or blessing summary for CQ Scanner. */
   onPayloadValidated: (payload: CampusQuestQrActivityPayloadParsed) => QrScannerValidationResult;
-  /** Server-validated secure QR token (`cq_…` or `/scan?code=`). */
   onSecureCodeScanned?: (code: string) => QrScannerValidationResult | Promise<QrScannerValidationResult>;
-  /** Deep-link token to validate once when the scanner opens. */
+  /** After scanner cinematic — parent mounts XP overlay (do not flash immediately on scan). */
+  onXpHandoff?: (session: ActivityXPGainSession) => void;
   pendingScanCode?: string | null;
+  /** Shown when deep-link validation failed before the lens opens. */
+  prefillErrorBanner?: string | null;
 };
 
+type ScanSuccessVerdict = Extract<QrScannerValidationResult, { ok: true }>;
+
 type CamState = "idle" | "starting" | "ready" | "denied";
+type ScannerPhase = "idle" | "scanning" | "processing" | "success" | "error";
+
+const SCAN_SEARCH_HINT_MS = 4000;
+const PROCESSING_TIMEOUT_MS = 8000;
+const ERROR_MIN_DISPLAY_MS = 2000;
+const ERROR_REVEAL_DELAY_MS = 450;
+const INVALID_QR_DEBOUNCE_MS = 2800;
+/** Fast enough for 1–2s detection when QR is centered; default library max is 25. */
+const MAX_SCANS_PER_SECOND = 12;
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+}
+
+function calculateCenterScanRegion(video: HTMLVideoElement) {
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  const side = Math.round(Math.min(w, h) * 0.72);
+  return {
+    x: Math.round((w - side) / 2),
+    y: Math.round((h - side) / 2),
+    width: side,
+    height: side,
+  };
+}
+
+async function applyIdealCameraConstraints(video: HTMLVideoElement) {
+  const stream = video.srcObject;
+  if (!stream || !(stream instanceof MediaStream)) return;
+  const track = stream.getVideoTracks()[0];
+  if (!track) return;
+  try {
+    await track.applyConstraints({
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      facingMode: { ideal: "environment" },
+    });
+  } catch {
+    /* device may ignore ideal constraints */
+  }
+}
 
 function CameraPermissionSealsAlert() {
   return (
@@ -61,18 +119,14 @@ function cameraDeniedMessage(err: unknown): string | "permission_blocked" {
   return "The scanner lens could not be activated.\n\nCQ Scanner could not open the camera on this device — check permissions and try again.";
 }
 
-function friendlyBannerForParseCode(code: ParseQrActivityErrorCode, message: string): string {
-  if (code === "invalid_json")
-    return "That code isn’t a CampusQuest QR code — CQ Scanner reads only official CampusQuest QR codes.";
-  return message;
-}
-
 export function QRScannerModal({
   open,
   onClose,
   onPayloadValidated,
   onSecureCodeScanned,
+  onXpHandoff,
   pendingScanCode = null,
+  prefillErrorBanner = null,
 }: QRScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   type ScannerApi = {
@@ -82,34 +136,79 @@ export function QRScannerModal({
     pause: (stopStreamImmediately?: boolean) => Promise<boolean>;
   };
   const scannerRef = useRef<ScannerApi | null>(null);
-  const lastHitRef = useRef<string>("");
-  const reopenClearTimer = useRef<number | null>(null);
-  const detectionTimer = useRef<number | null>(null);
-  const successCloseTimer = useRef<number | null>(null);
+  const isProcessingScanRef = useRef(false);
+  const scannerPhaseRef = useRef<ScannerPhase>("idle");
+  const camStateRef = useRef<CamState>("idle");
+  const lastProcessedCodeRef = useRef<string>("");
+  const lastInvalidAtRef = useRef(0);
+  const proximityTimerRef = useRef<number | null>(null);
+  const scanHintTimerRef = useRef<number | null>(null);
+  const processingTimeoutRef = useRef<number | null>(null);
+  const handleDecodedRef = useRef<(text: string) => void>(() => {});
 
   const [mounted, setMounted] = useState(false);
   const [camState, setCamState] = useState<CamState>("idle");
+  const [scannerPhase, setScannerPhase] = useState<ScannerPhase>("idle");
+  const [scanSearchHint, setScanSearchHint] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [cameraPermissionBlocked, setCameraPermissionBlocked] = useState(false);
   const [sigilNear, setSigilNear] = useState(false);
   const [absorbing, setAbsorbing] = useState(false);
   const [successBlessing, setSuccessBlessing] = useState<SigilScannerReward | null>(null);
   const [screenJolt, setScreenJolt] = useState(false);
+  const [scanRewardState, setScanRewardState] = useState<ScanRewardState>("idle");
+
+  const scanRewardStateRef = useRef<ScanRewardState>("idle");
+  const scanRewardFlowRef = useRef(false);
 
   const reduceMotion = useReducedMotion();
+  const [iosScanner, setIosScanner] = useState(false);
 
-  useEffect(() => setMounted(true), []);
+  camStateRef.current = camState;
+  scannerPhaseRef.current = scannerPhase;
+  scanRewardStateRef.current = scanRewardState;
+
+  useEffect(() => {
+    setMounted(true);
+    setIosScanner(isIosLike());
+  }, []);
+
+  const clearScanHintTimer = useCallback(() => {
+    if (scanHintTimerRef.current != null) {
+      window.clearTimeout(scanHintTimerRef.current);
+      scanHintTimerRef.current = null;
+    }
+  }, []);
+
+  const clearProcessingTimeout = useCallback(() => {
+    if (processingTimeoutRef.current != null) {
+      window.clearTimeout(processingTimeoutRef.current);
+      processingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const startScanHintTimer = useCallback(() => {
+    clearScanHintTimer();
+    setScanSearchHint(false);
+    scanHintTimerRef.current = window.setTimeout(() => {
+      if (scannerPhaseRef.current === "scanning") {
+        setScanSearchHint(true);
+      }
+    }, SCAN_SEARCH_HINT_MS);
+  }, [clearScanHintTimer]);
 
   const pulseSigilProximity = useCallback(() => {
     setSigilNear(true);
-    if (detectionTimer.current != null) window.clearTimeout(detectionTimer.current);
-    detectionTimer.current = window.setTimeout(() => {
+    if (proximityTimerRef.current != null) window.clearTimeout(proximityTimerRef.current);
+    proximityTimerRef.current = window.setTimeout(() => {
       setSigilNear(false);
-      detectionTimer.current = null;
-    }, 340);
+      proximityTimerRef.current = null;
+    }, 280);
   }, []);
 
   const stopScanner = useCallback(() => {
+    clearScanHintTimer();
+    clearProcessingTimeout();
     const sc = scannerRef.current;
     scannerRef.current = null;
     if (!sc) return;
@@ -123,100 +222,330 @@ export function QRScannerModal({
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [clearProcessingTimeout, clearScanHintTimer]);
 
-  const celebrateScanSuccess = useCallback(
-    (verdict: Extract<QrScannerValidationResult, { ok: true }>) => {
+  const resumeScanning = useCallback(async () => {
+    const sc = scannerRef.current;
+    if (!sc || camStateRef.current !== "ready") return;
+    isProcessingScanRef.current = false;
+    lastProcessedCodeRef.current = "";
+    setScannerPhase("scanning");
+    setScanSearchHint(false);
+    startScanHintTimer();
+    try {
+      await sc.start();
+    } catch {
+      /* keep scanning phase */
+    }
+  }, [startScanHintTimer]);
+
+  const resetForAnotherScan = useCallback(() => {
+    isProcessingScanRef.current = false;
+    scanRewardFlowRef.current = false;
+    setScanRewardState("idle");
+    lastProcessedCodeRef.current = "";
+    setBanner(null);
+    setSuccessBlessing(null);
+    setAbsorbing(false);
+    setScreenJolt(false);
+    void resumeScanning();
+  }, [resumeScanning]);
+
+  const showDelayedError = useCallback(async (message: string) => {
+    clearProcessingTimeout();
+    await sleep(ERROR_REVEAL_DELAY_MS);
+    setBanner(message);
+    setScannerPhase("error");
+    setScanSearchHint(false);
+    clearScanHintTimer();
+    isProcessingScanRef.current = false;
+    try {
+      await scannerRef.current?.pause?.(false);
+    } catch {
+      /* ignore */
+    }
+    await sleep(ERROR_MIN_DISPLAY_MS);
+  }, [clearProcessingTimeout, clearScanHintTimer]);
+
+  const beginProcessing = useCallback(() => {
+    isProcessingScanRef.current = true;
+    setScannerPhase("processing");
+    setScanSearchHint(false);
+    clearScanHintTimer();
+    void scannerRef.current?.pause?.(false);
+  }, [clearScanHintTimer]);
+
+  const playXpRewardCinematic = useCallback(
+    async (verdict: ScanSuccessVerdict & { xpSession: ActivityXPGainSession }) => {
+      clearProcessingTimeout();
+      isProcessingScanRef.current = true;
+      scanRewardFlowRef.current = true;
+      setScanSearchHint(false);
+      clearScanHintTimer();
       playSigilScanLock();
       feedbackSigilAbsorption();
-      void scannerRef.current?.pause?.();
       setAbsorbing(true);
       if (!reduceMotion) {
         setScreenJolt(true);
         window.setTimeout(() => setScreenJolt(false), 420);
       }
-      setSuccessBlessing(verdict.reward);
-      if (successCloseTimer.current) window.clearTimeout(successCloseTimer.current);
-      successCloseTimer.current = window.setTimeout(() => {
-        successCloseTimer.current = null;
-        setSuccessBlessing(null);
-        setAbsorbing(false);
-        lastHitRef.current = "";
-        onClose();
-      }, 2800);
+      setScannerPhase("success");
+      setScanRewardState("validated");
+      try {
+        await scannerRef.current?.pause?.(false);
+      } catch {
+        /* ignore */
+      }
+      await sleep(SCAN_VALIDATED_MS);
+      setScanRewardState("transitioningToXP");
+      await sleep(SCAN_TRANSITION_TO_XP_MS);
+      setScanRewardState("xpScreenVisible");
+      await sleep(SCAN_XP_HANDOFF_MS);
+      onXpHandoff?.(verdict.xpSession);
+      setScanRewardState("complete");
+      setAbsorbing(false);
+      isProcessingScanRef.current = true;
     },
-    [onClose, reduceMotion],
+    [clearProcessingTimeout, clearScanHintTimer, onXpHandoff, reduceMotion],
+  );
+
+  const celebrateScanSuccess = useCallback(
+    (verdict: ScanSuccessVerdict) => {
+      clearProcessingTimeout();
+      playSigilScanLock();
+      feedbackSigilAbsorption();
+      setAbsorbing(true);
+      if (!reduceMotion) {
+        setScreenJolt(true);
+        window.setTimeout(() => setScreenJolt(false), 420);
+      }
+      window.setTimeout(() => setAbsorbing(false), 900);
+      if (!verdict.suppressVictoryOverlay) {
+        setSuccessBlessing(verdict.reward);
+      } else {
+        setSuccessBlessing(null);
+      }
+      setScannerPhase("success");
+      isProcessingScanRef.current = true;
+    },
+    [clearProcessingTimeout, reduceMotion],
+  );
+
+  const processSecureCode = useCallback(
+    async (secureCode: string) => {
+      if (!onSecureCodeScanned) return;
+      lastProcessedCodeRef.current = secureCode;
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        processingTimeoutRef.current = window.setTimeout(() => {
+          reject(new Error("PROCESSING_TIMEOUT"));
+        }, PROCESSING_TIMEOUT_MS);
+      });
+
+      try {
+        const verdict = await Promise.race([onSecureCodeScanned(secureCode), timeoutPromise]);
+        if (!verdict.ok) {
+          logQrScanDebug("validation_failed", {
+            path: "secure",
+            userBanner: verdict.banner,
+            failureReason: "validation_rejected",
+          });
+          await showDelayedError(verdict.banner);
+          lastProcessedCodeRef.current = "";
+          void resumeScanning();
+          return;
+        }
+        if (verdict.xpSession) {
+          await playXpRewardCinematic({ ...verdict, xpSession: verdict.xpSession });
+          return;
+        }
+        celebrateScanSuccess(verdict);
+      } catch (error) {
+        logQrScanDebug("validation_failed", {
+          path: "secure",
+          reason: error instanceof Error ? error.message : "unknown",
+        });
+        await showDelayedError(qrScanBannerFromUnknownError(error));
+        lastProcessedCodeRef.current = "";
+        void resumeScanning();
+      } finally {
+        clearProcessingTimeout();
+      }
+    },
+    [
+      celebrateScanSuccess,
+      clearProcessingTimeout,
+      onSecureCodeScanned,
+      playXpRewardCinematic,
+      resumeScanning,
+      showDelayedError,
+    ],
+  );
+
+  const processLegacyPayload = useCallback(
+    async (payload: CampusQuestQrActivityPayloadParsed) => {
+      beginProcessing();
+      const verdict = onPayloadValidated(payload);
+      if (!verdict.ok) {
+        logQrScanDebug("validation_failed", {
+          path: "legacy",
+          activityId: payload.activityId,
+          userBanner: verdict.banner,
+          failureReason: "validation_rejected",
+        });
+        await showDelayedError(verdict.banner);
+        void resumeScanning();
+        return;
+      }
+      if (verdict.xpSession) {
+        await playXpRewardCinematic({ ...verdict, xpSession: verdict.xpSession });
+        return;
+      }
+      celebrateScanSuccess(verdict);
+    },
+    [
+      beginProcessing,
+      celebrateScanSuccess,
+      clearProcessingTimeout,
+      onPayloadValidated,
+      playXpRewardCinematic,
+      resumeScanning,
+      showDelayedError,
+    ],
   );
 
   const handleDecodedPayload = useCallback(
     (text: string) => {
+      if (scannerPhaseRef.current === "success") return;
+      if (isProcessingScanRef.current) return;
+      if (scanRewardFlowRef.current) return;
+      if (isScanRewardFlowActive(scanRewardStateRef.current)) return;
+
       pulseSigilProximity();
+      logQrScanRawResult(text);
 
-      const trimmed = text.trim();
-      if (!trimmed || trimmed === lastHitRef.current) return;
+      const classification = classifyQrScanText(text);
+      logQrScanDebug("format_detected", {
+        kind: classification.kind,
+        format: classification.kind === "empty" ? "empty" : classification.format,
+      });
 
-      lastHitRef.current = trimmed;
+      if (classification.kind === "empty") return;
 
-      const secureCode = extractCampusQuestQrCode(trimmed);
-      if (secureCode && onSecureCodeScanned) {
+      if (classification.kind === "secure") {
+        logQrScanDebug("secure_extract", {
+          code: classification.code,
+          activityId: classification.code,
+          type: "secure_code",
+        });
+        if (classification.code === lastProcessedCodeRef.current) return;
+        beginProcessing();
+        void processSecureCode(classification.code);
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastInvalidAtRef.current < INVALID_QR_DEBOUNCE_MS) return;
+
+      if (classification.kind === "legacy_parse_error") {
+        logQrScanDebug("legacy_parse", {
+          ok: false,
+          code: classification.code,
+          failureReason: classification.message,
+        });
+        lastInvalidAtRef.current = now;
         void (async () => {
-          const verdict = await onSecureCodeScanned(secureCode);
-          if (!verdict.ok) {
-            setBanner(verdict.banner);
-            if (reopenClearTimer.current) window.clearTimeout(reopenClearTimer.current);
-            reopenClearTimer.current = window.setTimeout(() => {
-              lastHitRef.current = "";
-            }, 2200);
-            return;
-          }
-          celebrateScanSuccess(verdict);
+          await showDelayedError(userMessageForParseError(classification.code, text));
+          void resumeScanning();
         })();
         return;
       }
 
-      if (!isLegacyCampusQuestActivityJson(trimmed)) {
-        setBanner(
-          secureCode
-            ? "This CampusQuest QR must be scanned while signed in — open CQ Scanner from your dashboard."
-            : "That code isn’t a CampusQuest QR code — CQ Scanner reads only official CampusQuest QR codes.",
-        );
-        if (reopenClearTimer.current) window.clearTimeout(reopenClearTimer.current);
-        reopenClearTimer.current = window.setTimeout(() => {
-          lastHitRef.current = "";
-        }, 1700);
+      if (classification.kind === "unrecognized") {
+        logQrScanDebug("validation_failed", {
+          path: "client_format",
+          failureReason: "unrecognized_payload",
+        });
+        lastInvalidAtRef.current = now;
+        void (async () => {
+          await showDelayedError(QR_SCAN_USER_MESSAGES.invalidFormat);
+          void resumeScanning();
+        })();
         return;
       }
 
-      const parsed = parseCampusQuestQrPayload(trimmed);
-      if (!parsed.ok) {
-        setBanner(friendlyBannerForParseCode(parsed.code, parsed.message));
-        if (reopenClearTimer.current) window.clearTimeout(reopenClearTimer.current);
-        reopenClearTimer.current = window.setTimeout(() => {
-          lastHitRef.current = "";
-        }, 1700);
-        return;
-      }
-
-      const verdict = onPayloadValidated(parsed.payload);
-      if (!verdict.ok) {
-        setBanner(verdict.banner);
-        lastHitRef.current = "";
-        return;
-      }
-
-      celebrateScanSuccess(verdict);
+      logQrScanDebug("legacy_parse", {
+        ok: true,
+        activityId: classification.payload.activityId,
+        type: classification.payload.activityId,
+      });
+      beginProcessing();
+      void processLegacyPayload(classification.payload);
     },
-    [celebrateScanSuccess, onPayloadValidated, onSecureCodeScanned, pulseSigilProximity],
+    [
+      beginProcessing,
+      processLegacyPayload,
+      processSecureCode,
+      pulseSigilProximity,
+      resumeScanning,
+      showDelayedError,
+    ],
   );
 
+  handleDecodedRef.current = handleDecodedPayload;
+
+  const pendingScanHandledRef = useRef<string | null>(null);
+  const prefillErrorShownRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!open || !pendingScanCode?.trim() || !onSecureCodeScanned) return;
-    const code = pendingScanCode.trim();
-    const t = window.setTimeout(() => {
-      handleDecodedPayload(code.startsWith("http") ? code : `https://campusquest.local/scan?code=${encodeURIComponent(code)}`);
-    }, 600);
-    return () => window.clearTimeout(t);
-  }, [open, pendingScanCode, onSecureCodeScanned, handleDecodedPayload]);
+    if (!open || !onSecureCodeScanned) return;
+
+    const prefill = prefillErrorBanner?.trim();
+    if (prefill) {
+      if (prefillErrorShownRef.current !== prefill) {
+        prefillErrorShownRef.current = prefill;
+        void (async () => {
+          await showDelayedError(prefill);
+          void resumeScanning();
+        })();
+      }
+      return;
+    }
+    prefillErrorShownRef.current = null;
+
+    if (!pendingScanCode?.trim()) return;
+    const raw = pendingScanCode.trim();
+    if (pendingScanHandledRef.current === raw) return;
+    pendingScanHandledRef.current = raw;
+
+    const normalized = normalizeQrScanInput(raw);
+    logQrScanDebug("format_detected", {
+      path: "pending_scan",
+      rawPreview: raw,
+      format: normalized?.format ?? "unrecognized",
+      extractedCode: normalized?.code ?? null,
+    });
+
+    if (!normalized) {
+      void (async () => {
+        await showDelayedError(QR_SCAN_USER_MESSAGES.invalidFormat);
+        void resumeScanning();
+      })();
+      return;
+    }
+
+    beginProcessing();
+    void processSecureCode(normalized.code);
+  }, [
+    beginProcessing,
+    onSecureCodeScanned,
+    open,
+    pendingScanCode,
+    prefillErrorBanner,
+    processSecureCode,
+    resumeScanning,
+    showDelayedError,
+  ]);
 
   useEffect(() => {
     if (!open) {
@@ -226,22 +555,29 @@ export function QRScannerModal({
       setAbsorbing(false);
       setSuccessBlessing(null);
       setScreenJolt(false);
-      lastHitRef.current = "";
-      if (successCloseTimer.current) {
-        window.clearTimeout(successCloseTimer.current);
-        successCloseTimer.current = null;
-      }
+      setScannerPhase("idle");
+      setScanSearchHint(false);
+      setScanRewardState("idle");
+      scanRewardFlowRef.current = false;
+      isProcessingScanRef.current = false;
+      lastProcessedCodeRef.current = "";
+      pendingScanHandledRef.current = null;
+      clearScanHintTimer();
+      clearProcessingTimeout();
     }
-  }, [open]);
+  }, [open, clearScanHintTimer, clearProcessingTimeout]);
 
   useEffect(() => {
     if (!open || !mounted) return;
     setBanner(null);
     setCameraPermissionBlocked(false);
     setCamState("starting");
-    lastHitRef.current = "";
+    setScannerPhase("idle");
+    setScanSearchHint(false);
+    lastProcessedCodeRef.current = "";
     setSuccessBlessing(null);
     setAbsorbing(false);
+    isProcessingScanRef.current = false;
 
     let cancelled = false;
 
@@ -250,7 +586,6 @@ export function QRScannerModal({
         const mod = await import("qr-scanner");
         const QrScanner = mod.default;
         QrScanner.WORKER_PATH = "/qr-scanner-worker.min.js";
-        await new Promise<number>((r) => window.requestAnimationFrame(() => r(0)));
 
         const video = videoRef.current;
         if (cancelled || !video) return;
@@ -267,19 +602,25 @@ export function QRScannerModal({
           const scanner = new QrScanner(
             video,
             (result) => {
-              handleDecodedPayload(result.data);
+              handleDecodedRef.current(result.data);
             },
             {
               preferredCamera: "environment",
-              maxScansPerSecond: 4,
+              maxScansPerSecond: MAX_SCANS_PER_SECOND,
               highlightScanRegion: false,
-              highlightCodeOutline: true,
+              highlightCodeOutline: false,
+              calculateScanRegion: calculateCenterScanRegion,
               returnDetailedScanResult: true as const,
             },
           ) as ScannerApi;
           scannerRef.current = scanner;
           await scanner.start();
-          if (!cancelled) setCamState("ready");
+          await applyIdealCameraConstraints(video);
+          if (!cancelled) {
+            setCamState("ready");
+            setScannerPhase("scanning");
+            startScanHintTimer();
+          }
         } catch (e) {
           if (!cancelled) {
             setCamState("denied");
@@ -305,31 +646,39 @@ export function QRScannerModal({
     return () => {
       cancelled = true;
       stopScanner();
-      if (reopenClearTimer.current) {
-        window.clearTimeout(reopenClearTimer.current);
-        reopenClearTimer.current = null;
-      }
-      if (detectionTimer.current) {
-        window.clearTimeout(detectionTimer.current);
-        detectionTimer.current = null;
+      if (proximityTimerRef.current) {
+        window.clearTimeout(proximityTimerRef.current);
+        proximityTimerRef.current = null;
       }
     };
-  }, [handleDecodedPayload, mounted, open, stopScanner]);
-
-  useEffect(() => {
-    return () => {
-      if (successCloseTimer.current) window.clearTimeout(successCloseTimer.current);
-    };
-  }, []);
+  }, [mounted, open, startScanHintTimer, stopScanner]);
 
   if (!mounted) return null;
+
+  const phaseLabel =
+    scannerPhase === "processing"
+      ? "Verifying QR…"
+      : scannerPhase === "success"
+        ? "Check-in complete"
+        : scannerPhase === "error"
+          ? "Scan again when ready"
+          : camState === "ready" && scannerPhase === "scanning"
+            ? "Scanning for CampusQuest QR…"
+            : camState === "starting"
+              ? "Opening lens…"
+              : null;
+
+  const searchHelperText =
+    scanSearchHint && scannerPhase === "scanning"
+      ? "Still searching… center the QR code in the frame."
+      : null;
 
   return createPortal(
     <AnimatePresence>
       {open ? (
         <motion.div
           key="cq-scanner-portal"
-          className="fixed inset-0 z-[140] flex flex-col overflow-hidden bg-[#010810]/95 backdrop-blur-xl"
+          className={`cq-scanner-portal fixed inset-0 z-[140] flex min-h-[100dvh] flex-col overflow-hidden bg-[#010810]/95 ${iosScanner ? "cq-scanner-portal--ios" : "backdrop-blur-xl"}`}
           role="dialog"
           aria-modal="true"
           aria-labelledby="cq-cq-scanner-title"
@@ -366,44 +715,105 @@ export function QRScannerModal({
 
           <CQScannerScreen
             onClose={() => {
-              if (successCloseTimer.current) {
-                window.clearTimeout(successCloseTimer.current);
-                successCloseTimer.current = null;
-              }
-              lastHitRef.current = "";
+              if (scanRewardFlowRef.current) return;
+              lastProcessedCodeRef.current = "";
               setSuccessBlessing(null);
               setAbsorbing(false);
+              setScanRewardState("idle");
+              isProcessingScanRef.current = false;
               onClose();
             }}
             frameSlot={
-              <MagicalScannerFrame
-                detecting={sigilNear}
-                absorbing={absorbing}
-                camBusy={camState === "starting"}
-                cameraActive={camState === "ready"}
-                busyOverlay={
-                  camState === "starting" ? (
-                    <div className="flex h-full flex-col items-center justify-center gap-2 bg-[#020b1f]/92 text-[13px] text-cyan-50/92">
-                      <span className="cq-qr-spinner h-11 w-11 rounded-full border-2 border-cyan-900/55 border-t-cyan-200" aria-hidden />
-                      <span>CQ Scanner awakening the lens…</span>
-                    </div>
-                  ) : undefined
-                }
-              >
-                <video ref={videoRef} className="h-full w-full object-cover opacity-[0.97]" muted playsInline />
-              </MagicalScannerFrame>
+              <div className="relative w-full">
+                <MagicalScannerFrame
+                  detecting={
+                    sigilNear ||
+                    scannerPhase === "processing" ||
+                    scanRewardState === "validated"
+                  }
+                  absorbing={absorbing}
+                  camBusy={camState === "starting"}
+                  cameraActive={camState === "ready"}
+                  busyOverlay={
+                    camState === "starting" ? (
+                      <div className="flex h-full flex-col items-center justify-center gap-2 bg-[#020b1f]/40 text-[13px] text-cyan-50/90 backdrop-blur-[1px]">
+                        <span
+                          className="cq-qr-spinner h-9 w-9 rounded-full border-2 border-cyan-900/55 border-t-cyan-200"
+                          aria-hidden
+                        />
+                        <span>Opening camera…</span>
+                      </div>
+                    ) : undefined
+                  }
+                >
+                  <ScannerCameraFeed ref={videoRef} />
+                </MagicalScannerFrame>
+                <ScanValidatedCinematic
+                  visible={scanRewardState === "validated" || scanRewardState === "transitioningToXP"}
+                  phase={scanRewardState === "transitioningToXP" ? "transitioningToXP" : "validated"}
+                />
+              </div>
             }
             bannerSlot={
-              cameraPermissionBlocked && !successBlessing ? (
-                <CameraPermissionSealsAlert />
-              ) : (banner || camState === "denied") && !successBlessing ? (
-                <div
-                  role="alert"
-                  className="w-full max-w-md whitespace-pre-line rounded-2xl border border-rose-400/40 bg-[#1f050d]/80 px-4 py-3 text-sm leading-relaxed text-rose-50/96 shadow-[0_0_36px_-8px_rgba(244,63,94,0.45)] backdrop-blur-sm"
-                >
-                  {banner ?? "CQ Scanner halted — the lens may still be sealed in system settings."}
-                </div>
-              ) : null
+              <>
+                {phaseLabel ? (
+                  <p className="w-full max-w-md text-center text-[11px] font-mono uppercase tracking-[0.2em] text-cyan-200/70">
+                    {phaseLabel}
+                  </p>
+                ) : null}
+                {searchHelperText ? (
+                  <p className="w-full max-w-md text-center text-sm leading-relaxed text-cyan-100/85">
+                    {searchHelperText}
+                  </p>
+                ) : null}
+                {scanSearchHint && scannerPhase === "scanning" ? (
+                  <p className="w-full max-w-md text-center text-xs text-cyan-200/65">
+                    Move closer and center the QR code.
+                  </p>
+                ) : null}
+                {cameraPermissionBlocked && scannerPhase !== "success" ? (
+                  <CameraPermissionSealsAlert />
+                ) : banner && scannerPhase === "error" ? (
+                  <div
+                    role="alert"
+                    className="pointer-events-auto w-full max-w-md space-y-3 rounded-2xl border border-rose-400/40 bg-[#1f050d]/75 px-4 py-3 text-sm leading-relaxed text-rose-50/96 shadow-[0_0_36px_-8px_rgba(244,63,94,0.45)] backdrop-blur-sm"
+                  >
+                    <p>{banner}</p>
+                    <button
+                      type="button"
+                      onClick={resetForAnotherScan}
+                      className="w-full rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-4 py-2.5 text-sm font-semibold text-cyan-50 hover:bg-cyan-500/25"
+                    >
+                      Scan Again
+                    </button>
+                  </div>
+                ) : (banner || camState === "denied") && scannerPhase !== "success" ? (
+                  <div
+                    role="alert"
+                    className="w-full max-w-md whitespace-pre-line rounded-2xl border border-rose-400/40 bg-[#1f050d]/80 px-4 py-3 text-sm leading-relaxed text-rose-50/96 shadow-[0_0_36px_-8px_rgba(244,63,94,0.45)] backdrop-blur-sm"
+                  >
+                    {banner ?? "CQ Scanner halted — the lens may still be sealed in system settings."}
+                  </div>
+                ) : null}
+                {scannerPhase === "success" && scanRewardState === "complete" && !successBlessing ? (
+                  <div className="pointer-events-auto flex w-full max-w-md flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="flex-1 rounded-xl border border-uri-keaney/45 bg-uri-keaney/20 px-4 py-2.5 text-sm font-semibold text-cyan-50 hover:bg-uri-keaney/30"
+                    >
+                      Back to dashboard
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetForAnotherScan}
+                      className="flex-1 rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-4 py-2.5 text-sm font-semibold text-cyan-50 hover:bg-cyan-500/25"
+                    >
+                      Scan Again
+                    </button>
+                  </div>
+                ) : null}
+              </>
             }
           />
 

@@ -78,7 +78,7 @@ export function CQScannerScreen({ onClose, frameSlot, bannerSlot, loreFootnote }
 
       <div className="relative flex min-h-0 flex-1 flex-col items-center gap-5 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
         <motion.div
-          className="relative w-full max-w-sm shrink-0"
+          className="relative w-full max-w-[min(100%,420px)] shrink-0"
           initial={reduce ? false : { opacity: 0, scale: 0.94, y: 16 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ delay: 0.14, type: "spring", stiffness: 260, damping: 26 }}

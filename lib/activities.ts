@@ -4,7 +4,7 @@ import { STAT_KEYS } from "./types";
 // Real-life actions: ordered by stat (strength → stamina → knowledge → social → focus), then by statGain desc
 const ACTIVITIES_RAW: ActivityDefinition[] = [
   // —— Strength 💪 ——
-  { id: "gym", label: "Hit the gym", description: "Workout, lift, or cardio", stat: "strength", baseXp: 25, xp: 25, statGain: 2, icon: "🏋️" },
+  { id: "gym", label: "Hit the gym", description: "Workout, lift, or cardio", stat: "strength", baseXp: 80, xp: 80, statGain: 2, icon: "🏋️" },
   { id: "weights", label: "Weights / lifting", description: "Free weights or machines", stat: "strength", baseXp: 28, xp: 28, statGain: 3, icon: "🏋️‍♂️" },
   { id: "bodyweight", label: "Push-ups or bodyweight", description: "Calisthenics at home or outside", stat: "strength", baseXp: 15, xp: 15, statGain: 2, icon: "💪" },
   { id: "sports-practice", label: "Sports practice", description: "Basketball, soccer, etc.", stat: "strength", baseXp: 22, xp: 22, statGain: 2, icon: "⚽" },

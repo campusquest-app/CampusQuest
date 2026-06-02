@@ -516,7 +516,8 @@ export const postQuadPostSchema = z.object({
 });
 
 export const campusQrScanSchema = z.object({
-  code: z.string().trim().min(4).max(128),
+  /** Short codes like GYM (3 chars) must be accepted. */
+  code: z.string().trim().min(1).max(128),
   deviceHint: z.string().trim().max(120).optional(),
 });
 

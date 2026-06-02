@@ -163,7 +163,7 @@ values
     'Permanent gym location check-in for milestone progress.',
     'permanent_location',
     'Gym',
-    10,
+    80,
     true,
     true,
     24,

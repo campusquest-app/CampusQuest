@@ -15,7 +15,7 @@ DATA_FILE = os.path.join(os.path.dirname(_SCRIPT_DIR), "campusquest_data.json")
 # Config
 # -----------------------------
 BASE_XP = {
-    "gym": 25,
+    "gym": 80,
     "study": 20,
     "focus": 15,
     "social": 10,

@@ -13,7 +13,8 @@
     "icons": "node scripts/generate-pwa-icons.cjs",
     "logo:transparent": "node scripts/make-logo-transparent.cjs",
     "ram:transparent": "node scripts/make-ram-transparent.cjs",
-    "db:apply-qr": "node scripts/apply-qr-tables-bootstrap.mjs"
+    "db:apply-qr": "node scripts/apply-qr-tables-bootstrap.mjs",
+    "verify:qr": "tsx scripts/verify-qr-reward.ts"
   },
   "dependencies": {
     "@dicebear/collection": "^9.4.2",

@@ -34,7 +34,11 @@ export function ScanSuccessOverlay({ reward }: ScanSuccessOverlayProps) {
           transition={{ duration: 0.35 }}
           aria-hidden
         >
-          <motion.div className="absolute inset-0 bg-[#020817]/88 backdrop-blur-md" initial={{ opacity: 0 }} animate={{ opacity: 1 }} />
+          <motion.div
+            className="absolute inset-0 bg-[#020817]/55 backdrop-blur-[2px]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          />
 
           <motion.div
             className="absolute h-[min(120vw,620px)] w-[min(120vw,620px)] rounded-full bg-[radial-gradient(circle_at_50%_45%,rgba(56,189,248,0.45),rgba(8,47,73,0.12)_38%,transparent_68%)] blur-[2px] mix-blend-screen"
@@ -83,11 +87,8 @@ export function ScanSuccessOverlay({ reward }: ScanSuccessOverlayProps) {
               </div>
             )}
             <div className="absolute inset-x-0 bottom-0 flex justify-center pt-3">
-              <p className="max-w-[90%] text-center font-display text-sm font-bold uppercase tracking-[0.28em] text-cyan-100/90">
-                Arcane verification complete.
-              </p>
-              <p className="mt-2 max-w-[90%] text-center text-[11px] font-semibold leading-snug text-cyan-200/85">
-                {reward.sigilName}
+              <p className="max-w-[90%] text-center font-display text-base font-bold text-white">
+                {reward.sigilName} logged!
               </p>
             </div>
           </motion.div>

@@ -75,6 +75,11 @@ import { LOGOUT_BLOCKED_SAVE_MESSAGE, isServerBackedUserId, resetUserSaveSyncAft
 import { SchoolVerificationScreen } from "./SchoolVerificationScreen";
 import { WelcomeBackCommunityReminder, communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
 import { DashboardBootstrapShellSkeleton } from "./DashboardBootstrapShellSkeleton";
+import { buildQrXpSession } from "@/lib/client/buildQrXpSession";
+import { normalizeQrScanInput } from "@/lib/client/normalizeQrScanInput";
+import { logQrScanDebug } from "@/lib/client/qrScanDebug";
+import { QR_SCAN_USER_MESSAGES } from "@/lib/client/qrScanUserMessages";
+import { redeemCampusQuestQr } from "@/lib/client/redeemCampusQuestQr";
 import { LevelUpOverlay } from "@/components/xp/LevelUpOverlay";
 import { XPGainBanner } from "@/components/xp/XPGainBanner";
 import type { ActivityXPGainSession } from "@/components/xp/xpGainTypes";
@@ -90,6 +95,10 @@ const QRScannerModalLazy = dynamic(
 type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations";
 
 const TAB_QUERY_VALUES: Tab[] = ["quad", "friends", "battle", "leaderboards", "character", "inbox", "events", "organizations"];
+
+function createXpGainSessionKey(prefix = "xp"): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 type PilotCampusState =
   | { status: "loading" }
@@ -138,6 +147,7 @@ export function Dashboard() {
     xp: number;
     stats: Partial<Record<keyof Character["stats"], number>>;
     title: string;
+    activityLabel?: string;
     lastBossDrop?: { bossName: string; loot?: { icon: string; label: string; rarity: string; equipEffect: string } };
     modifierLines?: { label: string; emoji?: string }[];
     primaryStat?: StatKey;
@@ -174,6 +184,8 @@ export function Dashboard() {
   /** Mount scanner module after first open so AnimatePresence can exit; chunk still loads on first tap only. */
   const [qrScannerEverOpened, setQrScannerEverOpened] = useState(false);
   const [pendingScanCode, setPendingScanCode] = useState<string | null>(null);
+  const [qrDeepLinkError, setQrDeepLinkError] = useState<string | null>(null);
+  const deepLinkRedeemRef = useRef<string | null>(null);
   const streakHydrationTimerRef = useRef<number | null>(null);
   const prevTotalXpRef = useRef<number | null>(null);
   /** Last `/api/me/school-verification` HTTP status for this fetch attempt (dev logging only). */
@@ -187,14 +199,6 @@ export function Dashboard() {
       setTab(t as Tab);
     }
   }, [searchParams]);
-
-  useEffect(() => {
-    const deepLinkCode = searchParams.get("scan")?.trim();
-    if (!deepLinkCode || !character || bootstrapStatus !== "authenticated") return;
-    setPendingScanCode(deepLinkCode);
-    setQrScannerEverOpened(true);
-    setQrScannerOpen(true);
-  }, [searchParams, character, bootstrapStatus]);
 
   const XP300_POPUP_KEY = "campusquest_300xp_celebrated";
 
@@ -306,18 +310,174 @@ export function Dashboard() {
     }, delayMs);
   }, []);
 
-  const finishXpGainOverlay = useCallback((finished: ActivityXPGainSession) => {
-    const ms = finished.modifierLines && finished.modifierLines.length > 2 ? 5200 : 3800;
-    setGainToast({
-      xp: finished.xpGained,
-      stats: finished.stats,
-      title: finished.title,
-      modifierLines: finished.modifierLines,
-      primaryStat: finished.primaryStat,
+  const refreshAuthoritativeProfileInBackground = useCallback(() => {
+    invalidateMeSessionCache();
+    void fetchMeProfileAndStatsDeduped().then((snap) => {
+      if (snap?.profile && snap?.stats) {
+        const merged = buildLocalCharacterFromServer(snap.profile, snap.stats);
+        replaceLocalCharacter(merged, { skipRemoteSync: true });
+        setCharacter(merged);
+      }
     });
-    window.setTimeout(() => setGainToast(null), ms);
-    setXpGainSession(null);
   }, []);
+
+  const navigateToQuad = useCallback(() => {
+    setTab("quad");
+    setQrScannerOpen(false);
+    setPendingScanCode(null);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "quad");
+      url.searchParams.delete("scan");
+      const qs = url.searchParams.toString();
+      router.replace(qs ? `${url.pathname}?${qs}` : url.pathname);
+    }
+  }, [router]);
+
+  const handleQrXpHandoff = useCallback((session: ActivityXPGainSession) => {
+    playXpDing();
+    setXpGainSession(session);
+    setQrDeepLinkError(null);
+    window.setTimeout(() => {
+      setQrScannerOpen(false);
+      setPendingScanCode(null);
+    }, 180);
+  }, []);
+
+  const processQrRedeemVerdict = useCallback(
+    (verdict: Awaited<ReturnType<typeof redeemCampusQuestQr>>, source: "deep_link" | "scanner") => {
+      if (verdict.ok) {
+        setQrDeepLinkError(null);
+        if (verdict.xpSession) {
+          handleQrXpHandoff(verdict.xpSession);
+          return;
+        }
+        if (source === "scanner") return;
+        setGainToast({
+          xp: verdict.reward.xp,
+          stats: {},
+          title: `${verdict.reward.sigilName} logged!`,
+          activityLabel: verdict.reward.sigilName,
+        });
+        navigateToQuad();
+        return;
+      }
+      setQrDeepLinkError(verdict.banner);
+      if (source === "deep_link") {
+        setQrScannerEverOpened(true);
+        setQrScannerOpen(true);
+      }
+    },
+    [handleQrXpHandoff, navigateToQuad],
+  );
+
+  const handleSecureQrCode = useCallback(
+    async (code: string) => {
+      if (!character) {
+        return { ok: false as const, banner: "Create your CampusQuest profile before opening CQ Scanner." };
+      }
+      const verdict = await redeemCampusQuestQr({
+        code,
+        character,
+        getCharacter,
+        replaceLocalCharacter,
+      });
+      if (verdict.ok) {
+        setCharacter(getCharacter());
+        refreshAuthoritativeProfileInBackground();
+        scheduleStreakHydrationFromBackend();
+      }
+      return verdict;
+    },
+    [character, refreshAuthoritativeProfileInBackground, scheduleStreakHydrationFromBackend],
+  );
+
+  useEffect(() => {
+    const deepLinkCode = searchParams.get("scan")?.trim();
+    if (!deepLinkCode) {
+      deepLinkRedeemRef.current = null;
+      return;
+    }
+    if (!character || bootstrapStatus !== "authenticated") return;
+    if (deepLinkRedeemRef.current === deepLinkCode) return;
+    deepLinkRedeemRef.current = deepLinkCode;
+
+    const normalized = normalizeQrScanInput(deepLinkCode);
+    logQrScanDebug("format_detected", {
+      path: "deep_link",
+      rawPreview: deepLinkCode,
+      format: normalized?.format ?? "unrecognized",
+      extractedCode: normalized?.code ?? null,
+      activityId: normalized?.code ?? null,
+    });
+
+    if (!normalized) {
+      setQrDeepLinkError(QR_SCAN_USER_MESSAGES.invalidFormat);
+      setQrScannerEverOpened(true);
+      setQrScannerOpen(true);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const verdict = await redeemCampusQuestQr({
+        code: normalized.code,
+        character,
+        getCharacter,
+        replaceLocalCharacter,
+      });
+      if (cancelled) return;
+      if (verdict.ok) setCharacter(getCharacter());
+      processQrRedeemVerdict(verdict, "deep_link");
+      if (verdict.ok) {
+        refreshAuthoritativeProfileInBackground();
+        scheduleStreakHydrationFromBackend();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    searchParams,
+    character,
+    bootstrapStatus,
+    processQrRedeemVerdict,
+    refreshAuthoritativeProfileInBackground,
+    scheduleStreakHydrationFromBackend,
+  ]);
+
+  const finishXpGainOverlay = useCallback(
+    (finished: ActivityXPGainSession) => {
+      const ms = finished.modifierLines && finished.modifierLines.length > 2 ? 5200 : 3800;
+      setXpGainSession(null);
+      if (finished.afterQrScan) {
+        setGainToast({
+          xp: finished.xpGained,
+          stats: finished.stats,
+          title: finished.title,
+          activityLabel: finished.activityLabel,
+          modifierLines: finished.modifierLines,
+          primaryStat: finished.primaryStat,
+        });
+        navigateToQuad();
+        refresh();
+        refreshAuthoritativeProfileInBackground();
+        window.setTimeout(() => setGainToast(null), ms);
+        return;
+      }
+      setGainToast({
+        xp: finished.xpGained,
+        stats: finished.stats,
+        title: finished.title,
+        activityLabel: finished.activityLabel,
+        modifierLines: finished.modifierLines,
+        primaryStat: finished.primaryStat,
+      });
+      window.setTimeout(() => setGainToast(null), ms);
+    },
+    [navigateToQuad, refresh, refreshAuthoritativeProfileInBackground],
+  );
 
   const handleLogout = useCallback(async () => {
     const token = getAccessToken();
@@ -971,7 +1131,13 @@ export function Dashboard() {
   function presentLogResult(
     before: Character,
     result: LogActivityResult,
-    opts: { title: string; primaryStat?: StatKey },
+    opts: {
+      title: string;
+      primaryStat?: StatKey;
+      activityLabel?: string;
+      activityQuestType?: string;
+      afterQrScan?: boolean;
+    },
   ) {
     const updated = result.character;
     setCharacter(updated);
@@ -1012,6 +1178,7 @@ export function Dashboard() {
       });
     } else {
       setXpGainSession({
+        sessionKey: createXpGainSessionKey(opts.afterQrScan ? "xp-qr" : "xp"),
         beforeTotalXP: before.totalXP,
         afterTotalXP: updated.totalXP,
         xpGained: xp,
@@ -1020,6 +1187,9 @@ export function Dashboard() {
         modifierLines: modLines,
         primaryStat: opts.primaryStat,
         leveledUp: Boolean(result.leveledUp),
+        activityLabel: opts.activityLabel,
+        activityQuestType: opts.activityQuestType,
+        afterQrScan: opts.afterQrScan,
       });
     }
     if (result.leveledUp && result.lastBossDrop) {
@@ -1050,115 +1220,14 @@ export function Dashboard() {
     if (result) {
       const def = getActivityById(activityId);
       presentLogResult(before, result, {
-        title: def ? `${def.icon} ${def.label}` : "Activity logged",
+        title: def ? `${def.label} logged!` : "Activity logged",
         primaryStat: def?.stat,
+        activityLabel: def?.label,
       });
       scheduleStreakHydrationFromBackend();
       return result.character;
     }
     return null;
-  }
-
-  async function handleSecureQrCode(code: string) {
-    if (!character) {
-      return { ok: false as const, banner: "Create your CampusQuest profile before opening CQ Scanner." };
-    }
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      return {
-        ok: false as const,
-        banner: "CQ Scanner lost the Quad link — check your connection, then scan the QR code again.",
-      };
-    }
-    const before = character;
-    try {
-      const data = await postAuthed<
-        {
-          scan: {
-            title: string;
-            xpAwarded: number;
-            bypassedLimits?: boolean;
-            activityId?: string | null;
-            activityLabel?: string | null;
-            statBoost?: { stat: string; statGain: number } | null;
-          };
-          xpAwarded: number;
-          milestonesUnlocked: string[];
-          leveledUp: boolean;
-          level: number;
-        },
-        { code: string; deviceHint?: string }
-      >("/api/qr/scan", {
-        code,
-        deviceHint:
-          typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 100) : undefined,
-      });
-
-      invalidateMeSessionCache();
-      const snap = await fetchMeProfileAndStatsDeduped();
-      if (snap?.profile && snap?.stats) {
-        const merged = buildLocalCharacterFromServer(snap.profile, snap.stats);
-        replaceLocalCharacter(merged, { skipRemoteSync: true });
-        setCharacter(merged);
-      }
-      const updated = getCharacter() ?? before;
-      const xp = Math.max(0, data.xpAwarded);
-      const activityId = data.scan.activityId ?? "gym";
-      const activityLabel = data.scan.activityLabel ?? "Hitting the Gym";
-      const statIncrease = data.scan.statBoost?.statGain ?? 0;
-      const gymDef = getActivityById(activityId);
-
-      const logResult = recordQrLinkedActivityLog(character.id, {
-        activityId,
-        xpEarned: xp,
-        activityLabel,
-      });
-
-      if (logResult) {
-        presentLogResult(
-          before,
-          { ...logResult, character: updated, leveledUp: data.leveledUp },
-          {
-            title: gymDef ? `${gymDef.icon} ${activityLabel} logged!` : `${activityLabel} logged!`,
-            primaryStat: gymDef?.stat ?? "strength",
-          },
-        );
-      } else if (xp > 0) {
-        playXpDing();
-        setXpGainSession({
-          beforeTotalXP: before.totalXP,
-          afterTotalXP: updated.totalXP,
-          xpGained: xp,
-          title: `✦ ${activityLabel} logged!`,
-          stats: updated.stats,
-          modifierLines: [{ label: activityLabel, emoji: "📷" }],
-          leveledUp: data.leveledUp,
-        });
-        if (data.leveledUp) {
-          playLevelUpFanfare();
-          setLevelUpModal(updated.level);
-        }
-      }
-      scheduleStreakHydrationFromBackend();
-
-      return {
-        ok: true as const,
-        reward: {
-          xp,
-          statLabel: STAT_LABELS[gymDef?.stat ?? "strength"],
-          statIncrease,
-          leveledUp: data.leveledUp,
-          levelAfter: data.level,
-          sigilName: activityLabel,
-          milestonesUnlocked: data.milestonesUnlocked,
-        },
-      };
-    } catch (error) {
-      const message =
-        error instanceof ApiRequestError
-          ? error.message
-          : "CQ Scanner could not validate this QR code — try again.";
-      return { ok: false as const, banner: message };
-    }
   }
 
   function handleQrPayloadValidated(payload: CampusQuestQrActivityPayloadParsed) {
@@ -1173,22 +1242,61 @@ export function Dashboard() {
     const before = character;
     const out = logQrActivity(character.id, payload);
     if (out.ok === false) {
-      if (out.reason === "duplicate")
-        return {
-          ok: false as const,
-          banner: "CQ Scanner: this QR code was already claimed — duplicate scans are blocked.",
-        };
-      if (out.reason === "expired")
-        return { ok: false as const, banner: "This CampusQuest QR code has expired — request a refreshed code." };
-      return { ok: false as const, banner: "CQ Scanner could not validate this QR code — try again." };
+      logQrScanDebug("validation_failed", {
+        path: "legacy_local",
+        activityId: payload.activityId,
+        type: payload.activityId,
+        failureReason: out.reason,
+      });
+      if (out.reason === "duplicate") {
+        return { ok: false as const, banner: QR_SCAN_USER_MESSAGES.alreadyScanned };
+      }
+      if (out.reason === "expired") {
+        return { ok: false as const, banner: QR_SCAN_USER_MESSAGES.expired };
+      }
+      return { ok: false as const, banner: QR_SCAN_USER_MESSAGES.activityNotActive };
     }
-    presentLogResult(before, out.result, {
-      title: `✦ CQ · ${payload.activityName}`,
-      primaryStat: payload.stat,
-    });
-    scheduleStreakHydrationFromBackend();
     const updated = out.result.character;
     const xp = Math.max(0, updated.totalXP - before.totalXP);
+    setCharacter(updated);
+    scheduleStreakHydrationFromBackend();
+
+    if (xp > 0) {
+      const stats: Partial<Record<StatKey, number>> = {};
+      if (payload.statIncrease > 0) stats[payload.stat] = payload.statIncrease;
+      return {
+        ok: true as const,
+        suppressVictoryOverlay: true,
+        handoffToXpOverlay: true,
+        xpSession: buildQrXpSession({
+          beforeTotalXP: before.totalXP,
+          afterTotalXP: updated.totalXP,
+          xpGained: xp,
+          title: `${payload.activityName} logged!`,
+          activityLabel: payload.activityName,
+          primaryStat: payload.stat,
+          stats,
+          leveledUp: Boolean(out.result.leveledUp),
+        }),
+        reward: {
+          xp,
+          statLabel: STAT_LABELS[payload.stat],
+          statIncrease: payload.statIncrease,
+          leveledUp: Boolean(out.result.leveledUp),
+          levelAfter: updated.level,
+          sigilName: payload.activityName,
+        },
+      };
+    }
+
+    setQrScannerOpen(false);
+    setPendingScanCode(null);
+    presentLogResult(before, out.result, {
+      title: `${payload.activityName} logged!`,
+      primaryStat: payload.stat,
+      activityLabel: payload.activityName,
+      afterQrScan: false,
+    });
     return {
       ok: true as const,
       reward: {
@@ -1255,7 +1363,11 @@ export function Dashboard() {
             </div>
           ))}
         {xpGainSession && (
-          <LevelUpOverlay session={xpGainSession} onComplete={finishXpGainOverlay} />
+          <LevelUpOverlay
+            session={xpGainSession}
+            minimumDurationMs={xpGainSession.afterQrScan ? 4800 : 5000}
+            onComplete={finishXpGainOverlay}
+          />
         )}
         {gainToast?.lastBossDrop && typeof document !== "undefined" && createPortal(
           bossDefeatPhase === "teaser" ? (
@@ -1432,7 +1544,9 @@ export function Dashboard() {
               <div className="pointer-events-auto w-[min(28rem,calc(100vw-1.5rem))] shrink-0 sm:w-[min(28rem,calc(100vw-2rem))]">
                 <XPGainBanner
                   title={gainToast.title}
-                  xp={gainToast.xp}
+                  xpGained={gainToast.xp}
+                  activityLabel={gainToast.activityLabel}
+                  visible
                   stats={gainToast.stats}
                   primaryStat={gainToast.primaryStat}
                   modifierLines={gainToast.modifierLines}
@@ -1763,7 +1877,9 @@ export function Dashboard() {
           }}
           onPayloadValidated={handleQrPayloadValidated}
           onSecureCodeScanned={handleSecureQrCode}
+          onXpHandoff={handleQrXpHandoff}
           pendingScanCode={pendingScanCode}
+          prefillErrorBanner={qrDeepLinkError}
         />
       ) : null}
 

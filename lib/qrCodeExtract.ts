@@ -1,3 +1,11 @@
+function extractCodeFromScanUrl(url: URL): string | null {
+  const fromQuery = url.searchParams.get("code")?.trim();
+  if (fromQuery && isCampusQuestQrCode(fromQuery)) return normalizeQrCode(fromQuery);
+  const pathMatch = url.pathname.match(/\/scan\/([a-zA-Z0-9_-]+)$/);
+  if (pathMatch?.[1] && isCampusQuestQrCode(pathMatch[1])) return normalizeQrCode(pathMatch[1]);
+  return null;
+}
+
 /** Extract secure CampusQuest QR token from raw scan text or deep-link URL. */
 export function extractCampusQuestQrCode(rawText: string): string | null {
   const trimmed = rawText.trim();
@@ -5,11 +13,10 @@ export function extractCampusQuestQrCode(rawText: string): string | null {
 
   try {
     if (/^https?:\/\//i.test(trimmed)) {
-      const url = new URL(trimmed);
-      const fromQuery = url.searchParams.get("code")?.trim();
-      if (fromQuery && isCampusQuestQrCode(fromQuery)) return normalizeQrCode(fromQuery);
-      const pathMatch = url.pathname.match(/\/scan\/([a-zA-Z0-9_-]+)$/);
-      if (pathMatch?.[1] && isCampusQuestQrCode(pathMatch[1])) return normalizeQrCode(pathMatch[1]);
+      return extractCodeFromScanUrl(new URL(trimmed));
+    }
+    if (/^campusquest:\/\//i.test(trimmed)) {
+      return extractCodeFromScanUrl(new URL(trimmed.replace(/^campusquest:/i, "https://campusquest.local")));
     }
   } catch {
     /* not a URL */
@@ -22,6 +29,7 @@ export function extractCampusQuestQrCode(rawText: string): string | null {
 /** Normalize scanned codes (e.g. GYM, LIBRARY) for database lookup. */
 export function normalizeQrCode(value: string): string {
   const v = value.trim();
+  if (/^cq_[a-zA-Z0-9_-]{4,64}$/i.test(v)) return v.toLowerCase();
   if (/^[A-Z][A-Z0-9_]*$/.test(v)) return v;
   if (/^[A-Z0-9_]{2,32}$/.test(v.toUpperCase())) return v.toUpperCase();
   return v;

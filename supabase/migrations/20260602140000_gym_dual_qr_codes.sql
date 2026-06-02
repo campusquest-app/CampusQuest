@@ -1,9 +1,9 @@
--- URI Gym permanent QR (code: GYM) — database is source of truth for QR content.
+-- URI Gym: support both GYM and legacy URI_GYM_CHECKIN_V1 tokens.
 
-alter table public.qr_codes
-  add column if not exists activity_name text;
+alter table public.qr_codes add column if not exists event_id uuid;
+alter table public.qr_codes add column if not exists quest_id uuid;
+alter table public.qr_codes add column if not exists requires_staff_approval boolean not null default false;
 
--- Official URI Gym check-in (replaces pilot token cq_perm_gym_v1 for new scans)
 insert into public.qr_codes (
   code,
   title,
@@ -18,10 +18,25 @@ insert into public.qr_codes (
   max_scans_per_day,
   expires_at
 )
-values (
+values
+(
   'GYM',
   'URI Gym Check-In',
   'Check in at the URI Gym and build your strength streak.',
+  'permanent_location',
+  'URI Gym',
+  'Hitting the Gym',
+  80,
+  true,
+  true,
+  24,
+  1,
+  null
+),
+(
+  'URI_GYM_CHECKIN_V1',
+  'URI Gym Check-In',
+  'Legacy URI Gym QR code.',
   'permanent_location',
   'URI Gym',
   'Hitting the Gym',
@@ -44,9 +59,3 @@ on conflict (code) do update set
   cooldown_hours = excluded.cooldown_hours,
   max_scans_per_day = excluded.max_scans_per_day,
   expires_at = excluded.expires_at;
-
--- Deactivate legacy pilot gym token so scans resolve to GYM only
-update public.qr_codes
-set is_active = false
-where code = 'cq_perm_gym_v1'
-  and exists (select 1 from public.qr_codes where code = 'GYM');

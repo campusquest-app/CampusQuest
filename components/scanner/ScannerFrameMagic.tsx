@@ -41,7 +41,7 @@ export function ScannerFrameMagic({ detecting = false, cameraActive = false }: S
   }, [reduce, cameraActive]);
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-[6] overflow-hidden rounded-[inherit]" aria-hidden>
+    <div className="pointer-events-none absolute inset-0 z-40 overflow-hidden rounded-[inherit]" aria-hidden>
       {!reduce && (
         <motion.div
           className="cq-sigil-border-shimmer absolute -inset-[1px] rounded-[inherit]"
