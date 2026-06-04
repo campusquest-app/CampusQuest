@@ -14,7 +14,8 @@
     "logo:transparent": "node scripts/make-logo-transparent.cjs",
     "ram:transparent": "node scripts/make-ram-transparent.cjs",
     "db:apply-qr": "node scripts/apply-qr-tables-bootstrap.mjs",
-    "verify:qr": "tsx scripts/verify-qr-reward.ts"
+    "verify:qr": "tsx scripts/verify-qr-reward.ts",
+    "generate:gym-qr": "node scripts/generate-gym-qr.mjs"
   },
   "dependencies": {
     "@dicebear/collection": "^9.4.2",
@@ -40,6 +41,7 @@
     "eslint-config-next": "^14.2.0",
     "pg": "^8.21.0",
     "postcss": "^8.4.0",
+    "jsqr": "^1.4.0",
     "sharp": "^0.34.5",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.0.0",

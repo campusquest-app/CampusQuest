@@ -1,10 +1,6 @@
--- URI Gym QR check-in: increase reward from 10 → 80 XP (GYM tokens only).
+-- Superseded by 20260604120000_gym_qr_standard_gym_10xp.sql (official code GYM, 10 XP).
+-- Kept for migration history; no-op if already applied.
 
 update public.qr_codes
-set xp_reward = 80
-where code in ('GYM', 'URI_GYM_CHECKIN_V1');
-
-update public.qr_codes
-set xp_reward = 80
-where code = 'cq_perm_gym_v1'
-  and coalesce(location_name, '') ilike '%gym%';
+set xp_reward = 10
+where code = 'GYM';

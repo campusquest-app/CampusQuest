@@ -6,6 +6,13 @@ describe("normalizeQrScanInput", () => {
     expect(normalizeQrScanInput("GYM")).toEqual({ code: "GYM", format: "plain_code" });
   });
 
+  it("still accepts legacy URI_GYM_CHECKIN_V1 token", () => {
+    expect(normalizeQrScanInput("URI_GYM_CHECKIN_V1")).toEqual({
+      code: "URI_GYM_CHECKIN_V1",
+      format: "plain_code",
+    });
+  });
+
   it("normalizes minimal activity JSON to GYM", () => {
     expect(
       normalizeQrScanInput(

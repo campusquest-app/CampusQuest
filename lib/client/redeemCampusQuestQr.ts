@@ -5,6 +5,7 @@ import type { ActivityXPGainSession } from "@/components/xp/xpGainTypes";
 import { buildQrXpSession } from "@/lib/client/buildQrXpSession";
 import { ApiRequestError, postAuthed } from "@/lib/client/dashboardApi";
 import { logQrScanDebug } from "@/lib/client/qrScanDebug";
+import { acquireQrRedeemLock, releaseQrRedeemLock } from "@/lib/client/qrScanLock";
 import { normalizeQrCode } from "@/lib/qrCodeExtract";
 import {
   QR_SCAN_USER_MESSAGES,
@@ -49,11 +50,26 @@ export async function redeemCampusQuestQr(
   args: RedeemCampusQuestQrArgs,
 ): Promise<QrScannerValidationResult> {
   const normalizedCode = normalizeQrCode(args.code.trim());
+  const lock = acquireQrRedeemLock(args.character.id, normalizedCode);
+  if (!lock.acquired) {
+    logQrScanDebug("scan_ignored_duplicate", {
+      code: normalizedCode,
+      reason: "redeem_in_flight",
+    });
+    return { ok: false, banner: QR_SCAN_USER_MESSAGES.alreadyScanned };
+  }
+
   const requestPayload = {
     code: normalizedCode,
     deviceHint:
       typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 100) : undefined,
+    idempotencyKey: lock.idempotencyKey,
   };
+
+  logQrScanDebug("redeem_started", {
+    code: normalizedCode,
+    idempotencyKey: lock.idempotencyKey,
+  });
 
   logQrScanDebug("validation_request", {
     payload: requestPayload,
@@ -63,6 +79,7 @@ export async function redeemCampusQuestQr(
   });
 
   if (typeof navigator !== "undefined" && !navigator.onLine) {
+    releaseQrRedeemLock(args.character.id, normalizedCode);
     return { ok: false, banner: QR_SCAN_USER_MESSAGES.offline };
   }
 
@@ -70,6 +87,16 @@ export async function redeemCampusQuestQr(
 
   try {
     const data = await postAuthed<QrScanApiResponse, typeof requestPayload>("/api/qr/scan", requestPayload);
+
+    logQrScanDebug("redeem_completed", {
+      code: normalizedCode,
+      xpAwarded: data.xpAwarded,
+      status: data.scan.status ?? null,
+    });
+    logQrScanDebug("reward_xp", {
+      code: normalizedCode,
+      xpAwarded: data.xpAwarded,
+    });
 
     const xp = Math.max(0, data.xpAwarded);
     const afterTotalXP =
@@ -97,23 +124,12 @@ export async function redeemCampusQuestQr(
       },
     });
 
-    let updated: Character = {
-      ...(args.getCharacter() ?? before),
-      totalXP: afterTotalXP,
-      level: data.level,
-    };
     const stats: Partial<Record<StatKey, number>> = {};
+    const nextStats = { ...before.stats };
     if (statKey && statIncrease > 0) {
-      updated = {
-        ...updated,
-        stats: {
-          ...updated.stats,
-          [statKey]: (before.stats[statKey] ?? 0) + statIncrease,
-        },
-      };
+      nextStats[statKey] = (before.stats[statKey] ?? 0) + statIncrease;
       stats[statKey] = statIncrease;
     }
-    args.replaceLocalCharacter(updated, { skipRemoteSync: true });
 
     recordQrLinkedActivityLog(before.id, {
       activityId,
@@ -126,18 +142,23 @@ export async function redeemCampusQuestQr(
 
     const xpSession: ActivityXPGainSession | undefined =
       xp > 0
-        ? buildQrXpSession({
-            beforeTotalXP: before.totalXP,
-            afterTotalXP,
-            xpGained: xp,
-            title: `${activityLabel} logged!`,
-            activityLabel,
-            activityQuestType: gymQuestType,
-            primaryStat: gymDef?.stat ?? "strength",
-            stats,
-            leveledUp: data.leveledUp,
-            modifierLines: [{ label: activityLabel, emoji: "📷" }],
-          })
+          ? buildQrXpSession({
+              beforeTotalXP: before.totalXP,
+              afterTotalXP,
+              xpGained: xp,
+              title: `${activityLabel} logged!`,
+              activityLabel,
+              activityQuestType: gymQuestType,
+              primaryStat: gymDef?.stat ?? "strength",
+              stats,
+              leveledUp: data.leveledUp,
+              modifierLines: [{ label: activityLabel, emoji: "📷" }],
+              pendingCharacter: {
+                totalXP: afterTotalXP,
+                level: data.level,
+                stats: nextStats,
+              },
+            })
         : undefined;
 
     return {
@@ -156,6 +177,13 @@ export async function redeemCampusQuestQr(
       },
     };
   } catch (error) {
+    const failureCode = error instanceof ApiRequestError ? error.code : "unknown";
+    if (failureCode === "ALREADY_CLAIMED") {
+      logQrScanDebug("duplicate_blocked", {
+        code: normalizedCode,
+        httpStatus: error instanceof ApiRequestError ? error.status : undefined,
+      });
+    }
     const banner =
       error instanceof ApiRequestError
         ? qrScanBannerFromApiError(error)
@@ -163,11 +191,13 @@ export async function redeemCampusQuestQr(
     logQrScanDebug("validation_failed", {
       code: normalizedCode,
       activityId: normalizedCode,
-      failureCode: error instanceof ApiRequestError ? error.code : "unknown",
+      failureCode,
       httpStatus: error instanceof ApiRequestError ? error.status : undefined,
       failureReason: error instanceof Error ? error.message : String(error),
       userBanner: banner,
     });
     return { ok: false, banner };
+  } finally {
+    releaseQrRedeemLock(args.character.id, normalizedCode);
   }
 }

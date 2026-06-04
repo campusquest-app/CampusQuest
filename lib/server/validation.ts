@@ -519,6 +519,8 @@ export const campusQrScanSchema = z.object({
   /** Short codes like GYM (3 chars) must be accepted. */
   code: z.string().trim().min(1).max(128),
   deviceHint: z.string().trim().max(120).optional(),
+  /** Client-generated key; duplicate POSTs must not award XP twice. */
+  idempotencyKey: z.string().trim().min(8).max(128).optional(),
 });
 
 export const qrCodeTypeSchema = z.enum([

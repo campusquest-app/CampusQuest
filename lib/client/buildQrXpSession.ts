@@ -1,5 +1,6 @@
 import type { ActivityXPGainSession } from "@/components/xp/xpGainTypes";
-import type { StatKey } from "@/lib/types";
+import { buildRewardAnimationSnapshot } from "@/lib/client/rewardAnimationSnapshot";
+import type { Character, StatKey } from "@/lib/types";
 
 function createXpGainSessionKey(prefix = "xp"): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -16,12 +17,21 @@ export function buildQrXpSession(opts: {
   stats: Partial<Record<StatKey, number>>;
   leveledUp: boolean;
   modifierLines?: { label: string; emoji?: string }[];
+  pendingCharacter?: {
+    totalXP: number;
+    level: number;
+    stats: Character["stats"];
+  };
 }): ActivityXPGainSession {
+  const animationStartXP = opts.beforeTotalXP;
+  const animationEndXP = opts.afterTotalXP;
+  const rewardSnapshot = buildRewardAnimationSnapshot(animationStartXP, animationEndXP);
   return {
     sessionKey: createXpGainSessionKey("xp-qr"),
-    beforeTotalXP: opts.beforeTotalXP,
-    afterTotalXP: opts.afterTotalXP,
-    xpGained: opts.xpGained,
+    beforeTotalXP: animationStartXP,
+    afterTotalXP: animationEndXP,
+    xpGained: Math.max(0, animationEndXP - animationStartXP),
+    rewardSnapshot,
     title: opts.title,
     stats: opts.stats,
     modifierLines: opts.modifierLines,
@@ -30,5 +40,6 @@ export function buildQrXpSession(opts: {
     activityQuestType: opts.activityQuestType,
     afterQrScan: true,
     primaryStat: opts.primaryStat,
+    pendingCharacter: opts.pendingCharacter,
   };
 }

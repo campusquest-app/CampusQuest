@@ -24,6 +24,9 @@ import {
   feedbackSigilAbsorption,
   playSigilScanLock,
 } from "@/lib/client/scannerFantasyFeedback";
+import { unlockRewardAudioSilently, unlockMobileForgeAudio } from "@/lib/client/xpCelebration";
+import { readMobileViewport } from "@/lib/client/xpRewardAnimation";
+import { logRewardFlow, logScanner } from "@/lib/client/xpAnimationDebug";
 import {
   isScanRewardFlowActive,
   SCAN_TRANSITION_TO_XP_MS,
@@ -137,6 +140,8 @@ export function QRScannerModal({
   };
   const scannerRef = useRef<ScannerApi | null>(null);
   const isProcessingScanRef = useRef(false);
+  /** Set synchronously on first decode; blocks rapid duplicate onScan events. */
+  const scanInProgressRef = useRef(false);
   const scannerPhaseRef = useRef<ScannerPhase>("idle");
   const camStateRef = useRef<CamState>("idle");
   const lastProcessedCodeRef = useRef<string>("");
@@ -172,6 +177,14 @@ export function QRScannerModal({
     setMounted(true);
     setIosScanner(isIosLike());
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    logScanner("opened", { ios: isIosLike() });
+    return () => {
+      logScanner("closed", {});
+    };
+  }, [open]);
 
   const clearScanHintTimer = useCallback(() => {
     if (scanHintTimerRef.current != null) {
@@ -224,11 +237,31 @@ export function QRScannerModal({
     }
   }, [clearProcessingTimeout, clearScanHintTimer]);
 
+  const releaseScanProgressLock = useCallback((clearLastCode: boolean) => {
+    scanInProgressRef.current = false;
+    isProcessingScanRef.current = false;
+    if (clearLastCode) lastProcessedCodeRef.current = "";
+  }, []);
+
+  const tryAcquireScanForCode = useCallback((code: string): boolean => {
+    if (scanInProgressRef.current) {
+      logQrScanDebug("scan_ignored_duplicate", { code, reason: "scan_in_progress" });
+      return false;
+    }
+    if (code === lastProcessedCodeRef.current) {
+      logQrScanDebug("scan_ignored_duplicate", { code, reason: "same_code" });
+      return false;
+    }
+    scanInProgressRef.current = true;
+    lastProcessedCodeRef.current = code;
+    logQrScanDebug("scan_detected", { code });
+    return true;
+  }, []);
+
   const resumeScanning = useCallback(async () => {
     const sc = scannerRef.current;
     if (!sc || camStateRef.current !== "ready") return;
     isProcessingScanRef.current = false;
-    lastProcessedCodeRef.current = "";
     setScannerPhase("scanning");
     setScanSearchHint(false);
     startScanHintTimer();
@@ -240,16 +273,15 @@ export function QRScannerModal({
   }, [startScanHintTimer]);
 
   const resetForAnotherScan = useCallback(() => {
-    isProcessingScanRef.current = false;
+    releaseScanProgressLock(true);
     scanRewardFlowRef.current = false;
     setScanRewardState("idle");
-    lastProcessedCodeRef.current = "";
     setBanner(null);
     setSuccessBlessing(null);
     setAbsorbing(false);
     setScreenJolt(false);
     void resumeScanning();
-  }, [resumeScanning]);
+  }, [releaseScanProgressLock, resumeScanning]);
 
   const showDelayedError = useCallback(async (message: string) => {
     clearProcessingTimeout();
@@ -258,14 +290,14 @@ export function QRScannerModal({
     setScannerPhase("error");
     setScanSearchHint(false);
     clearScanHintTimer();
-    isProcessingScanRef.current = false;
+    releaseScanProgressLock(true);
     try {
       await scannerRef.current?.pause?.(false);
     } catch {
       /* ignore */
     }
     await sleep(ERROR_MIN_DISPLAY_MS);
-  }, [clearProcessingTimeout, clearScanHintTimer]);
+  }, [clearProcessingTimeout, clearScanHintTimer, releaseScanProgressLock]);
 
   const beginProcessing = useCallback(() => {
     isProcessingScanRef.current = true;
@@ -291,22 +323,28 @@ export function QRScannerModal({
       }
       setScannerPhase("success");
       setScanRewardState("validated");
+      logScanner("qr_validated_cinematic", { xp: verdict.xpSession.xpGained });
       try {
-        await scannerRef.current?.pause?.(false);
+        await scannerRef.current?.pause?.(true);
       } catch {
         /* ignore */
       }
       await sleep(SCAN_VALIDATED_MS);
       setScanRewardState("transitioningToXP");
+      logScanner("transitioning_to_xp", {});
       await sleep(SCAN_TRANSITION_TO_XP_MS);
       setScanRewardState("xpScreenVisible");
       await sleep(SCAN_XP_HANDOFF_MS);
+      stopScanner();
+      logScanner("xp_handoff", { sessionKey: verdict.xpSession.sessionKey });
       onXpHandoff?.(verdict.xpSession);
       setScanRewardState("complete");
       setAbsorbing(false);
-      isProcessingScanRef.current = true;
+      scanRewardFlowRef.current = false;
+      scanInProgressRef.current = false;
+      isProcessingScanRef.current = false;
     },
-    [clearProcessingTimeout, clearScanHintTimer, onXpHandoff, reduceMotion],
+    [clearProcessingTimeout, clearScanHintTimer, onXpHandoff, reduceMotion, stopScanner],
   );
 
   const celebrateScanSuccess = useCallback(
@@ -334,7 +372,8 @@ export function QRScannerModal({
   const processSecureCode = useCallback(
     async (secureCode: string) => {
       if (!onSecureCodeScanned) return;
-      lastProcessedCodeRef.current = secureCode;
+      logRewardFlow("qr_scanned", { codeLength: secureCode.length });
+      logScanner("qr_scanned", { path: "secure" });
 
       const timeoutPromise = new Promise<never>((_, reject) => {
         processingTimeoutRef.current = window.setTimeout(() => {
@@ -351,11 +390,21 @@ export function QRScannerModal({
             failureReason: "validation_rejected",
           });
           await showDelayedError(verdict.banner);
-          lastProcessedCodeRef.current = "";
           void resumeScanning();
           return;
         }
+        logRewardFlow("validation_success", {
+          xp: verdict.reward.xp,
+          handoffToXpOverlay: Boolean(verdict.xpSession),
+          forgeAudio: "silent_until_fill_started",
+        });
+        logRewardFlow("validation_ok", {
+          xp: verdict.reward.xp,
+          handoffToXpOverlay: Boolean(verdict.xpSession),
+        });
         if (verdict.xpSession) {
+          void unlockRewardAudioSilently();
+          if (readMobileViewport()) void unlockMobileForgeAudio();
           await playXpRewardCinematic({ ...verdict, xpSession: verdict.xpSession });
           return;
         }
@@ -366,7 +415,6 @@ export function QRScannerModal({
           reason: error instanceof Error ? error.message : "unknown",
         });
         await showDelayedError(qrScanBannerFromUnknownError(error));
-        lastProcessedCodeRef.current = "";
         void resumeScanning();
       } finally {
         clearProcessingTimeout();
@@ -384,6 +432,7 @@ export function QRScannerModal({
 
   const processLegacyPayload = useCallback(
     async (payload: CampusQuestQrActivityPayloadParsed) => {
+      logRewardFlow("qr_scanned", { activityId: payload.activityId });
       beginProcessing();
       const verdict = onPayloadValidated(payload);
       if (!verdict.ok) {
@@ -397,7 +446,14 @@ export function QRScannerModal({
         void resumeScanning();
         return;
       }
+      logRewardFlow("validation_ok", {
+        xp: verdict.reward.xp,
+        handoffToXpOverlay: Boolean(verdict.xpSession),
+        forgeAudio: "silent_until_fill_started",
+      });
       if (verdict.xpSession) {
+        void unlockRewardAudioSilently();
+        if (readMobileViewport()) void unlockMobileForgeAudio();
         await playXpRewardCinematic({ ...verdict, xpSession: verdict.xpSession });
         return;
       }
@@ -417,6 +473,10 @@ export function QRScannerModal({
   const handleDecodedPayload = useCallback(
     (text: string) => {
       if (scannerPhaseRef.current === "success") return;
+      if (scanInProgressRef.current) {
+        logQrScanDebug("scan_ignored_duplicate", { reason: "scan_in_progress_gate" });
+        return;
+      }
       if (isProcessingScanRef.current) return;
       if (scanRewardFlowRef.current) return;
       if (isScanRewardFlowActive(scanRewardStateRef.current)) return;
@@ -438,7 +498,7 @@ export function QRScannerModal({
           activityId: classification.code,
           type: "secure_code",
         });
-        if (classification.code === lastProcessedCodeRef.current) return;
+        if (!tryAcquireScanForCode(classification.code)) return;
         beginProcessing();
         void processSecureCode(classification.code);
         return;
@@ -479,6 +539,7 @@ export function QRScannerModal({
         activityId: classification.payload.activityId,
         type: classification.payload.activityId,
       });
+      if (!tryAcquireScanForCode(classification.payload.activityId)) return;
       beginProcessing();
       void processLegacyPayload(classification.payload);
     },
@@ -489,6 +550,7 @@ export function QRScannerModal({
       pulseSigilProximity,
       resumeScanning,
       showDelayedError,
+      tryAcquireScanForCode,
     ],
   );
 
@@ -534,6 +596,7 @@ export function QRScannerModal({
       return;
     }
 
+    if (!tryAcquireScanForCode(normalized.code)) return;
     beginProcessing();
     void processSecureCode(normalized.code);
   }, [
@@ -545,6 +608,7 @@ export function QRScannerModal({
     processSecureCode,
     resumeScanning,
     showDelayedError,
+    tryAcquireScanForCode,
   ]);
 
   useEffect(() => {
@@ -559,13 +623,12 @@ export function QRScannerModal({
       setScanSearchHint(false);
       setScanRewardState("idle");
       scanRewardFlowRef.current = false;
-      isProcessingScanRef.current = false;
-      lastProcessedCodeRef.current = "";
+      releaseScanProgressLock(true);
       pendingScanHandledRef.current = null;
       clearScanHintTimer();
       clearProcessingTimeout();
     }
-  }, [open, clearScanHintTimer, clearProcessingTimeout]);
+  }, [open, clearScanHintTimer, clearProcessingTimeout, releaseScanProgressLock]);
 
   useEffect(() => {
     if (!open || !mounted) return;
@@ -574,10 +637,8 @@ export function QRScannerModal({
     setCamState("starting");
     setScannerPhase("idle");
     setScanSearchHint(false);
-    lastProcessedCodeRef.current = "";
     setSuccessBlessing(null);
     setAbsorbing(false);
-    isProcessingScanRef.current = false;
 
     let cancelled = false;
 
@@ -716,11 +777,10 @@ export function QRScannerModal({
           <CQScannerScreen
             onClose={() => {
               if (scanRewardFlowRef.current) return;
-              lastProcessedCodeRef.current = "";
+              releaseScanProgressLock(true);
               setSuccessBlessing(null);
               setAbsorbing(false);
               setScanRewardState("idle");
-              isProcessingScanRef.current = false;
               onClose();
             }}
             frameSlot={

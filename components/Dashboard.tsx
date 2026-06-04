@@ -40,6 +40,11 @@ import { STAT_KEYS, STAT_ICONS, STAT_LABELS } from "@/lib/types";
 import { getActivityById } from "@/lib/activities";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { isGameMusicMuted, playXpDing, playLevelUpFanfare, setGameMusicMuted } from "@/lib/playGameSound";
+import { unlockRewardAudioSilently } from "@/lib/client/xpCelebration";
+import { logRewardFlow } from "@/lib/client/xpAnimationDebug";
+import { unlockMobileForgeAudio } from "@/lib/client/xpCelebration";
+import { buildRewardAnimationSnapshot } from "@/lib/client/rewardAnimationSnapshot";
+import { estimateXpOverlayDurationMs, readMobileViewport } from "@/lib/client/xpRewardAnimation";
 import { describeCosmeticEquipEffect } from "@/lib/gameBuffs";
 import { SkillTreePanel } from "./SkillTreePanel";
 import { SurpriseQuestBanner } from "./SurpriseQuestBanner";
@@ -159,6 +164,7 @@ export function Dashboard() {
   const bossChestSequenceTimersRef = useRef<number[]>([]);
   const [showLevel3Popup, setShowLevel3Popup] = useState(false);
   const [xpGainSession, setXpGainSession] = useState<ActivityXPGainSession | null>(null);
+  const qrXpHandoffLockRef = useRef(false);
   const [dmWithOther, setDmWithOther] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
   const [screenShake, setScreenShake] = useState(false);
   const [levelUpModal, setLevelUpModal] = useState<number | null>(null);
@@ -187,6 +193,7 @@ export function Dashboard() {
   const [qrDeepLinkError, setQrDeepLinkError] = useState<string | null>(null);
   const deepLinkRedeemRef = useRef<string | null>(null);
   const streakHydrationTimerRef = useRef<number | null>(null);
+
   const prevTotalXpRef = useRef<number | null>(null);
   /** Last `/api/me/school-verification` HTTP status for this fetch attempt (dev logging only). */
   const schoolVerificationLastHttpRef = useRef<number | null>(null);
@@ -335,13 +342,23 @@ export function Dashboard() {
   }, [router]);
 
   const handleQrXpHandoff = useCallback((session: ActivityXPGainSession) => {
-    playXpDing();
-    setXpGainSession(session);
+    if (qrXpHandoffLockRef.current) {
+      logQrScanDebug("scan_ignored_duplicate", {
+        reason: "xp_overlay_active",
+        sessionKey: session.sessionKey,
+      });
+      return;
+    }
+    qrXpHandoffLockRef.current = true;
+    logRewardFlow("xp_handoff", {
+      xp: session.xpGained,
+      mobile: readMobileViewport(),
+      sessionKey: session.sessionKey,
+    });
+    setQrScannerOpen(false);
+    setPendingScanCode(null);
     setQrDeepLinkError(null);
-    window.setTimeout(() => {
-      setQrScannerOpen(false);
-      setPendingScanCode(null);
-    }, 180);
+    setXpGainSession(session);
   }, []);
 
   const processQrRedeemVerdict = useCallback(
@@ -349,6 +366,14 @@ export function Dashboard() {
       if (verdict.ok) {
         setQrDeepLinkError(null);
         if (verdict.xpSession) {
+          logRewardFlow("validation_success", {
+            xp: verdict.xpSession.xpGained,
+            beforeTotalXP: verdict.xpSession.beforeTotalXP,
+            afterTotalXP: verdict.xpSession.afterTotalXP,
+            forgeAudio: "silent_until_fill_started",
+          });
+          void unlockRewardAudioSilently();
+          if (readMobileViewport()) void unlockMobileForgeAudio();
           handleQrXpHandoff(verdict.xpSession);
           return;
         }
@@ -383,8 +408,11 @@ export function Dashboard() {
         replaceLocalCharacter,
       });
       if (verdict.ok) {
-        setCharacter(getCharacter());
-        refreshAuthoritativeProfileInBackground();
+        const deferProfileUntilXpOverlay = Boolean(verdict.xpSession ?? verdict.handoffToXpOverlay);
+        if (!deferProfileUntilXpOverlay) {
+          setCharacter(getCharacter());
+          refreshAuthoritativeProfileInBackground();
+        }
         scheduleStreakHydrationFromBackend();
       }
       return verdict;
@@ -427,10 +455,12 @@ export function Dashboard() {
         replaceLocalCharacter,
       });
       if (cancelled) return;
-      if (verdict.ok) setCharacter(getCharacter());
       processQrRedeemVerdict(verdict, "deep_link");
       if (verdict.ok) {
-        refreshAuthoritativeProfileInBackground();
+        if (!verdict.xpSession) {
+          setCharacter(getCharacter());
+          refreshAuthoritativeProfileInBackground();
+        }
         scheduleStreakHydrationFromBackend();
       }
     })();
@@ -450,7 +480,20 @@ export function Dashboard() {
   const finishXpGainOverlay = useCallback(
     (finished: ActivityXPGainSession) => {
       const ms = finished.modifierLines && finished.modifierLines.length > 2 ? 5200 : 3800;
+      qrXpHandoffLockRef.current = false;
       setXpGainSession(null);
+      if (finished.pendingCharacter) {
+        const current = getCharacter();
+        if (current) {
+          replaceLocalCharacter({
+            ...current,
+            totalXP: finished.pendingCharacter.totalXP,
+            level: finished.pendingCharacter.level,
+            stats: { ...current.stats, ...finished.pendingCharacter.stats },
+          });
+          setCharacter(getCharacter());
+        }
+      }
       if (finished.afterQrScan) {
         setGainToast({
           xp: finished.xpGained,
@@ -1258,7 +1301,6 @@ export function Dashboard() {
     }
     const updated = out.result.character;
     const xp = Math.max(0, updated.totalXP - before.totalXP);
-    setCharacter(updated);
     scheduleStreakHydrationFromBackend();
 
     if (xp > 0) {
@@ -1277,6 +1319,11 @@ export function Dashboard() {
           primaryStat: payload.stat,
           stats,
           leveledUp: Boolean(out.result.leveledUp),
+          pendingCharacter: {
+            totalXP: updated.totalXP,
+            level: updated.level,
+            stats: updated.stats,
+          },
         }),
         reward: {
           xp,
@@ -1329,7 +1376,13 @@ export function Dashboard() {
         onOpenInbox={() => setTab("inbox")}
         unreadNotificationCount={unreadNotificationCount}
         showAdminNav={moderationAdminNavVisible(pilotCampusState)}
-        onOpenQrScanner={() => setQrScannerOpen(true)}
+        onOpenQrScanner={() => {
+          logRewardFlow("scanner_opened");
+          if (readMobileViewport()) void unlockMobileForgeAudio();
+          void unlockRewardAudioSilently();
+          setQrScannerEverOpened(true);
+          setQrScannerOpen(true);
+        }}
       />
       <div
         className={screenShake ? "cq-screen-shake" : undefined}
@@ -1365,7 +1418,18 @@ export function Dashboard() {
         {xpGainSession && (
           <LevelUpOverlay
             session={xpGainSession}
-            minimumDurationMs={xpGainSession.afterQrScan ? 4800 : 5000}
+            minimumDurationMs={
+              xpGainSession.afterQrScan
+                ? estimateXpOverlayDurationMs({
+                    isMobile: readMobileViewport(),
+                    afterQrScan: true,
+                    segmentCount: buildRewardAnimationSnapshot(
+                      xpGainSession.beforeTotalXP,
+                      xpGainSession.afterTotalXP,
+                    ).segments.length,
+                  }) + 400
+                : 5000
+            }
             onComplete={finishXpGainOverlay}
           />
         )}

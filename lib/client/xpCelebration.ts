@@ -1,11 +1,40 @@
-/** Safe haptics + optional sound hooks for XP celebrations (no-op until audio assets exist). */
+/** Safe haptics + XP celebration sounds (unlock on Scan QR before reward). */
+export {
+  beginXpForgeFill,
+  computeForgeStrikeCount,
+  isRewardAudioUnlocked,
+  playAnvilStrike,
+  playFinalForgeStrike,
+  playForgeLevelUpBurst,
+  playLevelUpRewardSound,
+  playXpCompleteSound,
+  playXpFillSound,
+  playXpForgeSound,
+  resetXpForgeFill,
+  stopXpFillSound,
+  stopXpForgeSound,
+  syncXpForgeFillProgress,
+  unlockRewardAudio,
+  unlockRewardAudioSilently,
+} from "@/lib/client/rewardAudio";
+export type { XpForgeCompleteOptions, XpForgeFillOptions } from "@/lib/client/rewardAudio";
+export {
+  playMobileForgeSound,
+  preloadMobileForgeAudio,
+  stopMobileForgeSound,
+  unlockMobileForgeAudio,
+} from "@/lib/client/mobileXpForgeAudio";
+export { XP_FORGE_AUDIO_ALT_URLS, XP_FORGE_AUDIO_URL } from "@/lib/client/xpForgeMp3";
+import { playXpCompleteSound } from "@/lib/client/rewardAudio";
+import { playLevelUpRewardSound } from "@/lib/client/rewardAudio";
 
+/** @deprecated Use playXpFillSound during overlay fill. */
 export function playXpGainSound(): void {
-  /* Optional: wire to /sounds/xp-gain.mp3 when available */
+  void playXpCompleteSound();
 }
 
 export function playLevelUpSound(): void {
-  /* Optional: wire to /sounds/level-up.mp3 when available */
+  playLevelUpRewardSound();
 }
 
 export function vibrateXpGain(): void {

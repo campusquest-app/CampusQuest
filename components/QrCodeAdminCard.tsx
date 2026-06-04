@@ -1,7 +1,11 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ApiRequestError, fetchAuthed, patchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { UriGymOfficialQrPanel } from "@/components/UriGymOfficialQrPanel";
+import { isGymQrDatabaseCode, OFFICIAL_GYM_QR_ASSET_PATH } from "@/lib/gymQr";
 
 type QrCodeRow = {
   id: string;
@@ -133,10 +137,18 @@ export function QrCodeAdminCard() {
       <div>
         <h2 className="text-lg font-display font-bold text-white">CQ QR Codes</h2>
         <p className="mt-1 text-sm text-white/70">
-          QR images are generated from database records — scan URLs use{" "}
-          <code className="text-cyan-200">/scan?code=YOUR_CODE</code> (e.g. GYM, LIBRARY).
+          URI Gym uses the official branded QR image below. Other codes get generated PNGs from database scan URLs (
+          <code className="text-cyan-200">/scan?code=YOUR_CODE</code>).
         </p>
+        <Link
+          href="/internal/admin/qr/print"
+          className="mt-2 inline-block text-sm font-medium text-uri-keaney underline-offset-2 hover:underline"
+        >
+          Open printable URI Gym sheet →
+        </Link>
       </div>
+
+      <UriGymOfficialQrPanel />
 
       {error ? (
         <p className="rounded-xl border border-rose-400/35 bg-rose-950/40 px-3 py-2 text-sm text-rose-100">{error}</p>
@@ -272,7 +284,7 @@ export function QrCodeAdminCard() {
                 <th className="px-3 py-2">Type</th>
                 <th className="px-3 py-2">XP</th>
                 <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Scan URL / QR</th>
+                <th className="px-3 py-2">Preview / download</th>
               </tr>
             </thead>
             <tbody>
@@ -295,20 +307,52 @@ export function QrCodeAdminCard() {
                     </button>
                   </td>
                   <td className="px-3 py-2">
-                    <div className="space-y-1">
-                      <a
-                        href={`/scan?code=${encodeURIComponent(row.code)}`}
-                        className="block text-xs text-cyan-200/90 underline-offset-2 hover:underline"
-                      >
-                        /scan?code={row.code}
-                      </a>
-                      <a
-                        href={qrImageUrl(row.id)}
-                        download
-                        className="block text-uri-keaney underline-offset-2 hover:underline"
-                      >
-                        Download PNG
-                      </a>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                      <div className="shrink-0 rounded-lg bg-white p-1">
+                        {row.code === "GYM" ? (
+                          <Image
+                            src={OFFICIAL_GYM_QR_ASSET_PATH}
+                            alt="Official URI Gym QR (GYM)"
+                            width={72}
+                            height={72}
+                            className="h-[72px] w-[72px]"
+                            unoptimized
+                          />
+                        ) : isGymQrDatabaseCode(row.code) ? (
+                          <Image
+                            src={OFFICIAL_GYM_QR_ASSET_PATH}
+                            alt={`Gym QR (${row.code})`}
+                            width={72}
+                            height={72}
+                            className="h-[72px] w-[72px]"
+                            unoptimized
+                          />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={qrImageUrl(row.id)}
+                            alt=""
+                            width={72}
+                            height={72}
+                            className="h-[72px] w-[72px] object-contain"
+                          />
+                        )}
+                      </div>
+                      <div className="space-y-1 min-w-0">
+                        <a
+                          href={`/scan?code=${encodeURIComponent(row.code)}`}
+                          className="block text-xs text-cyan-200/90 underline-offset-2 hover:underline"
+                        >
+                          /scan?code={row.code}
+                        </a>
+                        <a
+                          href={isGymQrDatabaseCode(row.code) ? OFFICIAL_GYM_QR_ASSET_PATH : qrImageUrl(row.id)}
+                          download={row.code === "GYM" ? "gym_qr.png" : undefined}
+                          className="block text-uri-keaney underline-offset-2 hover:underline"
+                        >
+                          {row.code === "GYM" ? "Download gym_qr.png" : isGymQrDatabaseCode(row.code) ? "Download gym_qr.png" : "Download PNG"}
+                        </a>
+                      </div>
                     </div>
                   </td>
                 </tr>

@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+@media print {
+  body:has(#uri-gym-official-qr-print) {
+    background: #fff !important;
+  }
+  #uri-gym-official-qr-print img {
+    max-width: 4.5in !important;
+    height: auto !important;
+  }
+}
+
 :root {
   /* URI official: Navy #041E42, Keaney Blue #68ABE8, White */
   --uri-navy: #041E42;
@@ -2308,6 +2318,14 @@
 .cq-scanner-anim-zone .cq-qr-corner {
   animation-play-state: running !important;
   -webkit-animation-play-state: running !important;
+}
+.cq-scanner-anim-zone,
+.cq-scanner-camera-layer,
+.cq-scanner-camera-canvas {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 .cq-scanner-anim-zone .cq-scanner-scan-beam {
   opacity: 0.8;

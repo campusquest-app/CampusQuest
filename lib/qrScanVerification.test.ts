@@ -70,6 +70,12 @@ describe("QR reward verification — user-facing errors", () => {
     );
   });
 
+  it("ALREADY_CLAIMED → already claimed", () => {
+    expect(qrScanBannerFromApiError(new ApiRequestError("x", 409, "ALREADY_CLAIMED"))).toBe(
+      QR_SCAN_USER_MESSAGES.alreadyScanned,
+    );
+  });
+
   it("tables not ready → setup message", () => {
     expect(qrScanBannerFromApiError(new ApiRequestError("x", 503, "QR_TABLES_NOT_READY"))).toBe(
       QR_SCAN_USER_MESSAGES.tablesNotReady,

@@ -5,6 +5,12 @@ export type QrScanDebugStage =
   | "format_detected"
   | "secure_extract"
   | "legacy_parse"
+  | "scan_detected"
+  | "scan_ignored_duplicate"
+  | "redeem_started"
+  | "redeem_completed"
+  | "reward_xp"
+  | "duplicate_blocked"
   | "validation_request"
   | "validation_response"
   | "validation_failed";

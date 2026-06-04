@@ -2,11 +2,16 @@
 
 import { motion } from "framer-motion";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { XpRingVisualState } from "@/lib/client/runXpRingCinematic";
 import type { XpRingFillSegment } from "@/lib/xpOverlayMath";
 
-const NORMAL_STROKE_URI = "#68ABE8";
+export type { XpRingVisualState };
+
+/** Filled progress before new gain (dark CampusQuest blue). */
+const NORMAL_STROKE_URI = "#1e4a7a";
+const NORMAL_STROKE_URI_LIGHT = "#68ABE8";
 const GAIN_STROKE = "#7DD3FC";
-const GAIN_GLOW = "rgba(125, 211, 252, 0.85)";
+const GAIN_GLOW = "rgba(125, 211, 252, 0.95)";
 
 function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
@@ -27,6 +32,10 @@ export type AnimatedXPRingProps = {
   fillDelayMs?: number;
   highlightHoldMs?: number;
   highlightBlendMs?: number;
+  /** After final blend, hold completed bar visible (ms). */
+  completedHoldMs?: number;
+  /** Subtle glow pulse while holding completed state. */
+  celebrationPulse?: boolean;
   glowIntensity?: number;
   size?: number;
   strokeWidth?: number;
@@ -36,9 +45,17 @@ export type AnimatedXPRingProps = {
   reducedMotion?: boolean;
   /** When false, ring stays at previous progress until parent enables fill. */
   fillEnabled?: boolean;
+  /** Parent handles overlay entrance — skip inner scale/fade. */
+  suppressEntranceMotion?: boolean;
+  /** When set, parent drives ring progress (mobile cinematic). */
+  externalVisual?: XpRingVisualState | null;
+  /** Plain div wrapper — mobile rAF fill (no Framer on ring). */
+  disableWrapperMotion?: boolean;
   /** 0–1 fill progress within current segment (for syncing XP counter). */
   onFillProgress?: (t: number, segmentIndex: number) => void;
   onFillComplete?: () => void;
+  onCelebrationHoldStart?: () => void;
+  onCelebrationHoldEnd?: () => void;
   onAnimationComplete?: () => void;
 };
 
@@ -54,6 +71,8 @@ export function AnimatedXPRing({
   fillDelayMs = 300,
   highlightHoldMs = 600,
   highlightBlendMs = 750,
+  completedHoldMs = 0,
+  celebrationPulse = false,
   glowIntensity = 1,
   size = 300,
   strokeWidth = 16,
@@ -62,8 +81,13 @@ export function AnimatedXPRing({
   children,
   reducedMotion,
   fillEnabled = true,
+  suppressEntranceMotion = false,
+  externalVisual = null,
+  disableWrapperMotion = false,
   onFillProgress,
   onFillComplete,
+  onCelebrationHoldStart,
+  onCelebrationHoldEnd,
   onAnimationComplete,
 }: AnimatedXPRingProps) {
   const filterId = useId().replace(/:/g, "");
@@ -90,25 +114,39 @@ export function AnimatedXPRing({
   const animCompleteRef = useRef(false);
   const onFillProgressRef = useRef(onFillProgress);
   const onFillCompleteRef = useRef(onFillComplete);
+  const onCelebrationHoldStartRef = useRef(onCelebrationHoldStart);
+  const onCelebrationHoldEndRef = useRef(onCelebrationHoldEnd);
   const onAnimationCompleteRef = useRef(onAnimationComplete);
   onFillProgressRef.current = onFillProgress;
   onFillCompleteRef.current = onFillComplete;
+  onCelebrationHoldStartRef.current = onCelebrationHoldStart;
+  onCelebrationHoldEndRef.current = onCelebrationHoldEnd;
   onAnimationCompleteRef.current = onAnimationComplete;
 
-  const seg = segments[activeSeg] ?? segments[0]!;
-  const baseStart = clamp01(seg.baseStart);
+  const driven = externalVisual != null;
+  const vis = externalVisual;
+  const activeSegIndex = driven ? vis!.activeSeg : activeSeg;
+  const seg = segments[activeSegIndex] ?? segments[0]!;
+  const baseStart = driven ? vis!.gainStart : clamp01(seg.baseStart);
   const gainEnd = clamp01(seg.gainEnd);
 
+  const renderBaseFill = driven ? vis!.baseFill : baseFill;
+  const renderGainFill = driven ? vis!.gainFill : gainFill;
+  const renderGainOpacity = driven ? vis!.gainOpacity : gainOpacity;
+  const renderPhase = driven ? vis!.phase : phase;
+  const renderFilling = driven ? vis!.filling : filling;
+
   useEffect(() => {
+    if (driven) return;
     const first = segments[0]!;
     setGainFill(first.baseStart);
     setBaseFill(first.baseStart);
     setGainOpacity(1);
     setFilling(false);
+    setActiveSeg(0);
+    setPhase("idle");
 
     if (!fillEnabled) {
-      setActiveSeg(0);
-      setPhase("idle");
       return;
     }
 
@@ -190,8 +228,7 @@ export function AnimatedXPRing({
           setFilling(false);
           onFillProgressRef.current?.(1, index);
 
-          if (!fillCompleteRef.current && index === 0) {
-            fillCompleteRef.current = true;
+          if (index === segments.length - 1) {
             onFillCompleteRef.current?.();
           }
 
@@ -204,9 +241,20 @@ export function AnimatedXPRing({
                 setPhase("done");
                 setBaseFill(end);
                 setGainFill(end);
-                if (!animCompleteRef.current) {
-                  animCompleteRef.current = true;
-                  onAnimationCompleteRef.current?.();
+                const finish = () => {
+                  if (!animCompleteRef.current) {
+                    animCompleteRef.current = true;
+                    onAnimationCompleteRef.current?.();
+                  }
+                };
+                if (completedHoldMs > 0) {
+                  onCelebrationHoldStartRef.current?.();
+                  betweenTimer = window.setTimeout(() => {
+                    onCelebrationHoldEndRef.current?.();
+                    finish();
+                  }, completedHoldMs);
+                } else {
+                  finish();
                 }
               }
             });
@@ -227,10 +275,12 @@ export function AnimatedXPRing({
       if (blendRaf) cancelAnimationFrame(blendRaf);
     };
   }, [
+    driven,
     durationMs,
     fillDelayMs,
     fillEnabled,
     highlightBlendMs,
+    completedHoldMs,
     highlightHoldMs,
     leveledUp,
     reducedMotion,
@@ -242,33 +292,32 @@ export function AnimatedXPRing({
   const cy = size / 2;
   const circumference = 2 * Math.PI * r;
 
-  const baseLen = clamp01(baseFill) * circumference;
-  const gainStart = baseStart;
-  const gainLen = Math.max(0, clamp01(gainFill) - gainStart) * circumference;
-  const gainOffset = circumference * (1 - gainStart);
-  const showGain = gainLen > 0.5 && gainOpacity > 0.02;
+  const baseLen = clamp01(renderBaseFill) * circumference;
+  const gainArcStart = baseStart;
+  const gainLen = Math.max(0, clamp01(renderGainFill) - gainArcStart) * circumference;
+  const gainOffset = circumference * (1 - gainArcStart);
+  const showGain = gainLen > 0.25 && renderGainOpacity > 0.02;
 
-  const trailProgress = clamp01(gainFill);
+  const trailProgress = clamp01(renderGainFill);
   const trailAngle = trailProgress * 360 - 90;
   const trailRad = (trailAngle * Math.PI) / 180;
   const trailX = cx + r * Math.cos(trailRad);
   const trailY = cy + r * Math.sin(trailRad);
-  const glowBlur = 4 + glowIntensity * (filling ? 5 : 3);
+  const glowBlur =
+    4 + glowIntensity * (renderFilling ? 5 : celebrationPulse ? 4.5 : 3);
 
-  return (
-    <motion.div
-      className={`relative flex items-center justify-center touch-manipulation ${className ?? ""}`}
-      style={{ width: size, height: size }}
-      initial={reducedMotion ? false : { scale: 0.88, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-    >
+  const ringWrapperClass = `relative flex items-center justify-center touch-manipulation ${className ?? ""}`;
+  const ringWrapperStyle = { width: size, height: size };
+
+  const ringBody = (
+    <>
       <svg
         width={size}
         height={size}
         className="absolute inset-0 -rotate-90 transform-gpu"
         style={{
-          filter: `drop-shadow(0 0 ${(14 + (filling ? 14 : 0)) * glowIntensity}px rgba(56, 189, 248, 0.45))`,
+          filter: `drop-shadow(0 0 ${(14 + (renderFilling ? 14 : 0)) * glowIntensity}px rgba(56, 189, 248, 0.45))`,
+          shapeRendering: "geometricPrecision",
         }}
         aria-hidden
       >
@@ -303,13 +352,13 @@ export function AnimatedXPRing({
           cy={cy}
           r={r}
           fill="none"
-          stroke={NORMAL_STROKE_URI}
+          stroke={renderPhase === "done" ? NORMAL_STROKE_URI_LIGHT : NORMAL_STROKE_URI}
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={`${baseLen} ${circumference - baseLen}`}
           strokeDashoffset={0}
           filter={`url(#${filterId})`}
-          opacity={0.95}
+          opacity={0.98}
         />
         {showGain ? (
           <circle
@@ -318,11 +367,11 @@ export function AnimatedXPRing({
             r={r}
             fill="none"
             stroke={GAIN_STROKE}
-            strokeWidth={strokeWidth + 1}
+            strokeWidth={strokeWidth + 2}
             strokeLinecap="round"
             strokeDasharray={`${gainLen} ${circumference - gainLen}`}
             strokeDashoffset={gainOffset}
-            opacity={gainOpacity}
+            opacity={renderGainOpacity}
             style={{
               filter: `url(#${gainFilterId}) drop-shadow(0 0 ${14 * glowIntensity}px ${GAIN_GLOW})`,
             }}
@@ -338,17 +387,54 @@ export function AnimatedXPRing({
         />
       </svg>
 
-      {!reducedMotion && filling && showGain ? (
-        <motion.span
-          className="pointer-events-none absolute z-[2] rounded-full bg-sky-100 shadow-[0_0_16px_5px_rgba(125,211,252,0.95)]"
-          style={{ width: 11, height: 11, left: trailX - 5.5, top: trailY - 5.5 }}
-          animate={{ scale: [0.85, 1.4, 0.9], opacity: [0.75, 1, 0.8] }}
-          transition={{ duration: 0.4, repeat: Infinity, ease: "easeInOut" }}
-          aria-hidden
-        />
+      {!reducedMotion && renderFilling && showGain ? (
+        disableWrapperMotion ? (
+          <span
+            className="pointer-events-none absolute z-[2] rounded-full bg-sky-100 shadow-[0_0_16px_5px_rgba(125,211,252,0.95)]"
+            style={{ width: 11, height: 11, left: trailX - 5.5, top: trailY - 5.5 }}
+            aria-hidden
+          />
+        ) : (
+          <motion.span
+            className="pointer-events-none absolute z-[2] rounded-full bg-sky-100 shadow-[0_0_16px_5px_rgba(125,211,252,0.95)]"
+            style={{ width: 11, height: 11, left: trailX - 5.5, top: trailY - 5.5 }}
+            animate={{ scale: [0.85, 1.4, 0.9], opacity: [0.75, 1, 0.8] }}
+            transition={{ duration: 0.4, repeat: Infinity, ease: "easeInOut" }}
+            aria-hidden
+          />
+        )
       ) : null}
 
       <div className="relative z-[1] flex flex-col items-center justify-center px-6 text-center">{children}</div>
+    </>
+  );
+
+  if (disableWrapperMotion) {
+    return (
+      <div className={ringWrapperClass} style={ringWrapperStyle}>
+        {ringBody}
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      className={ringWrapperClass}
+      style={ringWrapperStyle}
+      initial={reducedMotion || suppressEntranceMotion ? false : { scale: 0.88, opacity: 0 }}
+      animate={{
+        scale: celebrationPulse ? [1, 1.012, 1] : 1,
+        opacity: 1,
+      }}
+      transition={
+        celebrationPulse
+          ? { duration: 1.8, repeat: Infinity, ease: "easeInOut" }
+          : suppressEntranceMotion
+            ? { duration: 0 }
+            : { duration: 0.35, ease: [0.22, 1, 0.36, 1] }
+      }
+    >
+      {ringBody}
     </motion.div>
   );
 }

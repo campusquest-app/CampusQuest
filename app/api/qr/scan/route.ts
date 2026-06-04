@@ -16,6 +16,7 @@ export async function POST(request: Request) {
       userId: auth.user.id,
       code: input.code,
       deviceHint: input.deviceHint,
+      idempotencyKey: input.idempotencyKey,
       userEmail: auth.user.email,
     });
 

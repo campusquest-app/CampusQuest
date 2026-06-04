@@ -65,6 +65,23 @@ function isMissingQrTablesError(error: { message?: string; code?: string } | nul
   );
 }
 
+function isUniqueViolation(error: { code?: string } | null): boolean {
+  return error?.code === "23505";
+}
+
+function isMissingClaimDedupColumnError(error: { message?: string; code?: string } | null): boolean {
+  if (!error) return false;
+  const msg = error.message ?? "";
+  return (
+    /claim_utc_day|idempotency_key/i.test(msg) &&
+    /(does not exist|Could not find the|schema cache)/i.test(msg)
+  );
+}
+
+function utcClaimDay(d = new Date()): string {
+  return d.toISOString().slice(0, 10);
+}
+
 async function insertScanLog(args: {
   client: SupabaseClientLike;
   userId: string;
@@ -73,18 +90,89 @@ async function insertScanLog(args: {
   status: "success" | "failed" | "admin_bypass";
   failureReason?: string | null;
   deviceHint?: string | null;
+  claimUtcDay?: string | null;
+  idempotencyKey?: string | null;
 }) {
-  const { error } = await args.client.from("qr_scans").insert({
+  const row: Record<string, unknown> = {
     user_id: args.userId,
     qr_code_id: args.qrCodeId,
     xp_awarded: args.xpAwarded,
     status: args.status,
     failure_reason: args.failureReason ?? null,
     device_hint: args.deviceHint ?? null,
-  });
+  };
+  if (args.claimUtcDay) row.claim_utc_day = args.claimUtcDay;
+  if (args.idempotencyKey) row.idempotency_key = args.idempotencyKey;
+
+  const { error } = await args.client.from("qr_scans").insert(row);
   if (error) {
     throw new ApiError(400, error.message, "QR_SCAN_LOG_FAILED");
   }
+}
+
+/** Reserve a successful claim before XP is applied (prevents concurrent double-award). */
+async function reserveSuccessScanClaim(args: {
+  client: SupabaseClientLike;
+  userId: string;
+  qr: QrCodeRow;
+  xpAmount: number;
+  scanStatus: "success" | "admin_bypass";
+  deviceHint?: string | null;
+  idempotencyKey?: string | null;
+}): Promise<string> {
+  const claimUtcDay = args.qr.max_scans_per_day > 0 ? utcClaimDay() : null;
+
+  const baseRow: Record<string, unknown> = {
+    user_id: args.userId,
+    qr_code_id: args.qr.id,
+    xp_awarded: args.xpAmount,
+    status: args.scanStatus,
+    failure_reason: args.scanStatus === "admin_bypass" ? "Admin bypass (audited)" : null,
+    device_hint: args.deviceHint ?? null,
+  };
+
+  const rowWithDedup: Record<string, unknown> = { ...baseRow };
+  if (claimUtcDay) rowWithDedup.claim_utc_day = claimUtcDay;
+  if (args.idempotencyKey) rowWithDedup.idempotency_key = args.idempotencyKey;
+
+  let rowToInsert = rowWithDedup;
+  let { data, error } = await args.client.from("qr_scans").insert(rowToInsert).select("id").single();
+
+  if (error && isMissingClaimDedupColumnError(error)) {
+    logQrScanServer("scan_log_dedup_columns_missing", {
+      code: args.qr.code,
+      hint: "Apply migration 20260605120000_qr_scan_claim_dedup.sql for DB-level duplicate protection.",
+    });
+    rowToInsert = baseRow;
+    ({ data, error } = await args.client.from("qr_scans").insert(rowToInsert).select("id").single());
+  }
+
+  if (error) {
+    if (isUniqueViolation(error)) {
+      return "";
+    }
+    logQrScanServer("scan_log_failed", {
+      code: args.qr.code,
+      message: error.message,
+      pgCode: error.code ?? null,
+    });
+    throw new ApiError(400, error.message, "QR_SCAN_LOG_FAILED");
+  }
+  if (!data?.id) {
+    throw new ApiError(400, "QR scan log insert returned no row.", "QR_SCAN_LOG_FAILED");
+  }
+  return String(data.id);
+}
+
+async function deleteScanClaim(client: SupabaseClientLike, scanId: string) {
+  await client.from("qr_scans").delete().eq("id", scanId);
+}
+
+function alreadyClaimedMessage(qr: QrCodeRow): string {
+  if (isUriGymQr(qr)) {
+    return "You already checked in at the URI Gym today. Come back tomorrow.";
+  }
+  return "You already claimed this QR reward.";
 }
 
 async function tryCompleteLinkedQuest(args: {
@@ -204,6 +292,7 @@ export async function scanCampusQuestQrCode(args: {
   userId: string;
   code: string;
   deviceHint?: string | null;
+  idempotencyKey?: string | null;
   userEmail?: string | null;
 }) {
   const { userClient, userId } = args;
@@ -315,47 +404,66 @@ export async function scanCampusQuestQrCode(args: {
       deviceHint: args.deviceHint,
       locationName: qr.location_name,
     });
-    throw new ApiError(409, message, `QR_${(eligibility.reason ?? "invalid").toUpperCase()}`);
+    const reason = eligibility.reason ?? "invalid";
+    const code =
+      reason === "cooldown" || reason === "daily_limit" || reason === "already_redeemed"
+        ? "ALREADY_CLAIMED"
+        : `QR_${reason.toUpperCase()}`;
+    throw new ApiError(409, message, code);
   }
 
   const xpAmount = Math.max(0, Number(qr.xp_reward ?? 0));
   const scanStatus: "success" | "admin_bypass" = eligibility.bypass ? "admin_bypass" : "success";
 
-  let xpResult: Awaited<ReturnType<typeof addXpInternal>> | null = null;
-  let levelBefore = 1;
-  if (xpAmount > 0) {
-    const { data: statsBefore } = await userClient
-      .from("user_stats")
-      .select("total_xp, level")
-      .eq("user_id", userId)
-      .single();
-    levelBefore = Number(statsBefore?.level ?? 1);
-    xpResult = await addXpInternal({
-      userClient,
-      userId,
-      amount: xpAmount,
-      sourceType: "activity",
-      sourceId: qr.id,
-      note: `CQ QR · ${qr.title}`,
-      applyStreakUpdate: true,
-    });
-  } else {
-    await userClient
-      .from("profiles")
-      .select("id")
-      .eq("id", userId)
-      .single();
-  }
-
-  await insertScanLog({
+  const claimId = await reserveSuccessScanClaim({
     client: userClient,
     userId,
-    qrCodeId: qr.id,
-    xpAwarded: xpAmount,
-    status: scanStatus,
-    failureReason: eligibility.bypass ? "Admin bypass (audited)" : null,
+    qr,
+    xpAmount,
+    scanStatus,
     deviceHint: args.deviceHint,
+    idempotencyKey: args.idempotencyKey ?? null,
   });
+
+  if (!claimId) {
+    logQrScanServer("duplicate_blocked", {
+      code: qr.code,
+      userId: userId.slice(0, 8),
+      idempotencyKey: args.idempotencyKey ?? null,
+    });
+    throw new ApiError(409, alreadyClaimedMessage(qr), "ALREADY_CLAIMED");
+  }
+
+  let xpResult: Awaited<ReturnType<typeof addXpInternal>> | null = null;
+  let levelBefore = 1;
+  try {
+    if (xpAmount > 0) {
+      const { data: statsBefore } = await userClient
+        .from("user_stats")
+        .select("total_xp, level")
+        .eq("user_id", userId)
+        .single();
+      levelBefore = Number(statsBefore?.level ?? 1);
+      xpResult = await addXpInternal({
+        userClient,
+        userId,
+        amount: xpAmount,
+        sourceType: "activity",
+        sourceId: qr.id,
+        note: `CQ QR · ${qr.title}`,
+        applyStreakUpdate: true,
+      });
+    } else {
+      await userClient
+        .from("profiles")
+        .select("id")
+        .eq("id", userId)
+        .single();
+    }
+  } catch (xpError) {
+    await deleteScanClaim(admin, claimId);
+    throw xpError;
+  }
 
   const activityLink = resolveQrActivityLink({
     code: qr.code,
