@@ -47,6 +47,8 @@ export type QRScannerModalProps = {
   pendingScanCode?: string | null;
   /** Shown when deep-link validation failed before the lens opens. */
   prefillErrorBanner?: string | null;
+  /** Platform admins may scan the same code repeatedly for testing. */
+  allowRepeatQrScan?: boolean;
 };
 
 type ScanSuccessVerdict = Extract<QrScannerValidationResult, { ok: true }>;
@@ -130,6 +132,7 @@ export function QRScannerModal({
   onXpHandoff,
   pendingScanCode = null,
   prefillErrorBanner = null,
+  allowRepeatQrScan = false,
 }: QRScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   type ScannerApi = {
@@ -243,20 +246,23 @@ export function QRScannerModal({
     if (clearLastCode) lastProcessedCodeRef.current = "";
   }, []);
 
-  const tryAcquireScanForCode = useCallback((code: string): boolean => {
-    if (scanInProgressRef.current) {
-      logQrScanDebug("scan_ignored_duplicate", { code, reason: "scan_in_progress" });
-      return false;
-    }
-    if (code === lastProcessedCodeRef.current) {
-      logQrScanDebug("scan_ignored_duplicate", { code, reason: "same_code" });
-      return false;
-    }
-    scanInProgressRef.current = true;
-    lastProcessedCodeRef.current = code;
-    logQrScanDebug("scan_detected", { code });
-    return true;
-  }, []);
+  const tryAcquireScanForCode = useCallback(
+    (code: string): boolean => {
+      if (scanInProgressRef.current) {
+        logQrScanDebug("scan_ignored_duplicate", { code, reason: "scan_in_progress" });
+        return false;
+      }
+      if (!allowRepeatQrScan && code === lastProcessedCodeRef.current) {
+        logQrScanDebug("scan_ignored_duplicate", { code, reason: "same_code" });
+        return false;
+      }
+      scanInProgressRef.current = true;
+      lastProcessedCodeRef.current = code;
+      logQrScanDebug("scan_detected", { code, allowRepeatQrScan });
+      return true;
+    },
+    [allowRepeatQrScan],
+  );
 
   const resumeScanning = useCallback(async () => {
     const sc = scannerRef.current;
@@ -343,8 +349,11 @@ export function QRScannerModal({
       scanRewardFlowRef.current = false;
       scanInProgressRef.current = false;
       isProcessingScanRef.current = false;
+      if (allowRepeatQrScan) {
+        lastProcessedCodeRef.current = "";
+      }
     },
-    [clearProcessingTimeout, clearScanHintTimer, onXpHandoff, reduceMotion, stopScanner],
+    [allowRepeatQrScan, clearProcessingTimeout, clearScanHintTimer, onXpHandoff, reduceMotion, stopScanner],
   );
 
   const celebrateScanSuccess = useCallback(

@@ -1,30 +1,43 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { normalizeRamMarkTag, prependRemoteQuadPost } from "@/lib/feedStore";
 import { createQuadPostRequest } from "@/lib/client/quadPostsClient";
 import type { Character } from "@/lib/types";
 import type { QuadPostVisibility } from "@/lib/types";
 import { FIELD_NOTE_MAX_CHARS, RAMMARK_MAX_LENGTH, RAMMARK_MAX_PER_POST } from "@/lib/types";
 import type { RamMark } from "@/lib/types";
+import type { RealmLocationId } from "@/lib/realm/locations";
+import { REALM_LOCATION_OPTIONS } from "@/lib/realm/locations";
 
 export function FieldNoteComposer({
   character,
   onPosted,
   defaultVisibility = "public",
+  initialBody = "",
+  autoOpenPhotoPicker = false,
 }: {
   character: Character;
   onPosted: () => void;
   /** Default selected feed when opening composer (e.g. current tab). */
   defaultVisibility?: QuadPostVisibility;
+  initialBody?: string;
+  autoOpenPhotoPicker?: boolean;
 }) {
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState(initialBody);
   const [ramMarkInput, setRamMarkInput] = useState("");
   const [ramMarks, setRamMarks] = useState<RamMark[]>([]);
   const [proofUrl, setProofUrl] = useState("");
   const [visibility, setVisibility] = useState<QuadPostVisibility>(defaultVisibility);
+  const [locationId, setLocationId] = useState<RealmLocationId | "">("");
   const [error, setError] = useState<string | null>(null);
   const proofFileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!autoOpenPhotoPicker) return undefined;
+    const tid = window.setTimeout(() => proofFileRef.current?.click(), 150);
+    return () => window.clearTimeout(tid);
+  }, [autoOpenPhotoPicker]);
 
   const bodyCount = body.length;
   const canAddRamMark = ramMarks.length < RAMMARK_MAX_PER_POST && ramMarkInput.trim().length > 0 &&
@@ -75,17 +88,22 @@ export function FieldNoteComposer({
     }
     setError(null);
     try {
+      const selectedLocation = REALM_LOCATION_OPTIONS.find((l) => l.id === locationId);
       const note = await createQuadPostRequest({
         body: trimmed,
         proofUrl: proofUrl.trim() || undefined,
         visibility,
         ramMarks,
         authorStreakDays: character.streakDays ?? 0,
+        ...(selectedLocation
+          ? { locationId: selectedLocation.id, locationName: selectedLocation.name }
+          : {}),
       });
       prependRemoteQuadPost(note);
       setBody("");
       setRamMarks([]);
       setProofUrl("");
+      setLocationId("");
       onPosted();
     } catch {
       setError("Could not post right now. Check your connection and try again.");
@@ -121,6 +139,26 @@ export function FieldNoteComposer({
           </button>
         </div>
       </div>
+
+      <div>
+        <label htmlFor="field-note-location" className="mb-1 block text-xs text-white/60">
+          Location (optional)
+        </label>
+        <select
+          id="field-note-location"
+          value={locationId}
+          onChange={(e) => setLocationId(e.target.value as RealmLocationId | "")}
+          className="w-full rounded-xl border border-white/15 bg-white/[0.08] px-3 py-2.5 text-sm text-white focus:border-uri-keaney/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
+        >
+          <option value="">No location</option>
+          {REALM_LOCATION_OPTIONS.map((loc) => (
+            <option key={loc.id} value={loc.id}>
+              {loc.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value.slice(0, FIELD_NOTE_MAX_CHARS))}

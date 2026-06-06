@@ -108,6 +108,19 @@ describe("QR reward verification — cooldown", () => {
     });
     expect(result.allowed).toBe(true);
   });
+
+  it("allows admin repeat scan within 24h cooldown (unlimited testing)", () => {
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const result = evaluateScanEligibility({
+      row: gymRow,
+      role: "admin",
+      lastSuccessAt: hourAgo,
+      successToday: 5,
+      priorEventSuccess: false,
+    });
+    expect(result.allowed).toBe(true);
+    expect(result.bypass).toBe(true);
+  });
 });
 
 describe("QR reward verification — GYM reward mapping", () => {

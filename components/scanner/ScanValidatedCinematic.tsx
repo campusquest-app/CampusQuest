@@ -25,7 +25,7 @@ export function ScanValidatedCinematic({ visible, phase }: ScanValidatedCinemati
           aria-hidden
         >
           <motion.div
-            className="absolute inset-0 rounded-[inherit] bg-[#020817]"
+            className="absolute inset-0 rounded-[inherit] bg-cq-app"
             initial={{ opacity: 0 }}
             animate={{ opacity: dim ? 0.82 : 0.35 }}
             transition={{ duration: reduce ? 0.15 : 0.48, ease: "easeInOut" }}

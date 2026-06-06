@@ -69,6 +69,7 @@ export function canManageQrCodes(profileRole: ProfileRole, user: User): boolean 
   return roleAtLeast(profileRole, "admin") || userHasModerationAdminAccess(user);
 }
 
+/** Admins may scan any active/inactive QR unlimited times for testing (no cooldown/daily cap). */
 export function canBypassQrScanLimits(profileRole: ProfileRole): boolean {
   return roleAtLeast(profileRole, "admin");
 }

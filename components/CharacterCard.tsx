@@ -110,12 +110,12 @@ export function CharacterCard({
               />
             </div>
           </div>
-          <div
-            className="character-level-badge absolute -bottom-1 -right-1 min-w-[2rem] h-6 px-1.5 rounded-md flex items-center justify-center text-[10px] font-display"
-            aria-label={`Level ${character.level}`}
+          <span
+            className="cq-profile-level-pip absolute -bottom-0.5 -right-0.5 flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full border-2 border-cq-card px-0.5 text-[9px] font-bold leading-none text-white"
+            aria-hidden
           >
             {character.level}
-          </div>
+          </span>
           <button
             type="button"
             onClick={openEditModal}
@@ -171,39 +171,52 @@ export function CharacterCard({
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <h2 className="font-display font-bold text-lg text-white truncate drop-shadow-[0_1px_1px_rgba(0,0,0,0.3)]">
-            {character.name}
-          </h2>
-          {character.classId && (getClassTitle(character.classId) || getClassRealm(character.classId)) && (
-            <p className="text-uri-gold/90 text-xs font-medium mt-0.5 truncate">
-              {getClassTitle(character.classId)}
-              {getClassRealm(character.classId) && (
-                <span className="text-white/50 font-normal"> · {getClassRealm(character.classId)}</span>
-              )}
-            </p>
-          )}
-          <p className="text-white/50 text-sm mt-0.5">@{character.username}</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h2 className="font-display font-bold text-lg text-white truncate drop-shadow-[0_1px_1px_rgba(0,0,0,0.3)]">
+              {character.name}
+            </h2>
+            <span className="rounded-md border border-cyan-400/25 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-bold tracking-[0.14em] text-cyan-200">
+              LEVEL {character.level}
+            </span>
+          </div>
           {(character.guildIds ?? []).length > 0 && (
-            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               {(character.guildIds ?? []).map((gid) => {
                 const g = getGuildById(gid);
                 return g ? (
-                  <span key={gid} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/10 text-white/90 border border-white/15 text-xs">
+                  <span key={gid} className="inline-flex items-center gap-1 text-[11px] font-medium text-white/52">
                     {g.crest} {g.name}
                   </span>
                 ) : null;
               })}
             </div>
           )}
+          {character.classId && (getClassTitle(character.classId) || getClassRealm(character.classId)) && (
+            <p className="text-uri-gold/80 text-[11px] font-medium mt-0.5 truncate">
+              {getClassTitle(character.classId)}
+              {getClassRealm(character.classId) && (
+                <span className="text-white/45 font-normal"> · {getClassRealm(character.classId)}</span>
+              )}
+            </p>
+          )}
+          <p className="text-white/35 text-xs mt-0.5">@{character.username}</p>
           <div className="mt-3">
-            <div className="flex justify-between text-xs text-white/60 mb-1">
-              <span>Level progress</span>
-              <span className="font-mono text-uri-keaney/95">{current} / {needed} XP · {Math.round(xpPct)}%</span>
+            <div className="mb-1 flex justify-between gap-2 text-[10px] font-medium tabular-nums text-white/42">
+              <span>{character.totalXP.toLocaleString()} XP</span>
+              <span>Next level: {(needed - current).toLocaleString()} XP</span>
             </div>
             <div className="xp-bar-track h-2.5 rounded-full overflow-hidden">
               <div className="xp-bar-fill xp-bar-fill-animated h-full rounded-full transition-all duration-700" style={{ width: `${xpPct}%` }} />
             </div>
+            <p className="mt-1 text-[10px] tabular-nums text-white/35">
+              {current.toLocaleString()} / {needed.toLocaleString()} XP this level
+            </p>
           </div>
+          {character.streakDays >= 3 ? (
+            <p className="mt-2.5 text-[11px] font-semibold text-amber-200/90">
+              🔥 {character.streakDays}-Day Streak
+            </p>
+          ) : null}
         </div>
       </div>
 

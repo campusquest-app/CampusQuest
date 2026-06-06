@@ -23,7 +23,7 @@ import { CharacterGate } from "./CharacterGate";
 import { WelcomeSplash } from "./WelcomeSplash";
 import { AuthScreen } from "./AuthScreen";
 import { ActivityList } from "./ActivityList";
-import { TheQuad } from "./TheQuad";
+import { TheQuad, type QuadFeedTab } from "./TheQuad";
 import { StreakCard } from "./StreakCard";
 import { BossBattles } from "./BossBattles";
 import { RecentActivities } from "./RecentActivities";
@@ -36,6 +36,7 @@ import { DirectMessageThread } from "./DirectMessageThread";
 import { Inbox, type InboxSubTab } from "./Inbox";
 import { EventsFeed } from "./EventsFeed";
 import { OrganizationsHub } from "./OrganizationsHub";
+import { TheRealm } from "./TheRealm";
 import { STAT_KEYS, STAT_ICONS, STAT_LABELS } from "@/lib/types";
 import { getActivityById } from "@/lib/activities";
 import { AvatarDisplay } from "./AvatarDisplay";
@@ -90,6 +91,11 @@ import { XPGainBanner } from "@/components/xp/XPGainBanner";
 import type { ActivityXPGainSession } from "@/components/xp/xpGainTypes";
 import type { CampusQuestQrActivityPayloadParsed } from "@/lib/qrCampusQuestActivity";
 import { TopNav } from "@/components/TopNav";
+import { AppSideDrawer, type AppDrawerDestination } from "@/components/AppSideDrawer";
+import type { SettingsActionId } from "@/components/AppSettingsPanel";
+import { AppBottomNav, CQ_BOTTOM_NAV_CLEARANCE, type AppBottomNavTab } from "@/components/AppBottomNav";
+import { useScrollChrome } from "@/lib/client/useScrollChrome";
+import { QuestOverlayPanels } from "@/components/QuestOverlayPanels";
 
 /** Load camera + CQ Scanner bundle only after the player taps CQ Scan (avoid mount/worker on cold start). */
 const QRScannerModalLazy = dynamic(
@@ -97,9 +103,9 @@ const QRScannerModalLazy = dynamic(
   { ssr: false },
 );
 
-type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations";
+type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations" | "realm";
 
-const TAB_QUERY_VALUES: Tab[] = ["quad", "friends", "battle", "leaderboards", "character", "inbox", "events", "organizations"];
+const TAB_QUERY_VALUES: Tab[] = ["quad", "friends", "battle", "leaderboards", "character", "inbox", "events", "organizations", "realm"];
 
 function createXpGainSessionKey(prefix = "xp"): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -146,8 +152,14 @@ export function Dashboard() {
   const [mounted, setMounted] = useState(false);
   const [showWelcomeSplash, setShowWelcomeSplash] = useState(true);
   const [tab, setTab] = useState<Tab>("quad");
+  const [quadFeedTab, setQuadFeedTab] = useState<QuadFeedTab>("public");
+  useScrollChrome(tab === "quad" && character != null);
   const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
   const [characterPane, setCharacterPane] = useState<CharacterPane>("sheet");
+  const [sideMenuOpen, setSideMenuOpen] = useState(false);
+  const [drawerSubPanel, setDrawerSubPanel] = useState<"menu" | "settings" | "help">("menu");
+  const [dailyQuestsOpen, setDailyQuestsOpen] = useState(false);
+  const [specialQuestsOpen, setSpecialQuestsOpen] = useState(false);
   const [gainToast, setGainToast] = useState<null | {
     xp: number;
     stats: Partial<Record<keyof Character["stats"], number>>;
@@ -341,8 +353,87 @@ export function Dashboard() {
     }
   }, [router]);
 
+  const adminQrUnlimited = moderationAdminNavVisible(pilotCampusState);
+
+  const openQrScanner = useCallback(() => {
+    logRewardFlow("scanner_opened");
+    if (readMobileViewport()) void unlockMobileForgeAudio();
+    void unlockRewardAudioSilently();
+    setQrScannerEverOpened(true);
+    setQrScannerOpen(true);
+  }, []);
+
+  const handleDrawerNavigate = useCallback(
+    (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "settings") => {
+      setDailyQuestsOpen(false);
+      setSpecialQuestsOpen(false);
+      switch (dest) {
+        case "friends":
+          setTab("friends");
+          break;
+        case "trending":
+          setTab("quad");
+          setQuadFeedTab("trending");
+          break;
+        case "leaderboards":
+          setTab("leaderboards");
+          break;
+        case "events":
+          setTab("events");
+          break;
+        case "realm":
+          setTab("realm");
+          break;
+        case "organizations":
+          setTab("organizations");
+          break;
+        case "guilds":
+          setTab("friends");
+          break;
+        case "battle":
+          setTab("battle");
+          break;
+        case "inbox":
+          setTab("inbox");
+          break;
+        case "character-sheet":
+        case "mini-games":
+        case "achievements":
+          setTab("character");
+          setCharacterPane("sheet");
+          break;
+        case "profile":
+          setTab("character");
+          setCharacterPane("profile");
+          break;
+        case "settings":
+          setDrawerSubPanel("settings");
+          setSideMenuOpen(true);
+          break;
+        case "daily-quests":
+          setSpecialQuestsOpen(false);
+          setDailyQuestsOpen(true);
+          break;
+        case "special-quests":
+          setDailyQuestsOpen(false);
+          setSpecialQuestsOpen(true);
+          break;
+        case "help":
+          setDrawerSubPanel("help");
+          setSideMenuOpen(true);
+          break;
+        default:
+          break;
+      }
+    },
+    [],
+  );
+
+  const bottomNavActive: AppBottomNavTab | "other" =
+    tab === "quad" ? "quad" : tab === "character" ? "character" : "other";
+
   const handleQrXpHandoff = useCallback((session: ActivityXPGainSession) => {
-    if (qrXpHandoffLockRef.current) {
+    if (qrXpHandoffLockRef.current && !adminQrUnlimited) {
       logQrScanDebug("scan_ignored_duplicate", {
         reason: "xp_overlay_active",
         sessionKey: session.sessionKey,
@@ -359,7 +450,7 @@ export function Dashboard() {
     setPendingScanCode(null);
     setQrDeepLinkError(null);
     setXpGainSession(session);
-  }, []);
+  }, [adminQrUnlimited]);
 
   const processQrRedeemVerdict = useCallback(
     (verdict: Awaited<ReturnType<typeof redeemCampusQuestQr>>, source: "deep_link" | "scanner") => {
@@ -550,6 +641,48 @@ export function Dashboard() {
     setPilotCampusState({ status: "loading" });
     setBootstrapNonce((n) => n + 1);
   }, []);
+
+  const handleSettingsAction = useCallback(
+    (action: SettingsActionId) => {
+      switch (action) {
+        case "account":
+        case "profile-character":
+          setTab("character");
+          setCharacterPane("profile");
+          break;
+        case "notifications":
+          setTab("inbox");
+          break;
+        case "privacy":
+          if (typeof window !== "undefined") {
+            window.location.href = "/legal/privacy";
+          }
+          break;
+        case "campus":
+          setTab("character");
+          setCharacterPane("profile");
+          break;
+        case "qr-permissions":
+          openQrScanner();
+          break;
+        case "appearance":
+          break;
+        case "sound":
+          setMusicMuted((muted) => {
+            const next = !muted;
+            setGameMusicMuted(next);
+            return next;
+          });
+          return;
+        case "sign-out":
+          void handleLogout();
+          break;
+        default:
+          break;
+      }
+    },
+    [handleLogout, openQrScanner],
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -1153,20 +1286,17 @@ export function Dashboard() {
   if (!character) {
     return (
       <>
-        <TopNav
-          username={null}
-          character={null}
-          onRefresh={refresh}
-          showAdminNav={moderationAdminNavVisible(pilotCampusState)}
-        />
-        <CharacterGate
-          prefillProfile={gatePrefillProfile}
-          onReady={() => {
-            refresh();
-            setTab("quad");
-            setBootstrapNonce((n) => n + 1);
-          }}
-        />
+        <TopNav username={null} character={null} />
+        <div style={{ paddingTop: "var(--cq-topnav-h, 56px)" }}>
+          <CharacterGate
+            prefillProfile={gatePrefillProfile}
+            onReady={() => {
+              refresh();
+              setTab("quad");
+              setBootstrapNonce((n) => n + 1);
+            }}
+          />
+        </div>
       </>
     );
   }
@@ -1357,43 +1487,55 @@ export function Dashboard() {
     };
   }
 
-  const navItems: { tab: Tab; icon: string; label: string }[] = [
-    { tab: "quad", icon: "📋", label: "Quad" },
-    { tab: "events", icon: "📅", label: "Events" },
-    { tab: "organizations", icon: "🏛️", label: "Orgs" },
-    { tab: "friends", icon: "👋", label: "Friends" },
-    { tab: "battle", icon: "🐉", label: "Battle" },
-    { tab: "leaderboards", icon: "🏆", label: "Rank" },
-    { tab: "character", icon: "👤", label: "Character" },
-  ];
-
   return (
     <>
       <TopNav
         username={character?.username ?? null}
         character={character}
-        onRefresh={refresh}
+        onOpenMenu={() => {
+          setDrawerSubPanel("menu");
+          setSideMenuOpen(true);
+        }}
         onOpenInbox={() => setTab("inbox")}
         unreadNotificationCount={unreadNotificationCount}
-        showAdminNav={moderationAdminNavVisible(pilotCampusState)}
-        onOpenQrScanner={() => {
-          logRewardFlow("scanner_opened");
-          if (readMobileViewport()) void unlockMobileForgeAudio();
-          void unlockRewardAudioSilently();
-          setQrScannerEverOpened(true);
-          setQrScannerOpen(true);
+      />
+      <AppSideDrawer
+        open={sideMenuOpen}
+        onClose={() => {
+          setSideMenuOpen(false);
+          setDrawerSubPanel("menu");
         }}
+        character={character}
+        onNavigate={handleDrawerNavigate}
+        onSettingsAction={handleSettingsAction}
+        initialPanel={drawerSubPanel}
+        showAdminNav={moderationAdminNavVisible(pilotCampusState)}
+        unreadNotificationCount={unreadNotificationCount}
+        musicMuted={musicMuted}
+      />
+      <QuestOverlayPanels
+        character={character}
+        dailyOpen={dailyQuestsOpen}
+        specialOpen={specialQuestsOpen}
+        onCloseDaily={() => setDailyQuestsOpen(false)}
+        onCloseSpecial={() => setSpecialQuestsOpen(false)}
+        onRefresh={refresh}
       />
       <div
         className={screenShake ? "cq-screen-shake" : undefined}
-        style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom, 0px))" }}
+        style={{
+          paddingTop: "var(--cq-topnav-h, 56px)",
+          paddingBottom: CQ_BOTTOM_NAV_CLEARANCE,
+        }}
       >
         {character && beginnerJourneyHydration?.welcomeBackReminderEligible ? (
-          <WelcomeBackCommunityReminder characterId={character.id} />
+          <div className="px-4">
+            <WelcomeBackCommunityReminder characterId={character.id} />
+          </div>
         ) : null}
         {character &&
           (beginnerJourneyHydration === null ? (
-            <div className="mb-4 sm:mb-5">
+            <div className="mb-4 px-4 sm:mb-5">
               <div
                 className="card min-h-[7rem] rounded-2xl border border-uri-gold/20 bg-white/[0.02] p-4 cq-skeleton-wrap overflow-hidden"
                 aria-busy="true"
@@ -1405,7 +1547,7 @@ export function Dashboard() {
               </div>
             </div>
           ) : beginnerJourneyHydration.hideBeginnerStarterPanel ? null : (
-            <div className="mb-4 sm:mb-5">
+            <div className="mb-4 px-4 sm:mb-5">
               <FirstTimeJourney
                 character={character}
                 currentTab={tab}
@@ -1672,7 +1814,10 @@ export function Dashboard() {
         document.body
       )}
 
-      <div key={tab} className="tab-content-enter space-y-5 sm:space-y-6">
+      <div
+        key={tab}
+        className={`tab-content-enter space-y-5 sm:space-y-6 ${tab === "quad" ? "w-full" : "px-4"}`}
+      >
         {tab === "inbox" && character && renderPilotCampusGate(
           <Inbox
             character={character}
@@ -1686,17 +1831,20 @@ export function Dashboard() {
         )}
 
         {tab === "quad" && (
-          <div className="space-y-4 sm:space-y-5">
-            <div className="-mx-4 w-[calc(100%+2rem)] sm:mx-0 sm:w-full">
-              <TheQuad character={character} onRefresh={refresh} />
-            </div>
-          </div>
+          <TheQuad
+            character={character}
+            onRefresh={refresh}
+            feedTab={quadFeedTab}
+            onFeedTabChange={setQuadFeedTab}
+          />
         )}
 
         {tab === "friends" &&
           renderPilotCampusGate(<FindFriends character={character} onRefresh={refresh} onOpenDm={setDmWithOther} />)}
 
         {tab === "events" && renderPilotCampusGate(<EventsFeed personalization={onboardingPreferences} />)}
+
+        {tab === "realm" && renderPilotCampusGate(<TheRealm onBack={() => setTab("quad")} />)}
 
         {tab === "organizations" && renderPilotCampusGate(<OrganizationsHub personalization={onboardingPreferences} />)}
 
@@ -1886,7 +2034,8 @@ export function Dashboard() {
             setMusicMuted(next);
             setGameMusicMuted(next);
           }}
-          className="fixed bottom-[calc(5.2rem+env(safe-area-inset-bottom,0px))] right-2 z-20 h-6 w-6 rounded-full border border-white/10 bg-black/25 text-[10px] text-white/45 backdrop-blur-sm transition hover:text-white/80"
+          className={`fixed z-40 h-6 w-6 rounded-full border border-white/10 bg-black/25 text-[10px] text-white/45 backdrop-blur-sm transition hover:text-white/80 ${tab === "quad" ? "left-3" : "right-2"}`}
+          style={{ bottom: CQ_BOTTOM_NAV_CLEARANCE }}
           title={musicMuted ? "Unmute game music" : "Mute game music"}
           aria-label={musicMuted ? "Unmute game music" : "Mute game music"}
           aria-pressed={musicMuted}
@@ -1895,33 +2044,15 @@ export function Dashboard() {
         </button>
       ) : null}
 
-      {/* Bottom nav — aligned with content max width; items share row evenly */}
-      <div
-        className="fixed bottom-0 left-0 right-0 z-20 flex justify-center px-3 sm:px-4"
-      >
-        <nav
-          className="w-full max-w-2xl flex items-stretch justify-evenly gap-0.5 sm:gap-1 rounded-t-2xl border border-b-0 border-uri-keaney/25 bg-uri-navy/95 px-1.5 pt-2 shadow-[0_-4px_24px_-4px_rgba(0,0,0,0.45),0_-1px_0_0_rgba(104,171,232,0.12)] backdrop-blur-md sm:px-3 sm:pt-2.5"
-          style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom, 0px))" }}
-          aria-label="Main navigation"
-        >
-        {navItems.map(({ tab: t, icon, label }) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2.5 transition-all touch-manipulation sm:px-2 ${
-              tab === t
-                ? "text-uri-keaney bg-gradient-to-b from-uri-keaney/25 to-uri-keaney/10 shadow-[0_6px_18px_-6px_rgba(104,171,232,0.9)]"
-                : "text-white/60 hover:text-white/85 hover:bg-white/5 active:text-white/90"
-            }`}
-            aria-current={tab === t ? "page" : undefined}
-          >
-            <span className="text-xl leading-none" aria-hidden>{icon}</span>
-            <span className={`w-full truncate text-center text-[10px] font-semibold tracking-wide sm:text-[11px] ${tab === t ? "text-uri-keaney" : "text-white/80"}`}>{label}</span>
-          </button>
-        ))}
-        </nav>
-      </div>
+      <AppBottomNav
+        activeTab={bottomNavActive}
+        onSelectTab={(t) => {
+          setTab(t);
+          if (t === "quad") setQuadFeedTab("public");
+          if (t === "character") setCharacterPane("profile");
+        }}
+        onOpenScanner={openQrScanner}
+      />
 
       {dmWithOther && character && (
         <DirectMessageThread
@@ -1944,6 +2075,7 @@ export function Dashboard() {
           onXpHandoff={handleQrXpHandoff}
           pendingScanCode={pendingScanCode}
           prefillErrorBanner={qrDeepLinkError}
+          allowRepeatQrScan={adminQrUnlimited}
         />
       ) : null}
 

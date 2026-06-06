@@ -370,42 +370,25 @@ export function Profile({
                   />
                 </div>
               </div>
-              <div
-                className="character-level-badge absolute -bottom-2 -right-2 min-w-[2.75rem] h-8 px-2 rounded-lg flex items-center justify-center text-xs font-display"
-                aria-label={`Level ${character.level}`}
+              <span
+                className="cq-profile-level-pip absolute -bottom-0.5 -right-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full border-2 border-cq-card px-0.5 text-[10px] font-bold leading-none text-white sm:h-[1.375rem] sm:min-w-[1.375rem] sm:text-[11px]"
+                aria-hidden
               >
-                LV.{character.level}
-              </div>
+                {character.level}
+              </span>
             </div>
           </div>
           <div className="flex-1 text-center sm:text-left min-w-0">
-            <h2 className="font-display font-bold text-2xl sm:text-3xl text-white tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
-              {character.name}
-            </h2>
-            <p className="text-uri-keaney/95 text-sm mt-0.5 font-medium">@{character.username}</p>
-            {character.classId && (getClassTitle(character.classId) || getClassRealm(character.classId)) && (
-              <p className="inline-block mt-2 px-3 py-1 rounded-lg bg-uri-gold/20 border border-uri-gold/40 text-uri-gold text-sm font-semibold">
-                {getClassTitle(character.classId)}
-                {getClassRealm(character.classId) && (
-                  <span className="text-white/60 font-normal"> · {getClassRealm(character.classId)}</span>
-                )}
-              </p>
-            )}
-            {/* XP bar */}
-            <div className="mt-4">
-              <div className="flex justify-between text-xs text-white/70 mb-1.5">
-                <span>Level progress</span>
-                <span className="font-mono text-uri-keaney/95">{xpCurrent} / {xpNeeded} XP</span>
-              </div>
-              <div className="xp-bar-track h-3 rounded-full overflow-hidden">
-                <div
-                  className="xp-bar-fill h-full rounded-full transition-all duration-500 ease-out"
-                  style={{ width: `${xpPct}%` }}
-                />
-              </div>
+            <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 sm:justify-start">
+              <h2 className="font-display font-bold text-2xl sm:text-3xl text-white tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+                {character.name}
+              </h2>
+              <span className="rounded-md border border-cyan-400/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold tracking-[0.14em] text-cyan-200 sm:text-[11px]">
+                LEVEL {character.level}
+              </span>
             </div>
             {(character.guildIds ?? []).length > 0 && (
-              <div className="flex items-center gap-1.5 mt-3 flex-wrap justify-center sm:justify-start">
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5 sm:justify-start">
                 {(character.guildIds ?? []).map((gid) => {
                   const g = getGuildById(gid);
                   return g ? (
@@ -413,17 +396,45 @@ export function Profile({
                       key={gid}
                       type="button"
                       onClick={() => setViewGuild(g)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 text-white/90 border border-uri-keaney/25 text-xs font-medium transition-colors hover:bg-uri-keaney/15 hover:border-uri-keaney/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/50 focus:ring-offset-2 focus:ring-offset-uri-navy"
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-white/52 transition-colors hover:text-white/72"
                     >
                       <span className="truncate max-w-[14rem] sm:max-w-[18rem]">
                         {g.crest} {g.name}
-                      </span>{" "}
-                      <span className="text-white/50 shrink-0">Lv.{g.xp != null ? 1 + Math.floor(g.xp / 100) : g.level}</span>
+                      </span>
                     </button>
                   ) : null;
                 })}
               </div>
             )}
+            {character.classId && (getClassTitle(character.classId) || getClassRealm(character.classId)) && (
+              <p className="mt-1.5 text-uri-gold/85 text-sm font-medium">
+                {getClassTitle(character.classId)}
+                {getClassRealm(character.classId) && (
+                  <span className="text-white/50 font-normal"> · {getClassRealm(character.classId)}</span>
+                )}
+              </p>
+            )}
+            <p className="text-white/35 text-sm mt-0.5">@{character.username}</p>
+            <div className="mt-4">
+              <div className="mb-1.5 flex justify-between gap-2 text-[11px] font-medium tabular-nums text-white/42">
+                <span>{character.totalXP.toLocaleString()} XP</span>
+                <span>Next level: {(xpNeeded - xpCurrent).toLocaleString()} XP</span>
+              </div>
+              <div className="xp-bar-track h-3 rounded-full overflow-hidden">
+                <div
+                  className="xp-bar-fill h-full rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${xpPct}%` }}
+                />
+              </div>
+              <p className="mt-1 text-[10px] tabular-nums text-white/35">
+                {xpCurrent.toLocaleString()} / {xpNeeded.toLocaleString()} XP this level
+              </p>
+            </div>
+            {character.streakDays >= 3 ? (
+              <p className="mt-2.5 text-[11px] font-semibold text-amber-200/90">
+                🔥 {character.streakDays}-Day Streak
+              </p>
+            ) : null}
             {character.bio && (
               <p className="text-sm text-white/85 mt-3 break-words leading-relaxed">{character.bio}</p>
             )}

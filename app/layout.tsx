@@ -15,7 +15,10 @@ const mono = JetBrains_Mono({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#041E42",
+  themeColor: "#0A1F44",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export const metadata: Metadata = {
@@ -34,7 +37,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${display.variable} ${mono.variable}`}>
-      <body className="font-sans min-h-screen flex flex-col bg-uri-navy">
+      <body className="font-sans flex min-h-[100dvh] flex-col overflow-x-hidden bg-cq-app">
         {children}
       </body>
     </html>

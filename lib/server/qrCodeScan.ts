@@ -120,7 +120,11 @@ async function reserveSuccessScanClaim(args: {
   deviceHint?: string | null;
   idempotencyKey?: string | null;
 }): Promise<string> {
-  const claimUtcDay = args.qr.max_scans_per_day > 0 ? utcClaimDay() : null;
+  // Per-day dedup applies to student claims only; admins log unlimited admin_bypass rows.
+  const claimUtcDay =
+    args.scanStatus === "admin_bypass" || args.qr.max_scans_per_day <= 0
+      ? null
+      : utcClaimDay();
 
   const baseRow: Record<string, unknown> = {
     user_id: args.userId,
@@ -254,6 +258,25 @@ function mapQrCodeRow(row: Record<string, unknown>): QrCodeRow {
   };
 }
 
+/** Cooldown / daily caps for students only (admins test with unlimited scans). */
+export function isDuplicateQrClaim(args: {
+  row: QrCodeRow;
+  lastSuccessAt: string | null;
+  successToday: number;
+  priorEventSuccess: boolean;
+}): ScanFailReason | null {
+  const { row, lastSuccessAt, successToday, priorEventSuccess } = args;
+  if (row.type === "event" && priorEventSuccess) return "already_redeemed";
+  if (lastSuccessAt && row.cooldown_hours > 0) {
+    const nextAllowed = new Date(lastSuccessAt).getTime() + row.cooldown_hours * 60 * 60 * 1000;
+    if (Date.now() < nextAllowed) return "cooldown";
+  }
+  if (row.max_scans_per_day > 0 && successToday >= row.max_scans_per_day) {
+    return "daily_limit";
+  }
+  return null;
+}
+
 export function evaluateScanEligibility(args: {
   row: QrCodeRow;
   role: ProfileRole;
@@ -262,9 +285,22 @@ export function evaluateScanEligibility(args: {
   priorEventSuccess: boolean;
 }): { allowed: boolean; reason?: ScanFailReason; bypass: boolean } {
   const { row, role, lastSuccessAt, successToday, priorEventSuccess } = args;
-  const bypass = canBypassQrScanLimits(role);
+  const operationalBypass = canBypassQrScanLimits(role);
 
-  if (bypass) return { allowed: true, bypass: true };
+  if (operationalBypass) {
+    return { allowed: true, bypass: true };
+  }
+
+  const duplicateReason = isDuplicateQrClaim({
+    row,
+    lastSuccessAt,
+    successToday,
+    priorEventSuccess,
+  });
+  if (duplicateReason) {
+    return { allowed: false, reason: duplicateReason, bypass: false };
+  }
+
   if (!row.is_active) return { allowed: false, reason: "inactive", bypass: false };
   if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
     return { allowed: false, reason: "expired", bypass: false };
@@ -272,18 +308,7 @@ export function evaluateScanEligibility(args: {
   if (row.requires_staff_approval) {
     return { allowed: false, reason: "staff_approval", bypass: false };
   }
-  if (row.type === "event" && priorEventSuccess) {
-    return { allowed: false, reason: "already_redeemed", bypass: false };
-  }
-  if (lastSuccessAt && row.cooldown_hours > 0) {
-    const nextAllowed = new Date(lastSuccessAt).getTime() + row.cooldown_hours * 60 * 60 * 1000;
-    if (Date.now() < nextAllowed) {
-      return { allowed: false, reason: "cooldown", bypass: false };
-    }
-  }
-  if (row.max_scans_per_day > 0 && successToday >= row.max_scans_per_day) {
-    return { allowed: false, reason: "daily_limit", bypass: false };
-  }
+
   return { allowed: true, bypass: false };
 }
 
@@ -416,7 +441,7 @@ export async function scanCampusQuestQrCode(args: {
   const scanStatus: "success" | "admin_bypass" = eligibility.bypass ? "admin_bypass" : "success";
 
   const claimId = await reserveSuccessScanClaim({
-    client: userClient,
+    client: admin,
     userId,
     qr,
     xpAmount,
@@ -430,6 +455,7 @@ export async function scanCampusQuestQrCode(args: {
       code: qr.code,
       userId: userId.slice(0, 8),
       idempotencyKey: args.idempotencyKey ?? null,
+      adminBypass: eligibility.bypass,
     });
     throw new ApiError(409, alreadyClaimedMessage(qr), "ALREADY_CLAIMED");
   }

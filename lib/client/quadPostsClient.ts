@@ -28,8 +28,15 @@ export async function createQuadPostRequest(payload: {
   relatedActivityId?: string | null;
   relatedQuestSlug?: string | null;
   authorStreakDays?: number;
+  locationId?: string;
+  locationName?: string;
 }): Promise<FieldNote> {
   const body = payload as Record<string, unknown>;
   const data = await postAuthed<{ post: QuadPostApiRow }, Record<string, unknown>>("/api/quad/posts", body);
-  return quadPostRowToFieldNote(data.post);
+  const note = quadPostRowToFieldNote(data.post);
+  if (payload.locationId && payload.locationName) {
+    note.locationId = payload.locationId;
+    note.locationName = payload.locationName;
+  }
+  return note;
 }

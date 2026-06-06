@@ -246,6 +246,9 @@ export interface FieldNote {
   visibility?: QuadPostVisibility;
   /** Snapshot for feed badges (optional). */
   authorStreakDays?: number;
+  /** Optional Realm location tag for future campus galleries. */
+  locationId?: string;
+  locationName?: string;
   /**
    * Seeded posts start with display counts before any real user ids exist in the Sets.
    * When hydrated into `feed`, reactions add on top: e.g. nodCount = baseline.nod + nodByUserIds.size.
@@ -281,6 +284,8 @@ export interface FieldNoteSerialized {
   proofUrl?: string;
   visibility?: QuadPostVisibility;
   authorStreakDays?: number;
+  locationId?: string;
+  locationName?: string;
 }
 
 /** Comment on a Quad post (field note). */

@@ -35,7 +35,7 @@ export function ScanSuccessOverlay({ reward }: ScanSuccessOverlayProps) {
           aria-hidden
         >
           <motion.div
-            className="absolute inset-0 bg-[#020817]/55 backdrop-blur-[2px]"
+            className="absolute inset-0 bg-cq-app/55 backdrop-blur-[2px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           />

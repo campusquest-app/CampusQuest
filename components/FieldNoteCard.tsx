@@ -1,9 +1,93 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import { Heart, MessageCircle, Share2, ShieldCheck, Swords, Zap } from "lucide-react";
 import type { FieldNote, QuadComment, StatKey } from "@/lib/types";
 import { QUAD_COMMENT_MAX_CHARS } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
+import { CampusQuestNodHeartPop } from "./CampusQuestNodHeartPop";
+
+type LucideIcon = ComponentType<{ className?: string; strokeWidth?: number }>;
+
+function ReactionButton({
+  active,
+  onClick,
+  icon: Icon,
+  count,
+  label,
+  title,
+  pulseClass,
+  fillWhenActive,
+  compact,
+}: {
+  active?: boolean;
+  onClick: () => void;
+  icon: LucideIcon;
+  count?: number;
+  label: string;
+  title?: string;
+  pulseClass?: string;
+  fillWhenActive?: boolean;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={title}
+        aria-label={label}
+        aria-pressed={active}
+        className={`cq-feed-reaction group inline-flex min-w-[2.25rem] items-center justify-center gap-1 rounded-lg px-1 py-1 transition-colors duration-150 active:scale-95 touch-manipulation ${
+          active ? (fillWhenActive ? "text-violet-300" : "text-cyan-400") : "text-white/42 hover:text-white/68"
+        } ${pulseClass ?? ""}`}
+      >
+        <Icon
+          className={`h-[19px] w-[19px] transition-colors duration-150 ${
+            active && fillWhenActive ? "fill-violet-300/90" : ""
+          }`}
+          strokeWidth={active ? 2.35 : 2}
+        />
+        {count != null && count > 0 ? (
+          <span className="min-w-[0.65rem] text-[11px] font-semibold tabular-nums leading-none text-white/55">
+            {count}
+          </span>
+        ) : null}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={label}
+      aria-pressed={active}
+      className={`cq-feed-reaction group inline-flex min-w-[2.75rem] items-center justify-center gap-1.5 rounded-xl px-2 py-1.5 transition-all duration-200 active:scale-90 touch-manipulation ${
+        active ? "text-cyan-400" : "text-white/45 hover:text-white/72"
+      } ${pulseClass ?? ""}`}
+    >
+      <span
+        className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 ${
+          active
+            ? "bg-cyan-500/12 shadow-[0_0_14px_-4px_rgba(56,189,248,0.55)]"
+            : "group-hover:bg-white/[0.04]"
+        }`}
+      >
+        <Icon
+          className={`h-[18px] w-[18px] transition-colors duration-200 ${
+            active && fillWhenActive ? "fill-cyan-400/85" : ""
+          }`}
+          strokeWidth={active ? 2.4 : 2}
+        />
+      </span>
+      {count != null && count > 0 ? (
+        <span className="min-w-[0.75rem] text-[12px] font-semibold tabular-nums leading-none">{count}</span>
+      ) : null}
+    </button>
+  );
+}
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
@@ -20,6 +104,25 @@ function streakBadge(days: number | undefined): string | null {
   if (days >= 30) return `🔥 ${days}-day streak`;
   if (days >= 7) return `🔥 ${days}-day streak`;
   return `🔥 ${days}d`;
+}
+
+function FeedCaption({ name, body, tags }: { name: string; body: string; tags: string[] }) {
+  const trimmed = body.trim();
+  if (!trimmed && tags.length === 0) return null;
+
+  return (
+    <p className="break-words text-[14px] leading-snug text-white/85">
+      <span className="font-semibold text-white">{name}</span>
+      {trimmed ? <span className="whitespace-pre-wrap"> {trimmed}</span> : null}
+      {trimmed && tags.length > 0 ? " " : null}
+      {tags.map((tag, index) => (
+        <span key={`${tag}-${index}`} className="font-medium text-cyan-400/80">
+          #{tag}
+          {index < tags.length - 1 ? " " : ""}
+        </span>
+      ))}
+    </p>
+  );
 }
 
 /** Treat common CDN URLs as images even when the path has no file extension. */
@@ -67,6 +170,8 @@ export function FieldNoteCard({
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [showImageNodPop, setShowImageNodPop] = useState(false);
+  const [likePulse, setLikePulse] = useState(false);
+  const [zapPulse, setZapPulse] = useState(false);
   const lastImageTapAtRef = useRef(0);
   const nodPopTimerRef = useRef<number | null>(null);
   const hasNodded = note.nodByUserIds.has(currentUserId);
@@ -99,15 +204,53 @@ export function FieldNoteCard({
       nodPopTimerRef.current = window.setTimeout(() => {
         setShowImageNodPop(false);
         nodPopTimerRef.current = null;
-      }, 880);
+      }, 820);
     }, 0);
   }
 
   function addNodFromImage() {
     // Double-tap should add a nod, not toggle it off.
-    if (!hasNodded) onNod(note.id);
+    if (!hasNodded) {
+      onNod(note.id);
+      setLikePulse(true);
+      window.setTimeout(() => setLikePulse(false), 380);
+    }
     triggerImageNodPop();
   }
+
+  function handleNod() {
+    onNod(note.id);
+    if (!hasNodded) {
+      setLikePulse(true);
+      window.setTimeout(() => setLikePulse(false), 380);
+    }
+  }
+
+  function handleHype() {
+    onHype(note.id);
+    if (!hasHyped) {
+      setZapPulse(true);
+      window.setTimeout(() => setZapPulse(false), 420);
+    }
+  }
+
+  const handleShare = useCallback(async () => {
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    const text = note.body.slice(0, 200);
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({
+          title: `${note.authorName} on CampusQuest`,
+          text,
+          url,
+        });
+      } else if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(`${text}\n${url}`);
+      }
+    } catch {
+      /* user cancelled share */
+    }
+  }, [note.authorName, note.body]);
 
   function handleProofImageTap() {
     const now = Date.now();
@@ -123,7 +266,7 @@ export function FieldNoteCard({
     <div
       className={`flex items-center justify-center flex-shrink-0 border overflow-hidden ${
         isFeed
-          ? "h-11 w-11 rounded-full border-white/20 bg-gradient-to-b from-white/[0.12] to-white/[0.04] shadow-inner shadow-black/20 ring-2 ring-uri-keaney/25 ring-offset-2 ring-offset-[#050f22]"
+          ? "h-12 w-12 rounded-full border-white/12 bg-white/[0.04]"
           : "w-11 h-11 rounded-xl bg-gradient-to-br from-uri-keaney/25 to-uri-navy border-uri-keaney/30"
       } ${
         highlightStat === "strength"
@@ -133,7 +276,7 @@ export function FieldNoteCard({
             : ""
       }`}
     >
-      <AvatarDisplay avatar={note.authorAvatar} size={isFeed ? 44 : 44} />
+      <AvatarDisplay avatar={note.authorAvatar} size={isFeed ? 48 : 44} />
     </div>
   );
 
@@ -153,16 +296,13 @@ export function FieldNoteCard({
             alt=""
             loading="lazy"
             decoding="async"
-            className="quad-feed-media-img w-full aspect-[4/5] sm:aspect-[4/3] sm:max-h-[min(40vh,18rem)] object-cover max-h-[min(40vh,18rem)]"
+            className="quad-feed-media-img w-full rounded-none aspect-[4/5] object-cover max-h-[min(70vh,32rem)]"
           />
-          {showImageNodPop && (
-            <span
-              className="quad-image-nod-pop pointer-events-none absolute left-1/2 top-1/2 z-[2] -translate-x-1/2 -translate-y-1/2 select-none"
-              aria-hidden
-            >
-              👍
+          {showImageNodPop ? (
+            <span className="pointer-events-none absolute left-1/2 top-1/2 z-[2] -translate-x-1/2 -translate-y-1/2">
+              <CampusQuestNodHeartPop size="lg" />
             </span>
-          )}
+          ) : null}
         </button>
       ) : (
         <img
@@ -184,192 +324,180 @@ export function FieldNoteCard({
       </a>
     ));
 
-  const feedActionBtn =
-    "inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-[13px] font-medium backdrop-blur-sm transition-all active:scale-[0.97]";
+  const hypeCount = note.hypeCount ?? note.vouchCount;
   const actionsRow = (
     <div
       className={
         isFeed
-          ? "flex flex-wrap items-center gap-2"
-          : "mt-3 flex flex-wrap items-center gap-1 border-t border-white/10 pt-3"
+          ? "flex items-center"
+          : "mt-3 flex flex-wrap items-center justify-between gap-1 border-t border-white/10 pt-3"
       }
     >
-      <button
-        type="button"
-        onClick={() => onNod(note.id)}
-        className={`${!isFeed ? "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors" : feedActionBtn} ${
-          hasNodded
-            ? isFeed
-              ? "border-uri-gold/50 bg-uri-gold/15 text-uri-gold shadow-[0_0_20px_-4px_rgba(197,160,40,0.45)]"
-              : "bg-uri-gold/10 text-uri-gold"
-            : isFeed
-              ? "border-white/10 bg-white/[0.04] text-white/70 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
-              : "text-white/55 hover:bg-white/5 hover:text-uri-gold"
+      <div className={`flex items-center ${isFeed ? "gap-1" : "flex-wrap gap-0.5"}`}>
+        <ReactionButton
+          active={hasNodded}
+          onClick={handleNod}
+          icon={Heart}
+          count={note.nodCount}
+          label={hasNodded ? "Unlike" : "Like"}
+          pulseClass={likePulse ? "cq-reaction-heart-pop" : undefined}
+          fillWhenActive
+          compact={isFeed}
+        />
+        <ReactionButton
+          active={commentsOpen}
+          onClick={() => setCommentsOpen((open) => !open)}
+          icon={MessageCircle}
+          count={comments.length}
+          label={commentsOpen ? "Hide comments" : "View comments"}
+          compact={isFeed}
+        />
+        <ReactionButton
+          onClick={() => void handleShare()}
+          icon={Share2}
+          label="Share post"
+          compact={isFeed}
+        />
+        <ReactionButton
+          active={hasHyped}
+          onClick={handleHype}
+          icon={Zap}
+          count={hypeCount}
+          label={hasHyped ? "Remove hype" : "Hype"}
+          title="Hype — you +2 XP, author +3 XP"
+          pulseClass={zapPulse ? "cq-reaction-zap-pulse" : undefined}
+          fillWhenActive
+          compact={isFeed}
+        />
+      </div>
+      {!isFeed ? (
+        <div className="flex items-center gap-0.5">
+          <ReactionButton
+            active={hasVerified}
+            onClick={() => onVerify(note.id)}
+            icon={ShieldCheck}
+            count={note.verifyCount ?? 0}
+            label={hasVerified ? "Remove verify" : "Verify"}
+            title="Verify legit — you +5 XP, author +5 XP"
+          />
+          <ReactionButton
+            active={hasAssisted}
+            onClick={() => onAssist(note.id)}
+            icon={Swords}
+            count={note.assistCount ?? 0}
+            label={hasAssisted ? "Remove assist" : "Assist"}
+            title="Assist — guild race points + author XP"
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const previewComment = comments.length > 0 ? comments[comments.length - 1] : null;
+
+  const commentForm = onAddComment && currentUser && (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const body = commentDraft.trim().slice(0, QUAD_COMMENT_MAX_CHARS);
+        if (!body || commentSubmitting) return;
+        setCommentSubmitting(true);
+        onAddComment(note.id, body);
+        setCommentDraft("");
+        setCommentSubmitting(false);
+      }}
+      className={`flex gap-2 ${isFeed ? "mt-2.5" : "mt-3"}`}
+    >
+      <input
+        type="text"
+        value={commentDraft}
+        onChange={(e) => setCommentDraft(e.target.value.slice(0, QUAD_COMMENT_MAX_CHARS))}
+        placeholder="Add a comment..."
+        maxLength={QUAD_COMMENT_MAX_CHARS}
+        className={`min-w-0 flex-1 rounded-xl border px-3 py-2 text-sm text-white placeholder-white/40 focus:border-uri-keaney/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 ${
+          isFeed ? "border-white/[0.1] bg-black/30" : "border-white/15 bg-white/10"
         }`}
-        aria-label={hasNodded ? "Remove nod" : "Nod"}
-      >
-        <span className="text-base leading-none">👍</span>
-        <span>Nod</span>
-        {note.nodCount > 0 && <span className="tabular-nums text-xs opacity-80">{note.nodCount}</span>}
-      </button>
+      />
       <button
-        type="button"
-        onClick={() => onHype(note.id)}
-        className={`${!isFeed ? "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors" : feedActionBtn} ${
-          hasHyped
-            ? isFeed
-              ? "border-orange-400/40 bg-orange-500/20 text-orange-100 shadow-[0_0_20px_-4px_rgba(251,146,60,0.4)]"
-              : "bg-orange-500/15 text-orange-300"
-            : isFeed
-              ? "border-white/10 bg-white/[0.04] text-white/70 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
-              : "text-white/55 hover:bg-white/5 hover:text-orange-200"
-        }`}
-        aria-label={hasHyped ? "Remove hype" : "Hype"}
-        title="Hype — you +2 XP, author +3 XP"
+        type="submit"
+        disabled={!commentDraft.trim() || commentSubmitting}
+        className="px-3 py-2 rounded-xl bg-uri-keaney/80 text-white text-sm font-medium hover:bg-uri-keaney disabled:opacity-50 disabled:pointer-events-none transition-colors"
       >
-        <span className="text-base leading-none">🔥</span>
-        <span>Hype</span>
-        {(note.hypeCount ?? note.vouchCount) > 0 && (
-          <span className="tabular-nums text-xs opacity-80">{note.hypeCount ?? note.vouchCount}</span>
-        )}
+        Post
       </button>
-      <button
-        type="button"
-        onClick={() => onVerify(note.id)}
-        className={`${!isFeed ? "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors" : feedActionBtn} ${
-          hasVerified
-            ? isFeed
-              ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100 shadow-[0_0_20px_-4px_rgba(52,211,153,0.35)]"
-              : "bg-emerald-500/15 text-emerald-300"
-            : isFeed
-              ? "border-white/10 bg-white/[0.04] text-white/70 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
-              : "text-white/55 hover:bg-white/5 hover:text-emerald-200"
-        }`}
-        aria-label={hasVerified ? "Remove verify" : "Verify"}
-        title="Verify legit — you +5 XP, author +5 XP"
-      >
-        <span className="text-base leading-none">✅</span>
-        <span>Verify</span>
-        {(note.verifyCount ?? 0) > 0 && <span className="tabular-nums text-xs opacity-80">{note.verifyCount}</span>}
-      </button>
-      <button
-        type="button"
-        onClick={() => onAssist(note.id)}
-        className={`${!isFeed ? "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors" : feedActionBtn} ${
-          hasAssisted
-            ? isFeed
-              ? "border-uri-keaney/50 bg-uri-keaney/25 text-white shadow-[0_0_20px_-4px_rgba(104,171,232,0.45)]"
-              : "bg-uri-keaney/15 text-uri-keaney"
-            : isFeed
-              ? "border-white/10 bg-white/[0.04] text-white/70 hover:border-uri-keaney/30 hover:bg-uri-keaney/10 hover:text-uri-keaney"
-              : "text-white/55 hover:bg-white/5 hover:text-uri-keaney"
-        }`}
-        aria-label={hasAssisted ? "Remove assist" : "Assist"}
-        title="Assist — guild race points + author XP"
-      >
-        <span className="text-base leading-none">⚔️</span>
-        <span>Assist</span>
-        {(note.assistCount ?? 0) > 0 && <span className="tabular-nums text-xs opacity-80">{note.assistCount}</span>}
-      </button>
+    </form>
+  );
+
+  const feedCommentsSection = (
+    <div>
+      {!commentsOpen ? (
+        comments.length > 0 ? (
+          <div className="space-y-1">
+            <button
+              type="button"
+              onClick={() => setCommentsOpen(true)}
+              className="text-[13px] font-medium text-white/38 transition hover:text-white/55"
+            >
+              View all {comments.length} comment{comments.length === 1 ? "" : "s"}
+            </button>
+            {previewComment ? (
+              <p className="line-clamp-2 text-[13px] leading-snug text-white/72">
+                <span className="font-semibold text-white">{previewComment.authorName}</span>{" "}
+                <span className="whitespace-pre-wrap">{previewComment.body}</span>
+              </p>
+            ) : null}
+          </div>
+        ) : null
+      ) : (
+        <>
+          {comments.length > 0 ? (
+            <div className="quad-feed-comments-scroll mt-1 max-h-[min(42svh,19rem)] overflow-y-auto sm:max-h-[min(48svh,22rem)]">
+              <ul className="mb-0 space-y-2.5 pr-0.5">
+                {comments.map((c) => (
+                  <li key={c.id}>
+                    <p className="text-[13px] leading-snug text-white/80">
+                      <span className="font-semibold text-white">{c.authorName}</span>{" "}
+                      <span className="whitespace-pre-wrap">{c.body}</span>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-[13px] text-white/35">No comments yet</p>
+          )}
+          {commentForm}
+        </>
+      )}
     </div>
   );
 
   const commentsBlock = (
-    <div className={`${isFeed ? "mt-3 border-t border-white/[0.06] pt-3 pb-1" : "mt-3 border-t border-white/10 pt-3"}`}>
-      <button
-        type="button"
-        onClick={() => setCommentsOpen((open) => !open)}
-        className={`flex w-full items-center gap-2 rounded-lg py-1.5 text-left font-medium uppercase tracking-wider transition-colors ${
-          isFeed
-            ? "text-[11px] text-white/40 hover:text-uri-keaney/90"
-            : "text-xs text-white/50 hover:text-white/70 -mx-1 px-1"
-        }`}
-        aria-expanded={commentsOpen}
-      >
-        <span aria-hidden>{commentsOpen ? "▼" : "▶"}</span>
-        <span>Comments {comments.length > 0 && `(${comments.length})`}</span>
-      </button>
-      {commentsOpen && (
+    <div className={`${isFeed ? "pb-0" : "mt-3 border-t border-white/10 pt-3"}`}>
+      {isFeed ? null : commentsOpen ? (
         <>
-          {comments.length > 0 &&
-            (isFeed ? (
-              <div className="quad-feed-comments-scroll mt-3 max-h-[min(42svh,19rem)] overflow-y-auto rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2 sm:max-h-[min(48svh,22rem)]">
-                <ul className="mb-0 space-y-2.5 pr-1">
-                  {comments.map((c) => (
-                    <li
-                      key={c.id}
-                      className="flex gap-2.5 rounded-2xl border border-white/[0.07] bg-white/[0.04] p-2.5 shadow-sm shadow-black/20"
-                    >
-                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/12 bg-black/25">
-                        <AvatarDisplay avatar={c.authorAvatar} size={32} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-sm font-semibold text-white">{c.authorName}</span>
-                          <span className="text-xs text-uri-keaney/85">@{c.authorUsername}</span>
-                          <span className="text-xs text-white/35">· {formatTime(c.createdAt)}</span>
-                        </div>
-                        <p className="mt-1 break-words text-sm leading-relaxed text-white/85 whitespace-pre-wrap">{c.body}</p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <ul className="mt-3 mb-3 space-y-2">
-                {comments.map((c) => (
-                  <li key={c.id} className="flex gap-2">
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/10">
-                      <AvatarDisplay avatar={c.authorAvatar} size={32} />
+          {comments.length > 0 && (
+            <ul className="mt-3 mb-3 space-y-2">
+              {comments.map((c) => (
+                <li key={c.id} className="flex gap-2">
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/10">
+                    <AvatarDisplay avatar={c.authorAvatar} size={32} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-sm font-semibold text-white">{c.authorName}</span>
+                      <span className="text-xs text-uri-keaney/85">@{c.authorUsername}</span>
+                      <span className="text-xs text-white/35">· {formatTime(c.createdAt)}</span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-sm font-semibold text-white">{c.authorName}</span>
-                        <span className="text-xs text-uri-keaney/85">@{c.authorUsername}</span>
-                        <span className="text-xs text-white/35">· {formatTime(c.createdAt)}</span>
-                      </div>
-                      <p className="mt-1 break-words text-sm leading-relaxed text-white/85 whitespace-pre-wrap">{c.body}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ))}
-          {onAddComment && currentUser && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const body = commentDraft.trim().slice(0, QUAD_COMMENT_MAX_CHARS);
-                if (!body || commentSubmitting) return;
-                setCommentSubmitting(true);
-                onAddComment(note.id, body);
-                setCommentDraft("");
-                setCommentSubmitting(false);
-              }}
-              className={`flex gap-2 ${isFeed ? "mt-3" : ""}`}
-            >
-              <input
-                type="text"
-                value={commentDraft}
-                onChange={(e) => setCommentDraft(e.target.value.slice(0, QUAD_COMMENT_MAX_CHARS))}
-                placeholder="Write a comment..."
-                maxLength={QUAD_COMMENT_MAX_CHARS}
-                className={`min-w-0 flex-1 rounded-xl border px-3 py-2 text-sm text-white placeholder-white/40 focus:border-uri-keaney/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 ${
-                  isFeed
-                    ? "border-white/[0.1] bg-black/30"
-                    : "border-white/15 bg-white/10"
-                }`}
-              />
-              <button
-                type="submit"
-                disabled={!commentDraft.trim() || commentSubmitting}
-                className="px-3 py-2 rounded-xl bg-uri-keaney/80 text-white text-sm font-medium hover:bg-uri-keaney disabled:opacity-50 disabled:pointer-events-none transition-colors"
-              >
-                Post
-              </button>
-            </form>
+                    <p className="mt-1 break-words text-sm leading-relaxed text-white/85 whitespace-pre-wrap">{c.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
+          {commentForm}
         </>
-      )}
+      ) : null}
     </div>
   );
 
@@ -377,55 +505,57 @@ export function FieldNoteCard({
     <article
       className={
         isFeed
-          ? "quad-feed-post border-b border-white/[0.07] bg-gradient-to-b from-white/[0.035] via-transparent to-transparent py-3 sm:py-4"
+          ? "cq-feed-post quad-feed-post bg-transparent"
           : "p-4 transition-colors hover:bg-white/[0.04]"
       }
     >
       {isFeed ? (
         <>
-          {/* Quad feed layout: Instagram-style — avatar + name row, full-width media, then actions and caption */}
-          <div className="flex items-start gap-3 px-4 pt-3.5 pb-2">
+          <div className="flex items-center gap-3 px-3 pb-2 pt-4">
             {avatarFrame}
-            <div className="min-w-0 flex-1 pt-0.5">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="text-[15px] font-semibold tracking-tight text-white">{note.authorName}</span>
-                <span className="text-xs text-white/40">{formatTime(note.createdAt)}</span>
-                {streak && (
-                  <span className="rounded-full border border-uri-gold/35 bg-gradient-to-r from-uri-gold/25 to-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-uri-gold shadow-sm shadow-black/20">
-                    {streak}
-                  </span>
-                )}
-              </div>
-              <p className="mt-0.5 text-xs font-medium text-uri-keaney/90">@{note.authorUsername}</p>
-            </div>
-          </div>
-          {proofImgUrl && <div className="quad-feed-media-wrap">{proofBlock}</div>}
-          <div className="space-y-3 px-4 pb-4 pt-2">
-            {actionsRow}
-            <div className="rounded-2xl bg-gradient-to-r from-[#E0F0FF1A] via-[#C5E2FF33] to-[#E0F0FF1A] px-3 py-2.5 sm:px-3.5 sm:py-3 border border-[#9FC4FF33]">
-              <p className="break-words whitespace-pre-wrap text-[15px] leading-relaxed text-white/90 sm:text-[16px]">
-                <span className="mr-1 font-semibold text-white">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span className="text-[15px] font-bold leading-tight tracking-tight text-white">
                   {note.authorName}
                 </span>
-                <span className="mr-1 text-xs font-medium uppercase tracking-[0.16em] text-white/45 align-middle">
-                  · @{note.authorUsername}
-                </span>
-                <span className="block mt-1.5 text-[15px] leading-relaxed text-white/90">
-                  {note.body}
-                </span>
-              </p>
-            </div>
-            {note.ramMarks.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {note.ramMarks.map((r) => (
-                  <span key={r.id} className="ram-mark ram-mark-feed">
-                    #{r.tag}
-                  </span>
-                ))}
+                {(note.verifyCount ?? 0) >= 2 ? (
+                  <span className="text-[10px] font-medium text-emerald-300/75">Verified</span>
+                ) : null}
+                {streak ? (
+                  <span className="text-[10px] font-medium text-uri-gold/85">{streak}</span>
+                ) : null}
               </div>
-            )}
-            {commentsBlock}
+              <p className="mt-0.5 text-[12px] text-white/32">
+                @{note.authorUsername} • {formatTime(note.createdAt)}
+              </p>
+              {note.locationName ? (
+                <p className="mt-0.5 text-[11px] font-medium text-cyan-300/75">📍 {note.locationName}</p>
+              ) : null}
+            </div>
           </div>
+          {proofImgUrl ? (
+            <div className="quad-feed-media-wrap w-full">{proofBlock}</div>
+          ) : null}
+          {!proofImgUrl && (note.body.trim() || note.ramMarks.length > 0) && (
+            <div className="px-3 pb-2.5">
+              <FeedCaption
+                name={note.authorName}
+                body={note.body}
+                tags={note.ramMarks.map((r) => r.tag)}
+              />
+            </div>
+          )}
+          <div className={`px-3 ${proofImgUrl ? "pt-1.5" : "pt-2"} pb-0.5`}>{actionsRow}</div>
+          {proofImgUrl && (note.body.trim() || note.ramMarks.length > 0) && (
+            <div className="px-3 pt-1 pb-0.5">
+              <FeedCaption
+                name={note.authorName}
+                body={note.body}
+                tags={note.ramMarks.map((r) => r.tag)}
+              />
+            </div>
+          )}
+          <div className="px-3 pb-4 pt-1.5">{feedCommentsSection}</div>
         </>
       ) : (
         <div className="flex gap-3">
@@ -435,6 +565,9 @@ export function FieldNoteCard({
               <span className="font-semibold text-white">{note.authorName}</span>
               <span className="text-uri-keaney/90 text-sm">@{note.authorUsername}</span>
               <span className="text-white/40 text-xs">· {formatTime(note.createdAt)}</span>
+              {note.locationName ? (
+                <span className="text-[11px] font-medium text-cyan-300/75">📍 {note.locationName}</span>
+              ) : null}
               {streak && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-uri-gold/20 text-uri-gold border border-uri-gold/40">
                   {streak}

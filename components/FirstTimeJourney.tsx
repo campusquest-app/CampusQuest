@@ -26,7 +26,8 @@ type AppTab =
   | "character"
   | "inbox"
   | "events"
-  | "organizations";
+  | "organizations"
+  | "realm";
 type QuestId = BeginnerClaimStatusResponse["claims"][number]["questKey"];
 
 type BeginnerQuest = {

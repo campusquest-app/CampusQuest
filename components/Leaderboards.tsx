@@ -414,7 +414,7 @@ export function Leaderboards({ character }: { character: Character }) {
         </div>
       ) : (
         <>
-          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-[#0d2d58]/95 via-uri-navy to-[#061428] shadow-[0_20px_50px_-20px_rgba(0,0,0,0.55)] ring-1 ring-white/10">
+          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-[#0d2d58]/95 via-cq-secondary to-cq-card shadow-[0_20px_50px_-20px_rgba(0,0,0,0.55)] ring-1 ring-white/10">
             <div
               className="pointer-events-none absolute inset-0 opacity-[0.45] bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(104,171,232,0.22),transparent_55%)]"
               aria-hidden
