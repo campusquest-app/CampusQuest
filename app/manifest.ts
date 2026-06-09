@@ -6,8 +6,8 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "CampusQuest",
     start_url: "/",
     display: "standalone",
-    background_color: "#0b1020",
-    theme_color: "#0b1020",
+    background_color: "#0A1F44",
+    theme_color: "#0A1F44",
     icons: [
       {
         src: "/icon-192x192.png",

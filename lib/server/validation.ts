@@ -1,12 +1,25 @@
 import { z } from "zod";
 import { ORGANIZATION_REQUEST_CATEGORIES } from "@/lib/organizationRequestCategories";
+import { passwordMeetsRequirements } from "@/lib/passwordRequirements";
 
 export const uuidSchema = z.string().uuid();
 
+const passwordFieldSchema = z
+  .string()
+  .min(8, "PASSWORD_REQUIREMENTS")
+  .max(128)
+  .refine(passwordMeetsRequirements, { message: "PASSWORD_REQUIREMENTS" });
+
 export const authSignupSchema = z.object({
   email: z.string().trim().email(),
-  password: z.string().min(8).max(128),
+  password: passwordFieldSchema,
   displayName: z.string().trim().min(1).max(50).optional(),
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9_]{3,24}$/, "Username must be 3-24 characters (a-z, 0-9, _).")
+    .optional(),
 });
 
 export const authLoginSchema = z.object({
@@ -561,6 +574,16 @@ export const updateQrCodeSchema = createQrCodeSchema.partial().extend({
 
 export const adminQrScansQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+
+export const realmMarkerPositionSchema = z.object({
+  x: z.number().min(0).max(100),
+  y: z.number().min(0).max(100),
+});
+
+export const realmMarkerPositionsPatchSchema = z.object({
+  positions: z.record(z.string(), realmMarkerPositionSchema),
 });
 
 export async function readJson<T>(request: Request, schema: z.ZodSchema<T>): Promise<T> {

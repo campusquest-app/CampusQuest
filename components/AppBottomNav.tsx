@@ -1,13 +1,18 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { Home, QrCode, User } from "lucide-react";
 
-/** Content clearance above fixed bottom nav (grid row + labels). */
-export const CQ_BOTTOM_NAV_CLEARANCE = "calc(5.5rem + env(safe-area-inset-bottom, 0px))";
+/** Synced by ResizeObserver on the nav element. */
+export const BOTTOM_NAV_CSS_VAR = "--cq-bottom-nav-h";
+
+/** Content clearance above fixed bottom nav (grid row + labels + safe area). */
+export const CQ_BOTTOM_NAV_CLEARANCE =
+  "calc(var(--cq-bottom-nav-h, 5.75rem) + env(safe-area-inset-bottom, 0px) + 0.5rem)";
 
 /** Floating action buttons (compose, etc.) sit just above the nav bar. */
-export const CQ_FLOATING_ACTION_BOTTOM = "calc(5.5rem + env(safe-area-inset-bottom, 0px) + 1.25rem)";
+export const CQ_FLOATING_ACTION_BOTTOM =
+  "calc(var(--cq-bottom-nav-h, 5.75rem) + env(safe-area-inset-bottom, 0px) + 1.25rem)";
 
 export type AppBottomNavTab = "quad" | "character";
 
@@ -22,9 +27,37 @@ export function AppBottomNav({
 }) {
   const homeActive = activeTab === "quad";
   const profileActive = activeTab === "character";
+  const navRef = useRef<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    const el = navRef.current;
+    if (!el || typeof document === "undefined") return undefined;
+
+    const sync = (): void => {
+      const raw = Math.ceil(el.getBoundingClientRect().height);
+      document.documentElement.style.setProperty(BOTTOM_NAV_CSS_VAR, `${Math.max(88, raw)}px`);
+    };
+
+    sync();
+    let ro: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => sync());
+      ro.observe(el);
+    }
+    window.addEventListener("resize", sync);
+    window.visualViewport?.addEventListener?.("resize", sync);
+
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", sync);
+      window.visualViewport?.removeEventListener?.("resize", sync);
+      document.documentElement.style.removeProperty(BOTTOM_NAV_CSS_VAR);
+    };
+  }, []);
 
   return (
     <nav
+      ref={navRef}
       className="cq-bottom-nav cq-nav-shell-bottom fixed inset-x-0 bottom-0 z-50 w-full"
       style={{
         paddingBottom: "env(safe-area-inset-bottom, 0px)",

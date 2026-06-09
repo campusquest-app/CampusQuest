@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "run:prod": "next build && next start",
     "icons": "node scripts/generate-pwa-icons.cjs",
+    "logo:process": "node scripts/process-logo.mjs && node scripts/generate-pwa-icons.cjs",
     "logo:transparent": "node scripts/make-logo-transparent.cjs",
     "ram:transparent": "node scripts/make-ram-transparent.cjs",
     "db:apply-qr": "node scripts/apply-qr-tables-bootstrap.mjs",

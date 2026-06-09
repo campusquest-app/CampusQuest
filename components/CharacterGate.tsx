@@ -11,6 +11,7 @@ import { AvatarDisplay } from "./AvatarDisplay";
 import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
 import { resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
+import { CampusQuestLogo } from "@/components/CampusQuestLogo";
 
 const USERNAME_REGEX = /^[a-z0-9_]+$/;
 const USERNAME_MAX = 25;
@@ -189,9 +190,7 @@ export function CharacterGate({
         <section className="max-w-lg mx-auto mt-6 sm:mt-10 px-4" aria-label="Create your character">
           <div className="rounded-2xl border border-uri-keaney/30 bg-uri-navy/80 shadow-xl overflow-hidden">
             <div className="p-6 sm:p-8 pb-4 text-center border-b border-white/10">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-uri-keaney/30 to-uri-navy border border-uri-keaney/40 flex items-center justify-center text-3xl">
-                🐏
-              </div>
+              <CampusQuestLogo variant="drawer" className="mx-auto mb-4" priority />
               <h1 className="font-display font-bold text-2xl text-white mb-1">Create your character</h1>
               <p className="text-sm text-white/60">First pick your name and username.</p>
             </div>

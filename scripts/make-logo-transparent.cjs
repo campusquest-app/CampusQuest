@@ -1,7 +1,6 @@
 /**
- * Make the logo's black/dark background transparent with a soft edge for a clean look.
- * Run: node scripts/make-logo-transparent.cjs
- * Reads public/campusquest-logo.png, writes back with transparency.
+ * Re-process transparency on public/campusquest-logo.png (legacy helper).
+ * Prefer: npm run logo:process
  */
 const path = require("path");
 const fs = require("fs");

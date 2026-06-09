@@ -27,7 +27,10 @@ type AppTab =
   | "inbox"
   | "events"
   | "organizations"
-  | "realm";
+  | "realm"
+  | "mini-games"
+  | "achievements"
+  | "quest-board";
 type QuestId = BeginnerClaimStatusResponse["claims"][number]["questKey"];
 
 type BeginnerQuest = {

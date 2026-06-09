@@ -16,7 +16,6 @@ import {
   MessageCircle,
   Settings,
   Shield,
-  Sparkles,
   Swords,
   Target,
   TrendingUp,
@@ -25,6 +24,7 @@ import {
 } from "lucide-react";
 import type { Character } from "@/lib/types";
 import { DrawerPlayerProfileCard } from "@/components/DrawerPlayerProfileCard";
+import { CampusQuestLogo } from "@/components/CampusQuestLogo";
 import { AppSettingsPanel, type SettingsActionId } from "@/components/AppSettingsPanel";
 import { AppHelpSupportPanel } from "@/components/AppHelpSupportPanel";
 
@@ -39,14 +39,13 @@ export type AppDrawerDestination =
   | "inbox"
   | "character-sheet"
   | "profile"
-  | "daily-quests"
-  | "special-quests"
+  | "quest-board"
   | "help";
 
 type DrawerPanel = "menu" | "settings" | "help";
 
 type MenuItem = {
-  id: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "settings";
+  id: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings";
   label: string;
   icon: React.ReactNode;
   description?: string;
@@ -64,10 +63,9 @@ const EXPLORE: MenuItem[] = [
 ];
 
 const PROGRESS: MenuItem[] = [
-  { id: "daily-quests", label: "Quests", icon: <Target className="h-5 w-5" /> },
-  { id: "special-quests", label: "Special Quests", icon: <Sparkles className="h-5 w-5" /> },
+  { id: "quest-board", label: "Quest Board", icon: <Target className="h-5 w-5" /> },
   { id: "mini-games", label: "Mini Games", icon: <Gamepad2 className="h-5 w-5" /> },
-  { id: "achievements", label: "Achievements", icon: <Medal className="h-5 w-5" /> },
+  { id: "achievements", label: "Hall of Legends", icon: <Medal className="h-5 w-5" /> },
 ];
 
 const SUPPORT: MenuItem[] = [
@@ -90,7 +88,7 @@ export function AppSideDrawer({
   open: boolean;
   onClose: () => void;
   character: Character | null;
-  onNavigate: (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "settings") => void;
+  onNavigate: (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings") => void;
   onSettingsAction: (action: SettingsActionId) => void;
   showAdminNav?: boolean;
   unreadNotificationCount?: number;
@@ -144,8 +142,8 @@ export function AppSideDrawer({
               />
             ) : (
               <div className="border-b border-white/[0.06] px-5 py-5">
-                <p className="font-display text-sm font-bold tracking-[0.18em] text-white">CAMPUSQUEST</p>
-                <p className="mt-1 text-xs text-white/45">Level up your campus life</p>
+                <CampusQuestLogo variant="drawer" />
+                <p className="mt-2 text-xs text-white/45">Level up your campus life</p>
               </div>
             )}
 

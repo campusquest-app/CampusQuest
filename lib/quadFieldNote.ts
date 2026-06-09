@@ -1,5 +1,14 @@
 import type { FieldNote, RamMark } from "./types";
 
+export type QuadReactionType = "like" | "spark";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isPersistedQuadPostId(id: string): boolean {
+  return UUID_RE.test(id);
+}
+
 /** Row shape from GET /api/quad/posts (with profiles join). */
 export type QuadPostApiRow = {
   id: string;
@@ -16,6 +25,9 @@ export type QuadPostApiRow = {
   verify_count: number;
   assist_count: number;
   created_at: string;
+  viewer_reactions?: QuadReactionType[];
+  like_count?: number;
+  current_user_has_liked?: boolean;
   profiles?: {
     display_name: string | null;
     username: string | null;
@@ -27,7 +39,7 @@ export type QuadPostApiRow = {
   }>;
 };
 
-export function quadPostRowToFieldNote(row: QuadPostApiRow): FieldNote {
+export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): FieldNote {
   const p = row.profiles;
   const prof = Array.isArray(p) ? p[0] : p;
   const name = (prof?.display_name ?? "Student").trim() || "Student";
@@ -48,12 +60,9 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow): FieldNote {
   ramMarks = ramMarks.filter((r) => r.tag.length > 0);
 
   const createdAt = Date.parse(row.created_at);
-  const baseline = {
-    nod: Math.max(0, row.nod_count ?? 0),
-    hype: Math.max(0, row.hype_count ?? 0),
-    verify: Math.max(0, row.verify_count ?? 0),
-    assist: Math.max(0, row.assist_count ?? 0),
-  };
+  const viewerReactions = row.viewer_reactions ?? [];
+  const hasLiked = row.current_user_has_liked ?? viewerReactions.includes("like");
+  const hasSparked = viewerReactions.includes("spark");
 
   return {
     id: row.id,
@@ -63,20 +72,20 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow): FieldNote {
     authorAvatar: avatar,
     body: row.body,
     ramMarks,
-    nodCount: baseline.nod,
-    vouchCount: baseline.hype,
-    nodByUserIds: new Set(),
-    vouchByUserIds: new Set(),
-    hypeCount: baseline.hype,
-    verifyCount: baseline.verify,
-    assistCount: baseline.assist,
-    hypeByUserIds: new Set(),
+    nodCount: Math.max(0, row.like_count ?? row.nod_count ?? 0),
+    vouchCount: Math.max(0, row.hype_count ?? 0),
+    nodByUserIds: new Set(viewerId && hasLiked ? [viewerId] : []),
+    vouchByUserIds: new Set(viewerId && hasSparked ? [viewerId] : []),
+    hypeCount: Math.max(0, row.hype_count ?? 0),
+    verifyCount: Math.max(0, row.verify_count ?? 0),
+    assistCount: Math.max(0, row.assist_count ?? 0),
+    hypeByUserIds: new Set(viewerId && hasSparked ? [viewerId] : []),
     verifyByUserIds: new Set(),
     assistByUserIds: new Set(),
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     proofUrl: row.proof_url ?? undefined,
     visibility: row.visibility,
     authorStreakDays: row.author_streak_days ?? undefined,
-    reactionBaseline: baseline,
+    isPersisted: true,
   };
 }

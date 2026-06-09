@@ -89,16 +89,19 @@ export function FieldNoteComposer({
     setError(null);
     try {
       const selectedLocation = REALM_LOCATION_OPTIONS.find((l) => l.id === locationId);
-      const note = await createQuadPostRequest({
-        body: trimmed,
-        proofUrl: proofUrl.trim() || undefined,
-        visibility,
-        ramMarks,
-        authorStreakDays: character.streakDays ?? 0,
-        ...(selectedLocation
-          ? { locationId: selectedLocation.id, locationName: selectedLocation.name }
-          : {}),
-      });
+      const note = await createQuadPostRequest(
+        {
+          body: trimmed,
+          proofUrl: proofUrl.trim() || undefined,
+          visibility,
+          ramMarks,
+          authorStreakDays: character.streakDays ?? 0,
+          ...(selectedLocation
+            ? { locationId: selectedLocation.id, locationName: selectedLocation.name }
+            : {}),
+        },
+        character.id,
+      );
       prependRemoteQuadPost(note);
       setBody("");
       setRamMarks([]);

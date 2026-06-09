@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArcaneSplashLoader } from "@/components/welcome/ArcaneSplashLoader";
 import { SplashMagicalBackdrop } from "@/components/welcome/SplashMagicalBackdrop";
+import { CampusQuestLogo } from "@/components/CampusQuestLogo";
 import {
   SPLASH_COMPLETE_DWELL_MS,
   SPLASH_FADEOUT_MS,
@@ -106,13 +107,7 @@ export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
               }
               transition={{ duration: 4.2, repeat: Infinity, ease: "easeInOut" }}
             >
-              <img
-                src="/campusquest-logo.png"
-                alt="CampusQuest"
-                width={560}
-                height={200}
-                className="welcome-splash-word mx-auto block h-auto w-full object-contain object-center"
-              />
+              <CampusQuestLogo variant="splash" priority className="mx-auto block" />
             </motion.div>
 
             <p className="welcome-splash-tagline relative z-10 mb-8 w-full shrink-0 text-balance font-medium leading-snug tracking-[0.12em] text-uri-keaney/92 sm:tracking-[0.16em]">

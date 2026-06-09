@@ -1,6 +1,10 @@
 import { fail, ok, ApiError } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
+import {
+  enrichQuadPostsWithViewerReactions,
+  fetchViewerReactionsForPosts,
+} from "@/lib/server/quadReactions";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 
 /** Current user's Quad posts (newest first) — for profile “Posts to the Quad”. */
@@ -31,7 +35,12 @@ export async function GET(request: Request) {
       throw new ApiError(400, error.message ?? "Could not load your posts.", "MY_QUAD_POSTS_FAILED");
     }
 
-    return ok({ posts: (data ?? []) as unknown as QuadPostApiRow[] });
+    const posts = (data ?? []) as unknown as QuadPostApiRow[];
+    const postIds = posts.map((p) => p.id);
+    const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
+    const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
+
+    return ok({ posts: enriched });
   } catch (error) {
     return fail(error);
   }

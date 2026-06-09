@@ -6,7 +6,8 @@ import type { Character, Guild } from "@/lib/types";
 import type { FieldNote } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, STAT_ICONS, MAX_STAT, type StatKey } from "@/lib/types";
 import { xpProgressInLevel } from "@/lib/level";
-import { getFeedByAuthorId, mergeRemoteQuadPostsForMutations, nodFieldNote, hypeFieldNote, verifyFieldNote, assistFieldNote, getCommentsByNoteId, addComment } from "@/lib/feedStore";
+import { getFeedByAuthorId, mergeRemoteQuadPostsForMutations, verifyFieldNote, assistFieldNote, getCommentsByNoteId, addComment } from "@/lib/feedStore";
+import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
 import { fetchMyQuadPosts, fetchQuadPostsByAuthor } from "@/lib/client/quadPostsClient";
 import { getFriends, getCharacterById, removeFriend } from "@/lib/friendsStore";
 import { getFollowing, unfollow } from "@/lib/followStore";
@@ -19,6 +20,7 @@ import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } fro
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { AvatarDisplay } from "./AvatarDisplay";
+import { AchievementShowcaseStrip } from "./achievements/AchievementShowcaseStrip";
 import { FieldNoteCard } from "./FieldNoteCard";
 import { LootCodex } from "./LootCodex";
 import { EquipmentStrip } from "./EquipmentStrip";
@@ -74,6 +76,8 @@ export function Profile({
   moderationAdminAccess?: boolean;
 }) {
   const [posts, setPosts] = useState<FieldNote[]>([]);
+  const [reactionNotice, setReactionNotice] = useState<string | null>(null);
+  const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutWorking, setLogoutWorking] = useState(false);
   const [logoutSaveError, setLogoutSaveError] = useState<string | null>(null);
@@ -102,7 +106,7 @@ export function Profile({
       try {
         if (isOwnProfile) {
           const t0 = typeof performance !== "undefined" ? performance.now() : 0;
-          const mine = await fetchMyQuadPosts(50);
+          const mine = await fetchMyQuadPosts(character.id, 50);
           if (typeof performance !== "undefined") {
             console.log("[cq:load] profile my quad posts", Math.round(performance.now() - t0), "ms");
           }
@@ -110,7 +114,7 @@ export function Profile({
           setPosts(mine);
         } else {
           const t0 = typeof performance !== "undefined" ? performance.now() : 0;
-          const theirs = await fetchQuadPostsByAuthor(character.id, 40);
+          const theirs = await fetchQuadPostsByAuthor(character.id, character.id, 40);
           if (typeof performance !== "undefined") {
             console.log("[cq:load] profile author quad posts", Math.round(performance.now() - t0), "ms");
           }
@@ -299,15 +303,58 @@ export function Profile({
     onRefresh,
   ]);
 
+  const syncPostsFromCache = useCallback(() => {
+    if (isOwnProfile) {
+      setPosts((prev) => {
+        const byId = new Map(prev.map((p) => [p.id, p]));
+        for (const cached of getFeedByAuthorId(character.id)) {
+          byId.set(cached.id, cached);
+        }
+        return Array.from(byId.values()).sort((a, b) => b.createdAt - a.createdAt);
+      });
+      return;
+    }
+    setPosts(getFeedByAuthorId(character.id));
+  }, [character.id, isOwnProfile]);
+
   function handleNod(noteId: string) {
-    nodFieldNote(noteId, character.id);
-    refresh();
+    if (pendingReactions.has(noteId)) return;
+    setPendingReactions((prev) => new Set(prev).add(noteId));
+    setReactionNotice(null);
+    void toggleQuadLike({
+      noteId,
+      userId: character.id,
+      onOptimistic: syncPostsFromCache,
+    }).then((result) => {
+      setPendingReactions((prev) => {
+        const next = new Set(prev);
+        next.delete(noteId);
+        return next;
+      });
+      if (!result.ok && result.message) {
+        setReactionNotice(result.message);
+      }
+    });
   }
 
   function handleHype(noteId: string) {
-    hypeFieldNote(noteId, character.id);
-    refresh();
-    onRefresh?.();
+    if (pendingReactions.has(noteId)) return;
+    setPendingReactions((prev) => new Set(prev).add(noteId));
+    setReactionNotice(null);
+    void toggleQuadSpark({
+      noteId,
+      userId: character.id,
+      onOptimistic: syncPostsFromCache,
+    }).then((result) => {
+      setPendingReactions((prev) => {
+        const next = new Set(prev);
+        next.delete(noteId);
+        return next;
+      });
+      if (!result.ok && result.message) {
+        setReactionNotice(result.message);
+      }
+    });
   }
 
   function handleVerify(noteId: string) {
@@ -415,6 +462,7 @@ export function Profile({
               </p>
             )}
             <p className="text-white/35 text-sm mt-0.5">@{character.username}</p>
+            <AchievementShowcaseStrip character={character} />
             <div className="mt-4">
               <div className="mb-1.5 flex justify-between gap-2 text-[11px] font-medium tabular-nums text-white/42">
                 <span>{character.totalXP.toLocaleString()} XP</span>
@@ -645,6 +693,11 @@ export function Profile({
           </div>
         ) : (
           <div className="card divide-y divide-white/10">
+            {reactionNotice ? (
+              <p className="cq-quad-reaction-notice border-b border-amber-400/20 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-100/90">
+                {reactionNotice}
+              </p>
+            ) : null}
             {posts.map((note) => (
               <FieldNoteCard
                 key={note.id}
@@ -656,6 +709,7 @@ export function Profile({
                 onVerify={handleVerify}
                 onAssist={handleAssist}
                 onAddComment={handleAddComment}
+                likePending={pendingReactions.has(note.id)}
                 currentUser={{
                   id: character.id,
                   name: character.name,

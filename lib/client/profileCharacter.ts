@@ -156,6 +156,43 @@ export function buildLocalCharacterFromServer(profile: MeProfileRow, stats: MeSt
       gs && typeof (gs as { specialQuestProofs?: unknown }).specialQuestProofs === "object"
         ? ((gs as { specialQuestProofs: Character["specialQuestProofs"] }).specialQuestProofs)
         : undefined,
+    featuredAchievementIds:
+      gs && Array.isArray((gs as { featuredAchievementIds?: unknown }).featuredAchievementIds)
+        ? ((gs as { featuredAchievementIds: string[] }).featuredAchievementIds)
+        : undefined,
+    equippedTitleId:
+      typeof (gs as { equippedTitleId?: unknown })?.equippedTitleId === "string"
+        ? (gs as { equippedTitleId: string }).equippedTitleId
+        : (gs as { equippedTitleId?: null })?.equippedTitleId === null
+          ? null
+          : undefined,
+    achievementEarnedAt:
+      gs && typeof (gs as { achievementEarnedAt?: unknown }).achievementEarnedAt === "object"
+        ? ((gs as { achievementEarnedAt: Character["achievementEarnedAt"] }).achievementEarnedAt)
+        : undefined,
+    qrMilestones:
+      gs && typeof (gs as { qrMilestones?: unknown }).qrMilestones === "object"
+        ? ((gs as { qrMilestones: Character["qrMilestones"] }).qrMilestones)
+        : undefined,
+    eventsAttendedCount:
+      typeof (gs as { eventsAttendedCount?: unknown })?.eventsAttendedCount === "number"
+        ? Number((gs as { eventsAttendedCount: number }).eventsAttendedCount)
+        : undefined,
+    foundingMember: Boolean((gs as { foundingMember?: unknown })?.foundingMember),
+    betaTester: Boolean((gs as { betaTester?: unknown })?.betaTester),
+    talentPioneer: Boolean((gs as { talentPioneer?: unknown })?.talentPioneer),
+    acceptedQuestIds:
+      gs && Array.isArray((gs as { acceptedQuestIds?: unknown }).acceptedQuestIds)
+        ? ((gs as { acceptedQuestIds: string[] }).acceptedQuestIds)
+        : undefined,
+    questBoardClaims:
+      gs && typeof (gs as { questBoardClaims?: unknown }).questBoardClaims === "object"
+        ? ((gs as { questBoardClaims: Character["questBoardClaims"] }).questBoardClaims)
+        : undefined,
+    questChainProgress:
+      gs && typeof (gs as { questChainProgress?: unknown }).questChainProgress === "object"
+        ? ((gs as { questChainProgress: Character["questChainProgress"] }).questChainProgress)
+        : undefined,
   };
 
   const bioTrim = typeof profile.bio === "string" ? profile.bio.trim() : "";

@@ -4,15 +4,15 @@ import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } fr
 import { createPortal } from "react-dom";
 import {
   getFeed,
-  nodFieldNote,
-  hypeFieldNote,
   verifyFieldNote,
   assistFieldNote,
   getCommentsByNoteId,
   addComment,
-  setRemoteQuadPostsCache,
+  mergeRemoteQuadPostsCache,
+  cloneFeedNotesForDisplay,
   type QuadFeedType,
 } from "@/lib/feedStore";
+import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
 import { fetchQuadHomePosts } from "@/lib/client/quadPostsClient";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { getCharacterById } from "@/lib/friendsStore";
@@ -55,6 +55,8 @@ export function TheQuad({
   onFeedTabChange: (tab: QuadFeedTab) => void;
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
+  const [reactionNotice, setReactionNotice] = useState<string | null>(null);
+  const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
   const quadHeaderRef = useRef<HTMLDivElement | null>(null);
 
   const baseFeedType: QuadFeedType = feedTab === "friends" ? "friends" : "public";
@@ -62,10 +64,10 @@ export function TheQuad({
   const refresh = useCallback(() => {
     void (async () => {
       try {
-        const remote = await fetchQuadHomePosts(80);
-        setRemoteQuadPostsCache(remote);
+        const remote = await fetchQuadHomePosts(character.id, 80);
+        mergeRemoteQuadPostsCache(remote);
       } catch {
-        setRemoteQuadPostsCache([]);
+        // Keep cached posts on transient failures so reactions are not lost in-session.
       }
       let list = getFeed(character.id, baseFeedType).map(enrichNote);
       if (feedTab === "trending") {
@@ -74,7 +76,7 @@ export function TheQuad({
           return diff !== 0 ? diff : b.createdAt - a.createdAt;
         });
       }
-      setNotes(list);
+      setNotes(cloneFeedNotesForDisplay(list));
       onRefresh?.();
     })();
   }, [character.id, baseFeedType, feedTab, onRefresh]);
@@ -116,15 +118,55 @@ export function TheQuad({
     return { title: "No posts yet", body: "Tap + to share what’s happening on campus." };
   }, [feedTab]);
 
+  const syncNotesFromFeed = useCallback(() => {
+    let list = getFeed(character.id, baseFeedType).map(enrichNote);
+    if (feedTab === "trending") {
+      list = [...list].sort((a, b) => {
+        const diff = trendingScore(b) - trendingScore(a);
+        return diff !== 0 ? diff : b.createdAt - a.createdAt;
+      });
+    }
+    setNotes(cloneFeedNotesForDisplay(list));
+  }, [character.id, baseFeedType, feedTab]);
+
   function handleNod(noteId: string) {
-    nodFieldNote(noteId, character.id);
-    refresh();
+    if (pendingReactions.has(noteId)) return;
+    setPendingReactions((prev) => new Set(prev).add(noteId));
+    setReactionNotice(null);
+    void toggleQuadLike({
+      noteId,
+      userId: character.id,
+      onOptimistic: syncNotesFromFeed,
+    }).then((result) => {
+      setPendingReactions((prev) => {
+        const next = new Set(prev);
+        next.delete(noteId);
+        return next;
+      });
+      if (!result.ok && result.message) {
+        setReactionNotice(result.message);
+      }
+    });
   }
 
   function handleHype(noteId: string) {
-    hypeFieldNote(noteId, character.id);
-    refresh();
-    onRefresh?.();
+    if (pendingReactions.has(noteId)) return;
+    setPendingReactions((prev) => new Set(prev).add(noteId));
+    setReactionNotice(null);
+    void toggleQuadSpark({
+      noteId,
+      userId: character.id,
+      onOptimistic: syncNotesFromFeed,
+    }).then((result) => {
+      setPendingReactions((prev) => {
+        const next = new Set(prev);
+        next.delete(noteId);
+        return next;
+      });
+      if (!result.ok && result.message) {
+        setReactionNotice(result.message);
+      }
+    });
   }
 
   function handleVerify(noteId: string) {
@@ -198,7 +240,7 @@ export function TheQuad({
 
       <div className="flex min-h-[50vh] w-full flex-col bg-cq-app">
         <div
-          className="cq-quad-feed-body w-full flex-1 pb-6"
+          className="cq-quad-feed-body w-full flex-1"
           style={{ paddingTop: "var(--cq-quad-header-offset, var(--cq-quad-header-h, 52px))" }}
         >
           {notes.length === 0 ? (
@@ -208,6 +250,11 @@ export function TheQuad({
             </div>
           ) : (
             <div className="cq-quad-feed-stream px-[2.5vw] sm:px-[3vw]">
+              {reactionNotice ? (
+                <p className="cq-quad-reaction-notice mb-3 rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">
+                  {reactionNotice}
+                </p>
+              ) : null}
               {notes.map((note) => (
                 <FieldNoteCard
                   key={note.id}
@@ -220,6 +267,7 @@ export function TheQuad({
                   onVerify={handleVerify}
                   onAssist={handleAssist}
                   onAddComment={handleAddComment}
+                  likePending={pendingReactions.has(note.id)}
                   currentUser={{
                     id: character.id,
                     name: character.name,

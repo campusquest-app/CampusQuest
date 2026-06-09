@@ -19,6 +19,8 @@ function ReactionButton({
   pulseClass,
   fillWhenActive,
   compact,
+  disabled,
+  pending,
 }: {
   active?: boolean;
   onClick: () => void;
@@ -29,6 +31,8 @@ function ReactionButton({
   pulseClass?: string;
   fillWhenActive?: boolean;
   compact?: boolean;
+  disabled?: boolean;
+  pending?: boolean;
 }) {
   if (compact) {
     return (
@@ -38,7 +42,9 @@ function ReactionButton({
         title={title}
         aria-label={label}
         aria-pressed={active}
-        className={`cq-feed-reaction group inline-flex min-w-[2.25rem] items-center justify-center gap-1 rounded-lg px-1 py-1 transition-colors duration-150 active:scale-95 touch-manipulation ${
+        aria-busy={pending}
+        disabled={disabled || pending}
+        className={`cq-feed-reaction group inline-flex min-w-[2.25rem] items-center justify-center gap-1 rounded-lg px-1 py-1 transition-colors duration-150 active:scale-95 touch-manipulation disabled:cursor-not-allowed disabled:opacity-50 ${
           active ? (fillWhenActive ? "text-violet-300" : "text-cyan-400") : "text-white/42 hover:text-white/68"
         } ${pulseClass ?? ""}`}
       >
@@ -64,7 +70,9 @@ function ReactionButton({
       title={title}
       aria-label={label}
       aria-pressed={active}
-      className={`cq-feed-reaction group inline-flex min-w-[2.75rem] items-center justify-center gap-1.5 rounded-xl px-2 py-1.5 transition-all duration-200 active:scale-90 touch-manipulation ${
+      aria-busy={pending}
+      disabled={disabled || pending}
+      className={`cq-feed-reaction group inline-flex min-w-[2.75rem] items-center justify-center gap-1.5 rounded-xl px-2 py-1.5 transition-all duration-200 active:scale-90 touch-manipulation disabled:cursor-not-allowed disabled:opacity-50 ${
         active ? "text-cyan-400" : "text-white/45 hover:text-white/72"
       } ${pulseClass ?? ""}`}
     >
@@ -149,6 +157,7 @@ export function FieldNoteCard({
   onAssist,
   onAddComment,
   currentUser,
+  likePending = false,
   highlightStat,
   variant = "default",
 }: {
@@ -161,6 +170,7 @@ export function FieldNoteCard({
   onAssist: (noteId: string) => void;
   onAddComment?: (noteId: string, body: string) => void;
   currentUser?: { id: string; name: string; username: string; avatar: string };
+  likePending?: boolean;
   /** Micro celebration on author row when this post's activity matches */
   highlightStat?: StatKey | null;
   /** `feed` = full-width media, border-between-posts (Quad). `default` = padded card row (Profile). */
@@ -172,6 +182,7 @@ export function FieldNoteCard({
   const [showImageNodPop, setShowImageNodPop] = useState(false);
   const [likePulse, setLikePulse] = useState(false);
   const [zapPulse, setZapPulse] = useState(false);
+  const [sparkSent, setSparkSent] = useState(false);
   const lastImageTapAtRef = useRef(0);
   const nodPopTimerRef = useRef<number | null>(null);
   const hasNodded = note.nodByUserIds.has(currentUserId);
@@ -227,10 +238,15 @@ export function FieldNoteCard({
   }
 
   function handleHype() {
+    const adding = !hasHyped;
     onHype(note.id);
-    if (!hasHyped) {
+    if (adding) {
       setZapPulse(true);
       window.setTimeout(() => setZapPulse(false), 420);
+      if (note.isPersisted) {
+        setSparkSent(true);
+        window.setTimeout(() => setSparkSent(false), 1400);
+      }
     }
   }
 
@@ -296,7 +312,7 @@ export function FieldNoteCard({
             alt=""
             loading="lazy"
             decoding="async"
-            className="quad-feed-media-img w-full rounded-none aspect-[4/5] object-cover max-h-[min(70vh,32rem)]"
+            className="quad-feed-media-img w-full rounded-none object-cover"
           />
           {showImageNodPop ? (
             <span className="pointer-events-none absolute left-1/2 top-1/2 z-[2] -translate-x-1/2 -translate-y-1/2">
@@ -343,6 +359,7 @@ export function FieldNoteCard({
           pulseClass={likePulse ? "cq-reaction-heart-pop" : undefined}
           fillWhenActive
           compact={isFeed}
+          pending={likePending}
         />
         <ReactionButton
           active={commentsOpen}
@@ -363,12 +380,17 @@ export function FieldNoteCard({
           onClick={handleHype}
           icon={Zap}
           count={hypeCount}
-          label={hasHyped ? "Remove hype" : "Hype"}
-          title="Hype — you +2 XP, author +3 XP"
+          label={hasHyped ? "Unspark" : "Spark"}
+          title={hasHyped ? "Remove spark" : "Spark this post"}
           pulseClass={zapPulse ? "cq-reaction-zap-pulse" : undefined}
           fillWhenActive
           compact={isFeed}
         />
+        {sparkSent ? (
+          <span className="ml-1 text-[10px] font-medium text-violet-300/85" aria-live="polite">
+            Spark sent
+          </span>
+        ) : null}
       </div>
       {!isFeed ? (
         <div className="flex items-center gap-0.5">
@@ -451,7 +473,7 @@ export function FieldNoteCard({
       ) : (
         <>
           {comments.length > 0 ? (
-            <div className="quad-feed-comments-scroll mt-1 max-h-[min(42svh,19rem)] overflow-y-auto sm:max-h-[min(48svh,22rem)]">
+            <div className="quad-feed-comments mt-1">
               <ul className="mb-0 space-y-2.5 pr-0.5">
                 {comments.map((c) => (
                   <li key={c.id}>
@@ -511,7 +533,7 @@ export function FieldNoteCard({
     >
       {isFeed ? (
         <>
-          <div className="flex items-center gap-3 px-3 pb-2 pt-4">
+          <header className="cq-feed-post-header flex items-center gap-3 px-3 pb-2 pt-3 sm:pt-4">
             {avatarFrame}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -532,12 +554,13 @@ export function FieldNoteCard({
                 <p className="mt-0.5 text-[11px] font-medium text-cyan-300/75">📍 {note.locationName}</p>
               ) : null}
             </div>
-          </div>
+          </header>
           {proofImgUrl ? (
             <div className="quad-feed-media-wrap w-full">{proofBlock}</div>
           ) : null}
-          {!proofImgUrl && (note.body.trim() || note.ramMarks.length > 0) && (
-            <div className="px-3 pb-2.5">
+          <div className="cq-feed-post-actions px-3 py-1">{actionsRow}</div>
+          {(note.body.trim() || note.ramMarks.length > 0) && (
+            <div className="cq-feed-post-caption px-3 pb-1 pt-0.5">
               <FeedCaption
                 name={note.authorName}
                 body={note.body}
@@ -545,17 +568,9 @@ export function FieldNoteCard({
               />
             </div>
           )}
-          <div className={`px-3 ${proofImgUrl ? "pt-1.5" : "pt-2"} pb-0.5`}>{actionsRow}</div>
-          {proofImgUrl && (note.body.trim() || note.ramMarks.length > 0) && (
-            <div className="px-3 pt-1 pb-0.5">
-              <FeedCaption
-                name={note.authorName}
-                body={note.body}
-                tags={note.ramMarks.map((r) => r.tag)}
-              />
-            </div>
-          )}
-          <div className="px-3 pb-4 pt-1.5">{feedCommentsSection}</div>
+          <div className="cq-feed-post-comments px-3 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-1">
+            {feedCommentsSection}
+          </div>
         </>
       ) : (
         <div className="flex gap-3">

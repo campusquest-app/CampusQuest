@@ -13,7 +13,47 @@ let comments: QuadComment[] = [];
 let remoteQuadPostsCache: FieldNote[] = [];
 
 export function setRemoteQuadPostsCache(posts: FieldNote[]): void {
-  remoteQuadPostsCache = posts;
+  remoteQuadPostsCache = posts.map(migrateNote);
+}
+
+/** Merge server-backed posts into cache without dropping entries outside the fetch window. */
+export function mergeRemoteQuadPostsCache(posts: FieldNote[]): void {
+  const byId = new Map(remoteQuadPostsCache.map((n) => [n.id, n]));
+  for (const serverPost of posts.map(migrateNote)) {
+    const existing = byId.get(serverPost.id);
+    if (!existing) {
+      byId.set(serverPost.id, serverPost);
+      continue;
+    }
+    existing.nodCount = serverPost.nodCount;
+    existing.hypeCount = serverPost.hypeCount;
+    existing.vouchCount = serverPost.vouchCount;
+    existing.nodByUserIds = new Set(serverPost.nodByUserIds);
+    existing.hypeByUserIds = new Set(serverPost.hypeByUserIds ?? serverPost.vouchByUserIds);
+    existing.vouchByUserIds = existing.hypeByUserIds;
+    existing.isPersisted = serverPost.isPersisted ?? true;
+  }
+  remoteQuadPostsCache = Array.from(byId.values());
+}
+
+function forEachNoteCopy(noteId: string, fn: (note: FieldNote) => void): void {
+  const seen = new Set<FieldNote>();
+  const remote = remoteQuadPostsCache.find((n) => n.id === noteId);
+  if (remote) {
+    seen.add(remote);
+    fn(remote);
+  }
+  const local = feed.find((n) => n.id === noteId);
+  if (local && !seen.has(local)) {
+    seen.add(local);
+    fn(local);
+  }
+  const seed = SEED_FIELD_NOTES.find((n) => n.id === noteId);
+  if (seed && !feed.some((n) => n.id === noteId)) {
+    const copy = cloneFieldNote(seed);
+    feed.push(copy);
+    fn(copy);
+  }
 }
 
 export function prependRemoteQuadPost(note: FieldNote): void {
@@ -22,11 +62,7 @@ export function prependRemoteQuadPost(note: FieldNote): void {
 
 /** Merge posts into the mutation cache (e.g. Profile “my posts” fetch). */
 export function mergeRemoteQuadPostsForMutations(posts: FieldNote[]): void {
-  const byId = new Map(remoteQuadPostsCache.map((n) => [n.id, n]));
-  for (const p of posts) {
-    byId.set(p.id, p);
-  }
-  remoteQuadPostsCache = Array.from(byId.values());
+  mergeRemoteQuadPostsCache(posts);
 }
 
 const BASE_TS = Date.now();
@@ -268,12 +304,19 @@ function cloneFieldNote(n: FieldNote): FieldNote {
   };
 }
 
+/** Clone feed notes so React re-renders after in-place reaction mutations. */
+export function cloneFeedNotesForDisplay(notes: FieldNote[]): FieldNote[] {
+  return notes.map(cloneFieldNote);
+}
+
 function syncNodCount(note: FieldNote) {
+  if (note.isPersisted) return;
   const b = note.reactionBaseline;
   note.nodCount = b ? b.nod + note.nodByUserIds.size : note.nodByUserIds.size;
 }
 
 function syncHypeCount(note: FieldNote) {
+  if (note.isPersisted) return;
   const b = note.reactionBaseline;
   note.hypeCount = b ? b.hype + note.hypeByUserIds.size : note.hypeByUserIds.size;
   note.vouchByUserIds = note.hypeByUserIds;
@@ -294,6 +337,10 @@ function syncAssistCount(note: FieldNote) {
  * User posts live in `feed`. Seed posts are merged at read time from `SEED_FIELD_NOTES` and
  * are not in `feed` until someone reacts — so we clone the seed into `feed` on first mutation.
  */
+export function getNoteForReaction(noteId: string): FieldNote | null {
+  return getNoteForMutation(noteId);
+}
+
 function getNoteForMutation(noteId: string): FieldNote | null {
   const fromRemote = remoteQuadPostsCache.find((n) => n.id === noteId);
   if (fromRemote) return fromRemote;
@@ -333,33 +380,37 @@ export type QuadFeedType = "public" | "friends";
 
 export function getFeed(viewerId: string | undefined, feedType: QuadFeedType): FieldNote[] {
   if (viewerId == null) return [];
-  let list: FieldNote[];
+  const byId = new Map<string, FieldNote>();
   const remoteForMerge = remoteQuadPostsCache.map(migrateNote);
+
+  const addNote = (note: FieldNote) => {
+    byId.set(note.id, migrateNote(note));
+  };
+
   if (feedType === "public") {
-    list = [
-      ...feed.filter((n) => (n.visibility ?? "public") === "public").map(migrateNote),
-      ...remoteForMerge.filter((n) => (n.visibility ?? "public") === "public"),
-    ];
-    const listIds = new Set(list.map((n) => n.id));
-    SEED_FIELD_NOTES.forEach((n) => {
-      if (!listIds.has(n.id)) {
-        list.push(n);
-        listIds.add(n.id);
+    for (const n of feed) {
+      if ((n.visibility ?? "public") === "public") addNote(n);
+    }
+    for (const n of remoteForMerge) {
+      if ((n.visibility ?? "public") === "public") addNote(n);
+    }
+    const hasPersistedPublicPosts = Array.from(byId.values()).some((n) => n.isPersisted);
+    if (!hasPersistedPublicPosts) {
+      for (const n of SEED_FIELD_NOTES) {
+        if (!byId.has(n.id)) addNote(n);
       }
-    });
+    }
   } else {
     const friendIds = new Set(getFriends(viewerId).map((f) => f.userId));
-    const remoteFriends = remoteForMerge.filter(
-      (n) => n.visibility === "friends" && (n.authorId === viewerId || friendIds.has(n.authorId)),
-    );
-    list = [
-      ...feed.filter(
-        (n) => n.visibility === "friends" && (n.authorId === viewerId || friendIds.has(n.authorId)),
-      ).map(migrateNote),
-      ...remoteFriends,
-    ];
+    for (const n of feed) {
+      if (n.visibility === "friends" && (n.authorId === viewerId || friendIds.has(n.authorId))) addNote(n);
+    }
+    for (const n of remoteForMerge) {
+      if (n.visibility === "friends" && (n.authorId === viewerId || friendIds.has(n.authorId))) addNote(n);
+    }
   }
-  return list.sort((a, b) => b.createdAt - a.createdAt);
+
+  return Array.from(byId.values()).sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export function getFeedByAuthorId(authorId: string): FieldNote[] {
@@ -421,10 +472,133 @@ export function createFieldNote(params: CreateFieldNoteParams): FieldNote | null
   return note;
 }
 
+export type ReactionSnapshot = {
+  nodCount: number;
+  hypeCount: number;
+  liked: boolean;
+  sparked: boolean;
+};
+
+export function snapshotReactionState(note: FieldNote, userId: string): ReactionSnapshot {
+  migrateNote(note);
+  return {
+    nodCount: note.nodCount,
+    hypeCount: note.hypeCount,
+    liked: note.nodByUserIds.has(userId),
+    sparked: note.hypeByUserIds.has(userId),
+  };
+}
+
+export function restoreReactionState(note: FieldNote, userId: string, snapshot: ReactionSnapshot): void {
+  migrateNote(note);
+  note.nodCount = snapshot.nodCount;
+  note.hypeCount = snapshot.hypeCount;
+  note.vouchCount = snapshot.hypeCount;
+  if (snapshot.liked) note.nodByUserIds.add(userId);
+  else note.nodByUserIds.delete(userId);
+  if (snapshot.sparked) note.hypeByUserIds.add(userId);
+  else note.hypeByUserIds.delete(userId);
+  note.vouchByUserIds = note.hypeByUserIds;
+}
+
+export function optimisticToggleLike(note: FieldNote, userId: string): boolean {
+  migrateNote(note);
+  if (note.nodByUserIds.has(userId)) {
+    note.nodByUserIds.delete(userId);
+    note.nodCount = Math.max(0, note.nodCount - 1);
+    return false;
+  }
+  note.nodByUserIds.add(userId);
+  note.nodCount += 1;
+  return true;
+}
+
+export function optimisticToggleSpark(note: FieldNote, userId: string): boolean {
+  migrateNote(note);
+  if (note.hypeByUserIds.has(userId)) {
+    note.hypeByUserIds.delete(userId);
+    note.hypeCount = Math.max(0, note.hypeCount - 1);
+  } else {
+    note.hypeByUserIds.add(userId);
+    note.hypeCount += 1;
+  }
+  note.vouchByUserIds = note.hypeByUserIds;
+  note.vouchCount = note.hypeCount;
+  return note.hypeByUserIds.has(userId);
+}
+
+export function applyServerReactionState(
+  note: FieldNote,
+  userId: string,
+  state: {
+    likeCount: number;
+    sparkCount: number;
+    currentUserHasLiked: boolean;
+    currentUserHasSparked: boolean;
+  },
+): void {
+  migrateNote(note);
+  note.nodCount = state.likeCount;
+  note.hypeCount = state.sparkCount;
+  note.vouchCount = state.sparkCount;
+  if (state.currentUserHasLiked) note.nodByUserIds.add(userId);
+  else note.nodByUserIds.delete(userId);
+  if (state.currentUserHasSparked) note.hypeByUserIds.add(userId);
+  else note.hypeByUserIds.delete(userId);
+  note.vouchByUserIds = note.hypeByUserIds;
+}
+
+export function applyServerReactionStateToAllCopies(
+  noteId: string,
+  userId: string,
+  state: {
+    likeCount: number;
+    sparkCount: number;
+    currentUserHasLiked: boolean;
+    currentUserHasSparked: boolean;
+  },
+): void {
+  forEachNoteCopy(noteId, (note) => applyServerReactionState(note, userId, state));
+}
+
+export function restoreReactionStateToAllCopies(
+  noteId: string,
+  userId: string,
+  snapshot: ReactionSnapshot,
+): void {
+  forEachNoteCopy(noteId, (note) => restoreReactionState(note, userId, snapshot));
+}
+
+export function optimisticToggleLikeOnAllCopies(noteId: string, userId: string): boolean {
+  let active = false;
+  forEachNoteCopy(noteId, (note) => {
+    active = optimisticToggleLike(note, userId);
+  });
+  return active;
+}
+
+export function optimisticToggleSparkOnAllCopies(noteId: string, userId: string): boolean {
+  let active = false;
+  forEachNoteCopy(noteId, (note) => {
+    active = optimisticToggleSpark(note, userId);
+  });
+  return active;
+}
+
+export function snapshotReactionStateForNote(noteId: string, userId: string): ReactionSnapshot | null {
+  const note = getNoteForReaction(noteId);
+  if (!note) return null;
+  return snapshotReactionState(note, userId);
+}
+
 export function nodFieldNote(noteId: string, userId: string): FieldNote | null {
   const note = getNoteForMutation(noteId);
   if (!note) return null;
   migrateNote(note);
+  if (note.isPersisted) {
+    optimisticToggleLike(note, userId);
+    return note;
+  }
   if (note.nodByUserIds.has(userId)) {
     note.nodByUserIds.delete(userId);
   } else {
@@ -438,6 +612,10 @@ export function hypeFieldNote(noteId: string, userId: string): FieldNote | null 
   const note = getNoteForMutation(noteId);
   if (!note) return null;
   migrateNote(note);
+  if (note.isPersisted) {
+    optimisticToggleSpark(note, userId);
+    return note;
+  }
   if (note.hypeByUserIds.has(userId)) {
     note.hypeByUserIds.delete(userId);
   } else {

@@ -107,6 +107,14 @@ export function getCharacterGameStateJson(character: Character): Record<string, 
     unlockedCosmetics: character.unlockedCosmetics ?? [],
     guildIds: character.guildIds ?? [],
     achievements: character.achievements ?? [],
+    featuredAchievementIds: character.featuredAchievementIds ?? [],
+    equippedTitleId: character.equippedTitleId ?? null,
+    achievementEarnedAt: character.achievementEarnedAt ?? {},
+    qrMilestones: character.qrMilestones ?? {},
+    eventsAttendedCount: character.eventsAttendedCount ?? 0,
+    foundingMember: character.foundingMember ?? false,
+    betaTester: character.betaTester ?? false,
+    talentPioneer: character.talentPioneer ?? false,
     finalBossesDefeatedCount: character.finalBossesDefeatedCount ?? 0,
     unlockedSkillNodes: character.unlockedSkillNodes ?? [],
     streakFreezes: character.streakFreezes ?? 0,
@@ -118,6 +126,9 @@ export function getCharacterGameStateJson(character: Character): Record<string, 
     surpriseQuestDay: character.surpriseQuestDay,
     completedSpecialQuests: character.completedSpecialQuests ?? [],
     specialQuestProofs: character.specialQuestProofs ?? {},
+    acceptedQuestIds: character.acceptedQuestIds ?? [],
+    questBoardClaims: character.questBoardClaims ?? {},
+    questChainProgress: character.questChainProgress ?? {},
   };
 }
 
@@ -296,4 +307,28 @@ export async function flushUserStateToBackend(getCharacter: () => Character | nu
 /** @deprecated Use flushUserStateToBackend */
 export async function flushGameStateSync(getCharacter: () => Character | null): Promise<void> {
   return flushUserStateToBackend(getCharacter);
+}
+
+let pagehideFlushInstalled = false;
+
+/** Flush pending gameplay state when the tab closes or hides (mobile + desktop). */
+export function installPagehidePersistenceFlush(getCharacter: () => Character | null): () => void {
+  if (typeof window === "undefined" || pagehideFlushInstalled) return () => {};
+  pagehideFlushInstalled = true;
+
+  const flush = () => {
+    if (!isUserStateDirty()) return;
+    void flushUserStateToBackend(getCharacter).catch(() => {
+      /* best-effort on unload */
+    });
+  };
+
+  window.addEventListener("pagehide", flush);
+  window.addEventListener("beforeunload", flush);
+
+  return () => {
+    window.removeEventListener("pagehide", flush);
+    window.removeEventListener("beforeunload", flush);
+    pagehideFlushInstalled = false;
+  };
 }

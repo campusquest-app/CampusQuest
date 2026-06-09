@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
+import { isPasswordRequirementFailure } from "@/lib/passwordRequirements";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
 import { createPublicClient } from "@/lib/server/supabase";
 import { authSignupSchema, readJson } from "@/lib/server/validation";
@@ -16,7 +17,14 @@ export async function POST(request: Request) {
       options: input.displayName ? { data: { display_name: input.displayName } } : undefined,
     });
     if (error) {
-      throw new ApiError(400, error.message, "SIGNUP_FAILED");
+      const msg = error.message ?? "Sign up failed.";
+      if (isPasswordRequirementFailure(msg)) {
+        throw new ApiError(400, "Password does not meet requirements.", "PASSWORD_REQUIREMENTS");
+      }
+      if (msg.toLowerCase().includes("username") || msg.toLowerCase().includes("duplicate")) {
+        throw new ApiError(409, "This username is already taken.", "USERNAME_TAKEN");
+      }
+      throw new ApiError(400, "Unable to create your account. Please try again.", "SIGNUP_FAILED");
     }
     if (!data.user?.id) {
       throw new ApiError(
@@ -32,9 +40,14 @@ export async function POST(request: Request) {
         userId: data.user.id,
         email: data.user.email,
         displayName: input.displayName,
+        username: input.username,
       });
     } catch (setupError) {
       if (setupError instanceof ApiError) {
+        const msg = setupError.message ?? "";
+        if (msg.toLowerCase().includes("username") || msg.toLowerCase().includes("duplicate")) {
+          throw new ApiError(409, "This username is already taken.", "USERNAME_TAKEN");
+        }
         if (isDev) {
           throw new ApiError(
             400,
@@ -65,7 +78,11 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     if (error instanceof ZodError) {
-      return fail(new ApiError(400, error.issues[0]?.message ?? "Invalid payload.", "VALIDATION_ERROR"));
+      const passwordIssue = error.issues.find((issue) => issue.path[0] === "password");
+      if (passwordIssue?.message === "PASSWORD_REQUIREMENTS") {
+        return fail(new ApiError(400, "Password does not meet requirements.", "PASSWORD_REQUIREMENTS"));
+      }
+      return fail(new ApiError(400, "Please check your information and try again.", "VALIDATION_ERROR"));
     }
     return fail(error);
   }

@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { Menu, MessageCircle } from "lucide-react";
 import type { Character } from "@/lib/types";
+import { TopNavLevelProgress } from "./TopNavLevelProgress";
 
 /** Synced by ResizeObserver — quest drawers use fixed top below this pixel height */
 export const TOPNAV_CSS_VAR = "--cq-topnav-h";
@@ -15,7 +16,7 @@ export type TopNavProps = {
   unreadNotificationCount?: number;
 };
 
-/** Premium shell header — toolbar row + centered CAMPUSQUEST brand */
+/** Premium shell header — Instagram-style: icons + centered brand on one row */
 export function TopNav({
   character,
   onOpenMenu,
@@ -30,7 +31,7 @@ export function TopNav({
 
     const sync = (): void => {
       const raw = Math.ceil(el.getBoundingClientRect().height);
-      document.documentElement.style.setProperty(TOPNAV_CSS_VAR, `${Math.max(64, raw)}px`);
+      document.documentElement.style.setProperty(TOPNAV_CSS_VAR, `${raw}px`);
     };
 
     sync();
@@ -48,7 +49,7 @@ export function TopNav({
       window.visualViewport?.removeEventListener?.("resize", sync);
       document.documentElement.style.removeProperty(TOPNAV_CSS_VAR);
     };
-  }, []);
+  }, [character?.id, character?.level, character?.totalXP]);
 
   return (
     <header
@@ -59,28 +60,35 @@ export function TopNav({
       }}
     >
       <div
-        className="cq-safe-x w-full"
+        className="cq-top-nav-inner cq-safe-x w-full"
         style={{
           paddingLeft: "max(0.75rem, env(safe-area-inset-left, 0px))",
           paddingRight: "max(0.75rem, env(safe-area-inset-right, 0px))",
         }}
       >
-        <div className="flex h-11 items-center justify-between">
+        <div className="cq-top-nav-primary">
           <button
             type="button"
             onClick={onOpenMenu}
             disabled={!character || !onOpenMenu}
-            className="cq-nav-icon-btn flex h-10 w-10 items-center justify-center rounded-xl transition hover:bg-white/[0.08] hover:text-white active:scale-95 disabled:opacity-40 touch-manipulation"
+            className="cq-nav-icon-btn cq-top-nav-side flex h-10 w-10 items-center justify-center rounded-xl transition hover:bg-white/[0.08] hover:text-white active:scale-95 disabled:opacity-40 touch-manipulation"
             aria-label="Open menu"
           >
             <Menu className="h-[22px] w-[22px]" strokeWidth={2} />
           </button>
 
+          <div className="cq-top-nav-brand">
+            <h1 className="cq-brand-title font-display">
+              <span className="cq-brand-title-text">CampusQuest</span>
+              <span className="cq-brand-title-glimmer" aria-hidden />
+            </h1>
+          </div>
+
           {character && onOpenInbox ? (
             <button
               type="button"
               onClick={onOpenInbox}
-              className="cq-nav-icon-btn relative flex h-10 w-10 items-center justify-center rounded-xl transition hover:bg-white/[0.08] hover:text-white active:scale-95 touch-manipulation"
+              className="cq-nav-icon-btn cq-top-nav-side relative flex h-10 w-10 items-center justify-center rounded-xl transition hover:bg-white/[0.08] hover:text-white active:scale-95 touch-manipulation"
               aria-label={
                 (unreadNotificationCount ?? 0) > 0
                   ? `Inbox, ${Math.min(99, unreadNotificationCount ?? 0)} unread`
@@ -95,19 +103,15 @@ export function TopNav({
               ) : null}
             </button>
           ) : (
-            <div className="h-10 w-10" aria-hidden />
+            <div className="cq-top-nav-side h-10 w-10 shrink-0" aria-hidden />
           )}
         </div>
 
-        <div className="flex flex-col items-center px-2 pb-3.5 pt-1">
-          <div className="cq-brand-lockup flex items-center justify-center">
-            <h1 className="cq-brand-title font-display">
-              <span className="cq-brand-title-text">CAMPUSQUEST</span>
-              <span className="cq-brand-title-glimmer" aria-hidden />
-            </h1>
+        {character ? (
+          <div className="cq-top-nav-meta">
+            <TopNavLevelProgress level={character.level} totalXP={character.totalXP} />
           </div>
-          <span className="cq-brand-rune-line mt-1.5" aria-hidden />
-        </div>
+        ) : null}
       </div>
     </header>
   );

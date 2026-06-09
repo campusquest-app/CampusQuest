@@ -38,12 +38,15 @@ export async function ensurePlayerSetup(args: {
   userId: string;
   email?: string | null;
   displayName?: string;
+  username?: string;
 }) {
-  const { userId, email, displayName } = args;
+  const { userId, email, displayName, username: preferredUsername } = args;
   const admin = createAdminClient();
   await waitForAuthUser(admin, userId);
 
-  const username = buildUsername(email ?? userId, userId);
+  const username = preferredUsername?.trim()
+    ? sanitizeUsername(preferredUsername).slice(0, 24) || buildUsername(email ?? userId, userId)
+    : buildUsername(email ?? userId, userId);
   const defaultName = displayName?.trim() || (email ? email.split("@")[0] : "CampusQuest Player");
 
   const { error: profileError } = await admin.from("profiles").upsert(

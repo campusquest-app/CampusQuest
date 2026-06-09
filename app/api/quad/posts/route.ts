@@ -3,6 +3,10 @@ import { fail, ok, ApiError } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { postQuadPostSchema, readJson, uuidSchema } from "@/lib/server/validation";
+import {
+  enrichQuadPostsWithViewerReactions,
+  fetchViewerReactionsForPosts,
+} from "@/lib/server/quadReactions";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 
 function normalizeRamMarks(input: { id?: string; tag: string }[] | undefined): { id: string; tag: string }[] {
@@ -52,7 +56,12 @@ export async function GET(request: Request) {
       throw new ApiError(400, error.message ?? "Could not load Quad posts.", "QUAD_POSTS_LIST_FAILED");
     }
 
-    return ok({ posts: (data ?? []) as unknown as QuadPostApiRow[] });
+    const posts = (data ?? []) as unknown as QuadPostApiRow[];
+    const postIds = posts.map((p) => p.id);
+    const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
+    const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
+
+    return ok({ posts: enriched });
   } catch (error) {
     return fail(error);
   }
@@ -101,7 +110,10 @@ export async function POST(request: Request) {
       throw new ApiError(400, insErr?.message ?? "Could not create post.", "QUAD_POST_CREATE_FAILED");
     }
 
-    return ok({ post: created as unknown as QuadPostApiRow });
+    const post = created as unknown as QuadPostApiRow;
+    const enriched = enrichQuadPostsWithViewerReactions([post], new Map());
+
+    return ok({ post: enriched[0] ?? post });
   } catch (error) {
     if (error instanceof ZodError) {
       return fail(new ApiError(400, error.issues[0]?.message ?? "Invalid payload.", "VALIDATION_ERROR"));

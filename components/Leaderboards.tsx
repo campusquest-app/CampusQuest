@@ -8,6 +8,7 @@ import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import type { Character } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, STAT_ICONS } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
+import { AchievementShowcaseStrip } from "./achievements/AchievementShowcaseStrip";
 
 type SortBy = "level" | (typeof STAT_KEYS)[number] | "bossesDefeated" | "finalBossesDefeated" | "guildLevel";
 
@@ -544,6 +545,7 @@ export function Leaderboards({ character }: { character: Character }) {
                       level={xpActive.currentUserEntry.level}
                       totalXP={xpActive.currentUserEntry.totalXp}
                       isCurrentUser
+                      showcaseCharacter={character}
                       {...xpLeaderboardMetricProps(sortBy, xpActive.currentUserEntry)}
                     />
                   </div>
@@ -570,6 +572,7 @@ export function Leaderboards({ character }: { character: Character }) {
                         level={row.level}
                         totalXP={row.totalXp}
                         isCurrentUser={row.userId === character.id}
+                        showcaseCharacter={row.userId === character.id ? character : undefined}
                         {...xpLeaderboardMetricProps(sortBy, row)}
                       />
                     ))}
@@ -768,6 +771,7 @@ function LeaderboardRow({
   level,
   totalXP,
   isCurrentUser,
+  showcaseCharacter,
   sortBy,
   statValue,
   statLabel,
@@ -780,6 +784,7 @@ function LeaderboardRow({
   level: number;
   totalXP: number;
   isCurrentUser: boolean;
+  showcaseCharacter?: Character;
   sortBy?: SortBy;
   statValue?: number;
   statLabel?: string;
@@ -803,6 +808,7 @@ function LeaderboardRow({
           {isCurrentUser && <span className="text-xs text-uri-keaney font-normal">(you)</span>}
         </p>
         <p className="text-xs text-white/50 truncate">@{username}</p>
+        {showcaseCharacter ? <AchievementShowcaseStrip character={showcaseCharacter} compact /> : null}
         {actions != null && <div className="mt-1.5 sm:hidden">{actions}</div>}
       </div>
       <div className="flex-shrink-0 text-right min-w-[5.5rem] sm:min-w-[6rem]">

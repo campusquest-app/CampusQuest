@@ -10,23 +10,24 @@ export function DashboardBootstrapShellSkeleton() {
   return (
     <div className="min-h-[70vh] flex flex-col w-full" aria-busy="true" aria-label="Loading your profile">
       <header
-        className="cq-nav-shell-top fixed inset-x-0 top-0 z-50 w-full"
+        className="cq-nav-shell-top cq-top-nav fixed inset-x-0 top-0 z-50 w-full"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
         <div
-          className="w-full px-3"
+          className="cq-top-nav-inner w-full px-3"
           style={{
             paddingLeft: "max(0.75rem, env(safe-area-inset-left, 0px))",
             paddingRight: "max(0.75rem, env(safe-area-inset-right, 0px))",
           }}
         >
-          <div className="flex h-11 items-center justify-between">
+          <div className="cq-top-nav-primary">
             <div className="cq-skeleton h-9 w-9 rounded-xl" />
+            <div className="cq-skeleton h-5 w-36 rounded" />
             <div className="cq-skeleton h-9 w-9 rounded-xl" />
           </div>
-          <div className="flex flex-col items-center gap-2 pb-3.5 pt-1">
-            <div className="cq-skeleton h-5 w-36 rounded" />
-            <div className="cq-skeleton h-px w-24 rounded" />
+          <div className="cq-top-nav-meta">
+            <div className="cq-skeleton mt-1 h-2 w-28 rounded-full" />
+            <div className="cq-skeleton mt-1 h-px w-24 rounded" />
           </div>
         </div>
       </header>

@@ -49,10 +49,14 @@ import { estimateXpOverlayDurationMs, readMobileViewport } from "@/lib/client/xp
 import { describeCosmeticEquipEffect } from "@/lib/gameBuffs";
 import { SkillTreePanel } from "./SkillTreePanel";
 import { SurpriseQuestBanner } from "./SurpriseQuestBanner";
-import { DailyTrainingGames } from "./DailyTrainingGames";
+import { TrainingGrounds } from "./training/TrainingGrounds";
+import { HallOfLegends } from "./achievements/HallOfLegends";
+import { AchievementUnlockCelebration } from "./achievements/AchievementUnlockCelebration";
+import { QuestBoard } from "./quests/QuestBoard";
+import { QuestCompleteCelebration } from "./quests/QuestCompleteCelebration";
 import { LoreArchiveCard } from "./LoreArchiveCard";
 import { FirstTimeJourney } from "./FirstTimeJourney";
-import { OnboardingPreferencesModal } from "./OnboardingPreferencesModal";
+import { AuthOnboardingFlow } from "./auth/AuthOnboardingFlow";
 import type { StatKey } from "@/lib/types";
 import { clearAccessToken, getAccessToken } from "@/lib/client/apiSession";
 import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/agreementAccess";
@@ -78,6 +82,7 @@ import {
   type BeginnerOnboardingHydrationBootstrap,
 } from "@/lib/client/beginnerOnboardingHydration";
 import { LOGOUT_BLOCKED_SAVE_MESSAGE, isServerBackedUserId, resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
+import { hydrateUserPersistenceFromServer } from "@/lib/client/hydrateUserPersistence";
 import { SchoolVerificationScreen } from "./SchoolVerificationScreen";
 import { WelcomeBackCommunityReminder, communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
 import { DashboardBootstrapShellSkeleton } from "./DashboardBootstrapShellSkeleton";
@@ -95,7 +100,6 @@ import { AppSideDrawer, type AppDrawerDestination } from "@/components/AppSideDr
 import type { SettingsActionId } from "@/components/AppSettingsPanel";
 import { AppBottomNav, CQ_BOTTOM_NAV_CLEARANCE, type AppBottomNavTab } from "@/components/AppBottomNav";
 import { useScrollChrome } from "@/lib/client/useScrollChrome";
-import { QuestOverlayPanels } from "@/components/QuestOverlayPanels";
 
 /** Load camera + CQ Scanner bundle only after the player taps CQ Scan (avoid mount/worker on cold start). */
 const QRScannerModalLazy = dynamic(
@@ -103,7 +107,7 @@ const QRScannerModalLazy = dynamic(
   { ssr: false },
 );
 
-type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations" | "realm";
+type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations" | "realm" | "mini-games" | "achievements" | "quest-board";
 
 const TAB_QUERY_VALUES: Tab[] = ["quad", "friends", "battle", "leaderboards", "character", "inbox", "events", "organizations", "realm"];
 
@@ -158,8 +162,6 @@ export function Dashboard() {
   const [characterPane, setCharacterPane] = useState<CharacterPane>("sheet");
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [drawerSubPanel, setDrawerSubPanel] = useState<"menu" | "settings" | "help">("menu");
-  const [dailyQuestsOpen, setDailyQuestsOpen] = useState(false);
-  const [specialQuestsOpen, setSpecialQuestsOpen] = useState(false);
   const [gainToast, setGainToast] = useState<null | {
     xp: number;
     stats: Partial<Record<keyof Character["stats"], number>>;
@@ -364,9 +366,7 @@ export function Dashboard() {
   }, []);
 
   const handleDrawerNavigate = useCallback(
-    (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "settings") => {
-      setDailyQuestsOpen(false);
-      setSpecialQuestsOpen(false);
+    (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings") => {
       switch (dest) {
         case "friends":
           setTab("friends");
@@ -397,10 +397,17 @@ export function Dashboard() {
           setTab("inbox");
           break;
         case "character-sheet":
-        case "mini-games":
-        case "achievements":
           setTab("character");
           setCharacterPane("sheet");
+          break;
+        case "achievements":
+          setTab("achievements");
+          break;
+        case "quest-board":
+          setTab("quest-board");
+          break;
+        case "mini-games":
+          setTab("mini-games");
           break;
         case "profile":
           setTab("character");
@@ -409,14 +416,6 @@ export function Dashboard() {
         case "settings":
           setDrawerSubPanel("settings");
           setSideMenuOpen(true);
-          break;
-        case "daily-quests":
-          setSpecialQuestsOpen(false);
-          setDailyQuestsOpen(true);
-          break;
-        case "special-quests":
-          setDailyQuestsOpen(false);
-          setSpecialQuestsOpen(true);
           break;
         case "help":
           setDrawerSubPanel("help");
@@ -739,6 +738,22 @@ export function Dashboard() {
       window.clearInterval(intervalId);
     };
   }, [bootstrapStatus, character?.id]);
+
+  useEffect(() => {
+    if (bootstrapStatus !== "authenticated" || !character?.id) return;
+    void hydrateUserPersistenceFromServer(character.id);
+  }, [bootstrapStatus, character?.id]);
+
+  useEffect(() => {
+    if (bootstrapStatus !== "authenticated") return;
+    let teardown: (() => void) | undefined;
+    void import("@/lib/client/gameStateSync").then((m) => {
+      teardown = m.installPagehidePersistenceFlush(getCharacter);
+    });
+    return () => {
+      teardown?.();
+    };
+  }, [bootstrapStatus]);
 
   useEffect(() => {
     if (bootstrapStatus !== "authenticated" || !character?.id) {
@@ -1513,14 +1528,6 @@ export function Dashboard() {
         unreadNotificationCount={unreadNotificationCount}
         musicMuted={musicMuted}
       />
-      <QuestOverlayPanels
-        character={character}
-        dailyOpen={dailyQuestsOpen}
-        specialOpen={specialQuestsOpen}
-        onCloseDaily={() => setDailyQuestsOpen(false)}
-        onCloseSpecial={() => setSpecialQuestsOpen(false)}
-        onRefresh={refresh}
-      />
       <div
         className={screenShake ? "cq-screen-shake" : undefined}
         style={{
@@ -1844,7 +1851,15 @@ export function Dashboard() {
 
         {tab === "events" && renderPilotCampusGate(<EventsFeed personalization={onboardingPreferences} />)}
 
-        {tab === "realm" && renderPilotCampusGate(<TheRealm onBack={() => setTab("quad")} />)}
+        {tab === "realm" &&
+          renderPilotCampusGate(
+            <TheRealm
+              onBack={() => setTab("quad")}
+              userId={character?.id ?? null}
+              isAdmin={moderationAdminNavVisible(pilotCampusState)}
+              userRole={moderationAdminNavVisible(pilotCampusState) ? "admin" : "student"}
+            />,
+          )}
 
         {tab === "organizations" && renderPilotCampusGate(<OrganizationsHub personalization={onboardingPreferences} />)}
 
@@ -1856,6 +1871,18 @@ export function Dashboard() {
           <div className="space-y-4 sm:space-y-5">
             <BossBattles character={character} onRefresh={refresh} />
           </div>
+        )}
+
+        {tab === "mini-games" && (
+          <TrainingGrounds character={character} onRefresh={refresh} />
+        )}
+
+        {tab === "achievements" && (
+          <HallOfLegends character={character} onRefresh={refresh} />
+        )}
+
+        {tab === "quest-board" && (
+          <QuestBoard character={character} onRefresh={refresh} />
         )}
 
         {tab === "character" && (
@@ -1993,9 +2020,6 @@ export function Dashboard() {
                     <SkillTreePanel character={character} onRefresh={refresh} />
                   </div>
                   <div className="md:col-span-2">
-                    <DailyTrainingGames character={character} onRefresh={refresh} />
-                  </div>
-                  <div className="md:col-span-2">
                     <CollapsibleSection title="Lore archive" defaultCollapsed>
                       <LoreArchiveCard />
                     </CollapsibleSection>
@@ -2080,13 +2104,21 @@ export function Dashboard() {
       ) : null}
 
       {bootstrapStatus === "authenticated" && needsOnboardingPreferences && character ? (
-        <OnboardingPreferencesModal
-          onCompleted={(preferences) => {
-            setOnboardingPreferences(preferences);
-            setNeedsOnboardingPreferences(false);
-            setBootstrapNonce((n) => n + 1);
-          }}
-        />
+        <div className="fixed inset-0 z-[120]">
+          <AuthOnboardingFlow
+            onComplete={() => {
+              setNeedsOnboardingPreferences(false);
+              setBootstrapNonce((n) => n + 1);
+            }}
+          />
+        </div>
+      ) : null}
+
+      {character ? (
+        <>
+          <AchievementUnlockCelebration />
+          <QuestCompleteCelebration />
+        </>
       ) : null}
     </>
   );

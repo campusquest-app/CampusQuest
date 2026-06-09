@@ -105,6 +105,25 @@ export interface Character {
   streakBonusXpByDate?: Record<string, number>;
   /** Optional: college-based Scholars Guild grouping for themed leaderboards. */
   scholarGuildId?: string;
+  /** Catalog achievement ids showcased on profile (max 3). */
+  featuredAchievementIds?: string[];
+  /** Equipped title id from achievements catalog. */
+  equippedTitleId?: string | null;
+  /** ISO timestamps when catalog achievements were earned. */
+  achievementEarnedAt?: Record<string, string>;
+  /** QR milestone unlock metadata from server. */
+  qrMilestones?: Record<string, { unlockedAt: string; title: string }>;
+  /** Campus events attended (future server sync). */
+  eventsAttendedCount?: number;
+  /** Special program flags for rare badges. */
+  foundingMember?: boolean;
+  betaTester?: boolean;
+  /** Multi-step quest chain progress (chainId -> highest completed step index, 0-based). */
+  questChainProgress?: Record<string, number>;
+  /** Quest Board: manually accepted quest ids. */
+  acceptedQuestIds?: string[];
+  /** Quest Board: claimed quest ids mapped to ISO claim time. */
+  questBoardClaims?: Record<string, string>;
 }
 
 // —— Guilds ——
@@ -259,6 +278,8 @@ export interface FieldNote {
     verify: number;
     assist: number;
   };
+  /** True when loaded from Supabase — counts are authoritative from DB. */
+  isPersisted?: boolean;
 }
 
 // For serialization we store nod/rally as arrays

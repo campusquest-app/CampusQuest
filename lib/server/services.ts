@@ -18,7 +18,7 @@ type AddXpArgs = {
   userClient: SupabaseClientLike;
   userId: string;
   amount: number;
-  sourceType: "activity" | "quest" | "boss" | "guild" | "manual" | "streak_bonus";
+  sourceType: "activity" | "quest" | "boss" | "guild" | "manual" | "streak_bonus" | "quad_spark";
   sourceId?: string;
   questCompletionId?: string;
   activityId?: string;
@@ -1548,8 +1548,9 @@ export async function addItemToInventory(args: {
   userId: string;
   itemId: string;
   quantity: number;
+  source?: string;
 }) {
-  const { userClient, userId, itemId, quantity } = args;
+  const { userClient, userId, itemId, quantity, source = "unknown" } = args;
 
   const { data: existing } = await userClient
     .from("user_inventory")
@@ -1563,6 +1564,7 @@ export async function addItemToInventory(args: {
       user_id: userId,
       item_id: itemId,
       quantity,
+      source,
     });
     if (error) throw new ApiError(400, error.message, "INVENTORY_ADD_FAILED");
     return { itemId, quantity };
@@ -1571,7 +1573,7 @@ export async function addItemToInventory(args: {
   const nextQuantity = Number(existing.quantity ?? 0) + quantity;
   const { error } = await userClient
     .from("user_inventory")
-    .update({ quantity: nextQuantity })
+    .update({ quantity: nextQuantity, source })
     .eq("user_id", userId)
     .eq("item_id", itemId);
   if (error) throw new ApiError(400, error.message, "INVENTORY_UPDATE_FAILED");
@@ -1581,7 +1583,7 @@ export async function addItemToInventory(args: {
 export async function fetchUserInventory(userClient: SupabaseClientLike, userId: string) {
   const { data, error } = await userClient
     .from("user_inventory")
-    .select("item_id, quantity, acquired_at, updated_at, items(id, slug, name, description, item_type, rarity, icon_url)")
+    .select("item_id, quantity, acquired_at, updated_at, source, items(id, slug, name, description, item_type, rarity, icon_url)")
     .eq("user_id", userId)
     .order("updated_at", { ascending: false });
   if (error) throw new ApiError(400, error.message, "INVENTORY_FETCH_FAILED");
@@ -1591,6 +1593,7 @@ export async function fetchUserInventory(userClient: SupabaseClientLike, userId:
     quantity: row.quantity,
     acquired_at: row.acquired_at,
     updated_at: row.updated_at,
+    source: row.source ?? "unknown",
     item: Array.isArray(row.items) ? row.items[0] ?? null : row.items ?? null,
   }));
 }

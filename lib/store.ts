@@ -95,6 +95,12 @@ function loadCharacter(): Character | null {
   }
 }
 
+function scheduleMirrorSyncIfBacked(): void {
+  const c = loadCharacter();
+  if (!c || !isServerBackedUserId(c.id)) return;
+  void import("@/lib/client/gameStateSync").then((m) => m.scheduleCharacterSync(c));
+}
+
 function saveCharacter(c: Character, opts?: { skipRemoteSync?: boolean }): void {
   if (typeof window === "undefined") return;
   c.level = xpToLevel(c.totalXP);
@@ -127,6 +133,7 @@ function saveLogs(logs: ActivityLog[]): void {
   } catch {
     // Ignore persistence failure.
   }
+  scheduleMirrorSyncIfBacked();
 }
 
 function localDayBoundsMs(isoDate: string): { start: number; end: number } {
@@ -174,6 +181,7 @@ function saveBossProgress(record: BossProgressRecord): void {
   } catch {
     // Ignore persistence failure.
   }
+  scheduleMirrorSyncIfBacked();
 }
 
 function loadCurrentBoss(): CurrentBoss | null {
@@ -202,6 +210,7 @@ function saveCurrentBoss(boss: CurrentBoss | null): void {
       // Ignore persistence failure.
     }
   }
+  scheduleMirrorSyncIfBacked();
 }
 
 function loadUserBosses(): UserBoss[] {
@@ -226,6 +235,7 @@ function saveUserBosses(bosses: UserBoss[]): void {
   } catch {
     // Ignore persistence failure.
   }
+  scheduleMirrorSyncIfBacked();
 }
 
 function loadActiveBossId(): string | null {
@@ -245,6 +255,25 @@ function saveActiveBossId(id: string | null): void {
   } catch {
     inMemoryActiveBossId = id;
   }
+  scheduleMirrorSyncIfBacked();
+}
+
+function persistBossDropToBackend(args: {
+  bossId: string;
+  bossName: string;
+  cosmeticId: string;
+  rarity: string;
+  isFinalBoss: boolean;
+}): void {
+  void import("@/lib/client/userPersistenceClient").then((m) =>
+    m.persistBossDropToServer({
+      bossId: args.bossId,
+      bossName: args.bossName,
+      cosmeticId: args.cosmeticId,
+      rarity: args.rarity,
+      isFinalBoss: args.isFinalBoss,
+    }),
+  );
 }
 
 function loadAllQrRedemptions(): Record<string, string[]> {
@@ -306,6 +335,16 @@ function applyStatIncrease(
 
 function ensureAchievement(c: Character, id: string): void {
   if (!c.achievements.includes(id)) c.achievements.push(id);
+  if (typeof window !== "undefined") {
+    void import("@/lib/achievementEngine").then(({ syncCatalogAchievements }) => {
+      const unlocked = syncCatalogAchievements(c);
+      if (unlocked.length === 0) return;
+      saveCharacter(c);
+      void import("@/lib/achievementCelebration").then(({ queueAchievementCelebration }) => {
+        for (const def of unlocked) queueAchievementCelebration(def);
+      });
+    });
+  }
 }
 
 /** Total XP today that counts toward the daily streak minimum (activity logs + non-log bonuses). */
@@ -536,6 +575,16 @@ export function completeSpecialQuest(characterId: string, questId: string, proof
   updateStreakFromTodaysXp(c, characterId, td);
   saveCharacter(c);
   return c;
+}
+
+/** Grant XP from Quest Board claim (updates level + streak bonus tracking). */
+export function grantBoardQuestXp(c: Character, xp: number): void {
+  if (xp <= 0) return;
+  const td = todayString();
+  c.totalXP += xp;
+  c.level = xpToLevel(c.totalXP);
+  creditStreakBonusXp(c, td, xp);
+  updateStreakFromTodaysXp(c, c.id, td);
 }
 
 /** Max minutes allowed per activity log (e.g. 6 hours). */
@@ -903,6 +952,13 @@ function applyActivityDamageToCurrentBoss(
         rarity: loot.rarity,
         obtainedAt: Date.now(),
       });
+      persistBossDropToBackend({
+        bossId: boss.id,
+        bossName: boss.name,
+        cosmeticId: loot.id,
+        rarity: loot.rarity,
+        isFinalBoss,
+      });
     } else if (Math.random() < 0.16) {
       c.streakFreezes = (c.streakFreezes ?? 0) + 1;
       ensureAchievement(c, "Earned: Streak Freeze (rare drop)");
@@ -981,6 +1037,13 @@ function applyQrActivityDamageToCurrentBoss(
         isFinalBoss,
         rarity: loot.rarity,
         obtainedAt: Date.now(),
+      });
+      persistBossDropToBackend({
+        bossId: boss.id,
+        bossName: boss.name,
+        cosmeticId: loot.id,
+        rarity: loot.rarity,
+        isFinalBoss,
       });
     } else if (Math.random() < 0.16) {
       c.streakFreezes = (c.streakFreezes ?? 0) + 1;

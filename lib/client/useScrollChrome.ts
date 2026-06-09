@@ -2,12 +2,35 @@
 
 import { useEffect } from "react";
 
-const SCROLL_DOWN_HIDE_THRESHOLD = 24;
-const SCROLL_UP_SHOW_THRESHOLD = 10;
-const SCROLL_STOP_SHOW_MS = 1200;
 const TOP_REVEAL_Y = 10;
+const SCROLL_DOWN_HIDE_DELTA = 8;
+const SCROLL_UP_SHOW_DELTA = 6;
 
-/** Quad sub-nav hides on scroll down; top nav stays fixed. Bottom nav hides on scroll down, returns on up/stop. */
+/** Optional inner scroll container for the Quad feed (falls back to window). */
+export const QUAD_SCROLL_ROOT_SELECTOR = "[data-cq-quad-scroll-root]";
+
+type ScrollRoot = Window | HTMLElement;
+
+function resolveQuadScrollRoot(): ScrollRoot {
+  if (typeof document === "undefined") return window;
+  const marked = document.querySelector<HTMLElement>(QUAD_SCROLL_ROOT_SELECTOR);
+  return marked ?? window;
+}
+
+function readScrollY(root: ScrollRoot): number {
+  if (root === window) return window.scrollY;
+  return root.scrollTop;
+}
+
+function attachScrollListener(root: ScrollRoot, handler: () => void): () => void {
+  root.addEventListener("scroll", handler, { passive: true });
+  return () => root.removeEventListener("scroll", handler);
+}
+
+/**
+ * Quad sub-nav hides on scroll down and stays hidden until the user scrolls up.
+ * Top nav stays fixed. Bottom nav follows the same rules on desktop; stays visible on mobile/coarse pointer.
+ */
 export function useScrollChrome(enabled: boolean): void {
   useEffect(() => {
     if (!enabled || typeof window === "undefined") {
@@ -17,11 +40,17 @@ export function useScrollChrome(enabled: boolean): void {
       return undefined;
     }
 
-    let lastScrollY = window.scrollY;
-    let downDistance = 0;
-    let stopTimer: ReturnType<typeof setTimeout> | null = null;
+    const scrollRoot = resolveQuadScrollRoot();
+    let lastScrollY = readScrollY(scrollRoot);
+    let quadHidden = false;
+    let bottomHidden = false;
+
+    const keepBottomNavVisible =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(max-width: 639px), (pointer: coarse)").matches;
 
     const setQuadChrome = (hidden: boolean): void => {
+      quadHidden = hidden;
       document.documentElement.setAttribute("data-cq-quad-chrome", hidden ? "hidden" : "visible");
       if (hidden) {
         document.documentElement.style.setProperty("--cq-quad-header-offset", "0px");
@@ -31,58 +60,60 @@ export function useScrollChrome(enabled: boolean): void {
     };
 
     const setBottomChrome = (hidden: boolean): void => {
+      if (keepBottomNavVisible) {
+        bottomHidden = false;
+        document.documentElement.setAttribute("data-cq-bottom-chrome", "visible");
+        return;
+      }
+      bottomHidden = hidden;
       document.documentElement.setAttribute("data-cq-bottom-chrome", hidden ? "hidden" : "visible");
     };
 
-    const showAllChrome = (): void => {
-      downDistance = 0;
+    const showQuadChrome = (): void => {
+      if (!quadHidden) return;
       setQuadChrome(false);
+    };
+
+    const hideQuadChrome = (): void => {
+      if (quadHidden) return;
+      setQuadChrome(true);
+    };
+
+    const showBottomChrome = (): void => {
+      if (keepBottomNavVisible || !bottomHidden) return;
       setBottomChrome(false);
     };
 
-    const hideScrollChrome = (): void => {
-      setQuadChrome(true);
+    const hideBottomChrome = (): void => {
+      if (keepBottomNavVisible || bottomHidden) return;
       setBottomChrome(true);
     };
 
-    const scheduleShowOnScrollStop = (): void => {
-      if (stopTimer != null) clearTimeout(stopTimer);
-      stopTimer = setTimeout(() => {
-        showAllChrome();
-        stopTimer = null;
-      }, SCROLL_STOP_SHOW_MS);
-    };
-
     const onScroll = (): void => {
-      const currentScrollY = window.scrollY;
-      const delta = currentScrollY - lastScrollY;
+      const currentY = readScrollY(scrollRoot);
 
-      if (currentScrollY <= TOP_REVEAL_Y) {
-        showAllChrome();
-        lastScrollY = currentScrollY;
-        scheduleShowOnScrollStop();
-        return;
+      if (currentY <= TOP_REVEAL_Y) {
+        showQuadChrome();
+        showBottomChrome();
+      } else if (currentY > lastScrollY + SCROLL_DOWN_HIDE_DELTA) {
+        hideQuadChrome();
+        hideBottomChrome();
+      } else if (currentY < lastScrollY - SCROLL_UP_SHOW_DELTA) {
+        showQuadChrome();
+        showBottomChrome();
       }
 
-      if (delta > 0) {
-        downDistance += delta;
-        if (downDistance >= SCROLL_DOWN_HIDE_THRESHOLD) {
-          hideScrollChrome();
-        }
-      } else if (delta < -SCROLL_UP_SHOW_THRESHOLD) {
-        showAllChrome();
-      }
-
-      lastScrollY = currentScrollY;
-      scheduleShowOnScrollStop();
+      lastScrollY = currentY;
     };
 
-    showAllChrome();
-    window.addEventListener("scroll", onScroll, { passive: true });
+    setQuadChrome(false);
+    setBottomChrome(false);
+    lastScrollY = readScrollY(scrollRoot);
+
+    const detach = attachScrollListener(scrollRoot, onScroll);
 
     return () => {
-      window.removeEventListener("scroll", onScroll);
-      if (stopTimer != null) clearTimeout(stopTimer);
+      detach();
       document.documentElement.removeAttribute("data-cq-quad-chrome");
       document.documentElement.removeAttribute("data-cq-bottom-chrome");
       document.documentElement.style.removeProperty("--cq-quad-header-offset");

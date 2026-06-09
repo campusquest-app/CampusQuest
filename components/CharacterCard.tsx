@@ -12,6 +12,7 @@ import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { getGuildById } from "@/lib/guildStore";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { AvatarBuilder } from "./AvatarBuilder";
+import { AchievementShowcaseStrip } from "./achievements/AchievementShowcaseStrip";
 
 /** Progress bar fill colors – Keaney/accent for cohesion with URI palette */
 const STAT_FILL_COLORS: Record<StatKey, string> = {
@@ -21,39 +22,6 @@ const STAT_FILL_COLORS: Record<StatKey, string> = {
   social: "bg-uri-green",
   focus: "bg-uri-purple",
 };
-
-function AchievementsDropdown({ achievements }: { achievements: string[] }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="mt-5 pt-4 border-t border-uri-keaney/20">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between gap-2 text-left rounded-lg -mx-1 px-1 py-1 hover:text-uri-keaney transition-colors"
-        aria-expanded={open}
-      >
-        <span className="text-xs font-semibold text-uri-keaney/90 uppercase tracking-wider">
-          Achievements
-        </span>
-        <span className="text-uri-keaney/80 text-sm" aria-hidden>
-          {open ? "▼" : "▶"}
-        </span>
-      </button>
-      {open && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {achievements.map((a) => (
-            <span
-              key={a}
-              className="text-xs px-2.5 py-1 rounded-full bg-uri-gold/20 text-uri-gold border border-uri-gold/40"
-            >
-              {a}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function CharacterCard({
   character,
@@ -200,6 +168,7 @@ export function CharacterCard({
             </p>
           )}
           <p className="text-white/35 text-xs mt-0.5">@{character.username}</p>
+          <AchievementShowcaseStrip character={character} />
           <div className="mt-3">
             <div className="mb-1 flex justify-between gap-2 text-[10px] font-medium tabular-nums text-white/42">
               <span>{character.totalXP.toLocaleString()} XP</span>
@@ -279,7 +248,11 @@ export function CharacterCard({
       </div>
 
       {character.achievements && character.achievements.length > 0 && (
-        <AchievementsDropdown achievements={character.achievements} />
+        <div className="mt-5 pt-4 border-t border-uri-keaney/20">
+          <p className="text-[11px] text-white/40">
+            Visit the Hall of Legends from the menu to browse every badge, trophy, and title.
+          </p>
+        </div>
       )}
     </section>
   );

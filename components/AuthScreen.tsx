@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import { DEFAULT_POLICY_VERSION } from "@/lib/legal/policy";
 import { fetchMeSchoolVerification, SchoolVerificationHttpError } from "@/lib/client/dashboardApi";
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/client/apiSession";
@@ -8,14 +9,18 @@ import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/
 import { LegalConsentScreen } from "@/components/LegalConsentScreen";
 import { AccountSafetyStatusScreen } from "@/components/AccountSafetyStatusScreen";
 import { SchoolVerificationScreen } from "@/components/SchoolVerificationScreen";
+import { AuthOnboardingFlow } from "@/components/auth/AuthOnboardingFlow";
+import { AuthPasswordRequirementsAlert } from "@/components/auth/AuthPasswordRequirementsAlert";
+import { AuthPasswordRequirementsHints } from "@/components/auth/AuthPasswordRequirementsHints";
+import { CampusQuestLogo } from "@/components/CampusQuestLogo";
+import {
+  isPasswordRequirementFailure,
+  passwordMeetsRequirements,
+} from "@/lib/passwordRequirements";
 
 type Mode = "signin" | "signup";
 type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } };
-const IS_DEV = process.env.NODE_ENV !== "production";
-
-const inputClass =
-  "w-full px-4 py-3 rounded-xl bg-white/8 border border-white/15 text-white placeholder-white/35 text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 focus:border-uri-keaney/50 focus:bg-white/10 transition-all";
-const labelClass = "block text-xs font-medium text-white/70 uppercase tracking-wider mb-2";
+const REMEMBER_EMAIL_KEY = "cq_auth_remember_email";
 
 class HttpRequestError extends Error {
   constructor(
@@ -23,49 +28,59 @@ class HttpRequestError extends Error {
     public readonly path: string,
     public readonly status: number,
     public readonly statusText: string,
+    public readonly code?: string,
   ) {
     super(message);
   }
 }
 
-function formatRequestError(error: unknown, path: string, fallback: string) {
+function mapSignupError(error: unknown): { passwordRequirements: true } | { message: string } {
   if (error instanceof HttpRequestError) {
-    if (IS_DEV) {
-      const base = `Backend request failed: ${path} returned ${error.status} ${error.statusText}.`;
-      return error.message && error.message !== fallback ? `${base} ${error.message}` : base;
+    if (error.code === "PASSWORD_REQUIREMENTS" || isPasswordRequirementFailure(error.message, error.code)) {
+      return { passwordRequirements: true };
     }
-    return error.message || fallback;
+    if (error.code === "USERNAME_TAKEN" || error.status === 409) {
+      return { message: "This username is already taken." };
+    }
+    if (error.message.toLowerCase().includes("username")) {
+      return { message: "This username is already taken." };
+    }
+    if (error.code === "VALIDATION_ERROR") {
+      return { message: "Please check your information and try again." };
+    }
+    return { message: "Unable to create your account. Please try again." };
   }
-  if (error instanceof Error && error.message && !error.message.startsWith("NETWORK_ERROR:")) {
-    return error.message;
+  if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
+    return { message: "Unable to connect. Please try again." };
   }
-  if (IS_DEV) {
-    return `Backend request failed: ${path} could not be reached.`;
+  return { message: "Unable to create your account. Please try again." };
+}
+
+function mapSigninError(error: unknown): string {
+  if (error instanceof HttpRequestError) {
+    const raw = error.message ?? "";
+    if (error.status === 401 || raw.toLowerCase().includes("invalid login credentials")) {
+      return "Incorrect email or password.";
+    }
+    if (raw.toLowerCase().includes("email not confirmed")) {
+      return "Please confirm your email before signing in.";
+    }
+    return "Unable to connect. Please try again.";
+  }
+  if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
+    return "Unable to connect. Please try again.";
+  }
+  return "Unable to connect. Please try again.";
+}
+
+function mapGenericError(error: unknown, fallback = "Unable to connect. Please try again."): string {
+  if (error instanceof HttpRequestError) {
+    return fallback;
+  }
+  if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
+    return "Unable to connect. Please try again.";
   }
   return fallback;
-}
-
-function getEmailDomainOnly(email: string) {
-  const normalized = email.trim().toLowerCase();
-  const atIndex = normalized.lastIndexOf("@");
-  if (atIndex <= 0 || atIndex === normalized.length - 1) return "invalid";
-  return normalized.slice(atIndex + 1);
-}
-
-function logAuthFailureDev(args: {
-  endpoint: string;
-  status: number;
-  message: string;
-  email: string;
-}) {
-  if (!IS_DEV) return;
-  const { endpoint, status, message, email } = args;
-  console.warn("[Auth failure]", {
-    endpoint,
-    status,
-    message,
-    emailDomain: getEmailDomainOnly(email),
-  });
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
@@ -82,22 +97,37 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<ApiRespon
       path,
       response.status,
       response.statusText || "Unknown",
+      payload?.error?.code,
     );
   }
   return payload;
 }
 
+function AuthHeader({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="mb-8 flex flex-col items-center text-center">
+      <CampusQuestLogo variant="auth" priority className="mb-4" />
+      <h1 className="cq-auth-brand-title font-display">{title}</h1>
+      <p className="cq-auth-subtitle mt-2 max-w-[18rem]">{subtitle}</p>
+    </div>
+  );
+}
+
 export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const [mode, setMode] = useState<Mode>("signin");
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showPasswordRequirementsError, setShowPasswordRequirementsError] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
-  const [resendNotice, setResendNotice] = useState<string | null>(null);
-  const [showRecoveryActions, setShowRecoveryActions] = useState(false);
+  const [showPostSignupOnboarding, setShowPostSignupOnboarding] = useState(false);
   const [needsConsent, setNeedsConsent] = useState(false);
   const [consentVersion, setConsentVersion] = useState<string | null>(null);
   const [isConsentSubmitting, setIsConsentSubmitting] = useState(false);
@@ -112,6 +142,12 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     currentDomain: string | null;
   } | null>(null);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = localStorage.getItem(REMEMBER_EMAIL_KEY);
+    if (saved) setEmail(saved);
+  }, []);
+
   async function checkSafetyStatus(accessToken: string) {
     const payload = await fetchJson<{
       status?: "active" | "suspended" | "banned";
@@ -121,12 +157,12 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
     });
-    const status = payload?.data?.status as "active" | "suspended" | "banned" | undefined;
+    const status = payload?.data?.status;
     if (status === "suspended" || status === "banned") {
       setSafetyBlock({
         status,
-        reason: (payload?.data?.reason as string | null | undefined) ?? null,
-        suspendedUntil: (payload?.data?.suspendedUntil as string | null | undefined) ?? null,
+        reason: payload?.data?.reason ?? null,
+        suspendedUntil: payload?.data?.suspendedUntil ?? null,
       });
       return false;
     }
@@ -138,11 +174,10 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     const payload = await fetchJson<LegalConsentPayload & { currentPolicyVersion?: string }>(
       "/api/legal/consent/status",
       {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      cache: "no-store",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
       },
     );
-
     const d = payload?.data;
     const currentPolicyVersion = d?.currentPolicyVersion ?? DEFAULT_POLICY_VERSION;
     setConsentVersion(currentPolicyVersion);
@@ -167,9 +202,27 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       });
       return false;
     }
-
     setSchoolVerificationBlock(null);
     return true;
+  }
+
+  async function completeAuthenticatedSession(opts: { isSignup: boolean }) {
+    const token = getAccessToken();
+    if (!token) return;
+    const canUseAccount = await checkSafetyStatus(token);
+    if (!canUseAccount) return;
+    const canContinue = await checkConsentStatus(token);
+    if (!canContinue) return;
+    const verifiedForCampus = await checkSchoolVerification(token);
+    if (!verifiedForCampus) return;
+
+    if (opts.isSignup) {
+      setShowPostSignupOnboarding(true);
+      return;
+    }
+
+    setSuccessBanner("Welcome Back!");
+    window.setTimeout(() => onComplete(), 700);
   }
 
   async function handleConsentContinue() {
@@ -177,20 +230,11 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     setError(null);
     try {
       const token = getAccessToken();
-      if (!token) {
-        throw new Error("Session expired. Please sign in again.");
-      }
+      if (!token) throw new Error("Session expired. Please sign in again.");
       await fetchJson("/api/legal/consent/accept", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          acceptedTerms: true,
-          acceptedPrivacy: true,
-          acceptedGuidelines: true,
-        }),
+        headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ acceptedTerms: true, acceptedPrivacy: true, acceptedGuidelines: true }),
       });
       setNeedsConsent(false);
       const verifiedForCampus = await checkSchoolVerification(token);
@@ -200,7 +244,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         if (consentError.status === 401) clearAccessToken();
         setError(consentError.message);
       } else {
-        setError(formatRequestError(consentError, "/api/legal/consent/accept", "Consent could not be saved."));
+        setError(mapGenericError(consentError));
       }
     } finally {
       setIsConsentSubmitting(false);
@@ -210,16 +254,16 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setResendNotice(null);
-    setShowRecoveryActions(false);
-    const u = username.trim().toLowerCase();
+    setNotice(null);
+    setSuccessBanner(null);
+    const eVal = email.trim().toLowerCase();
     const p = password.trim();
-    if (!u || !p) {
-      setError("Enter your student email and password.");
+    if (!eVal || !p) {
+      setError("Enter your email and password.");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u)) {
-      setError("Use your email address to sign in.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(eVal)) {
+      setError("Invalid email address.");
       return;
     }
 
@@ -228,51 +272,27 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       const payload = await fetchJson<{ session?: { access_token?: string } }>("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: u, password: p }),
+        body: JSON.stringify({ email: eVal, password: p }),
       });
       const accessToken = payload?.data?.session?.access_token;
       if (!accessToken) {
-        setError("Missing access token from login response.");
+        setError("Unable to connect. Please try again.");
         return;
       }
+      if (rememberMe && typeof window !== "undefined") {
+        localStorage.setItem(REMEMBER_EMAIL_KEY, eVal);
+      } else if (typeof window !== "undefined") {
+        localStorage.removeItem(REMEMBER_EMAIL_KEY);
+      }
       setAccessToken(accessToken);
-      const canUseAccount = await checkSafetyStatus(accessToken);
-      if (!canUseAccount) return;
-      const canContinue = await checkConsentStatus(accessToken);
-      if (!canContinue) return;
-      const verifiedForCampus = await checkSchoolVerification(accessToken);
-      if (verifiedForCampus) onComplete();
+      await completeAuthenticatedSession({ isSignup: false });
     } catch (signInError) {
       if (signInError instanceof SchoolVerificationHttpError) {
         if (signInError.status === 401) clearAccessToken();
         setError(signInError.message);
         return;
       }
-      if (signInError instanceof HttpRequestError) {
-        const rawError = String(signInError.message ?? "Sign in failed.");
-        logAuthFailureDev({
-          endpoint: signInError.path,
-          status: signInError.status,
-          message: rawError,
-          email: u,
-        });
-        const isInvalidCredentials =
-          signInError.status === 401 && rawError.toLowerCase().includes("invalid login credentials");
-        const isUnconfirmed = rawError.toLowerCase().includes("email not confirmed");
-        if (isInvalidCredentials) {
-          setError(
-            "We couldn't sign you in. Please check your email and password. If you just created your account, confirm your email first or reset your password.",
-          );
-          setShowRecoveryActions(true);
-          return;
-        }
-        if (isUnconfirmed) {
-          setError("Please confirm your email before signing in. Check your inbox for the confirmation link.");
-          setShowRecoveryActions(true);
-          return;
-        }
-      }
-      setError(formatRequestError(signInError, "/api/auth/login", "Could not reach the backend. Try again."));
+      setError(mapSigninError(signInError));
     } finally {
       setIsSubmitting(false);
     }
@@ -281,69 +301,81 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setResendNotice(null);
-    setShowRecoveryActions(false);
+    setShowPasswordRequirementsError(false);
+    setNotice(null);
+    setSuccessBanner(null);
     const eVal = email.trim().toLowerCase();
+    const u = username.trim().toLowerCase();
     const p = password.trim();
-    if (!eVal || !p) {
-      setError("Enter your email and password.");
+    const cp = confirmPassword.trim();
+    if (!eVal || !u || !p || !cp) {
+      setError("Fill in all fields to create your account.");
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(eVal)) {
-      setError("Enter a valid email address.");
+      setError("Invalid email address.");
       return;
     }
-    if (p.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (!/^[a-z0-9_]{3,24}$/.test(u)) {
+      setError("Username must be 3-24 characters (a-z, 0-9, _).");
+      return;
+    }
+    if (!passwordMeetsRequirements(p)) {
+      setShowPasswordRequirementsError(true);
+      return;
+    }
+    if (p !== cp) {
+      setError("Passwords do not match.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const payload = await fetchJson<{ session?: { access_token?: string }; user?: { id?: string } }>("/api/auth/signup", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: eVal, password: p }),
-      });
+      const payload = await fetchJson<{ session?: { access_token?: string }; user?: { id?: string } }>(
+        "/api/auth/signup",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: eVal, password: p, username: u }),
+        },
+      );
       const accessToken = payload?.data?.session?.access_token;
       if (!accessToken) {
-        const createdUserId = payload?.data?.user?.id as string | undefined;
-        if (createdUserId) {
-          setUsername(eVal);
-          setMode("signin");
-          setPassword("");
-          setError("Account created. Please check your email to confirm your account, then sign in.");
-          setShowRecoveryActions(true);
-          return;
-        }
-        setError("Sign up completed, but no session is available yet. Please confirm your email and sign in.");
-        setShowRecoveryActions(true);
+        setMode("signin");
+        setEmail(eVal);
+        setPassword("");
+        setConfirmPassword("");
+        setSuccessBanner("Account Created!");
+        setNotice("Check your email to verify your account, then sign in.");
         return;
       }
       setAccessToken(accessToken);
-      const canUseAccount = await checkSafetyStatus(accessToken);
-      if (!canUseAccount) return;
-      const canContinue = await checkConsentStatus(accessToken);
-      if (!canContinue) return;
-      const verifiedForCampus = await checkSchoolVerification(accessToken);
-      if (verifiedForCampus) onComplete();
+      setSuccessBanner("Account Created!");
+      await completeAuthenticatedSession({ isSignup: true });
     } catch (signUpError) {
       if (signUpError instanceof SchoolVerificationHttpError) {
         if (signUpError.status === 401) clearAccessToken();
         setError(signUpError.message);
         return;
       }
-      setError(formatRequestError(signUpError, "/api/auth/signup", "Could not reach the backend. Try again."));
+      const mapped = mapSignupError(signUpError);
+      if ("passwordRequirements" in mapped) {
+        setShowPasswordRequirementsError(true);
+        setError(null);
+        return;
+      }
+      setShowPasswordRequirementsError(false);
+      setError(mapped.message);
     } finally {
       setIsSubmitting(false);
     }
   }
 
   async function handleResetPassword() {
-    const targetEmail = username.trim().toLowerCase();
-    setResendNotice(null);
+    const targetEmail = email.trim().toLowerCase();
+    setNotice(null);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
-      setResendNotice("Enter a valid email address to reset your password.");
+      setNotice("Enter a valid email address to reset your password.");
       return;
     }
     setIsResettingPassword(true);
@@ -353,19 +385,19 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: targetEmail }),
       });
-      setResendNotice("Password reset email sent. Please check your inbox.");
+      setNotice("Password reset email sent. Check your inbox.");
     } catch (resetError) {
-      setResendNotice(formatRequestError(resetError, "/api/auth/reset-password", "Could not reach the backend. Try again."));
+      setNotice(mapGenericError(resetError));
     } finally {
       setIsResettingPassword(false);
     }
   }
 
   async function handleResendConfirmation() {
-    const targetEmail = (mode === "signin" ? username : email).trim().toLowerCase();
-    setResendNotice(null);
+    const targetEmail = email.trim().toLowerCase();
+    setNotice(null);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
-      setResendNotice("Enter a valid email address to resend confirmation.");
+      setNotice("Enter a valid email address.");
       return;
     }
     setIsResendingConfirmation(true);
@@ -375,14 +407,22 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: targetEmail }),
       });
-      setResendNotice("Confirmation email resent. Please check your inbox.");
+      setNotice("Confirmation email sent. Check your inbox.");
     } catch (resendError) {
-      setResendNotice(
-        formatRequestError(resendError, "/api/auth/resend-confirmation", "Could not reach the backend. Try again."),
-      );
+      setNotice(mapGenericError(resendError));
     } finally {
       setIsResendingConfirmation(false);
     }
+  }
+
+  function switchMode(next: Mode) {
+    setMode(next);
+    setError(null);
+    setShowPasswordRequirementsError(false);
+    setNotice(null);
+    setSuccessBanner(null);
+    setPassword("");
+    setConfirmPassword("");
   }
 
   if (needsConsent) {
@@ -414,204 +454,209 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         onUseDifferentAccount={() => {
           clearAccessToken();
           setSchoolVerificationBlock(null);
-          setMode("signin");
-          setUsername("");
-          setPassword("");
+          switchMode("signin");
+          setEmail("");
           setError(null);
         }}
       />
     );
   }
 
+  if (showPostSignupOnboarding) {
+    return <AuthOnboardingFlow onComplete={onComplete} />;
+  }
+
   return (
-    <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 py-10 sm:py-14">
-      {/* Subtle background */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background: "radial-gradient(ellipse 70% 50% at 50% 20%, rgba(104, 171, 232, 0.08) 0%, transparent 50%)",
-        }}
-      />
-
-      <div className="relative w-full max-w-[400px]">
-        {/* Logo + branding */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-full max-w-[200px] sm:max-w-[220px] h-auto mb-4">
-            <img
-              src="/campusquest-logo.png"
-              alt="CampusQuest"
-              className="w-full h-auto object-contain drop-shadow-[0_0_20px_rgba(104,171,232,0.2)]"
+    <div className="cq-auth-shell min-h-screen flex flex-col items-center justify-center px-5 py-10">
+      <div className="cq-auth-inner cq-auth-enter">
+        {mode === "signin" ? (
+          <>
+            <AuthHeader
+              title="CampusQuest"
+              subtitle="Discover campus. Earn XP. Get involved."
             />
-          </div>
-          <p className="text-uri-keaney/80 text-xs font-medium tracking-[0.2em] uppercase">
-            URI · Level Up Your College Experience
-          </p>
-        </div>
-
-        {/* Card */}
-        <div className="rounded-2xl border border-white/10 bg-white/[0.06] shadow-xl shadow-black/20 overflow-hidden">
-          {/* Tabs */}
-          <div className="flex border-b border-white/10">
-            <button
-              type="button"
-              onClick={() => {
-                setMode("signin");
-                setError(null);
-                setResendNotice(null);
-                setShowRecoveryActions(false);
-              }}
-              className={`flex-1 py-4 text-sm font-semibold transition-all ${
-                mode === "signin"
-                  ? "text-uri-keaney bg-uri-keaney/10 border-b-2 border-uri-keaney"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              }`}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode("signup");
-                setError(null);
-                setResendNotice(null);
-                setShowRecoveryActions(false);
-              }}
-              className={`flex-1 py-4 text-sm font-semibold transition-all ${
-                mode === "signup"
-                  ? "text-uri-keaney bg-uri-keaney/10 border-b-2 border-uri-keaney"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              }`}
-            >
-              Sign up
-            </button>
-          </div>
-
-          <div className="p-6 sm:p-8">
-            {mode === "signin" ? (
-              <form onSubmit={handleSignIn} className="space-y-5">
-                <div>
-                  <label htmlFor="auth-username" className={labelClass}>
-                    Student email
-                  </label>
-                  <input
-                    id="auth-username"
-                    type="text"
-                    autoComplete="username email"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="e.g. you@uri.edu"
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="auth-password-signin" className={labelClass}>
+            <form onSubmit={handleSignIn} className="space-y-4">
+              <div>
+                <label htmlFor="auth-email-signin" className="cq-auth-label">
+                  Email Address
+                </label>
+                <input
+                  id="auth-email-signin"
+                  type="email"
+                  autoComplete="username email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@uri.edu"
+                  className="cq-auth-input"
+                />
+              </div>
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <label htmlFor="auth-password-signin" className="cq-auth-label mb-0">
                     Password
                   </label>
-                  <input
-                    id="auth-password-signin"
-                    type="password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className={inputClass}
-                  />
-                </div>
-                {error && (
-                  <p className="text-xs text-amber-400/90 bg-amber-400/10 px-3 py-2 rounded-lg border border-amber-400/20">
-                    {error}
-                  </p>
-                )}
-                {showRecoveryActions ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleResendConfirmation()}
-                      disabled={isResendingConfirmation}
-                      className="w-full py-2.5 rounded-lg border border-uri-keaney/40 text-uri-keaney text-xs font-semibold hover:bg-uri-keaney/10 disabled:opacity-60"
-                    >
-                      {isResendingConfirmation ? "Resending..." : "Resend confirmation email"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleResetPassword()}
-                      disabled={isResettingPassword}
-                      className="w-full py-2.5 rounded-lg border border-white/25 text-white text-xs font-semibold hover:bg-white/10 disabled:opacity-60"
-                    >
-                      {isResettingPassword ? "Sending..." : "Reset password"}
-                    </button>
-                  </div>
-                ) : null}
-                {resendNotice ? <p className="text-xs text-white/70">{resendNotice}</p> : null}
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-3.5 rounded-xl bg-uri-keaney text-white font-semibold text-sm hover:bg-uri-keaney/90 focus:outline-none focus:ring-2 focus:ring-uri-keaney focus:ring-offset-2 focus:ring-offset-uri-navy transition-colors shadow-lg shadow-uri-keaney/20"
-                >
-                  {isSubmitting ? "Signing in..." : "Sign in"}
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleSignUp} className="space-y-5">
-                <div>
-                  <label htmlFor="auth-email" className={labelClass}>
-                    Student email
-                  </label>
-                  <input
-                    id="auth-email"
-                    type="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@uri.edu"
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="auth-password-signup" className={labelClass}>
-                    Password
-                  </label>
-                  <input
-                    id="auth-password-signup"
-                    type="password"
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 8 characters"
-                    className={inputClass}
-                  />
-                </div>
-                {error && (
-                  <p className="text-xs text-amber-400/90 bg-amber-400/10 px-3 py-2 rounded-lg border border-amber-400/20">
-                    {error}
-                  </p>
-                )}
-                {showRecoveryActions ? (
                   <button
                     type="button"
-                    onClick={() => void handleResendConfirmation()}
-                    disabled={isResendingConfirmation}
-                    className="w-full py-2.5 rounded-lg border border-uri-keaney/40 text-uri-keaney text-xs font-semibold hover:bg-uri-keaney/10 disabled:opacity-60"
+                    onClick={() => void handleResetPassword()}
+                    disabled={isResettingPassword}
+                    className="cq-auth-link text-[11px]"
                   >
-                    {isResendingConfirmation ? "Resending..." : "Resend confirmation email"}
+                    {isResettingPassword ? "Sending..." : "Forgot Password?"}
                   </button>
-                ) : null}
-                {resendNotice ? <p className="text-xs text-white/70">{resendNotice}</p> : null}
+                </div>
+                <input
+                  id="auth-password-signin"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="cq-auth-input"
+                />
+              </div>
+              <label className="flex items-center gap-2.5 text-sm text-white/55">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 rounded border-white/25 bg-white/10 accent-sky-400"
+                />
+                Remember Me
+              </label>
+              {error ? <p className="cq-auth-error">{error}</p> : null}
+              {successBanner ? <p className="cq-auth-success">{successBanner}</p> : null}
+              {notice ? <p className="cq-auth-notice">{notice}</p> : null}
+              <button type="submit" disabled={isSubmitting} className="cq-auth-btn-primary w-full">
+                {isSubmitting ? "Signing In..." : "Sign In"}
+              </button>
+              <div className="cq-auth-divider py-1">OR</div>
+              <button
+                type="button"
+                onClick={() => setNotice("Google sign-in is coming soon.")}
+                className="cq-auth-btn-secondary flex w-full items-center justify-center gap-2"
+              >
+                <svg aria-hidden viewBox="0 0 24 24" className="h-[18px] w-[18px]">
+                  <path
+                    fill="#EA4335"
+                    d="M12 10.2v3.6h5.1c-.2 1.2-1.6 3.6-5.1 3.6-3.1 0-5.6-2.5-5.6-5.6s2.5-5.6 5.6-5.6c1.8 0 3 .8 3.7 1.4l2.5-2.4C16.9 3.6 14.7 2.6 12 2.6 6.9 2.6 2.6 6.9 2.6 12s4.3 9.4 9.4 9.4c5.4 0 9-3.8 9-9.2 0-.6-.1-1.1-.2-1.6H12z"
+                  />
+                </svg>
+                Continue with Google
+              </button>
+              <p className="cq-auth-trust pt-1">Secure sign-in · Email verification supported</p>
+              {error?.includes("confirm") || notice?.includes("Confirmation") ? (
                 <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-3.5 rounded-xl bg-uri-keaney text-white font-semibold text-sm hover:bg-uri-keaney/90 focus:outline-none focus:ring-2 focus:ring-uri-keaney focus:ring-offset-2 focus:ring-offset-uri-navy transition-colors shadow-lg shadow-uri-keaney/20"
+                  type="button"
+                  onClick={() => void handleResendConfirmation()}
+                  disabled={isResendingConfirmation}
+                  className="cq-auth-link w-full text-center"
                 >
-                  {isSubmitting ? "Creating account..." : "Create account"}
+                  {isResendingConfirmation ? "Sending..." : "Resend verification email"}
                 </button>
-              </form>
-            )}
-          </div>
-        </div>
-
-        <p className="text-center text-white/40 text-xs mt-6">
-          Sign in with your campus credentials to track progress and earn XP.
-        </p>
+              ) : null}
+            </form>
+            <p className="mt-8 text-center text-sm text-white/50">
+              Don&apos;t have an account?{" "}
+              <button type="button" onClick={() => switchMode("signup")} className="cq-auth-link">
+                Sign Up
+              </button>
+            </p>
+          </>
+        ) : (
+          <>
+            <AuthHeader title="Join CampusQuest" subtitle="Start your journey and level up your college experience." />
+            <form onSubmit={handleSignUp} className="space-y-4">
+              <div>
+                <label htmlFor="auth-email-signup" className="cq-auth-label">
+                  URI Email
+                </label>
+                <input
+                  id="auth-email-signup"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@uri.edu"
+                  className="cq-auth-input"
+                />
+              </div>
+              <div>
+                <label htmlFor="auth-username-signup" className="cq-auth-label">
+                  Username
+                </label>
+                <input
+                  id="auth-username-signup"
+                  type="text"
+                  autoComplete="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                  placeholder="your_username"
+                  className="cq-auth-input"
+                />
+              </div>
+              <div>
+                <label htmlFor="auth-password-signup" className="cq-auth-label">
+                  Password
+                </label>
+                <input
+                  id="auth-password-signup"
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (showPasswordRequirementsError) setShowPasswordRequirementsError(false);
+                  }}
+                  placeholder="••••••••"
+                  className="cq-auth-input"
+                  aria-invalid={showPasswordRequirementsError}
+                  aria-describedby="auth-password-requirements"
+                />
+                <div id="auth-password-requirements">
+                  <AuthPasswordRequirementsHints password={password} />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="auth-confirm-password" className="cq-auth-label">
+                  Confirm Password
+                </label>
+                <input
+                  id="auth-confirm-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="cq-auth-input"
+                />
+              </div>
+              {showPasswordRequirementsError ? <AuthPasswordRequirementsAlert /> : null}
+              {error ? <p className="cq-auth-error">{error}</p> : null}
+              {successBanner ? <p className="cq-auth-success">{successBanner}</p> : null}
+              {notice ? <p className="cq-auth-notice">{notice}</p> : null}
+              <button type="submit" disabled={isSubmitting} className="cq-auth-btn-primary w-full">
+                {isSubmitting ? "Creating Account..." : "Create Account"}
+              </button>
+              <p className="cq-auth-legal">
+                By creating an account, you agree to our{" "}
+                <Link href="/legal/terms" className="cq-auth-link">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/legal/privacy" className="cq-auth-link">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
+            </form>
+            <p className="mt-8 text-center text-sm text-white/50">
+              Already have an account?{" "}
+              <button type="button" onClick={() => switchMode("signin")} className="cq-auth-link">
+                Sign In
+              </button>
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

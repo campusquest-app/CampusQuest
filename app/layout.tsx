@@ -24,6 +24,13 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "CampusQuest — Level Up Your College Experience",
   description: "CampusQuest helps you level up your college experience. Log workouts, study sessions, and campus life while you earn XP, build stats, and compete on The Quad.",
+  icons: {
+    icon: [
+      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   openGraph: {
     title: "CampusQuest — Level Up Your College Experience",
     description: "Level Up Your College Experience with CampusQuest. Earn XP, build stats, and compete on The Quad.",
