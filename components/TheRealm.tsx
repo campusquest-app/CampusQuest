@@ -6,11 +6,13 @@ import type { RealmLocation } from "@/lib/realm/locations";
 
 export function TheRealm({
   onBack,
+  onViewQuadPost,
   userId = null,
   isAdmin = false,
   userRole = "student",
 }: {
   onBack?: () => void;
+  onViewQuadPost?: (postId: string) => void;
   userId?: string | null;
   isAdmin?: boolean;
   userRole?: string;
@@ -44,7 +46,13 @@ export function TheRealm({
         </div>
       </header>
 
-      <RealmMap onViewQuests={handleViewQuests} userId={userId} isAdmin={isAdmin} userRole={userRole} />
+      <RealmMap
+        onViewQuests={handleViewQuests}
+        onViewQuadPost={onViewQuadPost}
+        userId={userId}
+        isAdmin={isAdmin}
+        userRole={userRole}
+      />
 
       <p className="mt-3 px-1 text-center text-[10px] uppercase tracking-[0.18em] text-white/25">
         URI Kingston campus map

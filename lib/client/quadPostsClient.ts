@@ -7,7 +7,14 @@ import {
   type QuadReactionType,
 } from "@/lib/quadFieldNote";
 import type { FieldNote } from "@/lib/types";
-import { fetchAuthed, postAuthed, deleteAuthed } from "@/lib/client/dashboardApi";
+import {
+  ApiRequestError,
+  fetchAuthed,
+  postAuthed,
+  patchAuthed,
+  deleteAuthed,
+} from "@/lib/client/dashboardApi";
+import { isQuadPostProofDataUrl, uploadQuadPostProofDataUrl } from "@/lib/client/quadPostImageUpload";
 
 export type QuadPostLikeResult = {
   postId: string;
@@ -22,8 +29,25 @@ export type QuadReactionToggleResult = QuadPostLikeResult & {
   currentUserHasSparked: boolean;
 };
 
+export type RealmMomentCreatedMeta = {
+  id: string;
+  locationId: string;
+  locationName: string;
+  expiresAt: string;
+};
+
+export type CreateQuadPostResult = {
+  note: FieldNote;
+  realmMoment: RealmMomentCreatedMeta | null;
+};
+
 export async function fetchQuadHomePosts(viewerId: string, limit = 80): Promise<FieldNote[]> {
-  const data = await fetchAuthed<{ posts: QuadPostApiRow[] }>(`/api/quad/posts?limit=${limit}`);
+  const data = await fetchAuthed<{ posts: QuadPostApiRow[] }>(`/api/quad/posts?feed=public&limit=${limit}`);
+  return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
+}
+
+export async function fetchQuadFriendsPosts(viewerId: string, limit = 80): Promise<FieldNote[]> {
+  const data = await fetchAuthed<{ posts: QuadPostApiRow[] }>(`/api/quad/posts?feed=friends&limit=${limit}`);
   return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
 }
 
@@ -55,15 +79,63 @@ export async function createQuadPostRequest(
     locationName?: string;
   },
   viewerId?: string,
-): Promise<FieldNote> {
-  const body = payload as Record<string, unknown>;
-  const data = await postAuthed<{ post: QuadPostApiRow }, Record<string, unknown>>("/api/quad/posts", body);
-  const note = quadPostRowToFieldNote(data.post, viewerId);
-  if (payload.locationId && payload.locationName) {
-    note.locationId = payload.locationId;
-    note.locationName = payload.locationName;
+): Promise<CreateQuadPostResult> {
+  let proofUrl = payload.proofUrl?.trim();
+  if (proofUrl && isQuadPostProofDataUrl(proofUrl)) {
+    proofUrl = await uploadQuadPostProofDataUrl(proofUrl);
   }
-  return note;
+
+  const body = {
+    ...payload,
+    proofUrl: proofUrl && proofUrl.length > 0 ? proofUrl : undefined,
+  } as Record<string, unknown>;
+
+  let data: { post: QuadPostApiRow; realmMoment: RealmMomentCreatedMeta | null };
+  try {
+    data = await postAuthed<
+      { post: QuadPostApiRow; realmMoment: RealmMomentCreatedMeta | null },
+      Record<string, unknown>
+    >("/api/quad/posts", body);
+  } catch (error) {
+    console.error("[cq][quad-post] API create failed", {
+      message: error instanceof Error ? error.message : String(error),
+      code: error instanceof ApiRequestError ? error.code : undefined,
+      status: error instanceof ApiRequestError ? error.status : undefined,
+      details: error instanceof ApiRequestError ? error.details : undefined,
+    });
+    throw error;
+  }
+  const note = quadPostRowToFieldNote(data.post, viewerId);
+  return { note, realmMoment: data.realmMoment ?? null };
+}
+
+export type UpdateQuadPostPayload = {
+  body?: string;
+  visibility?: "public" | "friends";
+  locationId?: string | null;
+  locationName?: string | null;
+};
+
+export async function updateQuadPostRequest(
+  postId: string,
+  payload: UpdateQuadPostPayload,
+  viewerId?: string,
+): Promise<FieldNote> {
+  if (!isPersistedQuadPostId(postId)) {
+    throw new Error("Cannot update demo posts.");
+  }
+  const data = await patchAuthed<{ post: QuadPostApiRow }, UpdateQuadPostPayload>(
+    `/api/quad/posts/${postId}`,
+    payload,
+  );
+  return quadPostRowToFieldNote(data.post, viewerId);
+}
+
+export async function deleteQuadPostRequest(postId: string): Promise<void> {
+  if (!isPersistedQuadPostId(postId)) {
+    throw new Error("Cannot delete demo posts.");
+  }
+  await deleteAuthed<{ deleted: true; postId: string }>(`/api/quad/posts/${postId}`);
 }
 
 export async function likeQuadPost(postId: string): Promise<QuadPostLikeResult> {

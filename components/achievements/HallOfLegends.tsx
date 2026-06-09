@@ -251,7 +251,7 @@ export function HallOfLegends({ character, onRefresh }: { character: Character; 
   }, [views]);
 
   return (
-    <div className="cq-hall-of-legends relative min-h-[60vh] overflow-hidden rounded-2xl border border-uri-keaney/25">
+    <div className="cq-hall-of-legends relative min-h-[60vh] overflow-hidden rounded-2xl border border-white/[0.08]">
       <div className="cq-hall-of-legends-bg pointer-events-none absolute inset-0" aria-hidden />
       <div className="cq-hall-of-legends-particles pointer-events-none absolute inset-0" aria-hidden />
 
@@ -281,7 +281,7 @@ export function HallOfLegends({ character, onRefresh }: { character: Character; 
           />
         </div>
 
-        <section className="cq-hall-showcase mt-6 rounded-2xl border border-uri-gold/25 bg-gradient-to-b from-uri-gold/10 to-black/30 p-4 sm:p-5">
+        <section className="cq-hall-showcase mt-6 rounded-2xl border border-uri-gold/20 bg-cq-elevated p-4 sm:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="flex items-center gap-2 font-display text-base font-bold text-white">
@@ -357,7 +357,7 @@ export function HallOfLegends({ character, onRefresh }: { character: Character; 
           )}
         </section>
 
-        <section className="cq-hall-trophy-room mt-6 rounded-2xl border border-white/10 bg-gradient-to-b from-black/40 to-uri-navy/40 p-4 sm:p-5">
+        <section className="cq-hall-trophy-room mt-6 rounded-2xl border border-white/[0.08] bg-cq-card p-4 sm:p-5">
           <header className="mb-4 text-center sm:text-left">
             <p className="flex items-center justify-center gap-2 font-display text-lg font-bold text-white sm:justify-start">
               <Sparkles className="h-5 w-5 text-uri-gold" aria-hidden />

@@ -20,6 +20,8 @@ export type QuadPostApiRow = {
   related_activity_id?: string | null;
   related_quest_slug?: string | null;
   author_streak_days?: number | null;
+  location_id?: string | null;
+  location_name?: string | null;
   nod_count: number;
   hype_count: number;
   verify_count: number;
@@ -86,6 +88,8 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
     proofUrl: row.proof_url ?? undefined,
     visibility: row.visibility,
     authorStreakDays: row.author_streak_days ?? undefined,
+    locationId: row.location_id ?? undefined,
+    locationName: row.location_name ?? undefined,
     isPersisted: true,
   };
 }

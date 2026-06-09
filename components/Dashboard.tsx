@@ -22,16 +22,15 @@ import { CharacterCard } from "./CharacterCard";
 import { CharacterGate } from "./CharacterGate";
 import { WelcomeSplash } from "./WelcomeSplash";
 import { AuthScreen } from "./AuthScreen";
-import { ActivityList } from "./ActivityList";
+import { ManualLogScreen } from "./ManualLogScreen";
+import { ProgressHubScreen } from "./ProgressHubScreen";
+import { SkillsLoreScreen } from "./SkillsLoreScreen";
 import { TheQuad, type QuadFeedTab } from "./TheQuad";
-import { StreakCard } from "./StreakCard";
 import { BossBattles } from "./BossBattles";
-import { RecentActivities } from "./RecentActivities";
 import { FindFriends } from "./FindFriends";
 import { Leaderboards } from "./Leaderboards";
-import { Profile } from "./Profile";
-import { WeeklyRecapCard } from "./WeeklyRecapCard";
-import { CollapsibleSection } from "./CollapsibleSection";
+import { MyProfileScreen } from "./MyProfileScreen";
+import { UserProfileScreen } from "./UserProfileScreen";
 import { DirectMessageThread } from "./DirectMessageThread";
 import { Inbox, type InboxSubTab } from "./Inbox";
 import { EventsFeed } from "./EventsFeed";
@@ -47,14 +46,11 @@ import { unlockMobileForgeAudio } from "@/lib/client/xpCelebration";
 import { buildRewardAnimationSnapshot } from "@/lib/client/rewardAnimationSnapshot";
 import { estimateXpOverlayDurationMs, readMobileViewport } from "@/lib/client/xpRewardAnimation";
 import { describeCosmeticEquipEffect } from "@/lib/gameBuffs";
-import { SkillTreePanel } from "./SkillTreePanel";
-import { SurpriseQuestBanner } from "./SurpriseQuestBanner";
 import { TrainingGrounds } from "./training/TrainingGrounds";
 import { HallOfLegends } from "./achievements/HallOfLegends";
 import { AchievementUnlockCelebration } from "./achievements/AchievementUnlockCelebration";
 import { QuestBoard } from "./quests/QuestBoard";
 import { QuestCompleteCelebration } from "./quests/QuestCompleteCelebration";
-import { LoreArchiveCard } from "./LoreArchiveCard";
 import { FirstTimeJourney } from "./FirstTimeJourney";
 import { AuthOnboardingFlow } from "./auth/AuthOnboardingFlow";
 import type { StatKey } from "@/lib/types";
@@ -75,6 +71,8 @@ import {
   invalidateMeSessionCache,
 } from "@/lib/client/meSessionCache";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
+import { subscribeSocialSync } from "@/lib/client/socialSync";
+import { fetchFriendCharacter } from "@/lib/client/friendProfileClient";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { clearSchoolVerificationSnapshot, peekSchoolVerificationSnapshot } from "@/lib/client/schoolVerificationCache";
 import {
@@ -107,7 +105,7 @@ const QRScannerModalLazy = dynamic(
   { ssr: false },
 );
 
-type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations" | "realm" | "mini-games" | "achievements" | "quest-board";
+type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations" | "realm" | "mini-games" | "achievements" | "quest-board" | "manual-log" | "progress-hub" | "skills-lore";
 
 const TAB_QUERY_VALUES: Tab[] = ["quad", "friends", "battle", "leaderboards", "character", "inbox", "events", "organizations", "realm"];
 
@@ -180,6 +178,9 @@ export function Dashboard() {
   const [xpGainSession, setXpGainSession] = useState<ActivityXPGainSession | null>(null);
   const qrXpHandoffLockRef = useRef(false);
   const [dmWithOther, setDmWithOther] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
+  const [friendView, setFriendView] = useState<Character | null>(null);
+  const [friendViewLoading, setFriendViewLoading] = useState(false);
+  const [friendViewError, setFriendViewError] = useState<string | null>(null);
   const [screenShake, setScreenShake] = useState(false);
   const [levelUpModal, setLevelUpModal] = useState<number | null>(null);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
@@ -302,6 +303,31 @@ export function Dashboard() {
     setCharacter(getCharacter());
   }, []);
 
+  const openFriendView = useCallback(async (userId: string) => {
+    const current = getCharacter();
+    if (!current) return;
+    if (userId === current.id) {
+      setFriendView(null);
+      setFriendViewError(null);
+      setTab("character");
+      setCharacterPane("profile");
+      return;
+    }
+    setFriendViewLoading(true);
+    setFriendViewError(null);
+    setTab("character");
+    setCharacterPane("profile");
+    try {
+      const friend = await fetchFriendCharacter(userId);
+      setFriendView(friend);
+    } catch (error) {
+      setFriendView(null);
+      setFriendViewError(error instanceof Error ? error.message : "Could not load this friend's profile.");
+    } finally {
+      setFriendViewLoading(false);
+    }
+  }, []);
+
   const scheduleStreakHydrationFromBackend = useCallback((delayMs = 1300) => {
     if (typeof window === "undefined") return;
     const current = getCharacter();
@@ -366,7 +392,7 @@ export function Dashboard() {
   }, []);
 
   const handleDrawerNavigate = useCallback(
-    (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings") => {
+    (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings" | "manual-log" | "progress-hub" | "skills-lore") => {
       switch (dest) {
         case "friends":
           setTab("friends");
@@ -405,6 +431,15 @@ export function Dashboard() {
           break;
         case "quest-board":
           setTab("quest-board");
+          break;
+        case "manual-log":
+          setTab("manual-log");
+          break;
+        case "progress-hub":
+          setTab("progress-hub");
+          break;
+        case "skills-lore":
+          setTab("skills-lore");
           break;
         case "mini-games":
           setTab("mini-games");
@@ -732,10 +767,12 @@ export function Dashboard() {
     intervalId = window.setInterval(() => {
       void loadUnread();
     }, 45000);
+    const unsubscribeSocial = subscribeSocialSync(() => void loadUnread());
     return () => {
       cancelled = true;
       window.clearTimeout(tid);
       window.clearInterval(intervalId);
+      unsubscribeSocial();
     };
   }, [bootstrapStatus, character?.id]);
 
@@ -1855,6 +1892,7 @@ export function Dashboard() {
           renderPilotCampusGate(
             <TheRealm
               onBack={() => setTab("quad")}
+              onViewQuadPost={() => setTab("quad")}
               userId={character?.id ?? null}
               isAdmin={moderationAdminNavVisible(pilotCampusState)}
               userRole={moderationAdminNavVisible(pilotCampusState) ? "admin" : "student"}
@@ -1864,7 +1902,7 @@ export function Dashboard() {
         {tab === "organizations" && renderPilotCampusGate(<OrganizationsHub personalization={onboardingPreferences} />)}
 
         {tab === "leaderboards" && (
-          <Leaderboards character={character} />
+          <Leaderboards character={character} onRefresh={refreshAuthoritativeProfileInBackground} />
         )}
 
         {tab === "battle" && (
@@ -1882,7 +1920,17 @@ export function Dashboard() {
         )}
 
         {tab === "quest-board" && (
-          <QuestBoard character={character} onRefresh={refresh} />
+          <QuestBoard character={character} onRefresh={refreshAuthoritativeProfileInBackground} />
+        )}
+
+        {tab === "manual-log" && character && (
+          <ManualLogScreen onLog={handleLog} onBack={() => setTab("quad")} />
+        )}
+
+        {tab === "progress-hub" && character && <ProgressHubScreen character={character} />}
+
+        {tab === "skills-lore" && character && (
+          <SkillsLoreScreen character={character} onRefresh={refresh} />
         )}
 
         {tab === "character" && (
@@ -1899,6 +1947,7 @@ export function Dashboard() {
                 boxShadow: "0 1px 0 0 rgba(104, 171, 232, 0.12)",
               }}
             >
+              {!friendView && !friendViewLoading ? (
               <div className="rounded-2xl border border-white/10 bg-black/25 p-1 shadow-inner">
                 <div className="grid grid-cols-2 gap-1">
                   <button
@@ -1931,116 +1980,47 @@ export function Dashboard() {
                   </button>
                 </div>
               </div>
+              ) : null}
               <p className="mt-3 text-center text-[11px] leading-relaxed text-white/45 sm:text-left sm:text-xs">
-                {characterPane === "sheet"
-                  ? "Log activities, skills, streaks, and weekly recap — your main progression hub."
+                {friendView
+                  ? `${friendView.name}'s profile`
+                  : characterPane === "sheet"
+                  ? "Avatar, loadout, stats, and achievements."
                   : "Bio, equipment, stats sheet, Loot Codex, and posts you’ve shared to the Quad."}
               </p>
             </div>
 
             <div className="space-y-4 px-3 py-4 sm:space-y-5 sm:px-5 sm:py-5">
-              {characterPane === "sheet" ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-                  <div className="md:col-span-2">
-                    <CharacterCard character={character} onRefresh={refresh} />
-                  </div>
-                  <div className="md:col-span-2">
-                    <div
-                      className="overflow-hidden rounded-xl border border-white/[0.08] sm:rounded-2xl"
-                      style={{
-                        background: "linear-gradient(180deg, rgba(104, 171, 232, 0.12) 0%, rgba(3, 22, 48, 0.92) 100%)",
-                        boxShadow: "0 8px 32px -8px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)",
-                      }}
-                    >
-                      <div className="px-3 pt-4 sm:px-5 sm:pt-5">
-                        <div className="mb-4 flex items-start gap-3 sm:mb-5 sm:gap-4">
-                          <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl border border-uri-keaney/45 bg-white shadow-[0_0_20px_rgba(104,171,232,0.2),inset_0_1px_0_rgba(255,255,255,0.08)] sm:h-20 sm:w-20">
-                            <img
-                              src="/rhody-ai-ram.png"
-                              alt="Rhody AI mascot"
-                              className="h-full w-full object-contain object-left"
-                              width={80}
-                              height={80}
-                            />
-                          </div>
-                          <div className="min-w-0 flex-1 pt-0.5">
-                            <h2 className="font-display text-base font-bold leading-tight tracking-tight text-white sm:text-lg">
-                              Your Ram
-                            </h2>
-                            <p className="mt-1 text-xs leading-relaxed text-white/60 sm:text-[13px] sm:text-white/55">
-                              Level up, equip loot, and manage how you show up on the Quad.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="border-t border-uri-gold/25 px-3 pb-4 pt-3 sm:px-5 sm:pb-5 sm:pt-4">
-                        <div className="rounded-2xl border border-uri-gold/35 bg-gradient-to-br from-uri-gold/[0.12] via-uri-gold/[0.04] to-transparent p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:p-4">
-                          <div className="mb-2.5 flex items-center gap-2">
-                            <span className="text-sm" aria-hidden>
-                              ⚡
-                            </span>
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-uri-gold/95 sm:text-xs">
-                              Quick stats
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                            <div className="rounded-xl border border-white/12 bg-black/25 px-2 py-2.5 text-center shadow-inner sm:px-3">
-                              <div className="text-[10px] font-semibold uppercase tracking-wide text-white/45">Level</div>
-                              <div className="mt-0.5 font-display text-lg font-bold text-uri-keaney sm:text-xl">
-                                {character.level}
-                              </div>
-                            </div>
-                            <div className="rounded-xl border border-white/12 bg-black/25 px-2 py-2.5 text-center shadow-inner sm:px-3">
-                              <div className="text-[10px] font-semibold uppercase tracking-wide text-white/45">Streak</div>
-                              <div className="mt-0.5 font-display text-lg font-bold text-white sm:text-xl">
-                                {character.streakDays}d
-                              </div>
-                            </div>
-                            <div className="rounded-xl border border-white/12 bg-black/25 px-2 py-2.5 text-center shadow-inner sm:px-3">
-                              <div className="text-[10px] font-semibold uppercase tracking-wide text-white/45">XP</div>
-                              <div className="mt-0.5 truncate font-mono text-sm font-bold text-uri-keaney/95 sm:text-base">
-                                {character.totalXP.toLocaleString()}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="md:col-span-2">
-                    <ActivityList onLog={handleLog} />
-                  </div>
-                  <div className="md:col-span-2">
-                    <StreakCard character={character} />
-                  </div>
-                  <div className="md:col-span-2">
-                    <SurpriseQuestBanner character={character} />
-                  </div>
-                  <div className="md:col-span-2">
-                    <SkillTreePanel character={character} onRefresh={refresh} />
-                  </div>
-                  <div className="md:col-span-2">
-                    <CollapsibleSection title="Lore archive" defaultCollapsed>
-                      <LoreArchiveCard />
-                    </CollapsibleSection>
-                  </div>
-                  <div className="md:col-span-2">
-                    <CollapsibleSection title="Weekly recap" defaultCollapsed>
-                      <WeeklyRecapCard character={character} />
-                    </CollapsibleSection>
-                  </div>
-                  <div className="min-w-0 md:col-span-2">
-                    <CollapsibleSection title="Recent activities" defaultCollapsed>
-                      <RecentActivities characterId={character.id} />
-                    </CollapsibleSection>
-                  </div>
+              {friendViewLoading ? (
+                <p className="py-12 text-center text-sm text-white/55">Loading friend profile…</p>
+              ) : friendView ? (
+                <UserProfileScreen
+                  character={friendView}
+                  viewer={character}
+                  onBack={() => {
+                    setFriendView(null);
+                    setFriendViewError(null);
+                  }}
+                />
+              ) : friendViewError ? (
+                <div className="space-y-3 py-10 text-center">
+                  <p className="text-sm text-amber-200/90">{friendViewError}</p>
+                  <button
+                    type="button"
+                    onClick={() => setFriendViewError(null)}
+                    className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white/75 hover:bg-white/10"
+                  >
+                    Dismiss
+                  </button>
                 </div>
+              ) : characterPane === "sheet" ? (
+                <CharacterCard character={character} onRefresh={refresh} />
               ) : (
-                <Profile
+                <MyProfileScreen
                   character={character}
                   onLogout={handleLogout}
                   onRefresh={refresh}
-                  isOwnProfile
+                  onViewFriend={openFriendView}
                   moderationAdminAccess={moderationAdminNavVisible(pilotCampusState)}
                 />
               )}

@@ -1,3 +1,5 @@
+import { buildLevelProgressionFromTotalXp } from "@/lib/level";
+
 type StatBundle = {
   strength: number;
   stamina: number;
@@ -9,19 +11,9 @@ type StatBundle = {
 const STREAK_BONUS_STEP = 0.05;
 const STREAK_BONUS_CAP = 1.75;
 
+/** Delegates to lib/level thresholds — must match profile xpToLevel(). */
 export function calculateLevelProgression(totalXp: number) {
-  const safeXp = Math.max(0, Math.floor(totalXp));
-  const level = Math.max(1, Math.floor(Math.sqrt(safeXp / 120)) + 1);
-  const levelStartXp = 120 * Math.pow(level - 1, 2);
-  const nextLevelXp = 120 * Math.pow(level, 2);
-
-  return {
-    level,
-    totalXp: safeXp,
-    currentLevelXp: safeXp - levelStartXp,
-    nextLevelRequiredXp: nextLevelXp - levelStartXp,
-    progress: Math.min(1, (safeXp - levelStartXp) / Math.max(1, nextLevelXp - levelStartXp)),
-  };
+  return buildLevelProgressionFromTotalXp(totalXp);
 }
 
 export function streakMultiplier(streakDays: number) {

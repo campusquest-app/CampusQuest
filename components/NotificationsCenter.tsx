@@ -2,6 +2,12 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import {
+  avatarFromConnectionProfile,
+  respondToConnectionRequest,
+} from "@/lib/client/socialConnectionsClient";
+import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
+import { AvatarDisplay } from "./AvatarDisplay";
 
 type NotificationItem = {
   id: string;
@@ -10,6 +16,12 @@ type NotificationItem = {
   body: string;
   relatedEntityType: string | null;
   relatedEntityId: string | null;
+  friendRequestId?: string | null;
+  actorId?: string | null;
+  actorUsername?: string | null;
+  actorDisplayName?: string | null;
+  actorAvatarUrl?: string | null;
+  actorAvatarCustomJson?: string | null;
   readAt: string | null;
   createdAt: string;
   isFavorited?: boolean;
@@ -31,27 +43,54 @@ export function NotificationsCenter({
   const [error, setError] = useState<string | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
+  const [actionToast, setActionToast] = useState<string | null>(null);
 
   const unreadCount = notifications.filter((notification) => !notification.readAt).length;
 
-  async function loadNotifications() {
-    setLoading(true);
-    setError(null);
+  async function loadNotifications(options?: { silent?: boolean }) {
+    if (!options?.silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const data = await fetchAuthed<{ notifications: NotificationItem[]; unreadCount: number }>("/api/notifications?limit=80");
       setNotifications(data.notifications ?? []);
       onUnreadCountChange?.(data.unreadCount ?? 0);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Could not load notifications.");
+      if (!options?.silent) {
+        setError(loadError instanceof Error ? loadError.message : "Could not load notifications.");
+      }
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   }
 
   useEffect(() => {
     void loadNotifications();
+    const unsubscribe = subscribeSocialSync(() => void loadNotifications({ silent: true }));
+    const intervalId = window.setInterval(() => void loadNotifications({ silent: true }), 10_000);
+    const refreshOnVisible = () => {
+      if (document.visibilityState === "visible") {
+        void loadNotifications({ silent: true });
+      }
+    };
+    window.addEventListener("focus", refreshOnVisible);
+    document.addEventListener("visibilitychange", refreshOnVisible);
+    return () => {
+      unsubscribe();
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshOnVisible);
+      document.removeEventListener("visibilitychange", refreshOnVisible);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!actionToast) return undefined;
+    const tid = window.setTimeout(() => setActionToast(null), 2800);
+    return () => window.clearTimeout(tid);
+  }, [actionToast]);
 
   const sortedNotifications = useMemo(() => {
     return [...notifications].sort((a, b) => {
@@ -113,12 +152,50 @@ export function NotificationsCenter({
     setError(null);
     try {
       await postAuthed("/api/notifications/read-all", {});
-      setNotifications((prev) => prev.map((notification) => ({ ...notification, readAt: notification.readAt ?? new Date().toISOString() })));
-      onUnreadCountChange?.(0);
+      setNotifications((prev) => {
+        const next = prev.map((notification) =>
+          notification.type === "friend_request"
+            ? notification
+            : { ...notification, readAt: notification.readAt ?? new Date().toISOString() },
+        );
+        onUnreadCountChange?.(next.filter((n) => !n.readAt).length);
+        return next;
+      });
     } catch (markAllError) {
       setError(markAllError instanceof Error ? markAllError.message : "Could not mark all as read.");
     } finally {
       setMarkingAll(false);
+    }
+  }
+
+  async function handleFriendRequestAction(
+    notification: NotificationItem,
+    action: "accept" | "decline",
+  ) {
+    const requestId = notification.friendRequestId ?? notification.relatedEntityId;
+    if (!requestId) {
+      setError("This follow request is no longer available.");
+      return;
+    }
+    setRespondingRequestId(requestId);
+    setError(null);
+    try {
+      await respondToConnectionRequest(requestId, action);
+      const username = notification.actorUsername ?? "this student";
+      setActionToast(
+        action === "accept" ? `You are now following ${username}` : "Follow request declined",
+      );
+      setNotifications((prev) => {
+        const next = prev.filter((n) => n.id !== notification.id);
+        onUnreadCountChange?.(next.filter((n) => !n.readAt).length);
+        return next;
+      });
+      emitSocialSync({ source: "notifications" });
+    } catch (respondError) {
+      setError(respondError instanceof Error ? respondError.message : "Could not respond to follow request.");
+      await loadNotifications();
+    } finally {
+      setRespondingRequestId(null);
     }
   }
 
@@ -160,9 +237,13 @@ export function NotificationsCenter({
   const itemClass = (read: boolean) =>
     embedded
       ? `rounded-xl border p-3 space-y-1.5 ${
-          read ? "border-white/10 bg-white/[0.03]" : "border-uri-keaney/35 bg-white/[0.04]"
+          read
+            ? "border-white/[0.08] bg-cq-card"
+            : "border-white/[0.08] border-l-[3px] border-l-uri-keaney bg-cq-elevated"
         }`
-      : `card p-4 border ${read ? "border-white/10" : "border-uri-keaney/35"} space-y-1.5`;
+      : `card p-4 border ${
+          read ? "border-white/[0.08]" : "border-white/[0.08] border-l-[3px] border-l-uri-keaney bg-cq-elevated"
+        } space-y-1.5`;
 
   const emptyCopy = embedded
     ? "You're caught up. RSVPs, org updates, and campus activity will show up here."
@@ -170,6 +251,15 @@ export function NotificationsCenter({
 
   const body = (
     <>
+      {actionToast ? (
+        <div
+          className={`rounded-lg border border-uri-keaney/40 bg-uri-navy/90 px-3 py-2 text-sm text-white ${
+            embedded ? "mx-4 mt-3" : ""
+          }`}
+        >
+          {actionToast}
+        </div>
+      ) : null}
       {headerRow}
       {error ? (
         <div
@@ -191,41 +281,87 @@ export function NotificationsCenter({
       ) : null}
 
       <div className={listWrapClass}>
-        {sortedNotifications.map((notification) => (
-          <article key={notification.id} className={itemClass(Boolean(notification.readAt))}>
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-white font-semibold text-sm min-w-0 flex-1">{notification.title}</p>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <button
-                  type="button"
-                  disabled={togglingId === notification.id}
-                  onClick={() => void toggleFavorite(notification.id, !notification.isFavorited)}
-                  className={`p-2 rounded-lg text-sm transition-colors disabled:opacity-50 ${
-                    notification.isFavorited
-                      ? "text-uri-gold bg-uri-gold/15 border border-uri-gold/35"
-                      : "text-white/55 hover:text-uri-gold border border-white/15 hover:bg-white/10"
-                  }`}
-                  title={notification.isFavorited ? "Unfavorite" : "Favorite"}
-                  aria-label={notification.isFavorited ? "Unfavorite" : "Favorite"}
-                  aria-pressed={notification.isFavorited ?? false}
-                >
-                  ★
-                </button>
-                {!notification.readAt ? (
-                  <button
-                    type="button"
-                    onClick={() => void markRead(notification.id)}
-                    className="px-2.5 py-1 rounded-md text-[11px] font-semibold border border-white/20 text-white/80 hover:bg-white/10"
-                  >
-                    Mark read
-                  </button>
+        {sortedNotifications.map((notification) => {
+          const isFriendRequest = notification.type === "friend_request";
+          const requestId = notification.friendRequestId ?? notification.relatedEntityId;
+          const actorAvatar = avatarFromConnectionProfile({
+            avatarUrl: notification.actorAvatarUrl ?? null,
+            avatarCustomJson: notification.actorAvatarCustomJson ?? null,
+          });
+
+          return (
+            <article key={notification.id} className={itemClass(Boolean(notification.readAt))}>
+              <div className="flex items-start gap-3">
+                {isFriendRequest ? (
+                  <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-white/15">
+                    <AvatarDisplay avatar={actorAvatar} size={40} />
+                  </div>
                 ) : null}
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-white font-semibold text-sm min-w-0 flex-1">
+                      {isFriendRequest && notification.actorUsername
+                        ? `@${notification.actorUsername}`
+                        : notification.title}
+                    </p>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        disabled={togglingId === notification.id}
+                        onClick={() => void toggleFavorite(notification.id, !notification.isFavorited)}
+                        className={`p-2 rounded-lg text-sm transition-colors disabled:opacity-50 ${
+                          notification.isFavorited
+                            ? "text-uri-gold bg-uri-gold/15 border border-uri-gold/35"
+                            : "text-white/55 hover:text-uri-gold border border-white/15 hover:bg-white/10"
+                        }`}
+                        title={notification.isFavorited ? "Unfavorite" : "Favorite"}
+                        aria-label={notification.isFavorited ? "Unfavorite" : "Favorite"}
+                        aria-pressed={notification.isFavorited ?? false}
+                      >
+                        ★
+                      </button>
+                      {!notification.readAt && !isFriendRequest ? (
+                        <button
+                          type="button"
+                          onClick={() => void markRead(notification.id)}
+                          className="px-2.5 py-1 rounded-md text-[11px] font-semibold border border-white/20 text-white/80 hover:bg-white/10"
+                        >
+                          Mark read
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <p className="text-sm text-white/75">
+                    {isFriendRequest && notification.actorUsername
+                      ? `${notification.actorUsername} sent you a follow request`
+                      : notification.body}
+                  </p>
+                  {isFriendRequest && requestId ? (
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={respondingRequestId === requestId}
+                        onClick={() => void handleFriendRequestAction(notification, "accept")}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90 disabled:opacity-60"
+                      >
+                        Follow Back
+                      </button>
+                      <button
+                        type="button"
+                        disabled={respondingRequestId === requestId}
+                        onClick={() => void handleFriendRequestAction(notification, "decline")}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white/80 border border-white/20 hover:bg-white/10 disabled:opacity-60"
+                      >
+                        Deny
+                      </button>
+                    </div>
+                  ) : null}
+                  <p className="text-[11px] text-white/50">{new Date(notification.createdAt).toLocaleString()}</p>
+                </div>
               </div>
-            </div>
-            <p className="text-sm text-white/75">{notification.body}</p>
-            <p className="text-[11px] text-white/50">{new Date(notification.createdAt).toLocaleString()}</p>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
     </>
   );

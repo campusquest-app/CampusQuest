@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   BookOpen,
+  ClipboardPen,
   Building2,
   Calendar,
   ChevronRight,
@@ -17,6 +18,7 @@ import {
   Settings,
   Shield,
   Swords,
+  ScrollText,
   Target,
   TrendingUp,
   Trophy,
@@ -40,12 +42,15 @@ export type AppDrawerDestination =
   | "character-sheet"
   | "profile"
   | "quest-board"
-  | "help";
+  | "help"
+  | "manual-log"
+  | "progress-hub"
+  | "skills-lore";
 
 type DrawerPanel = "menu" | "settings" | "help";
 
 type MenuItem = {
-  id: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings";
+  id: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings" | "manual-log" | "progress-hub" | "skills-lore";
   label: string;
   icon: React.ReactNode;
   description?: string;
@@ -62,10 +67,39 @@ const EXPLORE: MenuItem[] = [
   { id: "battle", label: "Boss Battle", icon: <Swords className="h-5 w-5" /> },
 ];
 
+const QUESTS: MenuItem[] = [
+  {
+    id: "quest-board",
+    label: "Quest Board",
+    icon: <Target className="h-5 w-5" />,
+    description: "Surprise, daily & tracked quests",
+  },
+];
+
 const PROGRESS: MenuItem[] = [
-  { id: "quest-board", label: "Quest Board", icon: <Target className="h-5 w-5" /> },
+  {
+    id: "progress-hub",
+    label: "My Progress",
+    icon: <TrendingUp className="h-5 w-5" />,
+    description: "Streaks, recap & recent activity",
+  },
+  {
+    id: "manual-log",
+    label: "Manual Log",
+    icon: <ClipboardPen className="h-5 w-5" />,
+    description: "Log real activities and earn XP",
+  },
   { id: "mini-games", label: "Mini Games", icon: <Gamepad2 className="h-5 w-5" /> },
   { id: "achievements", label: "Hall of Legends", icon: <Medal className="h-5 w-5" /> },
+];
+
+const SKILLS_LORE: MenuItem[] = [
+  {
+    id: "skills-lore",
+    label: "Skills & Lore",
+    icon: <ScrollText className="h-5 w-5" />,
+    description: "Skill tree and lore archive",
+  },
 ];
 
 const SUPPORT: MenuItem[] = [
@@ -88,7 +122,7 @@ export function AppSideDrawer({
   open: boolean;
   onClose: () => void;
   character: Character | null;
-  onNavigate: (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings") => void;
+  onNavigate: (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings" | "manual-log" | "progress-hub" | "skills-lore") => void;
   onSettingsAction: (action: SettingsActionId) => void;
   showAdminNav?: boolean;
   unreadNotificationCount?: number;
@@ -149,7 +183,9 @@ export function AppSideDrawer({
 
             <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-1">
               <DrawerSection title="Explore" items={EXPLORE} onSelect={handleItem} />
+              <DrawerSection title="Quests" items={QUESTS} onSelect={handleItem} />
               <DrawerSection title="Progress" items={PROGRESS} onSelect={handleItem} />
+              <DrawerSection title="Skills & Lore" items={SKILLS_LORE} onSelect={handleItem} />
               <DrawerSection
                 title="Account"
                 items={SUPPORT}

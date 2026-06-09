@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { getCharacterById } from "@/lib/friendsStore";
 import { getGuilds, GUILD_INTEREST_LABELS } from "@/lib/guildStore";
 import { fetchAuthed } from "@/lib/client/dashboardApi";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
+import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import type { Character } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, STAT_ICONS } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
@@ -195,7 +197,13 @@ function xpLeaderboardMetricProps(sortBy: SortBy, row: XpLeaderboardRowUi) {
   return { sortBy, statValue, statLabel: spec.label };
 }
 
-export function Leaderboards({ character }: { character: Character }) {
+export function Leaderboards({
+  character,
+  onRefresh,
+}: {
+  character: Character;
+  onRefresh?: () => void;
+}) {
   const [sortBy, setSortBy] = useState<SortBy>("level");
   const [expandedGuildId, setExpandedGuildId] = useState<string | null>(null);
   const [expandedScholarGuildId, setExpandedScholarGuildId] = useState<string | null>(null);
@@ -238,44 +246,60 @@ export function Leaderboards({ character }: { character: Character }) {
     });
   }, []);
 
+  const loadXpLeaderboards = useCallback(async () => {
+    if (sortBy === "guildLevel") return;
+    setXpLoading(true);
+    setXpError(null);
+    const t0 = typeof performance !== "undefined" ? performance.now() : 0;
+    try {
+      const qs = new URLSearchParams({ sort: sortBy }).toString();
+      const [c, f] = await Promise.all([
+        fetchAuthed<XpLeaderboardPayload>(`/api/leaderboards/campus?${qs}`),
+        fetchAuthed<XpLeaderboardPayload>(`/api/leaderboards/friends?${qs}`),
+      ]);
+      setCampusLb(c);
+      setFriendsLb(f);
+      const campusMe = c.currentUserEntry;
+      const friendsMe = f.currentUserEntry;
+      if (campusMe || friendsMe) {
+        console.info("[cq][leaderboard] profile vs leaderboard", {
+          profileLevel: character.level,
+          profileTotalXp: character.totalXP,
+          campusLevel: campusMe?.level ?? null,
+          campusTotalXp: campusMe?.totalXp ?? null,
+          friendsLevel: friendsMe?.level ?? null,
+          friendsTotalXp: friendsMe?.totalXp ?? null,
+        });
+      }
+      if (typeof performance !== "undefined") {
+        console.log("[cq:load] leaderboards campus+friends", Math.round(performance.now() - t0), "ms");
+      }
+    } catch (err) {
+      setXpError(err instanceof Error ? err.message : "Could not load leaderboards.");
+      setCampusLb(null);
+      setFriendsLb(null);
+    } finally {
+      setXpLoading(false);
+    }
+  }, [sortBy, character.level, character.totalXP]);
+
+  const handlePullRefresh = useCallback(async () => {
+    await Promise.all([loadXpLeaderboards(), refreshPlayerSnapshotFromServer()]);
+    onRefresh?.();
+  }, [loadXpLeaderboards, onRefresh]);
+
   useEffect(() => {
     if (sortBy === "guildLevel") return;
     let cancelled = false;
-    let deferId = 0;
-    setXpLoading(true);
-    setXpError(null);
-    deferId = scheduleNonCriticalWork(() => {
+    const deferId = scheduleNonCriticalWork(() => {
       if (cancelled) return;
-      void (async () => {
-        const t0 = typeof performance !== "undefined" ? performance.now() : 0;
-        try {
-          const qs = new URLSearchParams({ sort: sortBy }).toString();
-          const [c, f] = await Promise.all([
-            fetchAuthed<XpLeaderboardPayload>(`/api/leaderboards/campus?${qs}`),
-            fetchAuthed<XpLeaderboardPayload>(`/api/leaderboards/friends?${qs}`),
-          ]);
-          if (cancelled) return;
-          setCampusLb(c);
-          setFriendsLb(f);
-          if (typeof performance !== "undefined") {
-            console.log("[cq:load] leaderboards campus+friends", Math.round(performance.now() - t0), "ms");
-          }
-        } catch (err) {
-          if (!cancelled) {
-            setXpError(err instanceof Error ? err.message : "Could not load leaderboards.");
-            setCampusLb(null);
-            setFriendsLb(null);
-          }
-        } finally {
-          if (!cancelled) setXpLoading(false);
-        }
-      })();
+      void loadXpLeaderboards();
     });
     return () => {
       cancelled = true;
       window.clearTimeout(deferId);
     };
-  }, [sortBy]);
+  }, [loadXpLeaderboards, sortBy]);
 
   const xpActive = xpTab === "campus" ? campusLb : friendsLb;
   const xpFriendsEmpty =
@@ -293,6 +317,7 @@ export function Leaderboards({ character }: { character: Character }) {
   );
 
   return (
+    <PullToRefresh onRefresh={handlePullRefresh} disabled={xpLoading}>
     <section className="space-y-6">
       {/* Filter by stat */}
       <div className="card p-4 sm:p-5">
@@ -415,13 +440,13 @@ export function Leaderboards({ character }: { character: Character }) {
         </div>
       ) : (
         <>
-          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-[#0d2d58]/95 via-cq-secondary to-cq-card shadow-[0_20px_50px_-20px_rgba(0,0,0,0.55)] ring-1 ring-white/10">
+          <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-cq-card shadow-[0_20px_50px_-20px_rgba(0,0,0,0.55)]">
             <div
-              className="pointer-events-none absolute inset-0 opacity-[0.45] bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(104,171,232,0.22),transparent_55%)]"
+              className="pointer-events-none absolute inset-0 opacity-[0.2] bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(104,171,232,0.12),transparent_55%)]"
               aria-hidden
             />
             <div
-              className="pointer-events-none absolute -right-24 top-0 h-56 w-56 rounded-full bg-uri-keaney/20 blur-3xl"
+              className="pointer-events-none absolute -right-24 top-0 h-56 w-56 rounded-full bg-uri-keaney/8 blur-3xl"
               aria-hidden
             />
             <div
@@ -432,7 +457,7 @@ export function Leaderboards({ character }: { character: Character }) {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex gap-4 min-w-0">
                   <div
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-uri-keaney/35 to-uri-keaney/5 text-xl shadow-inner ring-1 ring-uri-keaney/35"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cq-elevated text-xl ring-1 ring-white/10"
                     aria-hidden
                   >
                     🏛️
@@ -533,7 +558,7 @@ export function Leaderboards({ character }: { character: Character }) {
                 ) : null}
 
                 {xpShowPinnedCard && xpActive.currentUserEntry ? (
-                  <div className="rounded-2xl border border-uri-keaney/50 bg-gradient-to-br from-uri-keaney/20 to-uri-keaney/5 p-4 ring-1 ring-uri-keaney/25">
+                  <div className="rounded-2xl border border-white/[0.08] border-l-[3px] border-l-uri-keaney bg-cq-elevated p-4">
                     <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-uri-keaney mb-3">
                       Your position · outside top slice
                     </p>
@@ -655,6 +680,7 @@ export function Leaderboards({ character }: { character: Character }) {
         </>
       )}
     </section>
+    </PullToRefresh>
   );
 }
 
@@ -678,7 +704,7 @@ function XpRankHighlight({
         ? "from-slate-300/25 via-slate-400/15 to-slate-600/25 ring-slate-200/45 shadow-[0_0_24px_rgba(226,232,240,0.25)]"
         : rank === 3
           ? "from-amber-700/30 via-amber-800/15 to-amber-950/20 ring-amber-600/50 shadow-[0_0_22px_rgba(217,119,6,0.3)]"
-          : "from-uri-keaney/35 via-uri-keaney/15 to-[#082040] ring-uri-keaney/45 shadow-[0_0_20px_rgba(104,171,232,0.2)]";
+          : "from-cq-elevated via-cq-card to-cq-app ring-white/15";
   const headline =
     mode === "campus"
       ? rank === 1
@@ -689,8 +715,7 @@ function XpRankHighlight({
         : "Among your friends";
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/12 bg-gradient-to-br from-white/[0.09] to-white/[0.02] p-4 sm:p-5 ring-1 ring-white/10 shadow-inner">
-      <div className="pointer-events-none absolute -right-10 top-0 h-32 w-32 rounded-full bg-uri-keaney/15 blur-2xl" aria-hidden />
+    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-cq-card p-4 sm:p-5">
       <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4 min-w-0">
           <div
@@ -795,12 +820,12 @@ function LeaderboardRow({
   return (
     <li
       className={`cq-leaderboard-row flex items-center gap-2.5 sm:gap-3 p-3 rounded-xl border transition-colors hover:bg-white/[0.06] ${
-        rank <= 3 ? podiumGlow : isCurrentUser ? "bg-uri-keaney/15 border-uri-keaney/40" : "bg-white/5 border-white/10"
+        rank <= 3 ? podiumGlow : isCurrentUser ? "bg-cq-elevated border-white/[0.08] border-l-[3px] border-l-uri-keaney" : "bg-cq-card border-white/[0.08]"
       }`}
     >
       <span className={`cq-rank-badge w-8 text-center text-sm ${rankStyle}`}>#{rank}</span>
       <span className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0 border border-white/15 overflow-hidden">
-        <AvatarDisplay avatar={avatar} size={40} />
+        <AvatarDisplay avatar={avatar} size={36} />
       </span>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-white truncate flex items-center gap-1.5">

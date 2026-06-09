@@ -1,5 +1,10 @@
 import { ApiError } from "@/lib/server/http";
-import { createNotification } from "@/lib/server/notifications";
+import { logNotificationError, logNotificationInfo } from "@/lib/server/notificationDebug";
+import {
+  createFriendRequestNotification,
+  createNotification,
+  removeFriendRequestNotifications,
+} from "@/lib/server/notifications";
 import { assertAccountCanSocialize, setAccountSafetyStatus } from "@/lib/server/accountSafety";
 import { logAdminAuditAction } from "@/lib/server/audit";
 import { requireMatchingVerifiedSchool } from "@/lib/server/schoolVerification";
@@ -88,7 +93,7 @@ export async function listConnections(args: { userClient: SupabaseClientLike; us
 
   const { data: profiles, error: profilesError } = await userClient
     .from("profiles")
-    .select("id, username, display_name, avatar_url")
+    .select("id, username, display_name, avatar_url, avatar_custom_json")
     .in("id", otherUserIds);
   if (profilesError) throw new ApiError(400, profilesError.message, "CONNECTION_PROFILES_FETCH_FAILED");
 
@@ -104,9 +109,41 @@ export async function listConnections(args: { userClient: SupabaseClientLike; us
         username: profile.username,
         displayName: profile.display_name,
         avatarUrl: profile.avatar_url,
+        avatarCustomJson: profile.avatar_custom_json,
       };
     })
     .filter(Boolean);
+}
+
+async function countMutualFriends(
+  userClient: SupabaseClientLike,
+  userId: string,
+  otherUserId: string,
+): Promise<number> {
+  const [myRows, theirRows] = await Promise.all([
+    userClient
+      .from("student_connections")
+      .select("requester_id, addressee_id")
+      .eq("status", "accepted")
+      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`),
+    userClient
+      .from("student_connections")
+      .select("requester_id, addressee_id")
+      .eq("status", "accepted")
+      .or(`requester_id.eq.${otherUserId},addressee_id.eq.${otherUserId}`),
+  ]);
+  if (myRows.error) throw new ApiError(400, myRows.error.message, "MUTUAL_FRIENDS_FETCH_FAILED");
+  if (theirRows.error) throw new ApiError(400, theirRows.error.message, "MUTUAL_FRIENDS_FETCH_FAILED");
+
+  const myFriends = new Set(
+    (myRows.data ?? []).map((row) => (row.requester_id === userId ? row.addressee_id : row.requester_id)),
+  );
+  let count = 0;
+  for (const row of theirRows.data ?? []) {
+    const friendId = row.requester_id === otherUserId ? row.addressee_id : row.requester_id;
+    if (friendId !== userId && friendId !== otherUserId && myFriends.has(friendId)) count += 1;
+  }
+  return count;
 }
 
 async function assertConnectionRequestNotSpam(userClient: SupabaseClientLike, userId: string, targetUserId: string) {
@@ -157,12 +194,40 @@ export async function sendConnectionRequest(args: {
     throw new ApiError(409, "This user already sent you a request.", "REQUEST_ALREADY_RECEIVED");
   }
 
+  const { data: requesterProfile, error: requesterProfileError } = await userClient
+    .from("profiles")
+    .select("username")
+    .eq("id", userId)
+    .single();
+  if (requesterProfileError || !requesterProfile) {
+    throw new ApiError(400, requesterProfileError?.message ?? "Could not load your profile.", "REQUESTER_PROFILE_FAILED");
+  }
+
+  const senderUserId = userId;
+  const recipientUserId = target.id;
+  logNotificationInfo("friend-request:send-start", {
+    senderUserId,
+    recipientUserId,
+    recipientUsername: target.username,
+  });
+
+  const admin = createAdminClient();
+  let requestRow:
+    | {
+        id: string;
+        requester_id: string;
+        addressee_id: string;
+        status: string;
+        created_at: string;
+      }
+    | undefined;
+
   if (existing) {
-    const { data, error } = await userClient
+    const { data, error } = await admin
       .from("student_connections")
       .update({
-        requester_id: userId,
-        addressee_id: target.id,
+        requester_id: senderUserId,
+        addressee_id: recipientUserId,
         status: "pending",
         responded_at: null,
       })
@@ -170,22 +235,62 @@ export async function sendConnectionRequest(args: {
       .select("id, requester_id, addressee_id, status, created_at")
       .single();
     if (error || !data) throw new ApiError(400, error?.message ?? "Could not update request.", "CONNECTION_REQUEST_FAILED");
-    return data;
+    requestRow = data;
+  } else {
+    const { data: created, error: createdError } = await admin
+      .from("student_connections")
+      .insert({
+        requester_id: senderUserId,
+        addressee_id: recipientUserId,
+        status: "pending",
+      })
+      .select("id, requester_id, addressee_id, status, created_at")
+      .single();
+    if (createdError || !created) {
+      throw new ApiError(400, createdError?.message ?? "Could not create request.", "CONNECTION_REQUEST_FAILED");
+    }
+    requestRow = created;
   }
 
-  const { data: created, error: createdError } = await userClient
-    .from("student_connections")
-    .insert({
-      requester_id: userId,
-      addressee_id: target.id,
-      status: "pending",
-    })
-    .select("id, requester_id, addressee_id, status, created_at")
-    .single();
-  if (createdError || !created) {
-    throw new ApiError(400, createdError?.message ?? "Could not create request.", "CONNECTION_REQUEST_FAILED");
+  if (requestRow.requester_id !== senderUserId || requestRow.addressee_id !== recipientUserId) {
+    throw new ApiError(500, "Friend request was saved with unexpected participants.", "CONNECTION_REQUEST_PARTICIPANT_MISMATCH");
   }
-  return created;
+
+  logNotificationInfo("friend-request:connection-saved", {
+    senderUserId,
+    recipientUserId,
+    friendRequestId: requestRow.id,
+  });
+
+  try {
+    await removeFriendRequestNotifications({
+      friendRequestId: requestRow.id,
+      receiverUserId: recipientUserId,
+    });
+  } catch (removeError) {
+    logNotificationError("friend-request:remove-stale", {
+      friendRequestId: requestRow.id,
+      receiverUserId: recipientUserId,
+      message: removeError instanceof Error ? removeError.message : String(removeError),
+    });
+  }
+
+  const notification = await createFriendRequestNotification({
+    recipientUserId,
+    senderUserId,
+    senderUsername: requesterProfile.username,
+    friendRequestId: requestRow.id,
+  });
+
+  logNotificationInfo("friend-request:complete", {
+    senderUserId,
+    recipientUserId,
+    friendRequestId: requestRow.id,
+    notificationId: notification.id,
+    notificationUserId: recipientUserId,
+  });
+
+  return { ...requestRow, notificationId: notification.id };
 }
 
 export async function listConnectionRequests(args: {
@@ -212,26 +317,31 @@ export async function listConnectionRequests(args: {
 
   const { data: profiles, error: profilesError } = await userClient
     .from("profiles")
-    .select("id, username, display_name, avatar_url")
+    .select("id, username, display_name, avatar_url, avatar_custom_json")
     .in("id", ids);
   if (profilesError) throw new ApiError(400, profilesError.message, "CONNECTION_REQUEST_PROFILES_FAILED");
 
   const map = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
-  return rows
-    .map((row) => {
+  const mapped = await Promise.all(
+    rows.map(async (row) => {
       const personId = direction === "incoming" ? row.requester_id : row.addressee_id;
       const profile = map.get(personId);
       if (!profile) return null;
+      const mutualFriendsCount =
+        direction === "incoming" ? await countMutualFriends(userClient, userId, profile.id) : null;
       return {
         requestId: row.id,
         userId: profile.id,
         username: profile.username,
         displayName: profile.display_name,
         avatarUrl: profile.avatar_url,
+        avatarCustomJson: profile.avatar_custom_json,
         createdAt: row.created_at,
+        mutualFriendsCount,
       };
-    })
-    .filter(Boolean);
+    }),
+  );
+  return mapped.filter(Boolean);
 }
 
 export async function respondConnectionRequest(args: {
@@ -259,19 +369,97 @@ export async function respondConnectionRequest(args: {
     .select("id, status, requester_id, addressee_id, responded_at")
     .single();
   if (error || !data) throw new ApiError(400, error?.message ?? "Request response failed.", "CONNECTION_RESPONSE_FAILED");
+
+  try {
+    await removeFriendRequestNotifications({
+      friendRequestId: request.id,
+      receiverUserId: userId,
+    });
+  } catch {}
+
   if (nextStatus === "accepted") {
     try {
+      const { data: accepterProfile } = await userClient
+        .from("profiles")
+        .select("username")
+        .eq("id", userId)
+        .maybeSingle();
       await createNotification({
         userId: request.requester_id,
         type: "connection_accepted",
-        title: "Connection request accepted",
-        body: "A student accepted your connection request.",
+        title: "Follow request accepted",
+        body: accepterProfile?.username
+          ? `${accepterProfile.username} accepted your follow request`
+          : "A student accepted your follow request",
         relatedEntityType: "connection_request",
         relatedEntityId: request.id,
+        actorId: userId,
       });
     } catch {}
   }
   return data;
+}
+
+export async function cancelConnectionRequest(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  requestId: string;
+}) {
+  const { userClient, userId, requestId } = args;
+  await assertAccountCanSocialize(userClient, userId);
+  const { data: request, error: requestError } = await userClient
+    .from("student_connections")
+    .select("id, requester_id, addressee_id, status")
+    .eq("id", requestId)
+    .eq("requester_id", userId)
+    .single();
+  if (requestError || !request) throw new ApiError(404, "Connection request not found.", "CONNECTION_REQUEST_NOT_FOUND");
+  if (request.status !== "pending") throw new ApiError(409, "Request already resolved.", "CONNECTION_REQUEST_RESOLVED");
+
+  const { data, error } = await userClient
+    .from("student_connections")
+    .update({ status: "cancelled", responded_at: new Date().toISOString() })
+    .eq("id", request.id)
+    .select("id, status, requester_id, addressee_id, responded_at")
+    .single();
+  if (error || !data) throw new ApiError(400, error?.message ?? "Could not cancel request.", "CONNECTION_CANCEL_FAILED");
+
+  try {
+    await removeFriendRequestNotifications({
+      friendRequestId: request.id,
+      receiverUserId: request.addressee_id,
+    });
+  } catch {}
+
+  return data;
+}
+
+export async function removeConnection(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  connectionId: string;
+}) {
+  const { userClient, userId, connectionId } = args;
+  await assertAccountCanSocialize(userClient, userId);
+
+  const { data: row, error: rowError } = await userClient
+    .from("student_connections")
+    .select("id, requester_id, addressee_id, status")
+    .eq("id", connectionId)
+    .maybeSingle();
+  if (rowError) throw new ApiError(400, rowError.message, "CONNECTION_LOOKUP_FAILED");
+  if (!row) throw new ApiError(404, "Connection not found.", "CONNECTION_NOT_FOUND");
+  if (row.status !== "accepted") {
+    throw new ApiError(409, "Connection is not active.", "CONNECTION_NOT_ACTIVE");
+  }
+  if (row.requester_id !== userId && row.addressee_id !== userId) {
+    throw new ApiError(403, "Not allowed to remove this connection.", "FORBIDDEN");
+  }
+
+  const { error: deleteError } = await userClient.from("student_connections").delete().eq("id", connectionId);
+  if (deleteError) throw new ApiError(400, deleteError.message, "CONNECTION_REMOVE_FAILED");
+
+  return { removed: true, connectionId };
 }
 
 export async function getRelationshipStatus(args: {
@@ -293,12 +481,17 @@ export async function getRelationshipStatus(args: {
   const connectionStatus = connection?.status ?? "none";
   const incomingPending = connectionStatus === "pending" && connection?.addressee_id === userId;
   const outgoingPending = connectionStatus === "pending" && connection?.requester_id === userId;
+  const isFollowing = connectionStatus === "accepted";
+  const isFollowedBy = connectionStatus === "accepted";
   const canMessage = connectionStatus === "accepted" && !blockedByMe.data && !blockedByOther.data;
   return {
     canMessage,
     connectionStatus,
     incomingPending,
     outgoingPending,
+    isFollowing,
+    isFollowedBy,
+    followBackAvailable: incomingPending,
     blockedByMe: Boolean(blockedByMe.data),
     blockedByOther: Boolean(blockedByOther.data),
     requestId: connection?.id ?? null,

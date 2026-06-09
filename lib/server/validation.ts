@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { REALM_LOCATION_IDS } from "@/lib/realm/locationGeo";
 import { ORGANIZATION_REQUEST_CATEGORIES } from "@/lib/organizationRequestCategories";
 import { passwordMeetsRequirements } from "@/lib/passwordRequirements";
 
@@ -95,6 +96,10 @@ export const connectionRequestSchema = z.object({
 export const connectionRespondSchema = z.object({
   requestId: uuidSchema,
   action: z.enum(["accept", "decline"]),
+});
+
+export const connectionCancelSchema = z.object({
+  requestId: uuidSchema,
 });
 
 export const directConversationSchema = z.object({
@@ -510,9 +515,30 @@ export const patchMeEquipmentSchema = z.object({
   extraSlots: z.record(z.string().min(1).max(40), z.union([cosmeticIdSchema, z.literal(""), z.null()])).optional(),
 });
 
+/** Large data URLs accepted only on /api/quad/posts/proof (upload before create). */
+export const quadPostProofUploadSchema = z.object({
+  proofDataUrl: z
+    .string()
+    .min(30, "proofDataUrl is required.")
+    .max(6_000_000, "Proof image payload is too large.")
+    .refine((s) => s.trim().startsWith("data:image/"), "proofDataUrl must be a data:image/ URL."),
+});
+
 export const postQuadPostSchema = z.object({
   body: z.string().trim().min(1).max(300),
-  proofUrl: z.string().max(120_000).nullable().optional(),
+  proofUrl: z.preprocess(
+    (val) => {
+      if (val === null || val === undefined) return undefined;
+      if (typeof val === "string" && val.trim() === "") return undefined;
+      return typeof val === "string" ? val.trim() : val;
+    },
+    z
+      .string()
+      .max(2048, "proofUrl must be a storage URL (upload the image first).")
+      .refine((s) => !s.startsWith("data:"), "Upload the image before posting; raw image data is not accepted.")
+      .refine((s) => /^https?:\/\//i.test(s), "proofUrl must be an http(s) URL.")
+      .optional(),
+  ),
   visibility: z.enum(["public", "friends"]).optional(),
   ramMarks: z
     .array(
@@ -526,7 +552,25 @@ export const postQuadPostSchema = z.object({
   relatedActivityId: z.string().trim().max(120).nullable().optional(),
   relatedQuestSlug: z.string().trim().max(120).nullable().optional(),
   authorStreakDays: z.number().int().min(0).max(10_000).optional(),
+  locationId: z.enum(REALM_LOCATION_IDS).optional(),
+  locationName: z.string().trim().max(80).optional(),
 });
+
+export const patchQuadPostSchema = z
+  .object({
+    body: z.string().trim().min(1).max(300).optional(),
+    visibility: z.enum(["public", "friends"]).optional(),
+    locationId: z.enum(REALM_LOCATION_IDS).nullable().optional(),
+    locationName: z.string().trim().max(80).nullable().optional(),
+  })
+  .refine(
+    (data) =>
+      data.body !== undefined
+      || data.visibility !== undefined
+      || data.locationId !== undefined
+      || data.locationName !== undefined,
+    { message: "At least one field is required to update a post." },
+  );
 
 export const campusQrScanSchema = z.object({
   /** Short codes like GYM (3 chars) must be accepted. */

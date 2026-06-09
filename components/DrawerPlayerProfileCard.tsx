@@ -54,6 +54,7 @@ export function DrawerPlayerProfileCard({
             <AvatarDisplay
               avatar={character.avatar}
               size={68}
+              fitParent
               classId={character.classId}
               starterWeapon={character.starterWeapon}
             />

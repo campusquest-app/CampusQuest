@@ -20,15 +20,21 @@
   --uri-gold: #c5a028;
   --uri-accent: #0066b3;
 
-  /* CampusQuest shell — rich Keeney-forward dark theme */
-  --cq-bg-app: #0a1f44;
-  --cq-bg-secondary: #102a5c;
-  --cq-bg-card: #0d234f;
-  --cq-bg-elevated: #123066;
-  --cq-border: rgba(100, 180, 255, 0.15);
-  --cq-accent: #4cc9ff;
-  --cq-accent-bright: #6edcff;
-  --cq-glow: rgba(76, 201, 255, 0.25);
+  /* CampusQuest shell — dark navy surfaces, Keeney blue accents only */
+  --cq-bg-app: #060a12;
+  --cq-bg-secondary: #0c111b;
+  --cq-bg-card: #121824;
+  --cq-bg-elevated: #181f2c;
+  --cq-border: rgba(255, 255, 255, 0.08);
+  --cq-border-strong: rgba(255, 255, 255, 0.12);
+  --cq-text-muted: rgba(255, 255, 255, 0.55);
+  --cq-text-subtle: rgba(255, 255, 255, 0.38);
+  --cq-accent: #68abe8;
+  --cq-accent-bright: #7bb8eb;
+  --cq-glow: rgba(104, 171, 232, 0.22);
+  /* Realm keeps a slightly bluer wash */
+  --cq-bg-realm: #081525;
+  --cq-bg-realm-card: #0e1e38;
 
   /* App chrome — synced at runtime by TopNav / AppBottomNav / TheQuad */
   --cq-topnav-h: calc(3rem + env(safe-area-inset-top, 0px));
@@ -991,9 +997,36 @@
   }
 }
 
-/* Card surface — consistent elevation, blue tint */
+/* Card surface — dark navy elevation, neutral border */
 .card {
-  @apply rounded-2xl border border-uri-keaney/20 bg-white/[0.06] shadow-lg shadow-black/10;
+  background-color: var(--cq-bg-card);
+  border: 1px solid var(--cq-border);
+  border-radius: 1rem;
+  box-shadow:
+    0 4px 24px -6px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.cq-surface-page {
+  background-color: var(--cq-bg-app);
+}
+
+.cq-surface-card {
+  background-color: var(--cq-bg-card);
+  border: 1px solid var(--cq-border);
+}
+
+.cq-surface-elevated {
+  background-color: var(--cq-bg-elevated);
+  border: 1px solid var(--cq-border-strong);
+}
+
+.cq-text-muted {
+  color: var(--cq-text-muted);
+}
+
+.cq-text-subtle {
+  color: var(--cq-text-subtle);
 }
 
 /* Shared loading polish */
@@ -1076,8 +1109,7 @@
 }
 
 .cq-quad-feed-stream > .cq-feed-post:not(:last-child) {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 1px 0 rgba(76, 201, 255, 0.04);
+  border-bottom: 1px solid var(--cq-border);
 }
 
 .quad-feed-post,
@@ -2007,12 +2039,11 @@
 
 /* Character screen — game-style panels and frames */
 .character-hero-panel {
-  background: linear-gradient(165deg, rgba(4, 30, 66, 0.95) 0%, rgba(13, 50, 102, 0.4) 40%, rgba(4, 30, 66, 0.9) 100%);
-  border: 1px solid rgba(104, 171, 232, 0.25);
+  background: linear-gradient(165deg, var(--cq-bg-card) 0%, var(--cq-bg-elevated) 100%);
+  border: 1px solid var(--cq-border);
   box-shadow:
-    0 0 32px rgba(104, 171, 232, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 4px 24px rgba(0, 0, 0, 0.25);
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 32px -8px rgba(0, 0, 0, 0.55);
 }
 .character-avatar-frame {
   border: 3px solid transparent;
@@ -2020,6 +2051,61 @@
   box-shadow:
     0 0 24px rgba(104, 171, 232, 0.2),
     inset 0 0 20px rgba(0, 0, 0, 0.2);
+}
+
+.avatar-display-frame {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+  box-sizing: border-box;
+  background: var(--cq-bg-secondary);
+}
+
+.avatar-display-frame__inner {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.avatar-display-dicebear {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.avatar-display-dicebear--loading {
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.avatar-display-frame__inner > svg,
+.avatar-display-frame__inner svg,
+.avatar-display-dicebear svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
+.avatar-display-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center;
 }
 .cq-profile-level-pip {
   background: linear-gradient(145deg, #4cc9ff 0%, #2a8fc7 100%);
@@ -2064,9 +2150,9 @@
   transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .game-stat-pill {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
-  border: 1px solid rgba(104, 171, 232, 0.25);
-  box-shadow: 0 0 16px rgba(104, 171, 232, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--cq-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .game-stat-pill-gold {
   background: linear-gradient(145deg, rgba(197, 165, 40, 0.2), rgba(197, 165, 40, 0.08));
@@ -2101,8 +2187,8 @@
   transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease;
 }
 .stat-card-row:hover {
-  border-color: rgba(104, 171, 232, 0.28);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--cq-border-strong);
+  background: var(--cq-bg-elevated);
 }
 
 /* Game juice: screen shake, level-up, stat bursts */
@@ -2270,7 +2356,8 @@
 }
 .cq-leaderboard-row:hover {
   transform: translateY(-1px);
-  border-color: rgba(104, 171, 232, 0.3);
+  border-color: var(--cq-border-strong);
+  background: var(--cq-bg-elevated);
 }
 .cq-rank-badge {
   border-radius: 0.45rem;
@@ -3146,36 +3233,30 @@ html {
 }
 
 .cq-nav-shell-top {
-  background-color: #0a1f44;
-  background-image: linear-gradient(180deg, #0f2856 0%, #0a1f44 100%);
-  border-bottom: 1px solid rgba(100, 180, 255, 0.22);
-  box-shadow:
-    0 4px 24px -4px rgba(0, 0, 0, 0.5),
-    0 1px 0 rgba(76, 201, 255, 0.08);
-  backdrop-filter: blur(12px) saturate(1.1);
-  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  background-color: rgba(6, 10, 18, 0.92);
+  background-image: linear-gradient(180deg, rgba(24, 31, 44, 0.96) 0%, rgba(6, 10, 18, 0.98) 100%);
+  border-bottom: 1px solid var(--cq-border);
+  box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(12px) saturate(1.05);
+  -webkit-backdrop-filter: blur(12px) saturate(1.05);
 }
 
 .cq-nav-shell-quad {
-  background-color: #0a1f44;
-  background-image: linear-gradient(180deg, #0e2650 0%, #0a1f44 100%);
-  border-bottom: 1px solid rgba(100, 180, 255, 0.2);
-  box-shadow:
-    0 6px 20px -6px rgba(0, 0, 0, 0.45),
-    0 0 20px -8px rgba(76, 201, 255, 0.18);
-  backdrop-filter: blur(12px) saturate(1.1);
-  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  background-color: rgba(6, 10, 18, 0.92);
+  background-image: linear-gradient(180deg, rgba(18, 24, 36, 0.96) 0%, rgba(6, 10, 18, 0.98) 100%);
+  border-bottom: 1px solid var(--cq-border);
+  box-shadow: 0 6px 20px -6px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px) saturate(1.05);
+  -webkit-backdrop-filter: blur(12px) saturate(1.05);
 }
 
 .cq-nav-shell-bottom {
-  background-color: #0a1f44;
-  background-image: linear-gradient(0deg, #0a1f44 0%, #0d2652 100%);
-  border-top: 1px solid rgba(100, 180, 255, 0.22);
-  box-shadow:
-    0 -8px 28px -4px rgba(0, 0, 0, 0.55),
-    0 -1px 0 rgba(76, 201, 255, 0.06);
-  backdrop-filter: blur(12px) saturate(1.1);
-  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  background-color: rgba(6, 10, 18, 0.94);
+  background-image: linear-gradient(0deg, rgba(6, 10, 18, 0.98) 0%, rgba(18, 24, 36, 0.96) 100%);
+  border-top: 1px solid var(--cq-border);
+  box-shadow: 0 -8px 28px -4px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px) saturate(1.05);
+  -webkit-backdrop-filter: blur(12px) saturate(1.05);
 }
 
 .cq-nav-text-shadow {
@@ -3394,8 +3475,7 @@ html {
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(210, 230, 250, 0.82);
-  text-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+  color: var(--cq-text-subtle);
 }
 
 .cq-quad-accent-line {
@@ -3654,7 +3734,8 @@ html[data-realm-map-panning] {
 }
 
 .realm-map-surface {
-  background: #0a1420;
+  background: var(--cq-bg-realm-card);
+  border: 1px solid rgba(104, 171, 232, 0.18);
 }
 
 .realm-campus-map {
@@ -3820,6 +3901,37 @@ html[data-realm-map-panning] {
   animation: realm-quest-glow 2.8s ease-in-out infinite;
 }
 
+.realm-pin-moments-glow {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  z-index: 0;
+  height: 36px;
+  width: 36px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.4);
+  animation: realm-moments-glow 2.2s ease-in-out infinite;
+}
+
+.realm-pin--moments .realm-pin-dot {
+  border-color: rgba(253, 224, 71, 0.9);
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.22), 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes realm-moments-glow {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    opacity: 0.95;
+    transform: translateX(-50%) scale(1.18);
+  }
+}
+
 @keyframes realm-quest-glow {
   0%,
   100% {
@@ -3838,7 +3950,8 @@ html[data-realm-map-panning] {
 
 @media (prefers-reduced-motion: reduce) {
   .animate-realm-sheet-up,
-  .realm-pin-quest-glow {
+  .realm-pin-quest-glow,
+  .realm-pin-moments-glow {
     animation: none !important;
   }
 }
@@ -4257,11 +4370,18 @@ html[data-realm-map-panning] {
 
 /* —— Hall of Legends —— */
 .cq-hall-of-legends {
-  background: linear-gradient(165deg, rgba(4, 30, 66, 0.98) 0%, rgba(8, 20, 48, 0.96) 45%, rgba(3, 12, 32, 0.99) 100%);
+  background: linear-gradient(165deg, var(--cq-bg-card) 0%, var(--cq-bg-app) 55%, #050810 100%);
+  border: 1px solid var(--cq-border);
   box-shadow:
-    0 1px 0 0 rgba(104, 171, 232, 0.12),
-    0 12px 40px -12px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(251, 191, 36, 0.06);
+    0 12px 40px -12px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(251, 191, 36, 0.05);
+}
+
+.cq-realm-page {
+  background:
+    radial-gradient(ellipse 120% 60% at 50% -10%, rgba(104, 171, 232, 0.14), transparent 55%),
+    linear-gradient(180deg, var(--cq-bg-realm) 0%, var(--cq-bg-app) 16rem);
+  border-radius: 1rem;
 }
 
 .cq-hall-of-legends-bg {
@@ -4493,5 +4613,67 @@ html[data-realm-map-panning] {
   .cq-quest-card-legendary,
   .cq-quest-confetti {
     animation: none !important;
+  }
+}
+
+/* —— Pull to refresh (Instagram-style) —— */
+.cq-ptr-wrap {
+  position: relative;
+}
+
+.cq-ptr-indicator {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 38;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-bottom: 0.4rem;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.cq-ptr-indicator.is-visible {
+  opacity: 1;
+}
+
+.cq-ptr-spinner {
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 2px solid rgba(104, 171, 232, 0.28);
+  border-top-color: rgba(104, 171, 232, 0.95);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cq-ptr-indicator.is-refreshing .cq-ptr-spinner {
+  animation: cq-ptr-spin 0.72s linear infinite;
+}
+
+.cq-ptr-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(186, 230, 253, 0.92);
+}
+
+@keyframes cq-ptr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-ptr-indicator.is-refreshing .cq-ptr-spinner {
+    animation: none;
+  }
+  .cq-ptr-body {
+    transform: none !important;
+    transition: none !important;
   }
 }

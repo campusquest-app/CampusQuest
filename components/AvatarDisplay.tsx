@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import {
   parseAvatar,
   isV1CustomAvatarData,
@@ -54,7 +54,16 @@ function genderScale(gender: string): number {
 }
 
 /** Full avatar: head, hair, neck, body, arms, legs, shoes — animated human style */
-function CustomAvatarSvg({ data, size = 80 }: { data: CustomAvatarData; size?: number }) {
+function CustomAvatarSvg({
+  data,
+  size = 80,
+  portraitSize = size,
+}: {
+  data: CustomAvatarData;
+  size?: number;
+  /** Visual slot size — controls head crop threshold, not SVG render resolution. */
+  portraitSize?: number;
+}) {
   const gradientId = useId().replace(/:/g, "");
   const skin = getSkinColor(data.skin);
   const skinShade = darken(skin, 0.18);
@@ -438,13 +447,16 @@ function CustomAvatarSvg({ data, size = 80 }: { data: CustomAvatarData; size?: n
   };
   const faceEl = faceElements[faceId] ?? faceElements.smile;
 
+  const portraitCrop = portraitSize <= 96;
+  const viewBox = portraitCrop ? `${cx - 46} 0 92 94` : `0 0 ${w} ${h}`;
+
   return (
     <svg
-      viewBox={`0 0 ${w} ${h}`}
-      width={size}
-      height={size}
-      className="overflow-visible"
-      style={{ maxWidth: size, maxHeight: size }}
+      viewBox={viewBox}
+      width="100%"
+      height="100%"
+      className="block max-h-full max-w-full"
+      preserveAspectRatio="xMidYMid meet"
       aria-hidden
     >
       <defs>
@@ -494,7 +506,7 @@ function CustomAvatarSvg({ data, size = 80 }: { data: CustomAvatarData; size?: n
   );
 }
 
-function DiceBearAvatarSvg({ data, size }: { data: DiceBearAvatarV2; size: number }) {
+function DiceBearAvatarSvg({ data }: { data: DiceBearAvatarV2 }) {
   const [markup, setMarkup] = useState<string | null>(null);
   const cacheKey = JSON.stringify(data);
 
@@ -502,30 +514,70 @@ function DiceBearAvatarSvg({ data, size }: { data: DiceBearAvatarV2; size: numbe
     let cancelled = false;
     void import("@/lib/dicebearSvg").then((mod) => {
       if (cancelled) return;
-      setMarkup(mod.createDiceBearSvgString(data, size));
+      setMarkup(mod.createDiceBearSvgString(data));
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cacheKey = JSON.stringify(data)
-  }, [cacheKey, size]);
+  }, [cacheKey]);
 
   if (markup === null || markup === "") {
     return (
-      <span
-        className="inline-flex items-center justify-center rounded-2xl bg-white/10 animate-pulse"
-        style={{ width: size, height: size }}
-        aria-hidden
-      />
+      <span className="avatar-display-dicebear avatar-display-dicebear--loading" aria-hidden />
     );
   }
   return (
     <span
-      className="inline-flex items-center justify-center [&>svg]:h-full [&>svg]:w-full [&>svg]:max-h-full [&>svg]:max-w-full"
-      style={{ width: size, height: size }}
+      className="avatar-display-dicebear"
       // SVG is generated locally by DiceBear from validated JSON only (client).
       dangerouslySetInnerHTML={{ __html: markup }}
     />
+  );
+}
+
+function avatarFramePadding(size: number): number {
+  return Math.max(1, Math.round(size * 0.04));
+}
+
+function isAvatarImageUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+function AvatarFrame({
+  size,
+  fitParent = false,
+  className = "",
+  children,
+  propIcon,
+}: {
+  size: number;
+  fitParent?: boolean;
+  className?: string;
+  children: ReactNode;
+  propIcon?: string | null;
+}) {
+  const pad = avatarFramePadding(fitParent ? 96 : size);
+  const frameStyle: React.CSSProperties = fitParent
+    ? { width: "100%", height: "100%" }
+    : { width: size, height: size };
+  const badgeSize = fitParent ? 26 : Math.max(14, size * 0.32);
+
+  return (
+    <span className={`avatar-display-frame ${className}`.trim()} style={frameStyle}>
+      <span className="avatar-display-frame__inner" style={{ padding: pad }}>
+        {children}
+      </span>
+      {propIcon ? (
+        <span
+          className="absolute bottom-0 right-0 flex items-center justify-center rounded-full border border-uri-gold/50 bg-uri-navy/90 text-white shadow"
+          style={{ width: badgeSize, height: badgeSize, fontSize: badgeSize * 0.62 }}
+          aria-hidden
+        >
+          {propIcon}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -536,6 +588,7 @@ function getPropIcon(classId?: string | null, starterWeapon?: string | null): st
 export function AvatarDisplay({
   avatar,
   size = 80,
+  fitParent = false,
   className = "",
   classId,
   starterWeapon,
@@ -543,6 +596,8 @@ export function AvatarDisplay({
 }: {
   avatar: string;
   size?: number;
+  /** Fill the parent container (use inside sized avatar rings). */
+  fitParent?: boolean;
   className?: string;
   /** When set, shows class prop icon (e.g. 📚 for Knight). */
   classId?: string | null;
@@ -553,61 +608,42 @@ export function AvatarDisplay({
 }) {
   const propIcon = showProp ? getPropIcon(classId, starterWeapon) : null;
   const parsed = parseAvatar(avatar);
+  const customRenderSize = fitParent ? 128 : Math.max(32, size);
 
   if (parsed && isDiceBearAvatarPayload(parsed)) {
     return (
-      <span
-        className={`inline-block flex-shrink-0 relative ${className}`}
-        style={{ width: size, height: size }}
-      >
-        <DiceBearAvatarSvg data={parsed} size={size} />
-        {propIcon && (
-          <span
-            className="absolute bottom-0 right-0 flex items-center justify-center rounded-full bg-uri-navy/90 border border-uri-gold/50 text-white shadow"
-            style={{ width: size * 0.32, height: size * 0.32, fontSize: size * 0.2 }}
-            aria-hidden
-          >
-            {propIcon}
-          </span>
-        )}
-      </span>
+      <AvatarFrame size={size} fitParent={fitParent} className={className} propIcon={propIcon}>
+        <DiceBearAvatarSvg data={parsed} />
+      </AvatarFrame>
     );
   }
 
   if (parsed && isV1CustomAvatarData(parsed)) {
     return (
-      <span
-        className={`inline-block flex-shrink-0 relative ${className}`}
-        style={{ width: size, height: size }}
-      >
-        <CustomAvatarSvg data={parsed} size={size} />
-        {propIcon && (
-          <span
-            className="absolute bottom-0 right-0 flex items-center justify-center rounded-full bg-uri-navy/90 border border-uri-gold/50 text-white shadow"
-            style={{ width: size * 0.32, height: size * 0.32, fontSize: size * 0.2 }}
-            aria-hidden
-          >
-            {propIcon}
-          </span>
-        )}
-      </span>
+      <AvatarFrame size={size} fitParent={fitParent} className={className} propIcon={propIcon}>
+        <CustomAvatarSvg data={parsed} size={customRenderSize} portraitSize={size} />
+      </AvatarFrame>
     );
   }
+
+  if (isAvatarImageUrl(avatar)) {
+    return (
+      <AvatarFrame size={size} fitParent={fitParent} className={className} propIcon={propIcon}>
+        <img src={avatar.trim()} alt="" className="avatar-display-img" />
+      </AvatarFrame>
+    );
+  }
+
+  const emoji = avatar && avatar.length <= 4 && !avatar.startsWith("{") ? avatar : "🎓";
   return (
-    <span
-      className={`inline-flex items-center justify-center flex-shrink-0 relative ${className}`}
-      style={{ width: size, height: size, fontSize: size * 0.5 }}
-      aria-hidden
-    >
-      {avatar || "🎓"}
-      {propIcon && (
-        <span
-          className="absolute bottom-0 right-0 flex items-center justify-center rounded-full bg-uri-navy/90 border border-uri-gold/50 text-white shadow"
-          style={{ width: size * 0.32, height: size * 0.32, fontSize: size * 0.2 }}
-        >
-          {propIcon}
-        </span>
-      )}
-    </span>
+    <AvatarFrame size={size} fitParent={fitParent} className={className} propIcon={propIcon}>
+      <span
+        className="flex h-full w-full items-center justify-center leading-none"
+        style={{ fontSize: Math.max(12, Math.round((fitParent ? 96 : size) * 0.46)) }}
+        aria-hidden
+      >
+        {emoji}
+      </span>
+    </AvatarFrame>
   );
 }

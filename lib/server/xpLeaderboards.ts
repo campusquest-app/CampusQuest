@@ -2,6 +2,7 @@ import {
   accountSafetyAllowsPublicLeaderboardExposure,
   assertAccountCanSocialize,
 } from "@/lib/server/accountSafety";
+import { xpToLevel } from "@/lib/level";
 import { ApiError } from "@/lib/server/http";
 import { requireVerifiedSchoolForCoreAccess } from "@/lib/server/schoolVerification";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -146,16 +147,32 @@ type UserStatsRow = {
   final_bosses_defeated?: number | null;
 };
 
+function levelFromTotalXp(totalXp: number, storedLevel: number | null | undefined, userId: string): number {
+  const safeXp = Math.max(0, Math.floor(totalXp));
+  const calculated = xpToLevel(safeXp);
+  const stored = Math.max(1, Math.floor(Number(storedLevel ?? 1)));
+  if (stored !== calculated) {
+    console.warn("[cq][leaderboard] level/xp mismatch — using calculated level from total_xp", {
+      userId,
+      storedLevel: stored,
+      calculatedLevel: calculated,
+      totalXp: safeXp,
+    });
+  }
+  return calculated;
+}
+
 function mapProfileToEntry(row: ProfileStatRow): Omit<LeaderboardXpRow, "rank"> | null {
   const stats = Array.isArray(row.user_stats) ? row.user_stats[0] : row.user_stats;
   if (!stats) return null;
   const s = stats as UserStatsRow;
+  const totalXp = Math.max(0, Number(s.total_xp ?? 0));
   return {
     userId: row.id,
     username: row.username,
     displayName: row.display_name,
-    level: Math.max(1, Number(s.level ?? 1)),
-    totalXp: Math.max(0, Number(s.total_xp ?? 0)),
+    level: levelFromTotalXp(totalXp, s.level, row.id),
+    totalXp,
     strength: Math.max(0, Number(s.strength ?? 0)),
     stamina: Math.max(0, Number(s.stamina ?? 0)),
     knowledge: Math.max(0, Number(s.knowledge ?? 0)),
@@ -175,7 +192,36 @@ async function fetchProfilesAndStats(admin: SupabaseClientLike, userIds: string[
     )
     .in("id", userIds);
   if (error) throw new ApiError(400, error.message, "LEADERBOARD_PROFILES_FETCH_FAILED");
-  return (profiles ?? []) as ProfileStatRow[];
+  const rows = (profiles ?? []) as ProfileStatRow[];
+  await reconcileStaleStoredLevels(admin, rows);
+  return rows;
+}
+
+/** Keep user_stats.level aligned with total_xp (same formula as profile screen). */
+async function reconcileStaleStoredLevels(admin: SupabaseClientLike, rows: ProfileStatRow[]) {
+  const updates: { user_id: string; level: number }[] = [];
+  for (const row of rows) {
+    const stats = Array.isArray(row.user_stats) ? row.user_stats[0] : row.user_stats;
+    if (!stats) continue;
+    const totalXp = Math.max(0, Number(stats.total_xp ?? 0));
+    const calculated = xpToLevel(totalXp);
+    const stored = Math.max(1, Math.floor(Number(stats.level ?? 1)));
+    if (stored !== calculated) {
+      updates.push({ user_id: row.id, level: calculated });
+    }
+  }
+  if (updates.length === 0) return;
+
+  console.info("[cq][leaderboard] reconciling stale user_stats.level rows", {
+    count: updates.length,
+    sample: updates.slice(0, 5),
+  });
+
+  await Promise.all(
+    updates.map(({ user_id, level }) =>
+      admin.from("user_stats").update({ level }).eq("user_id", user_id),
+    ),
+  );
 }
 
 export async function fetchCampusXpLeaderboard(args: {

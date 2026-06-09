@@ -12,13 +12,21 @@ type SheetView = "overview" | "quests" | "moments" | "events";
 export function RealmLocationSheet({
   location,
   open,
+  initialView = "overview",
+  momentsLoaded = true,
   onClose,
   onViewQuests,
+  onViewQuadPost,
+  onRefreshMoments,
 }: {
   location: RealmLocation | null;
   open: boolean;
+  initialView?: SheetView;
+  momentsLoaded?: boolean;
   onClose: () => void;
   onViewQuests?: (location: RealmLocation) => void;
+  onViewQuadPost?: (postId: string) => void;
+  onRefreshMoments?: () => void;
 }) {
   const [view, setView] = useState<SheetView>("overview");
   const [mounted, setMounted] = useState(false);
@@ -28,8 +36,17 @@ export function RealmLocationSheet({
   }, []);
 
   useEffect(() => {
-    if (!open) setView("overview");
-  }, [open]);
+    if (!open) {
+      setView("overview");
+      return;
+    }
+    setView(initialView);
+  }, [open, initialView]);
+
+  useEffect(() => {
+    if (!open) return;
+    onRefreshMoments?.();
+  }, [open, onRefreshMoments]);
 
   if (!mounted || !open || !location || typeof document === "undefined") return null;
 
@@ -86,7 +103,9 @@ export function RealmLocationSheet({
                 />
                 <SummaryRow
                   icon={Camera}
-                  label={`${location.studentPhotos} Campus Photo${location.studentPhotos === 1 ? "" : "s"}`}
+                  label={`${location.activeMomentCount ?? location.moments.length} Active Moment${
+                    (location.activeMomentCount ?? location.moments.length) === 1 ? "" : "s"
+                  }`}
                 />
               </ul>
 
@@ -111,7 +130,11 @@ export function RealmLocationSheet({
                 >
                   View Quests
                 </SheetActionButton>
-                <SheetActionButton onClick={() => setView("moments")}>Campus Moments</SheetActionButton>
+                <SheetActionButton onClick={() => setView("moments")}>
+                  {(location.activeMomentCount ?? location.moments.length) > 0
+                    ? `Campus Moments (${location.activeMomentCount ?? location.moments.length})`
+                    : "Campus Moments"}
+                </SheetActionButton>
                 <SheetActionButton onClick={() => setView("events")}>Upcoming Events</SheetActionButton>
               </div>
             </>
@@ -159,8 +182,17 @@ export function RealmLocationSheet({
               {view === "moments" ? (
                 <>
                   <h3 className="font-display text-lg font-bold text-white">Campus Moments</h3>
-                  <p className="mt-1 mb-4 text-sm text-white/45">Photos forged at {location.name}</p>
-                  <RealmCampusMomentsCarousel moments={location.moments} />
+                  <p className="mt-1 mb-4 text-sm text-white/45">
+                    Public Field Notes at {location.name} — visible for 24 hours
+                  </p>
+                  {!momentsLoaded ? (
+                    <EmptyPanel message="Loading Moments…" />
+                  ) : (
+                    <RealmCampusMomentsCarousel
+                      moments={location.moments}
+                      onViewPost={onViewQuadPost}
+                    />
+                  )}
                 </>
               ) : null}
 
@@ -254,14 +286,15 @@ function EmptyPanel({ message }: { message: string }) {
 }
 
 function buildActivityLine(location: RealmLocation): string {
-  if (location.activeQuests > 0 && location.studentPhotos >= 10) {
-    return "Rams are active here — quests running and new campus moments dropping often.";
+  const momentCount = location.activeMomentCount ?? location.moments.length;
+  if (location.activeQuests > 0 && momentCount > 0) {
+    return "Rams are active here — quests running and fresh Realm Moments on the map.";
   }
   if (location.activeQuests > 0) {
     return "Quest energy is up. Log an activity or scan nearby to contribute.";
   }
-  if (location.studentPhotos > 0) {
-    return "Students have been posting from this spot. Drop a Field Note to add yours.";
+  if (momentCount > 0) {
+    return "Students are posting from this spot. Drop a public Field Note with this location to add yours.";
   }
   return "Quiet for now — be the first Ram to forge a moment here.";
 }

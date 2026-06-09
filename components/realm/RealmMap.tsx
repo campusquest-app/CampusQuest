@@ -22,6 +22,7 @@ import {
   fetchRealmMarkerPositions,
   saveRealmMarkerPositionsToServer,
 } from "@/lib/client/realmMarkerPositionsClient";
+import { fetchRealmMoments, mapApiMomentToRealmMoment } from "@/lib/client/realmMomentsClient";
 import { RealmCampusMapLayer } from "./RealmCampusMapLayer";
 import { RealmFootprintsLayer } from "./RealmFootprintsLayer";
 import { RealmLocationSheet } from "./RealmLocationSheet";
@@ -57,11 +58,13 @@ function useRealmCalibrationMode(): boolean {
 
 export function RealmMap({
   onViewQuests,
+  onViewQuadPost,
   userId = null,
   isAdmin = false,
   userRole = "student",
 }: {
   onViewQuests?: (location: RealmLocation) => void;
+  onViewQuadPost?: (postId: string) => void;
   userId?: string | null;
   isAdmin?: boolean;
   userRole?: string;
@@ -77,25 +80,61 @@ export function RealmMap({
   const [draggingId, setDraggingId] = useState<RealmLocationId | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [savePending, setSavePending] = useState(false);
+  const [sheetInitialView, setSheetInitialView] = useState<"overview" | "moments">("overview");
+  const [momentsLoaded, setMomentsLoaded] = useState(false);
+  const [momentsByLocation, setMomentsByLocation] = useState<Record<string, ReturnType<typeof mapApiMomentToRealmMoment>[]>>({});
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const mapRootRef = useRef<HTMLDivElement>(null);
   const mapStageRef = useRef<HTMLDivElement>(null);
   const calibrateMode = useRealmCalibrationMode();
 
-  const locations = useMemo(
-    () => applyMarkerPositionsToLocations(REALM_LOCATIONS, draftPositions),
-    [draftPositions],
-  );
+  const locations = useMemo(() => {
+    const base = applyMarkerPositionsToLocations(REALM_LOCATIONS, draftPositions);
+    return base.map((location) => {
+      const moments = momentsByLocation[location.id] ?? [];
+      return {
+        ...location,
+        moments,
+        activeMomentCount: moments.length,
+      };
+    });
+  }, [draftPositions, momentsByLocation]);
 
   const questGlowCount = useMemo(() => locations.filter((l) => l.activeQuests > 0).length, [locations]);
+  const momentGlowCount = useMemo(
+    () => locations.filter((l) => (l.activeMomentCount ?? 0) > 0).length,
+    [locations],
+  );
 
   const { debugMode, report } = useRealmMapDiagnostics({
     uriMapLoaded,
     calibrateMode,
     pinCount: locations.length,
-    questGlowCount,
+    questGlowCount: questGlowCount + momentGlowCount,
     mapRootRef,
   });
+
+  const loadRealmMoments = useCallback(async () => {
+    try {
+      const rows = await fetchRealmMoments();
+      const grouped: Record<string, ReturnType<typeof mapApiMomentToRealmMoment>[]> = {};
+      for (const row of rows) {
+        const moment = mapApiMomentToRealmMoment(row);
+        const list = grouped[row.locationId] ?? [];
+        list.push(moment);
+        grouped[row.locationId] = list;
+      }
+      setMomentsByLocation(grouped);
+    } catch {
+      setMomentsByLocation({});
+    } finally {
+      setMomentsLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRealmMoments();
+  }, [loadRealmMoments]);
 
   useEffect(() => {
     document.documentElement.toggleAttribute("data-realm-map-panning", panning);
@@ -151,6 +190,7 @@ export function RealmMap({
       if (editMode) return;
       setSelectedLocation(location);
       setActiveMarkerId(location.id);
+      setSheetInitialView((location.activeMomentCount ?? 0) > 0 ? "moments" : "overview");
       setSheetOpen(true);
     },
     [editMode],
@@ -333,7 +373,16 @@ export function RealmMap({
         {debugMode ? <RealmMapDebugPanel report={report} /> : null}
       </div>
 
-      <RealmLocationSheet location={selectedLocation} open={sheetOpen} onClose={closeSheet} onViewQuests={onViewQuests} />
+      <RealmLocationSheet
+        location={selectedLocation}
+        open={sheetOpen}
+        initialView={sheetInitialView}
+        momentsLoaded={momentsLoaded}
+        onClose={closeSheet}
+        onViewQuests={onViewQuests}
+        onViewQuadPost={onViewQuadPost}
+        onRefreshMoments={loadRealmMoments}
+      />
     </>
   );
 }
@@ -366,6 +415,7 @@ function LocationPin({
   onPositionChange: (x: number, y: number) => void;
 }) {
   const hasActiveQuest = location.activeQuests > 0;
+  const hasActiveMoments = (location.activeMomentCount ?? location.moments.length) > 0;
   const dragRef = useRef({ active: false, pointerId: -1, moved: false });
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -425,8 +475,8 @@ function LocationPin({
       className={`realm-pin group touch-manipulation ${
         active ? "realm-pin--active" : ""
       } ${hasActiveQuest && !editMode ? "realm-pin--quest" : ""} ${
-        editMode ? "realm-pin--editable" : ""
-      } ${dragging ? "realm-pin--dragging" : ""}`}
+        hasActiveMoments && !editMode ? "realm-pin--moments" : ""
+      } ${editMode ? "realm-pin--editable" : ""} ${dragging ? "realm-pin--dragging" : ""}`}
       style={{ left: `${location.x}%`, top: `${location.y}%`, touchAction: editMode ? "none" : undefined }}
       aria-label={
         editMode
@@ -436,6 +486,7 @@ function LocationPin({
       data-location-id={location.id}
     >
       {hasActiveQuest && !editMode ? <span className="realm-pin-quest-glow" aria-hidden /> : null}
+      {hasActiveMoments && !editMode ? <span className="realm-pin-moments-glow" aria-hidden /> : null}
       <span className="realm-pin-dot" aria-hidden>
         <span className="realm-pin-emoji">{location.markerEmoji}</span>
       </span>

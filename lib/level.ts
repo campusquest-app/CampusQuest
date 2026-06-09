@@ -32,6 +32,20 @@ export function xpProgressInLevel(totalXP: number): { current: number; needed: n
   return { current, needed };
 }
 
+/** Canonical progression snapshot — profile, leaderboards, and server XP grants all use this. */
+export function buildLevelProgressionFromTotalXp(totalXp: number) {
+  const safeXp = Math.max(0, Math.floor(totalXp));
+  const level = xpToLevel(safeXp);
+  const { current, needed } = xpProgressInLevel(safeXp);
+  return {
+    level,
+    totalXp: safeXp,
+    currentLevelXp: current,
+    nextLevelRequiredXp: needed,
+    progress: needed > 0 ? Math.min(1, current / needed) : 1,
+  };
+}
+
 /** Streak multiplier: 1.0 + (streak_days * 0.05), cap 2.0 */
 export const STREAK_MULTIPLIER_CAP = 2.0;
 

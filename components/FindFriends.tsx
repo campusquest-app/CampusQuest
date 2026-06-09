@@ -2,16 +2,18 @@
 
 import { useState, useCallback, useEffect } from "react";
 import {
-  sendFriendRequest,
-  getIncomingRequests,
-  getOutgoingRequests,
-  getFriends,
-  getCharacterByUsername,
-  acceptRequest,
-  declineRequest,
-  unsendFriendRequest,
-} from "@/lib/friendsStore";
-import { follow, unfollow, isFollowing, followByUsername } from "@/lib/followStore";
+  avatarFromConnectionProfile,
+  cancelOutgoingConnectionRequest,
+  fetchConnections,
+  fetchIncomingConnectionRequests,
+  fetchOutgoingConnectionRequests,
+  formatRequestSentAt,
+  respondToConnectionRequest,
+  sendConnectionRequest,
+  type ConnectionItem,
+  type ConnectionRequestItem,
+} from "@/lib/client/socialConnectionsClient";
+import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 import {
   getRecommendedGuilds,
   getGuildById,
@@ -22,7 +24,7 @@ import {
   GUILD_INTEREST_LABELS,
 } from "@/lib/guildStore";
 import { getGuildWeeklyScores } from "@/lib/guildWeeklyRace";
-import type { Character, Friend, FriendRequest, Guild, GuildInterest } from "@/lib/types";
+import type { Character, Friend, Guild, GuildInterest } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, STAT_ICONS } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { GuildCard } from "./GuildCard";
@@ -40,46 +42,133 @@ export function FindFriends({
 }) {
   const [usernameInput, setUsernameInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
-  const [incoming, setIncoming] = useState<FriendRequest[]>([]);
-  const [outgoing, setOutgoing] = useState<FriendRequest[]>([]);
-  const [friends, setFriends] = useState<Friend[]>([]);
+  const [incoming, setIncoming] = useState<ConnectionRequestItem[]>([]);
+  const [outgoing, setOutgoing] = useState<ConnectionRequestItem[]>([]);
+  const [connections, setConnections] = useState<ConnectionItem[]>([]);
+  const [socialLoading, setSocialLoading] = useState(true);
+  const [socialError, setSocialError] = useState<string | null>(null);
+  const [actionToast, setActionToast] = useState<string | null>(null);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [sendingRequest, setSendingRequest] = useState(false);
   const [showCreateGuild, setShowCreateGuild] = useState(false);
   const [viewGuild, setViewGuild] = useState<Guild | null>(null);
   const [guildSearchQuery, setGuildSearchQuery] = useState("");
   const [pendingOpen, setPendingOpen] = useState(false);
 
-  const refresh = useCallback(() => {
-    setIncoming(getIncomingRequests(character.username));
-    setOutgoing(getOutgoingRequests(character.id));
-    setFriends(getFriends(character.id));
+  const refreshSocial = useCallback(async () => {
+    setSocialError(null);
+    try {
+      const [incomingRows, outgoingRows, connectionRows] = await Promise.all([
+        fetchIncomingConnectionRequests(),
+        fetchOutgoingConnectionRequests(),
+        fetchConnections(),
+      ]);
+      setIncoming(incomingRows);
+      setOutgoing(outgoingRows);
+      setConnections(connectionRows);
+    } catch (loadError) {
+      setSocialError(loadError instanceof Error ? loadError.message : "Could not load connections.");
+    } finally {
+      setSocialLoading(false);
+    }
     onRefresh?.();
-  }, [character.id, character.username, onRefresh]);
+  }, [onRefresh]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    void refreshSocial();
+    const unsubscribe = subscribeSocialSync(() => void refreshSocial());
+    const intervalId = window.setInterval(() => void refreshSocial(), 25_000);
+    return () => {
+      unsubscribe();
+      window.clearInterval(intervalId);
+    };
+  }, [refreshSocial]);
 
-  function handleSendRequest(e: React.FormEvent) {
+  useEffect(() => {
+    if (!actionToast) return undefined;
+    const tid = window.setTimeout(() => setActionToast(null), 2800);
+    return () => window.clearTimeout(tid);
+  }, [actionToast]);
+
+  async function handleSendRequest(e: React.FormEvent) {
     e.preventDefault();
     setSendError(null);
-    const result = sendFriendRequest(character, usernameInput);
-    if (result.ok) {
+    setSendingRequest(true);
+    try {
+      const targetUsername = usernameInput.trim().toLowerCase();
+      await sendConnectionRequest(targetUsername);
       setUsernameInput("");
-      refresh();
-    } else {
-      setSendError(result.error ?? "Could not send request.");
+      setActionToast(`Follow request sent to @${targetUsername}`);
+      await refreshSocial();
+      emitSocialSync({ source: "friends" });
+    } catch (requestError) {
+      setSendError(requestError instanceof Error ? requestError.message : "Could not send request.");
+    } finally {
+      setSendingRequest(false);
     }
   }
 
-  function handleAccept(id: string) {
-    acceptRequest(id, character);
-    refresh();
+  async function handleAccept(request: ConnectionRequestItem) {
+    setRespondingId(request.requestId);
+    setSocialError(null);
+    try {
+      await respondToConnectionRequest(request.requestId, "accept");
+      setActionToast(`You are now following ${request.username}`);
+      await refreshSocial();
+      emitSocialSync({ source: "friends" });
+    } catch (acceptError) {
+      setSocialError(acceptError instanceof Error ? acceptError.message : "Could not accept request.");
+    } finally {
+      setRespondingId(null);
+    }
   }
 
-  function handleDecline(id: string) {
-    declineRequest(id);
-    refresh();
+  async function handleDecline(requestId: string) {
+    setRespondingId(requestId);
+    setSocialError(null);
+    try {
+      await respondToConnectionRequest(requestId, "decline");
+      setActionToast("Follow request declined");
+      await refreshSocial();
+      emitSocialSync({ source: "friends" });
+    } catch (declineError) {
+      setSocialError(declineError instanceof Error ? declineError.message : "Could not decline request.");
+    } finally {
+      setRespondingId(null);
+    }
   }
+
+  async function handleUnsend(requestId: string) {
+    setSocialError(null);
+    try {
+      await cancelOutgoingConnectionRequest(requestId);
+      await refreshSocial();
+      emitSocialSync({ source: "friends" });
+    } catch (cancelError) {
+      setSocialError(cancelError instanceof Error ? cancelError.message : "Could not unsend request.");
+    }
+  }
+
+  function refresh() {
+    void refreshSocial();
+  }
+
+  const friends: Friend[] = connections.map((connection) => ({
+    userId: connection.userId,
+    username: connection.username,
+    name: connection.displayName,
+    avatar: avatarFromConnectionProfile(connection),
+    level: 1,
+    totalXP: 0,
+    streakDays: 0,
+    stats: {
+      strength: 0,
+      stamina: 0,
+      knowledge: 0,
+      social: 0,
+      focus: 0,
+    },
+  }));
 
   function handleJoinGuild(guildId: string) {
     joinGuild(character.id, guildId);
@@ -115,6 +204,66 @@ export function FindFriends({
 
   return (
     <section className="space-y-5">
+      {actionToast ? (
+        <div className="fixed bottom-6 left-1/2 z-[80] -translate-x-1/2 rounded-xl border border-uri-keaney/40 bg-uri-navy/95 px-4 py-2.5 text-sm font-medium text-white shadow-lg">
+          {actionToast}
+        </div>
+      ) : null}
+
+      {incoming.length > 0 && (
+        <div className="card p-4 sm:p-5">
+          <h3 className="font-display font-semibold text-white mb-3 flex items-center gap-2">
+            <span aria-hidden>📬</span> Follow Requests ({incoming.length})
+          </h3>
+          <ul className="space-y-3">
+            {incoming.map((req) => (
+              <li
+                key={req.requestId}
+                className="flex items-start gap-3 p-3 rounded-xl bg-cq-elevated border border-white/[0.08] border-l-[3px] border-l-uri-keaney"
+              >
+                <div className="w-12 h-12 rounded-xl bg-cq-card flex items-center justify-center border border-white/[0.08] flex-shrink-0 overflow-hidden">
+                  <AvatarDisplay avatar={avatarFromConnectionProfile(req)} size={48} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-white truncate">{req.displayName}</p>
+                  <p className="text-sm text-uri-keaney/90">@{req.username}</p>
+                  {typeof req.mutualFriendsCount === "number" && req.mutualFriendsCount > 0 ? (
+                    <p className="text-xs text-white/55 mt-0.5">
+                      {req.mutualFriendsCount} mutual connection{req.mutualFriendsCount === 1 ? "" : "s"}
+                    </p>
+                  ) : null}
+                  <p className="text-[11px] text-white/45 mt-1">{formatRequestSentAt(req.createdAt)}</p>
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    disabled={respondingId === req.requestId}
+                    onClick={() => void handleAccept(req)}
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium bg-uri-keaney text-white hover:bg-uri-keaney/90 disabled:opacity-60"
+                  >
+                    Follow Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={respondingId === req.requestId}
+                    onClick={() => void handleDecline(req.requestId)}
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 border border-white/20 disabled:opacity-60"
+                  >
+                    Deny
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {socialError ? (
+        <div className="rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+          {socialError}
+        </div>
+      ) : null}
+
       {weeklyRace.length > 0 && (
         <div className="rounded-2xl border border-uri-gold/40 bg-gradient-to-r from-uri-gold/10 to-transparent p-4">
           <h3 className="text-xs font-bold uppercase tracking-wider text-uri-gold mb-2">⚔️ Guild vs guild (this week)</h3>
@@ -138,10 +287,10 @@ export function FindFriends({
       {/* Find Friends — above Guilds */}
       <div className="card p-4 sm:p-5">
         <h2 className="font-display font-semibold text-white mb-2 flex items-center gap-2">
-          <span aria-hidden>👋</span> Find Friends
+          <span aria-hidden>👋</span> Find People
         </h2>
         <p className="text-sm text-white/50 mb-4">
-          <strong className="text-white/70">Friends</strong> = mutual (both accept). <strong className="text-white/70">Follow</strong> = see their posts on The Quad.
+          Search by username and tap <strong className="text-white/70">Follow</strong> to send a follow request. Once they accept, you&apos;ll follow each other and see their posts on The Quad.
         </p>
         <form onSubmit={handleSendRequest} className="flex gap-2 flex-wrap">
           <input
@@ -153,30 +302,15 @@ export function FindFriends({
           />
           <button
             type="submit"
-            className="px-4 py-2.5 rounded-xl font-semibold bg-uri-keaney text-white hover:bg-uri-keaney/90 transition-colors"
+            disabled={sendingRequest}
+            className="px-4 py-2.5 rounded-xl font-semibold bg-uri-keaney text-white hover:bg-uri-keaney/90 transition-colors disabled:opacity-60"
           >
-            Send request
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSendError(null);
-              const err = followByUsername(character.id, usernameInput, getCharacterByUsername);
-              if (err) setSendError(err);
-              else {
-                setUsernameInput("");
-                refresh();
-              }
-            }}
-            className="px-4 py-2.5 rounded-xl font-semibold bg-white/15 text-white border border-white/25 hover:bg-white/20 transition-colors"
-          >
-            Follow
+            {sendingRequest ? "Sending..." : "Follow"}
           </button>
         </form>
         {sendError && <p className="text-sm text-amber-400 mt-2">{sendError}</p>}
       </div>
 
-      {/* Pending (sent) friend requests — dropdown with usernames */}
       {outgoing.length > 0 && (
         <div className="card p-4 sm:p-5">
           <button
@@ -186,7 +320,7 @@ export function FindFriends({
             aria-expanded={pendingOpen}
           >
             <span className="font-display font-semibold text-white flex items-center gap-2">
-              <span aria-hidden>📤</span> Pending requests ({outgoing.length})
+              <span aria-hidden>📤</span> Pending Sent Requests ({outgoing.length})
             </span>
             <span className="text-white/60 text-sm" aria-hidden>{pendingOpen ? "▼" : "▶"}</span>
           </button>
@@ -194,13 +328,19 @@ export function FindFriends({
             <ul className="space-y-2 mt-3 pt-3 border-t border-white/10">
               {outgoing.map((req) => (
                 <li
-                  key={req.id}
+                  key={req.requestId}
                   className="flex items-center gap-3 p-2.5 rounded-xl bg-white/5 border border-white/10"
                 >
-                  <span className="text-white/90 truncate min-w-0">@{req.toUsername}</span>
+                  <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 border border-white/15">
+                    <AvatarDisplay avatar={avatarFromConnectionProfile(req)} size={36} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white/90 truncate">{req.displayName}</p>
+                    <p className="text-xs text-uri-keaney/80">@{req.username}</p>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => { unsendFriendRequest(req.id); refresh(); }}
+                    onClick={() => void handleUnsend(req.requestId)}
                     className="flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium text-amber-400/90 border border-amber-400/40 hover:bg-amber-400/10"
                   >
                     Unsend
@@ -231,7 +371,7 @@ export function FindFriends({
       </div>
 
       {/* Guilds banner + section */}
-      <div className="rounded-2xl border border-uri-keaney/25 bg-gradient-to-br from-uri-keaney/10 to-transparent p-4 sm:p-5">
+      <div className="rounded-2xl border border-white/[0.08] bg-cq-card p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="font-display font-semibold text-white mb-1 flex items-center gap-2">
@@ -283,60 +423,20 @@ export function FindFriends({
         </div>
       </div>
 
-      {incoming.length > 0 && (
-        <div className="card p-4 sm:p-5">
-          <h3 className="font-display font-semibold text-white mb-3 flex items-center gap-2">
-            <span aria-hidden>📬</span> Requests ({incoming.length})
-          </h3>
-          <ul className="space-y-3">
-            {incoming.map((req) => (
-              <li
-                key={req.id}
-                className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10"
-              >
-                <span className="text-2xl">{req.fromAvatar}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-white truncate">{req.fromName}</p>
-                  <p className="text-sm text-uri-keaney/90">@{req.fromUsername}</p>
-                </div>
-                <div className="flex gap-2 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleAccept(req.id)}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium bg-uri-keaney text-white hover:bg-uri-keaney/90"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDecline(req.id)}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 border border-white/20"
-                  >
-                    Decline
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       <div className="card p-4 sm:p-5">
         <h3 className="font-display font-semibold text-white mb-3 flex items-center gap-2">
-          <span aria-hidden>🦌</span> Friends ({friends.length})
+          <span aria-hidden>🦌</span> Connections ({friends.length})
         </h3>
-        {friends.length === 0 ? (
-          <p className="text-sm text-white/50">No friends yet. Send a request or accept one above. You&apos;re friends only when you both accept.</p>
+        {socialLoading ? (
+          <p className="text-sm text-white/50">Loading connections...</p>
+        ) : friends.length === 0 ? (
+          <p className="text-sm text-white/50">No connections yet. Follow someone or accept a request — you&apos;ll follow each other once they accept.</p>
         ) : (
           <ul className="space-y-4">
             {friends.map((friend) => (
               <FriendCard
                 key={friend.userId}
                 friend={friend}
-                currentUserId={character.id}
-                onFollow={() => { follow(character.id, friend.userId); refresh(); }}
-                onUnfollow={() => { unfollow(character.id, friend.userId); refresh(); }}
-                isFollowing={isFollowing(character.id, friend.userId)}
                 onMessage={onOpenDm ? () => onOpenDm({ userId: friend.userId, username: friend.username, name: friend.name, avatar: friend.avatar }) : undefined}
               />
             ))}
@@ -367,32 +467,21 @@ export function FindFriends({
 
 function FriendCard({
   friend,
-  currentUserId,
-  onFollow,
-  onUnfollow,
   onMessage,
-  isFollowing: following,
 }: {
   friend: Friend;
-  currentUserId: string;
-  onFollow: () => void;
-  onUnfollow: () => void;
   onMessage?: () => void;
-  isFollowing: boolean;
 }) {
   return (
-    <li className="p-4 rounded-xl bg-white/5 border border-uri-keaney/20">
+    <li className="p-4 rounded-xl bg-cq-card border border-white/[0.08]">
       <div className="flex items-start gap-3">
-        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-uri-keaney/25 to-uri-navy flex items-center justify-center border border-uri-keaney/30 flex-shrink-0 overflow-hidden">
+        <div className="w-14 h-14 rounded-xl bg-cq-elevated flex items-center justify-center border border-white/[0.08] flex-shrink-0 overflow-hidden">
           <AvatarDisplay avatar={friend.avatar} size={56} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-semibold text-white truncate">{friend.name}</p>
-            <span className="text-xs font-medium text-uri-keaney/90 px-2 py-0.5 rounded bg-uri-keaney/15 border border-uri-keaney/30">Friend</span>
-            {following && (
-              <span className="text-xs text-white/60">· Following (see posts on Quad)</span>
-            )}
+            <span className="text-xs font-medium text-uri-keaney/90 px-2 py-0.5 rounded bg-uri-keaney/15 border border-uri-keaney/30">Following</span>
           </div>
           <p className="text-sm text-uri-keaney/90">@{friend.username}</p>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -412,23 +501,6 @@ function FriendCard({
                 className="text-xs font-medium text-white bg-uri-keaney/20 hover:bg-uri-keaney/30 text-uri-keaney px-2.5 py-1.5 rounded-lg border border-uri-keaney/40"
               >
                 💬 Message
-              </button>
-            )}
-            {following ? (
-              <button
-                type="button"
-                onClick={onUnfollow}
-                className="text-xs font-medium text-white/70 hover:text-white px-2.5 py-1.5 rounded-lg border border-white/20 hover:bg-white/10"
-              >
-                Unfollow (hide from Quad)
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onFollow}
-                className="text-xs font-medium text-uri-keaney hover:bg-uri-keaney/15 px-2.5 py-1.5 rounded-lg border border-uri-keaney/30"
-              >
-                Follow (see posts on Quad)
               </button>
             )}
           </div>

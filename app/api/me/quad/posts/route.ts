@@ -5,6 +5,7 @@ import {
   enrichQuadPostsWithViewerReactions,
   fetchViewerReactionsForPosts,
 } from "@/lib/server/quadReactions";
+import { logQuadPostError, QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 
 /** Current user's Quad posts (newest first) — for profile “Posts to the Quad”. */
@@ -17,21 +18,13 @@ export async function GET(request: Request) {
 
     const { data, error } = await auth.userClient
       .from("quad_posts")
-      .select(
-        `
-        *,
-        profiles (
-          display_name,
-          username,
-          avatar_custom_json
-        )
-      `,
-      )
+      .select(QUAD_POSTS_WITH_PROFILE_SELECT)
       .eq("user_id", auth.user.id)
       .order("created_at", { ascending: false })
       .limit(limit);
 
     if (error) {
+      logQuadPostError("my_posts_list", error, { userId: auth.user.id });
       throw new ApiError(400, error.message ?? "Could not load your posts.", "MY_QUAD_POSTS_FAILED");
     }
 

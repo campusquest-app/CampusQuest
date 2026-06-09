@@ -1082,7 +1082,7 @@ export async function getMyGuild(userClient: SupabaseClientLike, userId: string)
         username: p?.username ?? null,
         display_name: p?.display_name ?? null,
         avatar_url: p?.avatar_url ?? null,
-        level: Number(s?.level ?? 1),
+        level: calculateLevelProgression(Number(s?.total_xp ?? 0)).level,
         total_xp: Number(s?.total_xp ?? 0),
       };
     })
@@ -1623,10 +1623,24 @@ export async function fetchLeaderboards(userClient: SupabaseClientLike) {
   if (achievementsError) throw new ApiError(400, achievementsError.message, "ACHIEVEMENTS_FETCH_FAILED");
 
   return {
-    players: (players ?? []).map((player, index) => ({
-      rank: index + 1,
-      ...player,
-    })),
+    players: (players ?? []).map((player, index) => {
+      const totalXp = Math.max(0, Number((player as { total_xp?: number }).total_xp ?? 0));
+      const storedLevel = Number((player as { level?: number }).level ?? 1);
+      const level = calculateLevelProgression(totalXp).level;
+      if (storedLevel !== level) {
+        console.warn("[cq][leaderboard] legacy players row level mismatch", {
+          userId: (player as { user_id?: string }).user_id,
+          storedLevel,
+          calculatedLevel: level,
+          totalXp,
+        });
+      }
+      return {
+        rank: index + 1,
+        ...player,
+        level,
+      };
+    }),
     guilds: (guilds ?? []).map((guild, index) => ({
       rank: index + 1,
       ...guild,

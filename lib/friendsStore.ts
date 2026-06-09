@@ -120,35 +120,18 @@ export function getCharacterByUsername(username: string): Character | null {
   return map[username.toLowerCase()] ?? null;
 }
 
+/** @deprecated Local-only — use {@link sendConnectionRequest} API instead. */
 export function sendFriendRequest(from: Character, toUsername: string): { ok: boolean; error?: string } {
-  const to = toUsername.trim().toLowerCase().replace(/\s+/g, "_");
-  if (!to) return { ok: false, error: "Enter a username." };
-  if (to === from.username.toLowerCase()) return { ok: false, error: "You can't add yourself." };
-
-  const requests = loadRequests();
-  const alreadyPending = requests.some(
-    (r) => r.fromUserId === from.id && r.toUsername === to && r.status === "pending"
-  );
-  if (alreadyPending) return { ok: false, error: "Request already sent." };
-
-  const alreadyFriends = loadFriends().some(
-    (e) => e.ownerId === from.id && e.friend.username.toLowerCase() === to
-  );
-  if (alreadyFriends) return { ok: false, error: "Already friends." };
-
-  const req: FriendRequest = {
-    id: `fr-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    fromUserId: from.id,
-    fromUsername: from.username,
-    fromName: from.name,
-    fromAvatar: from.avatar,
-    toUsername: to,
-    status: "pending",
-    createdAt: Date.now(),
+  if (typeof console !== "undefined") {
+    console.warn(
+      "[cq:friend-request] sendFriendRequest(localStorage) is deprecated. Use Send request to persist to Supabase.",
+      { fromUserId: from.id, toUsername },
+    );
+  }
+  return {
+    ok: false,
+    error: "Friend requests must be sent with “Send request” so the other account is notified.",
   };
-  requests.push(req);
-  saveRequests(requests);
-  return { ok: true };
 }
 
 export function getIncomingRequests(username: string): FriendRequest[] {

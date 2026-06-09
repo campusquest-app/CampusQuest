@@ -60,6 +60,30 @@ export function prependRemoteQuadPost(note: FieldNote): void {
   remoteQuadPostsCache = [note, ...remoteQuadPostsCache.filter((n) => n.id !== note.id)];
 }
 
+export function replaceRemoteQuadPost(note: FieldNote): void {
+  const migrated = migrateNote(note);
+  const mergeOne = (list: FieldNote[]): FieldNote[] =>
+    list.map((n) => {
+      if (n.id !== migrated.id) return n;
+      return {
+        ...migrated,
+        nodByUserIds: n.nodByUserIds,
+        hypeByUserIds: n.hypeByUserIds ?? n.vouchByUserIds,
+        vouchByUserIds: n.vouchByUserIds,
+        verifyByUserIds: n.verifyByUserIds ?? new Set(),
+        assistByUserIds: n.assistByUserIds ?? new Set(),
+        isPersisted: true,
+      };
+    });
+  remoteQuadPostsCache = mergeOne(remoteQuadPostsCache);
+  feed = mergeOne(feed);
+}
+
+export function removeRemoteQuadPost(postId: string): void {
+  remoteQuadPostsCache = remoteQuadPostsCache.filter((n) => n.id !== postId);
+  feed = feed.filter((n) => n.id !== postId);
+}
+
 /** Merge posts into the mutation cache (e.g. Profile “my posts” fetch). */
 export function mergeRemoteQuadPostsForMutations(posts: FieldNote[]): void {
   mergeRemoteQuadPostsCache(posts);

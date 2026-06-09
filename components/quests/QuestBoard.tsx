@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PullToRefresh } from "@/components/PullToRefresh";
+import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
 import { Clock, Map, Scroll, Sparkles, Swords } from "lucide-react";
 import type { Character } from "@/lib/types";
 import { xpProgressInLevel } from "@/lib/level";
@@ -24,6 +26,8 @@ import {
 import { acceptQuest, claimQuest } from "@/lib/questBoardActions";
 import { queueQuestCelebration } from "@/lib/questBoardCelebration";
 import { DIFFICULTY_CSS } from "@/lib/questBoardStyles";
+import { SurpriseQuestBanner } from "@/components/SurpriseQuestBanner";
+import { DailyQuests } from "@/components/DailyQuests";
 
 function StatPlaque({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -227,6 +231,14 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
     [onRefresh],
   );
 
+  const handlePullRefresh = useCallback(async () => {
+    const next = await refreshPlayerSnapshotFromServer();
+    if (next) {
+      setLocalCharacter({ ...next });
+    }
+    onRefresh?.();
+  }, [onRefresh]);
+
   const handleAccept = useCallback(
     (id: string) => {
       const next = acceptQuest(localCharacter, id);
@@ -248,11 +260,15 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
   const nonLegendaryFiltered = filtered.filter((v) => v.def.category !== "legendary");
 
   return (
+    <PullToRefresh onRefresh={handlePullRefresh}>
     <div className="cq-quest-board relative min-h-[60vh] overflow-hidden rounded-2xl border border-uri-keaney/25">
       <div className="cq-quest-board-bg pointer-events-none absolute inset-0" aria-hidden />
       <div className="cq-quest-board-particles pointer-events-none absolute inset-0" aria-hidden />
 
-      <div className="relative z-[1] px-4 py-5 sm:px-6 sm:py-7">
+      <div className="relative z-[1] px-4 py-5 sm:px-6 sm:py-7 space-y-5">
+        <SurpriseQuestBanner character={localCharacter} />
+        <DailyQuests character={localCharacter} />
+
         <header className="text-center">
           <p className="cq-quest-eyebrow mb-2 font-display text-[11px] font-semibold uppercase tracking-[0.32em] text-uri-keaney/80">
             Guild Hall · Bounty Board
@@ -372,5 +388,6 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
         </p>
       </div>
     </div>
+    </PullToRefresh>
   );
 }

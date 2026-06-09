@@ -8,6 +8,7 @@
 import { createAvatar } from "@dicebear/core";
 import * as collection from "@dicebear/collection";
 import type { DiceBearAvatarV2 } from "./dicebearAvatar";
+import { buildDiceBearCreateOptions, stripSvgClipPaths } from "./dicebearFrame";
 
 export const DICEBEAR_STYLE_MODULES = {
   lorelei: collection.lorelei,
@@ -20,13 +21,14 @@ export const DICEBEAR_STYLE_MODULES = {
   micah: collection.micah,
 } as const;
 
-export function createDiceBearSvgString(data: DiceBearAvatarV2, size: number): string {
+export function createDiceBearSvgString(data: DiceBearAvatarV2): string {
   const styleMod = DICEBEAR_STYLE_MODULES[data.style];
   if (!styleMod) return "";
-  const avatar = createAvatar(styleMod as Parameters<typeof createAvatar>[0], {
+
+  const avatar = createAvatar(styleMod as Parameters<typeof createAvatar>[0], buildDiceBearCreateOptions({
     seed: data.seed,
-    size,
-    ...data.options,
-  } as Record<string, unknown>);
-  return avatar.toString();
+    options: data.options,
+  }) as Parameters<typeof createAvatar>[1]);
+
+  return stripSvgClipPaths(avatar.toString());
 }

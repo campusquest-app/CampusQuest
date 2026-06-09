@@ -14,6 +14,34 @@ create table if not exists public.post_likes (
 create index if not exists post_likes_post_idx on public.post_likes (post_id);
 create index if not exists post_likes_user_idx on public.post_likes (user_id, created_at desc);
 
+-- Keep nod_count in sync from post_likes (must exist before backfill disable/enable)
+create or replace function public.sync_quad_post_like_counts()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'INSERT' then
+    update public.quad_posts
+    set nod_count = nod_count + 1
+    where id = new.post_id;
+    return new;
+  elsif tg_op = 'DELETE' then
+    update public.quad_posts
+    set nod_count = greatest(0, nod_count - 1)
+    where id = old.post_id;
+    return old;
+  end if;
+  return null;
+end;
+$$;
+
+drop trigger if exists trg_sync_quad_post_like_counts on public.post_likes;
+create trigger trg_sync_quad_post_like_counts
+after insert or delete on public.post_likes
+for each row execute function public.sync_quad_post_like_counts();
+
 -- Backfill from legacy quad_post_reactions (like only) without double-counting nod_count
 alter table public.post_likes disable trigger trg_sync_quad_post_like_counts;
 insert into public.post_likes (post_id, user_id, created_at)
@@ -52,34 +80,6 @@ begin
   return null;
 end;
 $$;
-
--- Keep nod_count in sync from post_likes
-create or replace function public.sync_quad_post_like_counts()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if tg_op = 'INSERT' then
-    update public.quad_posts
-    set nod_count = nod_count + 1
-    where id = new.post_id;
-    return new;
-  elsif tg_op = 'DELETE' then
-    update public.quad_posts
-    set nod_count = greatest(0, nod_count - 1)
-    where id = old.post_id;
-    return old;
-  end if;
-  return null;
-end;
-$$;
-
-drop trigger if exists trg_sync_quad_post_like_counts on public.post_likes;
-create trigger trg_sync_quad_post_like_counts
-after insert or delete on public.post_likes
-for each row execute function public.sync_quad_post_like_counts();
 
 alter table public.post_likes enable row level security;
 

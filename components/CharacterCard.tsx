@@ -12,7 +12,9 @@ import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { getGuildById } from "@/lib/guildStore";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { AvatarBuilder } from "./AvatarBuilder";
-import { AchievementShowcaseStrip } from "./achievements/AchievementShowcaseStrip";
+import { AchievementShowcaseModal } from "./achievements/AchievementShowcaseModal";
+import { EquipmentStrip } from "./EquipmentStrip";
+import { getEquippedTitleLabel } from "@/lib/achievementEngine";
 
 /** Progress bar fill colors – Keaney/accent for cohesion with URI palette */
 const STAT_FILL_COLORS: Record<StatKey, string> = {
@@ -26,12 +28,16 @@ const STAT_FILL_COLORS: Record<StatKey, string> = {
 export function CharacterCard({
   character,
   onRefresh,
+  readOnly = false,
 }: {
   character: Character;
   onRefresh?: () => void;
+  readOnly?: boolean;
 }) {
   const [editingAvatar, setEditingAvatar] = useState(false);
   const [editingAvatarValue, setEditingAvatarValue] = useState(character.avatar);
+  const [showAchievementShowcase, setShowAchievementShowcase] = useState(false);
+  const equippedTitle = getEquippedTitleLabel(character);
   const { current, needed } = xpProgressInLevel(character.totalXP);
   const xpPct = Math.min(100, (current / needed) * 100);
 
@@ -62,7 +68,7 @@ export function CharacterCard({
   }
 
   return (
-    <section className="character-hero-panel rounded-2xl p-5 sm:p-6">
+    <section className="character-hero-panel rounded-2xl p-5 sm:p-6 space-y-5">
       <div className="flex items-start gap-4">
         <div className="relative flex-shrink-0">
           <div
@@ -73,6 +79,7 @@ export function CharacterCard({
               <AvatarDisplay
                 avatar={character.avatar}
                 size={80}
+                fitParent
                 classId={character.classId}
                 starterWeapon={character.starterWeapon}
               />
@@ -84,6 +91,7 @@ export function CharacterCard({
           >
             {character.level}
           </span>
+          {!readOnly ? (
           <button
             type="button"
             onClick={openEditModal}
@@ -93,6 +101,7 @@ export function CharacterCard({
           >
             ✏️
           </button>
+          ) : null}
           {editingAvatar && typeof document !== "undefined" && createPortal(
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && setEditingAvatar(false)} role="dialog" aria-modal="true" aria-label="Edit your avatar">
               <div className="absolute inset-0 bg-black/85" aria-hidden onClick={() => setEditingAvatar(false)} />
@@ -168,7 +177,11 @@ export function CharacterCard({
             </p>
           )}
           <p className="text-white/35 text-xs mt-0.5">@{character.username}</p>
-          <AchievementShowcaseStrip character={character} />
+          {equippedTitle ? (
+            <p className="mt-1.5 font-display text-xs font-semibold uppercase tracking-wide text-uri-gold/90">
+              {equippedTitle}
+            </p>
+          ) : null}
           <div className="mt-3">
             <div className="mb-1 flex justify-between gap-2 text-[10px] font-medium tabular-nums text-white/42">
               <span>{character.totalXP.toLocaleString()} XP</span>
@@ -181,15 +194,26 @@ export function CharacterCard({
               {current.toLocaleString()} / {needed.toLocaleString()} XP this level
             </p>
           </div>
-          {character.streakDays >= 3 ? (
-            <p className="mt-2.5 text-[11px] font-semibold text-amber-200/90">
-              🔥 {character.streakDays}-Day Streak
-            </p>
-          ) : null}
         </div>
       </div>
 
-      <div className="mt-5 pt-4 border-t border-uri-keaney/20">
+      {!readOnly ? (
+        <button
+          type="button"
+          onClick={() => setShowAchievementShowcase(true)}
+          className="w-full rounded-xl border border-uri-gold/35 bg-uri-gold/10 px-4 py-2.5 text-sm font-semibold text-uri-gold transition hover:bg-uri-gold/15"
+        >
+          Achievement Showcase
+        </button>
+      ) : null}
+
+      <AchievementShowcaseModal
+        character={character}
+        open={showAchievementShowcase}
+        onClose={() => setShowAchievementShowcase(false)}
+      />
+
+      <div className="pt-1 border-t border-white/[0.08]">
         <div className="flex items-center gap-2 mb-3">
           <span className="text-base" aria-hidden>⚔️</span>
           <h3 className="text-xs font-semibold text-uri-keaney/90 uppercase tracking-wider">
@@ -221,7 +245,7 @@ export function CharacterCard({
                       <span className={`font-mono font-semibold ${atMax ? "text-uri-gold" : "text-white/95"}`}>
                         {value}{atMax && " ★"}
                       </span>
-                      {atMax && onRefresh && (
+                      {atMax && onRefresh && !readOnly && (
                         <button
                           type="button"
                           onClick={() => {
@@ -247,13 +271,7 @@ export function CharacterCard({
         </div>
       </div>
 
-      {character.achievements && character.achievements.length > 0 && (
-        <div className="mt-5 pt-4 border-t border-uri-keaney/20">
-          <p className="text-[11px] text-white/40">
-            Visit the Hall of Legends from the menu to browse every badge, trophy, and title.
-          </p>
-        </div>
-      )}
+      {!readOnly ? <EquipmentStrip character={character} onRefresh={onRefresh} /> : null}
     </section>
   );
 }

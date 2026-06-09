@@ -29,10 +29,15 @@ export interface RealmEventTimer {
 
 export interface RealmMoment {
   id: string;
-  imageUrl: string;
+  postId: string;
+  imageUrl?: string;
   caption: string;
   username: string;
+  displayName: string;
+  authorAvatar: string;
   timestamp: string;
+  postedAgoLabel: string;
+  expiresInLabel: string;
 }
 
 export interface RealmLocation {
@@ -50,6 +55,8 @@ export interface RealmLocation {
   activeQuests: number;
   upcomingEvents: number;
   studentPhotos: number;
+  /** Active Realm Moments (24h) at this pin — hydrated from API. */
+  activeMomentCount?: number;
   quests: RealmQuest[];
   eventTimer: RealmEventTimer;
   moments: RealmMoment[];
@@ -112,22 +119,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
         offsetY: -7,
       },
     ],
-    moments: [
-      {
-        id: "mu-1",
-        imageUrl: "/quad-feed/memorial-union.png",
-        caption: "Late-night study break at the Union",
-        username: "jordan_kim",
-        timestamp: "2h ago",
-      },
-      {
-        id: "mu-2",
-        imageUrl: "/quad-feed/career.jpg",
-        caption: "Career fair crowd energy",
-        username: "alex_ram",
-        timestamp: "Yesterday",
-      },
-    ],
+    moments: [],
   },
   {
     id: "library",
@@ -151,15 +143,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
         offsetY: -5,
       },
     ],
-    moments: [
-      {
-        id: "lib-1",
-        imageUrl: "/quad-feed/group-study.jpg",
-        caption: "Finals week grind session",
-        username: "sam_study",
-        timestamp: "4h ago",
-      },
-    ],
+    moments: [],
   },
   {
     id: "rec-center",
@@ -183,15 +167,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
         offsetY: 4,
       },
     ],
-    moments: [
-      {
-        id: "rec-1",
-        imageUrl: "/quad-feed/gym.png",
-        caption: "Leg day at Fascitelli",
-        username: "mike_lift",
-        timestamp: "1h ago",
-      },
-    ],
+    moments: [],
   },
   {
     id: "engineering-hall",
@@ -230,15 +206,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     studentPhotos: 4,
     eventTimer: { status: "countdown", minutesUntilStart: 120, label: "Networking hour" },
     quests: [],
-    moments: [
-      {
-        id: "biz-1",
-        imageUrl: "/quad-feed/career-fair-2.png",
-        caption: "Ballentine hallway meetup",
-        username: "taylor_biz",
-        timestamp: "3d ago",
-      },
-    ],
+    moments: [],
   },
   {
     id: "the-quad",
@@ -262,22 +230,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
         offsetY: 2,
       },
     ],
-    moments: [
-      {
-        id: "quad-1",
-        imageUrl: "/quad-feed/running.jpg",
-        caption: "Sunset jog through the green",
-        username: "riley_run",
-        timestamp: "5h ago",
-      },
-      {
-        id: "quad-2",
-        imageUrl: "/quad-feed/concert.jpg",
-        caption: "Open mic on the lawn",
-        username: "casey_music",
-        timestamp: "2d ago",
-      },
-    ],
+    moments: [],
   },
   {
     id: "rams-den",
@@ -301,14 +254,6 @@ export const REALM_LOCATIONS: RealmLocation[] = [
         offsetY: 3,
       },
     ],
-    moments: [
-      {
-        id: "den-1",
-        imageUrl: "/quad-feed/womens-basketball.jpg",
-        caption: "Watching URI with the crew",
-        username: "jordan_kim",
-        timestamp: "6h ago",
-      },
-    ],
+    moments: [],
   },
 ];

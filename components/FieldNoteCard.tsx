@@ -1,11 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
-import { Heart, MessageCircle, Share2, ShieldCheck, Swords, Zap } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Heart, MessageCircle, MoreHorizontal, Share2, ShieldCheck, Swords, Zap } from "lucide-react";
 import type { FieldNote, QuadComment, StatKey } from "@/lib/types";
 import { QUAD_COMMENT_MAX_CHARS } from "@/lib/types";
+import { isPersistedQuadPostId } from "@/lib/quadFieldNote";
+import { deleteQuadPostRequest, updateQuadPostRequest } from "@/lib/client/quadPostsClient";
+import { removeRemoteQuadPost, replaceRemoteQuadPost } from "@/lib/feedStore";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { CampusQuestNodHeartPop } from "./CampusQuestNodHeartPop";
+import { FieldNoteEditModal } from "./FieldNoteEditModal";
 
 type LucideIcon = ComponentType<{ className?: string; strokeWidth?: number }>;
 
@@ -138,6 +143,7 @@ function looksLikeImageProofUrl(url: string): boolean {
   const u = url.trim();
   if (!u) return false;
   if (u.startsWith("data:image/")) return true;
+  if (/\/storage\/v1\/object\/public\/quad-post-images\//i.test(u)) return true;
   // App-hosted proof assets (Quad seed images, etc.)
   if (/^\/[\w./-]+\.(jpe?g|png|gif|webp)(\?|#|$)/i.test(u)) return true;
   if (/\.(jpe?g|png|gif|webp)(\?|#|$|\/)/i.test(u)) return true;
@@ -160,6 +166,9 @@ export function FieldNoteCard({
   likePending = false,
   highlightStat,
   variant = "default",
+  onPostUpdated,
+  onPostDeleted,
+  onActionMessage,
 }: {
   note: FieldNote;
   currentUserId: string;
@@ -175,6 +184,9 @@ export function FieldNoteCard({
   highlightStat?: StatKey | null;
   /** `feed` = full-width media, border-between-posts (Quad). `default` = padded card row (Profile). */
   variant?: "default" | "feed";
+  onPostUpdated?: (note: FieldNote) => void;
+  onPostDeleted?: (postId: string) => void;
+  onActionMessage?: (message: string) => void;
 }) {
   const [commentDraft, setCommentDraft] = useState("");
   const [commentSubmitting, setCommentSubmitting] = useState(false);
@@ -183,8 +195,16 @@ export function FieldNoteCard({
   const [likePulse, setLikePulse] = useState(false);
   const [zapPulse, setZapPulse] = useState(false);
   const [sparkSent, setSparkSent] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [actionPending, setActionPending] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [actionToast, setActionToast] = useState<string | null>(null);
   const lastImageTapAtRef = useRef(0);
   const nodPopTimerRef = useRef<number | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const isOwner = note.authorId === currentUserId && (note.isPersisted ?? isPersistedQuadPostId(note.id));
   const hasNodded = note.nodByUserIds.has(currentUserId);
   const hasHyped = note.hypeByUserIds?.has(currentUserId) ?? note.vouchByUserIds.has(currentUserId);
   const hasVerified = note.verifyByUserIds?.has(currentUserId) ?? false;
@@ -203,6 +223,113 @@ export function FieldNoteCard({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    function handlePointerDown(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!actionToast) return undefined;
+    const tid = window.setTimeout(() => setActionToast(null), 2800);
+    return () => window.clearTimeout(tid);
+  }, [actionToast]);
+
+  const showToast = useCallback(
+    (message: string) => {
+      if (onActionMessage) onActionMessage(message);
+      else setActionToast(message);
+    },
+    [onActionMessage],
+  );
+
+  async function handleSaveEdit(patch: {
+    body: string;
+    visibility: "public" | "friends";
+    locationId: string | null;
+    locationName: string | null;
+  }) {
+    setEditError(null);
+    setActionPending(true);
+    try {
+      const updated = await updateQuadPostRequest(note.id, patch, currentUserId);
+      replaceRemoteQuadPost(updated);
+      onPostUpdated?.(updated);
+      setEditOpen(false);
+      setMenuOpen(false);
+      showToast("Post updated");
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Could not update post.");
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    setActionPending(true);
+    try {
+      await deleteQuadPostRequest(note.id);
+      removeRemoteQuadPost(note.id);
+      onPostDeleted?.(note.id);
+      setDeleteOpen(false);
+      setMenuOpen(false);
+      showToast("Post deleted");
+    } catch {
+      setEditError("Could not delete post.");
+      setDeleteOpen(false);
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  const ownerMenu = isOwner ? (
+    <div ref={menuRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setMenuOpen((open) => !open)}
+        className="flex h-8 w-8 items-center justify-center rounded-lg text-white/45 transition hover:bg-white/[0.06] hover:text-white/80"
+        aria-label="Post options"
+        aria-expanded={menuOpen}
+        aria-haspopup="menu"
+      >
+        <MoreHorizontal className="h-[18px] w-[18px]" strokeWidth={2} />
+      </button>
+      {menuOpen ? (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-20 mt-1 min-w-[9.5rem] overflow-hidden rounded-xl border border-white/12 bg-[#0c1f3f] py-1 shadow-xl"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full px-3 py-2 text-left text-sm text-white/85 hover:bg-white/[0.06]"
+            onClick={() => {
+              setMenuOpen(false);
+              setEditError(null);
+              setEditOpen(true);
+            }}
+          >
+            Edit Post
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full px-3 py-2 text-left text-sm text-rose-300 hover:bg-rose-500/10"
+            onClick={() => {
+              setMenuOpen(false);
+              setDeleteOpen(true);
+            }}
+          >
+            Delete Post
+          </button>
+        </div>
+      ) : null}
+    </div>
+  ) : null;
 
   function triggerImageNodPop() {
     if (nodPopTimerRef.current != null) {
@@ -283,7 +410,7 @@ export function FieldNoteCard({
       className={`flex items-center justify-center flex-shrink-0 border overflow-hidden ${
         isFeed
           ? "h-12 w-12 rounded-full border-white/12 bg-white/[0.04]"
-          : "w-11 h-11 rounded-xl bg-gradient-to-br from-uri-keaney/25 to-uri-navy border-uri-keaney/30"
+          : "w-11 h-11 rounded-xl bg-cq-elevated border border-white/[0.08]"
       } ${
         highlightStat === "strength"
           ? "stat-aura-strength"
@@ -292,7 +419,7 @@ export function FieldNoteCard({
             : ""
       }`}
     >
-      <AvatarDisplay avatar={note.authorAvatar} size={isFeed ? 48 : 44} />
+      <AvatarDisplay avatar={note.authorAvatar} size={isFeed ? 44 : 40} />
     </div>
   );
 
@@ -503,7 +630,7 @@ export function FieldNoteCard({
               {comments.map((c) => (
                 <li key={c.id} className="flex gap-2">
                   <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/10">
-                    <AvatarDisplay avatar={c.authorAvatar} size={32} />
+                    <AvatarDisplay avatar={c.authorAvatar} size={28} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -531,6 +658,11 @@ export function FieldNoteCard({
           : "p-4 transition-colors hover:bg-white/[0.04]"
       }
     >
+      {actionToast ? (
+        <p className="mx-3 mb-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100/90" aria-live="polite">
+          {actionToast}
+        </p>
+      ) : null}
       {isFeed ? (
         <>
           <header className="cq-feed-post-header flex items-center gap-3 px-3 pb-2 pt-3 sm:pt-4">
@@ -554,6 +686,7 @@ export function FieldNoteCard({
                 <p className="mt-0.5 text-[11px] font-medium text-cyan-300/75">📍 {note.locationName}</p>
               ) : null}
             </div>
+            {ownerMenu}
           </header>
           {proofImgUrl ? (
             <div className="quad-feed-media-wrap w-full">{proofBlock}</div>
@@ -576,7 +709,8 @@ export function FieldNoteCard({
         <div className="flex gap-3">
           {avatarFrame}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-start gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               <span className="font-semibold text-white">{note.authorName}</span>
               <span className="text-uri-keaney/90 text-sm">@{note.authorUsername}</span>
               <span className="text-white/40 text-xs">· {formatTime(note.createdAt)}</span>
@@ -588,6 +722,8 @@ export function FieldNoteCard({
                   {streak}
                 </span>
               )}
+            </div>
+            {ownerMenu}
             </div>
             <p className="text-white/90 mt-1 whitespace-pre-wrap break-words">{note.body}</p>
             {proofImgUrl && (
@@ -607,6 +743,58 @@ export function FieldNoteCard({
           </div>
         </div>
       )}
+
+      <FieldNoteEditModal
+        key={`${note.id}-${editOpen}`}
+        note={note}
+        open={editOpen}
+        onClose={() => {
+          if (!actionPending) setEditOpen(false);
+        }}
+        onSave={handleSaveEdit}
+        saving={actionPending}
+        error={editError}
+      />
+
+      {deleteOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="delete-post-title">
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/70 backdrop-blur-[2px]"
+                aria-label="Close"
+                onClick={() => {
+                  if (!actionPending) setDeleteOpen(false);
+                }}
+              />
+              <div className="relative z-10 w-full max-w-sm rounded-2xl border border-white/[0.08] bg-cq-elevated p-5 shadow-2xl">
+                <h2 id="delete-post-title" className="font-display text-lg font-bold text-white">
+                  Delete this post?
+                </h2>
+                <p className="mt-2 text-sm text-white/55">This cannot be undone.</p>
+                <div className="mt-5 flex gap-2">
+                  <button
+                    type="button"
+                    disabled={actionPending}
+                    onClick={() => setDeleteOpen(false)}
+                    className="flex-1 rounded-xl border border-white/15 py-2.5 text-sm font-medium text-white/75 hover:bg-white/5 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionPending}
+                    onClick={() => void handleConfirmDelete()}
+                    className="flex-1 rounded-xl border border-rose-500/40 bg-rose-600/80 py-2.5 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-50"
+                  >
+                    {actionPending ? "Deleting…" : "Delete"}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </article>
   );
 }

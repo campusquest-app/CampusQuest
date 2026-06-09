@@ -13,12 +13,15 @@ import {
   type QuadFeedType,
 } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
-import { fetchQuadHomePosts } from "@/lib/client/quadPostsClient";
+import { fetchQuadHomePosts, fetchQuadFriendsPosts } from "@/lib/client/quadPostsClient";
+import { subscribeSocialSync } from "@/lib/client/socialSync";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { getCharacterById } from "@/lib/friendsStore";
 import type { FieldNote, Character } from "@/lib/types";
 import { FieldNoteCard } from "@/components/FieldNoteCard";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import { QuadCreatePostFab } from "@/components/QuadCreatePostFab";
+import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
 
 export type QuadFeedTab = QuadFeedType | "trending";
 
@@ -56,35 +59,71 @@ export function TheQuad({
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
+  const [postActionMessage, setPostActionMessage] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
   const quadHeaderRef = useRef<HTMLDivElement | null>(null);
 
   const baseFeedType: QuadFeedType = feedTab === "friends" ? "friends" : "public";
 
-  const refresh = useCallback(() => {
-    void (async () => {
+  const refresh = useCallback(async () => {
+    if (feedTab === "friends") {
       try {
-        const remote = await fetchQuadHomePosts(character.id, 80);
-        mergeRemoteQuadPostsCache(remote);
+        const remote = await fetchQuadFriendsPosts(character.id, 80);
+        let list = remote.map(enrichNote);
+        setNotes(cloneFeedNotesForDisplay(list));
       } catch {
-        // Keep cached posts on transient failures so reactions are not lost in-session.
+        setNotes([]);
       }
-      let list = getFeed(character.id, baseFeedType).map(enrichNote);
-      if (feedTab === "trending") {
-        list = [...list].sort((a, b) => {
-          const diff = trendingScore(b) - trendingScore(a);
-          return diff !== 0 ? diff : b.createdAt - a.createdAt;
-        });
-      }
-      setNotes(cloneFeedNotesForDisplay(list));
+      await refreshPlayerSnapshotFromServer();
       onRefresh?.();
-    })();
+      return;
+    }
+
+    try {
+      const remote = await fetchQuadHomePosts(character.id, 80);
+      mergeRemoteQuadPostsCache(remote);
+    } catch {
+      // Keep cached posts on transient failures so reactions are not lost in-session.
+    }
+    let list = getFeed(character.id, baseFeedType).map(enrichNote);
+    if (feedTab === "trending") {
+      list = [...list].sort((a, b) => {
+        const diff = trendingScore(b) - trendingScore(a);
+        return diff !== 0 ? diff : b.createdAt - a.createdAt;
+      });
+    }
+    setNotes(cloneFeedNotesForDisplay(list));
+    await refreshPlayerSnapshotFromServer();
+    onRefresh?.();
   }, [character.id, baseFeedType, feedTab, onRefresh]);
 
-  useEffect(() => {
-    const tid = scheduleNonCriticalWork(() => refresh());
-    return () => window.clearTimeout(tid);
+  const handlePullRefresh = useCallback(async () => {
+    await refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const tid = scheduleNonCriticalWork(() => {
+      void refresh();
+    });
+    const unsubscribe = subscribeSocialSync(() => void refresh());
+    const onFocus = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.clearTimeout(tid);
+      unsubscribe();
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!postActionMessage) return undefined;
+    const tid = window.setTimeout(() => setPostActionMessage(null), 2800);
+    return () => window.clearTimeout(tid);
+  }, [postActionMessage]);
 
   useLayoutEffect(() => {
     const el = quadHeaderRef.current;
@@ -113,7 +152,12 @@ export function TheQuad({
   }, [feedTab]);
 
   const emptyCopy = useMemo(() => {
-    if (feedTab === "friends") return { title: "Nothing from friends yet", body: "Follow Rams in Friends to see their posts here." };
+    if (feedTab === "friends") {
+      return {
+        title: "Follow people to see their latest posts here",
+        body: "When you connect with classmates, their Quad posts show up here — newest first.",
+      };
+    }
     if (feedTab === "trending") return { title: "No trending posts yet", body: "Nod, hype, and verify posts to push campus moments to the top." };
     return { title: "No posts yet", body: "Tap + to share what’s happening on campus." };
   }, [feedTab]);
@@ -238,6 +282,10 @@ export function TheQuad({
     <>
       {typeof document !== "undefined" ? createPortal(quadHeader, document.body) : null}
 
+      <PullToRefresh
+        onRefresh={handlePullRefresh}
+        indicatorTop="calc(var(--cq-topnav-h, 56px) + var(--cq-quad-header-offset, var(--cq-quad-header-h, 52px)))"
+      >
       <div className="flex min-h-[50vh] w-full flex-col bg-cq-app">
         <div
           className="cq-quad-feed-body w-full flex-1"
@@ -255,6 +303,11 @@ export function TheQuad({
                   {reactionNotice}
                 </p>
               ) : null}
+              {postActionMessage ? (
+                <p className="mb-3 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100/90" aria-live="polite">
+                  {postActionMessage}
+                </p>
+              ) : null}
               {notes.map((note) => (
                 <FieldNoteCard
                   key={note.id}
@@ -268,6 +321,26 @@ export function TheQuad({
                   onAssist={handleAssist}
                   onAddComment={handleAddComment}
                   likePending={pendingReactions.has(note.id)}
+                  onPostUpdated={(updated) => {
+                    setNotes((prev) =>
+                      prev.map((n) =>
+                        n.id === updated.id
+                          ? {
+                              ...updated,
+                              nodByUserIds: n.nodByUserIds,
+                              hypeByUserIds: n.hypeByUserIds,
+                              vouchByUserIds: n.vouchByUserIds,
+                              verifyByUserIds: n.verifyByUserIds,
+                              assistByUserIds: n.assistByUserIds,
+                            }
+                          : n,
+                      ),
+                    );
+                  }}
+                  onPostDeleted={(postId) => {
+                    setNotes((prev) => prev.filter((n) => n.id !== postId));
+                  }}
+                  onActionMessage={setPostActionMessage}
                   currentUser={{
                     id: character.id,
                     name: character.name,
@@ -280,6 +353,7 @@ export function TheQuad({
           )}
         </div>
       </div>
+      </PullToRefresh>
 
       <QuadCreatePostFab
         feedTab={feedTab}

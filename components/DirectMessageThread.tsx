@@ -5,6 +5,11 @@ import { createPortal } from "react-dom";
 import type { Character } from "@/lib/types";
 import type { Friend } from "@/lib/types";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import {
+  fetchRelationship,
+  sendConnectionRequest,
+} from "@/lib/client/socialConnectionsClient";
+import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 import { AvatarDisplay } from "./AvatarDisplay";
 
 export function DirectMessageThread({
@@ -38,6 +43,7 @@ export function DirectMessageThread({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [sendingConnectionRequest, setSendingConnectionRequest] = useState(false);
   const [favBusy, setFavBusy] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -48,6 +54,17 @@ export function DirectMessageThread({
 
   const threadMessages = useMemo(() => messages.filter((m) => !m.isFavorited), [messages]);
 
+  async function applyRelationshipSnapshot(otherUserId: string) {
+    const relationship = await fetchRelationship(otherUserId);
+    setCanMessage(relationship.canMessage);
+    setIncomingPending(relationship.incomingPending);
+    setOutgoingPending(relationship.outgoingPending);
+    setBlockedByMe(relationship.blockedByMe);
+    setBlockedByOther(relationship.blockedByOther);
+    setRequestId(relationship.requestId);
+    return relationship;
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -55,22 +72,9 @@ export function DirectMessageThread({
       setLoading(true);
       setError(null);
       try {
-        const relationship = await fetchAuthed<{
-          canMessage: boolean;
-          incomingPending: boolean;
-          outgoingPending: boolean;
-          blockedByMe: boolean;
-          blockedByOther: boolean;
-          requestId: string | null;
-        }>(`/api/social/relationships/${otherUser.userId}`);
+        const relationship = await applyRelationshipSnapshot(otherUser.userId);
 
         if (cancelled) return;
-        setCanMessage(relationship.canMessage);
-        setIncomingPending(relationship.incomingPending);
-        setOutgoingPending(relationship.outgoingPending);
-        setBlockedByMe(relationship.blockedByMe);
-        setBlockedByOther(relationship.blockedByOther);
-        setRequestId(relationship.requestId);
 
         if (!relationship.canMessage) {
           setMessages([]);
@@ -107,8 +111,10 @@ export function DirectMessageThread({
     }
 
     void loadThread();
+    const unsubscribe = subscribeSocialSync(() => void loadThread());
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, [otherUser.userId]);
 
@@ -146,14 +152,27 @@ export function DirectMessageThread({
   }
 
   async function handleSendConnectionRequest() {
+    setSendingConnectionRequest(true);
+    setError(null);
     try {
-      await postAuthed("/api/social/connections/request", { username: otherUser.username });
-      setOutgoingPending(true);
-      setIncomingPending(false);
-      setError(null);
+      const result = await sendConnectionRequest(otherUser.username);
+      const relationship = await applyRelationshipSnapshot(otherUser.userId);
+      if (!relationship.outgoingPending) {
+        throw new Error("Friend request was not saved. Check your connection and try again.");
+      }
+      if (result.notification.userId !== otherUser.userId) {
+        console.warn("[cq:friend-request] notification user mismatch", {
+          expectedRecipientId: otherUser.userId,
+          notificationUserId: result.notification.userId,
+        });
+      }
+      emitSocialSync({ source: "inbox" });
     } catch (requestError) {
+      setOutgoingPending(false);
       const message = requestError instanceof Error ? requestError.message : "Could not send connection request.";
       setError(message);
+    } finally {
+      setSendingConnectionRequest(false);
     }
   }
 
@@ -165,6 +184,7 @@ export function DirectMessageThread({
       setOutgoingPending(false);
       setCanMessage(true);
       setError(null);
+      emitSocialSync({ source: "inbox" });
     } catch (acceptError) {
       const message = acceptError instanceof Error ? acceptError.message : "Could not accept request.";
       setError(message);
@@ -352,17 +372,18 @@ export function DirectMessageThread({
                   onClick={() => void handleAcceptRequest()}
                   className="px-3 py-2 rounded-lg text-sm font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90"
                 >
-                  Accept Connection Request
+                  Follow Back
                 </button>
               ) : outgoingPending ? (
-                <p className="text-uri-keaney/90 text-xs">Connection request sent. Waiting for acceptance.</p>
+                <p className="text-uri-keaney/90 text-xs">Requested — waiting for them to accept.</p>
               ) : (
                 <button
                   type="button"
+                  disabled={sendingConnectionRequest}
                   onClick={() => void handleSendConnectionRequest()}
-                  className="px-3 py-2 rounded-lg text-sm font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90"
+                  className="px-3 py-2 rounded-lg text-sm font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90 disabled:opacity-60"
                 >
-                  Send Connection Request
+                  {sendingConnectionRequest ? "Sending..." : "Follow"}
                 </button>
               )}
             </div>

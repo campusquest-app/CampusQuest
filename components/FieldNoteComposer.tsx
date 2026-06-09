@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { normalizeRamMarkTag, prependRemoteQuadPost } from "@/lib/feedStore";
 import { createQuadPostRequest } from "@/lib/client/quadPostsClient";
+import { ApiRequestError } from "@/lib/client/dashboardApi";
 import type { Character } from "@/lib/types";
 import type { QuadPostVisibility } from "@/lib/types";
 import { FIELD_NOTE_MAX_CHARS, RAMMARK_MAX_LENGTH, RAMMARK_MAX_PER_POST } from "@/lib/types";
@@ -31,6 +32,7 @@ export function FieldNoteComposer({
   const [visibility, setVisibility] = useState<QuadPostVisibility>(defaultVisibility);
   const [locationId, setLocationId] = useState<RealmLocationId | "">("");
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const proofFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -87,9 +89,10 @@ export function FieldNoteComposer({
       return;
     }
     setError(null);
+    setSuccessMessage(null);
     try {
       const selectedLocation = REALM_LOCATION_OPTIONS.find((l) => l.id === locationId);
-      const note = await createQuadPostRequest(
+      const { note, realmMoment } = await createQuadPostRequest(
         {
           body: trimmed,
           proofUrl: proofUrl.trim() || undefined,
@@ -107,9 +110,30 @@ export function FieldNoteComposer({
       setRamMarks([]);
       setProofUrl("");
       setLocationId("");
+      if (realmMoment) {
+        setSuccessMessage(`Posted to Quad and added to ${realmMoment.locationName} Moments.`);
+      } else {
+        setSuccessMessage("Posted to Quad.");
+      }
       onPosted();
-    } catch {
-      setError("Could not post right now. Check your connection and try again.");
+    } catch (err) {
+      console.error("[cq][quad-post] submit failed", {
+        message: err instanceof Error ? err.message : String(err),
+        code: err instanceof ApiRequestError ? err.code : undefined,
+        status: err instanceof ApiRequestError ? err.status : undefined,
+        details: err instanceof ApiRequestError ? err.details : undefined,
+      });
+      const detail =
+        err instanceof ApiRequestError && err.message.trim().length > 0
+          ? err.message
+          : err instanceof Error && err.message.trim().length > 0
+            ? err.message
+            : null;
+      setError(
+        detail && process.env.NODE_ENV !== "production"
+          ? detail
+          : "Could not post right now. Check your connection and try again.",
+      );
     }
   }
 
@@ -138,14 +162,14 @@ export function FieldNoteComposer({
                 : "bg-white/5 text-white/70 border-white/15 hover:bg-white/10"
             }`}
           >
-            👥 Friends only
+            👥 Following only
           </button>
         </div>
       </div>
 
       <div>
         <label htmlFor="field-note-location" className="mb-1 block text-xs text-white/60">
-          Location (optional)
+          Add to Realm Map
         </label>
         <select
           id="field-note-location"
@@ -160,6 +184,9 @@ export function FieldNoteComposer({
             </option>
           ))}
         </select>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+          Public posts with a location appear as Realm Moments for 24 hours.
+        </p>
       </div>
 
       <textarea
@@ -255,6 +282,7 @@ export function FieldNoteComposer({
         )}
       </div>
 
+      {successMessage ? <p className="text-sm text-emerald-300/90">{successMessage}</p> : null}
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       <button
@@ -262,7 +290,7 @@ export function FieldNoteComposer({
         disabled={!body.trim()}
         className="w-full py-3 rounded-xl font-semibold bg-uri-keaney text-white hover:bg-uri-keaney/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all border border-uri-keaney/40 shadow-[0_0_12px_rgba(104,171,232,0.15)]"
       >
-        {visibility === "public" ? "Post to Public Quad" : "Post to Friends only"}
+        {visibility === "public" ? "Post to Public Quad" : "Post to Following only"}
       </button>
     </form>
   );

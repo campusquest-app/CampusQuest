@@ -5,6 +5,8 @@ import type { Character } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { DirectMessageThread } from "./DirectMessageThread";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { sendConnectionRequest } from "@/lib/client/socialConnectionsClient";
+import { emitSocialSync } from "@/lib/client/socialSync";
 import { NotificationsCenter } from "./NotificationsCenter";
 
 export type InboxSubTab = "messages" | "notifications";
@@ -121,9 +123,19 @@ export function Inbox({
     setSendingRequest(true);
     setMessageError(null);
     try {
-      await postAuthed("/api/social/connections/request", { username });
+      const result = await sendConnectionRequest(username);
       setConnectionUsername("");
+      setMessageError(null);
       await loadMessageCenter();
+      emitSocialSync({ source: "inbox" });
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[cq:friend-request:success]", {
+          targetUsername: username,
+          friendRequestId: result.connection.id,
+          recipientId: result.connection.addresseeId,
+          notificationId: result.notification.id,
+        });
+      }
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : "Could not send connection request.";
       setMessageError(message);
@@ -136,8 +148,20 @@ export function Inbox({
     try {
       await postAuthed("/api/social/connections/requests/respond", { requestId, action: "accept" });
       await loadMessageCenter();
+      emitSocialSync({ source: "inbox" });
     } catch (acceptError) {
       const message = acceptError instanceof Error ? acceptError.message : "Could not accept request.";
+      setMessageError(message);
+    }
+  }
+
+  async function handleDeclineConnection(requestId: string) {
+    try {
+      await postAuthed("/api/social/connections/requests/respond", { requestId, action: "decline" });
+      await loadMessageCenter();
+      emitSocialSync({ source: "inbox" });
+    } catch (declineError) {
+      const message = declineError instanceof Error ? declineError.message : "Could not decline request.";
       setMessageError(message);
     }
   }
@@ -219,13 +243,22 @@ export function Inbox({
                       <p className="text-xs text-white/80 truncate">
                         <span className="font-semibold">{request.displayName}</span> @{request.username} wants to connect
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => void handleAcceptConnection(request.requestId)}
-                        className="px-2.5 py-1 rounded-md text-xs font-semibold bg-uri-keaney text-uri-navy"
-                      >
-                        Accept
-                      </button>
+                      <div className="flex gap-1.5 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => void handleAcceptConnection(request.requestId)}
+                          className="px-2.5 py-1 rounded-md text-xs font-semibold bg-uri-keaney text-uri-navy"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeclineConnection(request.requestId)}
+                          className="px-2.5 py-1 rounded-md text-xs font-semibold border border-white/20 text-white/80 hover:bg-white/10"
+                        >
+                          Deny
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -281,7 +314,7 @@ export function Inbox({
                     }
                     className="w-full flex items-center gap-3 p-4 hover:bg-white/[0.04] text-left transition-colors"
                   >
-                    <div className="w-11 h-11 rounded-xl bg-white/10 border border-uri-keaney/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <div className="w-11 h-11 rounded-xl bg-cq-elevated border border-white/[0.08] flex items-center justify-center overflow-hidden flex-shrink-0">
                       <AvatarDisplay avatar={m.otherUser.avatarUrl ?? "🎓"} size={44} />
                     </div>
                     <div className="min-w-0 flex-1">

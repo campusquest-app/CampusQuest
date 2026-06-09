@@ -1,3 +1,4 @@
+import { handleSendConnectionRequestPost } from "@/lib/server/connectionRequestRoute";
 import { fail, ok } from "@/lib/server/http";
 import { listConnectionRequests } from "@/lib/server/messaging";
 import { enforceRateLimit } from "@/lib/server/security";
@@ -23,4 +24,9 @@ export async function GET(request: Request) {
   } catch (error) {
     return fail(error);
   }
+}
+
+/** Alias for POST /api/social/connections/request — send a friend request. */
+export async function POST(request: Request) {
+  return handleSendConnectionRequestPost(request);
 }
