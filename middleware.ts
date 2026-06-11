@@ -17,6 +17,8 @@ function isConsentExempt(pathname: string, method: string): boolean {
   if (pathname.startsWith("/api/health/")) return true;
   if (pathname === "/api/legal/policy-version") return true;
   if (pathname.startsWith("/api/internal/")) return true;
+  if (pathname.startsWith("/api/sync/")) return true;
+  if (pathname.startsWith("/api/cron/")) return true;
   if (m === "GET" && pathname === "/api/me/profile") return true;
   if (m === "GET" && pathname === "/api/me/stats") return true;
   if (m === "GET" && pathname === "/api/me/safety-status") return true;
