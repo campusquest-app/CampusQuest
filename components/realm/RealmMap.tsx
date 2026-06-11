@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Crosshair } from "lucide-react";
+import { Compass } from "lucide-react";
 import {
   TransformWrapper,
   TransformComponent,
@@ -22,8 +22,22 @@ import {
   fetchRealmMarkerPositions,
   saveRealmMarkerPositionsToServer,
 } from "@/lib/client/realmMarkerPositionsClient";
+import { fetchAuthed } from "@/lib/client/dashboardApi";
 import { fetchRealmMoments, mapApiMomentToRealmMoment } from "@/lib/client/realmMomentsClient";
+
+type ExternalMapEventMarker = {
+  id: string;
+  title: string;
+  location: string | null;
+  startsAt: string | null;
+  eventUrl: string | null;
+  source: string;
+  imported: true;
+  x: number;
+  y: number;
+};
 import { RealmCampusMapLayer } from "./RealmCampusMapLayer";
+import { RealmDecorLayer } from "./RealmDecorLayer";
 import { RealmFootprintsLayer } from "./RealmFootprintsLayer";
 import { RealmLocationSheet } from "./RealmLocationSheet";
 import { RealmMapDebugPanel } from "./RealmMapDebugPanel";
@@ -83,6 +97,9 @@ export function RealmMap({
   const [sheetInitialView, setSheetInitialView] = useState<"overview" | "moments">("overview");
   const [momentsLoaded, setMomentsLoaded] = useState(false);
   const [momentsByLocation, setMomentsByLocation] = useState<Record<string, ReturnType<typeof mapApiMomentToRealmMoment>[]>>({});
+  const [externalEventMarkers, setExternalEventMarkers] = useState<ExternalMapEventMarker[]>([]);
+  const [selectedExternalEvent, setSelectedExternalEvent] = useState<ExternalMapEventMarker | null>(null);
+  const [mapScale, setMapScale] = useState(1);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const mapRootRef = useRef<HTMLDivElement>(null);
   const mapStageRef = useRef<HTMLDivElement>(null);
@@ -112,6 +129,7 @@ export function RealmMap({
     pinCount: locations.length,
     questGlowCount: questGlowCount + momentGlowCount,
     mapRootRef,
+    isAdmin,
   });
 
   const loadRealmMoments = useCallback(async () => {
@@ -135,6 +153,17 @@ export function RealmMap({
   useEffect(() => {
     void loadRealmMoments();
   }, [loadRealmMoments]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await fetchAuthed<{ markers: ExternalMapEventMarker[] }>("/api/external/events/map");
+        setExternalEventMarkers(data.markers ?? []);
+      } catch {
+        setExternalEventMarkers([]);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     document.documentElement.toggleAttribute("data-realm-map-panning", panning);
@@ -275,6 +304,10 @@ export function RealmMap({
 
   const mapPanningDisabled = editMode;
 
+  const syncMapScale = useCallback((ref: ReactZoomPanPinchRef) => {
+    setMapScale(ref.state.scale);
+  }, []);
+
   return (
     <>
       <div
@@ -304,6 +337,8 @@ export function RealmMap({
             if (!mapPanningDisabled) setPanning(true);
           }}
           onPanningStop={() => setPanning(false)}
+          onInit={syncMapScale}
+          onTransformed={syncMapScale}
         >
           <TransformComponent
             wrapperClass="realm-map-viewport !w-full !h-full"
@@ -321,9 +356,13 @@ export function RealmMap({
                   <RealmCampusMapLayer calibrateMode={calibrateMode} onLoadStateChange={setUriMapLoaded} />
                   <RealmFootprintsLayer />
                   <RealmPathsLayer />
+                  {!calibrateMode ? <RealmDecorLayer /> : null}
                 </div>
 
-                <div className={`realm-map-markers absolute inset-0 z-[3] ${editMode ? "realm-map-markers--edit" : "pointer-events-none"}`}>
+                <div
+                  className={`realm-map-markers absolute inset-0 z-[3] ${editMode ? "realm-map-markers--edit" : "pointer-events-none"}`}
+                  style={{ "--realm-map-scale": mapScale } as React.CSSProperties}
+                >
                   {locations.map((location) => (
                     <LocationPin
                       key={location.id}
@@ -339,6 +378,16 @@ export function RealmMap({
                       onPositionChange={(x, y) => updateMarkerPosition(location.id, x, y)}
                     />
                   ))}
+                  {!editMode
+                    ? externalEventMarkers.map((marker) => (
+                        <ExternalEventPin
+                          key={marker.id}
+                          marker={marker}
+                          active={selectedExternalEvent?.id === marker.id}
+                          onTap={() => setSelectedExternalEvent(marker)}
+                        />
+                      ))
+                    : null}
                 </div>
               </div>
             </div>
@@ -361,7 +410,7 @@ export function RealmMap({
           aria-label="Reset and center map"
           title="Center map"
         >
-          <Crosshair className="h-[18px] w-[18px]" strokeWidth={2.2} />
+          <Compass className="h-[18px] w-[18px]" strokeWidth={2.2} />
         </button>
 
         {calibrateMode ? (
@@ -383,7 +432,70 @@ export function RealmMap({
         onViewQuadPost={onViewQuadPost}
         onRefreshMoments={loadRealmMoments}
       />
+
+      {selectedExternalEvent ? (
+        <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/55 p-3">
+          <div className="w-full max-w-sm rounded-2xl border border-cyan-400/25 bg-uri-navy p-4 space-y-2 shadow-xl">
+            <div className="flex justify-between gap-2">
+              <h3 className="text-sm font-semibold text-white">{selectedExternalEvent.title}</h3>
+              <button
+                type="button"
+                className="text-white/60 hover:text-white"
+                onClick={() => setSelectedExternalEvent(null)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-[11px] text-cyan-200/80">Source: URInvolved</p>
+            {selectedExternalEvent.startsAt ? (
+              <p className="text-xs text-white/65">{new Date(selectedExternalEvent.startsAt).toLocaleString()}</p>
+            ) : null}
+            {selectedExternalEvent.location ? (
+              <p className="text-xs text-white/55">{selectedExternalEvent.location}</p>
+            ) : null}
+            {selectedExternalEvent.eventUrl ? (
+              <a
+                href={selectedExternalEvent.eventUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex px-3 py-2 rounded-lg text-xs font-semibold border border-cyan-400/35 text-cyan-200 hover:bg-cyan-500/10"
+              >
+                View on URInvolved
+              </a>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </>
+  );
+}
+
+function ExternalEventPin({
+  marker,
+  active,
+  onTap,
+}: {
+  marker: ExternalMapEventMarker;
+  active: boolean;
+  onTap: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onTap();
+      }}
+      className={`realm-external-event-pin touch-manipulation ${active ? "realm-external-event-pin--active" : ""}`}
+      style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
+      aria-label={`${marker.title}. URInvolved event.`}
+      data-external-event-id={marker.id}
+    >
+      <span className="realm-external-event-pin-dot" aria-hidden>
+        📅
+      </span>
+    </button>
   );
 }
 

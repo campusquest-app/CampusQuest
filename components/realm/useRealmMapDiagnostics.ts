@@ -15,13 +15,16 @@ export type RealmMapLayerReport = {
   obsoleteLayers: string[];
 };
 
-function useRealmDebugMode(): boolean {
+function useRealmDebugMode(isAdmin: boolean): boolean {
   const [debug, setDebug] = useState(false);
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !isAdmin) {
+      setDebug(false);
+      return;
+    }
     const params = new URLSearchParams(window.location.search);
     setDebug(process.env.NODE_ENV === "development" || params.get("realm_debug") === "1");
-  }, []);
+  }, [isAdmin]);
   return debug;
 }
 
@@ -31,14 +34,16 @@ export function useRealmMapDiagnostics({
   pinCount,
   questGlowCount,
   mapRootRef,
+  isAdmin = false,
 }: {
   uriMapLoaded: boolean;
   calibrateMode: boolean;
   pinCount: number;
   questGlowCount: number;
   mapRootRef: React.RefObject<HTMLElement | null>;
+  isAdmin?: boolean;
 }) {
-  const debugMode = useRealmDebugMode();
+  const debugMode = useRealmDebugMode(isAdmin);
   const [report, setReport] = useState<RealmMapLayerReport | null>(null);
 
   useEffect(() => {

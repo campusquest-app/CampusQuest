@@ -6,6 +6,9 @@ export const REALM_MAP_VIEW_HEIGHT = 77.25;
 
 export const REALM_MAP_REFERENCE_SRC = "/maps/uri-campus-map.png";
 
+/** Fantasy parchment skin traced from the reference map — same layout, same aspect. */
+export const REALM_MAP_FANTASY_SRC = "/maps/uri-campus-map-fantasy.jpg";
+
 /** Walkways calibrated to URI Kingston map. */
 export const REALM_TRACE_PATHS = {
   mainSpine:

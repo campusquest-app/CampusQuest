@@ -43,6 +43,8 @@ export interface RealmMoment {
 export interface RealmLocation {
   id: RealmLocationId;
   name: string;
+  /** Fantasy landmark name — display flavor only, never used for logic. */
+  fantasyName: string;
   /** Map pin emoji — recognizable at a glance. */
   markerEmoji: string;
   /** Short label when map is zoomed out. */
@@ -100,6 +102,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
   {
     id: "memorial-union",
     name: "Memorial Union",
+    fantasyName: "Grand Adventurer's Guild Hall",
     markerEmoji: "🏛",
     shortLabel: "Union",
     major: true,
@@ -124,6 +127,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
   {
     id: "library",
     name: "Library",
+    fantasyName: "Arcane Knowledge Archive",
     markerEmoji: "📚",
     shortLabel: "Library",
     major: true,
@@ -148,6 +152,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
   {
     id: "rec-center",
     name: "Rec Center",
+    fantasyName: "Warrior Training Grounds",
     markerEmoji: "🏋",
     shortLabel: "Rec Center",
     major: true,
@@ -172,6 +177,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
   {
     id: "engineering-hall",
     name: "Engineering Hall",
+    fantasyName: "Inventor's District",
     markerEmoji: "⚙",
     shortLabel: "Engineering",
     major: false,
@@ -196,6 +202,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
   {
     id: "business-building",
     name: "Business Building",
+    fantasyName: "Merchant's Quarter",
     markerEmoji: "🏢",
     shortLabel: "Business",
     major: false,
@@ -211,6 +218,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
   {
     id: "the-quad",
     name: "The Quad",
+    fantasyName: "Central Kingdom Green",
     markerEmoji: "✨",
     shortLabel: "The Quad",
     major: true,
@@ -235,6 +243,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
   {
     id: "rams-den",
     name: "Rams Den",
+    fantasyName: "Rams Den Tavern",
     markerEmoji: "🐏",
     shortLabel: "Rams Den",
     major: false,

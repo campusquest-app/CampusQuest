@@ -42,7 +42,9 @@ export function TheRealm({
             </p>
           </div>
           <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">THE REALM</h1>
-          <p className="mt-1 text-sm text-white/65">Find your way around URI — tap a pin for quests and events.</p>
+          <p className="mt-1 text-sm text-white/65">
+            URI as a living fantasy kingdom — tap a landmark for quests and events.
+          </p>
         </div>
       </header>
 
@@ -54,11 +56,11 @@ export function TheRealm({
         userRole={userRole}
       />
 
-      <p className="mt-3 px-1 text-center text-[10px] uppercase tracking-[0.18em] text-white/45">
-        URI Kingston campus map
+      <p className="mt-3 px-1 text-center text-[10px] uppercase tracking-[0.18em] text-uri-gold/70">
+        ✦ The Kingdom of Rhody · URI Kingston campus ✦
       </p>
       <p className="mt-1 px-1 text-center text-[11px] text-white/40">
-        Pinch or drag to explore · Tap a location for details
+        Pinch or drag to explore · Tap a landmark for details
       </p>
     </div>
   );

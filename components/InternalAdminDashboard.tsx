@@ -13,6 +13,7 @@ import { OrganizationModerationCard } from "@/components/OrganizationModerationC
 import { OrganizationCreationRequestsAdminCard } from "@/components/OrganizationCreationRequestsAdminCard";
 import { PilotAnalyticsCard } from "@/components/PilotAnalyticsCard";
 import { UserSafetyManagementCard } from "@/components/UserSafetyManagementCard";
+import { URInvolvedSyncAdminCard } from "@/components/URInvolvedSyncAdminCard";
 
 function BackToQuadLink() {
   return (
@@ -137,6 +138,7 @@ export function InternalAdminDashboard() {
         <UserSafetyManagementCard />
         <AppealsModerationCard />
         <PilotAnalyticsCard />
+        <URInvolvedSyncAdminCard />
         <LegalPolicyVersionCard />
         <AdminAuditLogsCard />
         <p className="text-xs text-white/50">

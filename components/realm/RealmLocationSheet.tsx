@@ -77,8 +77,11 @@ export function RealmLocationSheet({
             <>
               <div className="flex items-start justify-between gap-3 px-5 pb-1 pt-3">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">Location</p>
-                  <h2 id="realm-sheet-title" className="font-display text-xl font-bold text-slate-900">
+                  <p className="realm-sheet-banner inline-flex max-w-full items-center gap-1.5 truncate rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em]">
+                    <span aria-hidden>⚔️</span>
+                    <span className="truncate">{location.fantasyName}</span>
+                  </p>
+                  <h2 id="realm-sheet-title" className="mt-1 font-display text-xl font-bold text-slate-900">
                     {location.name}
                   </h2>
                 </div>

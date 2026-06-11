@@ -20,6 +20,25 @@ type EventItem = {
   isCancelled: boolean;
 };
 
+type ExternalEventItem = {
+  id: string;
+  source: string;
+  title: string;
+  description: string;
+  category: string;
+  location: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  organizationName: string | null;
+  imageUrl: string | null;
+  eventUrl: string | null;
+  imported: true;
+};
+
+type FeedEvent =
+  | { kind: "campus"; event: EventItem }
+  | { kind: "external"; event: ExternalEventItem };
+
 type Filters = {
   category: string;
   organizationId: string;
@@ -81,6 +100,7 @@ export function EventsFeed({
   personalization?: { schoolName?: string; interests?: string[]; discoveryFocus?: string[] } | null;
 }) {
   const [events, setEvents] = useState<EventItem[]>([]);
+  const [externalEvents, setExternalEvents] = useState<ExternalEventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(() => ({
@@ -88,7 +108,7 @@ export function EventsFeed({
     category: personalization?.interests?.[0] ?? "",
     timeframe: personalization?.discoveryFocus?.includes("events") ? "this_week" : "all",
   }));
-  const [activeDetail, setActiveDetail] = useState<EventItem | null>(null);
+  const [activeDetail, setActiveDetail] = useState<FeedEvent | null>(null);
   const [rsvping, setRsvping] = useState<string | null>(null);
   const [reporting, setReporting] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -121,8 +141,33 @@ export function EventsFeed({
       if (nextFilters.location) params.set("location", nextFilters.location);
       if (nextFilters.timeframe !== "all") params.set("timeframe", nextFilters.timeframe);
       const query = params.toString();
-      const data = await fetchAuthed<{ events: EventItem[] }>(`/api/events${query ? `?${query}` : ""}`);
-      setEvents(data.events ?? []);
+      const externalParams = new URLSearchParams();
+      if (nextFilters.category) externalParams.set("category", nextFilters.category);
+      if (nextFilters.location) externalParams.set("location", nextFilters.location);
+      if (nextFilters.timeframe !== "all") externalParams.set("timeframe", nextFilters.timeframe);
+      const externalQuery = externalParams.toString();
+
+      const [campusResult, externalResult] = await Promise.allSettled([
+        fetchAuthed<{ events: EventItem[] }>(`/api/events${query ? `?${query}` : ""}`),
+        fetchAuthed<{ events: ExternalEventItem[] }>(
+          `/api/external/events${externalQuery ? `?${externalQuery}` : ""}`,
+        ),
+      ]);
+
+      if (campusResult.status === "fulfilled") {
+        setEvents(campusResult.value.events ?? []);
+      } else {
+        setEvents([]);
+        setError(
+          campusResult.reason instanceof Error ? campusResult.reason.message : "Could not load events.",
+        );
+      }
+
+      if (externalResult.status === "fulfilled") {
+        setExternalEvents(externalResult.value.events ?? []);
+      } else {
+        setExternalEvents([]);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load events.");
     } finally {
@@ -157,7 +202,11 @@ export function EventsFeed({
     void loadManageableOrganizations();
   }, []);
 
-  const categories = useMemo(() => Array.from(new Set(events.map((event) => event.category))).sort(), [events]);
+  const categories = useMemo(
+    () =>
+      Array.from(new Set([...events, ...externalEvents].map((event) => event.category).filter(Boolean))).sort(),
+    [events, externalEvents],
+  );
   const organizations = useMemo(
     () =>
       Array.from(
@@ -170,15 +219,28 @@ export function EventsFeed({
     [events],
   );
 
+  const allFeedEvents = useMemo<FeedEvent[]>(() => {
+    const campus = events.map((event) => ({ kind: "campus" as const, event }));
+    const external =
+      filters.isPaid === "paid"
+        ? []
+        : externalEvents.map((event) => ({ kind: "external" as const, event }));
+    return [...campus, ...external];
+  }, [events, externalEvents, filters.isPaid]);
+
   const prioritizedEvents = useMemo(() => {
     const interests = new Set((personalization?.interests ?? []).map((value) => value.toLowerCase()));
-    return [...events].sort((a, b) => {
-      const aMatch = interests.has(a.category.toLowerCase()) ? 0 : 1;
-      const bMatch = interests.has(b.category.toLowerCase()) ? 0 : 1;
+    return [...allFeedEvents].sort((a, b) => {
+      const aCategory = a.event.category.toLowerCase();
+      const bCategory = b.event.category.toLowerCase();
+      const aMatch = interests.has(aCategory) ? 0 : 1;
+      const bMatch = interests.has(bCategory) ? 0 : 1;
       if (aMatch !== bMatch) return aMatch - bMatch;
-      return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
+      const aTime = a.event.startsAt ? new Date(a.event.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.event.startsAt ? new Date(b.event.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
     });
-  }, [events, personalization?.interests]);
+  }, [allFeedEvents, personalization?.interests]);
 
   async function handleRsvp(eventId: string, status: "going" | "interested" | "not_going") {
     setRsvping(eventId);
@@ -186,9 +248,9 @@ export function EventsFeed({
     try {
       await postAuthed(`/api/events/${eventId}/rsvp`, { status });
       await loadEvents(filters);
-      if (activeDetail?.id === eventId) {
+      if (activeDetail?.kind === "campus" && activeDetail.event.id === eventId) {
         const updated = events.find((event) => event.id === eventId);
-        if (updated) setActiveDetail(updated);
+        if (updated) setActiveDetail({ kind: "campus", event: updated });
       }
     } catch (rsvpError) {
       setError(rsvpError instanceof Error ? rsvpError.message : "Could not save RSVP.");
@@ -554,95 +616,175 @@ export function EventsFeed({
           <div className="h-20 rounded-xl bg-white/10 animate-pulse" />
         </div>
       ) : null}
-      {!loading && events.length === 0 ? <p className="text-sm text-white/60">No events yet. Be the first to create one.</p> : null}
+      {!loading && prioritizedEvents.length === 0 ? (
+        <p className="text-sm text-white/60">No events yet. Be the first to create one.</p>
+      ) : null}
 
       <div className="space-y-3">
-        {prioritizedEvents.map((event) => (
-          <article key={event.id} className="card p-4 space-y-2">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h4 className="text-white font-semibold">{event.title}</h4>
-                <p className="text-xs text-white/65 mt-1">
-                  {new Date(event.startsAt).toLocaleString()} · {event.location}
-                </p>
+        {prioritizedEvents.map((item) =>
+          item.kind === "external" ? (
+            <article key={`ext-${item.event.id}`} className="card p-4 space-y-2 border border-cyan-400/15">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h4 className="text-white font-semibold">{item.event.title}</h4>
+                  <p className="text-xs text-white/65 mt-1">
+                    {item.event.startsAt ? new Date(item.event.startsAt).toLocaleString() : "Date TBA"}
+                    {item.event.location ? ` · ${item.event.location}` : ""}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <span className="text-[11px] rounded-full border border-uri-keaney/35 px-2 py-0.5 text-uri-keaney">
+                    {item.event.category}
+                  </span>
+                  <span className="text-[10px] text-cyan-200/80">Source: URInvolved</span>
+                </div>
               </div>
-              <span className="text-[11px] rounded-full border border-uri-keaney/35 px-2 py-0.5 text-uri-keaney">
-                {event.category}
-              </span>
-            </div>
-            <p className="text-sm text-white/75 line-clamp-2">{event.description}</p>
-            <p className="text-xs text-white/55">
-              Host: {eventHostLabel(event)} · {event.isPaid ? "Paid" : "Free"} · RSVP {event.rsvpCount}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveDetail(event)}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-white/25 text-white/85 hover:bg-white/10"
-              >
-                View details
-              </button>
-              <button
-                type="button"
-                disabled={reporting === event.id}
-                onClick={() => void handleReportEvent(event.id)}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-rose-400/35 text-rose-200 hover:bg-rose-500/10 disabled:opacity-60"
-              >
-                {reporting === event.id ? "Reporting..." : "Report event"}
-              </button>
-              {(["going", "interested", "not_going"] as const).map((status) => (
+              {item.event.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={item.event.imageUrl} alt="" className="w-full max-h-40 object-cover rounded-lg border border-white/10" />
+              ) : null}
+              <p className="text-sm text-white/75 line-clamp-3">{item.event.description}</p>
+              {item.event.organizationName ? (
+                <p className="text-xs text-white/55">Organization: {item.event.organizationName}</p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
                 <button
-                  key={status}
                   type="button"
-                  disabled={rsvping === event.id}
-                  onClick={() => void handleRsvp(event.id, status)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${
-                    event.myRsvpStatus === status
-                      ? "border-uri-keaney/50 text-uri-keaney bg-uri-keaney/15"
-                      : "border-white/20 text-white/80 hover:bg-white/10"
-                  }`}
+                  onClick={() => setActiveDetail(item)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-white/25 text-white/85 hover:bg-white/10"
                 >
-                  {status.replace("_", " ")}
+                  View details
                 </button>
-              ))}
-            </div>
-          </article>
-        ))}
+                {item.event.eventUrl ? (
+                  <a
+                    href={item.event.eventUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-cyan-400/35 text-cyan-200 hover:bg-cyan-500/10"
+                  >
+                    View on URInvolved
+                  </a>
+                ) : null}
+              </div>
+            </article>
+          ) : (
+            <article key={item.event.id} className="card p-4 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-white font-semibold">{item.event.title}</h4>
+                  <p className="text-xs text-white/65 mt-1">
+                    {new Date(item.event.startsAt).toLocaleString()} · {item.event.location}
+                  </p>
+                </div>
+                <span className="text-[11px] rounded-full border border-uri-keaney/35 px-2 py-0.5 text-uri-keaney">
+                  {item.event.category}
+                </span>
+              </div>
+              <p className="text-sm text-white/75 line-clamp-2">{item.event.description}</p>
+              <p className="text-xs text-white/55">
+                Host: {eventHostLabel(item.event)} · {item.event.isPaid ? "Paid" : "Free"} · RSVP {item.event.rsvpCount}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveDetail(item)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-white/25 text-white/85 hover:bg-white/10"
+                >
+                  View details
+                </button>
+                <button
+                  type="button"
+                  disabled={reporting === item.event.id}
+                  onClick={() => void handleReportEvent(item.event.id)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-rose-400/35 text-rose-200 hover:bg-rose-500/10 disabled:opacity-60"
+                >
+                  {reporting === item.event.id ? "Reporting..." : "Report event"}
+                </button>
+                {(["going", "interested", "not_going"] as const).map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    disabled={rsvping === item.event.id}
+                    onClick={() => void handleRsvp(item.event.id, status)}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${
+                      item.event.myRsvpStatus === status
+                        ? "border-uri-keaney/50 text-uri-keaney bg-uri-keaney/15"
+                        : "border-white/20 text-white/80 hover:bg-white/10"
+                    }`}
+                  >
+                    {status.replace("_", " ")}
+                  </button>
+                ))}
+              </div>
+            </article>
+          ),
+        )}
       </div>
+
+      <p className="text-[11px] text-white/40 leading-relaxed pt-2">
+        Event information sourced from URInvolved, URI&apos;s official student involvement platform. CampusQuest
+        helps students discover opportunities and sends them back to URInvolved as the official source.
+      </p>
 
       {activeDetail ? (
         <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/65 p-3">
-          <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-uri-navy p-5 space-y-3">
+          <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-uri-navy p-5 space-y-3 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between gap-3">
-              <h4 className="text-white text-lg font-semibold">{activeDetail.title}</h4>
+              <h4 className="text-white text-lg font-semibold">{activeDetail.event.title}</h4>
               <button type="button" className="text-white/60 hover:text-white" onClick={() => setActiveDetail(null)}>
                 ✕
               </button>
             </div>
-            <p className="text-sm text-white/75">{activeDetail.description}</p>
+            {activeDetail.kind === "external" && activeDetail.event.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={activeDetail.event.imageUrl} alt="" className="w-full max-h-48 object-cover rounded-lg border border-white/10" />
+            ) : null}
+            <p className="text-sm text-white/75">{activeDetail.event.description}</p>
             <p className="text-xs text-white/65">
-              {new Date(activeDetail.startsAt).toLocaleString()} · {activeDetail.location}
+              {activeDetail.event.startsAt ? new Date(activeDetail.event.startsAt).toLocaleString() : "Date TBA"}
+              {"location" in activeDetail.event && activeDetail.event.location ? ` · ${activeDetail.event.location}` : ""}
             </p>
-            <p className="text-xs text-white/55">
-              Hosted by {eventHostLabel(activeDetail)} · RSVP {activeDetail.rsvpCount}
-            </p>
-            <div className="flex flex-wrap gap-2 pt-1">
-              {(["going", "interested", "not_going"] as const).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  disabled={rsvping === activeDetail.id}
-                  onClick={() => void handleRsvp(activeDetail.id, status)}
-                  className={`px-3 py-2 rounded-lg text-xs font-semibold border ${
-                    activeDetail.myRsvpStatus === status
-                      ? "border-uri-keaney/50 text-uri-keaney bg-uri-keaney/15"
-                      : "border-white/20 text-white/80 hover:bg-white/10"
-                  }`}
-                >
-                  {status.replace("_", " ")}
-                </button>
-              ))}
-            </div>
+            {activeDetail.kind === "external" ? (
+              <>
+                {activeDetail.event.organizationName ? (
+                  <p className="text-xs text-white/55">Organization: {activeDetail.event.organizationName}</p>
+                ) : null}
+                <p className="text-xs text-cyan-200/80">Source: URInvolved</p>
+                {activeDetail.event.eventUrl ? (
+                  <a
+                    href={activeDetail.event.eventUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex px-3 py-2 rounded-lg text-xs font-semibold border border-cyan-400/35 text-cyan-200 hover:bg-cyan-500/10"
+                  >
+                    View on URInvolved
+                  </a>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-white/55">
+                  Hosted by {eventHostLabel(activeDetail.event)} · RSVP {activeDetail.event.rsvpCount}
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {(["going", "interested", "not_going"] as const).map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      disabled={rsvping === activeDetail.event.id}
+                      onClick={() => void handleRsvp(activeDetail.event.id, status)}
+                      className={`px-3 py-2 rounded-lg text-xs font-semibold border ${
+                        activeDetail.event.myRsvpStatus === status
+                          ? "border-uri-keaney/50 text-uri-keaney bg-uri-keaney/15"
+                          : "border-white/20 text-white/80 hover:bg-white/10"
+                      }`}
+                    >
+                      {status.replace("_", " ")}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}

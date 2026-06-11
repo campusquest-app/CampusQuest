@@ -465,7 +465,9 @@ export function Dashboard() {
   );
 
   const bottomNavActive: AppBottomNavTab | "other" =
-    tab === "quad" ? "quad" : tab === "character" ? "character" : "other";
+    tab === "quad" || tab === "realm" || tab === "leaderboards" || tab === "character"
+      ? tab
+      : "other";
 
   const handleQrXpHandoff = useCallback((session: ActivityXPGainSession) => {
     if (qrXpHandoffLockRef.current && !adminQrUnlimited) {

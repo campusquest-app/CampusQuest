@@ -1,0 +1,279 @@
+import { createAdminClient } from "@/lib/server/supabase";
+import {
+  buildOrganizationLogoUrl,
+  buildOrganizationUrl,
+  fetchAllUrinvolvedOrganizations,
+  fetchUrinvolvedEventsRss,
+  stripHtmlToText,
+} from "@/lib/server/urinvolved/fetchSources";
+import { matchCampusLocation } from "@/lib/server/urinvolved/locationAliases";
+import { parseUrinvolvedEventsRss } from "@/lib/server/urinvolved/parseRssEvents";
+
+export const URINVOLVED_SOURCE = "urinvolved";
+
+export type UrinvolvedSyncSummary = {
+  success: boolean;
+  events_created: number;
+  events_updated: number;
+  orgs_created: number;
+  orgs_updated: number;
+  errors: string[];
+  syncLogId?: string;
+};
+
+type SyncLogRow = {
+  id: string;
+};
+
+async function startSyncLog(admin: ReturnType<typeof createAdminClient>, syncType: string) {
+  const { data, error } = await admin
+    .from("sync_logs")
+    .insert({
+      source: URINVOLVED_SOURCE,
+      sync_type: syncType,
+      status: "running",
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(error?.message ?? "Could not start sync log.");
+  return data as SyncLogRow;
+}
+
+async function finishSyncLog(
+  admin: ReturnType<typeof createAdminClient>,
+  logId: string,
+  patch: {
+    status: "success" | "failed";
+    events_created: number;
+    events_updated: number;
+    orgs_created: number;
+    orgs_updated: number;
+    error_message?: string | null;
+  },
+) {
+  await admin
+    .from("sync_logs")
+    .update({
+      ...patch,
+      finished_at: new Date().toISOString(),
+    })
+    .eq("id", logId);
+}
+
+export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "api"): Promise<UrinvolvedSyncSummary> {
+  const admin = createAdminClient();
+  const errors: string[] = [];
+  let eventsCreated = 0;
+  let eventsUpdated = 0;
+  let orgsCreated = 0;
+  let orgsUpdated = 0;
+
+  const log = await startSyncLog(admin, syncType);
+  const now = new Date().toISOString();
+  const seenEventIds: string[] = [];
+  const seenOrgIds: string[] = [];
+
+  try {
+    // --- Events (official RSS feed) ---
+    try {
+      const rssXml = await fetchUrinvolvedEventsRss();
+      const parsedEvents = parseUrinvolvedEventsRss(rssXml);
+
+      for (const event of parsedEvents) {
+        seenEventIds.push(event.externalId);
+        const locationMatch = matchCampusLocation(event.locationName);
+        const row = {
+          source: URINVOLVED_SOURCE,
+          external_id: event.externalId,
+          title: event.title.slice(0, 500),
+          description: event.description.slice(0, 5000) || null,
+          organization_name: event.organizationName,
+          location_name: event.locationName,
+          starts_at: event.startsAt,
+          ends_at: event.endsAt,
+          image_url: event.imageUrl,
+          event_url: event.eventUrl,
+          category: event.category,
+          tags: event.tags,
+          latitude: locationMatch?.latitude ?? null,
+          longitude: locationMatch?.longitude ?? null,
+          is_active: true,
+          last_seen_at: now,
+          updated_at: now,
+        };
+
+        const { data: existing } = await admin
+          .from("external_events")
+          .select("id")
+          .eq("external_id", event.externalId)
+          .maybeSingle();
+
+        const { error: upsertError } = await admin.from("external_events").upsert(row, { onConflict: "external_id" });
+        if (upsertError) {
+          errors.push(`Event ${event.externalId}: ${upsertError.message}`);
+          continue;
+        }
+        if (existing) eventsUpdated += 1;
+        else eventsCreated += 1;
+      }
+    } catch (eventError) {
+      errors.push(eventError instanceof Error ? eventError.message : String(eventError));
+    }
+
+    // --- Organizations (public discovery search API) ---
+    try {
+      const orgs = await fetchAllUrinvolvedOrganizations();
+      for (const org of orgs) {
+        if (!org.Id || !org.Name?.trim()) continue;
+        seenOrgIds.push(org.Id);
+        const description =
+          stripHtmlToText(org.Description) || stripHtmlToText(org.Summary) || null;
+        const tags = (org.CategoryNames ?? []).filter(Boolean);
+        const row = {
+          source: URINVOLVED_SOURCE,
+          external_id: org.Id,
+          name: org.Name.trim().slice(0, 200),
+          description: description?.slice(0, 5000) ?? null,
+          logo_url: buildOrganizationLogoUrl(org.ProfilePicture),
+          organization_url: buildOrganizationUrl(org.WebsiteKey, org.Id),
+          category: tags[0] ?? null,
+          tags,
+          is_active: true,
+          last_seen_at: now,
+          updated_at: now,
+        };
+
+        const { data: existing } = await admin
+          .from("external_organizations")
+          .select("id")
+          .eq("external_id", org.Id)
+          .maybeSingle();
+
+        const { error: upsertError } = await admin
+          .from("external_organizations")
+          .upsert(row, { onConflict: "external_id" });
+        if (upsertError) {
+          errors.push(`Org ${org.Id}: ${upsertError.message}`);
+          continue;
+        }
+        if (existing) orgsUpdated += 1;
+        else orgsCreated += 1;
+      }
+    } catch (orgError) {
+      errors.push(orgError instanceof Error ? orgError.message : String(orgError));
+    }
+
+    // Deactivate items missing from this sync (soft-hide, never delete).
+    const { data: activeEventRows } = await admin
+      .from("external_events")
+      .select("external_id")
+      .eq("source", URINVOLVED_SOURCE)
+      .eq("is_active", true);
+    const eventIdsToDeactivate = (activeEventRows ?? [])
+      .map((row) => row.external_id as string)
+      .filter((id) => !seenEventIds.includes(id));
+    if (eventIdsToDeactivate.length > 0) {
+      await admin
+        .from("external_events")
+        .update({ is_active: false, updated_at: now })
+        .in("external_id", eventIdsToDeactivate);
+    }
+
+    const { data: activeOrgRows } = await admin
+      .from("external_organizations")
+      .select("external_id")
+      .eq("source", URINVOLVED_SOURCE)
+      .eq("is_active", true);
+    const orgIdsToDeactivate = (activeOrgRows ?? [])
+      .map((row) => row.external_id as string)
+      .filter((id) => !seenOrgIds.includes(id));
+    if (orgIdsToDeactivate.length > 0) {
+      await admin
+        .from("external_organizations")
+        .update({ is_active: false, updated_at: now })
+        .in("external_id", orgIdsToDeactivate);
+    }
+
+    const success = errors.length === 0;
+    await finishSyncLog(admin, log.id, {
+      status: success ? "success" : "failed",
+      events_created: eventsCreated,
+      events_updated: eventsUpdated,
+      orgs_created: orgsCreated,
+      orgs_updated: orgsUpdated,
+      error_message: errors.length > 0 ? errors.slice(0, 5).join(" | ") : null,
+    });
+
+    return {
+      success,
+      events_created: eventsCreated,
+      events_updated: eventsUpdated,
+      orgs_created: orgsCreated,
+      orgs_updated: orgsUpdated,
+      errors,
+      syncLogId: log.id,
+    };
+  } catch (fatalError) {
+    const message = fatalError instanceof Error ? fatalError.message : String(fatalError);
+    await finishSyncLog(admin, log.id, {
+      status: "failed",
+      events_created: eventsCreated,
+      events_updated: eventsUpdated,
+      orgs_created: orgsCreated,
+      orgs_updated: orgsUpdated,
+      error_message: message,
+    });
+    return {
+      success: false,
+      events_created: eventsCreated,
+      events_updated: eventsUpdated,
+      orgs_created: orgsCreated,
+      orgs_updated: orgsUpdated,
+      errors: [message, ...errors],
+      syncLogId: log.id,
+    };
+  }
+}
+
+export type UrinvolvedSyncStatus = {
+  lastSuccessfulSync: string | null;
+  lastAttemptedSync: string | null;
+  activeEventsCount: number;
+  activeOrganizationsCount: number;
+  lastError: string | null;
+};
+
+export async function getUrinvolvedSyncStatus(): Promise<UrinvolvedSyncStatus> {
+  const admin = createAdminClient();
+  const [{ data: logs }, { count: activeEventsCount }, { count: activeOrganizationsCount }] = await Promise.all([
+    admin
+      .from("sync_logs")
+      .select("status, started_at, finished_at, error_message")
+      .eq("source", URINVOLVED_SOURCE)
+      .order("started_at", { ascending: false })
+      .limit(20),
+    admin
+      .from("external_events")
+      .select("id", { count: "exact", head: true })
+      .eq("source", URINVOLVED_SOURCE)
+      .eq("is_active", true),
+    admin
+      .from("external_organizations")
+      .select("id", { count: "exact", head: true })
+      .eq("source", URINVOLVED_SOURCE)
+      .eq("is_active", true),
+  ]);
+
+  const rows = logs ?? [];
+  const lastAttemptedSync = rows[0]?.started_at ?? null;
+  const lastSuccess = rows.find((row) => row.status === "success");
+  const lastFailed = rows.find((row) => row.status === "failed");
+
+  return {
+    lastSuccessfulSync: lastSuccess?.finished_at ?? lastSuccess?.started_at ?? null,
+    lastAttemptedSync,
+    activeEventsCount: activeEventsCount ?? 0,
+    activeOrganizationsCount: activeOrganizationsCount ?? 0,
+    lastError: lastFailed?.error_message ?? null,
+  };
+}

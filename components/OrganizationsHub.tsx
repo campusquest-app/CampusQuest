@@ -29,6 +29,17 @@ type Organization = {
   upcomingEvents: Array<{ id: string; title: string; startsAt: string; location: string }>;
 };
 
+type ExternalOrganization = {
+  id: string;
+  name: string;
+  description: string;
+  category: string | null;
+  logoUrl: string | null;
+  organizationUrl: string | null;
+  tags: string[];
+  imported: true;
+};
+
 type MyOrgCreationRequest = {
   id: string;
   schoolName: string;
@@ -82,6 +93,8 @@ export function OrganizationsHub({
   personalization?: { schoolName?: string; interests?: string[]; discoveryFocus?: string[] } | null;
 }) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [externalOrganizations, setExternalOrganizations] = useState<ExternalOrganization[]>([]);
+  const [activeExternalOrg, setActiveExternalOrg] = useState<ExternalOrganization | null>(null);
   const [myRequests, setMyRequests] = useState<MyOrgCreationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [requestsLoading, setRequestsLoading] = useState(true);
@@ -118,10 +131,33 @@ export function OrganizationsHub({
       const params = new URLSearchParams();
       if (query.trim()) params.set("query", query.trim());
       if (categoryFilter) params.set("category", categoryFilter);
-      const data = await fetchAuthed<{ organizations: Organization[] }>(
-        `/api/organizations${params.toString() ? `?${params.toString()}` : ""}`,
-      );
-      setOrganizations(data.organizations ?? []);
+      const externalParams = new URLSearchParams();
+      if (query.trim()) externalParams.set("query", query.trim());
+      if (categoryFilter) externalParams.set("category", categoryFilter);
+
+      const [campusResult, externalResult] = await Promise.allSettled([
+        fetchAuthed<{ organizations: Organization[] }>(
+          `/api/organizations${params.toString() ? `?${params.toString()}` : ""}`,
+        ),
+        fetchAuthed<{ organizations: ExternalOrganization[] }>(
+          `/api/external/organizations${externalParams.toString() ? `?${externalParams.toString()}` : ""}`,
+        ),
+      ]);
+
+      if (campusResult.status === "fulfilled") {
+        setOrganizations(campusResult.value.organizations ?? []);
+      } else {
+        setOrganizations([]);
+        setError(
+          campusResult.reason instanceof Error ? campusResult.reason.message : "Could not load organizations.",
+        );
+      }
+
+      if (externalResult.status === "fulfilled") {
+        setExternalOrganizations(externalResult.value.organizations ?? []);
+      } else {
+        setExternalOrganizations([]);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load organizations.");
     } finally {
@@ -234,6 +270,16 @@ export function OrganizationsHub({
     const bMatch = interests.has(b.category.toLowerCase()) ? 0 : 1;
     if (aMatch !== bMatch) return aMatch - bMatch;
     return b.memberCount - a.memberCount;
+  });
+
+  const prioritizedExternalOrganizations = [...externalOrganizations].sort((a, b) => {
+    const interests = new Set((personalization?.interests ?? []).map((value) => value.toLowerCase()));
+    const aCategory = (a.category ?? "").toLowerCase();
+    const bCategory = (b.category ?? "").toLowerCase();
+    const aMatch = interests.has(aCategory) ? 0 : 1;
+    const bMatch = interests.has(bCategory) ? 0 : 1;
+    if (aMatch !== bMatch) return aMatch - bMatch;
+    return a.name.localeCompare(b.name);
   });
 
   function requestStatusBlock(r: MyOrgCreationRequest) {
@@ -517,7 +563,7 @@ export function OrganizationsHub({
           <div className="h-20 rounded-xl bg-white/10 animate-pulse" />
         </div>
       ) : null}
-      {!loading && organizations.length === 0 ? (
+      {!loading && organizations.length === 0 && externalOrganizations.length === 0 ? (
         <p className="text-sm text-white/60">
           {query.trim() || categoryFilter
             ? "No organizations match your search or category."
@@ -604,7 +650,49 @@ export function OrganizationsHub({
             </div>
           </article>
         ))}
+        {prioritizedExternalOrganizations.map((organization) => (
+          <article key={`ext-${organization.id}`} className="card p-4 space-y-2 border border-cyan-400/15">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h4 className="text-white font-semibold">{organization.name}</h4>
+                <p className="text-xs text-white/60 mt-1">
+                  {organization.category ? organization.category : "URI organization"}
+                </p>
+              </div>
+              <span className="text-[10px] text-cyan-200/80 flex-shrink-0">Source: URInvolved</span>
+            </div>
+            {organization.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={organization.logoUrl} alt="" className="h-12 w-12 rounded-lg object-cover border border-white/10" />
+            ) : null}
+            <p className="text-sm text-white/75 line-clamp-3">{organization.description}</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveExternalOrg(organization)}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-white/20 text-white/80 hover:bg-white/10"
+              >
+                View organization
+              </button>
+              {organization.organizationUrl ? (
+                <a
+                  href={organization.organizationUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-cyan-400/35 text-cyan-200 hover:bg-cyan-500/10"
+                >
+                  View on URInvolved
+                </a>
+              ) : null}
+            </div>
+          </article>
+        ))}
       </div>
+
+      <p className="text-[11px] text-white/40 leading-relaxed pt-2">
+        Organization information sourced from URInvolved, URI&apos;s official student involvement platform.
+        CampusQuest helps students discover opportunities and sends them back to URInvolved as the official source.
+      </p>
 
       {activeOrg ? (
         <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/65 p-3">
@@ -644,6 +732,40 @@ export function OrganizationsHub({
                 ))
               )}
             </div>
+          </div>
+        </div>
+      ) : null}
+      {activeExternalOrg ? (
+        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/65 p-3">
+          <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-uri-navy p-5 space-y-3 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between gap-3">
+              <h4 className="text-white text-lg font-semibold">{activeExternalOrg.name}</h4>
+              <button type="button" className="text-white/60 hover:text-white" onClick={() => setActiveExternalOrg(null)}>
+                ✕
+              </button>
+            </div>
+            {activeExternalOrg.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={activeExternalOrg.logoUrl} alt="" className="h-16 w-16 rounded-lg object-cover border border-white/10" />
+            ) : null}
+            <p className="text-sm text-white/75">{activeExternalOrg.description}</p>
+            {activeExternalOrg.category ? (
+              <p className="text-xs text-white/65">{activeExternalOrg.category}</p>
+            ) : null}
+            {activeExternalOrg.tags.length > 0 ? (
+              <p className="text-xs text-white/50">{activeExternalOrg.tags.join(" · ")}</p>
+            ) : null}
+            <p className="text-xs text-cyan-200/80">Source: URInvolved</p>
+            {activeExternalOrg.organizationUrl ? (
+              <a
+                href={activeExternalOrg.organizationUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex px-3 py-2 rounded-lg text-xs font-semibold border border-cyan-400/35 text-cyan-200 hover:bg-cyan-500/10"
+              >
+                View on URInvolved
+              </a>
+            ) : null}
           </div>
         </div>
       ) : null}

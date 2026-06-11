@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { Home, QrCode, User } from "lucide-react";
+import { Home, Map, QrCode, Trophy, User } from "lucide-react";
 
 /** Synced by ResizeObserver on the nav element. */
 export const BOTTOM_NAV_CSS_VAR = "--cq-bottom-nav-h";
@@ -14,7 +14,7 @@ export const CQ_BOTTOM_NAV_CLEARANCE =
 export const CQ_FLOATING_ACTION_BOTTOM =
   "calc(var(--cq-bottom-nav-h, 5.75rem) + env(safe-area-inset-bottom, 0px) + 1.25rem)";
 
-export type AppBottomNavTab = "quad" | "character";
+export type AppBottomNavTab = "quad" | "realm" | "leaderboards" | "character";
 
 export function AppBottomNav({
   activeTab,
@@ -26,6 +26,8 @@ export function AppBottomNav({
   onOpenScanner: () => void;
 }) {
   const homeActive = activeTab === "quad";
+  const mapActive = activeTab === "realm";
+  const leaderboardActive = activeTab === "leaderboards";
   const profileActive = activeTab === "character";
   const navRef = useRef<HTMLElement | null>(null);
 
@@ -66,12 +68,19 @@ export function AppBottomNav({
       }}
       aria-label="Main navigation"
     >
-      <div className="grid w-full grid-cols-3 items-end gap-0 px-3 pb-3 pt-0">
+      <div className="grid w-full grid-cols-5 items-end gap-0 px-2 pb-3 pt-0">
         <NavItem
           label="Quad"
           active={homeActive}
           onClick={() => onSelectTab("quad")}
           icon={<Home className="h-[22px] w-[22px]" strokeWidth={homeActive ? 2.4 : 2} />}
+        />
+
+        <NavItem
+          label="Map"
+          active={mapActive}
+          onClick={() => onSelectTab("realm")}
+          icon={<Map className="h-[22px] w-[22px]" strokeWidth={mapActive ? 2.4 : 2} />}
         />
 
         <div className="flex items-end justify-center">
@@ -85,6 +94,13 @@ export function AppBottomNav({
             <span className="cq-bottom-nav-label mt-0.5 text-[9px] font-bold uppercase tracking-[0.14em]">Scan</span>
           </button>
         </div>
+
+        <NavItem
+          label="Ranks"
+          active={leaderboardActive}
+          onClick={() => onSelectTab("leaderboards")}
+          icon={<Trophy className="h-[22px] w-[22px]" strokeWidth={leaderboardActive ? 2.4 : 2} />}
+        />
 
         <NavItem
           label="Profile"

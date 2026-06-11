@@ -11,19 +11,32 @@ export function RealmPathsLayer() {
       preserveAspectRatio="xMidYMid meet"
       aria-hidden
     >
-      {(Object.entries(REALM_TRACE_PATHS) as [string, string][]).map(([key, d]) => (
-        <path
-          key={key}
-          d={d}
-          fill="none"
-          stroke="rgba(255, 255, 255, 0.28)"
-          strokeWidth={key === "mainSpine" || key === "recToUnion" ? 0.5 : 0.36}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="realm-map-path"
-          data-path={key}
-        />
-      ))}
+      {(Object.entries(REALM_TRACE_PATHS) as [string, string][]).map(([key, d]) => {
+        const major = key === "mainSpine" || key === "recToUnion";
+        return (
+          <g key={key} className="realm-map-path" data-path={key}>
+            {/* Worn road underlay */}
+            <path
+              d={d}
+              fill="none"
+              stroke="rgba(110, 78, 36, 0.4)"
+              strokeWidth={major ? 0.78 : 0.56}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {/* Stone trail dashes */}
+            <path
+              d={d}
+              fill="none"
+              stroke="rgba(244, 222, 168, 0.75)"
+              strokeWidth={major ? 0.3 : 0.22}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="0.7 0.85"
+            />
+          </g>
+        );
+      })}
     </svg>
   );
 }
