@@ -78,7 +78,7 @@ export async function listActiveExternalEvents(filters?: {
 
   return (data ?? [])
     .filter((row) => {
-      if (!filters?.timeframe || filters.timeframe === "all") return true;
+      if (!filters?.timeframe) return true;
       if (!row.starts_at) return false;
       const starts = new Date(row.starts_at);
       if (filters.timeframe === "today") {

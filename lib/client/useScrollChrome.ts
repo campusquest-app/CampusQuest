@@ -18,10 +18,10 @@ function resolveQuadScrollRoot(): ScrollRoot {
 }
 
 function readScrollY(root: ScrollRoot): number {
-  if (root === window) {
-    return window.scrollY || document.documentElement.scrollTop || 0;
+  if (root instanceof HTMLElement) {
+    return root.scrollTop;
   }
-  return root.scrollTop;
+  return window.scrollY || document.documentElement.scrollTop || 0;
 }
 
 function attachScrollListener(root: ScrollRoot, handler: () => void): () => void {

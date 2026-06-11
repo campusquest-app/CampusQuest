@@ -37,7 +37,9 @@ function firstMatch(block: string, pattern: RegExp): string | null {
 
 function allMatches(block: string, pattern: RegExp): string[] {
   const globalPattern = pattern.global ? pattern : new RegExp(pattern.source, `${pattern.flags}g`);
-  return [...block.matchAll(globalPattern)].map((m) => m[1]?.trim()).filter(Boolean) as string[];
+  return Array.from(block.matchAll(globalPattern))
+    .map((m) => m[1]?.trim())
+    .filter(Boolean) as string[];
 }
 
 function parseRfc822Date(value: string | null): string | null {

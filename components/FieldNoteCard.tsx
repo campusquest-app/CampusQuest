@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
-import { Heart, MessageCircle, MoreHorizontal, Share2, ShieldCheck, Swords, Zap } from "lucide-react";
+import { Heart, MessageCircle, MoreHorizontal, Share2, ShieldCheck, Swords, Zap, type LucideIcon } from "lucide-react";
 import type { FieldNote, QuadComment, StatKey } from "@/lib/types";
 import { QUAD_COMMENT_MAX_CHARS } from "@/lib/types";
 import { isPersistedQuadPostId } from "@/lib/quadFieldNote";
@@ -11,8 +11,6 @@ import { removeRemoteQuadPost, replaceRemoteQuadPost } from "@/lib/feedStore";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { CampusQuestNodHeartPop } from "./CampusQuestNodHeartPop";
 import { FieldNoteEditModal } from "./FieldNoteEditModal";
-
-type LucideIcon = ComponentType<{ className?: string; strokeWidth?: number }>;
 
 function ReactionButton({
   active,

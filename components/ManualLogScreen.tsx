@@ -35,6 +35,7 @@ export function ManualLogScreen({
   disabled,
 }: {
   onLog: (activityId: string, options?: LogActivityOptions) => Character | null;
+  onBack?: () => void;
   disabled?: boolean;
 }) {
   const byStat = useMemo(() => groupActivitiesByStat(), []);

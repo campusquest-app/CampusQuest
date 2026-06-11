@@ -27,7 +27,10 @@ export async function getAcceptedFriendUserIds(args: {
   const { userClient, userId } = args;
   const blocked = await getBlockedUserIds(userClient, userId);
   const connections = await listConnections({ userClient, userId });
-  return connections.map((row) => row.userId).filter((id) => !blocked.has(id));
+  return connections
+    .filter((row): row is NonNullable<typeof row> => row != null)
+    .map((row) => row.userId)
+    .filter((id) => !blocked.has(id));
 }
 
 export async function assertCanViewFriendProfile(args: {

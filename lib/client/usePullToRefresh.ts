@@ -7,7 +7,7 @@ export const PTR_MAX_PULL = 108;
 const TOP_SCROLL_TOLERANCE = 2;
 
 function readScrollTop(root: Window | HTMLElement): number {
-  if (root !== window) {
+  if (root instanceof HTMLElement) {
     return root.scrollTop;
   }
   return window.scrollY || document.documentElement.scrollTop || 0;

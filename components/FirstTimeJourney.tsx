@@ -30,7 +30,10 @@ type AppTab =
   | "realm"
   | "mini-games"
   | "achievements"
-  | "quest-board";
+  | "quest-board"
+  | "manual-log"
+  | "progress-hub"
+  | "skills-lore";
 type QuestId = BeginnerClaimStatusResponse["claims"][number]["questKey"];
 
 type BeginnerQuest = {

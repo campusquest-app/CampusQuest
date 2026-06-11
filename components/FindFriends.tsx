@@ -168,6 +168,7 @@ export function FindFriends({
       social: 0,
       focus: 0,
     },
+    addedAt: Date.now(),
   }));
 
   function handleJoinGuild(guildId: string) {

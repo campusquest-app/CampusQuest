@@ -340,7 +340,7 @@ async function fetchNotificationsForUser(args: {
   }
 
   logNotificationInfo("list", { userId, count: data?.length ?? 0 });
-  return (data ?? []) as NotificationRow[];
+  return (data ?? []) as unknown as NotificationRow[];
 }
 
 async function countUnreadNotifications(userClient: SupabaseClientLike, userId: string) {

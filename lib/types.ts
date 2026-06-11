@@ -118,6 +118,7 @@ export interface Character {
   /** Special program flags for rare badges. */
   foundingMember?: boolean;
   betaTester?: boolean;
+  talentPioneer?: boolean;
   /** Multi-step quest chain progress (chainId -> highest completed step index, 0-based). */
   questChainProgress?: Record<string, number>;
   /** Quest Board: manually accepted quest ids. */
