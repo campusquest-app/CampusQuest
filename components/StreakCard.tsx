@@ -62,18 +62,18 @@ export function StreakCard({ character }: { character: Character }) {
           🔥
         </span>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-white text-lg">{days}-day streak</div>
-          <div className="text-xs text-white/50 mt-0.5">
+          <div className="font-semibold text-cq-foreground text-lg">{days}-day streak</div>
+          <div className="text-xs text-cq-muted mt-0.5">
             {hasStreak ? "Keep logging to extend your streak." : "Earn 20+ XP per day to start a streak."}
           </div>
-          <div className="text-[11px] text-uri-keaney/90 font-mono mt-2">
+          <div className="text-[11px] text-uri-keaney font-mono mt-2">
             Today: {todayXp}/{DAILY_MINIMUM_XP} XP toward streak credit
           </div>
           {process.env.NODE_ENV !== "production" && (
-            <div className="mt-1 text-[10px] font-mono text-white/40">streak source: {sourceLabel}</div>
+            <div className="mt-1 text-[10px] font-mono text-slate-400">streak source: {sourceLabel}</div>
           )}
           {atRisk && (
-            <div className="mt-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-100 font-semibold flex items-center gap-2">
+            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800 font-semibold flex items-center gap-2">
               <span aria-hidden>⚠️</span>
               Streak at risk — log an activity with proof before midnight (or use a Streak Freeze drop).
             </div>

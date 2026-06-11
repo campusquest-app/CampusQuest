@@ -16,8 +16,8 @@ export function RealmCampusMomentsCarousel({
 
   if (moments.length === 0) {
     return (
-      <div className="rounded-2xl border border-white/[0.08] bg-black/20 px-4 py-10 text-center">
-        <p className="text-sm leading-relaxed text-white/55">
+      <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-10 text-center">
+        <p className="text-sm leading-relaxed text-slate-500">
           No active Moments here yet. Post a public Field Note with this location to add one for 24 hours.
         </p>
       </div>
@@ -34,12 +34,12 @@ export function RealmCampusMomentsCarousel({
 
   return (
     <div className="space-y-3">
-      <div className="relative overflow-hidden rounded-2xl border border-white/[0.1] bg-cq-card/80 p-3">
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="realm-moments-stack relative mx-auto max-w-sm">
           {moments.slice(index + 1, index + 3).reverse().map((m, i) => (
             <div
               key={m.id}
-              className="realm-moments-stack-card pointer-events-none absolute inset-x-3 rounded-xl border border-white/[0.06] bg-cq-secondary/60"
+              className="realm-moments-stack-card pointer-events-none absolute inset-x-3 rounded-xl border border-slate-200 bg-cq-secondary/60"
               style={{
                 top: `${(i + 1) * 6}px`,
                 transform: `scale(${0.94 - i * 0.03}) translateY(${i * 4}px)`,
@@ -48,7 +48,7 @@ export function RealmCampusMomentsCarousel({
               }}
               aria-hidden
             >
-              <div className="aspect-[4/3] rounded-xl bg-black/30" />
+              <div className="aspect-[4/3] rounded-xl bg-slate-100" />
             </div>
           ))}
 
@@ -59,12 +59,12 @@ export function RealmCampusMomentsCarousel({
               </div>
             ) : (
               <div className="flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-cq-secondary/80 to-black/50 px-6 text-center">
-                <p className="text-sm leading-relaxed text-white/75">{caption}</p>
+                <p className="text-sm leading-relaxed text-slate-600">{caption}</p>
               </div>
             )}
-            <div className="border-t border-white/[0.08] bg-gradient-to-b from-cq-card/95 to-cq-secondary/95 p-3">
+            <div className="border-t border-slate-200 bg-white p-3">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-black/30">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100">
                   <AvatarDisplay
                     avatar={avatarPayloadForDisplay(active.authorAvatar)}
                     size={32}
@@ -72,14 +72,14 @@ export function RealmCampusMomentsCarousel({
                   />
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-white/92">{displayName}</p>
-                  <p className="truncate text-[11px] text-white/45">@{username}</p>
+                  <p className="truncate text-sm font-semibold text-slate-900">{displayName}</p>
+                  <p className="truncate text-[11px] text-slate-500">@{username}</p>
                 </div>
               </div>
               {imageUrl && caption ? (
-                <p className="text-sm leading-relaxed text-white/85">{caption}</p>
+                <p className="text-sm leading-relaxed text-slate-700">{caption}</p>
               ) : null}
-              <p className="mt-2 text-[11px] text-white/40">
+              <p className="mt-2 text-[11px] text-slate-400">
                 {postedAgo}
                 {expiresIn ? ` · ${expiresIn}` : ""}
               </p>
@@ -87,7 +87,7 @@ export function RealmCampusMomentsCarousel({
                 <button
                   type="button"
                   onClick={() => onViewPost(active.postId)}
-                  className="mt-3 w-full rounded-lg border border-cyan-400/25 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/15"
+                  className="mt-3 w-full rounded-lg border border-uri-keaney/30 bg-uri-keaney/10 px-3 py-2 text-xs font-semibold text-uri-keaney hover:bg-uri-keaney/15"
                 >
                   View on Quad
                 </button>
@@ -102,7 +102,7 @@ export function RealmCampusMomentsCarousel({
           type="button"
           disabled={index <= 0}
           onClick={() => setIndex((i) => Math.max(0, i - 1))}
-          className="rounded-xl border border-white/[0.1] px-3 py-2 text-xs font-medium text-white/70 disabled:opacity-35"
+          className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 disabled:opacity-35"
         >
           Prev
         </button>
@@ -114,7 +114,7 @@ export function RealmCampusMomentsCarousel({
               aria-label={`Moment ${i + 1}`}
               onClick={() => setIndex(i)}
               className={`h-1.5 rounded-full transition-all ${
-                i === index ? "w-5 bg-cyan-400" : "w-1.5 bg-white/25"
+                i === index ? "w-5 bg-uri-keaney" : "w-1.5 bg-slate-300"
               }`}
             />
           ))}
@@ -123,7 +123,7 @@ export function RealmCampusMomentsCarousel({
           type="button"
           disabled={index >= moments.length - 1}
           onClick={() => setIndex((i) => Math.min(moments.length - 1, i + 1))}
-          className="rounded-xl border border-white/[0.1] px-3 py-2 text-xs font-medium text-white/70 disabled:opacity-35"
+          className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 disabled:opacity-35"
         >
           Next
         </button>

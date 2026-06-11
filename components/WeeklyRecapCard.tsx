@@ -83,28 +83,28 @@ export function WeeklyRecapCard({ character }: { character: Character }) {
         Weekly recap
       </h3>
       <div className="grid sm:grid-cols-3 gap-3">
-        <div className="rounded-xl bg-white/5 border border-white/10 p-3">
-          <div className="text-white/60 text-xs">XP (7d)</div>
-          <div className="text-white font-bold text-lg font-mono">+{recap.totalXp}</div>
-          <div className="text-white/40 text-xs">{recap.activityCount} logs</div>
+        <div className="rounded-xl bg-cq-secondary border border-cq-border p-3">
+          <div className="text-cq-muted text-xs">XP (7d)</div>
+          <div className="text-uri-keaney font-bold text-lg font-mono">+{recap.totalXp}</div>
+          <div className="text-slate-400 text-xs">{recap.activityCount} logs</div>
         </div>
-        <div className="rounded-xl bg-white/5 border border-white/10 p-3">
-          <div className="text-white/60 text-xs">Top stat (7d)</div>
+        <div className="rounded-xl bg-cq-secondary border border-cq-border p-3">
+          <div className="text-cq-muted text-xs">Top stat (7d)</div>
           {recap.topStat ? (
             <>
-              <div className="text-white font-bold text-lg">
+              <div className="text-cq-foreground font-bold text-lg">
                 {STAT_ICONS[recap.topStat]} {STAT_LABELS[recap.topStat]}
               </div>
-              <div className="text-white/40 text-xs font-mono">+{recap.topStatValue}</div>
+              <div className="text-slate-400 text-xs font-mono">+{recap.topStatValue}</div>
             </>
           ) : (
-            <div className="text-white/40 text-sm">No activity yet</div>
+            <div className="text-slate-400 text-sm">No activity yet</div>
           )}
         </div>
-        <div className="rounded-xl bg-white/5 border border-white/10 p-3">
-          <div className="text-white/60 text-xs">Best streak (7d)</div>
-          <div className="text-white font-bold text-lg">{recap.bestStreak} day{recap.bestStreak === 1 ? "" : "s"}</div>
-          <div className="text-white/40 text-xs">Min {DAILY_MINIMUM_XP} XP/day</div>
+        <div className="rounded-xl bg-cq-secondary border border-cq-border p-3">
+          <div className="text-cq-muted text-xs">Best streak (7d)</div>
+          <div className="text-cq-foreground font-bold text-lg">{recap.bestStreak} day{recap.bestStreak === 1 ? "" : "s"}</div>
+          <div className="text-slate-400 text-xs">Min {DAILY_MINIMUM_XP} XP/day</div>
         </div>
       </div>
     </section>

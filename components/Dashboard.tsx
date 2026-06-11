@@ -31,6 +31,7 @@ import { FindFriends } from "./FindFriends";
 import { Leaderboards } from "./Leaderboards";
 import { MyProfileScreen } from "./MyProfileScreen";
 import { UserProfileScreen } from "./UserProfileScreen";
+import { CharacterProfilePaneToggle } from "./profile/CharacterProfilePaneToggle";
 import { DirectMessageThread } from "./DirectMessageThread";
 import { Inbox, type InboxSubTab } from "./Inbox";
 import { EventsFeed } from "./EventsFeed";
@@ -96,7 +97,7 @@ import type { CampusQuestQrActivityPayloadParsed } from "@/lib/qrCampusQuestActi
 import { TopNav } from "@/components/TopNav";
 import { AppSideDrawer, type AppDrawerDestination } from "@/components/AppSideDrawer";
 import type { SettingsActionId } from "@/components/AppSettingsPanel";
-import { AppBottomNav, CQ_BOTTOM_NAV_CLEARANCE, type AppBottomNavTab } from "@/components/AppBottomNav";
+import { AppBottomNav, type AppBottomNavTab } from "@/components/AppBottomNav";
 import { useScrollChrome } from "@/lib/client/useScrollChrome";
 
 /** Load camera + CQ Scanner bundle only after the player taps CQ Scan (avoid mount/worker on cold start). */
@@ -241,7 +242,7 @@ export function Dashboard() {
         if (!showCampusSlowNotice) {
           return (
             <div
-              className="min-h-[28vh] rounded-2xl border border-white/[0.06] bg-white/[0.02] cq-skeleton-wrap overflow-hidden"
+              className="min-h-[28vh] rounded-2xl border border-white/10 bg-white/5 cq-skeleton-wrap overflow-hidden"
               aria-busy="true"
               aria-label="Loading campus access"
             >
@@ -253,7 +254,7 @@ export function Dashboard() {
             </div>
           );
         }
-        return <p className="text-sm text-white/65 py-10 text-center px-4">Checking campus eligibility…</p>;
+        return <p className="text-sm text-white/60 py-10 text-center px-4">Checking campus eligibility…</p>;
       }
       if (pilotCampusState.status === "error") {
         return (
@@ -1539,6 +1540,8 @@ export function Dashboard() {
     };
   }
 
+  const characterTabFullBleed = tab === "character";
+
   return (
     <>
       <TopNav
@@ -1565,13 +1568,7 @@ export function Dashboard() {
         unreadNotificationCount={unreadNotificationCount}
         musicMuted={musicMuted}
       />
-      <div
-        className={screenShake ? "cq-screen-shake" : undefined}
-        style={{
-          paddingTop: "var(--cq-topnav-h, 56px)",
-          paddingBottom: CQ_BOTTOM_NAV_CLEARANCE,
-        }}
-      >
+      <div className={screenShake ? "cq-screen-shake cq-dashboard-scroll-pad" : "cq-dashboard-scroll-pad"}>
         {character && beginnerJourneyHydration?.welcomeBackReminderEligible ? (
           <div className="px-4">
             <WelcomeBackCommunityReminder characterId={character.id} />
@@ -1860,7 +1857,7 @@ export function Dashboard() {
 
       <div
         key={tab}
-        className={`tab-content-enter space-y-5 sm:space-y-6 ${tab === "quad" ? "w-full" : "px-4"}`}
+        className={`tab-content-enter cq-tab-shell ${tab === "quad" || characterTabFullBleed ? "w-full pb-0" : "space-y-6 sm:space-y-7 px-4 pb-8"}`}
       >
         {tab === "inbox" && character && renderPilotCampusGate(
           <Inbox
@@ -1933,100 +1930,46 @@ export function Dashboard() {
           <SkillsLoreScreen character={character} onRefresh={refresh} />
         )}
 
-        {tab === "character" && (
-          <section
-            className="overflow-hidden rounded-xl border border-white/[0.08] shadow-[0_1px_0_0_rgba(104,171,232,0.12),0_8px_32px_-8px_rgba(0,0,0,0.45)] sm:rounded-2xl"
-            style={{
-              background: "linear-gradient(180deg, rgba(4, 30, 66, 0.98) 0%, rgba(3, 22, 48, 0.96) 100%)",
-            }}
-          >
-            <div
-              className="border-b border-white/[0.08] px-3 py-4 sm:px-5 sm:py-5"
-              style={{
-                background: "linear-gradient(165deg, rgba(104, 171, 232, 0.16) 0%, rgba(4, 30, 66, 0.95) 42%, rgba(4, 30, 66, 0.99) 100%)",
-                boxShadow: "0 1px 0 0 rgba(104, 171, 232, 0.12)",
-              }}
-            >
-              {!friendView && !friendViewLoading ? (
-              <div className="rounded-2xl border border-white/10 bg-black/25 p-1 shadow-inner">
-                <div className="grid grid-cols-2 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setCharacterPane("sheet")}
-                    className={`rounded-xl px-2 py-3 text-center transition-all duration-200 sm:flex sm:items-center sm:justify-center sm:gap-2 sm:py-3 sm:pl-3 sm:pr-4 ${
-                      characterPane === "sheet"
-                        ? "bg-gradient-to-b from-uri-keaney/45 to-uri-keaney/20 text-white shadow-[0_0_24px_rgba(104,171,232,0.2)] ring-1 ring-uri-keaney/50"
-                        : "text-white/55 hover:bg-white/[0.06] hover:text-white/85"
-                    }`}
-                  >
-                    <span className="text-xl leading-none sm:text-lg" aria-hidden>
-                      ⚔️
-                    </span>
-                    <span className="mt-1 block text-xs font-bold sm:mt-0 sm:text-sm">Character</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCharacterPane("profile")}
-                    className={`rounded-xl px-2 py-3 text-center transition-all duration-200 sm:flex sm:items-center sm:justify-center sm:gap-2 sm:py-3 sm:pl-3 sm:pr-4 ${
-                      characterPane === "profile"
-                        ? "bg-gradient-to-b from-uri-keaney/45 to-uri-keaney/20 text-white shadow-[0_0_24px_rgba(104,171,232,0.2)] ring-1 ring-uri-keaney/50"
-                        : "text-white/55 hover:bg-white/[0.06] hover:text-white/85"
-                    }`}
-                  >
-                    <span className="text-xl leading-none sm:text-lg" aria-hidden>
-                      👤
-                    </span>
-                    <span className="mt-1 block text-xs font-bold sm:mt-0 sm:text-sm">Profile</span>
-                  </button>
-                </div>
+        {tab === "character" && character ? (
+          <div className="cq-profile-screen">
+            {!friendView && !friendViewLoading ? (
+              <CharacterProfilePaneToggle value={characterPane} onChange={setCharacterPane} />
+            ) : null}
+            {friendViewLoading ? (
+              <p className="py-16 text-center text-sm text-white/60">Loading friend profile…</p>
+            ) : friendView ? (
+              <UserProfileScreen
+                character={friendView}
+                viewer={character}
+                onBack={() => {
+                  setFriendView(null);
+                  setFriendViewError(null);
+                }}
+              />
+            ) : friendViewError ? (
+              <div className="space-y-3 px-3 py-12 text-center">
+                <p className="text-sm text-red-300">{friendViewError}</p>
+                <button
+                  type="button"
+                  onClick={() => setFriendViewError(null)}
+                  className="text-sm font-medium text-uri-keaney hover:text-uri-keaney/80"
+                >
+                  Dismiss
+                </button>
               </div>
-              ) : null}
-              <p className="mt-3 text-center text-[11px] leading-relaxed text-white/45 sm:text-left sm:text-xs">
-                {friendView
-                  ? `${friendView.name}'s profile`
-                  : characterPane === "sheet"
-                  ? "Avatar, loadout, stats, and achievements."
-                  : "Bio, equipment, stats sheet, Loot Codex, and posts you’ve shared to the Quad."}
-              </p>
-            </div>
-
-            <div className="space-y-4 px-3 py-4 sm:space-y-5 sm:px-5 sm:py-5">
-              {friendViewLoading ? (
-                <p className="py-12 text-center text-sm text-white/55">Loading friend profile…</p>
-              ) : friendView ? (
-                <UserProfileScreen
-                  character={friendView}
-                  viewer={character}
-                  onBack={() => {
-                    setFriendView(null);
-                    setFriendViewError(null);
-                  }}
-                />
-              ) : friendViewError ? (
-                <div className="space-y-3 py-10 text-center">
-                  <p className="text-sm text-amber-200/90">{friendViewError}</p>
-                  <button
-                    type="button"
-                    onClick={() => setFriendViewError(null)}
-                    className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white/75 hover:bg-white/10"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              ) : characterPane === "sheet" ? (
-                <CharacterCard character={character} onRefresh={refresh} />
-              ) : (
-                <MyProfileScreen
-                  character={character}
-                  onLogout={handleLogout}
-                  onRefresh={refresh}
-                  onViewFriend={openFriendView}
-                  moderationAdminAccess={moderationAdminNavVisible(pilotCampusState)}
-                />
-              )}
-            </div>
-          </section>
-        )}
+            ) : characterPane === "profile" ? (
+              <MyProfileScreen
+                character={character}
+                onLogout={handleLogout}
+                onRefresh={refresh}
+                onViewFriend={openFriendView}
+                moderationAdminAccess={moderationAdminNavVisible(pilotCampusState)}
+              />
+            ) : (
+              <CharacterCard character={character} onRefresh={refresh} />
+            )}
+          </div>
+        ) : null}
       </div>
       </div>
 
@@ -2038,8 +1981,7 @@ export function Dashboard() {
             setMusicMuted(next);
             setGameMusicMuted(next);
           }}
-          className={`fixed z-40 h-6 w-6 rounded-full border border-white/10 bg-black/25 text-[10px] text-white/45 backdrop-blur-sm transition hover:text-white/80 ${tab === "quad" ? "left-3" : "right-2"}`}
-          style={{ bottom: CQ_BOTTOM_NAV_CLEARANCE }}
+          className={`cq-bottom-chrome-follower fixed z-40 h-6 w-6 rounded-full border border-white/15 bg-black/30 text-[10px] text-white/50 backdrop-blur-sm transition hover:text-white/85 ${tab === "quad" ? "left-3" : "right-2"}`}
           title={musicMuted ? "Unmute game music" : "Mute game music"}
           aria-label={musicMuted ? "Unmute game music" : "Mute game music"}
           aria-pressed={musicMuted}

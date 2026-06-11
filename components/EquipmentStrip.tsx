@@ -21,8 +21,8 @@ export function EquipmentStrip({
   const buffs = aggregateBuffs(character);
 
   return (
-    <div className="card p-4 border border-uri-gold/25">
-      <h4 className="text-sm font-display font-bold text-uri-gold mb-1 flex items-center gap-2">
+    <div className="cq-character-equipment">
+      <h4 className="mb-1 flex items-center gap-2 font-display text-sm font-bold text-uri-gold">
         <span aria-hidden>🎁</span> Equipment loadout
       </h4>
       <p className="text-[11px] text-white/50 mb-3">

@@ -2,11 +2,9 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
-import type { Character, Guild } from "@/lib/types";
+import type { Character } from "@/lib/types";
 import type { FieldNote } from "@/lib/types";
-import { STAT_KEYS, STAT_LABELS, STAT_ICONS, MAX_STAT, type StatKey } from "@/lib/types";
-import { xpProgressInLevel } from "@/lib/level";
-import { getFeedByAuthorId, mergeRemoteQuadPostsForMutations, verifyFieldNote, assistFieldNote, getCommentsByNoteId, addComment } from "@/lib/feedStore";
+import { getFeedByAuthorId, mergeRemoteQuadPostsForMutations, verifyFieldNote, assistFieldNote, addComment } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
 import { fetchMyQuadPosts } from "@/lib/client/quadPostsClient";
 import {
@@ -16,8 +14,7 @@ import {
   type ConnectionItem,
 } from "@/lib/client/socialConnectionsClient";
 import { subscribeSocialSync, emitSocialSync } from "@/lib/client/socialSync";
-import { getGuildById, leaveGuild } from "@/lib/guildStore";
-import { getUserBosses, replaceLocalCharacter, updateCharacter } from "@/lib/store";
+import { replaceLocalCharacter, updateCharacter } from "@/lib/store";
 import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
 import { LOGOUT_BLOCKED_SAVE_MESSAGE, resetUserSaveSyncAfterHydrate, isServerBackedUserId } from "@/lib/client/gameStateSync";
 import { hydrateUserPersistenceFromServer } from "@/lib/client/hydrateUserPersistence";
@@ -26,14 +23,8 @@ import { PullToRefresh } from "@/components/PullToRefresh";
 import { registerLogoutPrepare } from "@/lib/client/logoutPrepare";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
-import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { AvatarDisplay } from "./AvatarDisplay";
-import { AchievementShowcaseStrip } from "./achievements/AchievementShowcaseStrip";
-import { getEarnedAchievements } from "@/lib/achievementEngine";
-import { RARITY_CSS } from "@/lib/achievementRarityStyles";
-import { FieldNoteCard } from "./FieldNoteCard";
-import { LootCodex } from "./LootCodex";
-import { ViewGuildModal } from "./ViewGuildModal";
+import { ProfileSocialPage } from "./profile/ProfileSocialPage";
 import {
   formatNextChangeDateLabel,
   getNextIdentityChangeEligibleAt,
@@ -41,14 +32,6 @@ import {
   PROFILE_DISPLAY_NAME_COOLDOWN_MS,
   PROFILE_USERNAME_COOLDOWN_MS,
 } from "@/lib/profileIdentityCooldown";
-
-const STAT_FILL: Record<StatKey, string> = {
-  strength: "linear-gradient(90deg, #f59e0b, #fbbf24)",
-  stamina: "linear-gradient(90deg, #0d9488, #2dd4bf)",
-  knowledge: "linear-gradient(90deg, #68ABE8, #93c5fd)",
-  social: "linear-gradient(90deg, #2e7d32, #4ade80)",
-  focus: "linear-gradient(90deg, #5e35b1, #a78bfa)",
-};
 
 const BIO_MAX_LENGTH = 150;
 
@@ -99,21 +82,23 @@ export function MyProfileScreen({
   > | null>(null);
   const [cooldownLoading, setCooldownLoading] = useState(false);
   const [repairPreserveCooldown, setRepairPreserveCooldown] = useState(true);
-  const [showLootCodex, setShowLootCodex] = useState(false);
   const [bioDraft, setBioDraft] = useState(character.bio ?? "");
   const [profileQuadPostsReady, setProfileQuadPostsReady] = useState(false);
   const [apiConnections, setApiConnections] = useState<ConnectionItem[]>([]);
+  const [followingCount, setFollowingCount] = useState(0);
   const [unfriendingId, setUnfriendingId] = useState<string | null>(null);
-  const [listModal, setListModal] = useState<"followers" | "following" | null>(null);
+  const [friendsListOpen, setFriendsListOpen] = useState(false);
 
   const refreshConnections = useCallback(async () => {
     if (!isServerBackedUserId(character.id)) {
       setApiConnections([]);
+      setFollowingCount(0);
       return;
     }
     try {
-      const list = await fetchConnections();
-      setApiConnections(list);
+      const { connections, followingCount: count } = await fetchConnections();
+      setApiConnections(connections);
+      setFollowingCount(count);
     } catch {
       // Keep last good list on transient failures.
     }
@@ -169,8 +154,8 @@ export function MyProfileScreen({
   }, [refreshConnections]);
 
   useEffect(() => {
-    if (listModal) void refreshConnections();
-  }, [listModal, refreshConnections]);
+    if (friendsListOpen) void refreshConnections();
+  }, [friendsListOpen, refreshConnections]);
 
   useEffect(() => {
     const tid = scheduleNonCriticalWork(() => refresh());
@@ -414,402 +399,85 @@ export function MyProfileScreen({
     refresh();
   }
 
-  const followersCount = apiConnections.length;
-  const followingCount = apiConnections.length;
-  const [viewGuild, setViewGuild] = useState<Guild | null>(null);
-  const bosses = getUserBosses();
-  const bossesDefeated =
-    character.bossesDefeatedCount ?? bosses.filter((b) => b.defeated).length;
-  const finalBossesDefeated =
-    character.finalBossesDefeatedCount ?? bosses.filter((b) => b.defeated && b.maxHp > 500).length;
-
-  const { current: xpCurrent, needed: xpNeeded } = xpProgressInLevel(character.totalXP);
-  const xpPct = xpNeeded > 0 ? Math.min(100, (xpCurrent / xpNeeded) * 100) : 0;
-  const recentAchievements = getEarnedAchievements(character)
-    .filter((view) => view.earnedAt)
-    .sort((a, b) => new Date(b.earnedAt!).getTime() - new Date(a.earnedAt!).getTime())
-    .slice(0, 4);
+  const friendsCount = apiConnections.length;
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh}>
-    <div className="space-y-6">
-      {/* Game-style character hero panel */}
-      <div className="character-hero-panel rounded-2xl p-6 sm:p-8 overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-start gap-6 sm:gap-8">
-          <div className="flex justify-center sm:justify-start flex-shrink-0">
-            <div className="relative">
-              <div
-                className="character-avatar-frame w-28 h-28 sm:w-32 sm:h-32 rounded-2xl flex items-center justify-center overflow-hidden p-[3px]"
-                aria-hidden
-              >
-                <div className="w-full h-full rounded-[calc(1rem-2px)] bg-cq-elevated flex items-center justify-center overflow-hidden">
-                  <AvatarDisplay
-                    avatar={character.avatar}
-                    size={128}
-                    className="rounded-xl"
-                    classId={character.classId}
-                    starterWeapon={character.starterWeapon}
-                  />
-                </div>
-              </div>
-              <span
-                className="cq-profile-level-pip absolute -bottom-0.5 -right-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full border-2 border-cq-card px-0.5 text-[10px] font-bold leading-none text-white sm:h-[1.375rem] sm:min-w-[1.375rem] sm:text-[11px]"
-                aria-hidden
-              >
-                {character.level}
-              </span>
-            </div>
-          </div>
-          <div className="flex-1 text-center sm:text-left min-w-0">
-            <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 sm:justify-start">
-              <h2 className="font-display font-bold text-2xl sm:text-3xl text-white tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
-                {character.name}
-              </h2>
-              <span className="rounded-md border border-cyan-400/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold tracking-[0.14em] text-cyan-200 sm:text-[11px]">
-                LEVEL {character.level}
-              </span>
-            </div>
-            {(character.guildIds ?? []).length > 0 && (
-              <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5 sm:justify-start">
-                {(character.guildIds ?? []).map((gid) => {
-                  const g = getGuildById(gid);
-                  return g ? (
-                    <button
-                      key={gid}
-                      type="button"
-                      onClick={() => setViewGuild(g)}
-                      className="inline-flex items-center gap-1 text-[11px] font-medium text-white/52 transition-colors hover:text-white/72"
-                    >
-                      <span className="truncate max-w-[14rem] sm:max-w-[18rem]">
-                        {g.crest} {g.name}
-                      </span>
-                    </button>
-                  ) : null;
-                })}
-              </div>
-            )}
-            {character.classId && (getClassTitle(character.classId) || getClassRealm(character.classId)) && (
-              <p className="mt-1.5 text-uri-gold/85 text-sm font-medium">
-                {getClassTitle(character.classId)}
-                {getClassRealm(character.classId) && (
-                  <span className="text-white/50 font-normal"> · {getClassRealm(character.classId)}</span>
-                )}
-              </p>
-            )}
-            <p className="text-white/35 text-sm mt-0.5">@{character.username}</p>
-            <AchievementShowcaseStrip character={character} />
-            <div className="mt-4">
-              <div className="mb-1.5 flex justify-between gap-2 text-[11px] font-medium tabular-nums text-white/42">
-                <span>{character.totalXP.toLocaleString()} XP</span>
-                <span>Next level: {(xpNeeded - xpCurrent).toLocaleString()} XP</span>
-              </div>
-              <div className="xp-bar-track h-3 rounded-full overflow-hidden">
-                <div
-                  className="xp-bar-fill h-full rounded-full transition-all duration-500 ease-out"
-                  style={{ width: `${xpPct}%` }}
-                />
-              </div>
-              <p className="mt-1 text-[10px] tabular-nums text-white/35">
-                {xpCurrent.toLocaleString()} / {xpNeeded.toLocaleString()} XP this level
-              </p>
-            </div>
-            {character.streakDays >= 3 ? (
-              <p className="mt-2.5 text-[11px] font-semibold text-amber-200/90">
-                🔥 {character.streakDays}-Day Streak
-              </p>
-            ) : null}
-            {character.bio && (
-              <p className="text-sm text-white/85 mt-3 break-words leading-relaxed">{character.bio}</p>
-            )}
-            <div className="flex justify-center sm:justify-start gap-4 mt-5 flex-wrap">
-              <div className="game-stat-pill rounded-xl px-4 py-2.5 min-w-[4rem] text-center">
-                {profileQuadPostsReady ? (
-                  <span className="font-bold text-white text-lg block leading-tight">{posts.length}</span>
-                ) : (
-                  <span className="cq-skeleton block h-7 w-10 rounded-md mx-auto mb-0.5" aria-hidden />
-                )}
-                <span className="text-white/60 text-xs uppercase tracking-wider">Posts</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setListModal("followers")}
-                className="game-stat-pill rounded-xl px-4 py-2.5 min-w-[4rem] text-center hover:border-uri-keaney/40 hover:shadow-[0_0_20px_rgba(104,171,232,0.1)] transition-all focus:outline-none focus:ring-2 focus:ring-uri-keaney/50 focus:ring-offset-2 focus:ring-offset-uri-navy"
-              >
-                <span className="font-bold text-white text-lg block leading-tight">{followersCount}</span>
-                <span className="text-white/60 text-xs uppercase tracking-wider">Followers</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setListModal("following")}
-                className="game-stat-pill rounded-xl px-4 py-2.5 min-w-[4rem] text-center hover:border-uri-keaney/40 hover:shadow-[0_0_20px_rgba(104,171,232,0.1)] transition-all focus:outline-none focus:ring-2 focus:ring-uri-keaney/50 focus:ring-offset-2 focus:ring-offset-uri-navy"
-              >
-                <span className="font-bold text-white text-lg block leading-tight">{followingCount}</span>
-                <span className="text-white/60 text-xs uppercase tracking-wider">Following</span>
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-3 mt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIdentityNameDraft(character.name);
-                    setIdentityUsernameDraft(character.username);
-                    setIdentityError(null);
-                    setRepairPreserveCooldown(true);
-                    setCooldownSnap(null);
-                    setShowEditIdentity(true);
-                  }}
-                  className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/90 hover:text-white bg-white/10 hover:bg-white/15 border border-white/20 transition-colors"
-                >
-                  Edit name & username
-                </button>
-              <button
-                type="button"
-                onClick={() => { setBioDraft(character.bio ?? ""); setShowEditBio(true); }}
-                className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/90 hover:text-white bg-white/10 hover:bg-white/15 border border-white/20 transition-colors"
-              >
-                Edit bio
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowLootCodex(true)}
-                className="px-4 py-2.5 rounded-xl text-sm font-medium text-uri-keaney/95 hover:text-uri-keaney bg-uri-keaney/15 hover:bg-uri-keaney/25 border border-uri-keaney/30 transition-colors"
-              >
-                Loot Codex
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <ProfileSocialPage
+        character={character}
+        viewer={character}
+        isOwner
+        posts={posts}
+        postsLoading={!profileQuadPostsReady}
+        friendsCount={friendsCount}
+        followingCount={followingCount}
+        onEditBio={() => {
+          setBioDraft(character.bio ?? "");
+          setShowEditBio(true);
+        }}
+        onEditIdentity={() => {
+          setIdentityNameDraft(character.name);
+          setIdentityUsernameDraft(character.username);
+          setIdentityError(null);
+          setRepairPreserveCooldown(true);
+          setCooldownSnap(null);
+          setShowEditIdentity(true);
+        }}
+        onLogout={
+          onLogout
+            ? () => {
+                setLogoutSaveError(null);
+                setShowLogoutConfirm(true);
+              }
+            : undefined
+        }
+        onFriendsPress={() => setFriendsListOpen(true)}
+        onNod={handleNod}
+        onHype={handleHype}
+        onVerify={handleVerify}
+        onAssist={handleAssist}
+        onAddComment={handleAddComment}
+        onPostUpdated={(note) => {
+          setPosts((prev) => prev.map((p) => (p.id === note.id ? note : p)));
+          syncPostsFromCache();
+        }}
+        onPostDeleted={(postId) => {
+          setPosts((prev) => prev.filter((p) => p.id !== postId));
+          syncPostsFromCache();
+        }}
+        pendingReactions={pendingReactions}
+        reactionNotice={reactionNotice}
+      />
 
-      {omitCharacterStatPanel && (
-        <div className="character-hero-panel rounded-2xl p-4 sm:p-5 overflow-hidden flex flex-wrap gap-3">
-          <div className="game-stat-pill-gold rounded-xl px-4 py-3 flex flex-1 min-w-[8rem] items-center gap-3">
-            <span className="text-2xl flex-shrink-0" aria-hidden>🐉</span>
-            <div className="min-w-0">
-              <span className="text-uri-gold/80 text-xs uppercase block">Bosses defeated</span>
-              <span className="font-bold text-uri-gold text-lg block">{bossesDefeated}</span>
-            </div>
-          </div>
-          <div className="game-stat-pill-final rounded-xl px-4 py-3 flex flex-1 min-w-[8rem] items-center gap-3">
-            <span className="text-2xl flex-shrink-0" aria-hidden>👑</span>
-            <div className="min-w-0">
-              <span className="text-uri-gold/90 text-xs uppercase font-semibold block">Final bosses</span>
-              <span className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-uri-gold via-amber-200 to-uri-gold block">{finalBossesDefeated}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!omitCharacterStatPanel && (
-      <div className="character-hero-panel rounded-2xl p-4 sm:p-6 overflow-hidden">
-        <div className="flex items-center gap-2 mb-4 sm:mb-5">
-          <span className="text-lg sm:text-xl" aria-hidden>⚔️</span>
-          <h3 className="font-display font-bold text-white text-xs sm:text-sm uppercase tracking-widest">
-            Character stats
-          </h3>
-          <div className="flex-1 h-px bg-gradient-to-r from-uri-keaney/40 to-transparent" />
-        </div>
-        {/* Mobile: 2x2 grid for breathing room. Desktop: one row. */}
-        <div className="grid grid-cols-2 sm:flex sm:flex-nowrap gap-3 sm:gap-3 mb-5 sm:mb-6">
-          <div className="game-stat-pill rounded-xl px-4 py-3 sm:py-2.5 flex flex-1 min-w-0 items-center gap-3 sm:gap-2">
-            <span className="text-2xl sm:text-xl flex-shrink-0" aria-hidden>📊</span>
-            <div className="min-w-0">
-              <span className="text-white/60 text-xs uppercase block">Level</span>
-              <span className="font-bold text-uri-keaney text-lg sm:text-base block">{character.level}</span>
-            </div>
-          </div>
-          <div className="game-stat-pill rounded-xl px-4 py-3 sm:py-2.5 flex flex-1 min-w-0 items-center gap-3 sm:gap-2">
-            <span className="text-2xl sm:text-xl flex-shrink-0" aria-hidden>✨</span>
-            <div className="min-w-0">
-              <span className="text-white/60 text-xs uppercase block">Total XP</span>
-              <span className="font-bold text-white text-lg sm:text-base font-mono block">{character.totalXP}</span>
-            </div>
-          </div>
-          <div className="game-stat-pill-gold rounded-xl px-4 py-3 sm:py-2.5 flex flex-1 min-w-0 items-center gap-3 sm:gap-2">
-            <span className="text-2xl sm:text-xl flex-shrink-0" aria-hidden>🐉</span>
-            <div className="min-w-0">
-              <span className="text-uri-gold/80 text-xs uppercase block">Bosses defeated</span>
-              <span className="font-bold text-uri-gold text-lg sm:text-base block">{bossesDefeated}</span>
-            </div>
-          </div>
-          <div className="game-stat-pill-final rounded-xl px-4 py-3 sm:py-2.5 flex flex-1 min-w-0 items-center gap-3 sm:gap-2">
-            <span className="text-2xl sm:text-xl flex-shrink-0" aria-hidden>👑</span>
-            <div className="min-w-0">
-              <span className="text-uri-gold/90 text-xs uppercase font-semibold block">Final bosses</span>
-              <span className="font-bold text-lg sm:text-base bg-clip-text text-transparent bg-gradient-to-r from-uri-gold via-amber-200 to-uri-gold block">{finalBossesDefeated}</span>
-            </div>
-          </div>
-        </div>
-        {/* Mobile: stacked (label + value on top, bar full width below). Desktop: single row. */}
-        <div className="space-y-4 sm:space-y-3">
-          {STAT_KEYS.map((key: StatKey) => {
-            const value = character.stats[key] ?? 0;
-            const pct = Math.min(100, (value / MAX_STAT) * 100);
-            const atMax = value >= MAX_STAT;
-            const prestigeCount = character.statPrestige?.[key] ?? 0;
-            const valueEl = (
-              <span className={`font-mono text-sm font-semibold ${atMax ? "text-uri-gold" : "text-white/95"}`}>
-                {value}{atMax ? " ★" : ""}
-              </span>
-            );
-            return (
-              <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3">
-                <div className="flex items-center justify-between sm:justify-start sm:w-32 flex-shrink-0">
-                  <span className="flex items-center gap-2 text-white/90 text-sm">
-                    <span className="text-lg w-6 flex-shrink-0" title={STAT_LABELS[key]}>
-                      {STAT_ICONS[key]}
-                    </span>
-                    {STAT_LABELS[key]}
-                    {prestigeCount > 0 && (
-                      <span className="text-uri-gold/90 font-mono text-xs">×{prestigeCount}</span>
-                    )}
-                  </span>
-                  <span className="sm:hidden">{valueEl}</span>
-                </div>
-                <div className="stat-bar-game w-full sm:flex-1 h-4 rounded-full overflow-hidden min-w-0">
-                  <div
-                    className="stat-fill-game rounded-full min-w-0"
-                    style={{
-                      width: `${pct}%`,
-                      minWidth: pct > 0 ? "4px" : 0,
-                      background: atMax
-                        ? "linear-gradient(90deg, #c5a028, #fbbf24)"
-                        : STAT_FILL[key],
-                      boxShadow: atMax ? "0 0 10px rgba(197,165,40,0.4), inset 0 1px 0 rgba(255,255,255,0.2)" : undefined,
-                    }}
-                  />
-                </div>
-                <span className="hidden sm:block w-10 text-right flex-shrink-0">{valueEl}</span>
-              </div>
-            );
-          })}
-        </div>
-        {recentAchievements.length > 0 ? (
-          <div className="mt-6 border-t border-white/10 pt-5">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-white/45 mb-2">Recent achievements</p>
-            <ul className="space-y-2">
-              {recentAchievements.map(({ def, earnedAt }) => {
-                const style = RARITY_CSS[def.rarity];
-                return (
-                  <li
-                    key={def.id}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2"
-                  >
-                    <span className="inline-flex items-center gap-2 min-w-0">
-                      <span aria-hidden>{def.icon}</span>
-                      <span className={`text-sm font-medium truncate ${style.text}`}>{def.name}</span>
-                    </span>
-                    {earnedAt ? (
-                      <span className="text-[10px] text-white/35 flex-shrink-0 tabular-nums">
-                        {new Date(earnedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                      </span>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ) : null}
-      </div>
-      )}
-
-      {/* Log out */}
-      {onLogout && (
-        <div className="card p-4">
-          <button
-            type="button"
-            onClick={() => {
-              setLogoutSaveError(null);
-              setShowLogoutConfirm(true);
-            }}
-            className="w-full py-3 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 border border-white/10 transition-colors"
-          >
-            Log out
-          </button>
-        </div>
-      )}
-
-      {/* All posts to the Quad */}
-      <div>
-        <div className="flex items-center gap-2 mb-3 px-1">
-          <span className="text-lg" aria-hidden>📜</span>
-          <h3 className="font-display font-semibold text-white text-sm uppercase tracking-wider">
-            Posts to the Quad
-          </h3>
-        </div>
-        {!profileQuadPostsReady ? (
-          <div className="card cq-skeleton-wrap p-8 space-y-3" aria-busy="true" aria-label="Loading posts">
-            <div className="cq-skeleton h-4 rounded w-2/3 max-w-xs" />
-            <div className="cq-skeleton h-24 rounded-xl w-full" />
-          </div>
-        ) : posts.length === 0 ? (
-          <div className="card p-8 text-center">
-            <p className="text-white/60 text-sm">No posts yet. Share something on The Quad!</p>
-          </div>
-        ) : (
-          <div className="card divide-y divide-white/10">
-            {reactionNotice ? (
-              <p className="cq-quad-reaction-notice border-b border-amber-400/20 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-100/90">
-                {reactionNotice}
-              </p>
-            ) : null}
-            {posts.map((note) => (
-              <FieldNoteCard
-                key={note.id}
-                note={note}
-                currentUserId={character.id}
-                comments={getCommentsByNoteId(note.id)}
-                onNod={handleNod}
-                onHype={handleHype}
-                onVerify={handleVerify}
-                onAssist={handleAssist}
-                onAddComment={handleAddComment}
-                likePending={pendingReactions.has(note.id)}
-                currentUser={{
-                  id: character.id,
-                  name: character.name,
-                  username: character.username,
-                  avatar: character.avatar,
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {listModal && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={listModal === "followers" ? "Followers list" : "Following list"} onClick={(e) => e.target === e.currentTarget && setListModal(null)}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setListModal(null)} aria-hidden />
-          <div className="relative z-10 w-full max-w-[22rem] max-h-[85vh] overflow-hidden flex flex-col rounded-2xl border border-white/[0.08] bg-cq-elevated shadow-xl shadow-black/40">
-            <div className="flex items-center justify-between p-4 border-b border-white/10 flex-shrink-0">
-              <h3 className="font-display font-semibold text-white">
-                {listModal === "followers" ? "Followers" : "Following"}
-              </h3>
-              <button type="button" onClick={() => setListModal(null)} className="p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10" aria-label="Close">✕</button>
+      {friendsListOpen && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Friends list" onClick={(e) => e.target === e.currentTarget && setFriendsListOpen(false)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setFriendsListOpen(false)} aria-hidden />
+          <div className="relative z-10 w-full max-w-[22rem] max-h-[85vh] overflow-hidden flex flex-col rounded-2xl border border-cq-border bg-cq-card shadow-xl shadow-black/40">
+            <div className="flex items-center justify-between p-4 border-b border-cq-border flex-shrink-0">
+              <h3 className="font-display font-semibold text-cq-foreground">Friends</h3>
+              <button type="button" onClick={() => setFriendsListOpen(false)} className="p-2 rounded-xl text-cq-muted hover:text-cq-foreground hover:bg-cq-elevated" aria-label="Close">✕</button>
             </div>
             <ul className="overflow-y-auto p-3 space-y-2 flex-1 min-h-0">
               {apiConnections.length === 0 ? (
-                <li className="text-sm text-white/50 py-4 text-center">
-                  {listModal === "followers" ? "No followers yet." : "Not following anyone yet."}
-                </li>
+                <li className="text-sm text-cq-muted py-4 text-center">No friends yet. Connect with students on campus!</li>
               ) : (
                 apiConnections.map((f) => {
                   const avatar = avatarFromConnectionProfile(f);
                   return (
-                    <li key={f.userId} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
+                    <li key={f.userId} className="flex items-center gap-3 p-3 rounded-xl bg-cq-elevated border border-cq-border">
                       <button
                         type="button"
                         onClick={() => {
-                          setListModal(null);
+                          setFriendsListOpen(false);
                           onViewFriend?.(f.userId);
                         }}
                         className="flex items-center gap-3 min-w-0 flex-1 text-left"
                       >
-                        <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center overflow-hidden flex-shrink-0 border border-uri-keaney/30">
+                        <div className="w-10 h-10 rounded-full bg-cq-elevated flex items-center justify-center overflow-hidden flex-shrink-0 border border-uri-keaney/30">
                           <AvatarDisplay avatar={avatar} size={40} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium text-white truncate">{f.displayName}</p>
+                          <p className="font-medium text-cq-foreground truncate">{f.displayName}</p>
                           <p className="text-xs text-uri-keaney/90 truncate">@{f.username}</p>
                         </div>
                       </button>
@@ -817,32 +485,30 @@ export function MyProfileScreen({
                         <button
                           type="button"
                           onClick={() => {
-                            setListModal(null);
+                            setFriendsListOpen(false);
                             onViewFriend?.(f.userId);
                           }}
                           className="px-3 py-1.5 rounded-lg text-xs font-medium text-uri-keaney border border-uri-keaney/40 hover:bg-uri-keaney/10"
                         >
-                          View Profile
+                          View
                         </button>
-                        {listModal === "following" ? (
-                          <button
-                            type="button"
-                            disabled={unfriendingId === f.connectionId}
-                            onClick={async () => {
-                              setUnfriendingId(f.connectionId);
-                              try {
-                                await removeConnectionApi(f.connectionId);
-                                emitSocialSync({ source: "friends" });
-                                await refreshConnections();
-                              } finally {
-                                setUnfriendingId(null);
-                              }
-                            }}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium text-amber-400/90 border border-amber-400/40 hover:bg-amber-400/10 disabled:opacity-50"
-                          >
-                            {unfriendingId === f.connectionId ? "…" : "Unfollow"}
-                          </button>
-                        ) : null}
+                        <button
+                          type="button"
+                          disabled={unfriendingId === f.connectionId}
+                          onClick={async () => {
+                            setUnfriendingId(f.connectionId);
+                            try {
+                              await removeConnectionApi(f.connectionId);
+                              emitSocialSync({ source: "friends" });
+                              await refreshConnections();
+                            } finally {
+                              setUnfriendingId(null);
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-amber-300 border border-amber-400/40 hover:bg-amber-500/10 disabled:opacity-50"
+                        >
+                          {unfriendingId === f.connectionId ? "…" : "Remove"}
+                        </button>
                       </div>
                     </li>
                   );
@@ -861,37 +527,37 @@ export function MyProfileScreen({
             onClick={() => !identitySaving && setShowEditIdentity(false)}
             aria-hidden
           />
-          <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/[0.08] bg-cq-elevated shadow-xl shadow-black/40 p-5">
-            <h2 id="edit-identity-title" className="font-display font-semibold text-lg text-white mb-1">
+          <div className="relative z-10 w-full max-w-md rounded-2xl border border-cq-border bg-cq-card shadow-xl shadow-black/40 p-5">
+            <h2 id="edit-identity-title" className="font-display font-semibold text-lg text-cq-foreground mb-1">
               Edit name & username
             </h2>
-            <p className="text-xs text-white/50 mb-3">
+            <p className="text-xs text-cq-muted mb-3">
               {moderationAdminAccess
                 ? "Admin: updates this profile using the same rules as student signup."
                 : "This is how your name and handle appear across campus."}
             </p>
             {useWeeklyBudget && weeklyBudget ? (
               <>
-                <p className="text-xs text-white/45 mb-1">
+                <p className="text-xs text-cq-muted mb-1">
                   Rolling 7 days: up to {weeklyBudget.max_per_week} display name changes and {weeklyBudget.max_per_week}{" "}
                   username changes (separate limits).
                 </p>
-                <p className="text-xs text-white/45 mb-4">
+                <p className="text-xs text-cq-muted mb-4">
                   This window: {weeklyBudget.display_used}/{weeklyBudget.max_per_week} display ·{" "}
                   {weeklyBudget.username_used}/{weeklyBudget.max_per_week} username.
                 </p>
               </>
             ) : (
               <>
-                <p className="text-xs text-white/45 mb-1">Display name can be changed once every 7 days.</p>
-                <p className="text-xs text-white/45 mb-4">Username can be changed once every 30 days.</p>
+                <p className="text-xs text-cq-muted mb-1">Display name can be changed once every 7 days.</p>
+                <p className="text-xs text-cq-muted mb-4">Username can be changed once every 30 days.</p>
               </>
             )}
             {cooldownLoading ? (
-              <p className="text-[11px] text-white/45 mb-3">Checking change limits…</p>
+              <p className="text-[11px] text-cq-muted mb-3">Checking change limits…</p>
             ) : null}
 
-            <label htmlFor="edit-identity-name" className="block text-[11px] font-medium text-white/55 mb-1">
+            <label htmlFor="edit-identity-name" className="block text-[11px] font-medium text-cq-muted mb-1">
               Display name
             </label>
             <input
@@ -902,7 +568,7 @@ export function MyProfileScreen({
                 setIdentityNameDraft(e.target.value.slice(0, DISPLAY_NAME_MAX));
                 setIdentityError(null);
               }}
-              className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 mb-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-3 py-2.5 rounded-xl bg-cq-elevated border border-cq-border text-cq-foreground text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 mb-1 disabled:opacity-50 disabled:cursor-not-allowed"
               autoComplete="name"
             />
             {displayNameLocked && useWeeklyBudget && weeklyBudget && !cooldownLoading ? (
@@ -917,7 +583,7 @@ export function MyProfileScreen({
               <div className="mb-3" />
             )}
 
-            <label htmlFor="edit-identity-username" className="block text-[11px] font-medium text-white/55 mb-1">
+            <label htmlFor="edit-identity-username" className="block text-[11px] font-medium text-cq-muted mb-1">
               Username
             </label>
             <input
@@ -928,7 +594,7 @@ export function MyProfileScreen({
                 setIdentityUsernameDraft(toUsername(e.target.value));
                 setIdentityError(null);
               }}
-              className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-3 py-2.5 rounded-xl bg-cq-elevated border border-cq-border text-cq-foreground text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 disabled:opacity-50 disabled:cursor-not-allowed"
               autoComplete="username"
               spellCheck={false}
             />
@@ -941,16 +607,16 @@ export function MyProfileScreen({
                 You can change this again on {formatNextChangeDateLabel(nextUsernameEligible)}.
               </p>
             ) : null}
-            <p className="text-xs text-white/45 mt-1.5">
+            <p className="text-xs text-cq-muted mt-1.5">
               You’ll appear as @{identityUsernameNormalized || "username"} · 3–{USERNAME_MAX} chars, a–z, 0–9, _
             </p>
             {moderationAdminAccess ? (
-              <label className="flex items-start gap-2 mt-4 text-xs text-white/65 cursor-pointer">
+              <label className="flex items-start gap-2 mt-4 text-xs text-cq-muted cursor-pointer">
                 <input
                   type="checkbox"
                   checked={repairPreserveCooldown}
                   onChange={(e) => setRepairPreserveCooldown(e.target.checked)}
-                  className="mt-0.5 rounded border-white/30"
+                  className="mt-0.5 rounded border-slate-300"
                 />
                 <span>
                   Preserve name cooldown timestamps (moderator repairs). Uncheck when this should count as your normal rename and start/update the timer.
@@ -968,7 +634,7 @@ export function MyProfileScreen({
               </p>
             ) : null}
             {identityError ? (
-              <p className="text-xs text-rose-200 mt-2" role="alert">
+              <p className="text-xs text-red-300 mt-2" role="alert">
                 {identityError}
               </p>
             ) : null}
@@ -977,7 +643,7 @@ export function MyProfileScreen({
                 type="button"
                 disabled={identitySaving}
                 onClick={() => setShowEditIdentity(false)}
-                className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/80 hover:text-white bg-white/10 hover:bg-white/15 border border-white/[0.08] transition-colors disabled:opacity-50"
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-cq-muted hover:text-cq-foreground bg-cq-elevated hover:bg-cq-elevated border border-cq-border transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -1008,8 +674,8 @@ export function MyProfileScreen({
             onClick={() => setShowEditBio(false)}
             aria-hidden
           />
-          <div className="relative z-10 w-full max-w-[20rem] rounded-2xl border border-white/[0.08] bg-cq-elevated shadow-xl shadow-black/40 p-5">
-            <h2 id="edit-bio-title" className="font-display font-semibold text-lg text-white mb-3">
+          <div className="relative z-10 w-full max-w-[20rem] rounded-2xl border border-cq-border bg-cq-card shadow-xl shadow-black/40 p-5">
+            <h2 id="edit-bio-title" className="font-display font-semibold text-lg text-cq-foreground mb-3">
               Edit bio
             </h2>
             <textarea
@@ -1017,14 +683,14 @@ export function MyProfileScreen({
               onChange={(e) => setBioDraft(e.target.value.slice(0, BIO_MAX_LENGTH))}
               placeholder="A short line about you..."
               rows={3}
-              className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/[0.08] text-white placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 resize-none"
+              className="w-full px-3 py-2.5 rounded-xl bg-cq-elevated border border-cq-border text-cq-foreground placeholder:text-cq-subtle text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 resize-none"
             />
-            <p className="text-xs text-white/50 mt-1">{bioDraft.length}/{BIO_MAX_LENGTH}</p>
+            <p className="text-xs text-cq-muted mt-1">{bioDraft.length}/{BIO_MAX_LENGTH}</p>
             <div className="flex gap-3 justify-end mt-4">
               <button
                 type="button"
                 onClick={() => setShowEditBio(false)}
-                className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/80 hover:text-white bg-white/10 hover:bg-white/15 border border-white/[0.08] transition-colors"
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-cq-muted hover:text-cq-foreground bg-cq-elevated border border-cq-border transition-colors"
               >
                 Cancel
               </button>
@@ -1045,32 +711,6 @@ export function MyProfileScreen({
         document.body
       )}
 
-      {showLootCodex && typeof document !== "undefined" && createPortal(
-        <LootCodex
-          characterId={character.id}
-          equippedCosmetics={character.equippedCosmetics}
-          onClose={() => setShowLootCodex(false)}
-        />,
-        document.body
-      )}
-
-      {viewGuild && (
-        <ViewGuildModal
-          guild={viewGuild}
-          currentUserId={character.id}
-          onLeave={(guildId) => {
-            leaveGuild(character.id, guildId);
-            setViewGuild(null);
-            onRefresh?.();
-          }}
-          onClose={() => setViewGuild(null)}
-          onUpdated={() => {
-            onRefresh?.();
-            setViewGuild((g) => (g ? getGuildById(g.id) ?? g : null));
-          }}
-        />
-      )}
-
       {showLogoutConfirm && onLogout && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="logout-dialog-title">
           <div
@@ -1083,15 +723,15 @@ export function MyProfileScreen({
             }}
             aria-hidden
           />
-          <div className="relative z-10 w-full max-w-[20rem] rounded-2xl border border-white/[0.08] bg-cq-elevated shadow-xl shadow-black/40 p-6">
-            <h2 id="logout-dialog-title" className="font-display font-semibold text-lg text-white mb-2">
+          <div className="relative z-10 w-full max-w-[20rem] rounded-2xl border border-cq-border bg-cq-card shadow-xl shadow-black/40 p-6">
+            <h2 id="logout-dialog-title" className="font-display font-semibold text-lg text-cq-foreground mb-2">
               Leave CampusQuest?
             </h2>
-            <p className="text-sm text-white/70 mb-4">
+            <p className="text-sm text-cq-muted mb-4">
               The Quad shall wait for your return.
             </p>
             {logoutSaveError ? (
-              <p className="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/25 rounded-lg px-3 py-2 mb-4">
+              <p className="text-xs text-amber-200 bg-amber-500/15 border border-amber-400/30 rounded-lg px-3 py-2 mb-4">
                 {logoutSaveError}
               </p>
             ) : null}
@@ -1103,7 +743,7 @@ export function MyProfileScreen({
                   setShowLogoutConfirm(false);
                   setLogoutSaveError(null);
                 }}
-                className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/80 hover:text-white bg-white/10 hover:bg-white/15 border border-white/[0.08] transition-colors disabled:opacity-45"
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-cq-muted hover:text-cq-foreground bg-cq-elevated border border-cq-border transition-colors disabled:opacity-45"
               >
                 Cancel
               </button>
@@ -1134,7 +774,6 @@ export function MyProfileScreen({
         </div>,
         document.body
       )}
-    </div>
     </PullToRefresh>
   );
 }

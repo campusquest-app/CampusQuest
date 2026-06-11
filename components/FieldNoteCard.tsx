@@ -50,7 +50,7 @@ function ReactionButton({
         aria-busy={pending}
         disabled={disabled || pending}
         className={`cq-feed-reaction group inline-flex min-w-[2.25rem] items-center justify-center gap-1 rounded-lg px-1 py-1 transition-colors duration-150 active:scale-95 touch-manipulation disabled:cursor-not-allowed disabled:opacity-50 ${
-          active ? (fillWhenActive ? "text-violet-300" : "text-cyan-400") : "text-white/42 hover:text-white/68"
+          active ? (fillWhenActive ? "text-violet-300" : "text-cyan-400") : "text-white/50 hover:text-white/70"
         } ${pulseClass ?? ""}`}
       >
         <Icon
@@ -60,7 +60,7 @@ function ReactionButton({
           strokeWidth={active ? 2.35 : 2}
         />
         {count != null && count > 0 ? (
-          <span className="min-w-[0.65rem] text-[11px] font-semibold tabular-nums leading-none text-white/55">
+          <span className="min-w-[0.65rem] text-[11px] font-semibold tabular-nums leading-none text-white/60">
             {count}
           </span>
         ) : null}
@@ -78,14 +78,14 @@ function ReactionButton({
       aria-busy={pending}
       disabled={disabled || pending}
       className={`cq-feed-reaction group inline-flex min-w-[2.75rem] items-center justify-center gap-1.5 rounded-xl px-2 py-1.5 transition-all duration-200 active:scale-90 touch-manipulation disabled:cursor-not-allowed disabled:opacity-50 ${
-        active ? "text-cyan-400" : "text-white/45 hover:text-white/72"
+        active ? "text-cyan-400" : "text-white/60 hover:text-white/70"
       } ${pulseClass ?? ""}`}
     >
       <span
         className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 ${
           active
             ? "bg-cyan-500/12 shadow-[0_0_14px_-4px_rgba(56,189,248,0.55)]"
-            : "group-hover:bg-white/[0.04]"
+            : "group-hover:bg-cq-elevated/8"
         }`}
       >
         <Icon
@@ -291,7 +291,7 @@ export function FieldNoteCard({
       <button
         type="button"
         onClick={() => setMenuOpen((open) => !open)}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-white/45 transition hover:bg-white/[0.06] hover:text-white/80"
+        className="flex h-8 w-8 items-center justify-center rounded-lg text-white/60 transition hover:bg-cq-elevated/10 hover:text-white/85"
         aria-label="Post options"
         aria-expanded={menuOpen}
         aria-haspopup="menu"
@@ -301,12 +301,12 @@ export function FieldNoteCard({
       {menuOpen ? (
         <div
           role="menu"
-          className="absolute right-0 top-full z-20 mt-1 min-w-[9.5rem] overflow-hidden rounded-xl border border-white/12 bg-[#0c1f3f] py-1 shadow-xl"
+          className="absolute right-0 top-full z-20 mt-1 min-w-[9.5rem] overflow-hidden rounded-xl border border-white/15 bg-cq-elevated py-1 shadow-lg"
         >
           <button
             type="button"
             role="menuitem"
-            className="block w-full px-3 py-2 text-left text-sm text-white/85 hover:bg-white/[0.06]"
+            className="block w-full px-3 py-2 text-left text-sm text-white/85 hover:bg-cq-elevated/10"
             onClick={() => {
               setMenuOpen(false);
               setEditError(null);
@@ -409,8 +409,8 @@ export function FieldNoteCard({
     <div
       className={`flex items-center justify-center flex-shrink-0 border overflow-hidden ${
         isFeed
-          ? "h-12 w-12 rounded-full border-white/12 bg-white/[0.04]"
-          : "w-11 h-11 rounded-xl bg-cq-elevated border border-white/[0.08]"
+          ? "h-12 w-12 rounded-full border-white/15 bg-cq-elevated/8"
+          : "w-11 h-11 rounded-xl bg-cq-elevated border border-white/15"
       } ${
         highlightStat === "strength"
           ? "stat-aura-strength"
@@ -461,7 +461,7 @@ export function FieldNoteCard({
         href={proofImgUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className={`block text-uri-keaney text-sm truncate bg-white/5 ${isFeed ? "px-4 py-3" : "px-3 py-2"}`}
+        className={`block text-uri-keaney text-sm truncate bg-cq-elevated/8 ${isFeed ? "px-4 py-3" : "px-3 py-2"}`}
       >
         📎 Proof link
       </a>
@@ -473,7 +473,7 @@ export function FieldNoteCard({
       className={
         isFeed
           ? "flex items-center"
-          : "mt-3 flex flex-wrap items-center justify-between gap-1 border-t border-white/10 pt-3"
+          : "mt-3 flex flex-wrap items-center justify-between gap-1 border-t border-white/15 pt-3"
       }
     >
       <div className={`flex items-center ${isFeed ? "gap-1" : "flex-wrap gap-0.5"}`}>
@@ -564,7 +564,7 @@ export function FieldNoteCard({
         placeholder="Add a comment..."
         maxLength={QUAD_COMMENT_MAX_CHARS}
         className={`min-w-0 flex-1 rounded-xl border px-3 py-2 text-sm text-white placeholder-white/40 focus:border-uri-keaney/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 ${
-          isFeed ? "border-white/[0.1] bg-black/30" : "border-white/15 bg-white/10"
+          isFeed ? "border-white/15 bg-cq-elevated" : "border-white/15 bg-cq-elevated"
         }`}
       />
       <button
@@ -585,12 +585,12 @@ export function FieldNoteCard({
             <button
               type="button"
               onClick={() => setCommentsOpen(true)}
-              className="text-[13px] font-medium text-white/38 transition hover:text-white/55"
+              className="text-[13px] font-medium text-white/50 transition hover:text-white/60"
             >
               View all {comments.length} comment{comments.length === 1 ? "" : "s"}
             </button>
             {previewComment ? (
-              <p className="line-clamp-2 text-[13px] leading-snug text-white/72">
+              <p className="line-clamp-2 text-[13px] leading-snug text-white/70">
                 <span className="font-semibold text-white">{previewComment.authorName}</span>{" "}
                 <span className="whitespace-pre-wrap">{previewComment.body}</span>
               </p>
@@ -604,7 +604,7 @@ export function FieldNoteCard({
               <ul className="mb-0 space-y-2.5 pr-0.5">
                 {comments.map((c) => (
                   <li key={c.id}>
-                    <p className="text-[13px] leading-snug text-white/80">
+                    <p className="text-[13px] leading-snug text-white/85">
                       <span className="font-semibold text-white">{c.authorName}</span>{" "}
                       <span className="whitespace-pre-wrap">{c.body}</span>
                     </p>
@@ -613,7 +613,7 @@ export function FieldNoteCard({
               </ul>
             </div>
           ) : (
-            <p className="text-[13px] text-white/35">No comments yet</p>
+            <p className="text-[13px] text-white/50">No comments yet</p>
           )}
           {commentForm}
         </>
@@ -622,21 +622,21 @@ export function FieldNoteCard({
   );
 
   const commentsBlock = (
-    <div className={`${isFeed ? "pb-0" : "mt-3 border-t border-white/10 pt-3"}`}>
+    <div className={`${isFeed ? "pb-0" : "mt-3 border-t border-white/15 pt-3"}`}>
       {isFeed ? null : commentsOpen ? (
         <>
           {comments.length > 0 && (
             <ul className="mt-3 mb-3 space-y-2">
               {comments.map((c) => (
                 <li key={c.id} className="flex gap-2">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/10">
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/15 bg-cq-elevated/10">
                     <AvatarDisplay avatar={c.authorAvatar} size={28} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-sm font-semibold text-white">{c.authorName}</span>
                       <span className="text-xs text-uri-keaney/85">@{c.authorUsername}</span>
-                      <span className="text-xs text-white/35">· {formatTime(c.createdAt)}</span>
+                      <span className="text-xs text-white/50">· {formatTime(c.createdAt)}</span>
                     </div>
                     <p className="mt-1 break-words text-sm leading-relaxed text-white/85 whitespace-pre-wrap">{c.body}</p>
                   </div>
@@ -655,11 +655,11 @@ export function FieldNoteCard({
       className={
         isFeed
           ? "cq-feed-post quad-feed-post bg-transparent"
-          : "p-4 transition-colors hover:bg-white/[0.04]"
+          : "p-4 transition-colors hover:bg-cq-elevated/8"
       }
     >
       {actionToast ? (
-        <p className="mx-3 mb-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100/90" aria-live="polite">
+        <p className="mx-3 mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800" aria-live="polite">
           {actionToast}
         </p>
       ) : null}
@@ -679,11 +679,11 @@ export function FieldNoteCard({
                   <span className="text-[10px] font-medium text-uri-gold/85">{streak}</span>
                 ) : null}
               </div>
-              <p className="mt-0.5 text-[12px] text-white/32">
+              <p className="mt-0.5 text-[12px] text-white/50">
                 @{note.authorUsername} • {formatTime(note.createdAt)}
               </p>
               {note.locationName ? (
-                <p className="mt-0.5 text-[11px] font-medium text-cyan-300/75">📍 {note.locationName}</p>
+                <p className="mt-0.5 text-[11px] font-medium text-uri-keaney">📍 {note.locationName}</p>
               ) : null}
             </div>
             {ownerMenu}
@@ -713,9 +713,9 @@ export function FieldNoteCard({
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               <span className="font-semibold text-white">{note.authorName}</span>
               <span className="text-uri-keaney/90 text-sm">@{note.authorUsername}</span>
-              <span className="text-white/40 text-xs">· {formatTime(note.createdAt)}</span>
+              <span className="text-white/50 text-xs">· {formatTime(note.createdAt)}</span>
               {note.locationName ? (
-                <span className="text-[11px] font-medium text-cyan-300/75">📍 {note.locationName}</span>
+                <span className="text-[11px] font-medium text-uri-keaney">📍 {note.locationName}</span>
               ) : null}
               {streak && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-uri-gold/20 text-uri-gold border border-uri-gold/40">
@@ -767,17 +767,17 @@ export function FieldNoteCard({
                   if (!actionPending) setDeleteOpen(false);
                 }}
               />
-              <div className="relative z-10 w-full max-w-sm rounded-2xl border border-white/[0.08] bg-cq-elevated p-5 shadow-2xl">
+              <div className="relative z-10 w-full max-w-sm rounded-2xl border border-white/15 bg-cq-elevated p-5 shadow-2xl">
                 <h2 id="delete-post-title" className="font-display text-lg font-bold text-white">
                   Delete this post?
                 </h2>
-                <p className="mt-2 text-sm text-white/55">This cannot be undone.</p>
+                <p className="mt-2 text-sm text-white/60">This cannot be undone.</p>
                 <div className="mt-5 flex gap-2">
                   <button
                     type="button"
                     disabled={actionPending}
                     onClick={() => setDeleteOpen(false)}
-                    className="flex-1 rounded-xl border border-white/15 py-2.5 text-sm font-medium text-white/75 hover:bg-white/5 disabled:opacity-50"
+                    className="flex-1 rounded-xl border border-white/15 py-2.5 text-sm font-medium text-white/70 hover:bg-cq-elevated/8 disabled:opacity-50"
                   >
                     Cancel
                   </button>

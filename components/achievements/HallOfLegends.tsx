@@ -44,8 +44,8 @@ function formatEarnedDate(iso: string | null): string {
 
 function StatPlaque({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="cq-hall-stat rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-center">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/45">{label}</p>
+    <div className="cq-hall-stat rounded-xl border px-3 py-2.5 text-center">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/55">{label}</p>
       <p className="mt-1 font-display text-sm font-bold text-white sm:text-base">{value}</p>
       {sub ? <p className="mt-0.5 text-[10px] text-white/40">{sub}</p> : null}
     </div>
@@ -71,7 +71,7 @@ function TrophyPedestal({
     <article
       className={`cq-hall-trophy group relative flex flex-col overflow-hidden rounded-2xl border transition-all duration-300 ${
         earned
-          ? `border-white/15 bg-gradient-to-b ${style.bg} ring-1 ${style.ring} ${style.glow} hover:-translate-y-0.5`
+          ? `border-white/10 bg-gradient-to-b ${style.bg} ring-1 ${style.ring} ${style.glow} hover:-translate-y-0.5`
           : "border-white/8 bg-black/25 opacity-80"
       } ${featured ? "cq-hall-trophy-featured ring-2 ring-uri-gold/50" : ""}`}
     >
@@ -81,23 +81,23 @@ function TrophyPedestal({
           <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${style.text} bg-black/25`}>
             {style.label}
           </span>
-          <span className="text-[9px] font-medium uppercase tracking-wide text-white/35">{kind}</span>
+          <span className="text-[9px] font-medium uppercase tracking-wide text-white/40">{kind}</span>
         </div>
 
         <div
           className={`cq-hall-trophy-icon mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-xl border text-3xl sm:h-[4.5rem] sm:w-[4.5rem] sm:text-4xl ${
-            earned ? "border-white/20 bg-black/30" : "border-white/10 bg-black/40 grayscale"
+            earned ? "border-white/10 bg-black/25" : "border-white/10 bg-black/40 grayscale"
           }`}
         >
-          {earned ? def.icon : <Lock className="h-6 w-6 text-white/30" aria-hidden />}
+          {earned ? def.icon : <Lock className="h-6 w-6 text-white/40" aria-hidden />}
         </div>
 
         <h3 className="text-center font-display text-sm font-bold leading-tight text-white">{def.name}</h3>
-        <p className="mt-1.5 flex-1 text-center text-[11px] leading-snug text-white/50">{def.description}</p>
+        <p className="mt-1.5 flex-1 text-center text-[11px] leading-snug text-white/55">{def.description}</p>
 
         {earned ? (
           <>
-            <p className="mt-2 text-center text-[10px] text-white/35">{formatEarnedDate(earnedAt)}</p>
+            <p className="mt-2 text-center text-[10px] text-white/40">{formatEarnedDate(earnedAt)}</p>
             <p className="mt-1 text-center text-[10px] font-semibold text-uri-gold/80">
               +{LEGEND_SCORE_BY_RARITY[def.rarity]} Legend Score
             </p>
@@ -108,7 +108,7 @@ function TrophyPedestal({
                 className={`mt-3 rounded-lg border px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition ${
                   featured
                     ? "border-uri-gold/50 bg-uri-gold/15 text-uri-gold"
-                    : "border-white/15 bg-white/5 text-white/55 hover:border-uri-keaney/40 hover:text-white"
+                    : "border-white/10 bg-black/20 text-white/55 hover:border-uri-keaney/40 hover:text-white"
                 }`}
               >
                 {featured ? "Featured ★" : showEquipHint ? "Showcase" : "Equip showcase"}
@@ -117,13 +117,13 @@ function TrophyPedestal({
           </>
         ) : (
           <div className="mt-3">
-            <div className="mb-1 flex justify-between text-[10px] tabular-nums text-white/45">
+            <div className="mb-1 flex justify-between text-[10px] tabular-nums text-white/55">
               <span>
                 {progress.current} / {progress.max}
               </span>
               <span>{progress.percent}%</span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div className="h-1.5 overflow-hidden rounded-full bg-black/25">
               <div
                 className="cq-hall-progress-fill h-full rounded-full bg-gradient-to-r from-uri-keaney to-uri-gold transition-all duration-700"
                 style={{ width: `${progress.percent}%` }}
@@ -151,14 +151,14 @@ function CategorySection({
   const earnedCount = views.filter((v) => v.earned).length;
 
   return (
-    <section className="cq-hall-category rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5">
+    <section className="cq-hall-category rounded-2xl border border-white/10 bg-black/25 p-4 sm:p-5">
       <header className="mb-4 flex flex-wrap items-end justify-between gap-2">
         <div>
           <p className="flex items-center gap-2 font-display text-lg font-bold text-white">
             <span aria-hidden>{meta.icon}</span>
             {meta.label}
           </p>
-          <p className="mt-0.5 text-xs text-white/45">{meta.blurb}</p>
+          <p className="mt-0.5 text-xs text-white/55">{meta.blurb}</p>
         </div>
         <p className="text-[11px] font-semibold tabular-nums text-uri-keaney/90">
           {earnedCount} / {views.length} claimed
@@ -251,7 +251,7 @@ export function HallOfLegends({ character, onRefresh }: { character: Character; 
   }, [views]);
 
   return (
-    <div className="cq-hall-of-legends relative min-h-[60vh] overflow-hidden rounded-2xl border border-white/[0.08]">
+    <div className="cq-hall-of-legends relative min-h-[60vh] overflow-hidden rounded-2xl">
       <div className="cq-hall-of-legends-bg pointer-events-none absolute inset-0" aria-hidden />
       <div className="cq-hall-of-legends-particles pointer-events-none absolute inset-0" aria-hidden />
 
@@ -281,14 +281,14 @@ export function HallOfLegends({ character, onRefresh }: { character: Character; 
           />
         </div>
 
-        <section className="cq-hall-showcase mt-6 rounded-2xl border border-uri-gold/20 bg-cq-elevated p-4 sm:p-5">
+        <section className="cq-hall-content-card cq-hall-showcase mt-6 p-4 sm:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="flex items-center gap-2 font-display text-base font-bold text-white">
+              <p className="flex items-center gap-2 font-display text-base font-bold text-cq-foreground">
                 <Star className="h-4 w-4 text-uri-gold" aria-hidden />
                 Featured Showcase
               </p>
-              <p className="text-xs text-white/45">Equip up to 3 achievements — shown on profile and leaderboards</p>
+              <p className="text-xs text-cq-muted">Equip up to 3 achievements — shown on profile and leaderboards</p>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -299,7 +299,7 @@ export function HallOfLegends({ character, onRefresh }: { character: Character; 
                 <div
                   key={slot}
                   className={`cq-hall-showcase-slot flex min-h-[7rem] flex-col items-center justify-center rounded-xl border border-dashed p-2 text-center ${
-                    view ? "border-uri-gold/40 bg-black/30" : "border-white/15 bg-black/20"
+                    view ? "border-uri-gold/40 bg-amber-500/15" : "border-cq-border bg-cq-elevated"
                   }`}
                 >
                   {view ? (
@@ -307,10 +307,10 @@ export function HallOfLegends({ character, onRefresh }: { character: Character; 
                       <span className="text-3xl" aria-hidden>
                         {view.def.icon}
                       </span>
-                      <p className="mt-1 text-[10px] font-bold leading-tight text-white sm:text-xs">{view.def.name}</p>
+                      <p className="mt-1 text-[10px] font-bold leading-tight text-cq-foreground sm:text-xs">{view.def.name}</p>
                     </>
                   ) : (
-                    <p className="text-[10px] font-medium uppercase tracking-wider text-white/30">Empty slot</p>
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-cq-subtle">Empty slot</p>
                   )}
                 </div>
               );
@@ -318,14 +318,14 @@ export function HallOfLegends({ character, onRefresh }: { character: Character; 
           </div>
         </section>
 
-        <section className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4 sm:p-5">
+        <section className="cq-hall-content-card mt-4 p-4 sm:p-5">
           <div className="mb-3 flex items-center gap-2">
             <Crown className="h-4 w-4 text-uri-gold" aria-hidden />
-            <h2 className="font-display text-base font-bold text-white">Equipped Title</h2>
+            <h2 className="font-display text-base font-bold text-cq-foreground">Equipped Title</h2>
           </div>
-          <p className="mb-3 text-xs text-white/45">One title appears under your username across CampusQuest.</p>
+          <p className="mb-3 text-xs text-cq-muted">One title appears under your username across CampusQuest.</p>
           {titleOptions.length === 0 ? (
-            <p className="text-sm text-white/40">Earn achievements with titles to unlock this slot.</p>
+            <p className="text-sm text-cq-subtle">Earn achievements with titles to unlock this slot.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               <button
@@ -333,8 +333,8 @@ export function HallOfLegends({ character, onRefresh }: { character: Character; 
                 onClick={() => handleTitleChange("")}
                 className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                   !localCharacter.equippedTitleId
-                    ? "border-uri-keaney/50 bg-uri-keaney/20 text-white"
-                    : "border-white/15 text-white/50 hover:text-white"
+                    ? "border-uri-keaney/50 bg-uri-keaney/15 text-uri-keaney"
+                    : "border-cq-border text-cq-muted hover:border-uri-keaney/35 hover:text-cq-foreground"
                 }`}
               >
                 None
@@ -347,7 +347,7 @@ export function HallOfLegends({ character, onRefresh }: { character: Character; 
                   className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                     localCharacter.equippedTitleId === t.id
                       ? "border-uri-gold/50 bg-uri-gold/15 text-uri-gold"
-                      : "border-white/15 text-white/60 hover:border-uri-keaney/35 hover:text-white"
+                      : "border-cq-border text-cq-muted hover:border-uri-keaney/35 hover:text-cq-foreground"
                   }`}
                 >
                   {t.label}
@@ -357,18 +357,18 @@ export function HallOfLegends({ character, onRefresh }: { character: Character; 
           )}
         </section>
 
-        <section className="cq-hall-trophy-room mt-6 rounded-2xl border border-white/[0.08] bg-cq-card p-4 sm:p-5">
+        <section className="cq-hall-content-card cq-hall-trophy-room mt-6 p-4 sm:p-5">
           <header className="mb-4 text-center sm:text-left">
-            <p className="flex items-center justify-center gap-2 font-display text-lg font-bold text-white sm:justify-start">
+            <p className="flex items-center justify-center gap-2 font-display text-lg font-bold text-cq-foreground sm:justify-start">
               <Sparkles className="h-5 w-5 text-uri-gold" aria-hidden />
               Trophy Room
             </p>
-            <p className="mt-1 text-xs text-white/45">
+            <p className="mt-1 text-xs text-cq-muted">
               Trophies, medals, banners, and relics from your legend — not a spreadsheet.
             </p>
           </header>
           {earnedTrophyViews.length === 0 ? (
-            <p className="rounded-xl border border-white/10 bg-black/25 px-4 py-8 text-center text-sm text-white/40">
+            <p className="rounded-xl border border-cq-border bg-cq-elevated px-4 py-8 text-center text-sm text-cq-subtle">
               Your display cases are waiting. Complete challenges to fill the hall with light.
             </p>
           ) : (

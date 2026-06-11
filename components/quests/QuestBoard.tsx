@@ -31,10 +31,10 @@ import { DailyQuests } from "@/components/DailyQuests";
 
 function StatPlaque({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="cq-quest-stat rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-center">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/45">{label}</p>
-      <p className="mt-1 font-display text-sm font-bold text-white sm:text-base">{value}</p>
-      {sub ? <p className="mt-0.5 text-[10px] text-white/40">{sub}</p> : null}
+    <div className="cq-quest-stat rounded-xl border border-cq-border bg-cq-card px-3 py-2.5 text-center shadow-sm">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cq-muted">{label}</p>
+      <p className="mt-1 font-display text-sm font-bold text-cq-foreground sm:text-base">{value}</p>
+      {sub ? <p className="mt-0.5 text-[10px] text-cq-subtle">{sub}</p> : null}
     </div>
   );
 }
@@ -80,14 +80,14 @@ function QuestCard({
     <article
       className={`cq-quest-card group relative flex flex-col overflow-hidden rounded-2xl border bg-gradient-to-b transition-all duration-300 ${
         legendary
-          ? "cq-quest-card-legendary border-amber-400/45 from-amber-500/20 via-fuchsia-500/10 to-black/40 ring-1 ring-amber-400/30"
-          : `${style.border} ${style.bg} ${style.glow} ${status === "completed" ? "opacity-75" : "hover:-translate-y-0.5"}`
+          ? "cq-quest-card-legendary border-amber-400/40 from-amber-500/15 via-cq-card to-fuchsia-500/10 ring-1 ring-amber-400/35"
+          : `border-cq-border bg-cq-card shadow-sm ${status === "completed" ? "opacity-75" : "hover:-translate-y-0.5"}`
       }`}
     >
       <div className="cq-quest-card-shine pointer-events-none absolute inset-0 opacity-0 transition group-hover:opacity-100" aria-hidden />
       <div className="relative flex flex-1 flex-col p-4">
         <div className="mb-3 flex items-start justify-between gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-cq-subtle">
             {CATEGORY_META[def.category].icon} {CATEGORY_META[def.category].label.replace(" Quests", "")}
           </span>
           <span className={`text-[10px] font-bold uppercase tracking-wide ${style.text}`}>
@@ -96,12 +96,12 @@ function QuestCard({
         </div>
 
         <div className="flex items-start gap-3">
-          <span className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl border border-white/15 bg-black/30 text-3xl">
+          <span className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl border border-cq-border bg-cq-elevated text-3xl">
             {def.icon}
           </span>
           <div className="min-w-0 flex-1">
-            <h3 className="font-display text-base font-bold leading-tight text-white">{def.name}</h3>
-            <p className="mt-1 text-[12px] leading-snug text-white/55">{def.description}</p>
+            <h3 className="font-display text-base font-bold leading-tight text-cq-foreground">{def.name}</h3>
+            <p className="mt-1 text-[12px] leading-snug text-cq-muted">{def.description}</p>
           </div>
         </div>
 
@@ -112,17 +112,17 @@ function QuestCard({
             +{def.xpReward} XP
           </span>
           {def.bonusRewards?.badge ? (
-            <span className="rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[10px] text-white/60">
+            <span className="rounded-lg border border-cq-border bg-cq-elevated px-2 py-1 text-[10px] text-cq-muted">
               🏅 {def.bonusRewards.badge}
             </span>
           ) : null}
           {def.bonusRewards?.title ? (
-            <span className="rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[10px] text-white/60">
+            <span className="rounded-lg border border-cq-border bg-cq-elevated px-2 py-1 text-[10px] text-cq-muted">
               👑 {def.bonusRewards.title}
             </span>
           ) : null}
           {timeRemainingLabel ? (
-            <span className="inline-flex items-center gap-1 text-[10px] text-white/45">
+            <span className="inline-flex items-center gap-1 text-[10px] text-cq-muted">
               <Clock className="h-3 w-3" aria-hidden />
               {timeRemainingLabel}
             </span>
@@ -131,13 +131,13 @@ function QuestCard({
 
         {status !== "available" && status !== "locked" && status !== "completed" ? (
           <div className="mt-3">
-            <div className="mb-1 flex justify-between text-[10px] tabular-nums text-white/50">
+            <div className="mb-1 flex justify-between text-[10px] tabular-nums text-cq-muted">
               <span>
                 {progress.current} / {progress.max}
               </span>
               <span>{progress.percent}%</span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div className="h-1.5 overflow-hidden rounded-full bg-cq-elevated">
               <div
                 className="cq-quest-progress h-full rounded-full bg-gradient-to-r from-uri-keaney to-uri-gold transition-all duration-700"
                 style={{ width: `${progress.percent}%` }}
@@ -151,13 +151,13 @@ function QuestCard({
             <button
               type="button"
               onClick={() => onAccept(def.id)}
-              className="cq-quest-accept w-full rounded-xl bg-gradient-to-b from-uri-keaney to-uri-keaney/80 py-2.5 text-sm font-bold text-white shadow-lg transition hover:brightness-110"
+              className="cq-quest-accept w-full rounded-xl bg-uri-keaney py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-uri-keaney/90"
             >
               Accept Quest
             </button>
           ) : null}
           {status === "locked" ? (
-            <p className="text-center text-[11px] font-medium text-white/35">Complete prior chain step to unlock</p>
+            <p className="text-center text-[11px] font-medium text-cq-subtle">Complete prior chain step to unlock</p>
           ) : null}
           {status === "active" ? (
             <p className="text-center text-[11px] font-semibold text-uri-keaney/90">Adventure in progress…</p>
@@ -165,7 +165,7 @@ function QuestCard({
           {status === "ready" ? (
             <>
               {proofOpen ? (
-                <div className="space-y-2 rounded-xl border border-white/10 bg-black/25 p-3">
+                <div className="space-y-2 rounded-xl border border-cq-border bg-cq-elevated p-3">
                   <input
                     type="text"
                     value={proofInput.startsWith("data:") ? "" : proofInput}
@@ -174,7 +174,7 @@ function QuestCard({
                       setProofError(null);
                     }}
                     placeholder="Proof URL or description from the event"
-                    className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-white/35"
+                    className="w-full rounded-lg border border-cq-border bg-cq-elevated px-3 py-2 text-sm text-cq-foreground placeholder:text-cq-subtle"
                   />
                   <input ref={proofFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -261,7 +261,7 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh}>
-    <div className="cq-quest-board relative min-h-[60vh] overflow-hidden rounded-2xl border border-uri-keaney/25">
+    <div className="cq-quest-board cq-tab-shell relative min-h-[60vh] overflow-hidden rounded-2xl">
       <div className="cq-quest-board-bg pointer-events-none absolute inset-0" aria-hidden />
       <div className="cq-quest-board-particles pointer-events-none absolute inset-0" aria-hidden />
 
@@ -269,14 +269,14 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
         <SurpriseQuestBanner character={localCharacter} />
         <DailyQuests character={localCharacter} />
 
-        <header className="text-center">
-          <p className="cq-quest-eyebrow mb-2 font-display text-[11px] font-semibold uppercase tracking-[0.32em] text-uri-keaney/80">
+        <header className="cq-quest-board-header">
+          <p className="cq-quest-eyebrow mb-2 font-display text-[11px] font-semibold uppercase tracking-[0.32em] text-uri-keaney/90">
             Guild Hall · Bounty Board
           </p>
           <h1 className="font-display text-2xl font-black uppercase tracking-[0.12em] text-white sm:text-3xl">
             {QUEST_BOARD_TITLE}
           </h1>
-          <p className="mt-2 text-sm font-medium tracking-wide text-white/55">{QUEST_BOARD_SUBTITLE}</p>
+          <p className="mt-2 text-sm font-medium tracking-wide text-white/60">{QUEST_BOARD_SUBTITLE}</p>
         </header>
 
         <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
@@ -287,12 +287,12 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
         </div>
 
         {activeViews.length > 0 ? (
-          <section className="cq-quest-active mt-6 rounded-2xl border border-uri-keaney/30 bg-gradient-to-b from-uri-keaney/10 to-black/30 p-4 sm:p-5">
+          <section className="cq-hall-content-card cq-quest-active mt-6 p-4 sm:p-5">
             <header className="mb-4 flex items-center gap-2">
               <Swords className="h-5 w-5 text-uri-keaney" aria-hidden />
               <div>
-                <h2 className="font-display text-lg font-bold text-white">Current Adventures</h2>
-                <p className="text-xs text-white/45">Your accepted quests — finish them for glory</p>
+                <h2 className="font-display text-lg font-bold text-cq-foreground">Current Adventures</h2>
+                <p className="text-xs text-cq-muted">Your accepted quests — finish them for glory</p>
               </div>
             </header>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -303,13 +303,13 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
           </section>
         ) : null}
 
-        <section className="mt-6 rounded-2xl border border-amber-400/25 bg-gradient-to-b from-amber-500/10 via-fuchsia-500/5 to-black/40 p-4 sm:p-5">
+        <section className="cq-hall-content-card mt-6 border-amber-400/30 bg-gradient-to-b from-amber-500/10 via-cq-card to-fuchsia-500/10 p-4 sm:p-5">
           <header className="mb-4 text-center sm:text-left">
-            <p className="flex items-center justify-center gap-2 font-display text-lg font-black uppercase tracking-wide text-amber-100 sm:justify-start">
+            <p className="flex items-center justify-center gap-2 font-display text-lg font-black uppercase tracking-wide text-amber-800 sm:justify-start">
               <Sparkles className="h-5 w-5 text-amber-300" aria-hidden />
               Legendary Quests
             </p>
-            <p className="mt-1 text-xs text-white/45">Rare story quests with extraordinary rewards</p>
+            <p className="mt-1 text-xs text-cq-muted">Rare story quests with extraordinary rewards</p>
           </header>
           <div className="grid gap-3 lg:grid-cols-3">
             {legendaryViews.map((view) => (
@@ -319,14 +319,14 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
         </section>
 
         {QUEST_CHAINS.map((chain) => (
-          <section key={chain.id} className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-4 sm:p-5">
+          <section key={chain.id} className="cq-section-band mt-5 p-4 sm:p-5">
             <header className="mb-3 flex items-start gap-3">
               <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-uri-keaney/30 bg-uri-keaney/10 text-2xl">
                 {chain.icon}
               </span>
               <div>
-                <h2 className="font-display text-base font-bold text-white">{chain.name}</h2>
-                <p className="text-xs text-white/50">{chain.description}</p>
+                <h2 className="font-display text-base font-bold text-cq-foreground">{chain.name}</h2>
+                <p className="text-xs text-cq-muted">{chain.description}</p>
                 <p className="mt-1 text-[11px] font-semibold text-uri-gold">
                   Final reward: +{chain.finalBonusXp} XP
                   {chain.finalBonusRewards?.badge ? ` · ${chain.finalBonusRewards.badge}` : ""}
@@ -351,8 +351,8 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
               onClick={() => setFilter(opt.id)}
               className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${
                 filter === opt.id
-                  ? "border-uri-keaney/50 bg-uri-keaney/20 text-white"
-                  : "border-white/15 text-white/50 hover:border-white/25 hover:text-white/80"
+                  ? "border-uri-keaney/50 bg-uri-keaney text-white"
+                  : "border-cq-border text-cq-muted hover:border-cq-border-strong hover:text-cq-foreground"
               }`}
             >
               {opt.label}
@@ -362,13 +362,13 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
 
         <section className="mt-5">
           <header className="mb-4 flex items-center gap-2">
-            <Scroll className="h-4 w-4 text-white/50" aria-hidden />
-            <h2 className="font-display text-base font-bold text-white">
+            <Scroll className="h-4 w-4 text-cq-muted" aria-hidden />
+            <h2 className="font-display text-base font-bold text-cq-foreground">
               {filter === "all" ? "Available Adventures" : `${FILTER_OPTIONS.find((f) => f.id === filter)?.label ?? "Quests"}`}
             </h2>
           </header>
           {nonLegendaryFiltered.length === 0 ? (
-            <p className="rounded-xl border border-white/10 bg-black/25 px-4 py-10 text-center text-sm text-white/40">
+            <p className="rounded-xl border border-cq-border bg-cq-secondary px-4 py-10 text-center text-sm text-cq-subtle">
               No quests match this filter. Try another category or accept a new adventure.
             </p>
           ) : (
@@ -382,7 +382,7 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
           )}
         </section>
 
-        <p className="mt-6 flex items-center justify-center gap-2 text-center text-[11px] text-white/35">
+        <p className="mt-6 flex items-center justify-center gap-2 text-center text-[11px] text-cq-subtle">
           <Map className="h-3.5 w-3.5" aria-hidden />
           Real campus actions power every quest — log activities, explore, and connect.
         </p>

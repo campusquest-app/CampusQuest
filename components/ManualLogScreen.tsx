@@ -128,31 +128,32 @@ export function ManualLogScreen({
   const showStats = !selectedStat;
 
   return (
-    <div className="mx-auto w-full max-w-lg space-y-5 pb-8">
-      <header className="space-y-3">
+    <div className="cq-tab-shell mx-auto w-full max-w-lg space-y-6 pb-8">
+      <header className="cq-screen-header">
         <div className="flex items-start gap-2">
           {(selectedStat || onBack) ? (
             <button
               type="button"
               onClick={handleBack}
-              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] text-white/70 transition hover:bg-white/[0.06] hover:text-white active:scale-95 touch-manipulation"
+              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/20 text-white/80 transition hover:bg-white/10 hover:text-white active:scale-95 touch-manipulation"
               aria-label="Go back"
             >
               <ChevronLeft className="h-5 w-5" strokeWidth={2.2} />
             </button>
           ) : null}
           <div className="min-w-0 flex-1">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-white">Manual Log</h1>
+            <p className="cq-screen-header__eyebrow">Activity Log</p>
+            <h1 className="cq-screen-header__title">Manual Log</h1>
             {showStats ? (
-              <p className="mt-1.5 text-sm leading-relaxed text-white/55">
+              <p className="cq-screen-header__subtitle">
                 Log real activities. Add proof to earn XP and grow your stats.
               </p>
             ) : showActivities && statGroup ? (
-              <p className="mt-1.5 text-sm text-white/55">
+              <p className="cq-screen-header__subtitle">
                 Choose an activity under {STAT_LABELS[statGroup.stat]}.
               </p>
             ) : selectedActivity ? (
-              <p className="mt-1.5 text-sm text-white/55">{selectedActivity.label}</p>
+              <p className="cq-screen-header__subtitle">{selectedActivity.label}</p>
             ) : null}
           </div>
         </div>
@@ -166,18 +167,18 @@ export function ManualLogScreen({
                 type="button"
                 disabled={disabled}
                 onClick={() => setSelectedStat(stat)}
-                className={`group flex w-full items-center gap-3 rounded-2xl border border-white/[0.08] border-l-[3px] bg-cq-card px-4 py-3.5 text-left transition hover:bg-cq-elevated disabled:opacity-50 ${STAT_ACCENT[stat]}`}
+                className={`group flex w-full items-center gap-3 rounded-2xl border border-slate-200 border-l-[3px] bg-cq-card px-4 py-3.5 text-left transition hover:bg-cq-elevated disabled:opacity-50 ${STAT_ACCENT[stat]}`}
               >
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cq-elevated text-xl">
                   {STAT_ICONS[stat]}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block font-display text-base font-semibold text-white">{STAT_LABELS[stat]}</span>
-                  <span className="block text-xs text-white/45 mt-0.5">
+                  <span className="block font-display text-base font-semibold text-slate-900">{STAT_LABELS[stat]}</span>
+                  <span className="block text-xs text-slate-500 mt-0.5">
                     {items.length} activit{items.length === 1 ? "y" : "ies"}
                   </span>
                 </span>
-                <ChevronRight className="h-5 w-5 shrink-0 text-white/30 transition group-hover:text-uri-keaney/80" />
+                <ChevronRight className="h-5 w-5 shrink-0 text-slate-400 transition group-hover:text-uri-keaney/80" />
               </button>
             </li>
           ))}
@@ -195,16 +196,16 @@ export function ManualLogScreen({
                   setSelectedActivity(act);
                   resetForm();
                 }}
-                className="group flex w-full items-center gap-3 rounded-2xl border border-white/[0.08] bg-cq-card px-4 py-3.5 text-left transition hover:bg-cq-elevated disabled:opacity-50"
+                className="group flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-cq-card px-4 py-3.5 text-left transition hover:bg-cq-elevated disabled:opacity-50"
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cq-elevated text-lg">
                   {act.icon}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block font-semibold text-white truncate">{act.label}</span>
-                  <span className="block text-xs text-white/45 mt-0.5 truncate">{act.description}</span>
+                  <span className="block font-semibold text-slate-900 truncate">{act.label}</span>
+                  <span className="block text-xs text-slate-500 mt-0.5 truncate">{act.description}</span>
                   <span className="mt-1.5 flex flex-wrap gap-1.5">
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/[0.06] text-white/70">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                       +{act.statGain} {STAT_LABELS[act.stat]}
                     </span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-uri-keaney/15 text-uri-keaney">
@@ -212,7 +213,7 @@ export function ManualLogScreen({
                     </span>
                   </span>
                 </span>
-                <ChevronRight className="h-5 w-5 shrink-0 text-white/30 transition group-hover:text-uri-keaney/80" />
+                <ChevronRight className="h-5 w-5 shrink-0 text-slate-400 transition group-hover:text-uri-keaney/80" />
               </button>
             </li>
           ))}
@@ -222,19 +223,19 @@ export function ManualLogScreen({
       {showForm && selectedActivity ? (
         <form
           onSubmit={handleSubmit}
-          className="rounded-2xl border border-white/[0.08] bg-cq-card p-4 sm:p-5 space-y-4"
+          className="rounded-2xl border border-slate-200 bg-cq-card p-4 sm:p-5 space-y-4"
         >
-          <div className="flex items-center gap-3 pb-1 border-b border-white/[0.06]">
+          <div className="flex items-center gap-3 pb-1 border-b border-slate-200">
             <span className="text-2xl">{selectedActivity.icon}</span>
             <div>
-              <p className="font-semibold text-white">{selectedActivity.label}</p>
-              <p className="text-xs text-white/45">{selectedActivity.description}</p>
+              <p className="font-semibold text-slate-900">{selectedActivity.label}</p>
+              <p className="text-xs text-slate-500">{selectedActivity.description}</p>
             </div>
           </div>
 
           {needsMinutes ? (
             <div>
-              <label className="block text-xs font-medium text-white/55 mb-1.5">
+              <label className="block text-xs font-medium text-slate-500 mb-1.5">
                 Minutes (max {MAX_ACTIVITY_MINUTES})
               </label>
               <input
@@ -251,24 +252,24 @@ export function ManualLogScreen({
                   }
                 }}
                 placeholder="e.g. 50"
-                className="w-full px-3 py-2.5 rounded-xl bg-cq-elevated border border-white/[0.08] text-white placeholder-white/35 font-mono focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
+                className="w-full px-3 py-2.5 rounded-xl bg-cq-elevated border border-slate-200 text-slate-900 placeholder-slate-400 font-mono focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
               />
             </div>
           ) : null}
 
           <div>
-            <label className="block text-xs font-medium text-white/55 mb-1.5">Note (optional)</label>
+            <label className="block text-xs font-medium text-slate-500 mb-1.5">Note (optional)</label>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="What did you do? Where, with who…"
               rows={2}
-              className="w-full px-3 py-2.5 rounded-xl bg-cq-elevated border border-white/[0.08] text-white placeholder-white/35 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
+              className="w-full px-3 py-2.5 rounded-xl bg-cq-elevated border border-slate-200 text-slate-900 placeholder-slate-400 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-white/55 mb-1.5">
+            <label className="block text-xs font-medium text-slate-500 mb-1.5">
               Proof link or photo (optional if note added)
             </label>
             <input
@@ -276,7 +277,7 @@ export function ManualLogScreen({
               value={proof.startsWith("data:") ? "" : proof}
               onChange={(e) => setProof(e.target.value)}
               placeholder="Paste image URL or link"
-              className="w-full px-3 py-2.5 rounded-xl bg-cq-elevated border border-white/[0.08] text-white placeholder-white/35 text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
+              className="w-full px-3 py-2.5 rounded-xl bg-cq-elevated border border-slate-200 text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
             />
             <input
               ref={proofFileRef}
@@ -294,7 +295,7 @@ export function ManualLogScreen({
               Add photo from device
             </button>
             {proof.startsWith("data:") ? (
-              <div className="mt-2 rounded-xl overflow-hidden border border-white/[0.08] max-w-[200px]">
+              <div className="mt-2 rounded-xl overflow-hidden border border-slate-200 max-w-[200px]">
                 <img src={proof} alt="Proof" className="w-full h-24 object-cover" />
               </div>
             ) : null}

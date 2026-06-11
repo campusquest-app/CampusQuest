@@ -13,7 +13,7 @@ function DashboardFallback() {
 
 export default function HomePage() {
   return (
-    <div className="flex min-h-[100dvh] w-full flex-col overflow-x-hidden bg-cq-app bg-gradient-to-b from-cq-app via-cq-secondary to-cq-card">
+    <div className="flex min-h-[100dvh] w-full flex-col overflow-x-hidden bg-cq-app bg-gradient-to-b from-uri-navy-light via-cq-app to-cq-secondary">
       <main className="flex-1 w-full min-w-0 pb-0 pt-0">
         <Suspense fallback={<DashboardFallback />}>
           <MeSessionProvider>

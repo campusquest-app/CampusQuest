@@ -2,9 +2,9 @@
 
 import { useEffect } from "react";
 
-const TOP_REVEAL_Y = 10;
-const SCROLL_DOWN_HIDE_DELTA = 8;
-const SCROLL_UP_SHOW_DELTA = 6;
+const TOP_REVEAL_Y = 40;
+const SCROLL_DOWN_HIDE_DELTA = 20;
+const SCROLL_UP_SHOW_DELTA = 10;
 
 /** Optional inner scroll container for the Quad feed (falls back to window). */
 export const QUAD_SCROLL_ROOT_SELECTOR = "[data-cq-quad-scroll-root]";
@@ -18,7 +18,9 @@ function resolveQuadScrollRoot(): ScrollRoot {
 }
 
 function readScrollY(root: ScrollRoot): number {
-  if (root === window) return window.scrollY;
+  if (root === window) {
+    return window.scrollY || document.documentElement.scrollTop || 0;
+  }
   return root.scrollTop;
 }
 
@@ -28,8 +30,8 @@ function attachScrollListener(root: ScrollRoot, handler: () => void): () => void
 }
 
 /**
- * Quad sub-nav hides on scroll down and stays hidden until the user scrolls up.
- * Top nav stays fixed. Bottom nav follows the same rules on desktop; stays visible on mobile/coarse pointer.
+ * Quad feed scroll chrome: Quad sub-nav + bottom nav hide on scroll down; top app nav stays fixed.
+ * Both chrome layers reveal only on scroll up or near the top of the feed.
  */
 export function useScrollChrome(enabled: boolean): void {
   useEffect(() => {
@@ -42,16 +44,12 @@ export function useScrollChrome(enabled: boolean): void {
 
     const scrollRoot = resolveQuadScrollRoot();
     let lastScrollY = readScrollY(scrollRoot);
-    let quadHidden = false;
-    let bottomHidden = false;
+    let feedChromeHidden = false;
 
-    const keepBottomNavVisible =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(max-width: 639px), (pointer: coarse)").matches;
-
-    const setQuadChrome = (hidden: boolean): void => {
-      quadHidden = hidden;
+    const setFeedChromeHidden = (hidden: boolean): void => {
+      feedChromeHidden = hidden;
       document.documentElement.setAttribute("data-cq-quad-chrome", hidden ? "hidden" : "visible");
+      document.documentElement.setAttribute("data-cq-bottom-chrome", hidden ? "hidden" : "visible");
       if (hidden) {
         document.documentElement.style.setProperty("--cq-quad-header-offset", "0px");
       } else {
@@ -59,55 +57,31 @@ export function useScrollChrome(enabled: boolean): void {
       }
     };
 
-    const setBottomChrome = (hidden: boolean): void => {
-      if (keepBottomNavVisible) {
-        bottomHidden = false;
-        document.documentElement.setAttribute("data-cq-bottom-chrome", "visible");
-        return;
-      }
-      bottomHidden = hidden;
-      document.documentElement.setAttribute("data-cq-bottom-chrome", hidden ? "hidden" : "visible");
+    const showFeedChrome = (): void => {
+      if (!feedChromeHidden) return;
+      setFeedChromeHidden(false);
     };
 
-    const showQuadChrome = (): void => {
-      if (!quadHidden) return;
-      setQuadChrome(false);
-    };
-
-    const hideQuadChrome = (): void => {
-      if (quadHidden) return;
-      setQuadChrome(true);
-    };
-
-    const showBottomChrome = (): void => {
-      if (keepBottomNavVisible || !bottomHidden) return;
-      setBottomChrome(false);
-    };
-
-    const hideBottomChrome = (): void => {
-      if (keepBottomNavVisible || bottomHidden) return;
-      setBottomChrome(true);
+    const hideFeedChrome = (): void => {
+      if (feedChromeHidden) return;
+      setFeedChromeHidden(true);
     };
 
     const onScroll = (): void => {
       const currentY = readScrollY(scrollRoot);
 
-      if (currentY <= TOP_REVEAL_Y) {
-        showQuadChrome();
-        showBottomChrome();
+      if (currentY < TOP_REVEAL_Y) {
+        showFeedChrome();
       } else if (currentY > lastScrollY + SCROLL_DOWN_HIDE_DELTA) {
-        hideQuadChrome();
-        hideBottomChrome();
+        hideFeedChrome();
       } else if (currentY < lastScrollY - SCROLL_UP_SHOW_DELTA) {
-        showQuadChrome();
-        showBottomChrome();
+        showFeedChrome();
       }
 
       lastScrollY = currentY;
     };
 
-    setQuadChrome(false);
-    setBottomChrome(false);
+    setFeedChromeHidden(false);
     lastScrollY = readScrollY(scrollRoot);
 
     const detach = attachScrollListener(scrollRoot, onScroll);

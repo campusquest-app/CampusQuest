@@ -10,14 +10,14 @@ export function RecentActivities({ characterId }: { characterId: string }) {
   if (logs.length === 0) {
     return (
       <section className="card p-4 sm:p-5">
-        <h3 className="font-display font-semibold text-white mb-2"><span aria-hidden>📝</span> Recent activities</h3>
-        <p className="text-sm text-white/50">No activities logged yet.</p>
+        <h3 className="font-display font-semibold text-cq-foreground mb-2"><span aria-hidden>📝</span> Recent activities</h3>
+        <p className="text-sm text-cq-muted">No activities logged yet.</p>
       </section>
     );
   }
   return (
     <section className="card p-4 sm:p-5">
-      <h3 className="font-display font-semibold text-white mb-3"><span aria-hidden>📝</span> Recent activities</h3>
+      <h3 className="font-display font-semibold text-cq-foreground mb-3"><span aria-hidden>📝</span> Recent activities</h3>
       <ul className="space-y-1.5">
         {logs.map((log) => {
           const def = getActivityById(log.activityId);
@@ -27,11 +27,11 @@ export function RecentActivities({ characterId }: { characterId: string }) {
           const date = new Date(log.createdAt);
           const timeStr = date.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
           return (
-            <li key={log.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm py-1.5 border-b border-white/5 last:border-0">
-              <span className="text-white/90 min-w-0 truncate">{label}</span>
+            <li key={log.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm py-1.5 border-b border-cq-border last:border-0">
+              <span className="text-cq-foreground min-w-0 truncate">{label}</span>
               <span className="text-uri-keaney font-mono text-xs">+{log.xpEarned ?? 0} XP</span>
-              {log.minutes != null && <span className="text-white/50 text-xs">{log.minutes} min</span>}
-              <span className="text-white/40 text-xs ml-auto">{timeStr}</span>
+              {log.minutes != null && <span className="text-cq-muted text-xs">{log.minutes} min</span>}
+              <span className="text-cq-subtle text-xs ml-auto">{timeStr}</span>
             </li>
           );
         })}

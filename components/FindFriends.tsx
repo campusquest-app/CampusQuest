@@ -58,14 +58,14 @@ export function FindFriends({
   const refreshSocial = useCallback(async () => {
     setSocialError(null);
     try {
-      const [incomingRows, outgoingRows, connectionRows] = await Promise.all([
+      const [incomingRows, outgoingRows, connectionPayload] = await Promise.all([
         fetchIncomingConnectionRequests(),
         fetchOutgoingConnectionRequests(),
         fetchConnections(),
       ]);
       setIncoming(incomingRows);
       setOutgoing(outgoingRows);
-      setConnections(connectionRows);
+      setConnections(connectionPayload.connections);
     } catch (loadError) {
       setSocialError(loadError instanceof Error ? loadError.message : "Could not load connections.");
     } finally {
@@ -203,7 +203,14 @@ export function FindFriends({
   const weeklyRace = getGuildWeeklyScores().slice(0, 5);
 
   return (
-    <section className="space-y-5">
+    <section className="cq-tab-shell space-y-6 pb-8">
+      <header className="cq-screen-header">
+        <p className="cq-screen-header__eyebrow">Campus Connections</p>
+        <h1 className="cq-screen-header__title">Friends &amp; Guilds</h1>
+        <p className="cq-screen-header__subtitle">
+          Follow classmates, accept requests, and team up in guilds for bonus XP.
+        </p>
+      </header>
       {actionToast ? (
         <div className="fixed bottom-6 left-1/2 z-[80] -translate-x-1/2 rounded-xl border border-uri-keaney/40 bg-uri-navy/95 px-4 py-2.5 text-sm font-medium text-white shadow-lg">
           {actionToast}
@@ -212,27 +219,27 @@ export function FindFriends({
 
       {incoming.length > 0 && (
         <div className="card p-4 sm:p-5">
-          <h3 className="font-display font-semibold text-white mb-3 flex items-center gap-2">
+          <h3 className="font-display font-semibold text-cq-foreground mb-3 flex items-center gap-2">
             <span aria-hidden>📬</span> Follow Requests ({incoming.length})
           </h3>
           <ul className="space-y-3">
             {incoming.map((req) => (
               <li
                 key={req.requestId}
-                className="flex items-start gap-3 p-3 rounded-xl bg-cq-elevated border border-white/[0.08] border-l-[3px] border-l-uri-keaney"
+                className="flex items-start gap-3 p-3 rounded-xl bg-cq-elevated border border-cq-border border-l-[3px] border-l-uri-keaney"
               >
-                <div className="w-12 h-12 rounded-xl bg-cq-card flex items-center justify-center border border-white/[0.08] flex-shrink-0 overflow-hidden">
+                <div className="w-12 h-12 rounded-xl bg-cq-card flex items-center justify-center border border-cq-border flex-shrink-0 overflow-hidden">
                   <AvatarDisplay avatar={avatarFromConnectionProfile(req)} size={48} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-white truncate">{req.displayName}</p>
+                  <p className="font-medium text-cq-foreground truncate">{req.displayName}</p>
                   <p className="text-sm text-uri-keaney/90">@{req.username}</p>
                   {typeof req.mutualFriendsCount === "number" && req.mutualFriendsCount > 0 ? (
-                    <p className="text-xs text-white/55 mt-0.5">
+                    <p className="text-xs text-cq-muted mt-0.5">
                       {req.mutualFriendsCount} mutual connection{req.mutualFriendsCount === 1 ? "" : "s"}
                     </p>
                   ) : null}
-                  <p className="text-[11px] text-white/45 mt-1">{formatRequestSentAt(req.createdAt)}</p>
+                  <p className="text-[11px] text-cq-muted mt-1">{formatRequestSentAt(req.createdAt)}</p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
                   <button
@@ -247,7 +254,7 @@ export function FindFriends({
                     type="button"
                     disabled={respondingId === req.requestId}
                     onClick={() => void handleDecline(req.requestId)}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 border border-white/20 disabled:opacity-60"
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 border border-cq-border disabled:opacity-60"
                   >
                     Deny
                   </button>
@@ -267,12 +274,12 @@ export function FindFriends({
       {weeklyRace.length > 0 && (
         <div className="rounded-2xl border border-uri-gold/40 bg-gradient-to-r from-uri-gold/10 to-transparent p-4">
           <h3 className="text-xs font-bold uppercase tracking-wider text-uri-gold mb-2">⚔️ Guild vs guild (this week)</h3>
-          <p className="text-[11px] text-white/55 mb-2">#1 guild next Monday: members get +10% XP for the week. Every log adds race points.</p>
+          <p className="text-[11px] text-cq-muted mb-2">#1 guild next Monday: members get +10% XP for the week. Every log adds race points.</p>
           <ol className="space-y-1">
             {weeklyRace.map((row, i) => {
               const g = getGuildById(row.guildId);
               return (
-                <li key={row.guildId} className="flex justify-between text-sm text-white/90">
+                <li key={row.guildId} className="flex justify-between text-sm text-slate-800">
                   <span>
                     {i + 1}. {g?.name ?? row.guildId}
                   </span>
@@ -286,11 +293,11 @@ export function FindFriends({
 
       {/* Find Friends — above Guilds */}
       <div className="card p-4 sm:p-5">
-        <h2 className="font-display font-semibold text-white mb-2 flex items-center gap-2">
+        <h2 className="font-display font-semibold text-cq-foreground mb-2 flex items-center gap-2">
           <span aria-hidden>👋</span> Find People
         </h2>
-        <p className="text-sm text-white/50 mb-4">
-          Search by username and tap <strong className="text-white/70">Follow</strong> to send a follow request. Once they accept, you&apos;ll follow each other and see their posts on The Quad.
+        <p className="text-sm text-cq-muted mb-4">
+          Search by username and tap <strong className="text-cq-muted">Follow</strong> to send a follow request. Once they accept, you&apos;ll follow each other and see their posts on The Quad.
         </p>
         <form onSubmit={handleSendRequest} className="flex gap-2 flex-wrap">
           <input
@@ -298,7 +305,7 @@ export function FindFriends({
             value={usernameInput}
             onChange={(e) => { setUsernameInput(e.target.value.toLowerCase().replace(/\s+/g, "_")); setSendError(null); }}
             placeholder="e.g. alex_rhody"
-            className="flex-1 min-w-[140px] px-3 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/60"
+            className="flex-1 min-w-[140px] px-3 py-2.5 rounded-xl bg-white border border-cq-border text-cq-foreground placeholder:text-cq-muted focus:outline-none focus:ring-2 focus:ring-uri-keaney/60"
           />
           <button
             type="submit"
@@ -316,26 +323,26 @@ export function FindFriends({
           <button
             type="button"
             onClick={() => setPendingOpen((o) => !o)}
-            className="w-full flex items-center justify-between gap-2 text-left rounded-lg -mx-1 px-1 py-1 hover:bg-white/5 transition-colors"
+            className="w-full flex items-center justify-between gap-2 text-left rounded-lg -mx-1 px-1 py-1 hover:bg-cq-elevated transition-colors"
             aria-expanded={pendingOpen}
           >
-            <span className="font-display font-semibold text-white flex items-center gap-2">
+            <span className="font-display font-semibold text-cq-foreground flex items-center gap-2">
               <span aria-hidden>📤</span> Pending Sent Requests ({outgoing.length})
             </span>
-            <span className="text-white/60 text-sm" aria-hidden>{pendingOpen ? "▼" : "▶"}</span>
+            <span className="text-cq-muted text-sm" aria-hidden>{pendingOpen ? "▼" : "▶"}</span>
           </button>
           {pendingOpen && (
-            <ul className="space-y-2 mt-3 pt-3 border-t border-white/10">
+            <ul className="space-y-2 mt-3 pt-3 border-t border-cq-border">
               {outgoing.map((req) => (
                 <li
                   key={req.requestId}
-                  className="flex items-center gap-3 p-2.5 rounded-xl bg-white/5 border border-white/10"
+                  className="flex items-center gap-3 p-2.5 rounded-xl bg-cq-elevated border border-cq-border"
                 >
-                  <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 border border-white/15">
+                  <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 border border-cq-border">
                     <AvatarDisplay avatar={avatarFromConnectionProfile(req)} size={36} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white/90 truncate">{req.displayName}</p>
+                    <p className="text-slate-800 truncate">{req.displayName}</p>
                     <p className="text-xs text-uri-keaney/80">@{req.username}</p>
                   </div>
                   <button
@@ -354,10 +361,10 @@ export function FindFriends({
 
       {/* Find Guilds */}
       <div className="card p-4 sm:p-5">
-        <h2 className="font-display font-semibold text-white mb-2 flex items-center gap-2">
+        <h2 className="font-display font-semibold text-cq-foreground mb-2 flex items-center gap-2">
           <span aria-hidden>🛡️</span> Find Guilds
         </h2>
-        <p className="text-sm text-white/50 mb-4">
+        <p className="text-sm text-cq-muted mb-4">
           Search by guild name or interest. Browse recommended guilds below.
         </p>
         <input
@@ -365,19 +372,19 @@ export function FindFriends({
           value={guildSearchQuery}
           onChange={(e) => setGuildSearchQuery(e.target.value)}
           placeholder="e.g. Library, Fitness, Study..."
-          className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/60"
+          className="w-full px-3 py-2.5 rounded-xl bg-white border border-cq-border text-cq-foreground placeholder:text-cq-muted focus:outline-none focus:ring-2 focus:ring-uri-keaney/60"
           aria-label="Search guilds"
         />
       </div>
 
       {/* Guilds banner + section */}
-      <div className="rounded-2xl border border-white/[0.08] bg-cq-card p-4 sm:p-5">
+      <div className="rounded-2xl border border-cq-border bg-cq-card p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h2 className="font-display font-semibold text-white mb-1 flex items-center gap-2">
+            <h2 className="font-display font-semibold text-cq-foreground mb-1 flex items-center gap-2">
               <span aria-hidden>🛡️</span> Guilds
             </h2>
-            <p className="text-sm text-white/80">Join a Guild, earn bonus XP together.</p>
+            <p className="text-sm text-slate-700">Join a Guild, earn bonus XP together.</p>
           </div>
           <button
             type="button"
@@ -387,19 +394,19 @@ export function FindFriends({
             className={`px-4 py-2.5 rounded-xl font-semibold border shrink-0 transition-colors ${
               character.totalXP >= 300
                 ? "bg-uri-keaney text-white hover:bg-uri-keaney/90 border-uri-keaney/40 cursor-pointer"
-                : "bg-white/10 text-white/50 border-white/20 cursor-not-allowed"
+                : "bg-slate-100 text-cq-muted border-cq-border cursor-not-allowed"
             }`}
           >
             {character.totalXP < 300 ? "🔒 Create guild (Unlock at 300 XP)" : "Create Guild"}
           </button>
         </div>
 
-        <p className="text-xs text-white/50 mt-4 mb-3">Recommended Guilds for You</p>
+        <p className="text-xs text-cq-muted mt-4 mb-3">Recommended Guilds for You</p>
         <div className="space-y-4">
           {recommendedByInterest.map(({ interest, guilds }) =>
             guilds.length > 0 ? (
               <div key={interest}>
-                <h3 className="text-xs font-medium text-white/60 uppercase tracking-wider mb-2">
+                <h3 className="text-xs font-medium text-cq-muted uppercase tracking-wider mb-2">
                   {GUILD_INTEREST_LABELS[interest]}
                 </h3>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -424,13 +431,13 @@ export function FindFriends({
       </div>
 
       <div className="card p-4 sm:p-5">
-        <h3 className="font-display font-semibold text-white mb-3 flex items-center gap-2">
+        <h3 className="font-display font-semibold text-cq-foreground mb-3 flex items-center gap-2">
           <span aria-hidden>🦌</span> Connections ({friends.length})
         </h3>
         {socialLoading ? (
-          <p className="text-sm text-white/50">Loading connections...</p>
+          <p className="text-sm text-cq-muted">Loading connections...</p>
         ) : friends.length === 0 ? (
-          <p className="text-sm text-white/50">No connections yet. Follow someone or accept a request — you&apos;ll follow each other once they accept.</p>
+          <p className="text-sm text-cq-muted">No connections yet. Follow someone or accept a request — you&apos;ll follow each other once they accept.</p>
         ) : (
           <ul className="space-y-4">
             {friends.map((friend) => (
@@ -473,14 +480,14 @@ function FriendCard({
   onMessage?: () => void;
 }) {
   return (
-    <li className="p-4 rounded-xl bg-cq-card border border-white/[0.08]">
+    <li className="p-4 rounded-xl bg-cq-card border border-cq-border">
       <div className="flex items-start gap-3">
-        <div className="w-14 h-14 rounded-xl bg-cq-elevated flex items-center justify-center border border-white/[0.08] flex-shrink-0 overflow-hidden">
+        <div className="w-14 h-14 rounded-xl bg-cq-elevated flex items-center justify-center border border-cq-border flex-shrink-0 overflow-hidden">
           <AvatarDisplay avatar={friend.avatar} size={56} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-semibold text-white truncate">{friend.name}</p>
+            <p className="font-semibold text-cq-foreground truncate">{friend.name}</p>
             <span className="text-xs font-medium text-uri-keaney/90 px-2 py-0.5 rounded bg-uri-keaney/15 border border-uri-keaney/30">Following</span>
           </div>
           <p className="text-sm text-uri-keaney/90">@{friend.username}</p>
@@ -488,7 +495,7 @@ function FriendCard({
             <span className="text-uri-keaney font-mono text-sm font-semibold bg-uri-keaney/15 px-1.5 py-0.5 rounded">
               Lv.{friend.level}
             </span>
-            <span className="text-white/50 text-sm font-mono">{friend.totalXP} XP</span>
+            <span className="text-cq-muted text-sm font-mono">{friend.totalXP} XP</span>
             {friend.streakDays > 0 && (
               <span className="text-amber-400/90 text-xs">🔥 {friend.streakDays}d streak</span>
             )}
@@ -498,7 +505,7 @@ function FriendCard({
               <button
                 type="button"
                 onClick={onMessage}
-                className="text-xs font-medium text-white bg-uri-keaney/20 hover:bg-uri-keaney/30 text-uri-keaney px-2.5 py-1.5 rounded-lg border border-uri-keaney/40"
+                className="text-xs font-medium bg-uri-keaney/15 hover:bg-uri-keaney/25 text-uri-keaney px-2.5 py-1.5 rounded-lg border border-uri-keaney/40"
               >
                 💬 Message
               </button>
@@ -508,8 +515,8 @@ function FriendCard({
             {STAT_KEYS.map((key) => (
               <div key={key} className="flex items-center gap-1.5 text-xs">
                 <span title={STAT_LABELS[key]}>{STAT_ICONS[key]}</span>
-                <span className="text-white/70">{STAT_LABELS[key]}</span>
-                <span className="font-mono text-white/90">{friend.stats[key] ?? 0}</span>
+                <span className="text-cq-muted">{STAT_LABELS[key]}</span>
+                <span className="font-mono text-slate-800">{friend.stats[key] ?? 0}</span>
               </div>
             ))}
           </div>

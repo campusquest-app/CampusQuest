@@ -318,13 +318,20 @@ export function Leaderboards({
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh} disabled={xpLoading}>
-    <section className="space-y-6">
+    <section className="cq-tab-shell space-y-6 pb-8">
+      <header className="cq-screen-header">
+        <p className="cq-screen-header__eyebrow">Campus Rankings</p>
+        <h1 className="cq-screen-header__title">Leaderboards</h1>
+        <p className="cq-screen-header__subtitle">
+          See how you stack up against friends and guilds across campus.
+        </p>
+      </header>
       {/* Filter by stat */}
       <div className="card p-4 sm:p-5">
-        <h2 className="font-display font-semibold text-white mb-2 flex items-center gap-2">
+        <h2 className="font-display font-semibold text-cq-foreground mb-2 flex items-center gap-2">
           <span aria-hidden>🏆</span> Rank by
         </h2>
-        <p className="text-sm text-white/50 mb-3">
+        <p className="text-sm text-cq-muted mb-3">
           {sortBy === "guildLevel"
             ? "Guild level shows guilds only, sorted by highest level."
             : "Campus and friends rankings use verified classmates and connections. Pick a stat to sort the live board."}
@@ -338,7 +345,7 @@ export function Leaderboards({
               className={`cq-chip-pop flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
                 sortBy === opt.value
                   ? "bg-uri-keaney text-white"
-                  : "bg-white/10 text-white/80 hover:bg-white/15 border border-white/15"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-100 border border-cq-border"
               }`}
             >
               <span>{opt.icon}</span>
@@ -351,17 +358,17 @@ export function Leaderboards({
       {sortBy === "guildLevel" ? (
         /* Guild leaderboard — guild names only, sorted by level */
         <div className="card p-4 sm:p-5">
-          <h2 className="font-display font-semibold text-white mb-2 flex items-center gap-2">
+          <h2 className="font-display font-semibold text-cq-foreground mb-2 flex items-center gap-2">
             <span aria-hidden>🛡️</span> Guild leaderboard
           </h2>
-          <p className="text-sm text-white/50 mb-4">
+          <p className="text-sm text-cq-muted mb-4">
             Guilds ranked by level (highest first). Ties sorted by name.
           </p>
           {guildsSorted.length === 0 ? (
-            <div className="cq-empty-state rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center">
+            <div className="cq-empty-state rounded-xl border border-cq-border bg-cq-elevated px-4 py-6 text-center">
               <p className="text-xl mb-1.5" aria-hidden>🛡️</p>
-              <p className="text-sm font-semibold text-white/70">No guilds yet.</p>
-              <p className="text-xs text-white/50 mt-1">Create or join one in Find Friends to start climbing rankings.</p>
+              <p className="text-sm font-semibold text-cq-muted">No guilds yet.</p>
+              <p className="text-xs text-cq-muted mt-1">Create or join one in Find Friends to start climbing rankings.</p>
             </div>
           ) : (
             <ul className="space-y-2">
@@ -369,43 +376,43 @@ export function Leaderboards({
                 const level = guild.xp != null ? 1 + Math.floor(guild.xp / 100) : guild.level;
                 const rank = index + 1;
                 const podiumGlow = rank <= 3 ? RANK_GLOW[rank as 1 | 2 | 3] : "";
-                const rankStyle = rank === 1 ? "font-bold text-amber-300 drop-shadow-[0_0_10px_rgba(251,191,36,0.9)]" : rank === 2 ? "font-bold text-slate-200 drop-shadow-[0_0_8px_rgba(226,232,240,0.8)]" : rank === 3 ? "font-bold text-amber-600 drop-shadow-[0_0_10px_rgba(217,119,6,0.8)]" : "text-white/60 font-mono";
+                const rankStyle = rank === 1 ? "font-bold text-amber-300 drop-shadow-[0_0_10px_rgba(251,191,36,0.9)]" : rank === 2 ? "font-bold text-cq-muted" : rank === 3 ? "font-bold text-amber-600 drop-shadow-[0_0_10px_rgba(217,119,6,0.8)]" : "text-cq-muted font-mono";
                 const isExpanded = expandedGuildId === guild.id;
                 return (
                   <li
                     key={guild.id}
-                    className={`rounded-xl border overflow-hidden ${rank <= 3 ? podiumGlow : "bg-white/5 border-white/10"}`}
+                    className={`rounded-xl border overflow-hidden ${rank <= 3 ? podiumGlow : "bg-cq-elevated border-cq-border"}`}
                   >
                     <button
                       type="button"
                       onClick={() => setExpandedGuildId(isExpanded ? null : guild.id)}
-                      className="w-full flex items-center gap-3 p-3 text-left hover:bg-white/5 transition-colors"
+                      className="w-full flex items-center gap-3 p-3 text-left hover:bg-cq-elevated transition-colors"
                       aria-expanded={isExpanded}
                     >
                       <span className={`w-8 text-sm font-mono flex-shrink-0 ${rankStyle}`}>
                         #{rank}
                       </span>
-                      <span className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-2xl border border-uri-keaney/30 flex-shrink-0">
+                      <span className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-2xl border border-uri-keaney/30 flex-shrink-0">
                         {guild.crest}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-white truncate">{guild.name}</p>
-                        <p className="text-xs text-white/50">{GUILD_INTEREST_LABELS[guild.interest]}</p>
+                        <p className="font-medium text-cq-foreground truncate">{guild.name}</p>
+                        <p className="text-xs text-cq-muted">{GUILD_INTEREST_LABELS[guild.interest]}</p>
                       </div>
                       <div className="flex-shrink-0 text-right">
                         <p className="text-uri-keaney font-semibold">Lv.{level}</p>
-                        <p className="text-xs text-white/50">{guild.memberIds.length} members</p>
+                        <p className="text-xs text-cq-muted">{guild.memberIds.length} members</p>
                       </div>
-                      <span className="text-white/50 text-sm flex-shrink-0" aria-hidden>
+                      <span className="text-cq-muted text-sm flex-shrink-0" aria-hidden>
                         {isExpanded ? "▼" : "▶"}
                       </span>
                     </button>
                     {isExpanded && (
-                      <div className="border-t border-white/10 bg-black/20 px-3 py-3">
-                        <p className="text-xs font-semibold text-white/70 uppercase tracking-wider mb-2">Members</p>
+                      <div className="border-t border-cq-border bg-slate-100 px-3 py-3">
+                        <p className="text-xs font-semibold text-cq-muted uppercase tracking-wider mb-2">Members</p>
                         <ul className="space-y-2">
                           {guild.memberIds.length === 0 ? (
-                            <li className="text-sm text-white/50">No members yet.</li>
+                            <li className="text-sm text-cq-muted">No members yet.</li>
                           ) : (
                             guild.memberIds.map((memberId) => {
                               const member = getCharacterById(memberId);
@@ -413,14 +420,14 @@ export function Leaderboards({
                               return (
                                 <li
                                   key={memberId}
-                                  className="flex items-center gap-3 p-2 rounded-lg bg-white/5 border border-white/10"
+                                  className="flex items-center gap-3 p-2 rounded-lg bg-cq-elevated border border-cq-border"
                                 >
-                                  <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center overflow-hidden flex-shrink-0 border border-uri-keaney/30">
+                                  <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0 border border-uri-keaney/30">
                                     {member ? <AvatarDisplay avatar={member.avatar} size={36} /> : <span className="text-lg opacity-60">👤</span>}
                                   </div>
                                   <div className="min-w-0 flex-1">
-                                    <p className="font-medium text-white text-sm truncate">{member ? member.name : "Unknown"}</p>
-                                    <p className="text-xs text-white/50 truncate">{member ? `@${member.username}` : memberId}</p>
+                                    <p className="font-medium text-cq-foreground text-sm truncate">{member ? member.name : "Unknown"}</p>
+                                    <p className="text-xs text-cq-muted truncate">{member ? `@${member.username}` : memberId}</p>
                                   </div>
                                   {isCreator && (
                                     <span className="text-[10px] font-semibold text-uri-gold px-1.5 py-0.5 rounded bg-uri-gold/20 flex-shrink-0">Founder</span>
@@ -440,7 +447,7 @@ export function Leaderboards({
         </div>
       ) : (
         <>
-          <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-cq-card shadow-[0_20px_50px_-20px_rgba(0,0,0,0.55)]">
+          <div className="relative overflow-hidden rounded-2xl border border-cq-border bg-cq-card shadow-card">
             <div
               className="pointer-events-none absolute inset-0 opacity-[0.2] bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(104,171,232,0.12),transparent_55%)]"
               aria-hidden
@@ -457,15 +464,15 @@ export function Leaderboards({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex gap-4 min-w-0">
                   <div
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cq-elevated text-xl ring-1 ring-white/10"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cq-elevated text-xl ring-1 ring-slate-200"
                     aria-hidden
                   >
                     🏛️
                   </div>
                   <div className="min-w-0">
-                    <h2 className="font-display text-xl font-bold tracking-tight text-white sm:text-2xl">Student rankings</h2>
-                    <p className="mt-1 text-sm leading-relaxed text-white/55 max-w-xl">
-                      See how you stack up by <span className="text-white/80">{xpSortLabel}</span>. Campus uses your
+                    <h2 className="font-display text-xl font-bold tracking-tight text-cq-foreground sm:text-2xl">Student rankings</h2>
+                    <p className="mt-1 text-sm leading-relaxed text-cq-muted max-w-xl">
+                      See how you stack up by <span className="text-slate-700">{xpSortLabel}</span>. Campus uses your
                       school-verified cohort; Friends only includes mutual campus connections you&apos;ve accepted.
                     </p>
                   </div>
@@ -474,7 +481,7 @@ export function Leaderboards({
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div
-                  className="inline-flex w-full max-w-md rounded-2xl border border-white/10 bg-black/25 p-1 ring-1 ring-black/30"
+                  className="inline-flex w-full max-w-md rounded-2xl border border-cq-border bg-slate-100 p-1 ring-1 ring-black/30"
                   role="tablist"
                   aria-label="Leaderboard scope"
                 >
@@ -486,7 +493,7 @@ export function Leaderboards({
                     className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all min-h-[48px] ${
                       xpTab === "campus"
                         ? "bg-gradient-to-b from-uri-keaney to-uri-keaney/85 text-uri-navy shadow-md ring-1 ring-white/20"
-                        : "text-white/70 hover:bg-white/10 hover:text-white"
+                        : "text-cq-muted hover:bg-slate-100 hover:text-cq-foreground"
                     }`}
                   >
                     <span className="text-base" aria-hidden>
@@ -502,7 +509,7 @@ export function Leaderboards({
                     className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all min-h-[48px] ${
                       xpTab === "friends"
                         ? "bg-gradient-to-b from-uri-keaney to-uri-keaney/85 text-uri-navy shadow-md ring-1 ring-white/20"
-                        : "text-white/70 hover:bg-white/10 hover:text-white"
+                        : "text-cq-muted hover:bg-slate-100 hover:text-cq-foreground"
                     }`}
                   >
                     <span className="text-base" aria-hidden>
@@ -511,7 +518,7 @@ export function Leaderboards({
                     Friends
                   </button>
                 </div>
-                <p className="text-[11px] text-white/40 sm:max-w-[14rem] sm:text-right leading-snug">
+                <p className="text-[11px] text-cq-subtle sm:max-w-[14rem] sm:text-right leading-snug">
                   {xpTab === "campus"
                     ? "Everyone at your school with a verified email."
                     : "You and friends you have connected with on CampusQuest."}
@@ -527,22 +534,22 @@ export function Leaderboards({
             {xpLoading ? (
               <XpLeaderboardSkeleton />
             ) : xpFriendsEmpty ? (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-10 text-center">
+              <div className="rounded-2xl border border-cq-border bg-cq-elevated px-5 py-10 text-center">
                 <p className="text-3xl mb-2" aria-hidden>
                   🤝
                 </p>
-                <p className="text-base font-semibold text-white/90">Add friends to compare</p>
-                <p className="text-sm text-white/50 mt-2 max-w-sm mx-auto leading-relaxed">
+                <p className="text-base font-semibold text-slate-800">Add friends to compare</p>
+                <p className="text-sm text-cq-muted mt-2 max-w-sm mx-auto leading-relaxed">
                   When you connect with classmates, they&apos;ll show up here—ranked by {xpSortLabel.toLowerCase()}.
                 </p>
               </div>
             ) : xpCampusEmpty ? (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-10 text-center">
+              <div className="rounded-2xl border border-cq-border bg-cq-elevated px-5 py-10 text-center">
                 <p className="text-3xl mb-2" aria-hidden>
                   🏫
                 </p>
-                <p className="text-base font-semibold text-white/90">Campus board unlocks with peers</p>
-                <p className="text-sm text-white/50 mt-2 max-w-sm mx-auto leading-relaxed">
+                <p className="text-base font-semibold text-slate-800">Campus board unlocks with peers</p>
+                <p className="text-sm text-cq-muted mt-2 max-w-sm mx-auto leading-relaxed">
                   As more students verify their school email, the campus leaderboard fills in.
                 </p>
               </div>
@@ -558,7 +565,7 @@ export function Leaderboards({
                 ) : null}
 
                 {xpShowPinnedCard && xpActive.currentUserEntry ? (
-                  <div className="rounded-2xl border border-white/[0.08] border-l-[3px] border-l-uri-keaney bg-cq-elevated p-4">
+                  <div className="rounded-2xl border border-cq-border border-l-[3px] border-l-uri-keaney bg-cq-elevated p-4">
                     <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-uri-keaney mb-3">
                       Your position · outside top slice
                     </p>
@@ -577,10 +584,10 @@ export function Leaderboards({
                 ) : null}
 
                 <div>
-                  <div className="mb-3 flex items-end justify-between gap-3 border-b border-white/10 pb-3">
+                  <div className="mb-3 flex items-end justify-between gap-3 border-b border-cq-border pb-3">
                     <div>
-                      <h3 className="font-display text-sm font-semibold text-white">Leaderboard</h3>
-                      <p className="text-[11px] text-white/40 mt-0.5">
+                      <h3 className="font-display text-sm font-semibold text-cq-foreground">Leaderboard</h3>
+                      <p className="text-[11px] text-cq-subtle mt-0.5">
                         Sorted by {xpSortLabel.toLowerCase()} · top {xpActive.topUsers.length} shown
                       </p>
                     </div>
@@ -610,10 +617,10 @@ export function Leaderboards({
 
           {/* Scholars Guild leaderboard */}
           <div className="card p-4 sm:p-5">
-            <h2 className="font-display font-semibold text-white mb-2 flex items-center gap-2">
+            <h2 className="font-display font-semibold text-cq-foreground mb-2 flex items-center gap-2">
               <span aria-hidden>🎓</span> Scholars Guild leaderboard
             </h2>
-            <p className="text-sm text-white/50 mb-4">
+            <p className="text-sm text-cq-muted mb-4">
               Colleges ranked by total XP from their scholars (including you). Pick your Scholars Guild when creating your character.
             </p>
             <ul className="space-y-2">
@@ -622,47 +629,47 @@ export function Leaderboards({
                 return (
                   <li
                     key={g.id}
-                    className="rounded-xl border border-white/12 bg-white/5 overflow-hidden"
+                    className="rounded-xl border border-cq-border bg-cq-elevated overflow-hidden"
                   >
                     <button
                       type="button"
                       onClick={() => setExpandedScholarGuildId(isExpanded ? null : g.id)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/7 transition-colors"
+                      className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-cq-elevated transition-colors"
                       aria-expanded={isExpanded}
                     >
-                      <span className="w-7 text-sm font-mono text-white/70 flex-shrink-0">#{index + 1}</span>
-                      <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-xl border border-uri-keaney/40 flex-shrink-0">
+                      <span className="w-7 text-sm font-mono text-cq-muted flex-shrink-0">#{index + 1}</span>
+                      <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-xl border border-uri-keaney/40 flex-shrink-0">
                         {g.crest}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-white truncate">{g.name}</p>
-                        <p className="text-xs text-white/50">
+                        <p className="font-medium text-cq-foreground truncate">{g.name}</p>
+                        <p className="text-xs text-cq-muted">
                           {g.members.length} scholars ·{" "}
                           <span className="font-mono text-uri-keaney font-semibold">
                             {g.totalXP.toLocaleString()} XP
                           </span>
                         </p>
                       </div>
-                      <span className="text-white/50 text-sm flex-shrink-0" aria-hidden>
+                      <span className="text-cq-muted text-sm flex-shrink-0" aria-hidden>
                         {isExpanded ? "▼" : "▶"}
                       </span>
                     </button>
                     {isExpanded && (
-                      <div className="border-t border-white/10 bg-black/20 px-3 py-3">
-                        <p className="text-xs font-semibold text-white/70 uppercase tracking-wider mb-2">
+                      <div className="border-t border-cq-border bg-slate-100 px-3 py-3">
+                        <p className="text-xs font-semibold text-cq-muted uppercase tracking-wider mb-2">
                           Example scholars
                         </p>
                         <ul className="space-y-1.5">
                           {g.members.map((m) => (
                             <li
                               key={`${g.id}-${m.name}`}
-                              className="flex items-center gap-2 rounded-lg bg-white/5 border border-white/10 px-2.5 py-1.5"
+                              className="flex items-center gap-2 rounded-lg bg-cq-elevated border border-cq-border px-2.5 py-1.5"
                             >
-                              <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-lg flex-shrink-0">
+                              <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-lg flex-shrink-0">
                                 {m.avatar}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-white truncate">{m.name}</p>
+                                <p className="text-sm font-medium text-cq-foreground truncate">{m.name}</p>
                               </div>
                               <span className="text-xs font-mono text-uri-keaney flex-shrink-0">
                                 {m.totalXP.toLocaleString()} XP
@@ -704,7 +711,7 @@ function XpRankHighlight({
         ? "from-slate-300/25 via-slate-400/15 to-slate-600/25 ring-slate-200/45 shadow-[0_0_24px_rgba(226,232,240,0.25)]"
         : rank === 3
           ? "from-amber-700/30 via-amber-800/15 to-amber-950/20 ring-amber-600/50 shadow-[0_0_22px_rgba(217,119,6,0.3)]"
-          : "from-cq-elevated via-cq-card to-cq-app ring-white/15";
+          : "from-cq-elevated via-cq-card to-cq-app ring-slate-200";
   const headline =
     mode === "campus"
       ? rank === 1
@@ -715,21 +722,21 @@ function XpRankHighlight({
         : "Among your friends";
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-cq-card p-4 sm:p-5">
+    <div className="relative overflow-hidden rounded-2xl border border-cq-border bg-cq-card p-4 sm:p-5">
       <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4 min-w-0">
           <div
             className={`flex h-[4.75rem] w-[4.75rem] shrink-0 flex-col items-center justify-center rounded-2xl bg-gradient-to-br ring-2 ${medalRing}`}
           >
-            <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/55">Rank</span>
-            <span className="font-display text-3xl font-bold tabular-nums leading-none text-white sm:text-[2.125rem]">
+            <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-cq-muted">Rank</span>
+            <span className="font-display text-3xl font-bold tabular-nums leading-none text-cq-foreground sm:text-[2.125rem]">
               #{rank}
             </span>
           </div>
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-uri-keaney">Your placement</p>
-            <p className="mt-1.5 text-lg font-semibold text-white sm:text-xl leading-snug">{headline}</p>
-            <p className="mt-1.5 text-sm text-white/55 leading-relaxed">
+            <p className="mt-1.5 text-lg font-semibold text-cq-foreground sm:text-xl leading-snug">{headline}</p>
+            <p className="mt-1.5 text-sm text-cq-muted leading-relaxed">
               {totalRanked <= 1 ? (
                 <>
                   You&apos;re #{rank} — once more {mode === "campus" ? "classmates" : "friends"} join, this board gets
@@ -738,7 +745,7 @@ function XpRankHighlight({
               ) : (
                 <>
                   Out of{" "}
-                  <span className="text-white/80 font-medium tabular-nums">{totalRanked.toLocaleString()}</span>{" "}
+                  <span className="text-slate-700 font-medium tabular-nums">{totalRanked.toLocaleString()}</span>{" "}
                   {peopleWord} on your {scopeNoun}, ordered by {sortLabel.toLowerCase()} (highest first).
                 </>
               )}
@@ -746,7 +753,7 @@ function XpRankHighlight({
           </div>
         </div>
         <div className="flex flex-wrap gap-2 sm:justify-end sm:shrink-0">
-          <span className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-black/30 px-3 py-2 text-xs text-white/80">
+          <span className="inline-flex items-center gap-1.5 rounded-xl border border-cq-border bg-slate-100 px-3 py-2 text-xs text-slate-700">
             <span className="text-uri-keaney" aria-hidden>
               ✦
             </span>
@@ -764,17 +771,17 @@ function XpLeaderboardSkeleton() {
       {[0, 1, 2, 3, 4, 5].map((i) => (
         <li
           key={i}
-          className="flex items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/[0.04]"
+          className="flex items-center gap-3 p-3 rounded-xl border border-cq-border bg-cq-elevated"
         >
-          <div className="w-8 h-6 rounded bg-white/10 animate-pulse shrink-0" />
-          <div className="w-10 h-10 rounded-xl bg-white/10 animate-pulse shrink-0" />
+          <div className="w-8 h-6 rounded bg-slate-100 animate-pulse shrink-0" />
+          <div className="w-10 h-10 rounded-xl bg-slate-100 animate-pulse shrink-0" />
           <div className="flex-1 space-y-2 min-w-0">
-            <div className="h-4 w-36 max-w-full rounded bg-white/10 animate-pulse" />
-            <div className="h-3 w-28 max-w-full rounded bg-white/10 animate-pulse" />
+            <div className="h-4 w-36 max-w-full rounded bg-slate-100 animate-pulse" />
+            <div className="h-3 w-28 max-w-full rounded bg-slate-100 animate-pulse" />
           </div>
           <div className="space-y-2 text-right shrink-0 w-14">
-            <div className="h-4 w-full rounded bg-white/10 animate-pulse ml-auto" />
-            <div className="h-3 w-full rounded bg-white/10 animate-pulse ml-auto" />
+            <div className="h-4 w-full rounded bg-slate-100 animate-pulse ml-auto" />
+            <div className="h-3 w-full rounded bg-slate-100 animate-pulse ml-auto" />
           </div>
         </li>
       ))}
@@ -815,40 +822,40 @@ function LeaderboardRow({
   statLabel?: string;
   actions?: React.ReactNode;
 }) {
-  const rankStyle = rank === 1 ? "font-bold text-amber-300 drop-shadow-[0_0_10px_rgba(251,191,36,0.9)]" : rank === 2 ? "font-bold text-slate-200 drop-shadow-[0_0_8px_rgba(226,232,240,0.8)]" : rank === 3 ? "font-bold text-amber-600 drop-shadow-[0_0_10px_rgba(217,119,6,0.8)]" : "text-white/60 font-mono";
+  const rankStyle = rank === 1 ? "font-bold text-amber-300 drop-shadow-[0_0_10px_rgba(251,191,36,0.9)]" : rank === 2 ? "font-bold text-cq-muted" : rank === 3 ? "font-bold text-amber-600 drop-shadow-[0_0_10px_rgba(217,119,6,0.8)]" : "text-cq-muted font-mono";
   const podiumGlow = rank <= 3 ? RANK_GLOW[rank as 1 | 2 | 3] : "";
   return (
     <li
-      className={`cq-leaderboard-row flex items-center gap-2.5 sm:gap-3 p-3 rounded-xl border transition-colors hover:bg-white/[0.06] ${
-        rank <= 3 ? podiumGlow : isCurrentUser ? "bg-cq-elevated border-white/[0.08] border-l-[3px] border-l-uri-keaney" : "bg-cq-card border-white/[0.08]"
+      className={`cq-leaderboard-row flex items-center gap-2.5 sm:gap-3 p-3 rounded-xl border transition-colors hover:bg-slate-100 ${
+        rank <= 3 ? podiumGlow : isCurrentUser ? "bg-cq-elevated border-cq-border border-l-[3px] border-l-uri-keaney" : "bg-cq-card border-cq-border"
       }`}
     >
       <span className={`cq-rank-badge w-8 text-center text-sm ${rankStyle}`}>#{rank}</span>
-      <span className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0 border border-white/15 overflow-hidden">
+      <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 border border-cq-border overflow-hidden">
         <AvatarDisplay avatar={avatar} size={36} />
       </span>
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-white truncate flex items-center gap-1.5">
+        <p className="font-medium text-cq-foreground truncate flex items-center gap-1.5">
           {name}
           {isCurrentUser && <span className="text-xs text-uri-keaney font-normal">(you)</span>}
         </p>
-        <p className="text-xs text-white/50 truncate">@{username}</p>
+        <p className="text-xs text-cq-muted truncate">@{username}</p>
         {showcaseCharacter ? <AchievementShowcaseStrip character={showcaseCharacter} compact /> : null}
         {actions != null && <div className="mt-1.5 sm:hidden">{actions}</div>}
       </div>
       <div className="flex-shrink-0 text-right min-w-[5.5rem] sm:min-w-[6rem]">
         {sortBy !== "level" && statLabel != null && statValue != null ? (
           <>
-            <p className="text-lg font-bold text-white tabular-nums leading-none">{statValue.toLocaleString()}</p>
+            <p className="text-lg font-bold text-cq-foreground tabular-nums leading-none">{statValue.toLocaleString()}</p>
             <p className="text-[10px] font-semibold text-uri-keaney/95 mt-1 leading-tight">{statLabel}</p>
-            <p className="text-[10px] text-white/45 mt-1">
+            <p className="text-[10px] text-cq-muted mt-1">
               Lv.{level} · {totalXP.toLocaleString()} XP
             </p>
           </>
         ) : (
           <>
             <p className="text-uri-keaney font-semibold">Lv.{level}</p>
-            <p className="text-xs text-white/50 font-mono">{totalXP.toLocaleString()} XP</p>
+            <p className="text-xs text-cq-muted font-mono">{totalXP.toLocaleString()} XP</p>
           </>
         )}
       </div>

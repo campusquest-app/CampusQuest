@@ -167,45 +167,47 @@ export function Inbox({
   }
 
   return (
-    <div className="min-h-[60vh] flex flex-col">
-      {/* Top bar: back + title */}
-      <div className="flex items-center gap-3 mb-4">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center justify-center w-10 h-10 rounded-xl bg-white/10 border border-white/15 hover:bg-white/15 text-white transition-colors"
-          aria-label="Back"
-        >
-          ←
-        </button>
-        <h2 className="font-display font-bold text-lg text-white">Inbox</h2>
-      </div>
-
-      {/* Sub-tabs: Messages first, then unified notifications */}
-      <div className="flex rounded-xl border border-white/15 bg-white/5 p-1 mb-4">
-        <button
-          type="button"
-          onClick={() => onSubTabChange("messages")}
-          className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-            subTab === "messages"
-              ? "bg-uri-keaney/25 text-uri-keaney border border-uri-keaney/40"
-              : "text-white/70 hover:text-white border border-transparent"
-          }`}
-        >
-          Messages
-        </button>
-        <button
-          type="button"
-          onClick={() => onSubTabChange("notifications")}
-          className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-            subTab === "notifications"
-              ? "bg-uri-keaney/25 text-uri-keaney border border-uri-keaney/40"
-              : "text-white/70 hover:text-white border border-transparent"
-          }`}
-        >
-          Notifications
-        </button>
-      </div>
+    <div className="cq-tab-shell flex min-h-[60vh] flex-col space-y-4 pb-8">
+      <header className="cq-screen-header mb-4">
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/20 text-white/85 transition hover:bg-cq-elevated/10 hover:text-white"
+            aria-label="Back"
+          >
+            ←
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="cq-screen-header__eyebrow">Messages &amp; Alerts</p>
+            <h2 className="cq-screen-header__title">Inbox</h2>
+          </div>
+        </div>
+        <div className="mt-4 flex rounded-xl border border-white/15 bg-black/25 p-1">
+          <button
+            type="button"
+            onClick={() => onSubTabChange("messages")}
+            className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-all ${
+              subTab === "messages"
+                ? "bg-uri-keaney text-white shadow-sm"
+                : "text-white/65 hover:bg-cq-elevated/10 hover:text-white"
+            }`}
+          >
+            Messages
+          </button>
+          <button
+            type="button"
+            onClick={() => onSubTabChange("notifications")}
+            className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-all ${
+              subTab === "notifications"
+                ? "bg-uri-keaney text-white shadow-sm"
+                : "text-white/65 hover:bg-cq-elevated/10 hover:text-white"
+            }`}
+          >
+            Notifications
+          </button>
+        </div>
+      </header>
 
       {/* Content */}
       <div className="flex-1 card overflow-hidden p-0">
@@ -219,14 +221,14 @@ export function Inbox({
 
         {subTab === "messages" && (
           <>
-            <div className="border-b border-white/10 p-3 sm:p-4">
+            <div className="border-b border-cq-border bg-cq-elevated p-3 sm:p-4">
               <form onSubmit={handleSendConnectionRequest} className="mb-3 flex gap-2">
                 <input
                   type="text"
                   value={connectionUsername}
                   onChange={(e) => setConnectionUsername(e.target.value)}
                   placeholder="Connect by username (e.g. alex_rhody)"
-                  className="flex-1 rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-sm text-white placeholder-white/40 focus:border-uri-keaney/45 focus:outline-none focus:ring-2 focus:ring-uri-keaney/25"
+                  className="flex-1 rounded-xl border border-cq-border bg-cq-elevated px-3 py-2.5 text-sm text-cq-foreground placeholder:text-cq-muted focus:border-uri-keaney/50 focus:outline-none focus:ring-2 focus:ring-uri-keaney/25"
                 />
                 <button
                   type="submit"
@@ -239,8 +241,8 @@ export function Inbox({
               {incomingRequests.length > 0 && (
                 <div className="mb-3 space-y-2">
                   {incomingRequests.map((request) => (
-                    <div key={request.requestId} className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.04] p-2">
-                      <p className="text-xs text-white/80 truncate">
+                    <div key={request.requestId} className="flex items-center justify-between gap-2 rounded-lg border border-cq-border bg-cq-elevated p-2">
+                      <p className="text-xs text-cq-foreground truncate">
                         <span className="font-semibold">{request.displayName}</span> @{request.username} wants to connect
                       </p>
                       <div className="flex gap-1.5 flex-shrink-0">
@@ -254,7 +256,7 @@ export function Inbox({
                         <button
                           type="button"
                           onClick={() => void handleDeclineConnection(request.requestId)}
-                          className="px-2.5 py-1 rounded-md text-xs font-semibold border border-white/20 text-white/80 hover:bg-white/10"
+                          className="px-2.5 py-1 rounded-md text-xs font-semibold border border-cq-border text-cq-muted hover:bg-cq-elevated"
                         >
                           Deny
                         </button>
@@ -267,7 +269,7 @@ export function Inbox({
                 Search messages by name
               </label>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/40" aria-hidden>
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cq-muted" aria-hidden>
                   🔍
                 </span>
                 <input
@@ -277,21 +279,21 @@ export function Inbox({
                   onChange={(e) => setMessageSearch(e.target.value)}
                   placeholder="Search by name…"
                   autoComplete="off"
-                  className="w-full rounded-xl border border-white/15 bg-white/[0.06] py-2.5 pl-10 pr-3 text-sm text-white placeholder-white/40 shadow-inner transition-colors focus:border-uri-keaney/45 focus:outline-none focus:ring-2 focus:ring-uri-keaney/25"
+                  className="w-full rounded-xl border border-cq-border bg-cq-elevated py-2.5 pl-10 pr-3 text-sm text-cq-foreground placeholder:text-cq-muted transition-colors focus:border-uri-keaney/50 focus:outline-none focus:ring-2 focus:ring-uri-keaney/25"
                 />
               </div>
             </div>
             {messageError && (
-              <div className="mx-3 mb-2 rounded-lg border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <div className="mx-3 mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 {messageError}
               </div>
             )}
-            <ul className="divide-y divide-white/10 max-h-[min(50vh,28rem)] overflow-y-auto overscroll-y-contain">
+            <ul className="max-h-[min(50vh,28rem)] divide-y divide-cq-border overflow-y-auto overscroll-y-contain">
             {messageLoading ? (
-              <li className="px-4 py-10 text-center text-sm text-white/55">Loading conversations...</li>
+              <li className="px-4 py-10 text-center text-sm text-cq-muted">Loading conversations...</li>
             ) : filteredMessages.length === 0 ? (
               <li className="px-4 py-10 text-center">
-                <p className="text-sm text-white/55">
+                <p className="text-sm text-cq-muted">
                   {messageSearch.trim()
                     ? `No conversations match "${messageSearch.trim()}".`
                     : personalization?.discoveryFocus?.includes("meet_students")
@@ -312,15 +314,15 @@ export function Inbox({
                         m.otherUser.avatarUrl ?? "🎓",
                       )
                     }
-                    className="w-full flex items-center gap-3 p-4 hover:bg-white/[0.04] text-left transition-colors"
+                    className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-cq-elevated"
                   >
-                    <div className="w-11 h-11 rounded-xl bg-cq-elevated border border-white/[0.08] flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-cq-border bg-cq-elevated">
                       <AvatarDisplay avatar={m.otherUser.avatarUrl ?? "🎓"} size={44} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-white text-sm truncate">{m.otherUser.displayName}</p>
-                      <p className="text-white/60 text-sm truncate">{m.latestMessage?.content ?? "No messages yet"}</p>
-                      <p className="text-white/40 text-xs mt-0.5">
+                      <p className="truncate text-sm font-semibold text-cq-foreground">{m.otherUser.displayName}</p>
+                      <p className="truncate text-sm text-cq-muted">{m.latestMessage?.content ?? "No messages yet"}</p>
+                      <p className="mt-0.5 text-xs text-cq-subtle">
                         {m.latestMessage?.createdAt
                           ? new Date(m.latestMessage.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
                           : "Just now"}

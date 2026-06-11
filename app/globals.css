@@ -20,21 +20,27 @@
   --uri-gold: #c5a028;
   --uri-accent: #0066b3;
 
-  /* CampusQuest shell — dark navy surfaces, Keeney blue accents only */
-  --cq-bg-app: #060a12;
-  --cq-bg-secondary: #0c111b;
-  --cq-bg-card: #121824;
-  --cq-bg-elevated: #181f2c;
-  --cq-border: rgba(255, 255, 255, 0.08);
-  --cq-border-strong: rgba(255, 255, 255, 0.12);
-  --cq-text-muted: rgba(255, 255, 255, 0.55);
-  --cq-text-subtle: rgba(255, 255, 255, 0.38);
+  /* CampusQuest shell — blue-first brand surfaces */
+  --cq-bg-app: #041e42;
+  --cq-bg-secondary: #0d234f;
+  --cq-bg-card: #102a5c;
+  --cq-bg-elevated: #163670;
+  --cq-border: rgba(104, 171, 232, 0.22);
+  --cq-border-strong: rgba(104, 171, 232, 0.4);
+  --cq-border-card: rgba(104, 171, 232, 0.28);
+  --cq-text-primary: #f8fafc;
+  --cq-text-muted: rgba(255, 255, 255, 0.72);
+  --cq-text-subtle: rgba(255, 255, 255, 0.52);
+  --cq-text-on-blue: #ffffff;
+  --cq-text-muted-blue: rgba(255, 255, 255, 0.72);
+  --cq-text-subtle-blue: rgba(255, 255, 255, 0.52);
   --cq-accent: #68abe8;
   --cq-accent-bright: #7bb8eb;
-  --cq-glow: rgba(104, 171, 232, 0.22);
-  /* Realm keeps a slightly bluer wash */
+  --cq-glow: rgba(104, 171, 232, 0.28);
+  --cq-nav-bg: #041e42;
+  --cq-nav-border: rgba(104, 171, 232, 0.2);
   --cq-bg-realm: #081525;
-  --cq-bg-realm-card: #0e1e38;
+  --cq-bg-realm-card: #102a5c;
 
   /* App chrome — synced at runtime by TopNav / AppBottomNav / TheQuad */
   --cq-topnav-h: calc(3rem + env(safe-area-inset-top, 0px));
@@ -979,6 +985,7 @@
   }
   body {
     @apply text-uri-white antialiased;
+    color: var(--cq-text-on-blue);
     background-color: var(--cq-bg-app);
     min-height: 100%;
     min-height: 100dvh;
@@ -990,21 +997,76 @@
     outline: none;
     box-shadow:
       0 0 0 2px var(--cq-bg-app),
-      0 0 0 4px rgba(76, 201, 255, 0.55);
+      0 0 0 4px rgba(104, 171, 232, 0.55);
   }
   ::selection {
     @apply bg-uri-keaney/30 text-white;
   }
 }
 
-/* Card surface — dark navy elevation, neutral border */
+/* Blue branded content cards */
 .card {
   background-color: var(--cq-bg-card);
-  border: 1px solid var(--cq-border);
+  border: 1px solid var(--cq-border-card);
   border-radius: 1rem;
+  color: var(--cq-text-primary);
   box-shadow:
-    0 4px 24px -6px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 4px 16px rgba(4, 30, 66, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.cq-tab-shell {
+  background: transparent;
+  min-height: 50vh;
+}
+
+.cq-section-band {
+  background-color: var(--cq-bg-card);
+  border: 1px solid var(--cq-border-card);
+  border-radius: 1rem;
+  color: var(--cq-text-primary);
+  box-shadow: 0 4px 16px rgba(4, 30, 66, 0.3);
+}
+
+.cq-screen-header {
+  background: linear-gradient(
+    155deg,
+    rgba(104, 171, 232, 0.18) 0%,
+    rgba(16, 42, 92, 0.98) 36%,
+    #041e42 100%
+  );
+  border: 1px solid var(--cq-nav-border);
+  border-radius: 1rem;
+  padding: 1.25rem 1.375rem;
+  color: var(--cq-text-on-blue);
+  box-shadow:
+    0 8px 28px -10px rgba(4, 30, 66, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.cq-screen-header__eyebrow {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(104, 171, 232, 0.85);
+}
+
+.cq-screen-header__title {
+  margin: 0.35rem 0 0;
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: clamp(1.25rem, 4.5vw, 1.5rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+  color: #ffffff;
+}
+
+.cq-screen-header__subtitle {
+  margin: 0.4rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.62);
 }
 
 .cq-surface-page {
@@ -1100,16 +1162,30 @@
   transform: rotate(-0.8deg);
 }
 
-/* Quad feed — continuous mobile-native stream */
+/* Quad feed — Instagram-style stream (full-bleed media, padded text chrome) */
 .cq-quad-feed-stream {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
+  max-width: 100%;
   background: transparent;
   box-sizing: border-box;
 }
 
+.cq-quad-feed-stream > .cq-feed-post {
+  width: 100%;
+  max-width: none;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--cq-text-on-blue);
+  overflow: visible;
+}
+
 .cq-quad-feed-stream > .cq-feed-post:not(:last-child) {
-  border-bottom: 1px solid var(--cq-border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .quad-feed-post,
@@ -1138,37 +1214,41 @@
 .quad-feed-media-wrap {
   position: relative;
   width: 100%;
-  max-width: 100%;
+  max-width: none;
   margin: 0;
   padding: 0;
   border: none;
   border-radius: 0;
   box-shadow: none;
   background: transparent;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .quad-feed-media-wrap button {
   display: block;
   width: 100%;
+  max-width: none;
   margin: 0;
   padding: 0;
   border: none;
   border-radius: 0;
   background: transparent;
+  overflow: hidden;
 }
 
 .quad-feed-media-img {
   display: block;
   width: 100%;
-  max-width: 100%;
+  max-width: none;
   height: auto;
   margin: 0;
+  padding: 0;
   border: none;
   border-radius: 0;
   box-shadow: none;
   object-fit: cover;
   object-position: center;
+  vertical-align: top;
   max-height: min(
     52dvh,
     calc(
@@ -2037,13 +2117,29 @@
   animation: streak-glow 2s ease-in-out infinite;
 }
 
-/* Character screen — game-style panels and frames */
+/* Character / profile — URI blue branded shell */
 .character-hero-panel {
-  background: linear-gradient(165deg, var(--cq-bg-card) 0%, var(--cq-bg-elevated) 100%);
-  border: 1px solid var(--cq-border);
+  background: linear-gradient(
+    165deg,
+    rgba(104, 171, 232, 0.14) 0%,
+    rgba(4, 30, 66, 0.97) 40%,
+    #041e42 100%
+  );
+  border: 1px solid rgba(104, 171, 232, 0.28);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 8px 32px -8px rgba(0, 0, 0, 0.55);
+    0 8px 32px -8px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.character-hero-panel .stat-card-row {
+  background: var(--cq-bg-elevated);
+  border-color: var(--cq-border-card);
+  color: var(--cq-text-on-blue);
+}
+
+.character-hero-panel .stat-bar-game {
+  background: rgba(0, 0, 0, 0.28);
 }
 .character-avatar-frame {
   border: 3px solid transparent;
@@ -2060,7 +2156,7 @@
   flex-shrink: 0;
   position: relative;
   box-sizing: border-box;
-  background: var(--cq-bg-secondary);
+  background: var(--cq-bg-elevated);
 }
 
 .avatar-display-frame__inner {
@@ -2082,7 +2178,7 @@
   width: 100%;
   height: 100%;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: #e2e8f0;
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
@@ -2114,9 +2210,9 @@
     0 2px 6px rgba(0, 0, 0, 0.35);
 }
 .xp-bar-track {
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.2) 100%);
-  border: 1px solid rgba(104, 171, 232, 0.3);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.32) 0%, rgba(0, 0, 0, 0.18) 100%);
+  border: 1px solid rgba(104, 171, 232, 0.35);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.28);
 }
 .xp-bar-fill {
   background: linear-gradient(90deg, rgba(104, 171, 232, 0.9), rgba(104, 171, 232, 1));
@@ -3193,10 +3289,12 @@
 /* —— Navigation shells (readable glass) —— */
 /* —— Scroll chrome (Quad feed immersion) —— */
 .cq-quad-header {
+  transform: translateY(0);
+  opacity: 1;
   transition:
-    transform 200ms ease,
-    opacity 200ms ease;
-  will-change: transform;
+    transform 300ms ease-in-out,
+    opacity 250ms ease-in-out;
+  will-change: transform, opacity;
 }
 
 .cq-bottom-nav {
@@ -3208,10 +3306,19 @@
   will-change: transform, opacity;
 }
 
+html[data-cq-quad-chrome="hidden"] {
+  scroll-padding-top: calc(var(--cq-topnav-h, 4rem) + 0.5rem);
+}
+
 html[data-cq-quad-chrome="hidden"] .cq-quad-header {
   transform: translateY(-100%);
   opacity: 0;
   pointer-events: none;
+}
+
+html[data-cq-bottom-chrome="hidden"] {
+  --cq-feed-bottom-clearance: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  scroll-padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
 }
 
 html[data-cq-bottom-chrome="hidden"] .cq-bottom-nav {
@@ -3220,8 +3327,19 @@ html[data-cq-bottom-chrome="hidden"] .cq-bottom-nav {
   pointer-events: none;
 }
 
+.cq-dashboard-scroll-pad {
+  padding-top: var(--cq-topnav-h, 56px);
+  padding-bottom: var(--cq-feed-bottom-clearance, calc(var(--cq-bottom-nav-h, 5.75rem) + 1rem));
+  transition: padding-bottom 400ms ease-in-out;
+}
+
+.cq-bottom-chrome-follower {
+  bottom: var(--cq-feed-bottom-clearance, calc(var(--cq-bottom-nav-h, 5.75rem) + 1rem));
+  transition: bottom 400ms ease-in-out;
+}
+
 .cq-quad-feed-body {
-  transition: padding-top 200ms ease;
+  transition: padding-top 300ms ease-in-out;
   box-sizing: border-box;
   min-height: 0;
   overflow: visible;
@@ -3233,28 +3351,28 @@ html {
 }
 
 .cq-nav-shell-top {
-  background-color: rgba(6, 10, 18, 0.92);
-  background-image: linear-gradient(180deg, rgba(24, 31, 44, 0.96) 0%, rgba(6, 10, 18, 0.98) 100%);
-  border-bottom: 1px solid var(--cq-border);
-  box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.55);
+  background-color: rgba(4, 30, 66, 0.96);
+  background-image: linear-gradient(180deg, #102a5c 0%, #041e42 100%);
+  border-bottom: 1px solid var(--cq-nav-border);
+  box-shadow: 0 4px 24px -4px rgba(4, 30, 66, 0.55);
   backdrop-filter: blur(12px) saturate(1.05);
   -webkit-backdrop-filter: blur(12px) saturate(1.05);
 }
 
 .cq-nav-shell-quad {
-  background-color: rgba(6, 10, 18, 0.92);
-  background-image: linear-gradient(180deg, rgba(18, 24, 36, 0.96) 0%, rgba(6, 10, 18, 0.98) 100%);
-  border-bottom: 1px solid var(--cq-border);
-  box-shadow: 0 6px 20px -6px rgba(0, 0, 0, 0.5);
+  background-color: rgba(4, 30, 66, 0.96);
+  background-image: linear-gradient(180deg, #102a5c 0%, #041e42 100%);
+  border-bottom: 1px solid var(--cq-nav-border);
+  box-shadow: 0 6px 20px -6px rgba(4, 30, 66, 0.5);
   backdrop-filter: blur(12px) saturate(1.05);
   -webkit-backdrop-filter: blur(12px) saturate(1.05);
 }
 
 .cq-nav-shell-bottom {
-  background-color: rgba(6, 10, 18, 0.94);
-  background-image: linear-gradient(0deg, rgba(6, 10, 18, 0.98) 0%, rgba(18, 24, 36, 0.96) 100%);
-  border-top: 1px solid var(--cq-border);
-  box-shadow: 0 -8px 28px -4px rgba(0, 0, 0, 0.6);
+  background-color: rgba(4, 30, 66, 0.97);
+  background-image: linear-gradient(0deg, #041e42 0%, #102a5c 100%);
+  border-top: 1px solid var(--cq-nav-border);
+  box-shadow: 0 -8px 28px -4px rgba(4, 30, 66, 0.55);
   backdrop-filter: blur(12px) saturate(1.05);
   -webkit-backdrop-filter: blur(12px) saturate(1.05);
 }
@@ -3565,9 +3683,10 @@ html {
 }
 
 .cq-quad-create-fab {
-  bottom: calc(var(--cq-bottom-nav-h, 5.75rem) + 1.25rem);
+  bottom: calc(var(--cq-feed-bottom-clearance, calc(var(--cq-bottom-nav-h, 5.75rem) + 1rem)) + 0.25rem);
   right: max(16px, env(safe-area-inset-right, 0px));
   animation: cq-quad-fab-breathe 6s ease-in-out infinite;
+  transition: bottom 400ms ease-in-out;
 }
 
 .cq-quad-create-fab--tap {
@@ -3576,7 +3695,6 @@ html {
 
 @media (min-width: 640px) {
   .cq-quad-create-fab {
-    bottom: 100px;
     right: 20px;
   }
 }
@@ -4370,17 +4488,31 @@ html[data-realm-map-panning] {
 
 /* —— Hall of Legends —— */
 .cq-hall-of-legends {
-  background: linear-gradient(165deg, var(--cq-bg-card) 0%, var(--cq-bg-app) 55%, #050810 100%);
-  border: 1px solid var(--cq-border);
+  background: linear-gradient(
+    165deg,
+    rgba(104, 171, 232, 0.12) 0%,
+    rgba(4, 30, 66, 0.98) 42%,
+    #041e42 100%
+  );
+  border: 1px solid rgba(104, 171, 232, 0.22);
   box-shadow:
-    0 12px 40px -12px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(251, 191, 36, 0.05);
+    0 12px 40px -12px rgba(4, 30, 66, 0.55),
+    inset 0 1px 0 rgba(251, 191, 36, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.cq-hall-content-card {
+  background: var(--cq-bg-card);
+  border: 1px solid var(--cq-border-card);
+  border-radius: 1rem;
+  color: var(--cq-text-primary);
+  box-shadow: 0 4px 16px rgba(4, 30, 66, 0.3);
 }
 
 .cq-realm-page {
   background:
-    radial-gradient(ellipse 120% 60% at 50% -10%, rgba(104, 171, 232, 0.14), transparent 55%),
-    linear-gradient(180deg, var(--cq-bg-realm) 0%, var(--cq-bg-app) 16rem);
+    radial-gradient(ellipse 120% 60% at 50% -10%, rgba(104, 171, 232, 0.2), transparent 55%),
+    linear-gradient(180deg, var(--cq-bg-realm) 0%, #334155 12rem, var(--cq-bg-realm) 100%);
   border-radius: 1rem;
 }
 
@@ -4415,11 +4547,13 @@ html[data-realm-map-panning] {
 }
 
 .cq-hall-stat {
+  background: rgba(0, 0, 0, 0.22);
+  border-color: rgba(104, 171, 232, 0.25);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .cq-hall-showcase-slot {
-  box-shadow: inset 0 2px 12px rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 2px 10px rgba(4, 30, 66, 0.08);
 }
 
 .cq-hall-trophy-shine {
@@ -4508,24 +4642,48 @@ html[data-realm-map-panning] {
 
 /* —— Quest Board —— */
 .cq-quest-board {
-  background: linear-gradient(168deg, rgba(6, 28, 58, 0.98) 0%, rgba(4, 18, 42, 0.97) 50%, rgba(2, 10, 28, 0.99) 100%);
+  background: linear-gradient(
+    168deg,
+    rgba(13, 35, 79, 0.98) 0%,
+    rgba(4, 30, 66, 0.99) 50%,
+    #041e42 100%
+  );
+  border: 1px solid rgba(104, 171, 232, 0.22);
   box-shadow:
-    0 1px 0 0 rgba(104, 171, 232, 0.1),
-    0 12px 40px -12px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(197, 165, 40, 0.05);
+    0 1px 0 0 rgba(104, 171, 232, 0.12),
+    0 12px 40px -12px rgba(4, 30, 66, 0.55);
+}
+
+.cq-quest-board-header {
+  background: linear-gradient(
+    155deg,
+    rgba(104, 171, 232, 0.16) 0%,
+    rgba(4, 30, 66, 0.55) 100%
+  );
+  border: 1px solid rgba(104, 171, 232, 0.2);
+  border-radius: 1rem;
+  padding: 1.25rem 1rem;
+  text-align: center;
 }
 
 .cq-quest-board-bg {
   background:
     radial-gradient(ellipse 70% 45% at 50% 0%, rgba(197, 165, 40, 0.1), transparent 55%),
-    radial-gradient(ellipse 50% 35% at 15% 85%, rgba(104, 171, 232, 0.08), transparent 50%),
-    repeating-linear-gradient(
-      -12deg,
-      transparent,
-      transparent 48px,
-      rgba(255, 255, 255, 0.012) 48px,
-      rgba(255, 255, 255, 0.012) 49px
-    );
+    radial-gradient(ellipse 50% 35% at 15% 85%, rgba(104, 171, 232, 0.1), transparent 50%);
+}
+
+.cq-quest-stat {
+  background: var(--cq-bg-elevated);
+  border-color: var(--cq-border-card);
+  color: var(--cq-text-primary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.cq-quest-card {
+  background: var(--cq-bg-card);
+  border: 1px solid var(--cq-border-card);
+  color: var(--cq-text-primary);
+  box-shadow: 0 4px 16px rgba(4, 30, 66, 0.3);
 }
 
 .cq-quest-board-particles {
@@ -4575,6 +4733,92 @@ html[data-realm-map-panning] {
 
 .cq-quest-progress {
   box-shadow: 0 0 8px rgba(104, 171, 232, 0.4);
+}
+
+/* —— Social profile (full-screen, no outer card) —— */
+.cq-profile-screen,
+.cq-character-sheet {
+  width: 100%;
+  min-height: 50vh;
+  color: var(--cq-text-on-blue);
+  background: transparent;
+}
+
+.cq-character-equipment {
+  border-top: 1px solid rgba(104, 171, 232, 0.18);
+  padding-top: 0.25rem;
+}
+
+.cq-profile-pane-toggle {
+  display: flex;
+  width: 100%;
+  background: transparent;
+}
+
+.cq-profile-pane-toggle > button {
+  flex: 1;
+}
+
+.cq-profile-social {
+  background: transparent;
+  color: var(--cq-text-on-blue);
+}
+
+.cq-profile-header {
+  border-bottom: none;
+}
+
+.cq-profile-stats {
+  border-color: rgba(104, 171, 232, 0.18);
+  background: transparent;
+}
+
+.cq-profile-tabs {
+  background: transparent;
+  border-color: rgba(104, 171, 232, 0.18);
+}
+
+.cq-profile-posts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  width: 100%;
+}
+
+.cq-profile-post-tile {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+}
+
+.cq-profile-collectibles-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  width: 100%;
+  padding: 0;
+}
+
+.cq-profile-collectible-tile {
+  min-height: 0;
+}
+
+.cq-profile-tabs {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cq-profile-post-detail {
+  animation: cq-profile-slide-up 0.22s ease-out both;
+}
+
+@keyframes cq-profile-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .cq-quest-complete-card {

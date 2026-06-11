@@ -83,14 +83,23 @@ export async function fetchOutgoingConnectionRequests(): Promise<ConnectionReque
   return data.requests ?? [];
 }
 
-export async function fetchConnections(): Promise<ConnectionItem[]> {
+export type ConnectionsPayload = {
+  connections: ConnectionItem[];
+  followingCount: number;
+};
+
+export async function fetchConnections(): Promise<ConnectionsPayload> {
   const data = await fetchAuthed<{
     connections: ConnectionItem[];
     following?: ConnectionItem[];
     followersCount?: number;
     followingCount?: number;
   }>("/api/social/connections");
-  return data.connections ?? data.following ?? [];
+  const connections = data.connections ?? data.following ?? [];
+  return {
+    connections,
+    followingCount: data.followingCount ?? connections.length,
+  };
 }
 
 export type FollowCounts = {

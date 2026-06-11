@@ -200,8 +200,8 @@ export function NotificationsCenter({
   }
 
   const headerRow = embedded ? (
-    <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10">
-      <p className="text-xs text-white/60">
+    <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-cq-border">
+      <p className="text-xs text-cq-muted">
         {unreadCount === 0 ? "All caught up" : `${unreadCount} unread`}
       </p>
       <button
@@ -216,8 +216,8 @@ export function NotificationsCenter({
   ) : (
     <div className="card p-4 flex items-center justify-between gap-3">
       <div>
-        <h3 className="font-display font-semibold text-white">Notifications</h3>
-        <p className="text-xs text-white/60 mt-1">{unreadCount} unread</p>
+        <h3 className="font-display font-semibold text-cq-foreground">Notifications</h3>
+        <p className="text-xs text-cq-muted mt-1">{unreadCount} unread</p>
       </div>
       <button
         type="button"
@@ -238,11 +238,11 @@ export function NotificationsCenter({
     embedded
       ? `rounded-xl border p-3 space-y-1.5 ${
           read
-            ? "border-white/[0.08] bg-cq-card"
-            : "border-white/[0.08] border-l-[3px] border-l-uri-keaney bg-cq-elevated"
+            ? "border-cq-border bg-cq-card"
+            : "border-cq-border border-l-[3px] border-l-uri-keaney bg-cq-elevated"
         }`
       : `card p-4 border ${
-          read ? "border-white/[0.08]" : "border-white/[0.08] border-l-[3px] border-l-uri-keaney bg-cq-elevated"
+          read ? "border-cq-border" : "border-cq-border border-l-[3px] border-l-uri-keaney bg-cq-elevated"
         } space-y-1.5`;
 
   const emptyCopy = embedded
@@ -263,7 +263,7 @@ export function NotificationsCenter({
       {headerRow}
       {error ? (
         <div
-          className={`rounded-lg border border-rose-400/40 bg-rose-500/10 py-2 text-xs text-rose-200 ${
+          className={`rounded-lg border border-rose-200 bg-rose-50 py-2 text-xs text-rose-700 ${
             embedded ? "mx-4 mt-3" : ""
           } px-3`}
         >
@@ -272,12 +272,12 @@ export function NotificationsCenter({
       ) : null}
       {loading ? (
         <div className={`space-y-2 ${embedded ? "px-4 pt-3" : ""}`}>
-          <div className="h-16 rounded-xl bg-white/10 animate-pulse" />
-          <div className="h-16 rounded-xl bg-white/10 animate-pulse" />
+          <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
+          <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
         </div>
       ) : null}
       {!loading && notifications.length === 0 ? (
-        <p className={`text-sm text-white/60 ${embedded ? "px-4 py-10 text-center" : ""}`}>{emptyCopy}</p>
+        <p className={`text-sm text-cq-muted ${embedded ? "px-4 py-10 text-center" : ""}`}>{emptyCopy}</p>
       ) : null}
 
       <div className={listWrapClass}>
@@ -293,13 +293,13 @@ export function NotificationsCenter({
             <article key={notification.id} className={itemClass(Boolean(notification.readAt))}>
               <div className="flex items-start gap-3">
                 {isFriendRequest ? (
-                  <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-white/15">
+                  <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-cq-border">
                     <AvatarDisplay avatar={actorAvatar} size={40} />
                   </div>
                 ) : null}
                 <div className="flex-1 min-w-0 space-y-1.5">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-white font-semibold text-sm min-w-0 flex-1">
+                    <p className="text-cq-foreground font-semibold text-sm min-w-0 flex-1">
                       {isFriendRequest && notification.actorUsername
                         ? `@${notification.actorUsername}`
                         : notification.title}
@@ -312,7 +312,7 @@ export function NotificationsCenter({
                         className={`p-2 rounded-lg text-sm transition-colors disabled:opacity-50 ${
                           notification.isFavorited
                             ? "text-uri-gold bg-uri-gold/15 border border-uri-gold/35"
-                            : "text-white/55 hover:text-uri-gold border border-white/15 hover:bg-white/10"
+                            : "text-cq-muted hover:text-uri-gold border border-cq-border hover:bg-slate-100"
                         }`}
                         title={notification.isFavorited ? "Unfavorite" : "Favorite"}
                         aria-label={notification.isFavorited ? "Unfavorite" : "Favorite"}
@@ -324,14 +324,14 @@ export function NotificationsCenter({
                         <button
                           type="button"
                           onClick={() => void markRead(notification.id)}
-                          className="px-2.5 py-1 rounded-md text-[11px] font-semibold border border-white/20 text-white/80 hover:bg-white/10"
+                          className="px-2.5 py-1 rounded-md text-[11px] font-semibold border border-cq-border text-slate-700 hover:bg-slate-100"
                         >
                           Mark read
                         </button>
                       ) : null}
                     </div>
                   </div>
-                  <p className="text-sm text-white/75">
+                  <p className="text-sm text-cq-muted">
                     {isFriendRequest && notification.actorUsername
                       ? `${notification.actorUsername} sent you a follow request`
                       : notification.body}
@@ -350,13 +350,13 @@ export function NotificationsCenter({
                         type="button"
                         disabled={respondingRequestId === requestId}
                         onClick={() => void handleFriendRequestAction(notification, "decline")}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white/80 border border-white/20 hover:bg-white/10 disabled:opacity-60"
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 border border-cq-border hover:bg-slate-100 disabled:opacity-60"
                       >
                         Deny
                       </button>
                     </div>
                   ) : null}
-                  <p className="text-[11px] text-white/50">{new Date(notification.createdAt).toLocaleString()}</p>
+                  <p className="text-[11px] text-cq-muted">{new Date(notification.createdAt).toLocaleString()}</p>
                 </div>
               </div>
             </article>
