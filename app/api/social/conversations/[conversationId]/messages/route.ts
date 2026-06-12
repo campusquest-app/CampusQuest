@@ -3,6 +3,7 @@ import { ApiError, fail, ok } from "@/lib/server/http";
 import { listConversationMessages, sendConversationMessage } from "@/lib/server/messaging";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
+import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { readJson, sendDirectMessageSchema } from "@/lib/server/validation";
 
 export async function GET(request: Request, context: { params: { conversationId: string } }) {
@@ -35,6 +36,7 @@ export async function POST(request: Request, context: { params: { conversationId
       code: "ABUSE_RATE_LIMITED",
     });
     const input = await readJson(request, sendDirectMessageSchema);
+    touchUserActivityFromAuth(auth);
     const message = await sendConversationMessage({
       userClient: auth.userClient,
       userId: auth.user.id,

@@ -41,6 +41,7 @@ import { STAT_KEYS, STAT_ICONS, STAT_LABELS } from "@/lib/types";
 import { getActivityById } from "@/lib/activities";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { isGameMusicMuted, playXpDing, playLevelUpFanfare, setGameMusicMuted } from "@/lib/playGameSound";
+import { recordUserActivityPing } from "@/lib/client/recordUserActivity";
 import { unlockRewardAudioSilently } from "@/lib/client/xpCelebration";
 import { logRewardFlow } from "@/lib/client/xpAnimationDebug";
 import { unlockMobileForgeAudio } from "@/lib/client/xpCelebration";
@@ -783,6 +784,18 @@ export function Dashboard() {
     if (bootstrapStatus !== "authenticated" || !character?.id) return;
     void hydrateUserPersistenceFromServer(character.id);
   }, [bootstrapStatus, character?.id]);
+
+  useEffect(() => {
+    if (bootstrapStatus !== "authenticated" || !character?.id) return;
+    recordUserActivityPing();
+  }, [bootstrapStatus, character?.id]);
+
+  useEffect(() => {
+    if (bootstrapStatus !== "authenticated" || !character?.id) return;
+    if (tab === "events" || tab === "realm" || tab === "organizations") {
+      recordUserActivityPing();
+    }
+  }, [bootstrapStatus, character?.id, tab]);
 
   useEffect(() => {
     if (bootstrapStatus !== "authenticated") return;

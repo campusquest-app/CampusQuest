@@ -1,4 +1,10 @@
 import { ApiError } from "@/lib/server/http";
+import {
+  PILOT_ANALYTICS_TIMEZONE,
+  rollingWindowStartMs,
+  startOfCalendarDayInTimeZone,
+  startOfCalendarMonthInTimeZone,
+} from "@/lib/server/analyticsTime";
 import { createAdminClient } from "@/lib/server/supabase";
 
 async function countTable(admin: ReturnType<typeof createAdminClient>, table: string) {
@@ -7,8 +13,63 @@ async function countTable(admin: ReturnType<typeof createAdminClient>, table: st
   return count ?? 0;
 }
 
+type ProfileActivityRow = {
+  id: string;
+  role: string | null;
+  last_active_at: string | null;
+};
+
+function isMissingLastActiveColumn(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === "42703") return true;
+  return /last_active_at/i.test(error.message ?? "");
+}
+
+async function loadProfilesActiveSince(
+  admin: ReturnType<typeof createAdminClient>,
+  sinceIso: string,
+): Promise<ProfileActivityRow[]> {
+  const { data, error } = await admin
+    .from("profiles")
+    .select("id, role, last_active_at")
+    .not("last_active_at", "is", null)
+    .gte("last_active_at", sinceIso);
+
+  if (error) {
+    if (isMissingLastActiveColumn(error)) return [];
+    throw new ApiError(400, error.message, "ANALYTICS_ACTIVE_USERS_FAILED");
+  }
+
+  return (data ?? []) as ProfileActivityRow[];
+}
+
+async function loadBannedUserIds(admin: ReturnType<typeof createAdminClient>, userIds: string[]): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  const { data, error } = await admin
+    .from("user_account_safety")
+    .select("user_id")
+    .in("user_id", userIds)
+    .eq("status", "banned");
+  if (error) throw new ApiError(400, error.message, "ANALYTICS_SAFETY_FAILED");
+  return new Set((data ?? []).map((row) => row.user_id as string));
+}
+
+function countActiveUsers(rows: ProfileActivityRow[], bannedIds: Set<string>, studentsOnly: boolean): number {
+  return rows.filter((row) => {
+    if (bannedIds.has(row.id)) return false;
+    if (!studentsOnly) return true;
+    const role = row.role ?? "student";
+    return role === "student";
+  }).length;
+}
+
 export async function getPilotAnalyticsSnapshot() {
   const admin = createAdminClient();
+  const now = new Date();
+  const startOfTodayIso = startOfCalendarDayInTimeZone(PILOT_ANALYTICS_TIMEZONE, now).toISOString();
+  const startOfWeekIso = rollingWindowStartMs(7, now).toISOString();
+  const startOfMonthIso = startOfCalendarMonthInTimeZone(PILOT_ANALYTICS_TIMEZONE, now).toISOString();
+
   const { count: verifiedUsersCount, error: verifiedUsersError } = await admin
     .from("user_school_verifications")
     .select("*", { count: "exact", head: true })
@@ -24,6 +85,10 @@ export async function getPilotAnalyticsSnapshot() {
     messageReports,
     eventReports,
     organizationReports,
+    dailyRows,
+    weeklyRows,
+    monthlyRows,
+    lastActivityResult,
   ] = await Promise.all([
     countTable(admin, "profiles"),
     countTable(admin, "campus_events"),
@@ -33,22 +98,26 @@ export async function getPilotAnalyticsSnapshot() {
     countTable(admin, "message_reports"),
     countTable(admin, "campus_event_reports"),
     countTable(admin, "organization_reports"),
+    loadProfilesActiveSince(admin, startOfTodayIso),
+    loadProfilesActiveSince(admin, startOfWeekIso),
+    loadProfilesActiveSince(admin, startOfMonthIso),
+    admin
+      .from("profiles")
+      .select("last_active_at")
+      .not("last_active_at", "is", null)
+      .order("last_active_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
-  const oneDayAgoIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const [xpRows, rsvpRows, messageRows] = await Promise.all([
-    admin.from("xp_logs").select("user_id").gte("created_at", oneDayAgoIso),
-    admin.from("event_rsvps").select("user_id").gte("updated_at", oneDayAgoIso),
-    admin.from("direct_messages").select("sender_id").gte("created_at", oneDayAgoIso),
-  ]);
-  if (xpRows.error) throw new ApiError(400, xpRows.error.message, "ANALYTICS_DAU_FAILED");
-  if (rsvpRows.error) throw new ApiError(400, rsvpRows.error.message, "ANALYTICS_DAU_FAILED");
-  if (messageRows.error) throw new ApiError(400, messageRows.error.message, "ANALYTICS_DAU_FAILED");
+  if (lastActivityResult.error && !isMissingLastActiveColumn(lastActivityResult.error)) {
+    throw new ApiError(400, lastActivityResult.error.message, "ANALYTICS_LAST_ACTIVITY_FAILED");
+  }
 
-  const activeUsers = new Set<string>();
-  for (const row of xpRows.data ?? []) activeUsers.add(row.user_id);
-  for (const row of rsvpRows.data ?? []) activeUsers.add(row.user_id);
-  for (const row of messageRows.data ?? []) activeUsers.add(row.sender_id);
+  const activeUserIds = Array.from(
+    new Set([...dailyRows, ...weeklyRows, ...monthlyRows].map((row) => row.id)),
+  );
+  const bannedIds = await loadBannedUserIds(admin, activeUserIds);
 
   return {
     totalUsers,
@@ -58,7 +127,12 @@ export async function getPilotAnalyticsSnapshot() {
     organizationsCreated,
     messagesSent,
     reportsSubmitted: messageReports + eventReports + organizationReports,
-    dailyActiveUsers: activeUsers.size,
-    generatedAt: new Date().toISOString(),
+    dailyActiveUsers: countActiveUsers(dailyRows, bannedIds, false),
+    dailyActiveStudents: countActiveUsers(dailyRows, bannedIds, true),
+    weeklyActiveUsers: countActiveUsers(weeklyRows, bannedIds, false),
+    monthlyActiveUsers: countActiveUsers(monthlyRows, bannedIds, false),
+    lastActivityAt: (lastActivityResult.data?.last_active_at as string | null) ?? null,
+    analyticsTimezone: PILOT_ANALYTICS_TIMEZONE,
+    generatedAt: now.toISOString(),
   };
 }

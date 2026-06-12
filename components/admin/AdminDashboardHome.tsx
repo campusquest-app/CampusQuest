@@ -13,6 +13,7 @@ type Analytics = {
   organizationsCreated: number;
   reportsSubmitted: number;
   dailyActiveUsers: number;
+  dailyActiveStudents: number;
 };
 
 type SyncStatus = {
@@ -49,6 +50,7 @@ export function AdminDashboardHome({
           organizationsCreated: a.organizationsCreated,
           reportsSubmitted: a.reportsSubmitted,
           dailyActiveUsers: a.dailyActiveUsers,
+          dailyActiveStudents: a.dailyActiveStudents,
         });
       }
       if (syncResult.status === "fulfilled") {
@@ -78,6 +80,7 @@ export function AdminDashboardHome({
         <AdminKpiCard label="Total Users" value={analytics?.totalUsers ?? "—"} />
         <AdminKpiCard label="Verified Users" value={analytics?.verifiedUsers ?? "—"} tone="success" />
         <AdminKpiCard label="Daily Active Users" value={analytics?.dailyActiveUsers ?? "—"} />
+        <AdminKpiCard label="Daily Active Students" value={analytics?.dailyActiveStudents ?? "—"} tone="success" />
         <AdminKpiCard label="Events" value={analytics?.eventsCreated ?? "—"} />
         <AdminKpiCard label="Organizations" value={analytics?.organizationsCreated ?? "—"} />
         <AdminKpiCard

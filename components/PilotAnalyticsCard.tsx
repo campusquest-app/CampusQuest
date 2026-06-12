@@ -12,6 +12,11 @@ type Analytics = {
   messagesSent: number;
   reportsSubmitted: number;
   dailyActiveUsers: number;
+  dailyActiveStudents: number;
+  weeklyActiveUsers: number;
+  monthlyActiveUsers: number;
+  lastActivityAt: string | null;
+  analyticsTimezone: string;
   generatedAt: string;
 };
 
@@ -70,6 +75,10 @@ export function PilotAnalyticsCard() {
       {analytics ? (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <Metric label="Daily active users" value={analytics.dailyActiveUsers} highlight />
+            <Metric label="Daily active students" value={analytics.dailyActiveStudents} highlight />
+            <Metric label="Weekly active users" value={analytics.weeklyActiveUsers} />
+            <Metric label="Monthly active users" value={analytics.monthlyActiveUsers} />
             <Metric label="Total users" value={analytics.totalUsers} />
             <Metric label="Verified users" value={analytics.verifiedUsers} />
             <Metric label="Events created" value={analytics.eventsCreated} />
@@ -77,8 +86,11 @@ export function PilotAnalyticsCard() {
             <Metric label="Organizations" value={analytics.organizationsCreated} />
             <Metric label="Messages sent" value={analytics.messagesSent} />
             <Metric label="Reports submitted" value={analytics.reportsSubmitted} />
-            <Metric label="Daily active users" value={analytics.dailyActiveUsers} />
           </div>
+          <p className="text-[11px] text-white/40">
+            Daily counts use calendar day in {analytics.analyticsTimezone}. Last profile activity:{" "}
+            {analytics.lastActivityAt ? new Date(analytics.lastActivityAt).toLocaleString() : "No activity recorded yet"}
+          </p>
           <p className="text-[11px] text-white/40">Updated {new Date(analytics.generatedAt).toLocaleString()}</p>
         </>
       ) : null}
@@ -86,9 +98,13 @@ export function PilotAnalyticsCard() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value, highlight = false }: { label: string; value: number; highlight?: boolean }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
+    <div
+      className={`rounded-xl border px-3 py-2 ${
+        highlight ? "border-uri-keaney/30 bg-uri-keaney/10" : "border-white/10 bg-white/[0.04]"
+      }`}
+    >
       <p className="text-[11px] text-white/55">{label}</p>
       <p className="text-lg font-semibold text-white">{value.toLocaleString()}</p>
     </div>

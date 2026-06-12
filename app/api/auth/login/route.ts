@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
 import { createPublicClient } from "@/lib/server/supabase";
+import { touchUserActivityById } from "@/lib/server/userActivity";
 import { authLoginSchema, readJson } from "@/lib/server/validation";
 
 type SafeLoginFailure = {
@@ -148,6 +149,8 @@ export async function POST(request: Request) {
       email: data.user.email,
       displayName: (data.user.user_metadata?.display_name as string | undefined) ?? undefined,
     });
+
+    touchUserActivityById(data.user.id, { force: true });
 
     return ok({
       user: {

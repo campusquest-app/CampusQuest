@@ -4,6 +4,7 @@ import { fail, ok, ApiError } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
 import { toggleQuadPostReaction } from "@/lib/server/quadReactions";
 import { requireAuthUser } from "@/lib/server/supabase";
+import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { readJson, uuidSchema } from "@/lib/server/validation";
 
 const toggleReactionSchema = z.object({
@@ -30,6 +31,7 @@ export async function POST(
     });
 
     const input = await readJson(request, toggleReactionSchema);
+    touchUserActivityFromAuth(auth);
     const result = await toggleQuadPostReaction({
       userClient: auth.userClient,
       userId: auth.user.id,

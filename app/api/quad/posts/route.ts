@@ -2,6 +2,7 @@ import { ZodError } from "zod";
 import { fail, ok, ApiError } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
+import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { postQuadPostSchema, readJson, uuidSchema } from "@/lib/server/validation";
 import { formatZodError } from "@/lib/server/zodErrors";
 import {
@@ -98,6 +99,7 @@ export async function POST(request: Request) {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "quad:posts:post", limit: 30, windowMs: 60_000 });
     const input = await readJson(request, postQuadPostSchema);
+    touchUserActivityFromAuth(auth);
 
     const proofUrl = await normalizeQuadPostProofUrl(input.proofUrl, auth.user.id);
 

@@ -20,6 +20,7 @@ import {
 } from "@/lib/identityWeeklyBudget";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
+import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { syncEquipmentTableFromGameState } from "@/lib/server/equipmentLoadoutDb";
 import { patchMeProfileSchema, readJson } from "@/lib/server/validation";
 
@@ -55,6 +56,7 @@ export async function PATCH(request: Request) {
   try {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:profile:patch", limit: 30, windowMs: 60_000 });
+    touchUserActivityFromAuth(auth);
     const input = await readJson(request, patchMeProfileSchema);
     // Gameplay autosync payloads should not overwrite identity fields.
     const identitySuppressedForSync =
