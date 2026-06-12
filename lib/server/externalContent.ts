@@ -10,6 +10,8 @@ export type ExternalEventItem = {
   description: string;
   organizationName: string | null;
   location: string | null;
+  venueName: string | null;
+  address: string | null;
   startsAt: string | null;
   endsAt: string | null;
   imageUrl: string | null;
@@ -31,6 +33,7 @@ export type ExternalOrganizationItem = {
   logoUrl: string | null;
   organizationUrl: string | null;
   tags: string[];
+  createdAt: string | null;
   imported: true;
 };
 
@@ -46,47 +49,97 @@ export type ExternalMapEventMarker = {
   y: number;
 };
 
+const EXTERNAL_EVENTS_PAST_GRACE_MS = 2 * 60 * 60 * 1000;
+
 export async function listActiveExternalEvents(filters?: {
   category?: string;
   location?: string;
-  timeframe?: "today" | "this_week";
+  organization?: string;
+  search?: string;
+  timeframe?: "today" | "tomorrow" | "this_week" | "this_month";
+  includePast?: boolean;
 }): Promise<ExternalEventItem[]> {
   const admin = createAdminClient();
   let query = admin
     .from("external_events")
     .select(
-      "id, source, external_id, title, description, organization_name, location_name, starts_at, ends_at, image_url, event_url, category, tags, latitude, longitude",
+      "id, source, external_id, title, description, organization_name, venue_name, address, location_name, starts_at, ends_at, image_url, event_url, category, tags, latitude, longitude",
     )
     .eq("is_active", true)
+    .eq("source", "urinvolved")
     .order("starts_at", { ascending: true, nullsFirst: false });
 
-  if (filters?.category) {
-    query = query.ilike("category", filters.category);
+  if (filters?.category?.trim()) {
+    query = query.ilike("category", `%${filters.category.trim()}%`);
   }
   if (filters?.location?.trim()) {
     query = query.ilike("location_name", `%${filters.location.trim()}%`);
+  }
+  if (filters?.organization?.trim()) {
+    query = query.ilike("organization_name", `%${filters.organization.trim()}%`);
   }
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
 
-  const now = new Date();
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
-  const endOfWeek = new Date(startOfToday);
-  endOfWeek.setDate(endOfWeek.getDate() + 7);
+  const pastCutoff = Date.now() - EXTERNAL_EVENTS_PAST_GRACE_MS;
+  const searchNeedle = filters?.search?.trim().toLowerCase() ?? "";
 
   return (data ?? [])
     .filter((row) => {
+      if (!filters?.includePast && row.starts_at && new Date(row.starts_at).getTime() < pastCutoff) {
+        return false;
+      }
+      if (searchNeedle) {
+        const haystack = [
+          row.title,
+          row.description,
+          row.location_name,
+          row.venue_name,
+          row.address,
+          row.organization_name,
+          row.category,
+          ...(row.tags ?? []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(searchNeedle)) return false;
+      }
       if (!filters?.timeframe) return true;
       if (!row.starts_at) return false;
       const starts = new Date(row.starts_at);
+      const now = new Date();
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
+
       if (filters.timeframe === "today") {
-        const endOfToday = new Date(startOfToday);
+        const endOfToday = new Date(today);
         endOfToday.setDate(endOfToday.getDate() + 1);
-        return starts >= startOfToday && starts < endOfToday;
+        return starts >= today && starts < endOfToday;
       }
-      return starts >= startOfToday && starts < endOfWeek;
+      if (filters.timeframe === "tomorrow") {
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const dayAfter = new Date(tomorrow);
+        dayAfter.setDate(dayAfter.getDate() + 1);
+        return starts >= tomorrow && starts < dayAfter;
+      }
+      if (filters.timeframe === "this_week") {
+        const day = now.getDay();
+        const diffToMonday = (day + 6) % 7;
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - diffToMonday);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 7);
+        return starts >= weekStart && starts < weekEnd;
+      }
+      if (filters.timeframe === "this_month") {
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        return starts >= monthStart && starts < monthEnd;
+      }
+      return true;
     })
     .map((row) => ({
       id: row.id,
@@ -96,6 +149,8 @@ export async function listActiveExternalEvents(filters?: {
       description: row.description ?? "",
       organizationName: row.organization_name,
       location: row.location_name,
+      venueName: row.venue_name,
+      address: row.address,
       startsAt: row.starts_at,
       endsAt: row.ends_at,
       imageUrl: row.image_url,
@@ -115,7 +170,7 @@ export async function listActiveExternalOrganizations(filters?: {
   const admin = createAdminClient();
   let dbQuery = admin
     .from("external_organizations")
-    .select("id, source, external_id, name, description, logo_url, organization_url, category, tags")
+    .select("id, source, external_id, name, description, logo_url, organization_url, category, tags, created_at")
     .eq("is_active", true)
     .order("name", { ascending: true });
 
@@ -140,6 +195,7 @@ export async function listActiveExternalOrganizations(filters?: {
     logoUrl: row.logo_url,
     organizationUrl: row.organization_url,
     tags: row.tags ?? [],
+    createdAt: row.created_at ?? null,
     imported: true as const,
   }));
 }
@@ -150,7 +206,9 @@ export async function listExternalMapEventMarkers(): Promise<ExternalMapEventMar
 
   for (const event of events) {
     if (event.latitude == null || event.longitude == null) continue;
-    const realmMatch = matchCampusLocation(event.location);
+    const realmMatch =
+      matchCampusLocation(event.venueName) ??
+      matchCampusLocation(event.location);
     const position = mapPositionForExternalEvent({
       latitude: event.latitude,
       longitude: event.longitude,

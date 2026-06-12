@@ -3,11 +3,12 @@ import {
   buildOrganizationLogoUrl,
   buildOrganizationUrl,
   fetchAllUrinvolvedOrganizations,
+  fetchUrinvolvedEventDetail,
   fetchUrinvolvedEventsRss,
   stripHtmlToText,
 } from "@/lib/server/urinvolved/fetchSources";
-import { matchCampusLocation } from "@/lib/server/urinvolved/locationAliases";
-import { parseUrinvolvedEventsRss } from "@/lib/server/urinvolved/parseRssEvents";
+import { buildUrinvolvedAddressString, resolveUrinvolvedEventLocation } from "@/lib/server/urinvolved/eventLocation";
+import { parseUrinvolvedEventsRss, type ParsedUrinvolvedEvent } from "@/lib/server/urinvolved/parseRssEvents";
 
 export const URINVOLVED_SOURCE = "urinvolved";
 
@@ -60,6 +61,23 @@ async function finishSyncLog(
     .eq("id", logId);
 }
 
+async function resolveImportedEventLocation(event: ParsedUrinvolvedEvent) {
+  let venueName = event.venueName;
+  let address = event.address;
+
+  try {
+    const detail = await fetchUrinvolvedEventDetail(event.externalId);
+    if (detail?.address) {
+      venueName = detail.address.name?.trim() || venueName;
+      address = buildUrinvolvedAddressString(detail.address) || address;
+    }
+  } catch {
+    /* RSS-only fallback */
+  }
+
+  return resolveUrinvolvedEventLocation({ venueName, address });
+}
+
 export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "api"): Promise<UrinvolvedSyncSummary> {
   const admin = createAdminClient();
   const errors: string[] = [];
@@ -81,22 +99,24 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
 
       for (const event of parsedEvents) {
         seenEventIds.push(event.externalId);
-        const locationMatch = matchCampusLocation(event.locationName);
+        const location = await resolveImportedEventLocation(event);
         const row = {
           source: URINVOLVED_SOURCE,
           external_id: event.externalId,
           title: event.title.slice(0, 500),
           description: event.description.slice(0, 5000) || null,
           organization_name: event.organizationName,
-          location_name: event.locationName,
+          venue_name: location.venueName,
+          address: location.address,
+          location_name: location.locationName,
           starts_at: event.startsAt,
           ends_at: event.endsAt,
           image_url: event.imageUrl,
           event_url: event.eventUrl,
           category: event.category,
           tags: event.tags,
-          latitude: locationMatch?.latitude ?? null,
-          longitude: locationMatch?.longitude ?? null,
+          latitude: location.locationMatch?.latitude ?? null,
+          longitude: location.locationMatch?.longitude ?? null,
           is_active: true,
           last_seen_at: now,
           updated_at: now,
@@ -238,28 +258,55 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
 export type UrinvolvedSyncStatus = {
   lastSuccessfulSync: string | null;
   lastAttemptedSync: string | null;
+  totalEventsCount: number;
   activeEventsCount: number;
+  upcomingActiveEventsCount: number;
   activeOrganizationsCount: number;
+  eventsWithVenueCount: number;
+  eventsWithAddressCount: number;
+  eventsMissingLocationCount: number;
+  eventsMatchedToMapCount: number;
   lastError: string | null;
 };
 
 export async function getUrinvolvedSyncStatus(): Promise<UrinvolvedSyncStatus> {
   const admin = createAdminClient();
-  const [{ data: logs }, { count: activeEventsCount }, { count: activeOrganizationsCount }] = await Promise.all([
+  const pastCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const [
+    { data: logs },
+    { count: totalEventsCount },
+    { count: activeEventsCount },
+    { count: upcomingActiveEventsCount },
+    { count: activeOrganizationsCount },
+    { data: activeEvents },
+  ] = await Promise.all([
     admin
       .from("sync_logs")
       .select("status, started_at, finished_at, error_message")
       .eq("source", URINVOLVED_SOURCE)
       .order("started_at", { ascending: false })
       .limit(20),
+    admin.from("external_events").select("id", { count: "exact", head: true }).eq("source", URINVOLVED_SOURCE),
     admin
       .from("external_events")
       .select("id", { count: "exact", head: true })
       .eq("source", URINVOLVED_SOURCE)
       .eq("is_active", true),
     admin
+      .from("external_events")
+      .select("id", { count: "exact", head: true })
+      .eq("source", URINVOLVED_SOURCE)
+      .eq("is_active", true)
+      .not("starts_at", "is", null)
+      .gte("starts_at", pastCutoff),
+    admin
       .from("external_organizations")
       .select("id", { count: "exact", head: true })
+      .eq("source", URINVOLVED_SOURCE)
+      .eq("is_active", true),
+    admin
+      .from("external_events")
+      .select("venue_name, address, location_name, latitude, longitude")
       .eq("source", URINVOLVED_SOURCE)
       .eq("is_active", true),
   ]);
@@ -269,11 +316,37 @@ export async function getUrinvolvedSyncStatus(): Promise<UrinvolvedSyncStatus> {
   const lastSuccess = rows.find((row) => row.status === "success");
   const lastFailed = rows.find((row) => row.status === "failed");
 
+  let eventsWithVenueCount = 0;
+  let eventsWithAddressCount = 0;
+  let eventsMissingLocationCount = 0;
+  let eventsMatchedToMapCount = 0;
+
+  for (const event of activeEvents ?? []) {
+    const venue = typeof event.venue_name === "string" ? event.venue_name.trim() : "";
+    const address = typeof event.address === "string" ? event.address.trim() : "";
+    const locationName = typeof event.location_name === "string" ? event.location_name.trim() : "";
+
+    if (venue) eventsWithVenueCount += 1;
+    if (address) eventsWithAddressCount += 1;
+    if (!venue && !address && (!locationName || locationName === "Location TBA")) {
+      eventsMissingLocationCount += 1;
+    }
+    if (event.latitude != null && event.longitude != null) {
+      eventsMatchedToMapCount += 1;
+    }
+  }
+
   return {
     lastSuccessfulSync: lastSuccess?.finished_at ?? lastSuccess?.started_at ?? null,
     lastAttemptedSync,
+    totalEventsCount: totalEventsCount ?? 0,
     activeEventsCount: activeEventsCount ?? 0,
+    upcomingActiveEventsCount: upcomingActiveEventsCount ?? 0,
     activeOrganizationsCount: activeOrganizationsCount ?? 0,
+    eventsWithVenueCount,
+    eventsWithAddressCount,
+    eventsMissingLocationCount,
+    eventsMatchedToMapCount,
     lastError: lastFailed?.error_message ?? null,
   };
 }

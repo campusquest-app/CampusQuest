@@ -1,14 +1,24 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { fetchAuthed, postAuthed, deleteAuthed } from "@/lib/client/dashboardApi";
+import {
+  ExternalEventLocationDetail,
+  ExternalEventLocationDisplay,
+} from "@/components/ExternalEventLocationDisplay";
+import { isUpcomingEvent } from "@/lib/client/eventsFeedFilters";
 import { OrganizationAdminPortal } from "@/components/OrganizationAdminPortal";
 import {
   ORGANIZATION_REQUEST_CATEGORIES,
   ORGANIZATION_REQUEST_CATEGORY_LABELS,
   organizationRequestCategoryLabel,
-  type OrganizationRequestCategory,
 } from "@/lib/organizationRequestCategories";
+import {
+  ORG_BROWSE_FILTERS,
+  classifyOrganizationBucket,
+  orgBrowseFilterLabel,
+  type OrgBrowseFilterId,
+} from "@/lib/organizationBrowseFilters";
 
 type Organization = {
   id: string;
@@ -26,6 +36,7 @@ type Organization = {
   myMembershipStatus: "pending" | "approved" | "denied" | null;
   requiresApproval: boolean;
   isFrozen: boolean;
+  createdAt?: string | null;
   upcomingEvents: Array<{ id: string; title: string; startsAt: string; location: string }>;
 };
 
@@ -37,8 +48,50 @@ type ExternalOrganization = {
   logoUrl: string | null;
   organizationUrl: string | null;
   tags: string[];
+  createdAt?: string | null;
   imported: true;
 };
+
+type ExternalEventItem = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  location: string | null;
+  venueName: string | null;
+  address: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  organizationName: string | null;
+  imageUrl: string | null;
+  eventUrl: string | null;
+  tags: string[];
+  imported: true;
+};
+
+function externalEventMatchesOrganization(eventOrgName: string | null, orgName: string): boolean {
+  const normalizedOrg = orgName.trim().toLowerCase();
+  if (!normalizedOrg) return false;
+  const raw = (eventOrgName ?? "").trim().toLowerCase();
+  if (!raw) return false;
+  if (raw === normalizedOrg) return true;
+  return raw.split(",").some((part) => part.trim() === normalizedOrg);
+}
+
+function formatExternalEventDateTime(startsAt: string | null): { date: string; time: string } {
+  if (!startsAt) return { date: "Date TBA", time: "" };
+  const start = new Date(startsAt);
+  return {
+    date: start.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }),
+    time: start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
+  };
+}
+
+type HubOrganization =
+  | { kind: "campus"; organization: Organization; bucket: OrgBrowseFilterId }
+  | { kind: "external"; organization: ExternalOrganization; bucket: OrgBrowseFilterId };
+
+type OrgSortMode = "az" | "za" | "recent" | "active";
 
 type MyOrgCreationRequest = {
   id: string;
@@ -94,13 +147,16 @@ export function OrganizationsHub({
 }) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [externalOrganizations, setExternalOrganizations] = useState<ExternalOrganization[]>([]);
+  const [externalEvents, setExternalEvents] = useState<ExternalEventItem[]>([]);
   const [activeExternalOrg, setActiveExternalOrg] = useState<ExternalOrganization | null>(null);
+  const [activeExternalEvent, setActiveExternalEvent] = useState<ExternalEventItem | null>(null);
   const [myRequests, setMyRequests] = useState<MyOrgCreationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<"" | OrganizationRequestCategory>("");
+  const [filterBucket, setFilterBucket] = useState<OrgBrowseFilterId>("all");
+  const [sortMode, setSortMode] = useState<OrgSortMode>("az");
   const [submitting, setSubmitting] = useState(false);
   const [reportingOrgId, setReportingOrgId] = useState<string | null>(null);
   const [form, setForm] = useState<RequestForm>(emptyRequestForm);
@@ -128,20 +184,11 @@ export function OrganizationsHub({
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (query.trim()) params.set("query", query.trim());
-      if (categoryFilter) params.set("category", categoryFilter);
-      const externalParams = new URLSearchParams();
-      if (query.trim()) externalParams.set("query", query.trim());
-      if (categoryFilter) externalParams.set("category", categoryFilter);
-
-      const [campusResult, externalResult] = await Promise.allSettled([
-        fetchAuthed<{ organizations: Organization[] }>(
-          `/api/organizations${params.toString() ? `?${params.toString()}` : ""}`,
-        ),
-        fetchAuthed<{ organizations: ExternalOrganization[] }>(
-          `/api/external/organizations${externalParams.toString() ? `?${externalParams.toString()}` : ""}`,
-        ),
+      // Load everything once — search/filter/sort run client-side for instant response.
+      const [campusResult, externalResult, externalEventsResult] = await Promise.allSettled([
+        fetchAuthed<{ organizations: Organization[] }>("/api/organizations"),
+        fetchAuthed<{ organizations: ExternalOrganization[] }>("/api/external/organizations"),
+        fetchAuthed<{ events: ExternalEventItem[] }>("/api/external/events"),
       ]);
 
       if (campusResult.status === "fulfilled") {
@@ -158,6 +205,12 @@ export function OrganizationsHub({
       } else {
         setExternalOrganizations([]);
       }
+
+      if (externalEventsResult.status === "fulfilled") {
+        setExternalEvents(externalEventsResult.value.events ?? []);
+      } else {
+        setExternalEvents([]);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load organizations.");
     } finally {
@@ -166,12 +219,9 @@ export function OrganizationsHub({
   }
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadOrganizations();
-    }, 250);
-    return () => window.clearTimeout(timer);
+    void loadOrganizations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, categoryFilter]);
+  }, []);
 
   async function handleSubmitOrganizationRequest(event: FormEvent) {
     event.preventDefault();
@@ -264,23 +314,105 @@ export function OrganizationsHub({
     }
   }
 
-  const prioritizedOrganizations = [...organizations].sort((a, b) => {
-    const interests = new Set((personalization?.interests ?? []).map((value) => value.toLowerCase()));
-    const aMatch = interests.has(a.category.toLowerCase()) ? 0 : 1;
-    const bMatch = interests.has(b.category.toLowerCase()) ? 0 : 1;
-    if (aMatch !== bMatch) return aMatch - bMatch;
-    return b.memberCount - a.memberCount;
-  });
+  // Campus + URInvolved orgs merged, classified into URInvolved-style buckets.
+  const mergedOrganizations = useMemo<HubOrganization[]>(
+    () => [
+      ...organizations.map((organization) => ({
+        kind: "campus" as const,
+        organization,
+        bucket: classifyOrganizationBucket({
+          campusCategorySlug: organization.category,
+          category: organizationRequestCategoryLabel(organization.category),
+          name: organization.name,
+        }),
+      })),
+      ...externalOrganizations.map((organization) => ({
+        kind: "external" as const,
+        organization,
+        bucket: classifyOrganizationBucket({
+          category: organization.category,
+          tags: organization.tags,
+          name: organization.name,
+        }),
+      })),
+    ],
+    [organizations, externalOrganizations],
+  );
 
-  const prioritizedExternalOrganizations = [...externalOrganizations].sort((a, b) => {
-    const interests = new Set((personalization?.interests ?? []).map((value) => value.toLowerCase()));
-    const aCategory = (a.category ?? "").toLowerCase();
-    const bCategory = (b.category ?? "").toLowerCase();
-    const aMatch = interests.has(aCategory) ? 0 : 1;
-    const bMatch = interests.has(bCategory) ? 0 : 1;
-    if (aMatch !== bMatch) return aMatch - bMatch;
-    return a.name.localeCompare(b.name);
-  });
+  const activeExternalOrgEvents = useMemo(() => {
+    if (!activeExternalOrg) return [];
+    return externalEvents
+      .filter(
+        (event) =>
+          isUpcomingEvent(event.startsAt) &&
+          externalEventMatchesOrganization(event.organizationName, activeExternalOrg.name),
+      )
+      .sort((a, b) => {
+        const aTime = a.startsAt ? new Date(a.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
+        const bTime = b.startsAt ? new Date(b.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      });
+  }, [activeExternalOrg, externalEvents]);
+
+  function closeExternalOrgModal() {
+    setActiveExternalOrg(null);
+    setActiveExternalEvent(null);
+  }
+
+  function openExternalOrgEvents(organization: ExternalOrganization) {
+    setActiveExternalEvent(null);
+    setActiveExternalOrg(organization);
+  }
+
+  const hasActivityData = useMemo(
+    () => organizations.some((org) => org.memberCount + org.followerCount > 0),
+    [organizations],
+  );
+  const hasRecencyData = useMemo(
+    () => mergedOrganizations.some((item) => Boolean(item.organization.createdAt)),
+    [mergedOrganizations],
+  );
+
+  // Instant client-side search + filter + sort.
+  const allOrganizations = useMemo<HubOrganization[]>(() => {
+    const q = query.trim().toLowerCase();
+    const matchesSearch = (item: HubOrganization): boolean => {
+      if (!q) return true;
+      const org = item.organization;
+      const rawCategory =
+        item.kind === "campus" ? organizationRequestCategoryLabel(org.category ?? "") : org.category ?? "";
+      const tags = item.kind === "external" ? item.organization.tags : [];
+      const haystack = [org.name, rawCategory, orgBrowseFilterLabel(item.bucket), org.description, ...tags]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    };
+
+    const filtered = mergedOrganizations.filter(
+      (item) => matchesSearch(item) && (filterBucket === "all" || item.bucket === filterBucket),
+    );
+
+    const byName = (a: HubOrganization, b: HubOrganization) =>
+      a.organization.name.localeCompare(b.organization.name);
+
+    return filtered.sort((a, b) => {
+      if (sortMode === "za") return byName(b, a);
+      if (sortMode === "recent") {
+        const aTime = a.organization.createdAt ? new Date(a.organization.createdAt).getTime() : 0;
+        const bTime = b.organization.createdAt ? new Date(b.organization.createdAt).getTime() : 0;
+        if (aTime !== bTime) return bTime - aTime;
+        return byName(a, b);
+      }
+      if (sortMode === "active") {
+        const activity = (item: HubOrganization) =>
+          item.kind === "campus" ? item.organization.memberCount + item.organization.followerCount : -1;
+        const diff = activity(b) - activity(a);
+        if (diff !== 0) return diff;
+        return byName(a, b);
+      }
+      return byName(a, b);
+    });
+  }, [mergedOrganizations, query, filterBucket, sortMode]);
 
   function requestStatusBlock(r: MyOrgCreationRequest) {
     if (r.status === "pending") {
@@ -323,40 +455,65 @@ export function OrganizationsHub({
         <p className="text-xs text-white/55">
           Showing organizations in your verified campus community{personalization?.schoolName ? ` (${personalization.schoolName})` : ""}.
         </p>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
-          <div className="min-w-0 flex-1 space-y-1">
-            <label htmlFor="org-hub-search" className="text-[11px] text-white/50">
-              Search
-            </label>
-            <input
-              id="org-hub-search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Name or description"
-              className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/50"
-            />
+        <div className="space-y-2">
+          <label htmlFor="org-hub-search" className="sr-only">
+            Search organizations
+          </label>
+          <input
+            id="org-hub-search"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search name, category, description, or tags"
+            className="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2.5 text-sm text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
+          />
+
+          <div className="-mx-4 overflow-x-auto px-4 cq-org-filter-scroll" role="tablist" aria-label="Organization categories">
+            <div className="flex w-max gap-1.5 pb-1">
+              {ORG_BROWSE_FILTERS.map((filter) => {
+                const selected = filterBucket === filter.id;
+                return (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setFilterBucket(filter.id)}
+                    className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors touch-manipulation ${
+                      selected
+                        ? "border-uri-keaney/60 bg-uri-keaney/20 text-uri-keaney"
+                        : "border-white/15 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="shrink-0 space-y-1 sm:w-52">
-            <label htmlFor="org-hub-category" className="text-[11px] text-white/50">
-              Category
-            </label>
-            <div className="relative">
+
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[11px] text-white/45">
+              {loading ? "Loading…" : `${allOrganizations.length} organization${allOrganizations.length === 1 ? "" : "s"}`}
+            </p>
+            <div className="relative w-40">
+              <label htmlFor="org-hub-sort" className="sr-only">
+                Sort organizations
+              </label>
               <select
-                id="org-hub-category"
-                value={categoryFilter}
-                onChange={(event) =>
-                  setCategoryFilter(event.target.value as "" | OrganizationRequestCategory)
-                }
-                className={ORG_REQ_SELECT_CLASS}
+                id="org-hub-sort"
+                value={sortMode}
+                onChange={(event) => setSortMode(event.target.value as OrgSortMode)}
+                className="w-full appearance-none rounded-lg border border-white/20 bg-black/25 px-3 py-1.5 pr-8 text-xs text-white focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
               >
-                <option value="" className="bg-uri-navy text-white">
-                  All categories
-                </option>
-                {ORGANIZATION_REQUEST_CATEGORIES.map((c) => (
-                  <option key={c} value={c} className="bg-uri-navy text-white">
-                    {ORGANIZATION_REQUEST_CATEGORY_LABELS[c]}
-                  </option>
-                ))}
+                <option value="az" className="bg-uri-navy text-white">A–Z</option>
+                <option value="za" className="bg-uri-navy text-white">Z–A</option>
+                {hasRecencyData ? (
+                  <option value="recent" className="bg-uri-navy text-white">Recently Added</option>
+                ) : null}
+                {hasActivityData ? (
+                  <option value="active" className="bg-uri-navy text-white">Most Active</option>
+                ) : null}
               </select>
               <ChevronDownIcon />
             </div>
@@ -563,130 +720,123 @@ export function OrganizationsHub({
           <div className="h-20 rounded-xl bg-white/10 animate-pulse" />
         </div>
       ) : null}
-      {!loading && organizations.length === 0 && externalOrganizations.length === 0 ? (
-        <p className="text-sm text-white/60">
-          {query.trim() || categoryFilter
-            ? "No organizations match your search or category."
-            : "No organizations found yet."}
-        </p>
+      {!loading && allOrganizations.length === 0 ? (
+        <div className="card p-6 text-center space-y-1">
+          <p className="text-sm font-semibold text-white">No organizations found.</p>
+          <p className="text-xs text-white/55">Try changing your search or filter.</p>
+        </div>
       ) : null}
 
       <div className="space-y-3">
-        {prioritizedOrganizations.map((organization) => (
-          <article key={organization.id} className="card p-4 space-y-2">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h4 className="text-white font-semibold">{organization.name}</h4>
-                <p className="text-xs text-white/60 mt-1">
-                  {organization.schoolName} · {organizationRequestCategoryLabel(organization.category)}
-                </p>
+        {allOrganizations.map((item) =>
+          item.kind === "external" ? (
+            <article key={`ext-${item.organization.id}`} className="card p-4 space-y-2 border border-cyan-400/15">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h4 className="text-white font-semibold">{item.organization.name}</h4>
+                  <p className="text-xs text-white/60 mt-1">
+                    {item.organization.category ?? orgBrowseFilterLabel(item.bucket)}
+                  </p>
+                </div>
+                <span className="text-[10px] text-cyan-200/80 flex-shrink-0">Source: URInvolved</span>
               </div>
-              <span className="text-[11px] rounded-full border border-uri-keaney/35 px-2 py-0.5 text-uri-keaney">
-                {organization.memberCount} members · {organization.followerCount} followers
-              </span>
-            </div>
-            <p className="text-sm text-white/75 line-clamp-2">{organization.description}</p>
-            {organization.isFrozen ? (
-              <p className="text-xs text-amber-200">This organization is temporarily frozen by moderation.</p>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              {organization.myMembershipStatus === "approved" && organization.myMembershipKind === "member" ? null : (
+              {item.organization.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={item.organization.logoUrl} alt="" className="h-12 w-12 rounded-lg object-cover border border-white/10" />
+              ) : null}
+              <p className="text-sm text-white/75 line-clamp-3">{item.organization.description}</p>
+              {item.organization.tags.length > 0 ? (
+                <p className="text-xs text-white/50">{item.organization.tags.join(" · ")}</p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() =>
-                    organization.myMembershipKind === "follower"
-                      ? void handleUnfollow(organization.id)
-                      : void handleFollow(organization.id, "follower")
-                  }
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${
-                    organization.myMembershipKind === "follower"
-                      ? "border-white/25 text-white/90 hover:bg-white/10"
-                      : "border-white/20 text-white/80 hover:bg-white/10"
-                  }`}
+                  onClick={() => openExternalOrgEvents(item.organization)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-uri-keaney/35 text-uri-keaney hover:bg-uri-keaney/10"
                 >
-                  {organization.myMembershipKind === "follower" ? "Unfollow" : "Follow"}
+                  View Events
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={() => void handleFollow(organization.id, "member")}
-                disabled={organization.myMembershipStatus === "pending" || organization.myMembershipStatus === "approved"}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-uri-keaney/35 text-uri-keaney hover:bg-uri-keaney/10"
-              >
-                {organization.myMembershipStatus === "pending"
-                  ? "Join requested"
-                  : organization.myMembershipStatus === "approved" && organization.myRole
-                    ? organization.myRole === "owner" || organization.myRole === "admin"
-                      ? "Org admin"
-                      : "Member"
-                    : organization.requiresApproval
-                      ? "Request to join"
-                      : "Join"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveOrg(organization)}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-white/20 text-white/80 hover:bg-white/10"
-              >
-                View organization
-              </button>
-              {organization.myRole === "owner" || organization.myRole === "admin" ? (
+              </div>
+            </article>
+          ) : (
+            <article key={item.organization.id} className="card p-4 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-white font-semibold">{item.organization.name}</h4>
+                  <p className="text-xs text-white/60 mt-1">
+                    {item.organization.schoolName} · {organizationRequestCategoryLabel(item.organization.category)}
+                  </p>
+                </div>
+                <span className="text-[11px] rounded-full border border-uri-keaney/35 px-2 py-0.5 text-uri-keaney">
+                  {item.organization.memberCount} members · {item.organization.followerCount} followers
+                </span>
+              </div>
+              <p className="text-sm text-white/75 line-clamp-2">{item.organization.description}</p>
+              {item.organization.isFrozen ? (
+                <p className="text-xs text-amber-200">This organization is temporarily frozen by moderation.</p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {item.organization.myMembershipStatus === "approved" && item.organization.myMembershipKind === "member" ? null : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      item.organization.myMembershipKind === "follower"
+                        ? void handleUnfollow(item.organization.id)
+                        : void handleFollow(item.organization.id, "follower")
+                    }
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${
+                      item.organization.myMembershipKind === "follower"
+                        ? "border-white/25 text-white/90 hover:bg-white/10"
+                        : "border-white/20 text-white/80 hover:bg-white/10"
+                    }`}
+                  >
+                    {item.organization.myMembershipKind === "follower" ? "Unfollow" : "Follow"}
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => setAdminPortalOrg(organization)}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-emerald-400/35 text-emerald-200 hover:bg-emerald-500/10"
+                  onClick={() => void handleFollow(item.organization.id, "member")}
+                  disabled={item.organization.myMembershipStatus === "pending" || item.organization.myMembershipStatus === "approved"}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-uri-keaney/35 text-uri-keaney hover:bg-uri-keaney/10"
                 >
-                  Open admin portal
+                  {item.organization.myMembershipStatus === "pending"
+                    ? "Join requested"
+                    : item.organization.myMembershipStatus === "approved" && item.organization.myRole
+                      ? item.organization.myRole === "owner" || item.organization.myRole === "admin"
+                        ? "Org admin"
+                        : "Member"
+                      : item.organization.requiresApproval
+                        ? "Request to join"
+                        : "Join"}
                 </button>
-              ) : null}
-              <button
-                type="button"
-                disabled={reportingOrgId === organization.id}
-                onClick={() => void handleReportOrganization(organization.id)}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-rose-400/35 text-rose-200 hover:bg-rose-500/10 disabled:opacity-60"
-              >
-                {reportingOrgId === organization.id ? "Reporting..." : "Report organization"}
-              </button>
-            </div>
-          </article>
-        ))}
-        {prioritizedExternalOrganizations.map((organization) => (
-          <article key={`ext-${organization.id}`} className="card p-4 space-y-2 border border-cyan-400/15">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h4 className="text-white font-semibold">{organization.name}</h4>
-                <p className="text-xs text-white/60 mt-1">
-                  {organization.category ? organization.category : "URI organization"}
-                </p>
-              </div>
-              <span className="text-[10px] text-cyan-200/80 flex-shrink-0">Source: URInvolved</span>
-            </div>
-            {organization.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={organization.logoUrl} alt="" className="h-12 w-12 rounded-lg object-cover border border-white/10" />
-            ) : null}
-            <p className="text-sm text-white/75 line-clamp-3">{organization.description}</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveExternalOrg(organization)}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-white/20 text-white/80 hover:bg-white/10"
-              >
-                View organization
-              </button>
-              {organization.organizationUrl ? (
-                <a
-                  href={organization.organizationUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-cyan-400/35 text-cyan-200 hover:bg-cyan-500/10"
+                <button
+                  type="button"
+                  onClick={() => setActiveOrg(item.organization)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-white/20 text-white/80 hover:bg-white/10"
                 >
-                  View on URInvolved
-                </a>
-              ) : null}
-            </div>
-          </article>
-        ))}
+                  View organization
+                </button>
+                {item.organization.myRole === "owner" || item.organization.myRole === "admin" ? (
+                  <button
+                    type="button"
+                    onClick={() => setAdminPortalOrg(item.organization)}
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-emerald-400/35 text-emerald-200 hover:bg-emerald-500/10"
+                  >
+                    Open admin portal
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={reportingOrgId === item.organization.id}
+                  onClick={() => void handleReportOrganization(item.organization.id)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-rose-400/35 text-rose-200 hover:bg-rose-500/10 disabled:opacity-60"
+                >
+                  {reportingOrgId === item.organization.id ? "Reporting..." : "Report organization"}
+                </button>
+              </div>
+            </article>
+          ),
+        )}
       </div>
 
       <p className="text-[11px] text-white/40 leading-relaxed pt-2">
@@ -738,34 +888,141 @@ export function OrganizationsHub({
       {activeExternalOrg ? (
         <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/65 p-3">
           <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-uri-navy p-5 space-y-3 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between gap-3">
-              <h4 className="text-white text-lg font-semibold">{activeExternalOrg.name}</h4>
-              <button type="button" className="text-white/60 hover:text-white" onClick={() => setActiveExternalOrg(null)}>
-                ✕
-              </button>
-            </div>
-            {activeExternalOrg.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={activeExternalOrg.logoUrl} alt="" className="h-16 w-16 rounded-lg object-cover border border-white/10" />
-            ) : null}
-            <p className="text-sm text-white/75">{activeExternalOrg.description}</p>
-            {activeExternalOrg.category ? (
-              <p className="text-xs text-white/65">{activeExternalOrg.category}</p>
-            ) : null}
-            {activeExternalOrg.tags.length > 0 ? (
-              <p className="text-xs text-white/50">{activeExternalOrg.tags.join(" · ")}</p>
-            ) : null}
-            <p className="text-xs text-cyan-200/80">Source: URInvolved</p>
-            {activeExternalOrg.organizationUrl ? (
-              <a
-                href={activeExternalOrg.organizationUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex px-3 py-2 rounded-lg text-xs font-semibold border border-cyan-400/35 text-cyan-200 hover:bg-cyan-500/10"
-              >
-                View on URInvolved
-              </a>
-            ) : null}
+            {activeExternalEvent ? (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    className="text-xs text-white/65 hover:text-white"
+                    onClick={() => setActiveExternalEvent(null)}
+                  >
+                    ← Back
+                  </button>
+                  <button type="button" className="text-white/60 hover:text-white" onClick={closeExternalOrgModal}>
+                    ✕
+                  </button>
+                </div>
+                <h4 className="text-white text-lg font-semibold">{activeExternalEvent.title}</h4>
+                {activeExternalEvent.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={activeExternalEvent.imageUrl}
+                    alt=""
+                    className="w-full max-h-48 object-cover rounded-lg border border-white/10"
+                  />
+                ) : null}
+                {(() => {
+                  const { date, time } = formatExternalEventDateTime(activeExternalEvent.startsAt);
+                  return (
+                    <p className="text-xs text-white/65">
+                      {date}
+                      {time ? ` · ${time}` : ""}
+                    </p>
+                  );
+                })()}
+                <ExternalEventLocationDetail
+                  venueName={activeExternalEvent.venueName}
+                  address={activeExternalEvent.address}
+                  location={activeExternalEvent.location}
+                />
+                <p className="text-sm text-white/75">{activeExternalEvent.description}</p>
+                {activeExternalEvent.category ? (
+                  <p className="text-xs text-white/55">Category: {activeExternalEvent.category}</p>
+                ) : null}
+                <p className="text-xs text-cyan-200/80">Source: URInvolved</p>
+                {activeExternalEvent.eventUrl ? (
+                  <a
+                    href={activeExternalEvent.eventUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex px-3 py-2 rounded-lg text-xs font-semibold border border-cyan-400/35 text-cyan-200 hover:bg-cyan-500/10"
+                  >
+                    View on URInvolved
+                  </a>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between gap-3">
+                  <h4 className="text-white text-lg font-semibold">{activeExternalOrg.name}</h4>
+                  <button type="button" className="text-white/60 hover:text-white" onClick={closeExternalOrgModal}>
+                    ✕
+                  </button>
+                </div>
+                {activeExternalOrg.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={activeExternalOrg.logoUrl}
+                    alt=""
+                    className="h-16 w-16 rounded-lg object-cover border border-white/10"
+                  />
+                ) : null}
+                <p className="text-sm text-white/75">{activeExternalOrg.description}</p>
+                {activeExternalOrg.category ? (
+                  <p className="text-xs text-white/65">{activeExternalOrg.category}</p>
+                ) : null}
+                {activeExternalOrg.tags.length > 0 ? (
+                  <p className="text-xs text-white/50">{activeExternalOrg.tags.join(" · ")}</p>
+                ) : null}
+                <p className="text-xs text-cyan-200/80">Source: URInvolved</p>
+
+                <div className="space-y-2 pt-1 border-t border-white/10">
+                  <h5 className="text-sm font-semibold text-white">Upcoming Events</h5>
+                  {activeExternalOrgEvents.length === 0 ? (
+                    <p className="text-xs text-white/50">No upcoming events currently scheduled.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {activeExternalOrgEvents.map((event) => {
+                        const { date, time } = formatExternalEventDateTime(event.startsAt);
+                        return (
+                          <li key={event.id}>
+                            <button
+                              type="button"
+                              onClick={() => setActiveExternalEvent(event)}
+                              className="w-full text-left rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 hover:bg-white/10 transition-colors"
+                            >
+                              <p className="text-sm font-medium text-white">{event.title}</p>
+                              <p className="text-xs text-white/60 mt-0.5">
+                                {date}
+                                {time ? ` · ${time}` : ""}
+                              </p>
+                              <ExternalEventLocationDisplay
+                                venueName={event.venueName}
+                                address={event.address}
+                                location={event.location}
+                                className="mt-1"
+                              />
+                              {event.imageUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={event.imageUrl}
+                                  alt=""
+                                  className="mt-2 w-full max-h-28 object-cover rounded-md border border-white/10"
+                                />
+                              ) : null}
+                              {event.description ? (
+                                <p className="text-xs text-white/55 mt-1.5 line-clamp-2">{event.description}</p>
+                              ) : null}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+
+                {activeExternalOrg.organizationUrl ? (
+                  <a
+                    href={activeExternalOrg.organizationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-block text-[11px] text-white/40 hover:text-white/60 hover:underline pt-1"
+                  >
+                    View Organization on URInvolved
+                  </a>
+                ) : null}
+              </>
+            )}
           </div>
         </div>
       ) : null}

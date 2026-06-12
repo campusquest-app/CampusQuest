@@ -3,17 +3,17 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ApiRequestError, fetchAuthed } from "@/lib/client/dashboardApi";
-import { AdminAuditLogsCard } from "@/components/AdminAuditLogsCard";
-import { AppealsModerationCard } from "@/components/AppealsModerationCard";
-import { BackendDashboardPreview } from "@/components/BackendDashboardPreview";
-import { CampusContentModerationCard } from "@/components/CampusContentModerationCard";
-import { LegalPolicyVersionCard } from "@/components/LegalPolicyVersionCard";
-import { ModerationDashboardCard } from "@/components/ModerationDashboardCard";
-import { OrganizationModerationCard } from "@/components/OrganizationModerationCard";
-import { OrganizationCreationRequestsAdminCard } from "@/components/OrganizationCreationRequestsAdminCard";
-import { PilotAnalyticsCard } from "@/components/PilotAnalyticsCard";
-import { UserSafetyManagementCard } from "@/components/UserSafetyManagementCard";
-import { URInvolvedSyncAdminCard } from "@/components/URInvolvedSyncAdminCard";
+import type { AdminSectionId, ModerationTabId, OrganizationsTabId } from "@/lib/admin/navigation";
+import { AdminAnalyticsSection } from "@/components/admin/AdminAnalyticsSection";
+import { AdminAuditSection } from "@/components/admin/AdminAuditSection";
+import { AdminDashboardHome } from "@/components/admin/AdminDashboardHome";
+import { AdminLegalSection } from "@/components/admin/AdminLegalSection";
+import { AdminModerationSection } from "@/components/admin/AdminModerationSection";
+import { AdminOrganizationsSection } from "@/components/admin/AdminOrganizationsSection";
+import type { AdminSearchNavigatePayload } from "@/components/admin/AdminGlobalSearch";
+import { AdminShell } from "@/components/admin/AdminShell";
+import { AdminSystemSection } from "@/components/admin/AdminSystemSection";
+import { AdminUrinvolvedSection } from "@/components/admin/AdminUrinvolvedSection";
 
 function BackToQuadLink() {
   return (
@@ -32,6 +32,12 @@ export function InternalAdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [section, setSection] = useState<AdminSectionId>("dashboard");
+  const [moderationTab, setModerationTab] = useState<ModerationTabId>("messages");
+  const [organizationsTab, setOrganizationsTab] = useState<OrganizationsTabId>("requests");
+  const [safetyQuery, setSafetyQuery] = useState<string | undefined>();
+  const [auditQuery, setAuditQuery] = useState<string | undefined>();
+  const [organizationId, setOrganizationId] = useState<string | undefined>();
 
   const verifyAccess = useCallback(async () => {
     setLoading(true);
@@ -39,7 +45,9 @@ export function InternalAdminDashboard() {
     setForbidden(false);
     setSessionExpired(false);
     try {
-      const data = await fetchAuthed<{ allowed: boolean; adminAccess?: boolean; email: string | null }>("/api/internal/admin/access");
+      const data = await fetchAuthed<{ allowed: boolean; adminAccess?: boolean; email: string | null }>(
+        "/api/internal/admin/access",
+      );
       if (!data.allowed) {
         setForbidden(true);
         return;
@@ -65,6 +73,28 @@ export function InternalAdminDashboard() {
     void verifyAccess();
   }, [verifyAccess]);
 
+  function navigate(sectionId: AdminSectionId, hint?: string) {
+    setSection(sectionId);
+    if (sectionId === "moderation") {
+      if (hint === "safety") setModerationTab("safety");
+      else if (hint === "content") setModerationTab("content");
+      else if (hint === "appeals") setModerationTab("appeals");
+      else setModerationTab("messages");
+    }
+    if (sectionId === "organizations") {
+      setOrganizationsTab(hint === "controls" ? "controls" : "requests");
+    }
+  }
+
+  function handleSearchNavigate(payload: AdminSearchNavigatePayload) {
+    setSection(payload.section);
+    if (payload.moderationTab) setModerationTab(payload.moderationTab);
+    if (payload.organizationsTab) setOrganizationsTab(payload.organizationsTab);
+    setSafetyQuery(payload.safetyQuery);
+    setAuditQuery(payload.auditQuery);
+    setOrganizationId(payload.organizationId);
+  }
+
   if (loading) {
     return (
       <main className="min-h-screen bg-uri-navy px-4 py-8 sm:py-10">
@@ -87,7 +117,7 @@ export function InternalAdminDashboard() {
             <Link href="/" className="font-semibold text-uri-keaney underline-offset-4 hover:underline">
               home screen
             </Link>
-            , then open Internal Admin again. If you were already signed in, your token may have expired—sign in once more.
+            , then open Internal Admin again.
           </p>
         </div>
       </main>
@@ -107,45 +137,33 @@ export function InternalAdminDashboard() {
   }
 
   return (
-    <main className="min-h-screen bg-uri-navy px-4 py-8 sm:py-10">
-      <div className="mx-auto max-w-6xl space-y-4">
-        <BackToQuadLink />
-        <header className="space-y-1">
-          <h1 className="text-2xl font-display font-bold text-white">CampusQuest Internal Admin</h1>
-          <p className="text-sm text-white/60">Moderation, user safety, legal policy controls, and audit visibility.</p>
-          <div className="flex flex-wrap items-center gap-2 pt-2">
-            <Link
-              href="/internal/moderation"
-              className="inline-flex items-center rounded-lg border border-uri-keaney/40 bg-uri-keaney/15 px-3 py-1.5 text-xs font-semibold text-uri-keaney hover:bg-uri-keaney/25"
-            >
-              Moderation workspace →
-            </Link>
-            <Link
-              href="/internal/admin/qr"
-              className="inline-flex items-center rounded-lg border border-cyan-400/35 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20"
-            >
-              CQ QR codes →
-            </Link>
-          </div>
-          {allowedEmail ? <p className="text-xs text-white/45">Signed in as {allowedEmail}</p> : null}
-          {error ? <p className="text-xs text-rose-200">{error}</p> : null}
-        </header>
-
-        <ModerationDashboardCard />
-        <CampusContentModerationCard />
-        <OrganizationModerationCard />
-        <OrganizationCreationRequestsAdminCard />
-        <UserSafetyManagementCard />
-        <AppealsModerationCard />
-        <PilotAnalyticsCard />
-        <URInvolvedSyncAdminCard />
-        <LegalPolicyVersionCard />
-        <AdminAuditLogsCard />
-        <p className="text-xs text-white/50">
-          Backend preview below uses your signed-in admin session (same APIs as the student app). For rollout checks only.
-        </p>
-        <BackendDashboardPreview />
-      </div>
-    </main>
+    <AdminShell
+      activeSection={section}
+      onSectionChange={setSection}
+      onSearchNavigate={handleSearchNavigate}
+      allowedEmail={allowedEmail}
+    >
+      {error ? <p className="mb-4 text-xs text-rose-200">{error}</p> : null}
+      {section === "dashboard" ? <AdminDashboardHome onNavigate={navigate} /> : null}
+      {section === "moderation" ? (
+        <AdminModerationSection
+          activeTab={moderationTab}
+          onTabChange={setModerationTab}
+          initialSafetyQuery={safetyQuery}
+        />
+      ) : null}
+      {section === "organizations" ? (
+        <AdminOrganizationsSection
+          activeTab={organizationsTab}
+          onTabChange={setOrganizationsTab}
+          initialOrganizationId={organizationId}
+        />
+      ) : null}
+      {section === "urinvolved" ? <AdminUrinvolvedSection /> : null}
+      {section === "analytics" ? <AdminAnalyticsSection /> : null}
+      {section === "audit" ? <AdminAuditSection initialSearch={auditQuery} /> : null}
+      {section === "legal" ? <AdminLegalSection /> : null}
+      {section === "system" ? <AdminSystemSection /> : null}
+    </AdminShell>
   );
 }

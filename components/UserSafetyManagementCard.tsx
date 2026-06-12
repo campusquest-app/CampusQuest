@@ -15,8 +15,8 @@ type AdminUser = {
   };
 };
 
-export function UserSafetyManagementCard() {
-  const [query, setQuery] = useState("");
+export function UserSafetyManagementCard({ initialQuery }: { initialQuery?: string }) {
+  const [query, setQuery] = useState(initialQuery ?? "");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -50,6 +50,10 @@ export function UserSafetyManagementCard() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (initialQuery) setQuery(initialQuery);
+  }, [initialQuery]);
 
   useEffect(() => {
     if (query.trim().length < 2) {

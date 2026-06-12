@@ -29,6 +29,7 @@ describe("parseUrinvolvedEventsRss", () => {
     expect(events).toHaveLength(1);
     expect(events[0]?.externalId).toBe("999001");
     expect(events[0]?.title).toBe("Test Event");
+    expect(events[0]?.venueName).toBe("Memorial Union");
     expect(events[0]?.locationName).toBe("Memorial Union");
     expect(events[0]?.organizationName).toBe("Health Services");
     expect(events[0]?.startsAt).toBeTruthy();

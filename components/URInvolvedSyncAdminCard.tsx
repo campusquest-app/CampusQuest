@@ -6,8 +6,14 @@ import { ApiRequestError, fetchAuthed, postAuthed } from "@/lib/client/dashboard
 type SyncStatus = {
   lastSuccessfulSync: string | null;
   lastAttemptedSync: string | null;
+  totalEventsCount: number;
   activeEventsCount: number;
+  upcomingActiveEventsCount: number;
   activeOrganizationsCount: number;
+  eventsWithVenueCount: number;
+  eventsWithAddressCount: number;
+  eventsMissingLocationCount: number;
+  eventsMatchedToMapCount: number;
   lastError: string | null;
 };
 
@@ -83,18 +89,42 @@ export function URInvolvedSyncAdminCard() {
             </dd>
           </div>
           <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-            <dt className="text-white/45">Last attempted sync</dt>
+            <dt className="text-white/45">Last sync attempt</dt>
             <dd className="text-white/85 mt-0.5">
               {status.lastAttemptedSync ? new Date(status.lastAttemptedSync).toLocaleString() : "Never"}
             </dd>
           </div>
           <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-            <dt className="text-white/45">Active imported events</dt>
+            <dt className="text-white/45">Total external_events rows</dt>
+            <dd className="text-white/85 mt-0.5">{status.totalEventsCount}</dd>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <dt className="text-white/45">Active external_events rows</dt>
             <dd className="text-white/85 mt-0.5">{status.activeEventsCount}</dd>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <dt className="text-white/45">Upcoming active events</dt>
+            <dd className="text-white/85 mt-0.5">{status.upcomingActiveEventsCount}</dd>
           </div>
           <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
             <dt className="text-white/45">Active imported organizations</dt>
             <dd className="text-white/85 mt-0.5">{status.activeOrganizationsCount}</dd>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <dt className="text-white/45">Imported events with venue</dt>
+            <dd className="text-white/85 mt-0.5">{status.eventsWithVenueCount}</dd>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <dt className="text-white/45">Imported events with address</dt>
+            <dd className="text-white/85 mt-0.5">{status.eventsWithAddressCount}</dd>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <dt className="text-white/45">Imported events missing location</dt>
+            <dd className="text-white/85 mt-0.5">{status.eventsMissingLocationCount}</dd>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <dt className="text-white/45">Imported events matched to map</dt>
+            <dd className="text-white/85 mt-0.5">{status.eventsMatchedToMapCount}</dd>
           </div>
         </dl>
       ) : null}

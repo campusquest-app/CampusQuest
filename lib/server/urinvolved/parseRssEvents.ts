@@ -1,7 +1,11 @@
+import { buildExternalEventLocationName } from "@/lib/externalEventLocation";
+
 export type ParsedUrinvolvedEvent = {
   externalId: string;
   title: string;
   description: string;
+  venueName: string | null;
+  address: string | null;
   locationName: string | null;
   organizationName: string | null;
   startsAt: string | null;
@@ -78,7 +82,15 @@ export function parseUrinvolvedEventsRss(xml: string): ParsedUrinvolvedEvent[] {
       descriptionRaw,
       /<span class="p-location location">([\s\S]*?)<\/span>/i,
     );
-    const locationName = decodeXmlEntities(locationFromNs ?? locationFromHtml ?? "").trim() || null;
+    const venueName = decodeXmlEntities(locationFromNs ?? locationFromHtml ?? "").trim() || null;
+
+    const addressFromNs = firstMatch(block, /<address[^>]*xmlns="events"[^>]*>([\s\S]*?)<\/address>/i);
+    const addressFromHtml = firstMatch(
+      descriptionRaw,
+      /<span class="p-street-address street-address">([\s\S]*?)<\/span>/i,
+    );
+    const address = decodeXmlEntities(addressFromNs ?? addressFromHtml ?? "").trim() || null;
+    const locationName = buildExternalEventLocationName(venueName, address);
 
     const startRaw =
       firstMatch(block, /<start[^>]*xmlns="events"[^>]*>([\s\S]*?)<\/start>/i) ??
@@ -100,6 +112,8 @@ export function parseUrinvolvedEventsRss(xml: string): ParsedUrinvolvedEvent[] {
       externalId,
       title,
       description,
+      venueName,
+      address,
       locationName,
       organizationName,
       startsAt,

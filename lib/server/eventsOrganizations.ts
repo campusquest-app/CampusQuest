@@ -616,6 +616,7 @@ export async function listOrganizations(args: {
     schoolName: row.school_name,
     contactLink: row.contact_link,
     createdBy: row.created_by,
+    createdAt: row.created_at ?? null,
     memberCount: memberCounts.get(row.id) ?? 0,
     followerCount: followerCounts.get(row.id) ?? 0,
     isFollowing: Boolean(membershipMap.get(row.id)),

@@ -1,4 +1,5 @@
 const URINVOLVED_EVENTS_RSS = "https://urinvolved.uri.edu/events.rss";
+const URINVOLVED_EVENT_DETAIL = "https://urinvolved.uri.edu/api/discovery/event/";
 const URINVOLVED_ORGS_SEARCH =
   "https://urinvolved.uri.edu/api/discovery/search/organizations";
 const CAMPUSLABS_IMAGE_BASE = "https://se-images.campuslabs.com/clink/images/";
@@ -12,6 +13,30 @@ export type UrinvolvedOrganizationRaw = {
   Description: string | null;
   Summary: string | null;
   CategoryNames: string[] | null;
+};
+
+export type UrinvolvedEventAddressRaw = {
+  name: string | null;
+  address: string | null;
+  line1: string | null;
+  line2: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+export type UrinvolvedEventDetailRaw = {
+  id: number;
+  name: string;
+  description: string | null;
+  startsOn: string | null;
+  endsOn: string | null;
+  imageUrl: string | null;
+  address: UrinvolvedEventAddressRaw | null;
+  theme: string | null;
+  categories: Array<{ name: string }> | null;
 };
 
 async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
@@ -39,6 +64,12 @@ export async function fetchUrinvolvedEventsRss(): Promise<string> {
     throw new Error(`URInvolved events RSS failed (${response.status}).`);
   }
   return response.text();
+}
+
+export async function fetchUrinvolvedEventDetail(externalId: string): Promise<UrinvolvedEventDetailRaw | null> {
+  const response = await fetchWithTimeout(`${URINVOLVED_EVENT_DETAIL}${encodeURIComponent(externalId)}`);
+  if (!response.ok) return null;
+  return (await response.json()) as UrinvolvedEventDetailRaw;
 }
 
 export async function fetchAllUrinvolvedOrganizations(): Promise<UrinvolvedOrganizationRaw[]> {

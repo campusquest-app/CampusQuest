@@ -1,15 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { postAuthed } from "@/lib/client/dashboardApi";
 
-export function OrganizationModerationCard() {
-  const [organizationId, setOrganizationId] = useState("");
+export function OrganizationModerationCard({ initialOrganizationId }: { initialOrganizationId?: string }) {
+  const [organizationId, setOrganizationId] = useState(initialOrganizationId ?? "");
   const [newOwnerUserId, setNewOwnerUserId] = useState("");
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialOrganizationId) setOrganizationId(initialOrganizationId);
+  }, [initialOrganizationId]);
 
   async function runAction(action: "freeze" | "unfreeze" | "transfer_owner" | "remove" | "restore") {
     if (!organizationId.trim()) {

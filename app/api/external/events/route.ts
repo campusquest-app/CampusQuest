@@ -9,10 +9,20 @@ export async function GET(request: Request) {
     enforceRateLimit({ userId: auth.user.id, routeKey: "external:events", limit: 60, windowMs: 60_000 });
     const url = new URL(request.url);
     const timeframeParam = url.searchParams.get("timeframe");
+    const timeframe =
+      timeframeParam === "today" ||
+      timeframeParam === "tomorrow" ||
+      timeframeParam === "this_week" ||
+      timeframeParam === "this_month"
+        ? timeframeParam
+        : undefined;
     const events = await listActiveExternalEvents({
       category: url.searchParams.get("category") ?? undefined,
       location: url.searchParams.get("location") ?? undefined,
-      timeframe: timeframeParam === "today" || timeframeParam === "this_week" ? timeframeParam : undefined,
+      organization: url.searchParams.get("organization") ?? undefined,
+      search: url.searchParams.get("search") ?? undefined,
+      timeframe,
+      includePast: url.searchParams.get("includePast") === "true",
     });
     return ok({ events });
   } catch (error) {

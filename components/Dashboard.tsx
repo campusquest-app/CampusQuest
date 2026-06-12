@@ -1885,7 +1885,13 @@ export function Dashboard() {
         {tab === "friends" &&
           renderPilotCampusGate(<FindFriends character={character} onRefresh={refresh} onOpenDm={setDmWithOther} />)}
 
-        {tab === "events" && renderPilotCampusGate(<EventsFeed personalization={onboardingPreferences} />)}
+        {tab === "events" &&
+          renderPilotCampusGate(
+            <EventsFeed
+              personalization={onboardingPreferences}
+              showAdminSyncLink={moderationAdminNavVisible(pilotCampusState)}
+            />,
+          )}
 
         {tab === "realm" &&
           renderPilotCampusGate(
