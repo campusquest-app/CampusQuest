@@ -8,87 +8,133 @@ import {
   mergeRemoteQuadPostsForMutations,
   verifyFieldNote,
   assistFieldNote,
-  addComment,
 } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
-import { fetchQuadPostsByAuthor } from "@/lib/client/quadPostsClient";
+import { submitQuadComment } from "@/lib/client/quadCommentActions";
 import {
-  fetchFollowCounts,
-} from "@/lib/client/socialConnectionsClient";
+  fetchUserProfileView,
+  mapProfileViewPosts,
+  buildCharacterFromProfileView,
+  type ProfileRelationshipStatus,
+} from "@/lib/client/userProfileViewClient";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { ProfileSocialPage } from "./profile/ProfileSocialPage";
+import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 
-/** Read-only social profile for friends and other users. */
+/** Read-only social profile for other users (connected or locked). */
 export function UserProfileScreen({
-  character,
+  character: initialCharacter,
   viewer,
+  canViewPrivateContent: initialCanView,
+  relationshipStatus: initialRelationship,
+  mutualFriendsCount: initialMutualFriends,
+  initialPosts,
+  friendsCount: initialFriendsCount,
+  postCount: initialPostCount,
+  guildLabel,
   onBack,
+  onOpenMessage,
+  onProfileReload,
 }: {
   character: Character;
   viewer: Pick<Character, "id" | "name" | "username" | "avatar">;
+  canViewPrivateContent: boolean;
+  relationshipStatus: ProfileRelationshipStatus;
+  mutualFriendsCount: number;
+  initialPosts: FieldNote[];
+  friendsCount: number | null;
+  postCount: number;
+  guildLabel?: string | null;
   onBack?: () => void;
+  onOpenMessage?: (other: { userId: string; username: string; name: string; avatar: string }) => void;
+  onProfileReload?: () => void | Promise<void>;
 }) {
-  const [posts, setPosts] = useState<FieldNote[]>([]);
+  const [character, setCharacter] = useState(initialCharacter);
+  const [canViewPrivateContent, setCanViewPrivateContent] = useState(initialCanView);
+  const [relationshipStatus, setRelationshipStatus] = useState(initialRelationship);
+  const [mutualFriendsCount, setMutualFriendsCount] = useState(initialMutualFriends);
+  const [posts, setPosts] = useState<FieldNote[]>(initialPosts);
+  const [postCount, setPostCount] = useState(initialPostCount);
+  const [friendsCount, setFriendsCount] = useState(initialFriendsCount ?? 0);
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
-  const [profileQuadPostsReady, setProfileQuadPostsReady] = useState(false);
-  const [friendsCount, setFriendsCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
-  const [socialCountsReady, setSocialCountsReady] = useState(false);
+  const [profileQuadPostsReady, setProfileQuadPostsReady] = useState(true);
+  const [socialCountsReady, setSocialCountsReady] = useState(true);
 
   useEffect(() => {
-    setProfileQuadPostsReady(false);
-    setSocialCountsReady(false);
-  }, [character.id]);
+    setCharacter(initialCharacter);
+    setCanViewPrivateContent(initialCanView);
+    setRelationshipStatus(initialRelationship);
+    setMutualFriendsCount(initialMutualFriends);
+    setPosts(initialPosts);
+    setPostCount(initialPostCount);
+    setFriendsCount(initialFriendsCount ?? 0);
+  }, [
+    initialCharacter,
+    initialCanView,
+    initialRelationship,
+    initialMutualFriends,
+    initialPosts,
+    initialPostCount,
+    initialFriendsCount,
+  ]);
 
-  const refreshSocialCounts = useCallback(async () => {
-    try {
-      const counts = await fetchFollowCounts(character.id);
-      setFriendsCount(counts.followersCount);
-      setFollowingCount(counts.followingCount);
-    } catch {
-      setFriendsCount(0);
-      setFollowingCount(0);
-    } finally {
-      setSocialCountsReady(true);
+  const reloadProfile = useCallback(async () => {
+    if (onProfileReload) {
+      await onProfileReload();
+      return;
     }
-  }, [character.id]);
-
-  useEffect(() => {
-    void refreshSocialCounts();
-  }, [refreshSocialCounts]);
+    try {
+      const payload = await fetchUserProfileView(character.id);
+      setCharacter(buildCharacterFromProfileView(payload, viewer.id));
+      setCanViewPrivateContent(payload.canViewPrivateContent);
+      setRelationshipStatus(payload.relationshipStatus);
+      setMutualFriendsCount(payload.counts.mutualFriends);
+      setPostCount(payload.counts.posts);
+      setFriendsCount(payload.counts.friends ?? 0);
+      const nextPosts = mapProfileViewPosts(payload, viewer.id);
+      mergeRemoteQuadPostsForMutations(nextPosts);
+      setPosts(nextPosts);
+    } catch {
+      /* keep current state */
+    }
+  }, [character.id, onProfileReload, viewer.id]);
 
   const refresh = useCallback(async () => {
+    if (!canViewPrivateContent) {
+      setProfileQuadPostsReady(true);
+      return;
+    }
+    setProfileQuadPostsReady(false);
     try {
-      const theirs = await fetchQuadPostsByAuthor(viewer.id, character.id, 50);
-      mergeRemoteQuadPostsForMutations(theirs);
-      setPosts([...theirs].sort((a, b) => b.createdAt - a.createdAt));
+      await reloadProfile();
     } catch {
       setPosts(getFeedByAuthorId(character.id));
     } finally {
       setProfileQuadPostsReady(true);
     }
-  }, [character.id, viewer.id]);
+  }, [canViewPrivateContent, character.id, reloadProfile]);
 
   const handlePullRefresh = useCallback(async () => {
     await refresh();
-    await refreshSocialCounts();
-  }, [refresh, refreshSocialCounts]);
+  }, [refresh]);
 
   useEffect(() => {
+    if (!canViewPrivateContent) return undefined;
     const tid = scheduleNonCriticalWork(() => {
       void refresh();
     });
     return () => window.clearTimeout(tid);
-  }, [refresh]);
+  }, [canViewPrivateContent, refresh]);
 
   const syncPostsFromCache = useCallback(() => {
+    if (!canViewPrivateContent) return;
     setPosts(getFeedByAuthorId(character.id));
-  }, [character.id]);
+  }, [canViewPrivateContent, character.id]);
 
   function handleNod(noteId: string) {
-    if (pendingReactions.has(noteId)) return;
+    if (!canViewPrivateContent || pendingReactions.has(noteId)) return;
     setPendingReactions((prev) => new Set(prev).add(noteId));
     setReactionNotice(null);
     void toggleQuadLike({
@@ -106,7 +152,7 @@ export function UserProfileScreen({
   }
 
   function handleHype(noteId: string) {
-    if (pendingReactions.has(noteId)) return;
+    if (!canViewPrivateContent || pendingReactions.has(noteId)) return;
     setPendingReactions((prev) => new Set(prev).add(noteId));
     setReactionNotice(null);
     void toggleQuadSpark({
@@ -124,51 +170,84 @@ export function UserProfileScreen({
   }
 
   function handleVerify(noteId: string) {
+    if (!canViewPrivateContent) return;
     verifyFieldNote(noteId, viewer.id);
     void refresh();
   }
 
   function handleAssist(noteId: string) {
+    if (!canViewPrivateContent) return;
     assistFieldNote(noteId, viewer.id);
     void refresh();
   }
 
   function handleAddComment(noteId: string, body: string) {
-    addComment(noteId, {
-      authorId: viewer.id,
-      authorName: viewer.name,
-      authorUsername: viewer.username,
-      authorAvatar: viewer.avatar,
-      body,
+    if (!canViewPrivateContent) return Promise.resolve();
+    return submitQuadComment({
+      noteId,
+      author: {
+        authorId: viewer.id,
+        authorName: viewer.name,
+        authorUsername: viewer.username,
+        authorAvatar: viewer.avatar,
+        body,
+      },
+      onOptimistic: () => void refresh(),
     });
-    void refresh();
   }
 
-  return (
-    <PullToRefresh onRefresh={handlePullRefresh}>
-      <ProfileSocialPage
-        character={character}
-        viewer={viewer}
-        isOwner={false}
-        posts={posts}
-        postsLoading={!profileQuadPostsReady}
-        friendsCount={friendsCount}
-        friendsLoading={!socialCountsReady}
-        followingCount={followingCount}
-        followingLoading={!socialCountsReady}
-        onBack={onBack}
-        onNod={handleNod}
-        onHype={handleHype}
-        onVerify={handleVerify}
-        onAssist={handleAssist}
-        onAddComment={handleAddComment}
-        onPostUpdated={(note) => {
-          setPosts((prev) => prev.map((p) => (p.id === note.id ? note : p)));
-          syncPostsFromCache();
-        }}
-        pendingReactions={pendingReactions}
-        reactionNotice={reactionNotice}
-      />
-    </PullToRefresh>
+  const profileBody = (
+    <ProfileSocialPage
+      character={character}
+      viewer={viewer}
+      isOwner={false}
+      canViewPrivateContent={canViewPrivateContent}
+      relationshipStatus={relationshipStatus}
+      mutualFriendsCount={mutualFriendsCount}
+      postCount={postCount}
+      guildLabel={guildLabel}
+      posts={posts}
+      postsLoading={!profileQuadPostsReady}
+      friendsCount={friendsCount}
+      friendsLoading={!socialCountsReady}
+      followingCount={friendsCount}
+      followingLoading={!socialCountsReady}
+      onBack={onBack}
+      onConnectionChange={() => {
+        void reloadProfile();
+      }}
+      onOpenMessage={
+        relationshipStatus === "connected" && onOpenMessage
+          ? () =>
+              onOpenMessage({
+                userId: character.id,
+                username: character.username,
+                name: character.name,
+                avatar: character.avatar,
+              })
+          : undefined
+      }
+      onNod={handleNod}
+      onHype={handleHype}
+      onVerify={handleVerify}
+      onAssist={handleAssist}
+      onAddComment={canViewPrivateContent ? handleAddComment : undefined}
+      onPostUpdated={(note) => {
+        setPosts((prev) => prev.map((p) => (p.id === note.id ? note : p)));
+        syncPostsFromCache();
+      }}
+      pendingReactions={pendingReactions}
+      reactionNotice={reactionNotice}
+    />
   );
+
+  if (onBack) {
+    return (
+      <MobileSwipeBackSurface onBack={onBack} className="min-h-[50vh]">
+        <PullToRefresh onRefresh={handlePullRefresh}>{profileBody}</PullToRefresh>
+      </MobileSwipeBackSurface>
+    );
+  }
+
+  return <PullToRefresh onRefresh={handlePullRefresh}>{profileBody}</PullToRefresh>;
 }

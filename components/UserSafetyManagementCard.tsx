@@ -15,6 +15,21 @@ type AdminUser = {
   };
 };
 
+type AdminMilestoneStatus = {
+  key: string;
+  threshold: number;
+  title: string;
+  unlocked: boolean;
+  unlockedAt: string | null;
+  popupShownAt: string | null;
+};
+
+type AdminMilestoneSnapshot = {
+  totalXp: number;
+  milestones: AdminMilestoneStatus[];
+  pendingPopups: AdminMilestoneStatus[];
+};
+
 export function UserSafetyManagementCard({ initialQuery }: { initialQuery?: string }) {
   const [query, setQuery] = useState(initialQuery ?? "");
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -24,6 +39,9 @@ export function UserSafetyManagementCard({ initialQuery }: { initialQuery?: stri
   const [success, setSuccess] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [milestoneDebugUserId, setMilestoneDebugUserId] = useState<string | null>(null);
+  const [milestoneDebug, setMilestoneDebug] = useState<AdminMilestoneSnapshot | null>(null);
+  const [milestoneDebugLoading, setMilestoneDebugLoading] = useState(false);
 
   async function searchUsers(currentQuery: string) {
     setLoading(true);
@@ -69,6 +87,35 @@ export function UserSafetyManagementCard({ initialQuery }: { initialQuery?: stri
   }, [query]);
 
   const canSearch = useMemo(() => query.trim().length >= 2, [query]);
+
+  async function loadMilestoneDebug(user: AdminUser) {
+    if (milestoneDebugUserId === user.id) {
+      setMilestoneDebugUserId(null);
+      setMilestoneDebug(null);
+      return;
+    }
+
+    setMilestoneDebugUserId(user.id);
+    setMilestoneDebug(null);
+    setMilestoneDebugLoading(true);
+    setError(null);
+    try {
+      const data = await fetchAuthed<AdminMilestoneSnapshot & { userId: string }>(
+        `/api/internal/admin/users/${encodeURIComponent(user.id)}/milestones`,
+      );
+      setMilestoneDebug({
+        totalXp: data.totalXp,
+        milestones: data.milestones,
+        pendingPopups: data.pendingPopups,
+      });
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : "Could not load milestone status.";
+      setError(message);
+      setMilestoneDebugUserId(null);
+    } finally {
+      setMilestoneDebugLoading(false);
+    }
+  }
 
   async function updateStatus(user: AdminUser, status: "active" | "suspended" | "banned") {
     let reason: string | undefined;
@@ -152,6 +199,14 @@ export function UserSafetyManagementCard({ initialQuery }: { initialQuery?: stri
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
+                disabled={milestoneDebugLoading}
+                onClick={() => void loadMilestoneDebug(user)}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-uri-keaney/35 text-uri-keaney bg-uri-keaney/10 disabled:opacity-50"
+              >
+                {milestoneDebugUserId === user.id ? "Hide milestones" : "Milestones"}
+              </button>
+              <button
+                type="button"
                 disabled={submitting || user.safety.status === "suspended"}
                 onClick={() => void updateStatus(user, "suspended")}
                 className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-amber-400/35 text-amber-200 bg-amber-500/10 disabled:opacity-50"
@@ -175,6 +230,38 @@ export function UserSafetyManagementCard({ initialQuery }: { initialQuery?: stri
                 Reactivate
               </button>
             </div>
+            {milestoneDebugUserId === user.id ? (
+              <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 space-y-2">
+                {milestoneDebugLoading ? (
+                  <p className="text-xs text-white/60">Loading milestone status...</p>
+                ) : milestoneDebug ? (
+                  <>
+                    <p className="text-xs text-white/80">
+                      Current XP: <span className="font-semibold text-white">{milestoneDebug.totalXp}</span>
+                    </p>
+                    <ul className="space-y-1.5">
+                      {milestoneDebug.milestones.map((milestone) => (
+                        <li key={milestone.key} className="text-xs text-white/70">
+                          <span className="font-semibold text-white">{milestone.title}</span> ({milestone.threshold} XP)
+                          {" · "}
+                          {milestone.unlocked ? "Unlocked" : "Locked"}
+                          {milestone.unlockedAt ? ` · ${new Date(milestone.unlockedAt).toLocaleString()}` : ""}
+                          {" · "}
+                          Popup: {milestone.popupShownAt ? `shown ${new Date(milestone.popupShownAt).toLocaleString()}` : "pending"}
+                        </li>
+                      ))}
+                    </ul>
+                    {milestoneDebug.pendingPopups.length > 0 ? (
+                      <p className="text-xs text-amber-200">
+                        Pending popups: {milestoneDebug.pendingPopups.map((milestone) => milestone.title).join(", ")}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-white/50">No pending milestone popups.</p>
+                    )}
+                  </>
+                ) : null}
+              </div>
+            ) : null}
           </article>
         ))}
       </div>

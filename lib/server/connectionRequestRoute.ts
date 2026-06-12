@@ -34,9 +34,18 @@ export async function handleSendConnectionRequestPost(request: Request) {
       friendRequestId: result.id,
       notificationId: result.notificationId,
       notificationUserId: result.addressee_id,
+      outcome: result.outcome,
     });
+    const responseStatus =
+      result.outcome === "created"
+        ? "sent"
+        : result.outcome === "already_connected"
+          ? "connected"
+          : result.outcome;
     return ok(
       {
+        status: responseStatus,
+        message: result.message,
         connection: {
           id: result.id,
           requesterId: result.requester_id,
@@ -44,12 +53,14 @@ export async function handleSendConnectionRequestPost(request: Request) {
           status: result.status,
           createdAt: result.created_at,
         },
-        notification: {
-          id: result.notificationId,
-          userId: result.addressee_id,
-        },
+        notification: result.notificationId
+          ? {
+              id: result.notificationId,
+              userId: result.addressee_id,
+            }
+          : null,
       },
-      201,
+      result.outcome === "created" ? 201 : 200,
     );
   } catch (error) {
     if (error instanceof ZodError) {

@@ -7,7 +7,6 @@ import {
   Building2,
   Calendar,
   ImageIcon,
-  Pencil,
   Plus,
   Type,
   X,
@@ -81,17 +80,12 @@ export function QuadCreatePostFab({
     <button
       type="button"
       onClick={handleFabTap}
-      className={`cq-quad-create-fab group fixed z-[45] flex h-16 w-16 items-center justify-center rounded-full border border-cyan-300/40 bg-gradient-to-br from-cyan-400/95 via-cyan-500/90 to-cyan-700/90 text-slate-900 backdrop-blur-sm touch-manipulation sm:h-[4.5rem] sm:w-[4.5rem] ${
+      className={`cq-quad-create-fab group fixed z-[45] flex items-center justify-center rounded-full touch-manipulation ${
         tapBurst ? "cq-quad-create-fab--tap" : ""
       }`}
       aria-label="Create post"
     >
-      <Plus className="h-7 w-7 transition-transform group-hover:scale-105 sm:h-8 sm:w-8" strokeWidth={2.5} />
-      <Pencil
-        className="pointer-events-none absolute -right-0.5 -top-0.5 h-3.5 w-3.5 text-cyan-100/80 opacity-0 transition-all duration-300 group-hover:opacity-100 sm:h-4 sm:w-4"
-        strokeWidth={2.2}
-        aria-hidden
-      />
+      <Plus className="cq-quad-create-fab-icon transition-transform group-hover:scale-105" strokeWidth={2.5} />
     </button>
   );
 
@@ -105,17 +99,17 @@ export function QuadCreatePostFab({
         onClick={handleClose}
       >
         <div
-          className="w-full max-w-lg max-h-[min(88vh,calc(100dvh-var(--cq-topnav-h,64px)-env(safe-area-inset-bottom,0px)-1rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl"
+          className="cq-create-post-modal w-full max-w-lg max-h-[min(88vh,calc(100dvh-var(--cq-topnav-h,64px)-env(safe-area-inset-bottom,0px)-1rem))] overflow-y-auto rounded-2xl border shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur-md">
-            <h3 id="quad-create-post-title" className="font-display text-sm font-bold tracking-wide text-slate-900">
+          <div className="cq-create-post-modal-header sticky top-0 z-10 flex items-center justify-between border-b px-4 py-3 backdrop-blur-md">
+            <h3 id="quad-create-post-title" className="font-display text-sm font-bold tracking-wide">
               {postType ? "Create Post" : "What do you want to share?"}
             </h3>
             <button
               type="button"
               onClick={handleClose}
-              className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-white/70 transition hover:bg-white/10 hover:text-white"
               aria-label="Close"
             >
               <X className="h-5 w-5" />
@@ -131,14 +125,16 @@ export function QuadCreatePostFab({
                     key={type.id}
                     type="button"
                     onClick={() => handleSelectType(type.id)}
-                    className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-left transition hover:border-cyan-400/25 hover:bg-cyan-500/[0.06] active:scale-[0.98]"
+                    className="cq-create-post-type-card flex items-start gap-3 rounded-xl px-3 py-3 text-left active:scale-[0.98]"
                   >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-uri-keaney/25 bg-uri-keaney/10 text-uri-keaney">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-uri-keaney/35 bg-uri-keaney/15 text-uri-keaney">
                       <Icon className="h-4 w-4" strokeWidth={2.2} />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-slate-900">{type.label}</span>
-                      <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">{type.description}</span>
+                      <span className="cq-create-post-type-card-title block text-sm font-semibold">{type.label}</span>
+                      <span className="cq-create-post-type-card-desc mt-0.5 block text-[11px] leading-snug">
+                        {type.description}
+                      </span>
                     </span>
                   </button>
                 );
@@ -146,11 +142,7 @@ export function QuadCreatePostFab({
             </div>
           ) : (
             <div className="p-4">
-              <button
-                type="button"
-                onClick={() => setPostType(null)}
-                className="mb-3 text-xs font-medium text-cyan-300/70 transition hover:text-cyan-200"
-              >
+              <button type="button" onClick={() => setPostType(null)} className="cq-composer-back-link">
                 ← Choose a different post type
               </button>
               <FieldNoteComposer

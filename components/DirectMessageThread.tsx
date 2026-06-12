@@ -7,10 +7,17 @@ import type { Friend } from "@/lib/types";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import {
   fetchRelationship,
-  sendConnectionRequest,
 } from "@/lib/client/socialConnectionsClient";
+import {
+  acceptIncomingConnectionRequest,
+  declineIncomingConnectionRequest,
+  refreshRelationship,
+  relationshipToConnectionActionState,
+  requestConnection,
+} from "@/lib/client/connectionRequestActions";
 import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 import { AvatarDisplay } from "./AvatarDisplay";
+import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 
 export function DirectMessageThread({
   currentUser,
@@ -35,6 +42,7 @@ export function DirectMessageThread({
   const [input, setInput] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [canMessage, setCanMessage] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
   const [incomingPending, setIncomingPending] = useState(false);
   const [outgoingPending, setOutgoingPending] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -42,6 +50,7 @@ export function DirectMessageThread({
   const [blockedByOther, setBlockedByOther] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendingConnectionRequest, setSendingConnectionRequest] = useState(false);
   const [favBusy, setFavBusy] = useState<string | null>(null);
@@ -57,6 +66,7 @@ export function DirectMessageThread({
   async function applyRelationshipSnapshot(otherUserId: string) {
     const relationship = await fetchRelationship(otherUserId);
     setCanMessage(relationship.canMessage);
+    setIsConnected(relationship.isFollowing || relationship.canMessage);
     setIncomingPending(relationship.incomingPending);
     setOutgoingPending(relationship.outgoingPending);
     setBlockedByMe(relationship.blockedByMe);
@@ -152,25 +162,29 @@ export function DirectMessageThread({
   }
 
   async function handleSendConnectionRequest() {
+    if (isConnected || outgoingPending) return;
     setSendingConnectionRequest(true);
     setError(null);
+    setConnectionNotice(null);
     try {
-      const result = await sendConnectionRequest(otherUser.username);
-      const relationship = await applyRelationshipSnapshot(otherUser.userId);
-      if (!relationship.outgoingPending) {
-        throw new Error("Friend request was not saved. Check your connection and try again.");
+      const relationship = await refreshRelationship(otherUser.userId);
+      const actionState = relationshipToConnectionActionState(relationship);
+      if (actionState === "connected" || actionState === "outgoing") {
+        await applyRelationshipSnapshot(otherUser.userId);
+        setConnectionNotice(actionState === "connected" ? "You're already connected." : "Request already sent.");
+        return;
       }
-      if (result.notification.userId !== otherUser.userId) {
-        console.warn("[cq:friend-request] notification user mismatch", {
-          expectedRecipientId: otherUser.userId,
-          notificationUserId: result.notification.userId,
-        });
-      }
+
+      const outcome = await requestConnection({
+        username: otherUser.username,
+        relationship,
+      });
+      await applyRelationshipSnapshot(otherUser.userId);
+      setConnectionNotice(outcome.toastMessage);
       emitSocialSync({ source: "inbox" });
     } catch (requestError) {
-      setOutgoingPending(false);
       const message = requestError instanceof Error ? requestError.message : "Could not send connection request.";
-      setError(message);
+      setError(message.replace(/^Backend request failed:[^.]*\.\s*/i, ""));
     } finally {
       setSendingConnectionRequest(false);
     }
@@ -179,15 +193,31 @@ export function DirectMessageThread({
   async function handleAcceptRequest() {
     if (!requestId) return;
     try {
-      await postAuthed("/api/social/connections/requests/respond", { requestId, action: "accept" });
+      await acceptIncomingConnectionRequest(requestId);
+      await applyRelationshipSnapshot(otherUser.userId);
       setIncomingPending(false);
       setOutgoingPending(false);
+      setIsConnected(true);
       setCanMessage(true);
       setError(null);
+      setConnectionNotice("You are now connected.");
       emitSocialSync({ source: "inbox" });
     } catch (acceptError) {
       const message = acceptError instanceof Error ? acceptError.message : "Could not accept request.";
-      setError(message);
+      setError(message.replace(/^Backend request failed:[^.]*\.\s*/i, ""));
+    }
+  }
+
+  async function handleDeclineRequest() {
+    if (!requestId) return;
+    try {
+      await declineIncomingConnectionRequest(requestId);
+      await applyRelationshipSnapshot(otherUser.userId);
+      setConnectionNotice("Request declined");
+      emitSocialSync({ source: "inbox" });
+    } catch (declineError) {
+      const message = declineError instanceof Error ? declineError.message : "Could not decline request.";
+      setError(message.replace(/^Backend request failed:[^.]*\.\s*/i, ""));
     }
   }
 
@@ -310,7 +340,8 @@ export function DirectMessageThread({
   }
 
   const content = (
-    <div
+    <MobileSwipeBackSurface
+      onBack={onClose}
       className="fixed inset-0 z-[100] flex flex-col bg-uri-navy"
       role="dialog"
       aria-modal="true"
@@ -363,27 +394,47 @@ export function DirectMessageThread({
               {error}
             </p>
           )}
+          {!loading && connectionNotice && !error && (
+            <p className="text-xs text-cyan-100/90 bg-cyan-500/10 border border-cyan-300/25 rounded-lg px-3 py-2">
+              {connectionNotice}
+            </p>
+          )}
           {!loading && !canMessage && !blockedByMe && !blockedByOther && (
             <div className="rounded-xl border border-white/15 bg-white/[0.04] p-4 text-sm text-white/80">
               <p className="mb-3">Messaging is available only after both students are connected on CampusQuest.</p>
-              {incomingPending ? (
-                <button
-                  type="button"
-                  onClick={() => void handleAcceptRequest()}
-                  className="px-3 py-2 rounded-lg text-sm font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90"
-                >
-                  Follow Back
-                </button>
+              {isConnected ? (
+                <span className="inline-flex rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
+                  Friends
+                </span>
+              ) : incomingPending ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleAcceptRequest()}
+                    className="min-h-[44px] px-3 py-2 rounded-lg text-sm font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeclineRequest()}
+                    className="min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium border border-white/20 text-white/80 hover:bg-white/10"
+                  >
+                    Deny
+                  </button>
+                </div>
               ) : outgoingPending ? (
-                <p className="text-uri-keaney/90 text-xs">Requested — waiting for them to accept.</p>
+                <span className="inline-flex rounded-lg border border-white/15 bg-white/[0.05] px-3 py-2 text-xs font-medium text-white/55">
+                  Request Sent
+                </span>
               ) : (
                 <button
                   type="button"
                   disabled={sendingConnectionRequest}
                   onClick={() => void handleSendConnectionRequest()}
-                  className="px-3 py-2 rounded-lg text-sm font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90 disabled:opacity-60"
+                  className="min-h-[44px] px-3 py-2 rounded-lg text-sm font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90 disabled:opacity-60"
                 >
-                  {sendingConnectionRequest ? "Sending..." : "Follow"}
+                  {sendingConnectionRequest ? "Sending..." : "Add Friend"}
                 </button>
               )}
             </div>
@@ -442,7 +493,7 @@ export function DirectMessageThread({
           </p>
         )}
       </div>
-    </div>
+    </MobileSwipeBackSurface>
   );
 
   if (typeof document === "undefined") return null;

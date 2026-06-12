@@ -72,13 +72,17 @@ function useRealmCalibrationMode(): boolean {
 
 export function RealmMap({
   onViewQuests,
-  onViewQuadPost,
+  onCreatePost,
+  onViewProfile,
+  viewer = null,
   userId = null,
   isAdmin = false,
   userRole = "student",
 }: {
   onViewQuests?: (location: RealmLocation) => void;
-  onViewQuadPost?: (postId: string) => void;
+  onCreatePost?: () => void;
+  onViewProfile?: (userId: string) => void;
+  viewer?: { id: string; name: string; username: string; avatar: string } | null;
   userId?: string | null;
   isAdmin?: boolean;
   userRole?: string;
@@ -94,7 +98,7 @@ export function RealmMap({
   const [draggingId, setDraggingId] = useState<RealmLocationId | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [savePending, setSavePending] = useState(false);
-  const [sheetInitialView, setSheetInitialView] = useState<"overview" | "moments">("overview");
+  const [sheetInitialView, setSheetInitialView] = useState<"archive" | "overview">("archive");
   const [momentsLoaded, setMomentsLoaded] = useState(false);
   const [momentsByLocation, setMomentsByLocation] = useState<Record<string, ReturnType<typeof mapApiMomentToRealmMoment>[]>>({});
   const [externalEventMarkers, setExternalEventMarkers] = useState<ExternalMapEventMarker[]>([]);
@@ -217,18 +221,38 @@ export function RealmMap({
   const openLocation = useCallback(
     (location: RealmLocation) => {
       if (editMode) return;
+      if (process.env.NODE_ENV === "development") {
+        console.log("[RealmMap] pin clicked:", location.id, location.name);
+      }
       setSelectedLocation(location);
       setActiveMarkerId(location.id);
-      setSheetInitialView((location.activeMomentCount ?? 0) > 0 ? "moments" : "overview");
+      setSheetInitialView("archive");
       setSheetOpen(true);
     },
     [editMode],
   );
 
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development" && selectedLocation) {
+      console.log("[RealmMap] selectedLocation:", selectedLocation.id, selectedLocation.name);
+    }
+  }, [selectedLocation]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      console.log("[RealmMap] archive sheet open:", sheetOpen);
+    }
+  }, [sheetOpen]);
+
   const closeSheet = useCallback(() => {
     setSheetOpen(false);
     setActiveMarkerId(null);
   }, []);
+
+  const handleCreatePost = useCallback(() => {
+    closeSheet();
+    onCreatePost?.();
+  }, [closeSheet, onCreatePost]);
 
   const handleReset = useCallback(() => {
     transformRef.current?.centerView(1, 420);
@@ -312,6 +336,8 @@ export function RealmMap({
     <>
       <div
         ref={mapRootRef}
+        data-cq-gesture-block="all"
+        data-no-drawer-swipe="true"
         className={`realm-map-shell relative overflow-hidden rounded-2xl ${
           panning ? "realm-map-shell--panning" : ""
         } ${calibrateMode ? "realm-map-shell--calibrate" : ""} ${editMode ? "realm-map-shell--edit" : ""}`}
@@ -360,6 +386,7 @@ export function RealmMap({
                 </div>
 
                 <div
+                  data-no-drawer-swipe="true"
                   className={`realm-map-markers absolute inset-0 z-[3] ${editMode ? "realm-map-markers--edit" : "pointer-events-none"}`}
                   style={{ "--realm-map-scale": mapScale } as React.CSSProperties}
                 >
@@ -427,10 +454,12 @@ export function RealmMap({
         open={sheetOpen}
         initialView={sheetInitialView}
         momentsLoaded={momentsLoaded}
+        viewer={viewer}
         onClose={closeSheet}
         onViewQuests={onViewQuests}
-        onViewQuadPost={onViewQuadPost}
+        onCreatePost={handleCreatePost}
         onRefreshMoments={loadRealmMoments}
+        onViewProfile={onViewProfile}
       />
 
       {selectedExternalEvent ? (
@@ -584,12 +613,13 @@ function LocationPin({
       onPointerMove={editMode ? handlePointerMove : undefined}
       onPointerUp={editMode ? handlePointerUp : undefined}
       onPointerCancel={editMode ? handlePointerUp : undefined}
-      className={`realm-pin group touch-manipulation ${
+      className={`realm-pin map-pin group touch-manipulation ${
         active ? "realm-pin--active" : ""
       } ${hasActiveQuest && !editMode ? "realm-pin--quest" : ""} ${
         hasActiveMoments && !editMode ? "realm-pin--moments" : ""
       } ${editMode ? "realm-pin--editable" : ""} ${dragging ? "realm-pin--dragging" : ""}`}
-      style={{ left: `${location.x}%`, top: `${location.y}%`, touchAction: editMode ? "none" : undefined }}
+      style={{ left: `${location.x}%`, top: `${location.y}%`, touchAction: editMode ? "none" : "manipulation" }}
+      data-cq-gesture-block="all"
       aria-label={
         editMode
           ? `${location.name}. Drag to reposition.`

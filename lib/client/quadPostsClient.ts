@@ -66,6 +66,15 @@ export async function fetchMyQuadPosts(viewerId: string, limit = 40): Promise<Fi
   return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
 }
 
+export async function fetchQuadPostById(postId: string, viewerId?: string): Promise<FieldNote | null> {
+  if (!isPersistedQuadPostId(postId)) return null;
+  const qs = new URLSearchParams({ postId, limit: "1" });
+  const data = await fetchAuthed<{ posts: QuadPostApiRow[] }>(`/api/quad/posts?${qs.toString()}`);
+  const row = data.posts[0];
+  if (!row) return null;
+  return quadPostRowToFieldNote(row, viewerId);
+}
+
 export async function createQuadPostRequest(
   payload: {
     body: string;

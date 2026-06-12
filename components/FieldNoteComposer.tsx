@@ -81,7 +81,7 @@ export function FieldNoteComposer({
     setError(null);
     const trimmed = body.trim();
     if (!trimmed) {
-      setError("Write something for your Field Note.");
+      setError("Write something for your post.");
       return;
     }
     if (trimmed.length > FIELD_NOTE_MAX_CHARS) {
@@ -138,29 +138,21 @@ export function FieldNoteComposer({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={handleSubmit} className="cq-composer space-y-3">
       <div>
-        <span className="block text-xs text-white/60 mb-1.5">Post to</span>
-        <div className="flex gap-2">
+        <span className="cq-composer-label">Post to</span>
+        <div className="cq-composer-segment">
           <button
             type="button"
             onClick={() => setVisibility("public")}
-            className={`flex-1 py-2 px-3 rounded-xl text-sm font-medium border transition-colors ${
-              visibility === "public"
-                ? "bg-uri-keaney/25 text-uri-keaney border-uri-keaney/50"
-                : "bg-white/5 text-white/70 border-white/15 hover:bg-white/10"
-            }`}
+            className={`cq-composer-segment-btn ${visibility === "public" ? "cq-composer-segment-btn--active" : ""}`}
           >
             🌐 Public Quad
           </button>
           <button
             type="button"
             onClick={() => setVisibility("friends")}
-            className={`flex-1 py-2 px-3 rounded-xl text-sm font-medium border transition-colors ${
-              visibility === "friends"
-                ? "bg-uri-keaney/25 text-uri-keaney border-uri-keaney/50"
-                : "bg-white/5 text-white/70 border-white/15 hover:bg-white/10"
-            }`}
+            className={`cq-composer-segment-btn ${visibility === "friends" ? "cq-composer-segment-btn--active" : ""}`}
           >
             👥 Following only
           </button>
@@ -168,14 +160,14 @@ export function FieldNoteComposer({
       </div>
 
       <div>
-        <label htmlFor="field-note-location" className="mb-1 block text-xs text-white/60">
+        <label htmlFor="field-note-location" className="cq-composer-label">
           Add to Realm Map
         </label>
         <select
           id="field-note-location"
           value={locationId}
           onChange={(e) => setLocationId(e.target.value as RealmLocationId | "")}
-          className="w-full rounded-xl border border-white/15 bg-white/[0.08] px-3 py-2.5 text-sm text-white focus:border-uri-keaney/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
+          className="cq-composer-select"
         >
           <option value="">No location</option>
           {REALM_LOCATION_OPTIONS.map((loc) => (
@@ -184,32 +176,43 @@ export function FieldNoteComposer({
             </option>
           ))}
         </select>
-        <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+        <p className="cq-composer-hint">
           Public posts with a location appear as Realm Moments for 24 hours.
         </p>
       </div>
 
-      <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value.slice(0, FIELD_NOTE_MAX_CHARS))}
-        placeholder="What’s happening on campus? (Field Note)"
-        rows={3}
-        className="w-full px-3 py-2.5 rounded-xl bg-white/[0.08] border border-white/15 text-white placeholder-white/45 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 focus:border-uri-keaney/40 resize-none transition-colors"
-      />
-      <div className="flex items-center justify-between text-xs">
-        <span className={bodyCount > FIELD_NOTE_MAX_CHARS ? "text-red-400" : "text-white/50"}>
-          {bodyCount} / {FIELD_NOTE_MAX_CHARS}
-        </span>
+      <div>
+        <label htmlFor="field-note-body" className="cq-composer-label">
+          Caption
+        </label>
+        <textarea
+          id="field-note-body"
+          value={body}
+          onChange={(e) => setBody(e.target.value.slice(0, FIELD_NOTE_MAX_CHARS))}
+          placeholder="What's happening on campus?"
+          rows={3}
+          className="cq-composer-textarea"
+        />
+        <div className="mt-1.5 flex items-center justify-between">
+          <span
+            className={`cq-composer-counter ${bodyCount > FIELD_NOTE_MAX_CHARS ? "cq-composer-counter--over" : ""}`}
+          >
+            {bodyCount} / {FIELD_NOTE_MAX_CHARS}
+          </span>
+        </div>
       </div>
 
       <div>
-        <label className="block text-xs text-white/60 mb-1">Proof photo (optional)</label>
+        <label htmlFor="field-note-proof-url" className="cq-composer-label">
+          Proof photo (optional)
+        </label>
         <input
+          id="field-note-proof-url"
           type="url"
           value={proofUrl.startsWith("data:") ? "" : proofUrl}
           onChange={(e) => setProofUrl(e.target.value)}
           placeholder="Paste image URL or add from device"
-          className="w-full px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/50"
+          className="cq-composer-input"
         />
         <input
           ref={proofFileRef}
@@ -220,40 +223,29 @@ export function FieldNoteComposer({
           aria-label="Add photo from device or open camera to scan QR code"
         />
         <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => proofFileRef.current?.click()}
-            className="text-xs font-medium text-uri-keaney hover:text-uri-keaney/80 px-3 py-2 rounded-lg border border-uri-keaney/40 hover:bg-uri-keaney/10 transition-colors"
-          >
+          <button type="button" onClick={() => proofFileRef.current?.click()} className="cq-composer-btn-accent">
             📷 Add photo from device
           </button>
-          <button
-            type="button"
-            onClick={() => proofFileRef.current?.click()}
-            className="text-xs font-medium text-white/80 hover:text-white px-3 py-2 rounded-lg border border-white/25 hover:bg-white/10 transition-colors flex items-center gap-1.5"
-          >
+          <button type="button" onClick={() => proofFileRef.current?.click()} className="cq-composer-btn-secondary">
             📱 Open camera to scan QR code
           </button>
         </div>
         {proofUrl.startsWith("data:") && (
-          <div className="mt-2 rounded-xl overflow-hidden border border-white/15 max-w-[180px]">
-            <img src={proofUrl} alt="Proof" className="w-full h-20 object-cover" />
+          <div className="mt-2 max-w-[180px] overflow-hidden rounded-xl border border-white/15">
+            <img src={proofUrl} alt="Proof" className="h-20 w-full object-cover" />
           </div>
         )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-white/60">RAMarks (optional):</span>
+        <span className="cq-composer-label mb-0">RAMarks (optional):</span>
         {ramMarks.map((r) => (
-          <span
-            key={r.id}
-            className="ram-mark flex items-center gap-1"
-          >
+          <span key={r.id} className="ram-mark flex items-center gap-1">
             #{r.tag}
             <button
               type="button"
               onClick={() => removeRamMark(r.tag)}
-              className="ml-0.5 text-uri-navy/70 hover:text-uri-navy"
+              className="cq-composer-rammark-remove"
               aria-label={`Remove ${r.tag}`}
             >
               ×
@@ -268,28 +260,19 @@ export function FieldNoteComposer({
               onChange={(e) => setRamMarkInput(e.target.value.slice(0, RAMMARK_MAX_LENGTH))}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRamMark())}
               placeholder={`#tag (max ${RAMMARK_MAX_LENGTH})`}
-              className="w-28 px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-white text-xs placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-uri-keaney"
+              className="cq-composer-input w-28 py-1 text-xs"
             />
-            <button
-              type="button"
-              onClick={addRamMark}
-              disabled={!canAddRamMark}
-              className="text-xs px-2 py-1 rounded-lg bg-uri-keaney/30 text-uri-keaney disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+            <button type="button" onClick={addRamMark} disabled={!canAddRamMark} className="cq-composer-btn-add">
               Add
             </button>
           </>
         )}
       </div>
 
-      {successMessage ? <p className="text-sm text-emerald-300/90">{successMessage}</p> : null}
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {successMessage ? <p className="cq-composer-success">{successMessage}</p> : null}
+      {error ? <p className="cq-composer-error">{error}</p> : null}
 
-      <button
-        type="submit"
-        disabled={!body.trim()}
-        className="w-full py-3 rounded-xl font-semibold bg-uri-keaney text-white hover:bg-uri-keaney/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all border border-uri-keaney/40 shadow-[0_0_12px_rgba(104,171,232,0.15)]"
-      >
+      <button type="submit" disabled={!body.trim()} className="cq-composer-btn-submit">
         {visibility === "public" ? "Post to Public Quad" : "Post to Following only"}
       </button>
     </form>

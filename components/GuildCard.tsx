@@ -1,7 +1,8 @@
 "use client";
 
-import type { Guild, GuildInterest } from "@/lib/types";
+import type { Guild } from "@/lib/types";
 import { GUILD_INTEREST_LABELS, MAX_GUILD_MEMBERS, guildBlockedForJoinWithoutCofounder } from "@/lib/guildStore";
+import { GuildEmblem } from "@/components/guild/GuildEmblem";
 
 const MAX_GUILDS = 2;
 
@@ -33,9 +34,7 @@ export function GuildCard({
   return (
     <div className="p-4 rounded-xl border border-white/15 bg-white/[0.06] hover:bg-white/[0.08] transition-colors">
       <div className="flex items-start gap-3">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-uri-keaney/20 to-uri-navy flex items-center justify-center text-2xl border border-uri-keaney/30 flex-shrink-0">
-          {guild.crest}
-        </div>
+        <GuildEmblem interest={guild.interest} crest={guild.crest} size="lg" className="flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h4 className="font-semibold text-white truncate">{guild.name}</h4>

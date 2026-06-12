@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/server/supabase";
+import { resolveUrinvolvedEventLocation } from "@/lib/server/urinvolved/eventLocation";
+import { externalEventQualifiesForMap } from "@/lib/server/urinvolved/locationAliases";
 import { mapPositionForExternalEvent } from "@/lib/server/urinvolved/geoToMapPosition";
-import { matchCampusLocation } from "@/lib/server/urinvolved/locationAliases";
 
 export type ExternalEventItem = {
   id: string;
@@ -205,14 +206,23 @@ export async function listExternalMapEventMarkers(): Promise<ExternalMapEventMar
   const markers: ExternalMapEventMarker[] = [];
 
   for (const event of events) {
-    if (event.latitude == null || event.longitude == null) continue;
-    const realmMatch =
-      matchCampusLocation(event.venueName) ??
-      matchCampusLocation(event.location);
+    const resolved = resolveUrinvolvedEventLocation({
+      venueName: event.venueName,
+      address: event.address,
+    });
+    if (
+      !externalEventQualifiesForMap({
+        latitude: event.latitude,
+        longitude: event.longitude,
+        resolved,
+      })
+    ) {
+      continue;
+    }
     const position = mapPositionForExternalEvent({
       latitude: event.latitude,
       longitude: event.longitude,
-      realmLocationId: realmMatch?.realmLocationId ?? null,
+      realmLocationId: resolved.locationMatch?.realmLocationId ?? null,
     });
     if (!position) continue;
     markers.push({

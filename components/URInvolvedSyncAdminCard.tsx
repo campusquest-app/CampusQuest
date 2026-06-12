@@ -14,6 +14,9 @@ type SyncStatus = {
   eventsWithAddressCount: number;
   eventsMissingLocationCount: number;
   eventsMatchedToMapCount: number;
+  eventsMatchedByAddressCount: number;
+  eventsMatchedByVenueOrNameCount: number;
+  eventsNotOnMapNoPinCount: number;
   lastError: string | null;
 };
 
@@ -125,6 +128,18 @@ export function URInvolvedSyncAdminCard() {
           <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
             <dt className="text-white/45">Imported events matched to map</dt>
             <dd className="text-white/85 mt-0.5">{status.eventsMatchedToMapCount}</dd>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <dt className="text-white/45">Matched by address</dt>
+            <dd className="text-white/85 mt-0.5">{status.eventsMatchedByAddressCount}</dd>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <dt className="text-white/45">Matched by venue/name</dt>
+            <dd className="text-white/85 mt-0.5">{status.eventsMatchedByVenueOrNameCount}</dd>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+            <dt className="text-white/45">Not on map (no pin)</dt>
+            <dd className="text-white/85 mt-0.5">{status.eventsNotOnMapNoPinCount}</dd>
           </div>
         </dl>
       ) : null}

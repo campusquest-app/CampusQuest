@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { FieldNote } from "@/lib/types";
 import type { QuadComment } from "@/lib/types";
 import { FieldNoteCard } from "@/components/FieldNoteCard";
+import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 
 export function ProfilePostDetail({
   note,
@@ -20,6 +21,7 @@ export function ProfilePostDetail({
   onAddComment,
   onPostUpdated,
   onPostDeleted,
+  onViewAuthor,
 }: {
   note: FieldNote;
   currentUserId: string;
@@ -34,6 +36,7 @@ export function ProfilePostDetail({
   onAddComment?: (noteId: string, body: string) => void;
   onPostUpdated?: (note: FieldNote) => void;
   onPostDeleted?: (postId: string) => void;
+  onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
 }) {
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -46,7 +49,13 @@ export function ProfilePostDetail({
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="cq-profile-post-detail fixed inset-0 z-[120] flex flex-col bg-cq-app" role="dialog" aria-modal="true" aria-label="Post detail">
+    <MobileSwipeBackSurface
+      onBack={onClose}
+      className="cq-profile-post-detail fixed inset-0 z-[120] flex flex-col bg-cq-app"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Post detail"
+    >
       <div className="flex flex-shrink-0 items-center gap-3 border-b border-cq-border bg-cq-secondary px-3 py-2.5 pt-[max(0.625rem,env(safe-area-inset-top,0px))]">
         <button
           type="button"
@@ -76,9 +85,10 @@ export function ProfilePostDetail({
             onPostDeleted?.(id);
             onClose();
           }}
+          onViewAuthor={onViewAuthor}
         />
       </div>
-    </div>,
+    </MobileSwipeBackSurface>,
     document.body,
   );
 }

@@ -25,6 +25,8 @@ export type RealmMomentApiRow = {
   authorAvatar: string;
   postedAgoLabel: string;
   expiresInLabel: string;
+  likeCount: number;
+  sparkCount: number;
 };
 
 type RealmMomentDbRow = {
@@ -42,11 +44,15 @@ type RealmMomentDbRow = {
     proof_url: string | null;
     visibility: string;
     created_at: string;
+    nod_count: number;
+    hype_count: number;
   } | {
     body: string;
     proof_url: string | null;
     visibility: string;
     created_at: string;
+    nod_count: number;
+    hype_count: number;
   }[] | null;
   profiles: {
     username: string;
@@ -92,6 +98,8 @@ function mapMomentRow(row: RealmMomentDbRow, nowMs = Date.now()): RealmMomentApi
     authorAvatar: avatarFromProfile(row.profiles),
     postedAgoLabel: formatPostedAgo(post.created_at ?? row.created_at, nowMs),
     expiresInLabel: formatExpiresIn(row.expires_at, nowMs),
+    likeCount: Math.max(0, post.nod_count ?? 0),
+    sparkCount: Math.max(0, post.hype_count ?? 0),
   };
 }
 
@@ -169,7 +177,9 @@ export async function fetchActiveRealmMoments(args?: {
           body,
           proof_url,
           visibility,
-          created_at
+          created_at,
+          nod_count,
+          hype_count
         ),
         profiles!realm_moments_user_id_fkey (
           username,

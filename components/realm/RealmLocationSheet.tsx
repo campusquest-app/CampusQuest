@@ -2,33 +2,40 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Calendar, Camera, ChevronLeft, Sparkles, Target, TrendingUp, X, Zap } from "lucide-react";
-import type { RealmLocation } from "@/lib/realm/locations";
+import { Calendar, ChevronLeft, Sparkles, TrendingUp, X, Zap } from "lucide-react";
+import type { RealmLocation, RealmQuest } from "@/lib/realm/locations";
 import { formatRealmEventLabel, getRealmEventUrgency } from "@/lib/realm/locations";
-import { RealmCampusMomentsCarousel } from "./RealmCampusMomentsCarousel";
+import { RealmArchiveExperience } from "./RealmArchiveExperience";
+import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 
-type SheetView = "overview" | "quests" | "moments" | "events";
+type SheetView = "archive" | "overview" | "quests" | "events";
+
+type ArchiveViewer = { id: string; name: string; username: string; avatar: string };
 
 export function RealmLocationSheet({
   location,
   open,
-  initialView = "overview",
+  initialView = "archive",
   momentsLoaded = true,
+  viewer = null,
+  onCreatePost,
   onClose,
   onViewQuests,
-  onViewQuadPost,
   onRefreshMoments,
+  onViewProfile,
 }: {
   location: RealmLocation | null;
   open: boolean;
   initialView?: SheetView;
   momentsLoaded?: boolean;
+  viewer?: ArchiveViewer | null;
+  onCreatePost?: () => void;
   onClose: () => void;
   onViewQuests?: (location: RealmLocation) => void;
-  onViewQuadPost?: (postId: string) => void;
   onRefreshMoments?: () => void;
+  onViewProfile?: (userId: string) => void;
 }) {
-  const [view, setView] = useState<SheetView>("overview");
+  const [view, setView] = useState<SheetView>("archive");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -37,7 +44,7 @@ export function RealmLocationSheet({
 
   useEffect(() => {
     if (!open) {
-      setView("overview");
+      setView("archive");
       return;
     }
     setView(initialView);
@@ -48,8 +55,30 @@ export function RealmLocationSheet({
     onRefreshMoments?.();
   }, [open, onRefreshMoments]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  function handleSwipeBack() {
+    if (view === "quests" || view === "events") {
+      setView("overview");
+      return;
+    }
+    if (view === "overview") {
+      setView("archive");
+      return;
+    }
+    onClose();
+  }
+
   if (!mounted || !open || !location || typeof document === "undefined") return null;
 
+  const momentCount = location.activeMomentCount ?? location.moments.length;
   const urgency = getRealmEventUrgency(location.eventTimer);
   const eventLabel = formatRealmEventLabel(location.eventTimer);
   const activityLine = buildActivityLine(location);
@@ -58,201 +87,377 @@ export function RealmLocationSheet({
     <>
       <button
         type="button"
-        aria-label="Close location details"
-        className="realm-sheet-backdrop fixed inset-0 z-[85] bg-black/55 backdrop-blur-[2px]"
+        aria-label="Close location archive"
+        className="realm-sheet-backdrop fixed inset-0 z-[85] bg-black/60 backdrop-blur-[3px]"
         onClick={onClose}
       />
-      <div
-        className="realm-sheet fixed inset-x-0 bottom-0 z-[86] mx-auto max-w-lg animate-realm-sheet-up"
+      <MobileSwipeBackSurface
+        onBack={handleSwipeBack}
+        className="cq-realm-archive-screen cq-realm-archive-sheet fixed inset-0 z-[86] mx-auto max-w-lg animate-realm-sheet-up"
         role="dialog"
         aria-modal="true"
         aria-labelledby="realm-sheet-title"
       >
-        <div className="realm-sheet-panel rounded-t-[1.35rem] border border-slate-200 bg-white shadow-[0_-12px_48px_-12px_rgba(15,23,42,0.18)]">
-          <div className="flex justify-center pt-2.5">
-            <span className="h-1 w-10 rounded-full bg-slate-200" />
-          </div>
-
-          {view === "overview" ? (
+        <div className="cq-realm-archive-atmosphere" aria-hidden />
+        <div className="cq-realm-archive-screen-panel">
+          {view === "archive" ? (
             <>
-              <div className="flex items-start justify-between gap-3 px-5 pb-1 pt-3">
-                <div className="min-w-0">
-                  <p className="realm-sheet-banner inline-flex max-w-full items-center gap-1.5 truncate rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em]">
-                    <span aria-hidden>⚔️</span>
-                    <span className="truncate">{location.fantasyName}</span>
-                  </p>
-                  <h2 id="realm-sheet-title" className="mt-1 font-display text-xl font-bold text-slate-900">
-                    {location.name}
-                  </h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100"
-                  aria-label="Close"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+              <RealmArchiveHeader
+                location={location}
+                momentCount={momentCount}
+                momentsLoaded={momentsLoaded}
+                onBack={onClose}
+              />
 
-              <ul className="space-y-2 px-5 py-4">
-                <SummaryRow
-                  icon={Target}
-                  label={`${location.activeQuests} Active Quest${location.activeQuests === 1 ? "" : "s"}`}
-                />
-                <SummaryRow
-                  icon={Calendar}
-                  label={`${location.upcomingEvents} Upcoming Event${location.upcomingEvents === 1 ? "" : "s"}`}
-                />
-                <SummaryRow
-                  icon={Camera}
-                  label={`${location.activeMomentCount ?? location.moments.length} Active Moment${
-                    (location.activeMomentCount ?? location.moments.length) === 1 ? "" : "s"
-                  }`}
-                />
-              </ul>
-
-              <div className="mx-5 mb-4 rounded-xl border border-slate-200 bg-slate-100 px-3 py-3">
-                <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
-                  <TrendingUp className="h-3 w-3" />
-                  Location Activity
+              <div className="cq-realm-archive-body">
+                <p className="cq-realm-archive-section-label">
+                  <span className="cq-realm-archive-section-label-icon" aria-hidden>
+                    ✦
+                  </span>
+                  Memory Archive
                 </p>
-                <p className="text-sm leading-relaxed text-slate-600">{activityLine}</p>
+                <RealmArchiveExperience
+                  location={location}
+                  moments={location.moments}
+                  loaded={momentsLoaded}
+                  viewer={viewer}
+                  onCreatePost={onCreatePost}
+                  onViewProfile={onViewProfile}
+                />
               </div>
 
-              <div
-                className="flex flex-col gap-2 px-5 pb-5"
-                style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
-              >
-                <SheetActionButton
-                  primary
-                  onClick={() => {
-                    onViewQuests?.(location);
-                    setView("quests");
-                  }}
-                >
-                  View Quests
-                </SheetActionButton>
-                <SheetActionButton onClick={() => setView("moments")}>
-                  {(location.activeMomentCount ?? location.moments.length) > 0
-                    ? `Campus Moments (${location.activeMomentCount ?? location.moments.length})`
-                    : "Campus Moments"}
-                </SheetActionButton>
-                <SheetActionButton onClick={() => setView("events")}>Upcoming Events</SheetActionButton>
-              </div>
+              <RealmArchiveSecondary
+                location={location}
+                urgency={urgency}
+                eventLabel={eventLabel}
+                onViewQuests={() => {
+                  onViewQuests?.(location);
+                  setView("quests");
+                }}
+                onViewEvents={() => setView("events")}
+                onViewOverview={() => setView("overview")}
+              />
+
+              <footer className="cq-realm-archive-activity">
+                <TrendingUp className="cq-realm-archive-activity-icon" aria-hidden />
+                <p>{activityLine}</p>
+              </footer>
             </>
           ) : (
-            <div className="px-5 pb-5 pt-3" style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}>
-              <button
-                type="button"
-                onClick={() => setView("overview")}
-                className="mb-4 inline-flex items-center gap-1 text-xs font-medium text-uri-keaney hover:text-uri-keaney/80"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-                Back to {location.name}
-              </button>
-
-              {view === "quests" ? (
-                <>
-                  <h3 className="font-display text-lg font-bold text-slate-900">Active Quests</h3>
-                  <p className="mt-1 mb-4 text-sm text-slate-500">XP rewards at {location.name}</p>
-                  {location.quests.length === 0 ? (
-                    <EmptyPanel message="No active quests here right now. Check back soon." />
-                  ) : (
-                    <ul className="space-y-2">
-                      {location.quests.map((quest) => (
-                        <li
-                          key={quest.id}
-                          className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-100 px-3 py-3"
-                        >
-                          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-200">
-                            <Sparkles className="h-4 w-4" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-semibold text-slate-900">{quest.name}</span>
-                            <span className="text-[11px] capitalize text-slate-400">{quest.status}</span>
-                          </span>
-                          <span className="inline-flex items-center gap-0.5 text-xs font-bold text-uri-gold">
-                            <Zap className="h-3 w-3" />+{quest.xp} XP
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </>
-              ) : null}
-
-              {view === "moments" ? (
-                <>
-                  <h3 className="font-display text-lg font-bold text-slate-900">Campus Moments</h3>
-                  <p className="mt-1 mb-4 text-sm text-slate-500">
-                    Public Field Notes at {location.name} — visible for 24 hours
-                  </p>
-                  {!momentsLoaded ? (
-                    <EmptyPanel message="Loading Moments…" />
-                  ) : (
-                    <RealmCampusMomentsCarousel
-                      moments={location.moments}
-                      onViewPost={onViewQuadPost}
-                    />
-                  )}
-                </>
-              ) : null}
-
-              {view === "events" ? (
-                <>
-                  <h3 className="font-display text-lg font-bold text-slate-900">Upcoming Events</h3>
-                  <p className="mt-1 mb-4 text-sm text-slate-500">What&apos;s happening nearby</p>
-                  <ul className="space-y-2">
-                    <li className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{location.eventTimer.label}</p>
-                          <p className="mt-0.5 text-[11px] text-slate-500">{location.name}</p>
-                        </div>
-                        <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                            urgency === "sparkle"
-                              ? "bg-amber-400/15 text-amber-200"
-                              : urgency === "pulse"
-                                ? "bg-cyan-400/12 text-cyan-200"
-                                : "bg-slate-100 text-slate-500"
-                          }`}
-                        >
-                          {eventLabel}
-                        </span>
-                      </div>
-                    </li>
-                    {location.upcomingEvents > 1 ? (
-                      <li className="rounded-xl border border-dashed border-slate-200 bg-black/10 px-3 py-3 text-sm text-slate-400">
-                        +{location.upcomingEvents - 1} more campus event
-                        {location.upcomingEvents - 1 === 1 ? "" : "s"} this week
-                      </li>
-                    ) : location.upcomingEvents === 0 && location.eventTimer.status === "active" ? (
-                      <EmptyPanel message="No scheduled events — quest activity is live now." />
-                    ) : location.upcomingEvents === 0 ? (
-                      <EmptyPanel message="No upcoming events scheduled at this location." />
-                    ) : null}
-                  </ul>
-                </>
-              ) : null}
-            </div>
+            <RealmDetailView
+              view={view}
+              location={location}
+              urgency={urgency}
+              eventLabel={eventLabel}
+              momentCount={momentCount}
+              onBack={() => setView(view === "overview" ? "archive" : "overview")}
+              onClose={onClose}
+              onViewQuests={() => {
+                onViewQuests?.(location);
+                setView("quests");
+              }}
+              onViewEvents={() => setView("events")}
+              onOpenArchive={() => setView("archive")}
+            />
           )}
         </div>
-      </div>
+      </MobileSwipeBackSurface>
     </>,
     document.body,
   );
 }
 
-function SummaryRow({ icon: Icon, label }: { icon: typeof Target; label: string }) {
+function RealmArchiveHeader({
+  location,
+  momentCount,
+  momentsLoaded,
+  onBack,
+}: {
+  location: RealmLocation;
+  momentCount: number;
+  momentsLoaded: boolean;
+  onBack: () => void;
+}) {
   return (
-    <li className="flex items-center gap-3 rounded-xl border border-slate-200 bg-black/15 px-3 py-2.5">
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-cyan-200/85">
-        <Icon className="h-4 w-4" />
-      </span>
-      <span className="text-sm font-semibold text-slate-900/88">{label}</span>
+    <header className="cq-realm-archive-location-header">
+      <div className="cq-realm-archive-toolbar-row">
+        <button
+          type="button"
+          onClick={onBack}
+          className="cq-realm-archive-back-btn touch-manipulation"
+          aria-label="Back to map"
+        >
+          <ChevronLeft className="h-4 w-4 shrink-0" strokeWidth={2.4} />
+          Back
+        </button>
+      </div>
+
+      <div className="cq-realm-archive-identity">
+        <p className="cq-realm-archive-fantasy-banner">
+          <span aria-hidden>{location.markerEmoji}</span>
+          <span>{location.fantasyName}</span>
+        </p>
+        <h2 id="realm-sheet-title" className="cq-realm-archive-location-name">
+          {location.name}
+        </h2>
+        <p className="cq-realm-archive-flavor">{location.flavorText}</p>
+      </div>
+
+      <div className="cq-realm-archive-stat-chips" role="list" aria-label="Location stats">
+        <StatChip emoji="📸" label={`${momentCount} ${momentCount === 1 ? "Memory" : "Memories"}`} />
+        <StatChip
+          emoji="⚔️"
+          label={`${location.activeQuests} ${location.activeQuests === 1 ? "Quest" : "Quests"}`}
+        />
+        <StatChip
+          emoji="📅"
+          label={`${location.upcomingEvents} ${location.upcomingEvents === 1 ? "Event" : "Events"}`}
+        />
+        {!momentsLoaded ? <span className="cq-realm-archive-stat-loading">loading…</span> : null}
+      </div>
+    </header>
+  );
+}
+
+function StatChip({ emoji, label }: { emoji: string; label: string }) {
+  return (
+    <span className="cq-realm-archive-stat-chip" role="listitem">
+      <span aria-hidden>{emoji}</span>
+      <span>{label}</span>
+    </span>
+  );
+}
+
+function RealmArchiveSecondary({
+  location,
+  urgency,
+  eventLabel,
+  onViewQuests,
+  onViewEvents,
+  onViewOverview,
+}: {
+  location: RealmLocation;
+  urgency: ReturnType<typeof getRealmEventUrgency>;
+  eventLabel: string;
+  onViewQuests: () => void;
+  onViewEvents: () => void;
+  onViewOverview: () => void;
+}) {
+  const previewQuests = location.quests.slice(0, 2);
+  const hasQuestOverflow = location.quests.length > 2 || location.activeQuests > location.quests.length;
+
+  return (
+    <section className="cq-realm-archive-secondary" aria-label="Quests and events">
+      <div className="cq-realm-archive-secondary-head">
+        <h3 className="cq-realm-archive-secondary-title">Quests &amp; Events</h3>
+        <button type="button" className="cq-realm-archive-secondary-link" onClick={onViewOverview}>
+          See all
+        </button>
+      </div>
+
+      <div className="cq-realm-archive-secondary-grid">
+        <div className="cq-realm-archive-secondary-col">
+          {previewQuests.length === 0 ? (
+            <p className="cq-realm-archive-secondary-empty">No active quests right now.</p>
+          ) : (
+            <ul className="cq-realm-archive-secondary-list">
+              {previewQuests.map((quest) => (
+                <QuestPreviewRow key={quest.id} quest={quest} onClick={onViewQuests} />
+              ))}
+            </ul>
+          )}
+          {hasQuestOverflow ? (
+            <button type="button" className="cq-realm-archive-secondary-more" onClick={onViewQuests}>
+              +{Math.max(location.activeQuests, location.quests.length) - previewQuests.length} more quest
+              {Math.max(location.activeQuests, location.quests.length) - previewQuests.length === 1 ? "" : "s"}
+            </button>
+          ) : location.activeQuests > 0 && previewQuests.length > 0 ? (
+            <button type="button" className="cq-realm-archive-secondary-more" onClick={onViewQuests}>
+              View quests
+            </button>
+          ) : null}
+        </div>
+
+        <button
+          type="button"
+          className="cq-realm-archive-event-chip"
+          onClick={onViewEvents}
+        >
+          <span className="cq-realm-archive-event-chip-label">
+            <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">{location.eventTimer.label}</span>
+          </span>
+          <span
+            className={`cq-realm-archive-event-chip-badge cq-realm-archive-event-chip-badge--${urgency}`}
+          >
+            {eventLabel}
+          </span>
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function QuestPreviewRow({ quest, onClick }: { quest: RealmQuest; onClick: () => void }) {
+  return (
+    <li>
+      <button type="button" className="cq-realm-archive-quest-row" onClick={onClick}>
+        <span className="cq-realm-archive-quest-row-icon">
+          <Sparkles className="h-3.5 w-3.5" aria-hidden />
+        </span>
+        <span className="cq-realm-archive-quest-row-body">
+          <span className="cq-realm-archive-quest-row-name">{quest.name}</span>
+          <span className="cq-realm-archive-quest-row-meta capitalize">{quest.status}</span>
+        </span>
+        <span className="cq-realm-archive-quest-row-xp">
+          <Zap className="h-3 w-3" aria-hidden />
+          +{quest.xp}
+        </span>
+      </button>
     </li>
+  );
+}
+
+function RealmDetailView({
+  view,
+  location,
+  urgency,
+  eventLabel,
+  momentCount,
+  onBack,
+  onClose,
+  onViewQuests,
+  onViewEvents,
+  onOpenArchive,
+}: {
+  view: Exclude<SheetView, "archive">;
+  location: RealmLocation;
+  urgency: ReturnType<typeof getRealmEventUrgency>;
+  eventLabel: string;
+  momentCount: number;
+  onBack: () => void;
+  onClose: () => void;
+  onViewQuests: () => void;
+  onViewEvents: () => void;
+  onOpenArchive: () => void;
+}) {
+  return (
+    <div className="cq-realm-detail-scroll">
+      <header className="cq-realm-detail-header">
+        <div className="cq-realm-archive-toolbar-row">
+          <button type="button" onClick={onBack} className="cq-realm-archive-back-btn touch-manipulation">
+            <ChevronLeft className="h-4 w-4 shrink-0" strokeWidth={2.4} />
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="cq-realm-detail-close"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="cq-realm-archive-identity cq-realm-archive-identity--compact">
+          <p className="cq-realm-archive-fantasy-banner">
+            <span aria-hidden>{location.markerEmoji}</span>
+            <span>{location.fantasyName}</span>
+          </p>
+          <h2 className="cq-realm-archive-location-name">{location.name}</h2>
+        </div>
+
+        <div className="cq-realm-archive-stat-chips" role="list" aria-label="Location stats">
+          <StatChip emoji="📸" label={`${momentCount} ${momentCount === 1 ? "Memory" : "Memories"}`} />
+          <StatChip
+            emoji="⚔️"
+            label={`${location.activeQuests} ${location.activeQuests === 1 ? "Quest" : "Quests"}`}
+          />
+          <StatChip
+            emoji="📅"
+            label={`${location.upcomingEvents} ${location.upcomingEvents === 1 ? "Event" : "Events"}`}
+          />
+        </div>
+      </header>
+
+      {view === "overview" ? (
+        <div className="cq-realm-detail-body">
+          <div className="cq-realm-detail-actions">
+            <SheetActionButton primary onClick={onViewQuests}>
+              View Quests
+            </SheetActionButton>
+            <SheetActionButton onClick={onOpenArchive}>
+              {momentCount > 0 ? `Memory Archive (${momentCount})` : "Memory Archive"}
+            </SheetActionButton>
+            <SheetActionButton onClick={onViewEvents}>Upcoming Events</SheetActionButton>
+          </div>
+
+          <div className="cq-realm-detail-panel">
+            <p className="cq-realm-detail-panel-label">
+              <TrendingUp className="h-3.5 w-3.5" aria-hidden />
+              Location Activity
+            </p>
+            <p className="cq-realm-detail-panel-copy">{buildActivityLine(location)}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {view === "quests" ? (
+        <div className="cq-realm-detail-body">
+          <h3 className="cq-realm-detail-title">Active Quests</h3>
+          <p className="cq-realm-detail-subtitle">XP rewards at {location.name}</p>
+          {location.quests.length === 0 ? (
+            <EmptyPanel message="No active quests here right now. Check back soon." />
+          ) : (
+            <ul className="cq-realm-detail-list">
+              {location.quests.map((quest) => (
+                <li key={quest.id} className="cq-realm-detail-quest-card">
+                  <span className="cq-realm-archive-quest-row-icon">
+                    <Sparkles className="h-4 w-4" aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="cq-realm-detail-quest-name">{quest.name}</span>
+                    <span className="cq-realm-archive-quest-row-meta capitalize">{quest.status}</span>
+                  </span>
+                  <span className="cq-realm-archive-quest-row-xp">
+                    <Zap className="h-3 w-3" aria-hidden />
+                    +{quest.xp} XP
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+
+      {view === "events" ? (
+        <div className="cq-realm-detail-body">
+          <h3 className="cq-realm-detail-title">Upcoming Events</h3>
+          <p className="cq-realm-detail-subtitle">What&apos;s happening nearby</p>
+          <ul className="cq-realm-detail-list">
+            <li className="cq-realm-detail-event-card">
+              <div className="min-w-0 flex-1">
+                <p className="cq-realm-detail-quest-name">{location.eventTimer.label}</p>
+                <p className="cq-realm-archive-quest-row-meta">{location.name}</p>
+              </div>
+              <span className={`cq-realm-archive-event-chip-badge cq-realm-archive-event-chip-badge--${urgency}`}>
+                {eventLabel}
+              </span>
+            </li>
+            {location.upcomingEvents > 1 ? (
+              <li className="cq-realm-detail-event-more">
+                +{location.upcomingEvents - 1} more campus event
+                {location.upcomingEvents - 1 === 1 ? "" : "s"} this week
+              </li>
+            ) : location.upcomingEvents === 0 && location.eventTimer.status === "active" ? (
+              <EmptyPanel message="No scheduled events — quest activity is live now." />
+            ) : location.upcomingEvents === 0 ? (
+              <EmptyPanel message="No upcoming events scheduled at this location." />
+            ) : null}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -269,11 +474,7 @@ function SheetActionButton({
     <button
       type="button"
       onClick={onClick}
-      className={
-        primary
-          ? "w-full rounded-xl bg-gradient-to-b from-cyan-500/90 to-cyan-600/80 py-3.5 text-sm font-semibold text-slate-900 shadow-[0_0_20px_-4px_rgba(76,201,255,0.45)]"
-          : "w-full rounded-xl border border-white/[0.12] bg-slate-50 py-3.5 text-sm font-semibold text-slate-700 hover:bg-white/[0.07]"
-      }
+      className={primary ? "cq-realm-detail-btn cq-realm-detail-btn--primary" : "cq-realm-detail-btn"}
     >
       {children}
     </button>
@@ -281,23 +482,19 @@ function SheetActionButton({
 }
 
 function EmptyPanel({ message }: { message: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-black/15 px-4 py-8 text-center text-sm text-slate-500">
-      {message}
-    </div>
-  );
+  return <div className="cq-realm-detail-empty">{message}</div>;
 }
 
 function buildActivityLine(location: RealmLocation): string {
   const momentCount = location.activeMomentCount ?? location.moments.length;
   if (location.activeQuests > 0 && momentCount > 0) {
-    return "Rams are active here — quests running and fresh Realm Moments on the map.";
+    return "Rams are active here — quests running and fresh memories in the archive.";
   }
   if (location.activeQuests > 0) {
     return "Quest energy is up. Log an activity or scan nearby to contribute.";
   }
   if (momentCount > 0) {
-    return "Students are posting from this spot. Drop a public Field Note with this location to add yours.";
+    return "Students are posting from this spot. Drop a public post with this location to add yours.";
   }
-  return "Quiet for now — be the first Ram to forge a moment here.";
+  return "Quiet for now — be the first Ram to forge a memory here.";
 }

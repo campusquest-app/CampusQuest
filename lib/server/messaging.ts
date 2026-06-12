@@ -185,13 +185,40 @@ export async function sendConnectionRequest(args: {
   const existing = await getConnectionBetween(userClient, userId, target.id);
 
   if (existing?.status === "accepted") {
-    throw new ApiError(409, "You are already connected.", "ALREADY_CONNECTED");
+    return {
+      id: existing.id,
+      requester_id: existing.requester_id,
+      addressee_id: existing.addressee_id,
+      status: existing.status,
+      created_at: existing.created_at,
+      notificationId: null,
+      outcome: "already_connected" as const,
+      message: "You are already connected.",
+    };
   }
   if (existing?.status === "pending") {
     if (existing.requester_id === userId) {
-      throw new ApiError(409, "Connection request already sent.", "REQUEST_ALREADY_SENT");
+      return {
+        id: existing.id,
+        requester_id: existing.requester_id,
+        addressee_id: existing.addressee_id,
+        status: existing.status,
+        created_at: existing.created_at,
+        notificationId: null,
+        outcome: "already_sent" as const,
+        message: "Connection request already sent.",
+      };
     }
-    throw new ApiError(409, "This user already sent you a request.", "REQUEST_ALREADY_RECEIVED");
+    return {
+      id: existing.id,
+      requester_id: existing.requester_id,
+      addressee_id: existing.addressee_id,
+      status: existing.status,
+      created_at: existing.created_at,
+      notificationId: null,
+      outcome: "already_received" as const,
+      message: "This user already sent you a request.",
+    };
   }
 
   const { data: requesterProfile, error: requesterProfileError } = await userClient
@@ -290,7 +317,12 @@ export async function sendConnectionRequest(args: {
     notificationUserId: recipientUserId,
   });
 
-  return { ...requestRow, notificationId: notification.id };
+  return {
+    ...requestRow,
+    notificationId: notification.id,
+    outcome: "created" as const,
+    message: "Connection request sent.",
+  };
 }
 
 export async function listConnectionRequests(args: {

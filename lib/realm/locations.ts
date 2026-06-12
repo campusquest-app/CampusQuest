@@ -30,6 +30,7 @@ export interface RealmEventTimer {
 export interface RealmMoment {
   id: string;
   postId: string;
+  authorUserId: string;
   imageUrl?: string;
   caption: string;
   username: string;
@@ -38,6 +39,10 @@ export interface RealmMoment {
   timestamp: string;
   postedAgoLabel: string;
   expiresInLabel: string;
+  likeCount?: number;
+  sparkCount?: number;
+  commentCount?: number;
+  createdAt?: string;
 }
 
 export interface RealmLocation {
@@ -45,6 +50,8 @@ export interface RealmLocation {
   name: string;
   /** Fantasy landmark name — display flavor only, never used for logic. */
   fantasyName: string;
+  /** One-line exploration flavor for the archive header — display only. */
+  flavorText: string;
   /** Map pin emoji — recognizable at a glance. */
   markerEmoji: string;
   /** Short label when map is zoomed out. */
@@ -103,6 +110,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     id: "memorial-union",
     name: "Memorial Union",
     fantasyName: "Grand Adventurer's Guild Hall",
+    flavorText: "Guild banners hang where Rams gather between quests.",
     markerEmoji: "🏛",
     shortLabel: "Union",
     major: true,
@@ -128,6 +136,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     id: "library",
     name: "Library",
     fantasyName: "Arcane Knowledge Archive",
+    flavorText: "Ancient tomes whisper secrets left by Rams who studied here.",
     markerEmoji: "📚",
     shortLabel: "Library",
     major: true,
@@ -153,6 +162,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     id: "rec-center",
     name: "Rec Center",
     fantasyName: "Warrior Training Grounds",
+    flavorText: "Steel your body before the next campus campaign.",
     markerEmoji: "🏋",
     shortLabel: "Rec Center",
     major: true,
@@ -178,6 +188,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     id: "engineering-hall",
     name: "Engineering Hall",
     fantasyName: "Inventor's District",
+    flavorText: "Gears turn and prototypes spark under inventor's lamps.",
     markerEmoji: "⚙",
     shortLabel: "Engineering",
     major: false,
@@ -203,6 +214,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     id: "business-building",
     name: "Business Building",
     fantasyName: "Merchant's Quarter",
+    flavorText: "Deals are struck and networks forged in merchant halls.",
     markerEmoji: "🏢",
     shortLabel: "Business",
     major: false,
@@ -219,6 +231,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     id: "the-quad",
     name: "The Quad",
     fantasyName: "Central Kingdom Green",
+    flavorText: "The heart of the kingdom — every campus path leads here.",
     markerEmoji: "✨",
     shortLabel: "The Quad",
     major: true,
@@ -231,7 +244,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     quests: [
       {
         id: "quad-post",
-        name: "Field Note Drop",
+        name: "Post Drop",
         xp: 35,
         status: "active",
         offsetX: 8,
@@ -244,6 +257,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     id: "rams-den",
     name: "Rams Den",
     fantasyName: "Rams Den Tavern",
+    flavorText: "Stories and cheers echo from the tavern hearth.",
     markerEmoji: "🐏",
     shortLabel: "Rams Den",
     major: false,

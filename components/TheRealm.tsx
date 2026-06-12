@@ -6,13 +6,17 @@ import type { RealmLocation } from "@/lib/realm/locations";
 
 export function TheRealm({
   onBack,
-  onViewQuadPost,
+  onCreatePost,
+  onViewProfile,
+  viewer = null,
   userId = null,
   isAdmin = false,
   userRole = "student",
 }: {
   onBack?: () => void;
-  onViewQuadPost?: (postId: string) => void;
+  onCreatePost?: () => void;
+  onViewProfile?: (userId: string) => void;
+  viewer?: { id: string; name: string; username: string; avatar: string } | null;
   userId?: string | null;
   isAdmin?: boolean;
   userRole?: string;
@@ -50,7 +54,9 @@ export function TheRealm({
 
       <RealmMap
         onViewQuests={handleViewQuests}
-        onViewQuadPost={onViewQuadPost}
+        onCreatePost={onCreatePost}
+        onViewProfile={onViewProfile}
+        viewer={viewer}
         userId={userId}
         isAdmin={isAdmin}
         userRole={userRole}

@@ -37,7 +37,32 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(120, Math.max(1, Math.floor(Number(searchParams.get("limit") || "60"))));
     const authorIdParam = searchParams.get("authorId")?.trim();
+    const postIdParam = searchParams.get("postId")?.trim();
     const feedParam = searchParams.get("feed")?.trim().toLowerCase();
+
+    if (postIdParam) {
+      const parsed = uuidSchema.safeParse(postIdParam);
+      if (!parsed.success) {
+        throw new ApiError(400, "Invalid post id.", "INVALID_POST_ID");
+      }
+      const { data, error } = await auth.userClient
+        .from("quad_posts")
+        .select(QUAD_POSTS_WITH_PROFILE_SELECT)
+        .eq("id", parsed.data)
+        .eq("visibility", "public")
+        .maybeSingle();
+      if (error) {
+        logQuadPostError("get", error, { userId: auth.user.id, postId: parsed.data });
+        throw new ApiError(400, error.message ?? "Could not load post.", "QUAD_POST_GET_FAILED");
+      }
+      if (!data) {
+        return ok({ posts: [] as QuadPostApiRow[] });
+      }
+      const post = data as unknown as QuadPostApiRow;
+      const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, [post.id]);
+      const enriched = enrichQuadPostsWithViewerReactions([post], viewerReactions);
+      return ok({ posts: enriched });
+    }
 
     if (feedParam === "friends") {
       const { listFriendsQuadPosts } = await import("@/lib/server/quadFriendsFeed");

@@ -16,6 +16,9 @@ type SyncStatus = {
   eventsWithAddressCount: number;
   eventsMissingLocationCount: number;
   eventsMatchedToMapCount: number;
+  eventsMatchedByAddressCount: number;
+  eventsMatchedByVenueOrNameCount: number;
+  eventsNotOnMapNoPinCount: number;
   lastError: string | null;
 };
 
@@ -153,6 +156,11 @@ export function AdminUrinvolvedSection() {
           <div><dt className="text-white/45">Total rows</dt><dd className="text-white/85">{status?.totalEventsCount ?? 0}</dd></div>
           <div><dt className="text-white/45">Events with venue</dt><dd className="text-white/85">{status?.eventsWithVenueCount ?? 0}</dd></div>
           <div><dt className="text-white/45">Events with address</dt><dd className="text-white/85">{status?.eventsWithAddressCount ?? 0}</dd></div>
+          <div><dt className="text-white/45">Matched by address</dt><dd className="text-white/85">{status?.eventsMatchedByAddressCount ?? 0}</dd></div>
+          <div><dt className="text-white/45">Matched by venue/name</dt><dd className="text-white/85">{status?.eventsMatchedByVenueOrNameCount ?? 0}</dd></div>
+          <div><dt className="text-white/45">Missing location</dt><dd className="text-white/85">{status?.eventsMissingLocationCount ?? 0}</dd></div>
+          <div><dt className="text-white/45">On map (has pin)</dt><dd className="text-white/85">{status?.eventsMatchedToMapCount ?? 0}</dd></div>
+          <div><dt className="text-white/45">Not on map (no pin)</dt><dd className="text-white/85">{status?.eventsNotOnMapNoPinCount ?? 0}</dd></div>
           <div><dt className="text-white/45">Last attempt</dt><dd className="text-white/85">{status?.lastAttemptedSync ? new Date(status.lastAttemptedSync).toLocaleString() : "Never"}</dd></div>
         </dl>
       </details>

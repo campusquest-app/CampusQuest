@@ -8,6 +8,7 @@ import {
 } from "@/components/ExternalEventLocationDisplay";
 import { isUpcomingEvent } from "@/lib/client/eventsFeedFilters";
 import { OrganizationAdminPortal } from "@/components/OrganizationAdminPortal";
+import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 import {
   ORGANIZATION_REQUEST_CATEGORIES,
   ORGANIZATION_REQUEST_CATEGORY_LABELS,
@@ -468,7 +469,7 @@ export function OrganizationsHub({
             className="w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2.5 text-sm text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
           />
 
-          <div className="-mx-4 overflow-x-auto px-4 cq-org-filter-scroll" role="tablist" aria-label="Organization categories">
+          <div className="-mx-4 overflow-x-auto px-4 cq-org-filter-scroll" role="tablist" aria-label="Organization categories" data-cq-gesture-block="swipe-tab">
             <div className="flex w-max gap-1.5 pb-1">
               {ORG_BROWSE_FILTERS.map((filter) => {
                 const selected = filterBucket === filter.id;
@@ -845,7 +846,10 @@ export function OrganizationsHub({
       </p>
 
       {activeOrg ? (
-        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/65 p-3">
+        <MobileSwipeBackSurface
+          onBack={() => setActiveOrg(null)}
+          className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/65 p-3"
+        >
           <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-uri-navy p-5 space-y-3">
             <div className="flex justify-between gap-3">
               <h4 className="text-white text-lg font-semibold">{activeOrg.name}</h4>
@@ -883,10 +887,13 @@ export function OrganizationsHub({
               )}
             </div>
           </div>
-        </div>
+        </MobileSwipeBackSurface>
       ) : null}
       {activeExternalOrg ? (
-        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/65 p-3">
+        <MobileSwipeBackSurface
+          onBack={() => (activeExternalEvent ? setActiveExternalEvent(null) : closeExternalOrgModal())}
+          className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/65 p-3"
+        >
           <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-uri-navy p-5 space-y-3 max-h-[90vh] overflow-y-auto">
             {activeExternalEvent ? (
               <>
@@ -1024,7 +1031,7 @@ export function OrganizationsHub({
               </>
             )}
           </div>
-        </div>
+        </MobileSwipeBackSurface>
       ) : null}
       {adminPortalOrg ? (
         <div className="space-y-2">

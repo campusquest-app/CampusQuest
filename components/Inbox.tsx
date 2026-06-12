@@ -5,9 +5,20 @@ import type { Character } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { DirectMessageThread } from "./DirectMessageThread";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
-import { sendConnectionRequest } from "@/lib/client/socialConnectionsClient";
-import { emitSocialSync } from "@/lib/client/socialSync";
+import { requestConnection } from "@/lib/client/connectionRequestActions";
+import {
+  avatarFromConnectionProfile,
+  fetchConnections,
+  type ConnectionItem,
+} from "@/lib/client/socialConnectionsClient";
+import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
+import {
+  buildInboxMessageSearchResults,
+  type InboxFriendRow,
+  type InboxMessageSearchResult,
+} from "@/lib/inboxMessageSearch";
 import { NotificationsCenter } from "./NotificationsCenter";
+import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 
 export type InboxSubTab = "messages" | "notifications";
 
@@ -62,34 +73,42 @@ export function Inbox({
   const [messageError, setMessageError] = useState<string | null>(null);
   const [sendingRequest, setSendingRequest] = useState(false);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [friends, setFriends] = useState<InboxFriendRow[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<IncomingConnectionRequest[]>([]);
+  const [debouncedMessageSearch, setDebouncedMessageSearch] = useState("");
 
-  const filteredMessages = useMemo(() => {
-    const q = messageSearch.trim().toLowerCase();
-    const sorted = [...conversations].sort(
-      (a, b) =>
-        new Date(b.latestMessage?.createdAt ?? 0).getTime() -
-        new Date(a.latestMessage?.createdAt ?? 0).getTime(),
-    );
-    if (!q) return sorted;
-    return sorted.filter((m) => {
-      return (
-        m.otherUser.displayName.toLowerCase().includes(q) ||
-        m.otherUser.username.toLowerCase().includes(q)
-      );
-    });
-  }, [conversations, messageSearch]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedMessageSearch(messageSearch);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [messageSearch]);
+
+  const messageSearchResults = useMemo(
+    () =>
+      buildInboxMessageSearchResults({
+        query: debouncedMessageSearch,
+        conversations,
+        friends,
+        avatarForFriend: avatarFromConnectionProfile,
+      }),
+    [debouncedMessageSearch, conversations, friends],
+  );
+
+  const isSearchActive = debouncedMessageSearch.trim().length > 0;
 
   const loadMessageCenter = useCallback(async () => {
     setMessageLoading(true);
     setMessageError(null);
     try {
-      const [convoPayload, incomingPayload] = await Promise.all([
+      const [convoPayload, incomingPayload, connectionsPayload] = await Promise.all([
         fetchAuthed<{ conversations: ConversationItem[] }>("/api/social/conversations"),
         fetchAuthed<{ requests: IncomingConnectionRequest[] }>("/api/social/connections/requests?direction=incoming"),
+        fetchConnections(),
       ]);
       setConversations(convoPayload.conversations ?? []);
       setIncomingRequests(incomingPayload.requests ?? []);
+      setFriends(mapConnectionsToFriends(connectionsPayload.connections));
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Could not load messages.";
       setMessageError(message);
@@ -104,6 +123,14 @@ export function Inbox({
     }
   }, [subTab, loadMessageCenter]);
 
+  useEffect(() => {
+    if (subTab !== "messages") return;
+    const unsubscribe = subscribeSocialSync(() => {
+      void loadMessageCenter();
+    });
+    return unsubscribe;
+  }, [subTab, loadMessageCenter]);
+
   function handleOpenDm(userId: string, username: string, name: string, avatar: string) {
     if (onOpenDm) {
       onOpenDm({ userId, username, name, avatar });
@@ -111,6 +138,13 @@ export function Inbox({
     } else {
       setDmWith({ userId, username, name, avatar });
     }
+  }
+
+  function handleOpenSearchResult(result: InboxMessageSearchResult) {
+    if (result.kind === "group") {
+      return;
+    }
+    handleOpenDm(result.userId, result.username, result.displayName, result.avatar);
   }
 
   async function handleSendConnectionRequest(e: React.FormEvent) {
@@ -123,7 +157,7 @@ export function Inbox({
     setSendingRequest(true);
     setMessageError(null);
     try {
-      const result = await sendConnectionRequest(username);
+      const outcome = await requestConnection({ username });
       setConnectionUsername("");
       setMessageError(null);
       await loadMessageCenter();
@@ -131,14 +165,13 @@ export function Inbox({
       if (process.env.NODE_ENV !== "production") {
         console.info("[cq:friend-request:success]", {
           targetUsername: username,
-          friendRequestId: result.connection.id,
-          recipientId: result.connection.addresseeId,
-          notificationId: result.notification.id,
+          status: outcome.status,
+          friendRequestId: outcome.result.connection.id,
         });
       }
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : "Could not send connection request.";
-      setMessageError(message);
+      setMessageError(message.replace(/^Backend request failed:[^.]*\.\s*/i, ""));
     } finally {
       setSendingRequest(false);
     }
@@ -167,7 +200,7 @@ export function Inbox({
   }
 
   return (
-    <div className="cq-tab-shell flex min-h-[60vh] flex-col space-y-4 pb-8">
+    <MobileSwipeBackSurface onBack={onBack} className="cq-tab-shell flex min-h-[60vh] flex-col space-y-4 pb-8">
       <header className="cq-screen-header mb-4">
         <div className="flex items-start gap-3">
           <button
@@ -291,45 +324,57 @@ export function Inbox({
             <ul className="max-h-[min(50vh,28rem)] divide-y divide-cq-border overflow-y-auto overscroll-y-contain">
             {messageLoading ? (
               <li className="px-4 py-10 text-center text-sm text-cq-muted">Loading conversations...</li>
-            ) : filteredMessages.length === 0 ? (
+            ) : messageSearchResults.length === 0 ? (
               <li className="px-4 py-10 text-center">
                 <p className="text-sm text-cq-muted">
-                  {messageSearch.trim()
-                    ? `No conversations match "${messageSearch.trim()}".`
+                  {isSearchActive
+                    ? "No matches found."
                     : personalization?.discoveryFocus?.includes("meet_students")
                       ? `No conversations yet. Meet students ${personalization.schoolName ? `at ${personalization.schoolName}` : "on campus"} by sending your first connection request.`
                       : "No conversations yet. Connect with a student to start messaging."}
                 </p>
               </li>
             ) : (
-              filteredMessages.map((m) => (
-              <li key={m.conversationId}>
+              messageSearchResults.map((result) => (
+                <li key={result.key}>
                   <button
                     type="button"
-                    onClick={() =>
-                      handleOpenDm(
-                        m.otherUser.id,
-                        m.otherUser.username,
-                        m.otherUser.displayName,
-                        m.otherUser.avatarUrl ?? "🎓",
-                      )
-                    }
+                    onClick={() => handleOpenSearchResult(result)}
                     className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-cq-elevated"
                   >
                     <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-cq-border bg-cq-elevated">
-                      <AvatarDisplay avatar={m.otherUser.avatarUrl ?? "🎓"} size={44} />
+                      <AvatarDisplay avatar={result.avatar} size={44} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-cq-foreground">{m.otherUser.displayName}</p>
-                      <p className="truncate text-sm text-cq-muted">{m.latestMessage?.content ?? "No messages yet"}</p>
-                      <p className="mt-0.5 text-xs text-cq-subtle">
-                        {m.latestMessage?.createdAt
-                          ? new Date(m.latestMessage.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
-                          : "Just now"}
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="truncate text-sm font-semibold text-cq-foreground">
+                          {result.kind === "group" ? result.name : result.displayName}
+                        </p>
+                        <InboxSearchKindBadge kind={result.kind} />
+                      </div>
+                      <p className="truncate text-xs text-cq-muted">
+                        {result.kind === "group"
+                          ? result.meta ?? "Group chat"
+                          : result.kind === "friend"
+                            ? `@${result.username}`
+                            : `@${result.username}`}
                       </p>
+                      {(result.kind === "conversation" || result.kind === "group") && (
+                        <p className="truncate text-sm text-cq-muted">{result.subtitle}</p>
+                      )}
+                      {result.kind === "conversation" && result.meta && (
+                        <p className="mt-0.5 text-xs text-cq-subtle">
+                          {new Date(result.meta).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      )}
                     </div>
                   </button>
-              </li>
+                </li>
               ))
             )}
             </ul>
@@ -345,6 +390,34 @@ export function Inbox({
           onMessageSent={() => void loadMessageCenter()}
         />
       )}
-    </div>
+    </MobileSwipeBackSurface>
+  );
+}
+
+function mapConnectionsToFriends(connections: ConnectionItem[]): InboxFriendRow[] {
+  return connections.map((connection) => ({
+    userId: connection.userId,
+    username: connection.username,
+    displayName: connection.displayName,
+    avatarUrl: connection.avatarUrl,
+    avatarCustomJson: connection.avatarCustomJson,
+  }));
+}
+
+function InboxSearchKindBadge({ kind }: { kind: InboxMessageSearchResult["kind"] }) {
+  const label = kind === "conversation" ? "Conversation" : kind === "friend" ? "Friend" : "Group";
+  const className =
+    kind === "conversation"
+      ? "bg-uri-keaney/15 text-uri-keaney"
+      : kind === "friend"
+        ? "bg-emerald-500/15 text-emerald-300"
+        : "bg-amber-500/15 text-amber-300";
+
+  return (
+    <span
+      className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${className}`}
+    >
+      {label}
+    </span>
   );
 }

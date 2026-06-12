@@ -1,6 +1,7 @@
 "use client";
 
 import { fetchAuthed } from "@/lib/client/dashboardApi";
+import { getCommentsByNoteId } from "@/lib/feedStore";
 import type { RealmMoment } from "@/lib/realm/locations";
 
 export type RealmMomentApiResponse = {
@@ -20,12 +21,16 @@ export type RealmMomentApiResponse = {
   authorAvatar: string;
   postedAgoLabel: string;
   expiresInLabel: string;
+  likeCount: number;
+  sparkCount: number;
 };
 
 export function mapApiMomentToRealmMoment(row: RealmMomentApiResponse): RealmMoment {
+  const commentCount = getCommentsByNoteId(row.postId).length;
   return {
     id: row.id,
     postId: row.postId,
+    authorUserId: row.userId,
     imageUrl: row.mediaUrl ?? undefined,
     caption: row.body,
     username: row.username,
@@ -34,6 +39,10 @@ export function mapApiMomentToRealmMoment(row: RealmMomentApiResponse): RealmMom
     timestamp: row.postedAgoLabel,
     postedAgoLabel: row.postedAgoLabel,
     expiresInLabel: row.expiresInLabel,
+    likeCount: row.likeCount,
+    sparkCount: row.sparkCount,
+    commentCount,
+    createdAt: row.createdAt,
   };
 }
 

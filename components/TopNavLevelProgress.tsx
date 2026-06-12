@@ -25,18 +25,18 @@ export function TopNavLevelProgress({
 
   return (
     <div
-      className="cq-nav-level-strip mt-1 w-full max-w-[11.5rem]"
+      className="cq-nav-level-strip mt-0.5 w-full max-w-[9.25rem]"
       aria-label={`Level ${level}, ${current} of ${needed} experience points toward next level`}
     >
-      <div className="flex items-baseline justify-between gap-2 leading-none">
-        <span className="cq-nav-level-label font-display text-[10px] font-semibold tracking-[0.12em] text-cyan-200/88">
-          ✦ Level {level}
+      <div className="flex items-baseline justify-between gap-1.5 leading-none">
+        <span className="cq-nav-level-label font-display text-[9px] font-semibold tracking-[0.08em] text-cyan-200/55">
+          Level {level}
         </span>
-        <span className="text-[9px] font-medium tabular-nums tracking-wide text-white/38">
+        <span className="text-[8px] font-medium tabular-nums tracking-wide text-white/28">
           {current.toLocaleString()} / {needed.toLocaleString()}
         </span>
       </div>
-      <div className="cq-nav-level-track relative mt-1.5 h-1 overflow-hidden rounded-full">
+      <div className="cq-nav-level-track relative mt-1 h-[3px] overflow-hidden rounded-full">
         <div
           className={`cq-nav-level-fill h-full rounded-full ${xpPulse ? "cq-nav-level-fill--pulse" : ""}`}
           style={{ width: `${pct}%` }}

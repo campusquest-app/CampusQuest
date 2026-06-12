@@ -2,15 +2,26 @@
 
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
-import { Heart, MessageCircle, MoreHorizontal, Share2, ShieldCheck, Swords, Zap, type LucideIcon } from "lucide-react";
+import {
+  Heart,
+  MapPin,
+  MessageCircle,
+  MoreHorizontal,
+  Share2,
+  ShieldCheck,
+  Swords,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
 import type { FieldNote, QuadComment, StatKey } from "@/lib/types";
-import { QUAD_COMMENT_MAX_CHARS } from "@/lib/types";
 import { isPersistedQuadPostId } from "@/lib/quadFieldNote";
 import { deleteQuadPostRequest, updateQuadPostRequest } from "@/lib/client/quadPostsClient";
-import { removeRemoteQuadPost, replaceRemoteQuadPost } from "@/lib/feedStore";
+import { removeRemoteQuadPost, replaceRemoteQuadPost, setCommentsForNote } from "@/lib/feedStore";
+import { fetchQuadPostComments } from "@/lib/client/quadCommentsClient";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { CampusQuestNodHeartPop } from "./CampusQuestNodHeartPop";
 import { FieldNoteEditModal } from "./FieldNoteEditModal";
+import { PostCommentsSheet } from "./posts/PostCommentsSheet";
 
 function ReactionButton({
   active,
@@ -122,17 +133,26 @@ function FeedCaption({ name, body, tags }: { name: string; body: string; tags: s
   if (!trimmed && tags.length === 0) return null;
 
   return (
-    <p className="break-words text-[14px] leading-snug text-white/85">
+    <p className="break-words text-[13px] leading-[1.45] text-white/88">
       <span className="font-semibold text-white">{name}</span>
       {trimmed ? <span className="whitespace-pre-wrap"> {trimmed}</span> : null}
       {trimmed && tags.length > 0 ? " " : null}
       {tags.map((tag, index) => (
-        <span key={`${tag}-${index}`} className="font-medium text-cyan-400/80">
+        <span key={`${tag}-${index}`} className="font-medium text-cyan-400/85">
           #{tag}
           {index < tags.length - 1 ? " " : ""}
         </span>
       ))}
     </p>
+  );
+}
+
+function FeedLocationChip({ name, onMedia = false }: { name: string; onMedia?: boolean }) {
+  return (
+    <span className={`cq-feed-location-chip ${onMedia ? "cq-feed-location-chip--on-media" : ""}`}>
+      <MapPin className="h-3 w-3 shrink-0" strokeWidth={2.25} aria-hidden />
+      <span className="truncate">{name}</span>
+    </span>
   );
 }
 
@@ -167,6 +187,8 @@ export function FieldNoteCard({
   onPostUpdated,
   onPostDeleted,
   onActionMessage,
+  onCommentsUpdated,
+  onViewAuthor,
 }: {
   note: FieldNote;
   currentUserId: string;
@@ -175,9 +197,11 @@ export function FieldNoteCard({
   onHype: (noteId: string) => void;
   onVerify: (noteId: string) => void;
   onAssist: (noteId: string) => void;
-  onAddComment?: (noteId: string, body: string) => void;
+  onAddComment?: (noteId: string, body: string) => void | Promise<void>;
   currentUser?: { id: string; name: string; username: string; avatar: string };
   likePending?: boolean;
+  /** Called after persisted comments are loaded from the server (e.g. to refresh counts). */
+  onCommentsUpdated?: () => void;
   /** Micro celebration on author row when this post's activity matches */
   highlightStat?: StatKey | null;
   /** `feed` = full-width media, border-between-posts (Quad). `default` = padded card row (Profile). */
@@ -185,10 +209,9 @@ export function FieldNoteCard({
   onPostUpdated?: (note: FieldNote) => void;
   onPostDeleted?: (postId: string) => void;
   onActionMessage?: (message: string) => void;
+  onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
 }) {
-  const [commentDraft, setCommentDraft] = useState("");
-  const [commentSubmitting, setCommentSubmitting] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentsSheetOpen, setCommentsSheetOpen] = useState(false);
   const [showImageNodPop, setShowImageNodPop] = useState(false);
   const [likePulse, setLikePulse] = useState(false);
   const [zapPulse, setZapPulse] = useState(false);
@@ -203,6 +226,19 @@ export function FieldNoteCard({
   const nodPopTimerRef = useRef<number | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const isOwner = note.authorId === currentUserId && (note.isPersisted ?? isPersistedQuadPostId(note.id));
+
+  useEffect(() => {
+    if (!commentsSheetOpen || !isPersistedQuadPostId(note.id)) return undefined;
+    let cancelled = false;
+    void fetchQuadPostComments(note.id).then((loaded) => {
+      if (cancelled) return;
+      setCommentsForNote(note.id, loaded);
+      onCommentsUpdated?.();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [commentsSheetOpen, note.id, onCommentsUpdated]);
   const hasNodded = note.nodByUserIds.has(currentUserId);
   const hasHyped = note.hypeByUserIds?.has(currentUserId) ?? note.vouchByUserIds.has(currentUserId);
   const hasVerified = note.verifyByUserIds?.has(currentUserId) ?? false;
@@ -403,22 +439,64 @@ export function FieldNoteCard({
     lastImageTapAtRef.current = now;
   }
 
-  const avatarFrame = (
-    <div
-      className={`flex items-center justify-center flex-shrink-0 border overflow-hidden ${
-        isFeed
-          ? "h-12 w-12 rounded-full border-white/15 bg-cq-elevated/8"
-          : "w-11 h-11 rounded-xl bg-cq-elevated border border-white/15"
-      } ${
-        highlightStat === "strength"
-          ? "stat-aura-strength"
-          : highlightStat === "knowledge"
-            ? "stat-aura-knowledge"
-            : ""
-      }`}
+  const avatarFrameClass = `flex items-center justify-center flex-shrink-0 border overflow-hidden ${
+    isFeed
+      ? "h-12 w-12 rounded-full border-white/15 bg-cq-elevated/8"
+      : "w-11 h-11 rounded-xl bg-cq-elevated border border-white/15"
+  } ${
+    highlightStat === "strength"
+      ? "stat-aura-strength"
+      : highlightStat === "knowledge"
+        ? "stat-aura-knowledge"
+        : ""
+  }`;
+
+  function handleViewAuthor() {
+    onViewAuthor?.({
+      userId: note.authorId,
+      username: note.authorUsername,
+      name: note.authorName,
+      avatar: note.authorAvatar,
+    });
+  }
+
+  const avatarFrame = onViewAuthor ? (
+    <button
+      type="button"
+      onClick={handleViewAuthor}
+      className={`${avatarFrameClass} touch-manipulation transition hover:opacity-90`}
+      aria-label={`View ${note.authorName}'s profile`}
     >
       <AvatarDisplay avatar={note.authorAvatar} size={isFeed ? 44 : 40} />
+    </button>
+  ) : (
+    <div className={avatarFrameClass}>
+      <AvatarDisplay avatar={note.authorAvatar} size={isFeed ? 44 : 40} />
     </div>
+  );
+
+  const authorNameEl = onViewAuthor ? (
+    <button
+      type="button"
+      onClick={handleViewAuthor}
+      className="text-left text-[14px] font-bold leading-tight tracking-tight text-white transition hover:text-uri-keaney/90"
+    >
+      {note.authorName}
+    </button>
+  ) : (
+    <span className="text-[14px] font-bold leading-tight tracking-tight text-white">{note.authorName}</span>
+  );
+
+  const authorUsernameEl = onViewAuthor ? (
+    <button
+      type="button"
+      onClick={handleViewAuthor}
+      className="text-left text-[11px] text-white/48 transition hover:text-white/70"
+    >
+      @{note.authorUsername}
+    </button>
+  ) : (
+    <span className="text-[11px] text-white/48">@{note.authorUsername}</span>
   );
 
   const proofBlock =
@@ -470,7 +548,7 @@ export function FieldNoteCard({
     <div
       className={
         isFeed
-          ? "flex items-center"
+          ? "cq-feed-actions-row flex items-center"
           : "mt-3 flex flex-wrap items-center justify-between gap-1 border-t border-white/15 pt-3"
       }
     >
@@ -487,11 +565,11 @@ export function FieldNoteCard({
           pending={likePending}
         />
         <ReactionButton
-          active={commentsOpen}
-          onClick={() => setCommentsOpen((open) => !open)}
+          active={commentsSheetOpen}
+          onClick={() => setCommentsSheetOpen(true)}
           icon={MessageCircle}
           count={comments.length}
-          label={commentsOpen ? "Hide comments" : "View comments"}
+          label="View comments"
           compact={isFeed}
         />
         <ReactionButton
@@ -542,111 +620,28 @@ export function FieldNoteCard({
 
   const previewComment = comments.length > 0 ? comments[comments.length - 1] : null;
 
-  const commentForm = onAddComment && currentUser && (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        const body = commentDraft.trim().slice(0, QUAD_COMMENT_MAX_CHARS);
-        if (!body || commentSubmitting) return;
-        setCommentSubmitting(true);
-        onAddComment(note.id, body);
-        setCommentDraft("");
-        setCommentSubmitting(false);
-      }}
-      className={`flex gap-2 ${isFeed ? "mt-2.5" : "mt-3"}`}
-    >
-      <input
-        type="text"
-        value={commentDraft}
-        onChange={(e) => setCommentDraft(e.target.value.slice(0, QUAD_COMMENT_MAX_CHARS))}
-        placeholder="Add a comment..."
-        maxLength={QUAD_COMMENT_MAX_CHARS}
-        className={`min-w-0 flex-1 rounded-xl border px-3 py-2 text-sm text-white placeholder-white/40 focus:border-uri-keaney/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 ${
-          isFeed ? "border-white/15 bg-cq-elevated" : "border-white/15 bg-cq-elevated"
-        }`}
-      />
-      <button
-        type="submit"
-        disabled={!commentDraft.trim() || commentSubmitting}
-        className="px-3 py-2 rounded-xl bg-uri-keaney/80 text-white text-sm font-medium hover:bg-uri-keaney disabled:opacity-50 disabled:pointer-events-none transition-colors"
-      >
-        Post
-      </button>
-    </form>
-  );
-
-  const feedCommentsSection = (
-    <div>
-      {!commentsOpen ? (
-        comments.length > 0 ? (
-          <div className="space-y-1">
-            <button
-              type="button"
-              onClick={() => setCommentsOpen(true)}
-              className="text-[13px] font-medium text-white/50 transition hover:text-white/60"
-            >
-              View all {comments.length} comment{comments.length === 1 ? "" : "s"}
-            </button>
-            {previewComment ? (
-              <p className="line-clamp-2 text-[13px] leading-snug text-white/70">
-                <span className="font-semibold text-white">{previewComment.authorName}</span>{" "}
-                <span className="whitespace-pre-wrap">{previewComment.body}</span>
-              </p>
-            ) : null}
-          </div>
-        ) : null
-      ) : (
-        <>
-          {comments.length > 0 ? (
-            <div className="quad-feed-comments mt-1">
-              <ul className="mb-0 space-y-2.5 pr-0.5">
-                {comments.map((c) => (
-                  <li key={c.id}>
-                    <p className="text-[13px] leading-snug text-white/85">
-                      <span className="font-semibold text-white">{c.authorName}</span>{" "}
-                      <span className="whitespace-pre-wrap">{c.body}</span>
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className="text-[13px] text-white/50">No comments yet</p>
-          )}
-          {commentForm}
-        </>
-      )}
-    </div>
-  );
-
-  const commentsBlock = (
-    <div className={`${isFeed ? "pb-0" : "mt-3 border-t border-white/15 pt-3"}`}>
-      {isFeed ? null : commentsOpen ? (
-        <>
-          {comments.length > 0 && (
-            <ul className="mt-3 mb-3 space-y-2">
-              {comments.map((c) => (
-                <li key={c.id} className="flex gap-2">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/15 bg-cq-elevated/10">
-                    <AvatarDisplay avatar={c.authorAvatar} size={28} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-sm font-semibold text-white">{c.authorName}</span>
-                      <span className="text-xs text-uri-keaney/85">@{c.authorUsername}</span>
-                      <span className="text-xs text-white/50">· {formatTime(c.createdAt)}</span>
-                    </div>
-                    <p className="mt-1 break-words text-sm leading-relaxed text-white/85 whitespace-pre-wrap">{c.body}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-          {commentForm}
-        </>
-      ) : null}
-    </div>
-  );
+  const feedCommentsSection =
+    comments.length > 0 ? (
+      <div className="space-y-1">
+        <button
+          type="button"
+          onClick={() => setCommentsSheetOpen(true)}
+          className="text-[13px] font-medium text-white/50 transition hover:text-white/60"
+        >
+          View all {comments.length} comment{comments.length === 1 ? "" : "s"}
+        </button>
+        {previewComment ? (
+          <button
+            type="button"
+            onClick={() => setCommentsSheetOpen(true)}
+            className="block w-full text-left text-[13px] leading-snug text-white/70"
+          >
+            <span className="font-semibold text-white">{previewComment.authorName}</span>{" "}
+            <span className="line-clamp-2 whitespace-pre-wrap">{previewComment.body}</span>
+          </button>
+        ) : null}
+      </div>
+    ) : null;
 
   return (
     <article
@@ -663,13 +658,11 @@ export function FieldNoteCard({
       ) : null}
       {isFeed ? (
         <>
-          <header className="cq-feed-post-header flex items-center gap-3 px-3 pb-2 pt-3 sm:pt-4">
+          <header className="cq-feed-post-header flex items-center gap-2.5 px-3 pb-1.5 pt-2.5">
             {avatarFrame}
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                <span className="text-[15px] font-bold leading-tight tracking-tight text-white">
-                  {note.authorName}
-                </span>
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                {authorNameEl}
                 {(note.verifyCount ?? 0) >= 2 ? (
                   <span className="text-[10px] font-medium text-emerald-300/75">Verified</span>
                 ) : null}
@@ -677,21 +670,25 @@ export function FieldNoteCard({
                   <span className="text-[10px] font-medium text-uri-gold/85">{streak}</span>
                 ) : null}
               </div>
-              <p className="mt-0.5 text-[12px] text-white/50">
-                @{note.authorUsername} • {formatTime(note.createdAt)}
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-1 text-[11px] text-white/48">
+                {authorUsernameEl}
+                <span aria-hidden>·</span>
+                <span>{formatTime(note.createdAt)}</span>
               </p>
-              {note.locationName ? (
-                <p className="mt-0.5 text-[11px] font-medium text-uri-keaney">📍 {note.locationName}</p>
-              ) : null}
+              {note.locationName && !isImgUrl ? <FeedLocationChip name={note.locationName} /> : null}
             </div>
             {ownerMenu}
           </header>
-          {proofImgUrl ? (
-            <div className="quad-feed-media-wrap w-full">{proofBlock}</div>
+          {proofImgUrl && isImgUrl ? (
+            <div className="quad-feed-media-wrap carousel w-full" data-no-drawer-swipe="true">
+              {proofBlock}
+              {note.locationName ? <FeedLocationChip name={note.locationName} onMedia /> : null}
+            </div>
+          ) : proofImgUrl ? (
+            <div className="quad-feed-media-wrap carousel w-full" data-no-drawer-swipe="true">{proofBlock}</div>
           ) : null}
-          <div className="cq-feed-post-actions px-3 py-1">{actionsRow}</div>
           {(note.body.trim() || note.ramMarks.length > 0) && (
-            <div className="cq-feed-post-caption px-3 pb-1 pt-0.5">
+            <div className="cq-feed-post-caption px-3">
               <FeedCaption
                 name={note.authorName}
                 body={note.body}
@@ -699,7 +696,25 @@ export function FieldNoteCard({
               />
             </div>
           )}
-          <div className="cq-feed-post-comments px-3 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-1">
+          <div className="cq-feed-post-engagement px-3">
+            {(note.nodCount > 0 || comments.length > 0) && (
+              <p className="cq-feed-engagement-summary text-[12px] text-white/50 tabular-nums">
+                {note.nodCount > 0 ? (
+                  <span>
+                    {note.nodCount.toLocaleString()} like{note.nodCount === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+                {note.nodCount > 0 && comments.length > 0 ? <span className="mx-1.5 text-white/25">·</span> : null}
+                {comments.length > 0 ? (
+                  <span>
+                    {comments.length.toLocaleString()} comment{comments.length === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+              </p>
+            )}
+          </div>
+          <div className="cq-feed-post-actions post-actions px-3" data-no-drawer-swipe="true">{actionsRow}</div>
+          <div className="cq-feed-post-comments px-3 pb-3 pt-0.5">
             {feedCommentsSection}
           </div>
         </>
@@ -709,8 +724,10 @@ export function FieldNoteCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-start gap-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              <span className="font-semibold text-white">{note.authorName}</span>
-              <span className="text-uri-keaney/90 text-sm">@{note.authorUsername}</span>
+              {authorNameEl}
+              {onViewAuthor ? authorUsernameEl : (
+                <span className="text-uri-keaney/90 text-sm">@{note.authorUsername}</span>
+              )}
               <span className="text-white/50 text-xs">· {formatTime(note.createdAt)}</span>
               {note.locationName ? (
                 <span className="text-[11px] font-medium text-uri-keaney">📍 {note.locationName}</span>
@@ -737,10 +754,21 @@ export function FieldNoteCard({
               </div>
             )}
             {actionsRow}
-            {commentsBlock}
           </div>
         </div>
       )}
+
+      {currentUser ? (
+        <PostCommentsSheet
+          open={commentsSheetOpen}
+          note={note}
+          comments={comments}
+          currentUser={currentUser}
+          onClose={() => setCommentsSheetOpen(false)}
+          onAddComment={onAddComment}
+          onViewAuthor={onViewAuthor}
+        />
+      ) : null}
 
       <FieldNoteEditModal
         key={`${note.id}-${editOpen}`}

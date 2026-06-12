@@ -16,6 +16,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { textMatchesPostSearch } from "@/lib/postTerminology";
 import { DrawerSubPanelShell } from "./DrawerSubPanelShell";
 
 type HelpArticle = {
@@ -33,7 +34,7 @@ const HELP_ARTICLES: HelpArticle[] = [
     title: "How CampusQuest Works",
     icon: Sparkles,
     summary: "Your campus life, leveled up.",
-    keywords: ["campus", "quad", "feed", "social", "start"],
+    keywords: ["campus", "quad", "feed", "social", "start", "post", "posts", "field note", "field notes"],
     body: [
       "CampusQuest turns everyday campus moments into progression. Post on The Quad, complete quests, scan QR codes, and grow your character.",
       "Your Character tab tracks XP, stats, streaks, and gear. The bottom nav keeps Quad, Scan, and Profile one tap away.",
@@ -131,13 +132,14 @@ export function AppHelpSupportPanel({ onBack }: { onBack: () => void }) {
   const [activeArticleId, setActiveArticleId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (!q) return HELP_ARTICLES;
     return HELP_ARTICLES.filter(
       (a) =>
-        a.title.toLowerCase().includes(q) ||
-        a.summary.toLowerCase().includes(q) ||
-        a.keywords.some((k) => k.includes(q)),
+        textMatchesPostSearch(a.title, q) ||
+        textMatchesPostSearch(a.summary, q) ||
+        a.keywords.some((k) => textMatchesPostSearch(k, q) || k.includes(q.toLowerCase())) ||
+        a.body.some((paragraph) => textMatchesPostSearch(paragraph, q)),
     );
   }, [query]);
 

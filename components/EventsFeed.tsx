@@ -7,6 +7,7 @@ import {
   ExternalEventLocationDisplay,
 } from "@/components/ExternalEventLocationDisplay";
 import { ExternalEventDetailScreen } from "@/components/ExternalEventDetailScreen";
+import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 import {
   type EventsFeedTimeframe,
   isUpcomingEvent,
@@ -491,7 +492,10 @@ export function EventsFeed({
       </p>
 
       {activeDetail?.kind === "campus" ? (
-        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/65 p-3">
+        <MobileSwipeBackSurface
+          onBack={() => setActiveDetail(null)}
+          className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/65 p-3"
+        >
           <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-uri-navy p-5 space-y-3 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between gap-3">
               <h4 className="text-white text-lg font-semibold">{activeDetail.event.title}</h4>
@@ -524,7 +528,7 @@ export function EventsFeed({
               ))}
             </div>
           </div>
-        </div>
+        </MobileSwipeBackSurface>
       ) : null}
     </section>
   );

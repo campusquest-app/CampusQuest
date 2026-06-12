@@ -7,12 +7,12 @@ import {
   verifyFieldNote,
   assistFieldNote,
   getCommentsByNoteId,
-  addComment,
   mergeRemoteQuadPostsCache,
   cloneFeedNotesForDisplay,
   type QuadFeedType,
 } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
+import { submitQuadComment } from "@/lib/client/quadCommentActions";
 import { fetchQuadHomePosts, fetchQuadFriendsPosts } from "@/lib/client/quadPostsClient";
 import { subscribeSocialSync } from "@/lib/client/socialSync";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
@@ -51,11 +51,13 @@ export function TheQuad({
   onRefresh,
   feedTab,
   onFeedTabChange,
+  onViewAuthor,
 }: {
   character: Character;
   onRefresh?: () => void;
   feedTab: QuadFeedTab;
   onFeedTabChange: (tab: QuadFeedTab) => void;
+  onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
@@ -226,14 +228,21 @@ export function TheQuad({
   }
 
   function handleAddComment(noteId: string, body: string) {
-    addComment(noteId, {
-      authorId: character.id,
-      authorName: character.name,
-      authorUsername: character.username,
-      authorAvatar: character.avatar,
-      body,
+    return submitQuadComment({
+      noteId,
+      author: {
+        authorId: character.id,
+        authorName: character.name,
+        authorUsername: character.username,
+        authorAvatar: character.avatar,
+        body,
+      },
+      onOptimistic: refresh,
+    }).then((result) => {
+      if (!result.ok && result.message) {
+        setPostActionMessage(result.message);
+      }
     });
-    refresh();
   }
 
   const quadHeader = (
@@ -242,8 +251,8 @@ export function TheQuad({
       className="cq-quad-header cq-nav-shell-quad fixed inset-x-0 z-40 w-full"
       style={{ top: "var(--cq-topnav-h, 64px)" }}
     >
-      <div className="w-full px-[2.5vw] pb-3.5 pt-3 sm:px-[3vw]">
-        <div className="cq-quad-header-row">
+      <div className="w-full px-[2.5vw] pb-2 pt-2 sm:px-[3vw] sm:pb-2.5">
+        <div className="cq-quad-header-row tabs" data-no-drawer-swipe="true">
           <button
             type="button"
             onClick={() => onFeedTabChange("public")}
@@ -258,9 +267,8 @@ export function TheQuad({
           <div className="cq-quad-destination-center">
             <h2 className="cq-quad-destination-title font-display">The Quad</h2>
             <p className="cq-quad-destination-subtitle font-display">
-              {feedTab === "trending" ? "Trending on campus" : "What's Happening On Campus"}
+              {feedTab === "trending" ? "Trending" : "On campus"}
             </p>
-            <span className="cq-quad-accent-line" aria-hidden />
           </div>
 
           <button
@@ -320,6 +328,7 @@ export function TheQuad({
                   onVerify={handleVerify}
                   onAssist={handleAssist}
                   onAddComment={handleAddComment}
+                  onCommentsUpdated={() => setNotes((prev) => prev.slice())}
                   likePending={pendingReactions.has(note.id)}
                   onPostUpdated={(updated) => {
                     setNotes((prev) =>
@@ -341,6 +350,7 @@ export function TheQuad({
                     setNotes((prev) => prev.filter((n) => n.id !== postId));
                   }}
                   onActionMessage={setPostActionMessage}
+                  onViewAuthor={onViewAuthor}
                   currentUser={{
                     id: character.id,
                     name: character.name,

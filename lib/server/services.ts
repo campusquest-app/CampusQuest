@@ -1,5 +1,6 @@
 import { User } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/server/http";
+import { processXpMilestoneCrossings } from "@/lib/server/xpMilestones";
 import { getActivePolicyVersion } from "@/lib/server/legalConsentStatus";
 import {
   calculateActivityXp,
@@ -1659,7 +1660,8 @@ export async function addXpInternal(args: AddXpArgs) {
     .single();
   if (statsError || !stats) throw new ApiError(404, "User stats not found.", "STATS_NOT_FOUND");
 
-  const nextTotalXp = Number(stats.total_xp ?? 0) + amount;
+  const previousTotalXp = Number(stats.total_xp ?? 0);
+  const nextTotalXp = previousTotalXp + amount;
   const levelInfo = calculateLevelProgression(nextTotalXp);
 
   const { error: updateStatsError } = await userClient
@@ -1667,6 +1669,12 @@ export async function addXpInternal(args: AddXpArgs) {
     .update({ total_xp: nextTotalXp, level: levelInfo.level })
     .eq("user_id", userId);
   if (updateStatsError) throw new ApiError(400, updateStatsError.message, "XP_APPLY_FAILED");
+
+  const { newlyUnlocked } = await processXpMilestoneCrossings({
+    userId,
+    previousTotalXp,
+    currentTotalXp: nextTotalXp,
+  });
 
   const { data: log, error: logError } = await userClient
     .from("xp_logs")
@@ -1687,7 +1695,7 @@ export async function addXpInternal(args: AddXpArgs) {
     await updatePlayerStreakOnQuest(userClient, userId);
   }
 
-  return { xpLog: log, progression: levelInfo };
+  return { xpLog: log, progression: levelInfo, milestonesUnlocked: newlyUnlocked };
 }
 
 async function updatePlayerStreakOnQuest(userClient: SupabaseClientLike, userId: string) {

@@ -1,23 +1,34 @@
-import { fail, ok } from "@/lib/server/http";
-import { assertCanViewFollowLists, getFollowCounts } from "@/lib/server/socialFollows";
+import { fail, ok, ApiError } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
+import { getUserProfileForViewer } from "@/lib/server/userProfileView";
+import { uuidSchema } from "@/lib/server/validation";
 
-export async function GET(request: Request, context: { params: { userId: string } }) {
+export async function GET(
+  request: Request,
+  context: { params: { userId: string } },
+) {
   try {
-    const auth = await requireAuthUser(request as any);
-    enforceRateLimit({ userId: auth.user.id, routeKey: "profile:social-counts", limit: 45, windowMs: 60_000 });
-    const targetUserId = context.params.userId;
-    await assertCanViewFollowLists({
+    const auth = await requireAuthUser(request as Request);
+    enforceRateLimit({
+      userId: auth.user.id,
+      routeKey: "users:profile:view",
+      limit: 60,
+      windowMs: 60_000,
+    });
+
+    const parsed = uuidSchema.safeParse(context.params.userId);
+    if (!parsed.success) {
+      return fail(new ApiError(400, "Invalid user id.", "VALIDATION_ERROR"));
+    }
+
+    const payload = await getUserProfileForViewer({
       userClient: auth.userClient,
       viewerId: auth.user.id,
-      targetUserId,
+      targetUserId: parsed.data,
     });
-    const { followersCount, followingCount } = await getFollowCounts({
-      userClient: auth.userClient,
-      userId: targetUserId,
-    });
-    return ok({ userId: targetUserId, followersCount, followingCount });
+
+    return ok(payload);
   } catch (error) {
     return fail(error);
   }

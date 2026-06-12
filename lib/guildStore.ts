@@ -62,7 +62,7 @@ const SAMPLE_GUILD_TEMPLATES: Omit<Guild, "memberIds" | "createdByUserId" | "cof
   { id: "g-networking-1", name: "Career Quest", crest: "💼", level: 3, weeklyQuestGoal: "Attend 1 career event (any member)", interest: "networking", createdAt: Date.now() - 86400000 * 5, xp: 120 },
   { id: "g-networking-2", name: "LinkedIn Rams", crest: "🔗", level: 2, weeklyQuestGoal: "5 networking activities", interest: "networking", createdAt: Date.now() - 86400000 * 3, xp: 80 },
   { id: "g-clubs-1", name: "Quad Squad", crest: "🎸", level: 6, weeklyQuestGoal: "12 club or social activities", interest: "clubs", createdAt: Date.now() - 86400000 * 30, xp: 550 },
-  { id: "g-clubs-2", name: "Campus Crew", crest: "🌟", level: 4, weeklyQuestGoal: "Everyone posts 1 Field Note", interest: "clubs", createdAt: Date.now() - 86400000 * 12, xp: 320 },
+  { id: "g-clubs-2", name: "Campus Crew", crest: "🌟", level: 4, weeklyQuestGoal: "Everyone posts 1 post", interest: "clubs", createdAt: Date.now() - 86400000 * 12, xp: 320 },
 ];
 
 const PLACEHOLDER_ID_PREFIX = "ph-guild-";

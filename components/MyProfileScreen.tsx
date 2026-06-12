@@ -4,8 +4,9 @@ import { useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { Character } from "@/lib/types";
 import type { FieldNote } from "@/lib/types";
-import { getFeedByAuthorId, mergeRemoteQuadPostsForMutations, verifyFieldNote, assistFieldNote, addComment } from "@/lib/feedStore";
+import { getFeedByAuthorId, mergeRemoteQuadPostsForMutations, verifyFieldNote, assistFieldNote } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
+import { submitQuadComment } from "@/lib/client/quadCommentActions";
 import { fetchMyQuadPosts } from "@/lib/client/quadPostsClient";
 import {
   avatarFromConnectionProfile,
@@ -389,14 +390,17 @@ export function MyProfileScreen({
   }
 
   function handleAddComment(noteId: string, body: string) {
-    addComment(noteId, {
-      authorId: character.id,
-      authorName: character.name,
-      authorUsername: character.username,
-      authorAvatar: character.avatar,
-      body,
+    return submitQuadComment({
+      noteId,
+      author: {
+        authorId: character.id,
+        authorName: character.name,
+        authorUsername: character.username,
+        authorAvatar: character.avatar,
+        body,
+      },
+      onOptimistic: refresh,
     });
-    refresh();
   }
 
   const friendsCount = apiConnections.length;
@@ -712,18 +716,25 @@ export function MyProfileScreen({
       )}
 
       {showLogoutConfirm && onLogout && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="logout-dialog-title">
-          <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        <>
+          <button
+            type="button"
+            className="cq-confirm-modal-backdrop"
+            aria-label="Dismiss logout dialog"
+            disabled={logoutWorking}
             onClick={() => {
               if (!logoutWorking) {
                 setShowLogoutConfirm(false);
                 setLogoutSaveError(null);
               }
             }}
-            aria-hidden
           />
-          <div className="relative z-10 w-full max-w-[20rem] rounded-2xl border border-cq-border bg-cq-card shadow-xl shadow-black/40 p-6">
+          <div
+            className="cq-confirm-modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-dialog-title"
+          >
             <h2 id="logout-dialog-title" className="font-display font-semibold text-lg text-cq-foreground mb-2">
               Leave CampusQuest?
             </h2>
@@ -771,7 +782,7 @@ export function MyProfileScreen({
               </button>
             </div>
           </div>
-        </div>,
+        </>,
         document.body
       )}
     </PullToRefresh>

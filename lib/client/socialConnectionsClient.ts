@@ -23,6 +23,8 @@ export type ConnectionItem = {
 };
 
 export type SendConnectionRequestResult = {
+  status: "sent" | "connected" | "already_sent" | "already_received";
+  message: string;
   connection: {
     id: string;
     requesterId: string;
@@ -33,7 +35,7 @@ export type SendConnectionRequestResult = {
   notification: {
     id: string;
     userId: string;
-  };
+  } | null;
 };
 
 const IS_DEV = process.env.NODE_ENV !== "production";
@@ -141,29 +143,45 @@ export async function sendConnectionRequest(username: string): Promise<SendConne
   logFriendRequestClient("send", { targetUsername: normalized });
 
   try {
-    const data = await postAuthed<SendConnectionRequestResult, { username: string }>(
-      "/api/social/connections/request",
-      { username: normalized },
-    );
+    const data = await postAuthed<
+      {
+        status?: string;
+        message?: string;
+        connection: SendConnectionRequestResult["connection"];
+        notification: SendConnectionRequestResult["notification"];
+      },
+      { username: string }
+    >("/api/social/connections/request", { username: normalized });
+
+    const status = normalizeConnectionRequestStatus(data.status, data.connection.status);
+    const result: SendConnectionRequestResult = {
+      status,
+      message: data.message ?? "Connection request sent.",
+      connection: data.connection,
+      notification: data.notification ?? null,
+    };
 
     logFriendRequestClient("success", {
       targetUsername: normalized,
-      friendRequestId: data.connection.id,
-      requesterId: data.connection.requesterId,
-      recipientId: data.connection.addresseeId,
-      notificationId: data.notification.id,
-      notificationUserId: data.notification.userId,
-      status: data.connection.status,
+      friendRequestId: result.connection.id,
+      requesterId: result.connection.requesterId,
+      recipientId: result.connection.addresseeId,
+      notificationId: result.notification?.id ?? null,
+      notificationUserId: result.notification?.userId ?? null,
+      status: result.status,
     });
 
-    if (data.notification.userId !== data.connection.addresseeId) {
+    if (
+      result.notification &&
+      result.notification.userId !== result.connection.addresseeId
+    ) {
       console.warn("[cq:friend-request] notification recipient mismatch", {
-        notificationUserId: data.notification.userId,
-        addresseeId: data.connection.addresseeId,
+        notificationUserId: result.notification.userId,
+        addresseeId: result.connection.addresseeId,
       });
     }
 
-    return data;
+    return result;
   } catch (error) {
     logFriendRequestClient("error", {
       targetUsername: normalized,
@@ -171,6 +189,16 @@ export async function sendConnectionRequest(username: string): Promise<SendConne
     });
     throw error;
   }
+}
+
+function normalizeConnectionRequestStatus(
+  apiStatus: string | undefined,
+  connectionStatus: string,
+): SendConnectionRequestResult["status"] {
+  if (apiStatus === "connected" || connectionStatus === "accepted") return "connected";
+  if (apiStatus === "already_sent") return "already_sent";
+  if (apiStatus === "already_received") return "already_received";
+  return "sent";
 }
 
 export async function respondToConnectionRequest(

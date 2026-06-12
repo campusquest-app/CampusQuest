@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { createPortal } from "react-dom";
 import {
   Bell,
   ChevronRight,
@@ -70,25 +68,24 @@ const SETTINGS_SECTIONS: { title: string; rows: SettingsRow[] }[] = [
 export function AppSettingsPanel({
   onBack,
   onAction,
+  onRequestSignOut,
   musicMuted,
 }: {
   onBack: () => void;
   onAction: (id: SettingsActionId) => void;
+  onRequestSignOut?: () => void;
   musicMuted?: boolean;
 }) {
-  const [confirmSignOut, setConfirmSignOut] = useState(false);
-
   function handleRow(id: SettingsActionId) {
     if (id === "sign-out") {
-      setConfirmSignOut(true);
+      onRequestSignOut?.();
       return;
     }
     onAction(id);
   }
 
   return (
-    <>
-      <DrawerSubPanelShell title="Settings" onBack={onBack}>
+    <DrawerSubPanelShell title="Settings" onBack={onBack}>
         <div className="space-y-5">
           {SETTINGS_SECTIONS.map((section) => (
             <section key={section.title}>
@@ -146,51 +143,6 @@ export function AppSettingsPanel({
             </ul>
           </section>
         </div>
-      </DrawerSubPanelShell>
-
-      {confirmSignOut && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              className="fixed inset-0 z-[100] flex items-end justify-center bg-black/65 p-4 backdrop-blur-sm sm:items-center"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="settings-sign-out-title"
-              onClick={() => setConfirmSignOut(false)}
-            >
-              <div
-                className="w-full max-w-sm rounded-2xl border border-white/[0.1] bg-cq-card p-5 shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <h3 id="settings-sign-out-title" className="font-display text-lg font-bold text-white">
-                  Sign out?
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-white/55">
-                  You can sign back in anytime. Your progress is saved to your account.
-                </p>
-                <div className="mt-5 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmSignOut(false)}
-                    className="flex-1 rounded-xl border border-white/[0.12] py-2.5 text-sm font-medium text-white/75 hover:bg-white/[0.06]"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setConfirmSignOut(false);
-                      onAction("sign-out");
-                    }}
-                    className="flex-1 rounded-xl bg-rose-500/90 py-2.5 text-sm font-semibold text-white hover:bg-rose-500"
-                  >
-                    Sign Out
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
-    </>
+    </DrawerSubPanelShell>
   );
 }

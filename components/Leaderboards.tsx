@@ -1,8 +1,11 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { Clock, Trophy } from "lucide-react";
 import { getCharacterById } from "@/lib/friendsStore";
-import { getGuilds, GUILD_INTEREST_LABELS } from "@/lib/guildStore";
+import { getGuildDisplayLevel, getGuilds, GUILD_INTEREST_LABELS } from "@/lib/guildStore";
+import type { Guild } from "@/lib/types";
+import { GuildEmblem } from "@/components/guild/GuildEmblem";
 import { fetchAuthed } from "@/lib/client/dashboardApi";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
@@ -200,9 +203,11 @@ function xpLeaderboardMetricProps(sortBy: SortBy, row: XpLeaderboardRowUi) {
 export function Leaderboards({
   character,
   onRefresh,
+  onViewProfile,
 }: {
   character: Character;
   onRefresh?: () => void;
+  onViewProfile?: (userId: string) => void;
 }) {
   const [sortBy, setSortBy] = useState<SortBy>("level");
   const [expandedGuildId, setExpandedGuildId] = useState<string | null>(null);
@@ -239,12 +244,27 @@ export function Leaderboards({
   const guildsSorted = useMemo(() => {
     const list = getGuilds();
     return [...list].sort((a, b) => {
-      const levelA = a.xp != null ? 1 + Math.floor(a.xp / 100) : a.level;
-      const levelB = b.xp != null ? 1 + Math.floor(b.xp / 100) : b.level;
+      const levelA = getGuildDisplayLevel(a);
+      const levelB = getGuildDisplayLevel(b);
       if (levelB !== levelA) return levelB - levelA;
       return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
   }, []);
+
+  const userGuildRank = useMemo(() => {
+    const ids = character.guildIds ?? [];
+    if (ids.length === 0 || guildsSorted.length === 0) return null;
+    let best: { guild: Guild; rank: number } | null = null;
+    for (const guildId of ids) {
+      const index = guildsSorted.findIndex((g) => g.id === guildId);
+      if (index < 0) continue;
+      const rank = index + 1;
+      if (!best || rank < best.rank) {
+        best = { guild: guildsSorted[index], rank };
+      }
+    }
+    return best;
+  }, [character.guildIds, guildsSorted]);
 
   const loadXpLeaderboards = useCallback(async () => {
     if (sortBy === "guildLevel") return;
@@ -316,245 +336,177 @@ export function Leaderboards({
     [sortBy],
   );
 
+  const podiumUsers = useMemo(() => {
+    if (!xpActive?.topUsers.length) return [];
+    return ([2, 1, 3] as const)
+      .map((rank) => xpActive.topUsers.find((row) => row.rank === rank))
+      .filter((row): row is XpLeaderboardRowUi => row != null);
+  }, [xpActive?.topUsers]);
+
+  const listUsers = useMemo(() => {
+    if (!xpActive?.topUsers.length) return [];
+    return xpActive.topUsers.filter((row) => row.rank > 3);
+  }, [xpActive?.topUsers]);
+
+  const statSortOptions = SORT_OPTIONS.filter((opt) => opt.value !== "level" && opt.value !== "guildLevel");
+
   return (
     <PullToRefresh onRefresh={handlePullRefresh} disabled={xpLoading}>
-    <section className="cq-tab-shell space-y-6 pb-8">
-      <header className="cq-screen-header">
-        <p className="cq-screen-header__eyebrow">Campus Rankings</p>
-        <h1 className="cq-screen-header__title">Leaderboards</h1>
-        <p className="cq-screen-header__subtitle">
-          See how you stack up against friends and guilds across campus.
-        </p>
-      </header>
-      {/* Filter by stat */}
-      <div className="card p-4 sm:p-5">
-        <h2 className="font-display font-semibold text-cq-foreground mb-2 flex items-center gap-2">
-          <span aria-hidden>🏆</span> Rank by
-        </h2>
-        <p className="text-sm text-cq-muted mb-3">
-          {sortBy === "guildLevel"
-            ? "Guild level shows guilds only, sorted by highest level."
-            : "Campus and friends rankings use verified classmates and connections. Pick a stat to sort the live board."}
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {SORT_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setSortBy(opt.value)}
-              className={`cq-chip-pop flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-                sortBy === opt.value
-                  ? "bg-uri-keaney text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-100 border border-cq-border"
-              }`}
-            >
-              <span>{opt.icon}</span>
-              <span>{opt.label}</span>
-            </button>
-          ))}
+    <section className="cq-lb-shell cq-tab-shell">
+      <header className="cq-lb-header cq-screen-header sticky top-0 z-10">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="cq-screen-header__title">Leaderboard</h1>
+            <p className="cq-screen-header__subtitle">Compete with other Rams</p>
+          </div>
+          <button
+            type="button"
+            className="cq-lb-timeframe cq-lb-timeframe--active shrink-0"
+            aria-label="Leaderboard timeframe: all time"
+            aria-pressed="true"
+          >
+            <Clock className="h-3 w-3" aria-hidden strokeWidth={2.25} />
+            All time
+          </button>
         </div>
+      </header>
+
+      <div className="cq-lb-filters" data-no-drawer-swipe="true" data-cq-gesture-block="all">
+        <div className="cq-lb-filters-row" role="tablist" aria-label="Leaderboard category">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sortBy !== "guildLevel"}
+            onClick={() => {
+              if (sortBy === "guildLevel") setSortBy("level");
+            }}
+            className={`cq-lb-filter ${sortBy !== "guildLevel" ? "cq-lb-filter--active" : ""}`}
+          >
+            Overall XP
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sortBy === "guildLevel"}
+            onClick={() => setSortBy("guildLevel")}
+            className={`cq-lb-filter ${sortBy === "guildLevel" ? "cq-lb-filter--active" : ""}`}
+          >
+            Guilds
+          </button>
+        </div>
+
+        {sortBy !== "guildLevel" ? (
+          <>
+            <div className="cq-lb-scope-track" role="tablist" aria-label="Leaderboard scope">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={xpTab === "campus"}
+                onClick={() => setXpTab("campus")}
+                className={`cq-lb-scope flex-1 ${xpTab === "campus" ? "cq-lb-scope--active" : ""}`}
+              >
+                Campus
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={xpTab === "friends"}
+                onClick={() => setXpTab("friends")}
+                className={`cq-lb-scope flex-1 ${xpTab === "friends" ? "cq-lb-scope--active" : ""}`}
+              >
+                Friends
+              </button>
+            </div>
+            <LeaderboardStatFilterScroll sortBy={sortBy} onSortByChange={setSortBy} options={statSortOptions} />
+          </>
+        ) : null}
       </div>
 
       {sortBy === "guildLevel" ? (
-        /* Guild leaderboard — guild names only, sorted by level */
-        <div className="card p-4 sm:p-5">
-          <h2 className="font-display font-semibold text-cq-foreground mb-2 flex items-center gap-2">
-            <span aria-hidden>🛡️</span> Guild leaderboard
-          </h2>
-          <p className="text-sm text-cq-muted mb-4">
-            Guilds ranked by level (highest first). Ties sorted by name.
-          </p>
+        <div className="cq-lb-panel cq-lb-guild-panel p-3 sm:p-4">
+          <div className="cq-lb-guild-intro">
+            <h2 className="cq-lb-guild-intro-title">Guild leaderboard</h2>
+            <p className="cq-lb-guild-intro-copy">
+              Guilds level up when members quest, post, and scan together. Climb as a team.
+            </p>
+          </div>
+
           {guildsSorted.length === 0 ? (
-            <div className="cq-empty-state rounded-xl border border-cq-border bg-cq-elevated px-4 py-6 text-center">
-              <p className="text-xl mb-1.5" aria-hidden>🛡️</p>
-              <p className="text-sm font-semibold text-cq-muted">No guilds yet.</p>
-              <p className="text-xs text-cq-muted mt-1">Create or join one in Find Friends to start climbing rankings.</p>
-            </div>
+            <LeaderboardEmptyState message="No guilds yet." detail="Create or join one in Find Friends to start climbing rankings." />
           ) : (
-            <ul className="space-y-2">
-              {guildsSorted.map((guild, index) => {
-                const level = guild.xp != null ? 1 + Math.floor(guild.xp / 100) : guild.level;
-                const rank = index + 1;
-                const podiumGlow = rank <= 3 ? RANK_GLOW[rank as 1 | 2 | 3] : "";
-                const rankStyle = rank === 1 ? "font-bold text-amber-300 drop-shadow-[0_0_10px_rgba(251,191,36,0.9)]" : rank === 2 ? "font-bold text-cq-muted" : rank === 3 ? "font-bold text-amber-600 drop-shadow-[0_0_10px_rgba(217,119,6,0.8)]" : "text-cq-muted font-mono";
-                const isExpanded = expandedGuildId === guild.id;
-                return (
-                  <li
-                    key={guild.id}
-                    className={`rounded-xl border overflow-hidden ${rank <= 3 ? podiumGlow : "bg-cq-elevated border-cq-border"}`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setExpandedGuildId(isExpanded ? null : guild.id)}
-                      className="w-full flex items-center gap-3 p-3 text-left hover:bg-cq-elevated transition-colors"
-                      aria-expanded={isExpanded}
-                    >
-                      <span className={`w-8 text-sm font-mono flex-shrink-0 ${rankStyle}`}>
-                        #{rank}
-                      </span>
-                      <span className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-2xl border border-uri-keaney/30 flex-shrink-0">
-                        {guild.crest}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-cq-foreground truncate">{guild.name}</p>
-                        <p className="text-xs text-cq-muted">{GUILD_INTEREST_LABELS[guild.interest]}</p>
-                      </div>
-                      <div className="flex-shrink-0 text-right">
-                        <p className="text-uri-keaney font-semibold">Lv.{level}</p>
-                        <p className="text-xs text-cq-muted">{guild.memberIds.length} members</p>
-                      </div>
-                      <span className="text-cq-muted text-sm flex-shrink-0" aria-hidden>
-                        {isExpanded ? "▼" : "▶"}
-                      </span>
-                    </button>
-                    {isExpanded && (
-                      <div className="border-t border-cq-border bg-slate-100 px-3 py-3">
-                        <p className="text-xs font-semibold text-cq-muted uppercase tracking-wider mb-2">Members</p>
-                        <ul className="space-y-2">
-                          {guild.memberIds.length === 0 ? (
-                            <li className="text-sm text-cq-muted">No members yet.</li>
-                          ) : (
-                            guild.memberIds.map((memberId) => {
-                              const member = getCharacterById(memberId);
-                              const isCreator = memberId === guild.createdByUserId;
-                              return (
-                                <li
-                                  key={memberId}
-                                  className="flex items-center gap-3 p-2 rounded-lg bg-cq-elevated border border-cq-border"
-                                >
-                                  <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0 border border-uri-keaney/30">
-                                    {member ? <AvatarDisplay avatar={member.avatar} size={36} /> : <span className="text-lg opacity-60">👤</span>}
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <p className="font-medium text-cq-foreground text-sm truncate">{member ? member.name : "Unknown"}</p>
-                                    <p className="text-xs text-cq-muted truncate">{member ? `@${member.username}` : memberId}</p>
-                                  </div>
-                                  {isCreator && (
-                                    <span className="text-[10px] font-semibold text-uri-gold px-1.5 py-0.5 rounded bg-uri-gold/20 flex-shrink-0">Founder</span>
-                                  )}
-                                </li>
-                              );
-                            })
-                          )}
-                        </ul>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="space-y-3">
+              <GuildChampionHero guild={guildsSorted[0]} />
+
+              {userGuildRank ? (
+                <GuildYourPositionBanner
+                  rank={userGuildRank.rank}
+                  guildName={userGuildRank.guild.name}
+                  totalGuilds={guildsSorted.length}
+                  isChampion={userGuildRank.rank === 1}
+                />
+              ) : null}
+
+              {guildsSorted.length > 1 ? (
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-white/50">Rankings</h3>
+                    <span className="text-[10px] text-white/40 tabular-nums">{guildsSorted.length} guilds</span>
+                  </div>
+                  <ul className="space-y-2 cq-lb-guild-list" aria-label="Guild rankings">
+                    {guildsSorted.slice(1).map((guild, index) => (
+                      <GuildRankRow
+                        key={guild.id}
+                        guild={guild}
+                        rank={index + 2}
+                        isMember={character.guildIds?.includes(guild.id) ?? false}
+                        isExpanded={expandedGuildId === guild.id}
+                        onToggle={() => setExpandedGuildId(expandedGuildId === guild.id ? null : guild.id)}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
           )}
         </div>
       ) : (
         <>
-          <div className="relative overflow-hidden rounded-2xl border border-cq-border bg-cq-card shadow-card">
-            <div
-              className="pointer-events-none absolute inset-0 opacity-[0.2] bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(104,171,232,0.12),transparent_55%)]"
-              aria-hidden
-            />
-            <div
-              className="pointer-events-none absolute -right-24 top-0 h-56 w-56 rounded-full bg-uri-keaney/8 blur-3xl"
-              aria-hidden
-            />
-            <div
-              className="pointer-events-none absolute -left-24 bottom-0 h-48 w-48 rounded-full bg-amber-400/10 blur-3xl"
-              aria-hidden
-            />
-            <div className="relative p-5 sm:p-6 space-y-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex gap-4 min-w-0">
-                  <div
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cq-elevated text-xl ring-1 ring-slate-200"
-                    aria-hidden
-                  >
-                    🏛️
-                  </div>
-                  <div className="min-w-0">
-                    <h2 className="font-display text-xl font-bold tracking-tight text-cq-foreground sm:text-2xl">Student rankings</h2>
-                    <p className="mt-1 text-sm leading-relaxed text-cq-muted max-w-xl">
-                      See how you stack up by <span className="text-slate-700">{xpSortLabel}</span>. Campus uses your
-                      school-verified cohort; Friends only includes mutual campus connections you&apos;ve accepted.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                <div
-                  className="inline-flex w-full max-w-md rounded-2xl border border-cq-border bg-slate-100 p-1 ring-1 ring-black/30"
-                  role="tablist"
-                  aria-label="Leaderboard scope"
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={xpTab === "campus"}
-                    onClick={() => setXpTab("campus")}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all min-h-[48px] ${
-                      xpTab === "campus"
-                        ? "bg-gradient-to-b from-uri-keaney to-uri-keaney/85 text-uri-navy shadow-md ring-1 ring-white/20"
-                        : "text-cq-muted hover:bg-slate-100 hover:text-cq-foreground"
-                    }`}
-                  >
-                    <span className="text-base" aria-hidden>
-                      🏫
-                    </span>
-                    Campus
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={xpTab === "friends"}
-                    onClick={() => setXpTab("friends")}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all min-h-[48px] ${
-                      xpTab === "friends"
-                        ? "bg-gradient-to-b from-uri-keaney to-uri-keaney/85 text-uri-navy shadow-md ring-1 ring-white/20"
-                        : "text-cq-muted hover:bg-slate-100 hover:text-cq-foreground"
-                    }`}
-                  >
-                    <span className="text-base" aria-hidden>
-                      👥
-                    </span>
-                    Friends
-                  </button>
-                </div>
-                <p className="text-[11px] text-cq-subtle sm:max-w-[14rem] sm:text-right leading-snug">
-                  {xpTab === "campus"
-                    ? "Everyone at your school with a verified email."
-                    : "You and friends you have connected with on CampusQuest."}
-                </p>
-              </div>
-
+          <div className="cq-lb-arena space-y-3">
             {xpError ? (
-              <div className="rounded-xl border border-rose-400/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
-                {xpError}
+              <div className="cq-lb-state cq-lb-state--error" role="alert">
+                <p className="font-medium text-rose-100">Couldn&apos;t load leaderboard.</p>
+                <p className="text-sm text-rose-100/80 mt-1">Pull to refresh or try again.</p>
               </div>
             ) : null}
 
             {xpLoading ? (
-              <XpLeaderboardSkeleton />
+              <div className="cq-lb-state" role="status" aria-live="polite">
+                <p className="text-white/70">Loading leaderboard…</p>
+                <XpLeaderboardSkeleton />
+              </div>
             ) : xpFriendsEmpty ? (
-              <div className="rounded-2xl border border-cq-border bg-cq-elevated px-5 py-10 text-center">
-                <p className="text-3xl mb-2" aria-hidden>
-                  🤝
-                </p>
-                <p className="text-base font-semibold text-slate-800">Add friends to compare</p>
-                <p className="text-sm text-cq-muted mt-2 max-w-sm mx-auto leading-relaxed">
-                  When you connect with classmates, they&apos;ll show up here—ranked by {xpSortLabel.toLowerCase()}.
-                </p>
-              </div>
+              <LeaderboardEmptyState
+                message="No leaderboard data yet."
+                detail={`Add friends to compare rankings by ${xpSortLabel.toLowerCase()}.`}
+              />
             ) : xpCampusEmpty ? (
-              <div className="rounded-2xl border border-cq-border bg-cq-elevated px-5 py-10 text-center">
-                <p className="text-3xl mb-2" aria-hidden>
-                  🏫
-                </p>
-                <p className="text-base font-semibold text-slate-800">Campus board unlocks with peers</p>
-                <p className="text-sm text-cq-muted mt-2 max-w-sm mx-auto leading-relaxed">
-                  As more students verify their school email, the campus leaderboard fills in.
-                </p>
-              </div>
+              <LeaderboardEmptyState
+                message="No leaderboard data yet."
+                detail="As more students verify their school email, the campus leaderboard fills in."
+              />
             ) : xpHasBoard && xpActive ? (
-              <div className="space-y-5">
+              <div className="space-y-3">
+                {podiumUsers.length > 0 ? (
+                  <TopThreePodium
+                    users={podiumUsers}
+                    currentUserId={character.id}
+                    sortBy={sortBy}
+                    character={character}
+                    onViewProfile={onViewProfile}
+                    metricProps={xpLeaderboardMetricProps}
+                  />
+                ) : null}
+
                 {xpActive.currentUserRank != null ? (
                   <XpRankHighlight
                     rank={xpActive.currentUserRank}
@@ -565,11 +517,10 @@ export function Leaderboards({
                 ) : null}
 
                 {xpShowPinnedCard && xpActive.currentUserEntry ? (
-                  <div className="rounded-2xl border border-cq-border border-l-[3px] border-l-uri-keaney bg-cq-elevated p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-uri-keaney mb-3">
-                      Your position · outside top slice
-                    </p>
+                  <div className="cq-lb-you-card rounded-xl border border-uri-keaney/35 bg-uri-keaney/[0.08] p-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-uri-keaney mb-1.5">Your rank</p>
                     <LeaderboardRow
+                      userId={xpActive.currentUserEntry.userId}
                       rank={xpActive.currentUserEntry.rank}
                       name={xpActive.currentUserEntry.displayName}
                       username={xpActive.currentUserEntry.username}
@@ -578,100 +529,92 @@ export function Leaderboards({
                       totalXP={xpActive.currentUserEntry.totalXp}
                       isCurrentUser
                       showcaseCharacter={character}
+                      onViewProfile={onViewProfile}
                       {...xpLeaderboardMetricProps(sortBy, xpActive.currentUserEntry)}
                     />
                   </div>
                 ) : null}
 
-                <div>
-                  <div className="mb-3 flex items-end justify-between gap-3 border-b border-cq-border pb-3">
-                    <div>
-                      <h3 className="font-display text-sm font-semibold text-cq-foreground">Leaderboard</h3>
-                      <p className="text-[11px] text-cq-subtle mt-0.5">
-                        Sorted by {xpSortLabel.toLowerCase()} · top {xpActive.topUsers.length} shown
-                      </p>
+                {listUsers.length > 0 ? (
+                  <div>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-white/50">Rankings</h3>
+                      <span className="text-[10px] text-white/40 tabular-nums">
+                        {xpActive.topUsers.length} · {xpSortLabel}
+                      </span>
                     </div>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-uri-keaney/90">Live</span>
+                    <ul className="space-y-2" aria-label="Leaderboard rankings">
+                      {listUsers.map((row) => (
+                        <LeaderboardRow
+                          key={row.userId}
+                          userId={row.userId}
+                          rank={row.rank}
+                          name={row.displayName}
+                          username={row.username}
+                          avatar={row.avatar}
+                          level={row.level}
+                          totalXP={row.totalXp}
+                          isCurrentUser={row.userId === character.id}
+                          showcaseCharacter={row.userId === character.id ? character : undefined}
+                          onViewProfile={onViewProfile}
+                          {...xpLeaderboardMetricProps(sortBy, row)}
+                        />
+                      ))}
+                    </ul>
                   </div>
-                  <ul className="space-y-2.5">
-                    {xpActive.topUsers.map((row) => (
-                      <LeaderboardRow
-                        key={row.userId}
-                        rank={row.rank}
-                        name={row.displayName}
-                        username={row.username}
-                        avatar={row.avatar}
-                        level={row.level}
-                        totalXP={row.totalXp}
-                        isCurrentUser={row.userId === character.id}
-                        showcaseCharacter={row.userId === character.id ? character : undefined}
-                        {...xpLeaderboardMetricProps(sortBy, row)}
-                      />
-                    ))}
-                  </ul>
-                </div>
+                ) : null}
+
               </div>
             ) : null}
-            </div>
           </div>
 
-          {/* Scholars Guild leaderboard */}
-          <div className="card p-4 sm:p-5">
-            <h2 className="font-display font-semibold text-cq-foreground mb-2 flex items-center gap-2">
-              <span aria-hidden>🎓</span> Scholars Guild leaderboard
-            </h2>
-            <p className="text-sm text-cq-muted mb-4">
-              Colleges ranked by total XP from their scholars (including you). Pick your Scholars Guild when creating your character.
-            </p>
-            <ul className="space-y-2">
+          <details className="cq-lb-scholars">
+            <summary className="cq-lb-scholars-summary">Scholars Guild rankings</summary>
+            <div className="cq-lb-scholars-body">
+            <ul className="space-y-2" aria-label="Scholars guild rankings">
               {scholarGuildsRanked.map((g, index) => {
                 const isExpanded = expandedScholarGuildId === g.id;
                 return (
-                  <li
-                    key={g.id}
-                    className="rounded-xl border border-cq-border bg-cq-elevated overflow-hidden"
-                  >
+                  <li key={g.id} className={`cq-lb-guild-row cq-lb-guild-row--animated overflow-hidden ${guildRowRankClass(index + 1)}`}>
                     <button
                       type="button"
                       onClick={() => setExpandedScholarGuildId(isExpanded ? null : g.id)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-cq-elevated transition-colors"
+                      className="w-full flex items-center gap-3 px-3 py-3 text-left min-h-[68px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-uri-keaney/60"
                       aria-expanded={isExpanded}
                     >
-                      <span className="w-7 text-sm font-mono text-cq-muted flex-shrink-0">#{index + 1}</span>
-                      <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-xl border border-uri-keaney/40 flex-shrink-0">
-                        {g.crest}
-                      </div>
+                      <RankBadge rank={index + 1} />
+                      <GuildEmblem scholarGuildId={g.id} crest={g.crest} size="md" rank={index + 1 <= 3 ? (index + 1 as 1 | 2 | 3) : undefined} />
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-cq-foreground truncate">{g.name}</p>
-                        <p className="text-xs text-cq-muted">
+                        <p className="font-medium text-white truncate">{g.name}</p>
+                        <p className="text-xs text-white/50">
                           {g.members.length} scholars ·{" "}
-                          <span className="font-mono text-uri-keaney font-semibold">
+                          <span className="font-mono text-uri-keaney font-semibold tabular-nums">
                             {g.totalXP.toLocaleString()} XP
                           </span>
                         </p>
                       </div>
-                      <span className="text-cq-muted text-sm flex-shrink-0" aria-hidden>
-                        {isExpanded ? "▼" : "▶"}
+                      <span className="text-white/40 text-xs flex-shrink-0" aria-hidden>
+                        {isExpanded ? "▾" : "▸"}
                       </span>
                     </button>
                     {isExpanded && (
-                      <div className="border-t border-cq-border bg-slate-100 px-3 py-3">
-                        <p className="text-xs font-semibold text-cq-muted uppercase tracking-wider mb-2">
+                      <div className="border-t border-white/10 bg-black/20 px-3 py-3">
+                        <p className="text-xs font-semibold text-white/45 uppercase tracking-wider mb-2">
                           Example scholars
                         </p>
                         <ul className="space-y-1.5">
                           {g.members.map((m) => (
                             <li
                               key={`${g.id}-${m.name}`}
-                              className="flex items-center gap-2 rounded-lg bg-cq-elevated border border-cq-border px-2.5 py-1.5"
+                              className="flex items-center gap-2 rounded-lg bg-white/[0.04] border border-white/10 px-2.5 py-2"
                             >
-                              <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-lg flex-shrink-0">
+                              <div className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center text-lg flex-shrink-0">
                                 {m.avatar}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-cq-foreground truncate">{m.name}</p>
+                                <p className="text-sm font-medium text-white truncate">{m.name}</p>
                               </div>
-                              <span className="text-xs font-mono text-uri-keaney flex-shrink-0">
+                              <span className="text-xs font-mono text-uri-keaney flex-shrink-0 tabular-nums">
                                 {m.totalXP.toLocaleString()} XP
                               </span>
                             </li>
@@ -683,11 +626,277 @@ export function Leaderboards({
                 );
               })}
             </ul>
-          </div>
+            </div>
+          </details>
         </>
       )}
     </section>
     </PullToRefresh>
+  );
+}
+
+function LeaderboardEmptyState({ message, detail }: { message: string; detail?: string }) {
+  return (
+    <div className="cq-lb-state text-center py-10 px-4" role="status">
+      <p className="text-base font-semibold text-white">{message}</p>
+      {detail ? <p className="text-sm text-white/55 mt-2 max-w-sm mx-auto leading-relaxed">{detail}</p> : null}
+    </div>
+  );
+}
+
+function RankBadge({ rank, large = false }: { rank: number; large?: boolean }) {
+  const tone =
+    rank === 1 ? "cq-lb-rank--gold" : rank === 2 ? "cq-lb-rank--silver" : rank === 3 ? "cq-lb-rank--bronze" : "";
+  return (
+    <span
+      className={`cq-lb-rank ${tone} ${large ? "cq-lb-rank--lg" : ""}`}
+      aria-label={`Rank ${rank}`}
+    >
+      #{rank}
+    </span>
+  );
+}
+
+function guildRowRankClass(rank: number): string {
+  if (rank === 1) return "cq-lb-guild-row--gold";
+  if (rank === 2) return "cq-lb-guild-row--silver";
+  if (rank === 3) return "cq-lb-guild-row--bronze";
+  return "";
+}
+
+function GuildChampionHero({ guild }: { guild: Guild }) {
+  const level = getGuildDisplayLevel(guild);
+  return (
+    <div className="cq-lb-guild-hero" aria-label={`Rank 1 guild, ${guild.name}, level ${level}`}>
+      <div className="cq-lb-guild-hero-glow" aria-hidden />
+      <p className="cq-lb-guild-hero-eyebrow">
+        <Trophy className="h-3.5 w-3.5" aria-hidden strokeWidth={2.25} />
+        Reigning champion
+      </p>
+      <GuildEmblem interest={guild.interest} crest={guild.crest} size="hero" rank={1} />
+      <h3 className="cq-lb-guild-hero-name">{guild.name}</h3>
+      <p className="cq-lb-guild-hero-meta">
+        <span className="cq-lb-level-badge">Lv.{level}</span>
+        <span className="cq-lb-guild-hero-dot" aria-hidden />
+        <span>{guild.memberIds.length} members</span>
+      </p>
+      <span className="cq-lb-guild-hero-badge">Guild Champion</span>
+      <p className="cq-lb-guild-hero-interest">{GUILD_INTEREST_LABELS[guild.interest]}</p>
+    </div>
+  );
+}
+
+function GuildYourPositionBanner({
+  rank,
+  guildName,
+  totalGuilds,
+  isChampion,
+}: {
+  rank: number;
+  guildName: string;
+  totalGuilds: number;
+  isChampion: boolean;
+}) {
+  return (
+    <div
+      className={`cq-lb-guild-you ${isChampion ? "cq-lb-guild-you--champion" : ""}`}
+      aria-label={`Your guild ${guildName} is rank ${rank}`}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        {isChampion ? (
+          <span className="cq-lb-champion-trophy" aria-hidden>
+            <Trophy className="h-5 w-5" strokeWidth={2.25} />
+          </span>
+        ) : (
+          <RankBadge rank={rank} large={rank <= 3} />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-uri-keaney/90">Your guild</p>
+          <p className="mt-0.5 truncate text-sm font-semibold text-white">{guildName}</p>
+          <p className="mt-0.5 text-xs text-white/50">
+            {isChampion
+              ? "Your guild leads the campus — defend the crown."
+              : `Rank #${rank} of ${totalGuilds} · keep questing to climb.`}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GuildRankRow({
+  guild,
+  rank,
+  isMember,
+  isExpanded,
+  onToggle,
+}: {
+  guild: Guild;
+  rank: number;
+  isMember: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const level = getGuildDisplayLevel(guild);
+  const rankTone = guildRowRankClass(rank);
+  const emblemRank = rank <= 3 ? (rank as 1 | 2 | 3) : undefined;
+
+  return (
+    <li className={`cq-lb-guild-row cq-lb-guild-row--animated overflow-hidden ${rankTone} ${isMember ? "cq-lb-guild-row--yours" : ""}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="cq-lb-guild-row-btn w-full flex items-center gap-3 p-3.5 text-left min-h-[72px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-uri-keaney/60"
+        aria-expanded={isExpanded}
+      >
+        <RankBadge rank={rank} />
+        <GuildEmblem interest={guild.interest} crest={guild.crest} size="md" rank={emblemRank} />
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-white truncate">
+            {guild.name}
+            {isMember ? <span className="ml-1.5 text-[10px] font-semibold text-uri-keaney">(yours)</span> : null}
+          </p>
+          <p className="text-xs text-white/50">{GUILD_INTEREST_LABELS[guild.interest]}</p>
+        </div>
+        <div className="flex-shrink-0 text-right">
+          <p className="text-uri-keaney font-semibold tabular-nums">Lv.{level}</p>
+          <p className="text-xs text-white/50">{guild.memberIds.length} members</p>
+        </div>
+        <span className="text-white/40 text-xs flex-shrink-0" aria-hidden>
+          {isExpanded ? "▾" : "▸"}
+        </span>
+      </button>
+      {isExpanded ? (
+        <div className="border-t border-white/10 bg-black/20 px-3 py-3">
+          <p className="text-xs font-semibold text-white/45 uppercase tracking-wider mb-2">Members</p>
+          <ul className="space-y-2">
+            {guild.memberIds.length === 0 ? (
+              <li className="text-sm text-white/50">No members yet.</li>
+            ) : (
+              guild.memberIds.map((memberId) => {
+                const member = getCharacterById(memberId);
+                const isCreator = memberId === guild.createdByUserId;
+                return (
+                  <li
+                    key={memberId}
+                    className="flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.04] border border-white/10"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-white/[0.06] flex items-center justify-center overflow-hidden flex-shrink-0 border border-white/10">
+                      {member ? <AvatarDisplay avatar={member.avatar} size={36} /> : <span className="text-lg text-white/40">?</span>}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-white text-sm truncate">{member ? member.name : "Unknown"}</p>
+                      <p className="text-xs text-white/50 truncate">{member ? `@${member.username}` : memberId}</p>
+                    </div>
+                    {isCreator ? (
+                      <span className="text-[10px] font-semibold text-uri-gold px-1.5 py-0.5 rounded bg-uri-gold/15 flex-shrink-0">Founder</span>
+                    ) : null}
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function TopThreePodium({
+  users,
+  currentUserId,
+  sortBy,
+  character,
+  onViewProfile,
+  metricProps,
+}: {
+  users: XpLeaderboardRowUi[];
+  currentUserId: string;
+  sortBy: SortBy;
+  character: Character;
+  onViewProfile?: (userId: string) => void;
+  metricProps: (sortBy: SortBy, row: XpLeaderboardRowUi) => ReturnType<typeof xpLeaderboardMetricProps>;
+}) {
+  return (
+    <div className="cq-lb-podium" role="list" aria-label="Top three players">
+      {users.map((user) => (
+        <PodiumCard
+          key={user.userId}
+          user={user}
+          isCurrentUser={user.userId === currentUserId}
+          showcaseCharacter={user.userId === currentUserId ? character : undefined}
+          onViewProfile={onViewProfile}
+          {...metricProps(sortBy, user)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PodiumCard({
+  user,
+  isCurrentUser,
+  showcaseCharacter,
+  sortBy,
+  statValue,
+  statLabel,
+  onViewProfile,
+}: {
+  user: XpLeaderboardRowUi;
+  isCurrentUser: boolean;
+  showcaseCharacter?: Character;
+  sortBy?: SortBy;
+  statValue?: number;
+  statLabel?: string;
+  onViewProfile?: (userId: string) => void;
+}) {
+  const place = user.rank as 1 | 2 | 3;
+  const cardClass = `cq-lb-podium-card cq-lb-podium-card--${place} ${isCurrentUser ? "cq-lb-podium-card--you" : ""}`;
+  const aria = `Rank ${user.rank}, ${user.displayName}, level ${user.level}, ${user.totalXp.toLocaleString()} XP`;
+  const body = (
+    <>
+      {place === 1 ? (
+        <span className="cq-lb-podium-crown" aria-hidden>
+          <Trophy className="h-4 w-4" strokeWidth={2.25} />
+        </span>
+      ) : null}
+      <RankBadge rank={user.rank} large={place === 1} />
+      <div className={`cq-lb-podium-avatar cq-lb-podium-avatar--${place}`}>
+        <AvatarDisplay avatar={user.avatar} size={place === 1 ? 52 : place === 2 ? 44 : 40} />
+      </div>
+      <p className="cq-lb-podium-name truncate">{user.displayName}</p>
+      <p className="cq-lb-podium-username truncate">@{user.username}</p>
+      {showcaseCharacter ? <AchievementShowcaseStrip character={showcaseCharacter} compact /> : null}
+      <div className="cq-lb-podium-stats">
+        <span className="cq-lb-level-badge">Lv.{user.level}</span>
+        {sortBy !== "level" && statLabel != null && statValue != null ? (
+          <span className="text-[11px] text-white/55 tabular-nums">
+            {statValue.toLocaleString()} {statLabel}
+          </span>
+        ) : null}
+        <span className="text-xs font-semibold text-uri-keaney tabular-nums">{user.totalXp.toLocaleString()} XP</span>
+      </div>
+    </>
+  );
+
+  if (onViewProfile) {
+    return (
+      <button
+        type="button"
+        onClick={() => onViewProfile(user.userId)}
+        className={cardClass}
+        role="listitem"
+        aria-label={aria}
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <div className={cardClass} role="listitem" aria-label={aria}>
+      {body}
+    </div>
   );
 }
 
@@ -702,63 +911,48 @@ function XpRankHighlight({
   mode: "campus" | "friends";
   sortLabel: string;
 }) {
-  const scopeNoun = mode === "campus" ? "verified campus" : "friends list";
-  const peopleWord = mode === "campus" ? (totalRanked === 1 ? "student" : "students") : totalRanked === 1 ? "friend" : "friends";
-  const medalRing =
-    rank === 1
-      ? "from-amber-400/35 via-amber-500/20 to-amber-700/25 ring-amber-300/55 shadow-[0_0_28px_rgba(251,191,36,0.35)]"
-      : rank === 2
-        ? "from-slate-300/25 via-slate-400/15 to-slate-600/25 ring-slate-200/45 shadow-[0_0_24px_rgba(226,232,240,0.25)]"
-        : rank === 3
-          ? "from-amber-700/30 via-amber-800/15 to-amber-950/20 ring-amber-600/50 shadow-[0_0_22px_rgba(217,119,6,0.3)]"
-          : "from-cq-elevated via-cq-card to-cq-app ring-slate-200";
-  const headline =
-    mode === "campus"
-      ? rank === 1
-        ? "Top of the campus board"
-        : "On the campus leaderboard"
-      : rank === 1
-        ? "Leading your friends"
-        : "Among your friends";
+  const peopleWord =
+    mode === "campus" ? (totalRanked === 1 ? "student" : "students") : totalRanked === 1 ? "friend" : "friends";
+  const championTitle = mode === "campus" ? "Campus Champion" : "Friends Champion";
+  const isChampion = rank === 1;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-cq-border bg-cq-card p-4 sm:p-5">
-      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4 min-w-0">
-          <div
-            className={`flex h-[4.75rem] w-[4.75rem] shrink-0 flex-col items-center justify-center rounded-2xl bg-gradient-to-br ring-2 ${medalRing}`}
-          >
-            <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-cq-muted">Rank</span>
-            <span className="font-display text-3xl font-bold tabular-nums leading-none text-cq-foreground sm:text-[2.125rem]">
-              #{rank}
-            </span>
-          </div>
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-uri-keaney">Your placement</p>
-            <p className="mt-1.5 text-lg font-semibold text-cq-foreground sm:text-xl leading-snug">{headline}</p>
-            <p className="mt-1.5 text-sm text-cq-muted leading-relaxed">
-              {totalRanked <= 1 ? (
-                <>
-                  You&apos;re #{rank} — once more {mode === "campus" ? "classmates" : "friends"} join, this board gets
-                  competitive.
-                </>
-              ) : (
-                <>
-                  Out of{" "}
-                  <span className="text-slate-700 font-medium tabular-nums">{totalRanked.toLocaleString()}</span>{" "}
-                  {peopleWord} on your {scopeNoun}, ordered by {sortLabel.toLowerCase()} (highest first).
-                </>
-              )}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2 sm:justify-end sm:shrink-0">
-          <span className="inline-flex items-center gap-1.5 rounded-xl border border-cq-border bg-slate-100 px-3 py-2 text-xs text-slate-700">
-            <span className="text-uri-keaney" aria-hidden>
-              ✦
-            </span>
-            {sortLabel} · live ranking
+    <div
+      className={`cq-lb-you-banner ${isChampion ? "cq-lb-you-banner--champion" : ""}`}
+      aria-label={`Your rank is ${rank}`}
+    >
+      <div className="flex items-center gap-3">
+        {isChampion ? (
+          <span className="cq-lb-champion-trophy" aria-hidden>
+            <Trophy className="h-5 w-5" strokeWidth={2.25} />
           </span>
+        ) : (
+          <RankBadge rank={rank} large />
+        )}
+        <div className="min-w-0 flex-1">
+          {isChampion ? (
+            <>
+              <p className="cq-lb-champion-title">
+                <span aria-hidden>🏆</span> {championTitle}
+              </p>
+              <p className="cq-lb-champion-rank">Rank #1</p>
+              <p className="cq-lb-champion-meta">
+                {totalRanked <= 1
+                  ? `First on the board — invite more ${mode === "campus" ? "classmates" : "friends"} to compete.`
+                  : `Out of ${totalRanked.toLocaleString()} ${peopleWord}`}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-uri-keaney/90">Your rank</p>
+              <p className="mt-0.5 text-sm font-semibold text-white">Rank #{rank}</p>
+              <p className="mt-0.5 text-xs text-white/50">
+                {totalRanked <= 1
+                  ? `Climb higher as more ${peopleWord} join.`
+                  : `Out of ${totalRanked.toLocaleString()} ${peopleWord} · ${sortLabel.toLowerCase()}`}
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -767,21 +961,18 @@ function XpRankHighlight({
 
 function XpLeaderboardSkeleton() {
   return (
-    <ul className="space-y-2.5" aria-hidden>
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        <li
-          key={i}
-          className="flex items-center gap-3 p-3 rounded-xl border border-cq-border bg-cq-elevated"
-        >
-          <div className="w-8 h-6 rounded bg-slate-100 animate-pulse shrink-0" />
-          <div className="w-10 h-10 rounded-xl bg-slate-100 animate-pulse shrink-0" />
+    <ul className="space-y-2 mt-4" aria-hidden>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <li key={i} className="cq-lb-skeleton-row flex items-center gap-3 p-3.5 rounded-xl">
+          <div className="w-9 h-7 rounded-md animate-pulse shrink-0" />
+          <div className="w-11 h-11 rounded-xl animate-pulse shrink-0" />
           <div className="flex-1 space-y-2 min-w-0">
-            <div className="h-4 w-36 max-w-full rounded bg-slate-100 animate-pulse" />
-            <div className="h-3 w-28 max-w-full rounded bg-slate-100 animate-pulse" />
+            <div className="h-4 w-36 max-w-full rounded animate-pulse" />
+            <div className="h-3 w-24 max-w-full rounded animate-pulse" />
           </div>
-          <div className="space-y-2 text-right shrink-0 w-14">
-            <div className="h-4 w-full rounded bg-slate-100 animate-pulse ml-auto" />
-            <div className="h-3 w-full rounded bg-slate-100 animate-pulse ml-auto" />
+          <div className="space-y-2 text-right shrink-0 w-16">
+            <div className="h-4 w-full rounded animate-pulse ml-auto" />
+            <div className="h-3 w-full rounded animate-pulse ml-auto" />
           </div>
         </li>
       ))}
@@ -789,13 +980,8 @@ function XpLeaderboardSkeleton() {
   );
 }
 
-const RANK_GLOW = {
-  1: "ring-2 ring-amber-300 shadow-[0_0_26px_rgba(251,191,36,0.55),0_0_14px_rgba(245,158,11,0.4)] border-amber-400/80 bg-gradient-to-br from-amber-400/20 to-amber-600/10",
-  2: "ring-2 ring-slate-200 shadow-[0_0_24px_rgba(226,232,240,0.6),0_0_12px_rgba(203,213,225,0.5)] border-slate-300/80 bg-gradient-to-br from-slate-400/15 to-slate-500/10",
-  3: "ring-2 ring-amber-600 shadow-[0_0_24px_rgba(217,119,6,0.5),0_0_12px_rgba(180,83,9,0.4)] border-amber-600/70 bg-gradient-to-br from-amber-700/15 to-amber-800/10",
-} as const;
-
 function LeaderboardRow({
+  userId,
   rank,
   name,
   username,
@@ -808,7 +994,9 @@ function LeaderboardRow({
   statValue,
   statLabel,
   actions,
+  onViewProfile,
 }: {
+  userId: string;
   rank: number;
   name: string;
   username: string;
@@ -821,45 +1009,138 @@ function LeaderboardRow({
   statValue?: number;
   statLabel?: string;
   actions?: React.ReactNode;
+  onViewProfile?: (userId: string) => void;
 }) {
-  const rankStyle = rank === 1 ? "font-bold text-amber-300 drop-shadow-[0_0_10px_rgba(251,191,36,0.9)]" : rank === 2 ? "font-bold text-cq-muted" : rank === 3 ? "font-bold text-amber-600 drop-shadow-[0_0_10px_rgba(217,119,6,0.8)]" : "text-cq-muted font-mono";
-  const podiumGlow = rank <= 3 ? RANK_GLOW[rank as 1 | 2 | 3] : "";
-  return (
-    <li
-      className={`cq-leaderboard-row flex items-center gap-2.5 sm:gap-3 p-3 rounded-xl border transition-colors hover:bg-slate-100 ${
-        rank <= 3 ? podiumGlow : isCurrentUser ? "bg-cq-elevated border-cq-border border-l-[3px] border-l-uri-keaney" : "bg-cq-card border-cq-border"
-      }`}
-    >
-      <span className={`cq-rank-badge w-8 text-center text-sm ${rankStyle}`}>#{rank}</span>
-      <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 border border-cq-border overflow-hidden">
-        <AvatarDisplay avatar={avatar} size={36} />
+  const rowClass = `cq-leaderboard-row cq-lb-row ${isCurrentUser ? "cq-lb-row--you" : ""}`;
+  const inner = (
+    <>
+      <RankBadge rank={rank} />
+      <span className="cq-lb-row-avatar">
+        <AvatarDisplay avatar={avatar} size={40} />
       </span>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-cq-foreground truncate flex items-center gap-1.5">
+      <div className="flex-1 min-w-0 text-left">
+        <p className="font-medium text-white truncate">
           {name}
-          {isCurrentUser && <span className="text-xs text-uri-keaney font-normal">(you)</span>}
+          {isCurrentUser ? <span className="text-xs text-uri-keaney font-normal ml-1.5">(you)</span> : null}
         </p>
-        <p className="text-xs text-cq-muted truncate">@{username}</p>
+        <p className="text-xs text-white/50 truncate">@{username}</p>
         {showcaseCharacter ? <AchievementShowcaseStrip character={showcaseCharacter} compact /> : null}
-        {actions != null && <div className="mt-1.5 sm:hidden">{actions}</div>}
+        {actions != null ? <div className="mt-1.5 sm:hidden">{actions}</div> : null}
       </div>
-      <div className="flex-shrink-0 text-right min-w-[5.5rem] sm:min-w-[6rem]">
+      <div className="flex-shrink-0 text-right min-w-[5.25rem]">
+        <span className="cq-lb-level-badge inline-block mb-1">Lv.{level}</span>
         {sortBy !== "level" && statLabel != null && statValue != null ? (
           <>
-            <p className="text-lg font-bold text-cq-foreground tabular-nums leading-none">{statValue.toLocaleString()}</p>
-            <p className="text-[10px] font-semibold text-uri-keaney/95 mt-1 leading-tight">{statLabel}</p>
-            <p className="text-[10px] text-cq-muted mt-1">
-              Lv.{level} · {totalXP.toLocaleString()} XP
-            </p>
+            <p className="text-sm font-bold text-white tabular-nums leading-none">{statValue.toLocaleString()}</p>
+            <p className="text-[10px] text-uri-keaney mt-0.5">{statLabel}</p>
+            <p className="text-[10px] text-white/45 mt-1 tabular-nums">{totalXP.toLocaleString()} XP</p>
           </>
         ) : (
-          <>
-            <p className="text-uri-keaney font-semibold">Lv.{level}</p>
-            <p className="text-xs text-cq-muted font-mono">{totalXP.toLocaleString()} XP</p>
-          </>
+          <p className="text-sm font-semibold text-uri-keaney tabular-nums">{totalXP.toLocaleString()} XP</p>
         )}
       </div>
-      {actions != null && <div className="flex-shrink-0 hidden sm:block">{actions}</div>}
-    </li>
+      {actions != null ? <div className="flex-shrink-0 hidden sm:block">{actions}</div> : null}
+    </>
+  );
+
+  if (onViewProfile) {
+    return (
+      <li>
+        <button
+          type="button"
+          onClick={() => onViewProfile(userId)}
+          className={`${rowClass} w-full flex items-center gap-3 p-3.5 min-h-[72px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-uri-keaney/60`}
+          aria-label={`Rank ${rank}, ${name}, level ${level}, ${totalXP.toLocaleString()} XP`}
+        >
+          {inner}
+        </button>
+      </li>
+    );
+  }
+
+  return <li className={`${rowClass} flex items-center gap-3 p-3.5 min-h-[72px]`}>{inner}</li>;
+}
+
+function LeaderboardStatFilterScroll({
+  sortBy,
+  onSortByChange,
+  options,
+}: {
+  sortBy: SortBy;
+  onSortByChange: (value: SortBy) => void;
+  options: { value: SortBy; label: string }[];
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [edgeFade, setEdgeFade] = useState({ left: false, right: false });
+
+  const updateEdgeFade = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    setEdgeFade({
+      left: el.scrollLeft > 6,
+      right: maxScroll > 6 && el.scrollLeft < maxScroll - 6,
+    });
+  }, []);
+
+  useEffect(() => {
+    updateEdgeFade();
+    const el = scrollRef.current;
+    if (!el) return undefined;
+
+    el.addEventListener("scroll", updateEdgeFade, { passive: true });
+    const observer = new ResizeObserver(updateEdgeFade);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", updateEdgeFade);
+      observer.disconnect();
+    };
+  }, [updateEdgeFade, options.length, sortBy]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const active = el.querySelector<HTMLElement>('[aria-selected="true"]');
+    const smooth =
+      typeof window !== "undefined" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    active?.scrollIntoView({ behavior: smooth ? "smooth" : "auto", inline: "nearest", block: "nearest" });
+  }, [sortBy]);
+
+  const chips: { value: SortBy; label: string }[] = [{ value: "level", label: "Level" }, ...options];
+
+  return (
+    <div
+      className="cq-lb-stat-scroll-wrap leaderboard-filter-row filter-scroll"
+      data-no-drawer-swipe="true"
+      data-horizontal-scroll="true"
+      data-cq-horizontal-scroll="true"
+      data-cq-gesture-block="all"
+    >
+      <div
+        className={`cq-lb-stat-scroll-fade cq-lb-stat-scroll-fade--left ${edgeFade.left ? "is-visible" : ""}`}
+        aria-hidden
+      />
+      <div
+        className={`cq-lb-stat-scroll-fade cq-lb-stat-scroll-fade--right ${edgeFade.right ? "is-visible" : ""}`}
+        aria-hidden
+      />
+      <div ref={scrollRef} className="cq-lb-stat-scroll" role="tablist" aria-label="Sort by stat">
+        {chips.map((chip) => {
+          const active = sortBy === chip.value;
+          return (
+            <button
+              key={chip.value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onSortByChange(chip.value)}
+              className={`cq-lb-stat-chip ${active ? "cq-lb-stat-chip--active" : ""}`}
+            >
+              {chip.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

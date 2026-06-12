@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { Character, FieldNote } from "@/lib/types";
 import { getCommentsByNoteId } from "@/lib/feedStore";
 import { getActivityLogs } from "@/lib/store";
@@ -12,11 +12,18 @@ import { ProfilePostDetail } from "./ProfilePostDetail";
 import { ProfileCollectiblesTab } from "./ProfileCollectiblesTab";
 import { ProfileActivityTab } from "./ProfileActivityTab";
 import { ProfileOwnerMenu } from "./ProfileOwnerMenu";
+import { ProfileLockedPanel } from "./ProfileLockedPanel";
+import { ConnectionActionButton } from "@/components/ConnectionActionButton";
+import type { ProfileRelationshipStatus } from "@/lib/client/userProfileViewClient";
 
 export function ProfileSocialPage({
   character,
   viewer,
   isOwner,
+  canViewPrivateContent = true,
+  relationshipStatus,
+  mutualFriendsCount = 0,
+  postCount,
   posts,
   postsLoading,
   friendsCount,
@@ -28,6 +35,9 @@ export function ProfileSocialPage({
   onLogout,
   onFriendsPress,
   onBack,
+  onConnectionChange,
+  onOpenMessage,
+  guildLabel,
   onNod,
   onHype,
   onVerify,
@@ -41,6 +51,11 @@ export function ProfileSocialPage({
   character: Character;
   viewer: Pick<Character, "id" | "name" | "username" | "avatar">;
   isOwner: boolean;
+  canViewPrivateContent?: boolean;
+  relationshipStatus?: ProfileRelationshipStatus;
+  mutualFriendsCount?: number;
+  postCount?: number;
+  guildLabel?: string | null;
   posts: FieldNote[];
   postsLoading: boolean;
   friendsCount: number;
@@ -52,6 +67,8 @@ export function ProfileSocialPage({
   onLogout?: () => void;
   onFriendsPress?: () => void;
   onBack?: () => void;
+  onConnectionChange?: () => void;
+  onOpenMessage?: () => void;
   onNod: (noteId: string) => void;
   onHype: (noteId: string) => void;
   onVerify: (noteId: string) => void;
@@ -65,9 +82,18 @@ export function ProfileSocialPage({
   const [tab, setTab] = useState<ProfileTab>("posts");
   const [selectedPost, setSelectedPost] = useState<FieldNote | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [connectionToast, setConnectionToast] = useState<string | null>(null);
 
-  const activitiesCount = getActivityLogs(character.id).length;
+  useEffect(() => {
+    if (!connectionToast) return undefined;
+    const tid = window.setTimeout(() => setConnectionToast(null), 2800);
+    return () => window.clearTimeout(tid);
+  }, [connectionToast]);
+
+  const activitiesCount = canViewPrivateContent ? getActivityLogs(character.id).length : 0;
   const activePost = selectedPost ? posts.find((p) => p.id === selectedPost.id) ?? selectedPost : null;
+  const locked = !isOwner && !canViewPrivateContent;
+  const displayPostCount = postCount ?? posts.length;
 
   return (
     <div className="cq-profile-social w-full">
@@ -86,44 +112,81 @@ export function ProfileSocialPage({
       <ProfileSocialHeader
         character={character}
         isOwner={isOwner}
+        guildLabel={guildLabel}
         onEditBio={isOwner ? onEditBio : undefined}
         onOpenMenu={isOwner && (onEditIdentity || onEditBio || onLogout) ? () => setMenuOpen(true) : undefined}
       />
 
+      {!isOwner ? (
+        <div className="border-b border-white/10 px-3 py-2.5">
+          <ConnectionActionButton
+            otherUserId={character.id}
+            otherUsername={character.username}
+            onMessage={onOpenMessage}
+            onToast={(message) => {
+              setConnectionToast(message);
+              onConnectionChange?.();
+            }}
+            onStateChange={onConnectionChange}
+          />
+          {connectionToast ? (
+            <p className="mt-2 text-xs text-cyan-100/85">{connectionToast}</p>
+          ) : null}
+        </div>
+      ) : null}
+
       <ProfileStatsRow
         items={[
+          { label: "Posts", value: displayPostCount },
           { label: "Level", value: character.level },
-          {
-            label: "Friends",
-            value: friendsCount,
-            loading: friendsLoading,
-            onClick: onFriendsPress,
-          },
-          {
-            label: "Following",
-            value: followingCount,
-            loading: followingLoading,
-          },
+          ...(canViewPrivateContent
+            ? [
+                {
+                  label: "Friends",
+                  value: friendsCount,
+                  loading: friendsLoading,
+                  onClick: onFriendsPress,
+                },
+                {
+                  label: "Following",
+                  value: followingCount,
+                  loading: followingLoading,
+                },
+              ]
+            : mutualFriendsCount > 0
+              ? [{ label: "Mutual", value: mutualFriendsCount }]
+              : []),
         ]}
       />
 
-      <p className="border-b border-white/10 px-3 py-2 text-center text-[11px] tabular-nums text-cq-subtle">
-        {activitiesCount.toLocaleString()} {activitiesCount === 1 ? "Activity" : "Activities"} Completed
-      </p>
+      {canViewPrivateContent ? (
+        <p className="border-b border-white/10 px-3 py-2 text-center text-[11px] tabular-nums text-cq-subtle">
+          {activitiesCount.toLocaleString()} {activitiesCount === 1 ? "Activity" : "Activities"} Completed
+        </p>
+      ) : null}
 
-      <ProfileTabNav active={tab} onChange={setTab} />
+      {locked ? (
+        <>
+          <ProfileTabNav active="posts" onChange={() => undefined} locked />
+          <ProfileLockedPanel mutualFriendsCount={mutualFriendsCount} />
+        </>
+      ) : (
+        <>
+          <ProfileTabNav active={tab} onChange={setTab} />
 
-      <div className="cq-profile-tab-panel pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]">
-        {reactionNotice && tab === "posts" ? (
-          <p className="border-b border-amber-400/30 bg-amber-500/15 px-4 py-2 text-sm text-amber-200">{reactionNotice}</p>
-        ) : null}
+          <div className="cq-profile-tab-panel pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]">
+            {reactionNotice && tab === "posts" ? (
+              <p className="border-b border-amber-400/30 bg-amber-500/15 px-4 py-2 text-sm text-amber-200">{reactionNotice}</p>
+            ) : null}
 
-        {tab === "posts" ? (
-          <ProfilePostsGrid posts={posts} loading={postsLoading} onSelectPost={setSelectedPost} />
-        ) : null}
-        {tab === "collectibles" ? <ProfileCollectiblesTab character={character} /> : null}
-        {tab === "activity" ? <ProfileActivityTab character={character} /> : null}
-      </div>
+            {tab === "posts" ? (
+              <ProfilePostsGrid posts={posts} loading={postsLoading} onSelectPost={setSelectedPost} />
+            ) : null}
+            {tab === "collectibles" ? <ProfileCollectiblesTab character={character} /> : null}
+            {tab === "activity" ? <ProfileActivityTab character={character} /> : null}
+          </div>
+        </>
+      )}
 
       {activePost ? (
         <ProfilePostDetail

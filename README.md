@@ -78,7 +78,7 @@ Never paste real bearer tokens, session cookies, refresh tokens, or service role
 
 - **Character** — Name, avatar, level, total XP, and five stats: Strength, Stamina, Knowledge, Social, Focus.
 - **Log it** — Tap activities (gym, study, club, deep focus, run, exam prep, group study, meditate) to earn XP and stat gains.
-- **The Quad** — Social feed: post Field Notes with #rammarks, nod and rally on others’ posts.
+- **The Quad** — Social feed: post on campus with #rammarks, nod and rally on others’ posts.
 - **Daily quests** — Complete activities to finish quests and claim bonus XP.
 - **Boss battles** — Midterms, finals, and group projects with due dates and XP on defeat.
 - **Streaks** — Log at least one activity per day to keep your streak.

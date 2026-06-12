@@ -9,10 +9,10 @@ import {
   fetchOutgoingConnectionRequests,
   formatRequestSentAt,
   respondToConnectionRequest,
-  sendConnectionRequest,
   type ConnectionItem,
   type ConnectionRequestItem,
 } from "@/lib/client/socialConnectionsClient";
+import { requestConnection } from "@/lib/client/connectionRequestActions";
 import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 import {
   getRecommendedGuilds,
@@ -35,10 +35,12 @@ export function FindFriends({
   character,
   onRefresh,
   onOpenDm,
+  onViewProfile,
 }: {
   character: Character;
   onRefresh?: () => void;
   onOpenDm?: (other: { userId: string; username: string; name: string; avatar: string }) => void;
+  onViewProfile?: (userId: string) => void;
 }) {
   const [usernameInput, setUsernameInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
@@ -93,16 +95,25 @@ export function FindFriends({
   async function handleSendRequest(e: React.FormEvent) {
     e.preventDefault();
     setSendError(null);
+    const targetUsername = usernameInput.trim().toLowerCase();
+    if (!targetUsername) {
+      setSendError("Enter a username.");
+      return;
+    }
     setSendingRequest(true);
     try {
-      const targetUsername = usernameInput.trim().toLowerCase();
-      await sendConnectionRequest(targetUsername);
+      const outcome = await requestConnection({
+        username: targetUsername,
+        connections,
+        outgoing,
+      });
       setUsernameInput("");
-      setActionToast(`Follow request sent to @${targetUsername}`);
+      setActionToast(outcome.toastMessage);
       await refreshSocial();
       emitSocialSync({ source: "friends" });
     } catch (requestError) {
-      setSendError(requestError instanceof Error ? requestError.message : "Could not send request.");
+      const message = requestError instanceof Error ? requestError.message : "Could not send request.";
+      setSendError(message.replace(/^Backend request failed:[^.]*\.\s*/i, ""));
     } finally {
       setSendingRequest(false);
     }
@@ -229,12 +240,43 @@ export function FindFriends({
                 key={req.requestId}
                 className="flex items-start gap-3 p-3 rounded-xl bg-cq-elevated border border-cq-border border-l-[3px] border-l-uri-keaney"
               >
-                <div className="w-12 h-12 rounded-xl bg-cq-card flex items-center justify-center border border-cq-border flex-shrink-0 overflow-hidden">
-                  <AvatarDisplay avatar={avatarFromConnectionProfile(req)} size={48} />
-                </div>
+                {onViewProfile ? (
+                  <button
+                    type="button"
+                    onClick={() => onViewProfile(req.userId)}
+                    className="w-12 h-12 rounded-xl bg-cq-card flex items-center justify-center border border-cq-border flex-shrink-0 overflow-hidden touch-manipulation transition hover:opacity-90"
+                    aria-label={`View ${req.displayName}'s profile`}
+                  >
+                    <AvatarDisplay avatar={avatarFromConnectionProfile(req)} size={48} />
+                  </button>
+                ) : (
+                  <div className="w-12 h-12 rounded-xl bg-cq-card flex items-center justify-center border border-cq-border flex-shrink-0 overflow-hidden">
+                    <AvatarDisplay avatar={avatarFromConnectionProfile(req)} size={48} />
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-cq-foreground truncate">{req.displayName}</p>
-                  <p className="text-sm text-uri-keaney/90">@{req.username}</p>
+                  {onViewProfile ? (
+                    <button
+                      type="button"
+                      onClick={() => onViewProfile(req.userId)}
+                      className="text-left font-medium text-cq-foreground truncate transition hover:text-uri-keaney"
+                    >
+                      {req.displayName}
+                    </button>
+                  ) : (
+                    <p className="font-medium text-cq-foreground truncate">{req.displayName}</p>
+                  )}
+                  {onViewProfile ? (
+                    <button
+                      type="button"
+                      onClick={() => onViewProfile(req.userId)}
+                      className="text-left text-sm text-uri-keaney/90 transition hover:text-uri-keaney"
+                    >
+                      @{req.username}
+                    </button>
+                  ) : (
+                    <p className="text-sm text-uri-keaney/90">@{req.username}</p>
+                  )}
                   {typeof req.mutualFriendsCount === "number" && req.mutualFriendsCount > 0 ? (
                     <p className="text-xs text-cq-muted mt-0.5">
                       {req.mutualFriendsCount} mutual connection{req.mutualFriendsCount === 1 ? "" : "s"}
@@ -446,6 +488,7 @@ export function FindFriends({
                 key={friend.userId}
                 friend={friend}
                 onMessage={onOpenDm ? () => onOpenDm({ userId: friend.userId, username: friend.username, name: friend.name, avatar: friend.avatar }) : undefined}
+                onViewProfile={onViewProfile}
               />
             ))}
           </ul>
@@ -476,22 +519,55 @@ export function FindFriends({
 function FriendCard({
   friend,
   onMessage,
+  onViewProfile,
 }: {
   friend: Friend;
   onMessage?: () => void;
+  onViewProfile?: (userId: string) => void;
 }) {
   return (
     <li className="p-4 rounded-xl bg-cq-card border border-cq-border">
       <div className="flex items-start gap-3">
-        <div className="w-14 h-14 rounded-xl bg-cq-elevated flex items-center justify-center border border-cq-border flex-shrink-0 overflow-hidden">
-          <AvatarDisplay avatar={friend.avatar} size={56} />
-        </div>
+        {onViewProfile ? (
+          <button
+            type="button"
+            onClick={() => onViewProfile(friend.userId)}
+            className="w-14 h-14 rounded-xl bg-cq-elevated flex items-center justify-center border border-cq-border flex-shrink-0 overflow-hidden touch-manipulation transition hover:opacity-90"
+            aria-label={`View ${friend.name}'s profile`}
+          >
+            <AvatarDisplay avatar={friend.avatar} size={56} />
+          </button>
+        ) : (
+          <div className="w-14 h-14 rounded-xl bg-cq-elevated flex items-center justify-center border border-cq-border flex-shrink-0 overflow-hidden">
+            <AvatarDisplay avatar={friend.avatar} size={56} />
+          </div>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-semibold text-cq-foreground truncate">{friend.name}</p>
+            {onViewProfile ? (
+              <button
+                type="button"
+                onClick={() => onViewProfile(friend.userId)}
+                className="font-semibold text-cq-foreground truncate transition hover:text-uri-keaney"
+              >
+                {friend.name}
+              </button>
+            ) : (
+              <p className="font-semibold text-cq-foreground truncate">{friend.name}</p>
+            )}
             <span className="text-xs font-medium text-uri-keaney/90 px-2 py-0.5 rounded bg-uri-keaney/15 border border-uri-keaney/30">Following</span>
           </div>
-          <p className="text-sm text-uri-keaney/90">@{friend.username}</p>
+          {onViewProfile ? (
+            <button
+              type="button"
+              onClick={() => onViewProfile(friend.userId)}
+              className="text-left text-sm text-uri-keaney/90 transition hover:text-uri-keaney"
+            >
+              @{friend.username}
+            </button>
+          ) : (
+            <p className="text-sm text-uri-keaney/90">@{friend.username}</p>
+          )}
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <span className="text-uri-keaney font-mono text-sm font-semibold bg-uri-keaney/15 px-1.5 py-0.5 rounded">
               Lv.{friend.level}

@@ -18,7 +18,7 @@ export function RealmCampusMomentsCarousel({
     return (
       <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-10 text-center">
         <p className="text-sm leading-relaxed text-slate-500">
-          No active Moments here yet. Post a public Field Note with this location to add one for 24 hours.
+          No active Moments here yet. Post publicly with this location to add one for 24 hours.
         </p>
       </div>
     );
@@ -35,7 +35,7 @@ export function RealmCampusMomentsCarousel({
   return (
     <div className="space-y-3">
       <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="realm-moments-stack relative mx-auto max-w-sm">
+        <div className="realm-moments-stack relative mx-auto max-w-sm" data-cq-gesture-block="swipe-tab">
           {moments.slice(index + 1, index + 3).reverse().map((m, i) => (
             <div
               key={m.id}

@@ -85,4 +85,15 @@ describe("resolveUrinvolvedEventLocation", () => {
 
     expect(resolved.locationMatch).toBeNull();
   });
+
+  it("matches coordinates from a known URI address", () => {
+    const resolved = resolveUrinvolvedEventLocation({
+      venueName: null,
+      address: "50 Lower College Rd, Kingston, RI 02881",
+    });
+
+    expect(resolved.matchedBy).toBe("location_name");
+    expect(resolved.locationMatch?.realmLocationId).toBe("memorial-union");
+    expect(resolved.mapPinAvailable).toBe(true);
+  });
 });

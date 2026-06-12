@@ -6,6 +6,7 @@ describe("matchCampusLocation", () => {
     const match = matchCampusLocation("Memorial Union");
     expect(match).not.toBeNull();
     expect(match?.realmLocationId).toBe("memorial-union");
+    expect(match?.mapPinAvailable).toBe(true);
     expect(match?.latitude).toBeGreaterThan(41);
   });
 

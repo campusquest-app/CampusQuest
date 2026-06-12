@@ -7,7 +7,11 @@ import {
   fetchUrinvolvedEventsRss,
   stripHtmlToText,
 } from "@/lib/server/urinvolved/fetchSources";
-import { buildUrinvolvedAddressString, resolveUrinvolvedEventLocation } from "@/lib/server/urinvolved/eventLocation";
+import {
+  buildUrinvolvedAddressString,
+  classifyImportedEventLocation,
+  resolveUrinvolvedEventLocation,
+} from "@/lib/server/urinvolved/eventLocation";
 import { parseUrinvolvedEventsRss, type ParsedUrinvolvedEvent } from "@/lib/server/urinvolved/parseRssEvents";
 
 export const URINVOLVED_SOURCE = "urinvolved";
@@ -266,6 +270,9 @@ export type UrinvolvedSyncStatus = {
   eventsWithAddressCount: number;
   eventsMissingLocationCount: number;
   eventsMatchedToMapCount: number;
+  eventsMatchedByAddressCount: number;
+  eventsMatchedByVenueOrNameCount: number;
+  eventsNotOnMapNoPinCount: number;
   lastError: string | null;
 };
 
@@ -320,6 +327,9 @@ export async function getUrinvolvedSyncStatus(): Promise<UrinvolvedSyncStatus> {
   let eventsWithAddressCount = 0;
   let eventsMissingLocationCount = 0;
   let eventsMatchedToMapCount = 0;
+  let eventsMatchedByAddressCount = 0;
+  let eventsMatchedByVenueOrNameCount = 0;
+  let eventsNotOnMapNoPinCount = 0;
 
   for (const event of activeEvents ?? []) {
     const venue = typeof event.venue_name === "string" ? event.venue_name.trim() : "";
@@ -328,11 +338,30 @@ export async function getUrinvolvedSyncStatus(): Promise<UrinvolvedSyncStatus> {
 
     if (venue) eventsWithVenueCount += 1;
     if (address) eventsWithAddressCount += 1;
-    if (!venue && !address && (!locationName || locationName === "Location TBA")) {
+
+    const classification = classifyImportedEventLocation({
+      venueName: venue || null,
+      address: address || null,
+      locationName: locationName || null,
+      latitude: event.latitude,
+      longitude: event.longitude,
+    });
+
+    if (classification.missingLocation) {
       eventsMissingLocationCount += 1;
     }
-    if (event.latitude != null && event.longitude != null) {
+    if (classification.onMap) {
       eventsMatchedToMapCount += 1;
+    }
+    if (classification.matchedBy === "venue") {
+      eventsMatchedByVenueOrNameCount += 1;
+    } else if (classification.aliasMatched && address) {
+      eventsMatchedByAddressCount += 1;
+    } else if (classification.aliasMatched) {
+      eventsMatchedByVenueOrNameCount += 1;
+    }
+    if (classification.matchedWithoutMapPin) {
+      eventsNotOnMapNoPinCount += 1;
     }
   }
 
@@ -347,6 +376,9 @@ export async function getUrinvolvedSyncStatus(): Promise<UrinvolvedSyncStatus> {
     eventsWithAddressCount,
     eventsMissingLocationCount,
     eventsMatchedToMapCount,
+    eventsMatchedByAddressCount,
+    eventsMatchedByVenueOrNameCount,
+    eventsNotOnMapNoPinCount,
     lastError: lastFailed?.error_message ?? null,
   };
 }

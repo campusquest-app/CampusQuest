@@ -448,7 +448,10 @@ function CustomAvatarSvg({
   const faceEl = faceElements[faceId] ?? faceElements.smile;
 
   const portraitCrop = portraitSize <= 96;
-  const viewBox = portraitCrop ? `${cx - 46} 0 92 94` : `0 0 ${w} ${h}`;
+  const portraitPadTop = 10;
+  const viewBox = portraitCrop
+    ? `${cx - 46} ${-portraitPadTop} 92 ${94 + portraitPadTop}`
+    : `0 0 ${w} ${h}`;
 
   return (
     <svg
@@ -537,7 +540,18 @@ function DiceBearAvatarSvg({ data }: { data: DiceBearAvatarV2 }) {
 }
 
 function avatarFramePadding(size: number): number {
-  return Math.max(1, Math.round(size * 0.04));
+  return Math.max(2, Math.round(size * 0.065));
+}
+
+function propBadgeSize(size: number): number {
+  return Math.max(12, Math.min(30, Math.round(size * 0.3)));
+}
+
+function propBadgeOffset(size: number): { right: number; bottom: number } {
+  return {
+    right: -4,
+    bottom: Math.max(6, Math.round(size * 0.09)),
+  };
 }
 
 function isAvatarImageUrl(value: string): boolean {
@@ -557,11 +571,18 @@ function AvatarFrame({
   children: ReactNode;
   propIcon?: string | null;
 }) {
-  const pad = avatarFramePadding(fitParent ? 96 : size);
-  const frameStyle: React.CSSProperties = fitParent
-    ? { width: "100%", height: "100%" }
-    : { width: size, height: size };
-  const badgeSize = fitParent ? 26 : Math.max(14, size * 0.32);
+  const effectiveSize = size;
+  const pad = avatarFramePadding(effectiveSize);
+  const badgeSize = propBadgeSize(effectiveSize);
+  const badgeOffset = propBadgeOffset(effectiveSize);
+  const frameStyle: React.CSSProperties = {
+    width: effectiveSize,
+    height: effectiveSize,
+    minWidth: effectiveSize,
+    minHeight: effectiveSize,
+    aspectRatio: "1 / 1",
+    ...(fitParent ? { maxWidth: "100%", maxHeight: "100%" } : {}),
+  };
 
   return (
     <span className={`avatar-display-frame ${className}`.trim()} style={frameStyle}>
@@ -570,11 +591,20 @@ function AvatarFrame({
       </span>
       {propIcon ? (
         <span
-          className="absolute bottom-0 right-0 flex items-center justify-center rounded-full border border-uri-gold/50 bg-uri-navy/90 text-white shadow"
-          style={{ width: badgeSize, height: badgeSize, fontSize: badgeSize * 0.62 }}
+          className="avatar-display-prop-badge"
+          style={{
+            width: badgeSize,
+            height: badgeSize,
+            minWidth: badgeSize,
+            minHeight: badgeSize,
+            right: badgeOffset.right,
+            bottom: badgeOffset.bottom,
+            fontSize: 18,
+            lineHeight: 1,
+          }}
           aria-hidden
         >
-          {propIcon}
+          <span className="avatar-display-prop-badge__icon">{propIcon}</span>
         </span>
       ) : null}
     </span>
@@ -608,7 +638,7 @@ export function AvatarDisplay({
 }) {
   const propIcon = showProp ? getPropIcon(classId, starterWeapon) : null;
   const parsed = parseAvatar(avatar);
-  const customRenderSize = fitParent ? 128 : Math.max(32, size);
+  const customRenderSize = Math.max(32, size);
 
   if (parsed && isDiceBearAvatarPayload(parsed)) {
     return (
@@ -639,7 +669,7 @@ export function AvatarDisplay({
     <AvatarFrame size={size} fitParent={fitParent} className={className} propIcon={propIcon}>
       <span
         className="flex h-full w-full items-center justify-center leading-none"
-        style={{ fontSize: Math.max(12, Math.round((fitParent ? 96 : size) * 0.46)) }}
+        style={{ fontSize: Math.max(12, Math.round(size * 0.46)) }}
         aria-hidden
       >
         {emoji}

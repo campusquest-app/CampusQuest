@@ -6,6 +6,7 @@ import { getFriends } from "./friendsStore";
 import { addXpToCharacter, bumpQuadAssistForAuthor, getGuildIdsForCharacter } from "./store";
 import { recordGuildWeeklyRace } from "./guildWeeklyRace";
 import { FIELD_NOTE_MAX_CHARS, RAMMARK_MAX_LENGTH, RAMMARK_MAX_PER_POST, QUAD_COMMENT_MAX_CHARS } from "./types";
+import { isPersistedQuadPostId } from "./quadFieldNote";
 
 let feed: FieldNote[] = [];
 let comments: QuadComment[] = [];
@@ -709,14 +710,33 @@ export interface AddCommentParams {
   body: string;
 }
 
-export function addComment(noteId: string, params: AddCommentParams): QuadComment | null {
+export function setCommentsForNote(noteId: string, incoming: QuadComment[]): void {
+  comments = comments.filter((c) => c.noteId !== noteId).concat(incoming);
+}
+
+export function replaceComment(noteId: string, optimisticId: string, saved: QuadComment): void {
+  const idx = comments.findIndex((c) => c.id === optimisticId && c.noteId === noteId);
+  if (idx >= 0) {
+    comments[idx] = saved;
+    return;
+  }
+  if (!comments.some((c) => c.id === saved.id)) {
+    comments.push(saved);
+  }
+}
+
+export function removeCommentById(commentId: string): void {
+  comments = comments.filter((c) => c.id !== commentId);
+}
+
+export function addCommentWithId(noteId: string, params: AddCommentParams, commentId: string): QuadComment | null {
   const body = params.body.trim().slice(0, QUAD_COMMENT_MAX_CHARS);
   if (!body) return null;
   const note = getNoteForMutation(noteId);
-  if (!note) return null;
+  if (!note && !isPersistedQuadPostId(noteId)) return null;
 
   const comment: QuadComment = {
-    id: `qc-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    id: commentId,
     noteId,
     authorId: params.authorId,
     authorName: params.authorName,
@@ -727,6 +747,10 @@ export function addComment(noteId: string, params: AddCommentParams): QuadCommen
   };
   comments.push(comment);
   return comment;
+}
+
+export function addComment(noteId: string, params: AddCommentParams): QuadComment | null {
+  return addCommentWithId(noteId, params, `qc-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`);
 }
 
 export { SEED_FIELD_NOTES };

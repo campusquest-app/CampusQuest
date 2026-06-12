@@ -42,6 +42,12 @@ import { getActivityById } from "@/lib/activities";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { isGameMusicMuted, playXpDing, playLevelUpFanfare, setGameMusicMuted } from "@/lib/playGameSound";
 import { recordUserActivityPing } from "@/lib/client/recordUserActivity";
+import {
+  evaluateXpMilestoneCrossing,
+  fetchXpMilestoneStatus,
+  markXpMilestonePopupShown,
+  type XpMilestoneStatus,
+} from "@/lib/client/xpMilestones";
 import { unlockRewardAudioSilently } from "@/lib/client/xpCelebration";
 import { logRewardFlow } from "@/lib/client/xpAnimationDebug";
 import { unlockMobileForgeAudio } from "@/lib/client/xpCelebration";
@@ -74,7 +80,14 @@ import {
 } from "@/lib/client/meSessionCache";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { subscribeSocialSync } from "@/lib/client/socialSync";
-import { fetchFriendCharacter } from "@/lib/client/friendProfileClient";
+import {
+  fetchUserProfileView,
+  buildCharacterFromProfileView,
+  mapProfileViewPosts,
+  type UserProfileViewPayload,
+} from "@/lib/client/userProfileViewClient";
+import { mergeRemoteQuadPostsForMutations } from "@/lib/feedStore";
+import type { FieldNote } from "@/lib/types";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { clearSchoolVerificationSnapshot, peekSchoolVerificationSnapshot } from "@/lib/client/schoolVerificationCache";
 import {
@@ -99,7 +112,12 @@ import { TopNav } from "@/components/TopNav";
 import { AppSideDrawer, type AppDrawerDestination } from "@/components/AppSideDrawer";
 import type { SettingsActionId } from "@/components/AppSettingsPanel";
 import { AppBottomNav, type AppBottomNavTab } from "@/components/AppBottomNav";
+import { MobileGestureLayerProvider } from "@/components/mobile/MobileGestureLayerProvider";
+import { DashboardTabSwipeShell } from "@/components/mobile/DashboardTabSwipeShell";
+import { type SwipeNavDirection } from "@/lib/client/mobileGestures";
+import { useDrawerSwipeGestures } from "@/lib/client/useDrawerSwipeGestures";
 import { useScrollChrome } from "@/lib/client/useScrollChrome";
+import { LogoutConfirmModal } from "@/components/LogoutConfirmModal";
 
 /** Load camera + CQ Scanner bundle only after the player taps CQ Scan (avoid mount/worker on cold start). */
 const QRScannerModalLazy = dynamic(
@@ -160,7 +178,11 @@ export function Dashboard() {
   useScrollChrome(tab === "quad" && character != null);
   const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
   const [characterPane, setCharacterPane] = useState<CharacterPane>("sheet");
+  const [tabEnterDirection, setTabEnterDirection] = useState<SwipeNavDirection | null>(null);
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [logoutConfirmError, setLogoutConfirmError] = useState<string | null>(null);
   const [drawerSubPanel, setDrawerSubPanel] = useState<"menu" | "settings" | "help">("menu");
   const [gainToast, setGainToast] = useState<null | {
     xp: number;
@@ -176,13 +198,20 @@ export function Dashboard() {
   const [bossVictoryExiting, setBossVictoryExiting] = useState(false);
   const bossVictoryTimerRef = useRef<number | null>(null);
   const bossChestSequenceTimersRef = useRef<number[]>([]);
-  const [showLevel3Popup, setShowLevel3Popup] = useState(false);
+  const [pendingMilestonePopup, setPendingMilestonePopup] = useState<XpMilestoneStatus | null>(null);
   const [xpGainSession, setXpGainSession] = useState<ActivityXPGainSession | null>(null);
   const qrXpHandoffLockRef = useRef(false);
   const [dmWithOther, setDmWithOther] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
-  const [friendView, setFriendView] = useState<Character | null>(null);
+  const [friendView, setFriendView] = useState<{
+    payload: UserProfileViewPayload;
+    character: Character;
+    posts: FieldNote[];
+  } | null>(null);
   const [friendViewLoading, setFriendViewLoading] = useState(false);
   const [friendViewError, setFriendViewError] = useState<string | null>(null);
+  const friendViewReturnTabRef = useRef<Tab>("quad");
+  const tabRef = useRef<Tab>(tab);
+  const friendViewUserIdRef = useRef<string | null>(null);
   const [screenShake, setScreenShake] = useState(false);
   const [levelUpModal, setLevelUpModal] = useState<number | null>(null);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
@@ -216,6 +245,7 @@ export function Dashboard() {
   const schoolVerificationLastHttpRef = useRef<number | null>(null);
   /** Dev-only: prevents double-reset from React strict mode duplicate effects. */
   const onboardingQcResetRanRef = useRef(false);
+  const dismissedMilestoneKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const t = searchParams.get("tab");
@@ -224,7 +254,24 @@ export function Dashboard() {
     }
   }, [searchParams]);
 
-  const XP300_POPUP_KEY = "campusquest_300xp_celebrated";
+  const showMilestonePopupIfNeeded = useCallback((popup: XpMilestoneStatus | null | undefined) => {
+    if (!popup || dismissedMilestoneKeysRef.current.has(popup.key)) return;
+    setPendingMilestonePopup(popup);
+  }, []);
+
+  const syncMilestonePopupAfterXp = useCallback(async (previousTotalXp: number, currentTotalXp: number) => {
+    if (currentTotalXp <= previousTotalXp) return;
+    try {
+      const snapshot = await evaluateXpMilestoneCrossing(previousTotalXp, currentTotalXp);
+      const popup =
+        snapshot.pendingPopups.find((milestone) => snapshot.newlyUnlocked.includes(milestone.key)) ??
+        snapshot.pendingPopups[0] ??
+        null;
+      showMilestonePopupIfNeeded(popup);
+    } catch {
+      // Milestone popups must not block XP flows.
+    }
+  }, [showMilestonePopupIfNeeded]);
 
   const pilotCampusFeaturesUnlocked = useCallback((snapshot: MeSchoolVerificationResponse) => {
     if (snapshot.moderationAdminAccess) return true;
@@ -305,9 +352,24 @@ export function Dashboard() {
     setCharacter(getCharacter());
   }, []);
 
+  useEffect(() => {
+    tabRef.current = tab;
+  }, [tab]);
+
+  useEffect(() => {
+    friendViewUserIdRef.current = friendView?.character.id ?? null;
+  }, [friendView?.character.id]);
+
+  const closeFriendView = useCallback(() => {
+    setFriendView(null);
+    setFriendViewError(null);
+    setTab(friendViewReturnTabRef.current);
+  }, []);
+
   const openFriendView = useCallback(async (userId: string) => {
     const current = getCharacter();
     if (!current) return;
+    friendViewReturnTabRef.current = tabRef.current;
     if (userId === current.id) {
       setFriendView(null);
       setFriendViewError(null);
@@ -320,13 +382,35 @@ export function Dashboard() {
     setTab("character");
     setCharacterPane("profile");
     try {
-      const friend = await fetchFriendCharacter(userId);
-      setFriendView(friend);
+      const payload = await fetchUserProfileView(userId);
+      const nextCharacter = buildCharacterFromProfileView(payload, current.id);
+      const posts = mapProfileViewPosts(payload, current.id);
+      if (payload.canViewPrivateContent) {
+        mergeRemoteQuadPostsForMutations(posts);
+      }
+      setFriendView({ payload, character: nextCharacter, posts });
     } catch (error) {
       setFriendView(null);
-      setFriendViewError(error instanceof Error ? error.message : "Could not load this friend's profile.");
+      setFriendViewError(error instanceof Error ? error.message : "Could not load this profile.");
     } finally {
       setFriendViewLoading(false);
+    }
+  }, []);
+
+  const reloadFriendView = useCallback(async () => {
+    const current = getCharacter();
+    const targetId = friendViewUserIdRef.current;
+    if (!current || !targetId) return;
+    try {
+      const payload = await fetchUserProfileView(targetId);
+      const nextCharacter = buildCharacterFromProfileView(payload, current.id);
+      const posts = mapProfileViewPosts(payload, current.id);
+      if (payload.canViewPrivateContent) {
+        mergeRemoteQuadPostsForMutations(posts);
+      }
+      setFriendView({ payload, character: nextCharacter, posts });
+    } catch {
+      /* keep current */
     }
   }, []);
 
@@ -399,6 +483,10 @@ export function Dashboard() {
         case "friends":
           setTab("friends");
           break;
+        case "quad":
+          setTab("quad");
+          setQuadFeedTab("public");
+          break;
         case "trending":
           setTab("quad");
           setQuadFeedTab("trending");
@@ -469,6 +557,57 @@ export function Dashboard() {
     tab === "quad" || tab === "realm" || tab === "leaderboards" || tab === "character"
       ? tab
       : "other";
+
+  const bottomNavSwipeActive: AppBottomNavTab | null = bottomNavActive === "other" ? null : bottomNavActive;
+
+  const tabSwipeGestureDisabled =
+    qrScannerOpen ||
+    sideMenuOpen ||
+    showLogoutConfirm ||
+    dmWithOther != null ||
+    levelUpModal != null ||
+    xpGainSession != null ||
+    friendView != null;
+
+  const handleBottomNavSwipe = useCallback(
+    (nextTab: AppBottomNavTab, direction: SwipeNavDirection) => {
+      setTabEnterDirection(direction);
+      setTab(nextTab);
+      if (nextTab === "quad") setQuadFeedTab("public");
+      if (nextTab === "character") setCharacterPane("profile");
+    },
+    [],
+  );
+
+  const openSideMenu = useCallback(() => {
+    setDrawerSubPanel("menu");
+    setSideMenuOpen(true);
+  }, []);
+
+  const closeSideMenu = useCallback(() => {
+    setSideMenuOpen(false);
+    setDrawerSubPanel("menu");
+  }, []);
+
+  const drawerSwipeDisabled =
+    qrScannerOpen ||
+    showLogoutConfirm ||
+    dmWithOther != null ||
+    levelUpModal != null ||
+    xpGainSession != null ||
+    friendView != null;
+
+  const {
+    drawerWidth,
+    drawerTranslateX,
+    isDraggingDrawer,
+    drawerOpenProgress,
+  } = useDrawerSwipeGestures({
+    open: sideMenuOpen,
+    onOpen: openSideMenu,
+    onClose: closeSideMenu,
+    disabled: drawerSwipeDisabled,
+  });
 
   const handleQrXpHandoff = useCallback((session: ActivityXPGainSession) => {
     if (qrXpHandoffLockRef.current && !adminQrUnlimited) {
@@ -611,6 +750,9 @@ export function Dashboard() {
       const ms = finished.modifierLines && finished.modifierLines.length > 2 ? 5200 : 3800;
       qrXpHandoffLockRef.current = false;
       setXpGainSession(null);
+      if (finished.beforeTotalXP < finished.afterTotalXP) {
+        void syncMilestonePopupAfterXp(finished.beforeTotalXP, finished.afterTotalXP);
+      }
       if (finished.pendingCharacter) {
         const current = getCharacter();
         if (current) {
@@ -648,7 +790,7 @@ export function Dashboard() {
       });
       window.setTimeout(() => setGainToast(null), ms);
     },
-    [navigateToQuad, refresh, refreshAuthoritativeProfileInBackground],
+    [navigateToQuad, refresh, refreshAuthoritativeProfileInBackground, syncMilestonePopupAfterXp],
   );
 
   const handleLogout = useCallback(async () => {
@@ -679,6 +821,33 @@ export function Dashboard() {
     setPilotCampusState({ status: "loading" });
     setBootstrapNonce((n) => n + 1);
   }, []);
+
+  const openLogoutConfirm = useCallback(() => {
+    setLogoutConfirmError(null);
+    setShowLogoutConfirm(true);
+  }, []);
+
+  const cancelLogoutConfirm = useCallback(() => {
+    if (isSigningOut) return;
+    setShowLogoutConfirm(false);
+    setIsSigningOut(false);
+    setLogoutConfirmError(null);
+  }, [isSigningOut]);
+
+  const confirmLogout = useCallback(async () => {
+    setLogoutConfirmError(null);
+    setIsSigningOut(true);
+    try {
+      await handleLogout();
+      setShowLogoutConfirm(false);
+      setSideMenuOpen(false);
+      setDrawerSubPanel("menu");
+    } catch (err) {
+      setLogoutConfirmError(err instanceof Error ? err.message : LOGOUT_BLOCKED_SAVE_MESSAGE);
+    } finally {
+      setIsSigningOut(false);
+    }
+  }, [handleLogout]);
 
   const handleSettingsAction = useCallback(
     (action: SettingsActionId) => {
@@ -712,14 +881,11 @@ export function Dashboard() {
             return next;
           });
           return;
-        case "sign-out":
-          void handleLogout();
-          break;
         default:
           break;
       }
     },
-    [handleLogout, openQrScanner],
+    [openQrScanner],
   );
 
   useEffect(() => {
@@ -1221,21 +1387,30 @@ export function Dashboard() {
   }, [tab, pilotCampusState, pilotCampusFeaturesUnlocked]);
 
   useEffect(() => {
-    if (!character || character.totalXP < 300) return;
-    try {
-      if (typeof window !== "undefined" && !localStorage.getItem(XP300_POPUP_KEY)) {
-        setShowLevel3Popup(true);
-      }
-    } catch {
-      setShowLevel3Popup(true);
-    }
-  }, [character?.id, character?.totalXP]);
+    if (bootstrapStatus !== "authenticated" || !character?.id || !isServerBackedUserId(character.id)) return;
+    let cancelled = false;
+    void fetchXpMilestoneStatus()
+      .then((status) => {
+        if (!cancelled) showMilestonePopupIfNeeded(status.pendingPopups[0]);
+      })
+      .catch(() => {
+        // Ignore milestone fetch failures on login.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrapStatus, character?.id, showMilestonePopupIfNeeded]);
 
-  function dismissLevel3Popup() {
+  async function dismissMilestonePopup() {
+    const milestone = pendingMilestonePopup;
+    setPendingMilestonePopup(null);
+    if (!milestone) return;
+    dismissedMilestoneKeysRef.current.add(milestone.key);
     try {
-      if (typeof window !== "undefined") localStorage.setItem(XP300_POPUP_KEY, "1");
-    } catch {}
-    setShowLevel3Popup(false);
+      await markXpMilestonePopupShown(milestone.key);
+    } catch {
+      // Popup already dismissed locally; server will retry on next login if needed.
+    }
   }
 
   function dismissBossVictory() {
@@ -1443,14 +1618,8 @@ export function Dashboard() {
       setBossChestPhase("idle");
       setBossDefeatPhase("teaser");
     }
-    if (before.totalXP < 300 && updated.totalXP >= 300) {
-      try {
-        if (typeof window !== "undefined" && !localStorage.getItem(XP300_POPUP_KEY)) {
-          setShowLevel3Popup(true);
-        }
-      } catch {
-        setShowLevel3Popup(true);
-      }
+    if (before.totalXP < updated.totalXP && isServerBackedUserId(updated.id)) {
+      void syncMilestonePopupAfterXp(before.totalXP, updated.totalXP);
     }
   }
 
@@ -1558,30 +1727,38 @@ export function Dashboard() {
   const characterTabFullBleed = tab === "character";
 
   return (
-    <>
+    <MobileGestureLayerProvider>
+      <div className="cq-app-shell min-h-[100dvh]">
       <TopNav
         username={character?.username ?? null}
         character={character}
-        onOpenMenu={() => {
-          setDrawerSubPanel("menu");
-          setSideMenuOpen(true);
-        }}
+        onOpenMenu={openSideMenu}
         onOpenInbox={() => setTab("inbox")}
         unreadNotificationCount={unreadNotificationCount}
       />
       <AppSideDrawer
         open={sideMenuOpen}
-        onClose={() => {
-          setSideMenuOpen(false);
-          setDrawerSubPanel("menu");
-        }}
+        onClose={closeSideMenu}
         character={character}
         onNavigate={handleDrawerNavigate}
         onSettingsAction={handleSettingsAction}
+        onRequestSignOut={openLogoutConfirm}
         initialPanel={drawerSubPanel}
         showAdminNav={moderationAdminNavVisible(pilotCampusState)}
         unreadNotificationCount={unreadNotificationCount}
         musicMuted={musicMuted}
+        activeContext={{ tab, quadFeedTab }}
+        drawerWidth={drawerWidth}
+        drawerTranslateX={drawerTranslateX}
+        isDraggingDrawer={isDraggingDrawer}
+        drawerOpenProgress={drawerOpenProgress}
+      />
+      <LogoutConfirmModal
+        open={showLogoutConfirm}
+        isSigningOut={isSigningOut}
+        error={logoutConfirmError}
+        onCancel={cancelLogoutConfirm}
+        onConfirm={() => void confirmLogout()}
       />
       <div className={screenShake ? "cq-screen-shake cq-dashboard-scroll-pad" : "cq-dashboard-scroll-pad"}>
         {character && beginnerJourneyHydration?.welcomeBackReminderEligible ? (
@@ -1819,9 +1996,9 @@ export function Dashboard() {
             document.body
           )}
 
-      {showLevel3Popup && character && typeof document !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="xp300-title">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={dismissLevel3Popup} aria-hidden />
+      {pendingMilestonePopup && character && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="xp-milestone-title">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => void dismissMilestonePopup()} aria-hidden />
           <div
             className="relative z-10 w-full max-w-sm rounded-3xl border-2 border-uri-gold/60 bg-uri-navy p-8 text-center level3-popup-enter level3-popup-glow"
             style={{
@@ -1830,14 +2007,14 @@ export function Dashboard() {
             }}
           >
             <div className="text-5xl mb-3" aria-hidden>🎉</div>
-            <p className="text-uri-gold font-bold text-2xl mb-1" id="xp300-title">300 XP!</p>
-            <p className="text-white font-semibold text-lg mb-2">Congratulations!</p>
-            <p className="text-white/80 text-sm mb-6">
-              You&apos;ve reached 300 total XP and unlocked <strong className="text-uri-keaney">Create Guild</strong>. Head to Find Friends to start or join a guild and earn bonus XP with other Rams.
+            <p className="text-uri-gold font-bold text-2xl mb-1" id="xp-milestone-title">
+              {pendingMilestonePopup.threshold} XP!
             </p>
+            <p className="text-white font-semibold text-lg mb-2">Congratulations!</p>
+            <p className="text-white/80 text-sm mb-6">{pendingMilestonePopup.description}</p>
             <button
               type="button"
-              onClick={dismissLevel3Popup}
+              onClick={() => void dismissMilestonePopup()}
               className="w-full py-3.5 rounded-xl bg-uri-keaney text-white font-bold text-sm hover:bg-uri-keaney/90 focus:outline-none focus:ring-2 focus:ring-uri-keaney focus:ring-offset-2 focus:ring-offset-uri-navy transition-colors shadow-lg"
             >
               Let&apos;s go!
@@ -1870,8 +2047,13 @@ export function Dashboard() {
         document.body
       )}
 
-      <div
-        key={tab}
+      <DashboardTabSwipeShell
+        activeTab={bottomNavSwipeActive}
+        tabKey={tab}
+        tabEnterDirection={tabEnterDirection}
+        onTabEnterDirectionDone={() => setTabEnterDirection(null)}
+        onTabChange={handleBottomNavSwipe}
+        disabled={tabSwipeGestureDisabled}
         className={`tab-content-enter cq-tab-shell ${tab === "quad" || characterTabFullBleed ? "w-full pb-0" : "space-y-6 sm:space-y-7 px-4 pb-8"}`}
       >
         {tab === "inbox" && character && renderPilotCampusGate(
@@ -1892,11 +2074,19 @@ export function Dashboard() {
             onRefresh={refresh}
             feedTab={quadFeedTab}
             onFeedTabChange={setQuadFeedTab}
+            onViewAuthor={(author) => void openFriendView(author.userId)}
           />
         )}
 
         {tab === "friends" &&
-          renderPilotCampusGate(<FindFriends character={character} onRefresh={refresh} onOpenDm={setDmWithOther} />)}
+          renderPilotCampusGate(
+            <FindFriends
+              character={character}
+              onRefresh={refresh}
+              onOpenDm={setDmWithOther}
+              onViewProfile={openFriendView}
+            />,
+          )}
 
         {tab === "events" &&
           renderPilotCampusGate(
@@ -1910,7 +2100,18 @@ export function Dashboard() {
           renderPilotCampusGate(
             <TheRealm
               onBack={() => setTab("quad")}
-              onViewQuadPost={() => setTab("quad")}
+              onCreatePost={() => setTab("quad")}
+              onViewProfile={openFriendView}
+              viewer={
+                character
+                  ? {
+                      id: character.id,
+                      name: character.name,
+                      username: character.username,
+                      avatar: character.avatar,
+                    }
+                  : null
+              }
               userId={character?.id ?? null}
               isAdmin={moderationAdminNavVisible(pilotCampusState)}
               userRole={moderationAdminNavVisible(pilotCampusState) ? "admin" : "student"}
@@ -1920,7 +2121,11 @@ export function Dashboard() {
         {tab === "organizations" && renderPilotCampusGate(<OrganizationsHub personalization={onboardingPreferences} />)}
 
         {tab === "leaderboards" && (
-          <Leaderboards character={character} onRefresh={refreshAuthoritativeProfileInBackground} />
+          <Leaderboards
+            character={character}
+            onRefresh={refreshAuthoritativeProfileInBackground}
+            onViewProfile={openFriendView}
+          />
         )}
 
         {tab === "battle" && (
@@ -1957,15 +2162,21 @@ export function Dashboard() {
               <CharacterProfilePaneToggle value={characterPane} onChange={setCharacterPane} />
             ) : null}
             {friendViewLoading ? (
-              <p className="py-16 text-center text-sm text-white/60">Loading friend profile…</p>
+              <p className="py-16 text-center text-sm text-white/60">Loading profile…</p>
             ) : friendView ? (
               <UserProfileScreen
-                character={friendView}
+                character={friendView.character}
                 viewer={character}
-                onBack={() => {
-                  setFriendView(null);
-                  setFriendViewError(null);
-                }}
+                canViewPrivateContent={friendView.payload.canViewPrivateContent}
+                relationshipStatus={friendView.payload.relationshipStatus}
+                mutualFriendsCount={friendView.payload.counts.mutualFriends}
+                initialPosts={friendView.posts}
+                friendsCount={friendView.payload.counts.friends}
+                postCount={friendView.payload.counts.posts}
+                guildLabel={friendView.payload.user.guild}
+                onBack={closeFriendView}
+                onOpenMessage={setDmWithOther}
+                onProfileReload={reloadFriendView}
               />
             ) : friendViewError ? (
               <div className="space-y-3 px-3 py-12 text-center">
@@ -1991,7 +2202,7 @@ export function Dashboard() {
             )}
           </div>
         ) : null}
-      </div>
+      </DashboardTabSwipeShell>
       </div>
 
       {character ? (
@@ -2063,6 +2274,7 @@ export function Dashboard() {
           <QuestCompleteCelebration />
         </>
       ) : null}
-    </>
+      </div>
+    </MobileGestureLayerProvider>
   );
 }

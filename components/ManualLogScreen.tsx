@@ -8,6 +8,7 @@ import { STAT_ICONS, STAT_LABELS } from "@/lib/types";
 import type { LogActivityOptions } from "@/lib/store";
 import { MAX_ACTIVITY_MINUTES } from "@/lib/store";
 import type { Character } from "@/lib/types";
+import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 
 const STAT_ORDER: StatKey[] = ["strength", "stamina", "knowledge", "social", "focus"];
 
@@ -129,7 +130,7 @@ export function ManualLogScreen({
   const showStats = !selectedStat;
 
   return (
-    <div className="cq-tab-shell mx-auto w-full max-w-lg space-y-6 pb-8">
+    <MobileSwipeBackSurface onBack={handleBack} className="cq-tab-shell mx-auto w-full max-w-lg space-y-6 pb-8">
       <header className="cq-screen-header">
         <div className="flex items-start gap-2">
           {(selectedStat || onBack) ? (
@@ -313,6 +314,6 @@ export function ManualLogScreen({
           </button>
         </form>
       ) : null}
-    </div>
+    </MobileSwipeBackSurface>
   );
 }

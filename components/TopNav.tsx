@@ -78,7 +78,8 @@ export function TopNav({
           </button>
 
           <div className="cq-top-nav-brand">
-            <h1 className="cq-brand-title font-display">
+            <h1 className="cq-brand-title cq-brand-lockup font-display">
+              <span className="cq-brand-title-glow" aria-hidden />
               <span className="cq-brand-title-text">CampusQuest</span>
               <span className="cq-brand-title-glimmer" aria-hidden />
             </h1>

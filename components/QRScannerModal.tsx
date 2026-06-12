@@ -172,6 +172,14 @@ export function QRScannerModal({
   const reduceMotion = useReducedMotion();
   const [iosScanner, setIosScanner] = useState(false);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    document.documentElement.setAttribute("data-cq-scanner-active", "");
+    return () => {
+      document.documentElement.removeAttribute("data-cq-scanner-active");
+    };
+  }, [open]);
+
   camStateRef.current = camState;
   scannerPhaseRef.current = scannerPhase;
   scanRewardStateRef.current = scanRewardState;
@@ -749,6 +757,7 @@ export function QRScannerModal({
         <motion.div
           key="cq-scanner-portal"
           className={`cq-scanner-portal fixed inset-0 z-[140] flex min-h-[100dvh] flex-col overflow-hidden bg-[#010810]/95 ${iosScanner ? "cq-scanner-portal--ios" : "backdrop-blur-xl"}`}
+          data-cq-gesture-block="all"
           role="dialog"
           aria-modal="true"
           aria-labelledby="cq-cq-scanner-title"

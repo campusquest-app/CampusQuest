@@ -73,14 +73,13 @@ export function CharacterCard({
         <div className="flex items-start gap-4">
           <div className="relative flex-shrink-0">
             <div
-              className="character-avatar-frame flex h-[5.5rem] w-[5.5rem] items-center justify-center overflow-hidden rounded-full p-[3px] sm:h-24 sm:w-24"
+              className="character-avatar-frame cq-profile-avatar-shell flex h-[5.5rem] w-[5.5rem] shrink-0 items-center justify-center rounded-full p-[3px]"
               aria-hidden
             >
-              <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-cq-elevated">
+              <div className="cq-profile-avatar-inner cq-profile-avatar-inner--header flex items-center justify-center">
                 <AvatarDisplay
                   avatar={character.avatar}
-                  size={96}
-                  fitParent
+                  size={82}
                   className="rounded-full"
                   classId={character.classId}
                   starterWeapon={character.starterWeapon}

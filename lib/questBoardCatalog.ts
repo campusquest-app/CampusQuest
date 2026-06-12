@@ -120,7 +120,7 @@ export const QUEST_BOARD_CATALOG: QuestBoardDef[] = [
   {
     id: "qb-daily-quad",
     name: "Quad Herald",
-    description: "Post a field note in The Quad today.",
+    description: "Post on The Quad today.",
     category: "daily",
     difficulty: "easy",
     icon: "📣",

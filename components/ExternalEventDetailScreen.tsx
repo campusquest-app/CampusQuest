@@ -2,6 +2,7 @@
 
 import { ChevronLeft } from "lucide-react";
 import { ExternalEventLocationDetail } from "@/components/ExternalEventLocationDisplay";
+import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 
 export type ExternalEventDetailData = {
   id: string;
@@ -40,7 +41,8 @@ export function ExternalEventDetailScreen({
   const { date, time } = formatExternalEventDateTime(event.startsAt);
 
   return (
-    <div
+    <MobileSwipeBackSurface
+      onBack={onBack}
       className="cq-external-event-detail fixed inset-x-0 z-40 overflow-y-auto bg-uri-navy"
       style={{
         top: "var(--cq-topnav-h, 56px)",
@@ -135,6 +137,6 @@ export function ExternalEventDetailScreen({
           </footer>
         ) : null}
       </div>
-    </div>
+    </MobileSwipeBackSurface>
   );
 }

@@ -9,11 +9,13 @@ import { AvatarDisplay } from "@/components/AvatarDisplay";
 export function ProfileSocialHeader({
   character,
   isOwner,
+  guildLabel,
   onEditBio,
   onOpenMenu,
 }: {
   character: Character;
   isOwner: boolean;
+  guildLabel?: string | null;
   onEditBio?: () => void;
   onOpenMenu?: () => void;
 }) {
@@ -26,12 +28,11 @@ export function ProfileSocialHeader({
     <header className="cq-profile-header px-3 pb-3 pt-3 sm:px-4">
       <div className="flex items-start gap-4">
         <div className="relative flex-shrink-0">
-          <div className="character-avatar-frame flex h-[5.5rem] w-[5.5rem] items-center justify-center overflow-hidden rounded-full p-[3px] sm:h-24 sm:w-24">
-            <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-cq-elevated">
+          <div className="character-avatar-frame cq-profile-avatar-shell flex h-[5.5rem] w-[5.5rem] shrink-0 items-center justify-center rounded-full p-[3px]">
+            <div className="cq-profile-avatar-inner cq-profile-avatar-inner--header flex items-center justify-center">
               <AvatarDisplay
                 avatar={character.avatar}
-                size={96}
-                fitParent
+                size={82}
                 className="rounded-full"
                 classId={character.classId}
                 starterWeapon={character.starterWeapon}
@@ -39,7 +40,7 @@ export function ProfileSocialHeader({
             </div>
           </div>
           <span
-            className="cq-profile-level-pip absolute -bottom-0.5 -right-0.5 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney px-1 text-[11px] font-bold leading-none text-white"
+            className="cq-profile-level-pip absolute -bottom-0.5 -left-0.5 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney px-1 text-[11px] font-bold leading-none text-white"
             aria-label={`Level ${character.level}`}
           >
             {character.level}
@@ -77,6 +78,9 @@ export function ProfileSocialHeader({
             </p>
           ) : realm ? (
             <p className="mt-1.5 text-sm text-cq-muted">{realm}</p>
+          ) : null}
+          {guildLabel ? (
+            <p className="mt-1 text-xs font-medium text-cq-muted">{guildLabel}</p>
           ) : null}
 
           {character.streakDays >= 3 ? (
