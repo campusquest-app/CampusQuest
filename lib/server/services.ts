@@ -1744,7 +1744,9 @@ export async function addXpInternal(args: AddXpArgs) {
 
   const previousTotalXp = Number(stats.total_xp ?? 0);
   const nextTotalXp = previousTotalXp + amount;
+  const previousLevel = calculateLevelProgression(previousTotalXp).level;
   const levelInfo = calculateLevelProgression(nextTotalXp);
+  const leveledUp = levelInfo.level > previousLevel;
 
   const { error: updateStatsError } = await userClient
     .from("user_stats")
@@ -1777,7 +1779,7 @@ export async function addXpInternal(args: AddXpArgs) {
     await updatePlayerStreakOnQuest(userClient, userId);
   }
 
-  return { xpLog: log, progression: levelInfo, milestonesUnlocked: newlyUnlocked };
+  return { xpLog: log, progression: levelInfo, milestonesUnlocked: newlyUnlocked, leveledUp };
 }
 
 async function updatePlayerStreakOnQuest(userClient: SupabaseClientLike, userId: string) {
