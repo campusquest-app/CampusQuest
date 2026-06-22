@@ -3,7 +3,6 @@
 import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 import type { Character } from "@/lib/types";
-import { DailyQuests } from "@/components/DailyQuests";
 import { SpecialQuests } from "@/components/SpecialQuests";
 import { TOPNAV_CSS_VAR } from "@/components/TopNav";
 
@@ -20,16 +19,12 @@ function QuestDropdownChrome({ children }: { children: ReactNode }) {
 
 export function QuestOverlayPanels({
   character,
-  dailyOpen,
   specialOpen,
-  onCloseDaily,
   onCloseSpecial,
   onRefresh,
 }: {
   character: Character | null;
-  dailyOpen: boolean;
   specialOpen: boolean;
-  onCloseDaily: () => void;
   onCloseSpecial: () => void;
   onRefresh?: () => void;
 }) {
@@ -37,16 +32,6 @@ export function QuestOverlayPanels({
 
   return createPortal(
     <>
-      {dailyOpen ? (
-        <>
-          <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-[1px]" onClick={onCloseDaily} aria-hidden />
-          <QuestDropdownChrome>
-            <div className="overflow-hidden rounded-2xl border border-cyan-500/25 bg-cq-card shadow-2xl shadow-black/50 ring-1 ring-black/20">
-              <DailyQuests character={character} compact />
-            </div>
-          </QuestDropdownChrome>
-        </>
-      ) : null}
       {specialOpen ? (
         <>
           <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-[1px]" onClick={onCloseSpecial} aria-hidden />

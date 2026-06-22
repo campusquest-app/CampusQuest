@@ -25,7 +25,6 @@ const REALM_DECORATIONS: RealmDecor[] = [
   /* Banner + quest board sit on the Quad lawn's edge by the pathways (pin is at 46,50) */
   { id: "banner-quad-edge", emoji: "🚩", x: 41.5, y: 51.5, size: "sm", delay: 0.8 },
   { id: "treasure-southwest", emoji: "💰", x: 17, y: 62, size: "sm", delay: 1.6 },
-  { id: "quest-board-quad", emoji: "📜", x: 52, y: 48, size: "sm", delay: 0.6 },
   { id: "lantern-south", emoji: "🏮", x: 60, y: 68, size: "sm", delay: 1.3, float: true },
 ];
 

@@ -21,14 +21,6 @@ export const STAT_LABELS: Record<StatKey, string> = {
   focus: "Focus",
 };
 
-export const STAT_ICONS: Record<StatKey, string> = {
-  strength: "💪",
-  stamina: "🏃",
-  knowledge: "📚",
-  social: "👥",
-  focus: "🎯",
-};
-
 export interface CharacterStats {
   strength: number;
   stamina: number;
@@ -119,9 +111,12 @@ export interface Character {
   foundingMember?: boolean;
   betaTester?: boolean;
   talentPioneer?: boolean;
+  /** Torch Bearer Badge — original beta founder program. */
+  torchBearerBadge?: boolean;
+  torchBearerFounderNumber?: number;
   /** Multi-step quest chain progress (chainId -> highest completed step index, 0-based). */
   questChainProgress?: Record<string, number>;
-  /** Quest Board: manually accepted quest ids. */
+  /** @deprecated Legacy Quest Board accept list; quests are auto-available. */
   acceptedQuestIds?: string[];
   /** Quest Board: claimed quest ids mapped to ISO claim time. */
   questBoardClaims?: Record<string, string>;
@@ -281,6 +276,8 @@ export interface FieldNote {
   };
   /** True when loaded from Supabase — counts are authoritative from DB. */
   isPersisted?: boolean;
+  /** Server-backed comment count from quad_posts.comments_count. */
+  commentCount?: number;
 }
 
 // For serialization we store nod/rally as arrays

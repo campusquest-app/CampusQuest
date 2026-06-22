@@ -2,6 +2,7 @@
 
 import {
   addCommentWithId,
+  bumpCommentCountForNote,
   getNoteForReaction,
   removeCommentById,
   replaceComment,
@@ -21,12 +22,12 @@ function mapCommentError(error: unknown): QuadCommentActionResult {
     if (error.code === CQ_MISSING_SESSION_CODE || error.status === 401) {
       return { ok: false, message: "Please sign in to comment on posts.", requiresSignIn: true };
     }
-    return { ok: false, message: "Could not save your comment. Please try again." };
+    return { ok: false, message: "Comment could not be saved." };
   }
   if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
     return { ok: false, message: "Unable to connect. Check your connection and try again." };
   }
-  return { ok: false, message: "Could not save your comment. Please try again." };
+  return { ok: false, message: "Comment could not be saved." };
 }
 
 export async function submitQuadComment(args: {
@@ -66,6 +67,7 @@ export async function submitQuadComment(args: {
   try {
     const saved = await createQuadPostComment(noteId, body);
     replaceComment(noteId, optimisticId, saved);
+    bumpCommentCountForNote(noteId);
     onOptimistic();
     return { ok: true };
   } catch (error) {

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiRequestError, fetchAuthed } from "@/lib/client/dashboardApi";
 import { AppealsModerationCard } from "@/components/AppealsModerationCard";
 import { CampusContentModerationCard } from "@/components/CampusContentModerationCard";
+import { QuadPostModerationCard } from "@/components/QuadPostModerationCard";
 import { ModerationDashboardCard } from "@/components/ModerationDashboardCard";
 import { OrganizationModerationCard } from "@/components/OrganizationModerationCard";
 
@@ -103,6 +104,7 @@ export function InternalModerationDashboard() {
         {error ? <p className="text-xs text-rose-200">{error}</p> : null}
         <AppealsModerationCard />
         <ModerationDashboardCard />
+        <QuadPostModerationCard />
         <CampusContentModerationCard />
         <OrganizationModerationCard />
       </div>

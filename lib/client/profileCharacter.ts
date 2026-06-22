@@ -181,6 +181,11 @@ export function buildLocalCharacterFromServer(profile: MeProfileRow, stats: MeSt
     foundingMember: Boolean((gs as { foundingMember?: unknown })?.foundingMember),
     betaTester: Boolean((gs as { betaTester?: unknown })?.betaTester),
     talentPioneer: Boolean((gs as { talentPioneer?: unknown })?.talentPioneer),
+    torchBearerBadge: Boolean((gs as { torchBearerBadge?: unknown })?.torchBearerBadge),
+    torchBearerFounderNumber:
+      typeof (gs as { torchBearerFounderNumber?: unknown })?.torchBearerFounderNumber === "number"
+        ? Math.max(1, Math.floor(Number((gs as { torchBearerFounderNumber: number }).torchBearerFounderNumber)))
+        : undefined,
     acceptedQuestIds:
       gs && Array.isArray((gs as { acceptedQuestIds?: unknown }).acceptedQuestIds)
         ? ((gs as { acceptedQuestIds: string[] }).acceptedQuestIds)

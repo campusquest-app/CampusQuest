@@ -555,6 +555,29 @@ function isAvatarImageUrl(value: string): boolean {
   return /^https?:\/\//i.test(value.trim());
 }
 
+function AvatarImage({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span
+        className="flex h-full w-full items-center justify-center leading-none"
+        style={{ fontSize: "46%" }}
+        aria-hidden
+      >
+        {DEFAULT_DISPLAY_AVATAR}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src.trim()}
+      alt=""
+      className="avatar-display-img"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function AvatarFrame({
   size,
   fitParent = false,
@@ -663,7 +686,7 @@ export function AvatarDisplay({
   if (isAvatarImageUrl(avatarValue)) {
     return (
       <AvatarFrame size={size} fitParent={fitParent} className={className} propIcon={propIcon}>
-        <img src={avatarValue.trim()} alt="" className="avatar-display-img" />
+        <AvatarImage src={avatarValue} />
       </AvatarFrame>
     );
   }

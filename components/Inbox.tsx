@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ChevronDown, Pin, Search, SquarePen, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, Pin, Search, SquarePen, Users, X } from "lucide-react";
 import type { Character } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { DirectMessageThread } from "./DirectMessageThread";
@@ -17,8 +17,13 @@ import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 import {
   buildInboxMessageSearchResults,
   type InboxFriendRow,
+  type InboxGroupChatRow,
   type InboxMessageSearchResult,
 } from "@/lib/inboxMessageSearch";
+import { conversationPreviewText } from "@/lib/client/dmMessagesClient";
+import { CreateGroupChatSheet } from "@/components/messages/CreateGroupChatSheet";
+import { GroupMessageThread } from "@/components/messages/GroupMessageThread";
+import { GroupAvatarStack } from "@/components/messages/GroupAvatarStack";
 import { NotificationsCenter } from "./NotificationsCenter";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 import { UserSearchInput } from "@/components/ui/UserSearchInput";
@@ -32,7 +37,8 @@ import {
 
 export type InboxSubTab = "messages" | "notifications";
 
-type ConversationItem = {
+type DirectConversationItem = {
+  type: "direct";
   conversationId: string;
   otherUser: {
     id: string;
@@ -43,14 +49,34 @@ type ConversationItem = {
   latestMessage: {
     id: string;
     senderId: string;
-    recipientId: string;
+    recipientId: string | null;
     content: string;
     type?: "text" | "image" | "shared_post";
     previewText?: string;
     createdAt: string;
     readAt: string | null;
   } | null;
+  lastReadAt: string | null;
 };
+
+type GroupConversationItem = {
+  type: "group";
+  conversationId: string;
+  title: string | null;
+  displayName: string;
+  memberCount: number;
+  members: Array<{
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+    role: "owner" | "member";
+  }>;
+  latestMessage: DirectConversationItem["latestMessage"];
+  lastReadAt: string | null;
+};
+
+type ConversationItem = DirectConversationItem | GroupConversationItem;
 
 type IncomingConnectionRequest = {
   requestId: string;
@@ -96,7 +122,9 @@ function enrichSearchResults(
   return results.map((result) => {
     if (result.kind === "group") return result;
     const friend = friendsById.get(result.userId);
-    const conv = conversations.find((c) => c.otherUser.id === result.userId);
+    const conv = conversations.find(
+      (c): c is DirectConversationItem => c.type === "direct" && c.otherUser.id === result.userId,
+    );
     const avatar = friend
       ? avatarFromConnectionProfile(friend)
       : resolvePersonAvatar(result.userId, conv?.otherUser.avatarUrl ?? null, friendsById);
@@ -132,6 +160,8 @@ export function Inbox({
   const [incomingRequests, setIncomingRequests] = useState<IncomingConnectionRequest[]>([]);
   const [debouncedMessageSearch, setDebouncedMessageSearch] = useState("");
   const [newChatOpen, setNewChatOpen] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [groupWith, setGroupWith] = useState<string | null>(null);
   const [requestsExpanded, setRequestsExpanded] = useState(false);
   const [pinnedUsers, setPinnedUsers] = useState<PinnedDmUserRow[]>([]);
   const [pinBusyUserId, setPinBusyUserId] = useState<string | null>(null);
@@ -143,15 +173,34 @@ export function Inbox({
 
   const friendsById = useMemo(() => new Map(friends.map((f) => [f.userId, f])), [friends]);
 
+  const groupChats = useMemo<InboxGroupChatRow[]>(() => {
+    return conversations
+      .filter((row): row is GroupConversationItem => row.type === "group")
+      .map((row) => ({
+        conversationId: row.conversationId,
+        name: row.displayName,
+        memberCount: row.memberCount,
+        memberNames: row.members.map((m) => m.displayName),
+        memberAvatars: row.members
+          .filter((m) => m.id !== character.id)
+          .map((m) => m.avatarUrl ?? "")
+          .slice(0, 3),
+        latestMessage: conversationPreviewText(row.latestMessage),
+        latestMessageAt: row.latestMessage?.createdAt ?? null,
+        lastReadAt: row.lastReadAt,
+      }));
+  }, [conversations, character.id]);
+
   const messageSearchResults = useMemo(() => {
     const raw = buildInboxMessageSearchResults({
       query: debouncedMessageSearch,
       conversations,
       friends,
+      groupChats,
       avatarForFriend: avatarFromConnectionProfile,
     });
     return enrichSearchResults(raw, friendsById, conversations);
-  }, [debouncedMessageSearch, conversations, friends, friendsById]);
+  }, [debouncedMessageSearch, conversations, friends, friendsById, groupChats]);
 
   const isSearchActive = debouncedMessageSearch.trim().length > 0;
 
@@ -164,6 +213,7 @@ export function Inbox({
     () =>
       new Set(
         conversations
+          .filter((c): c is DirectConversationItem => c.type === "direct")
           .filter((c) => {
             const at = c.latestMessage?.createdAt;
             if (!at) return false;
@@ -225,7 +275,9 @@ export function Inbox({
 
     if (nextPinned) {
       const friend = friendsById.get(userId);
-      const conv = conversations.find((c) => c.otherUser.id === userId);
+      const conv = conversations.find(
+        (c): c is DirectConversationItem => c.type === "direct" && c.otherUser.id === userId,
+      );
       const optimistic: PinnedDmUserRow =
         profileHint ??
         (friend
@@ -298,7 +350,10 @@ export function Inbox({
   }
 
   function handleOpenSearchResult(result: InboxMessageSearchResult) {
-    if (result.kind === "group") return;
+    if (result.kind === "group") {
+      setGroupWith(result.conversationId);
+      return;
+    }
     handleOpenDm(result.userId, result.username, result.displayName, result.avatar);
   }
 
@@ -410,6 +465,19 @@ export function Inbox({
       {subTab === "messages" ? (
         <>
           <div className="cq-inbox-search-wrap shrink-0 px-3 py-2.5">
+            <div className="mb-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMessageError(null);
+                  setCreateGroupOpen(true);
+                }}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-[#0095f6]/35 bg-[#0095f6]/10 px-3 py-2 text-[13px] font-semibold text-[#0095f6] transition active:bg-[#0095f6]/15"
+              >
+                <Users className="h-4 w-4" strokeWidth={1.75} />
+                New Group
+              </button>
+            </div>
             <label htmlFor="inbox-msg-search" className="sr-only">
               Search messages
             </label>
@@ -525,7 +593,7 @@ export function Inbox({
             </p>
           ) : null}
 
-          <ul className="cq-inbox-thread-list flex-1 overflow-y-auto overscroll-y-contain">
+          <ul className="cq-inbox-thread-list flex-1 overflow-y-auto overscroll-y-contain" data-cq-scroll-root>
             {messageLoading ? (
               <li className="px-4 py-16 text-center text-sm text-white/40">Loading…</li>
             ) : messageSearchResults.length === 0 ? (
@@ -536,6 +604,7 @@ export function Inbox({
                   key={result.key}
                   result={result}
                   conversations={conversations}
+                  groupChats={groupChats}
                   currentUserId={character.id}
                   isPinned={result.kind !== "group" ? pinnedUserIds.has(result.userId) : false}
                   pinBusy={result.kind !== "group" && pinBusyUserId === result.userId}
@@ -579,6 +648,35 @@ export function Inbox({
         />
       ) : null}
 
+      {createGroupOpen ? (
+        <CreateGroupChatSheet
+          currentUserId={character.id}
+          friends={friends}
+          error={messageError}
+          onClose={() => {
+            setCreateGroupOpen(false);
+            setMessageError(null);
+          }}
+          onCreated={(conversationId) => {
+            setCreateGroupOpen(false);
+            setMessageError(null);
+            void loadMessageCenter().then(() => {
+              setGroupWith(conversationId);
+              emitSocialSync({ source: "inbox" });
+            });
+          }}
+        />
+      ) : null}
+
+      {groupWith ? (
+        <GroupMessageThread
+          currentUser={character}
+          conversationId={groupWith}
+          onClose={() => setGroupWith(null)}
+          onMessageSent={() => void loadMessageCenter()}
+        />
+      ) : null}
+
       {dmWith ? (
         <DirectMessageThread
           currentUser={character}
@@ -594,6 +692,7 @@ export function Inbox({
 function InboxThreadRow({
   result,
   conversations,
+  groupChats,
   currentUserId,
   isPinned,
   pinBusy,
@@ -602,18 +701,41 @@ function InboxThreadRow({
 }: {
   result: InboxMessageSearchResult;
   conversations: ConversationItem[];
+  groupChats: InboxGroupChatRow[];
   currentUserId: string;
   isPinned: boolean;
   pinBusy: boolean;
   onTogglePin: (userId: string, nextPinned: boolean) => void;
   onSelect: () => void;
 }) {
-  const conv =
+  const directConv =
     result.kind === "conversation"
-      ? conversations.find((c) => c.conversationId === result.conversationId)
+      ? conversations.find(
+          (c): c is DirectConversationItem =>
+            c.type === "direct" && c.conversationId === result.conversationId,
+        )
       : null;
+  const groupConv =
+    result.kind === "group"
+      ? groupChats.find((g) => g.conversationId === result.conversationId)
+      : null;
+  const groupRow =
+    result.kind === "group"
+      ? (conversations.find(
+          (c): c is GroupConversationItem =>
+            c.type === "group" && c.conversationId === result.conversationId,
+        ) ?? null)
+      : null;
+
   const isUnread = Boolean(
-    conv?.latestMessage && conv.latestMessage.senderId !== currentUserId && !conv.latestMessage.readAt,
+    directConv?.latestMessage &&
+      directConv.latestMessage.senderId !== currentUserId &&
+      !directConv.latestMessage.readAt,
+  ) || Boolean(
+    groupRow?.latestMessage &&
+      groupRow.latestMessage.senderId !== currentUserId &&
+      (!groupRow.lastReadAt ||
+        new Date(groupRow.latestMessage.createdAt).getTime() > new Date(groupRow.lastReadAt).getTime()),
   );
 
   const preview =
@@ -623,15 +745,22 @@ function InboxThreadRow({
         ? "Tap to message"
         : "";
 
-  const timestamp = result.kind === "conversation" ? formatIgTimestamp(result.meta) : "";
+  const timestamp =
+    result.kind === "conversation" || result.kind === "group" ? formatIgTimestamp(result.meta) : "";
   const canPin = result.kind !== "group" && result.userId !== currentUserId;
 
   return (
     <li>
       <div className="cq-inbox-thread-row group flex w-full items-center gap-0 text-left">
         <button type="button" onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="relative h-[56px] w-[56px] shrink-0 overflow-hidden rounded-full bg-[#262626]">
-            <AvatarDisplay avatar={result.kind === "group" ? result.avatar : result.avatar} fitParent size={56} />
+          <div className="relative h-[56px] w-[56px] shrink-0">
+            {result.kind === "group" ? (
+              <GroupAvatarStack avatars={result.memberAvatars} size={56} />
+            ) : (
+              <div className="h-full w-full overflow-hidden rounded-full bg-[#262626]">
+                <AvatarDisplay avatar={result.avatar} fitParent size={56} />
+              </div>
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-2">
@@ -649,6 +778,11 @@ function InboxThreadRow({
                 {result.kind !== "group" ? (
                   <>
                     <span className="text-white/55">@{result.username}</span>
+                    {preview ? <span className="text-white/35"> · {preview}</span> : null}
+                  </>
+                ) : groupConv ? (
+                  <>
+                    {groupConv.memberCount} members
                     {preview ? <span className="text-white/35"> · {preview}</span> : null}
                   </>
                 ) : (

@@ -2,6 +2,7 @@ import type { Character } from "./types";
 import { STAT_KEYS } from "./types";
 import { getMiniGameTrainingSummary } from "./miniGameTraining";
 import { getFriends } from "./friendsStore";
+import { hasTorchBearerBadge, TORCH_BEARER_BADGE_ID, TORCH_BEARER_IMAGE_URL } from "./torchBearerBadge";
 
 export type AchievementRarity = "common" | "rare" | "epic" | "legendary" | "mythic";
 export type AchievementCategory = "milestones" | "challenges" | "academic" | "social" | "special" | "legendary";
@@ -13,11 +14,15 @@ export type AchievementDef = {
   category: AchievementCategory;
   rarity: AchievementRarity;
   icon: string;
+  /** Optional badge art for limited-edition achievements. */
+  imageUrl?: string;
   /** Legacy strings stored in character.achievements before catalog ids. */
   legacyKeys: string[];
   titleUnlock?: string;
   progressTarget: number;
   trophyKind: "trophy" | "medal" | "banner" | "relic" | "badge";
+  /** Hidden from Codex until earned (beta exclusives). */
+  codexHiddenUntilEarned?: boolean;
 };
 
 export const LEGEND_SCORE_BY_RARITY: Record<AchievementRarity, number> = {
@@ -262,6 +267,20 @@ export const ACHIEVEMENT_CATALOG: AchievementDef[] = [
     trophyKind: "relic",
   },
   {
+    id: TORCH_BEARER_BADGE_ID,
+    name: "Torch Bearer Badge",
+    description: "Awarded to the original 30 CampusQuest beta testers who helped carry the first flame.",
+    category: "special",
+    rarity: "mythic",
+    icon: "🔥",
+    imageUrl: TORCH_BEARER_IMAGE_URL,
+    legacyKeys: [],
+    titleUnlock: "Mythic Founder",
+    progressTarget: 1,
+    trophyKind: "badge",
+    codexHiddenUntilEarned: true,
+  },
+  {
     id: "talent_pioneer",
     name: "Talent Development Pioneer",
     description: "Recognized for advancing URI talent development.",
@@ -380,6 +399,9 @@ export function getAchievementProgress(
       break;
     case "beta_tester":
       current = c.betaTester ? 1 : 0;
+      break;
+    case TORCH_BEARER_BADGE_ID:
+      current = hasTorchBearerBadge(c) ? 1 : 0;
       break;
     case "talent_pioneer":
       current = c.talentPioneer ? 1 : 0;

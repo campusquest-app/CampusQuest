@@ -1,8 +1,9 @@
 import { conversationPreviewText, type DirectMessageType } from "@/lib/client/dmMessagesClient";
 
 export type InboxConversationRow = {
+  type?: "direct" | "group";
   conversationId: string;
-  otherUser: {
+  otherUser?: {
     id: string;
     username: string;
     displayName: string;
@@ -11,13 +12,14 @@ export type InboxConversationRow = {
   latestMessage: {
     id: string;
     senderId: string;
-    recipientId: string;
+    recipientId: string | null;
     content: string;
     type?: DirectMessageType;
     previewText?: string;
     createdAt: string;
     readAt: string | null;
   } | null;
+  lastReadAt?: string | null;
 };
 
 export type InboxFriendRow = {
@@ -33,8 +35,10 @@ export type InboxGroupChatRow = {
   name: string;
   memberCount: number;
   memberNames?: string[];
+  memberAvatars?: string[];
   latestMessage: string | null;
   latestMessageAt: string | null;
+  lastReadAt?: string | null;
 };
 
 export type InboxMessageSearchResult =
@@ -65,6 +69,7 @@ export type InboxMessageSearchResult =
       conversationId: string;
       name: string;
       avatar: string;
+      memberAvatars: string[];
       subtitle: string;
       meta: string | null;
     };
@@ -97,6 +102,12 @@ function matchesGroup(query: string, group: InboxGroupChatRow): boolean {
   return (group.memberNames ?? []).some((name) => haystackIncludes(name, q));
 }
 
+function isDirectConversation(row: InboxConversationRow): row is InboxConversationRow & {
+  otherUser: NonNullable<InboxConversationRow["otherUser"]>;
+} {
+  return (row.type ?? "direct") !== "group" && Boolean(row.otherUser);
+}
+
 function conversationSortTime(row: InboxConversationRow): number {
   return new Date(row.latestMessage?.createdAt ?? 0).getTime();
 }
@@ -112,7 +123,8 @@ export function buildInboxMessageSearchResults(args: {
   const groupChats = args.groupChats ?? [];
 
   if (!q) {
-    return [...args.conversations]
+    const directResults: InboxMessageSearchResult[] = [...args.conversations]
+      .filter(isDirectConversation)
       .sort((a, b) => conversationSortTime(b) - conversationSortTime(a))
       .map((conversation) => ({
         kind: "conversation" as const,
@@ -125,11 +137,33 @@ export function buildInboxMessageSearchResults(args: {
         meta: conversation.latestMessage?.createdAt ?? null,
         conversationId: conversation.conversationId,
       }));
+
+    const groupResults: InboxMessageSearchResult[] = groupChats
+      .sort((a, b) => new Date(b.latestMessageAt ?? 0).getTime() - new Date(a.latestMessageAt ?? 0).getTime())
+      .map((group) => ({
+        kind: "group" as const,
+        key: `group:${group.conversationId}`,
+        conversationId: group.conversationId,
+        name: group.name,
+        avatar: "👥",
+        memberAvatars: group.memberAvatars ?? [],
+        subtitle: group.latestMessage ?? "No messages yet",
+        meta: group.latestMessageAt,
+      }));
+
+    return [...directResults, ...groupResults].sort((a, b) => {
+      const aTime = new Date(a.meta ?? 0).getTime();
+      const bTime = new Date(b.meta ?? 0).getTime();
+      return bTime - aTime;
+    });
   }
 
-  const conversationUserIds = new Set(args.conversations.map((row) => row.otherUser.id));
+  const conversationUserIds = new Set(
+    args.conversations.filter(isDirectConversation).map((row) => row.otherUser.id),
+  );
 
   const conversationResults: InboxMessageSearchResult[] = args.conversations
+    .filter(isDirectConversation)
     .filter((conversation) =>
       matchesPerson(q, {
         displayName: conversation.otherUser.displayName,
@@ -178,11 +212,9 @@ export function buildInboxMessageSearchResults(args: {
       conversationId: group.conversationId,
       name: group.name,
       avatar: "👥",
+      memberAvatars: group.memberAvatars ?? [],
       subtitle: group.latestMessage ?? "No messages yet",
-      meta:
-        group.memberCount > 0
-          ? `${group.memberCount} member${group.memberCount === 1 ? "" : "s"}`
-          : null,
+      meta: group.latestMessageAt,
     }));
 
   return [...conversationResults, ...friendResults, ...groupResults];

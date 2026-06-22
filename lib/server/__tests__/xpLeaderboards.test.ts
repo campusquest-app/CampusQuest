@@ -24,18 +24,18 @@ describe("sortAndRank", () => {
     ...overrides,
   });
 
-  it("ranks by total XP desc, then level, then streak", () => {
+  it("ranks by total XP desc, then level, then display name and username", () => {
     const ranked = sortAndRank(
       [
-        base({ userId: "a", username: "a", level: 10, totalXp: 7000, streakDays: 1 }),
-        base({ userId: "b", username: "b", level: 12, totalXp: 8000, streakDays: 0 }),
+        base({ userId: "a", username: "a", level: 10, totalXp: 7000 }),
+        base({ userId: "b", username: "b", level: 12, totalXp: 8000 }),
         base({ userId: "c", username: "c", level: 12, totalXp: 8000, streakDays: 3 }),
         base({ userId: "d", username: "d", level: 14, totalXp: 6000, streakDays: 5 }),
       ],
       "totalXp",
     );
 
-    expect(ranked.map((row) => row.userId)).toEqual(["c", "b", "a", "d"]);
+    expect(ranked.map((row) => row.userId)).toEqual(["b", "c", "a", "d"]);
     expect(ranked[0]?.rank).toBe(1);
     expect(ranked[3]?.rank).toBe(4);
   });
@@ -51,7 +51,7 @@ describe("sortAndRank", () => {
       "level",
     );
 
-    expect(ranked.map((row) => row.userId)).toEqual(["d", "c", "b", "a"]);
+    expect(ranked.map((row) => row.userId)).toEqual(["c", "d", "b", "a"]);
   });
 });
 

@@ -21,6 +21,8 @@ import { RARITY_CSS } from "@/lib/achievementRarityStyles";
 import { buildCodexStates, type CodexItemState } from "@/lib/codexState";
 import { CodexCard } from "@/components/codex/CodexCard";
 import { CodexDetailSheet } from "@/components/codex/CodexDetailSheet";
+import { achievementLabel, AchievementBadgeArt } from "@/components/achievements/AchievementBadgeArt";
+import { TorchBearerFounderRank } from "@/components/achievements/TorchBearerFounderRank";
 
 const RARE_COLLECTIBLE_RARITIES = new Set(["rare", "epic", "legendary", "mythic"]);
 
@@ -338,11 +340,9 @@ export function TrophyRoom({ character, onRefresh }: { character: Character; onR
                 >
                   {view ? (
                     <>
-                      <span className="text-2xl" aria-hidden>
-                        {view.def.icon}
-                      </span>
+                      <AchievementBadgeArt def={view.def} character={localCharacter} size="md" />
                       <p className="mt-1 line-clamp-2 px-1 text-center text-[10px] font-semibold leading-tight text-white/85">
-                        {view.def.name}
+                        {achievementLabel(view.def, localCharacter)}
                       </p>
                     </>
                   ) : (
@@ -353,6 +353,10 @@ export function TrophyRoom({ character, onRefresh }: { character: Character; onR
             })}
           </div>
         </section>
+
+        <div className="mt-8">
+          <TorchBearerFounderRank character={localCharacter} />
+        </div>
 
         {titleOptions.length > 0 ? (
           <section className="mt-8">
@@ -444,7 +448,12 @@ export function TrophyRoom({ character, onRefresh }: { character: Character; onR
           ) : (
             <div className="cq-trophy-collectibles-grid mt-5">
               {collectibleStates.map((state) => (
-                <CodexCard key={state.entry.id} state={state} onSelect={() => setSelectedCollectible(state)} />
+                <CodexCard
+                  key={state.entry.id}
+                  state={state}
+                  character={localCharacter}
+                  onSelect={() => setSelectedCollectible(state)}
+                />
               ))}
             </div>
           )}
@@ -463,7 +472,11 @@ export function TrophyRoom({ character, onRefresh }: { character: Character; onR
       ) : null}
 
       {selectedCollectible ? (
-        <CodexDetailSheet state={selectedCollectible} onClose={() => setSelectedCollectible(null)} />
+        <CodexDetailSheet
+          state={selectedCollectible}
+          character={localCharacter}
+          onClose={() => setSelectedCollectible(null)}
+        />
       ) : null}
     </div>
   );

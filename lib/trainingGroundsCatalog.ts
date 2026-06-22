@@ -1,12 +1,11 @@
 import type { Character, StatKey } from "./types";
-import { MAX_STAT, STAT_ICONS } from "./types";
+import { MAX_STAT } from "./types";
 import { getClassTitle } from "./characterClasses";
 
 export type TrainingGameCardState = "ready" | "played-today" | "locked" | "weekly-complete";
 
 export type TrainingGameDefinition = {
   stat: StatKey;
-  icon: string;
   gameName: string;
   theme: string;
   description: string;
@@ -24,7 +23,6 @@ export const TRAINING_GROUNDS_SUBTITLE = "Sharpen your stats. Forge your legend.
 export const TRAINING_GAMES: TrainingGameDefinition[] = [
   {
     stat: "strength",
-    icon: STAT_ICONS.strength,
     gameName: "Forge of Strength",
     theme: "Blacksmith forge · hammer timing",
     description: "Strike the anvil at the perfect moment to forge power.",
@@ -37,7 +35,6 @@ export const TRAINING_GAMES: TrainingGameDefinition[] = [
   },
   {
     stat: "stamina",
-    icon: STAT_ICONS.stamina,
     gameName: "Path of Stamina",
     theme: "Endurance runner · campus trail",
     description: "Survive the campus trail and keep your streak alive.",
@@ -50,7 +47,6 @@ export const TRAINING_GAMES: TrainingGameDefinition[] = [
   },
   {
     stat: "knowledge",
-    icon: STAT_ICONS.knowledge,
     gameName: "Archives of Knowledge",
     theme: "Ancient library · quick quiz",
     description: "Answer campus and quest questions before the timer fades.",
@@ -63,7 +59,6 @@ export const TRAINING_GAMES: TrainingGameDefinition[] = [
   },
   {
     stat: "social",
-    icon: STAT_ICONS.social,
     gameName: "Hall of Influence",
     theme: "Guild diplomacy · social choices",
     description: "Choose the best response and build your campus reputation.",
@@ -76,7 +71,6 @@ export const TRAINING_GAMES: TrainingGameDefinition[] = [
   },
   {
     stat: "focus",
-    icon: STAT_ICONS.focus,
     gameName: "Focus Sanctum",
     theme: "Memory · reaction · pattern",
     description: "Follow the glowing sequence and keep your mind sharp.",

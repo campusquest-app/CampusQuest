@@ -115,10 +115,6 @@ function isClaimed(def: QuestBoardDef, character: Character): boolean {
   return false;
 }
 
-function isAccepted(def: QuestBoardDef, character: Character): boolean {
-  return (character.acceptedQuestIds ?? []).includes(def.id);
-}
-
 export function getQuestProgress(def: QuestBoardDef, ctx: QuestProgressContext): { current: number; max: number; percent: number } {
   const max = def.progressTarget;
   let current = 0;
@@ -199,15 +195,15 @@ export function getQuestBoardViews(character: Character): QuestBoardView[] {
 
   return defs.map((def) => {
     const claimed = isClaimed(def, character);
-    const accepted = isAccepted(def, character);
     const progress = getQuestProgress(def, ctx);
     const chainUnlocked = isChainStepUnlocked(def, character);
+    const accepted = chainUnlocked && !claimed;
 
     let status: QuestBoardStatus = "available";
     if (claimed) status = "completed";
     else if (!chainUnlocked) status = "locked";
-    else if (accepted && progress.current >= progress.max) status = "ready";
-    else if (accepted) status = "active";
+    else if (progress.current >= progress.max) status = "ready";
+    else if (progress.current > 0) status = "active";
 
     let chainLabel: string | null = null;
     if (def.chainId != null && def.chainStep != null) {
@@ -235,7 +231,7 @@ export function filterQuestViews(views: QuestBoardView[], filter: QuestFilter): 
 }
 
 export function getActiveQuestViews(character: Character): QuestBoardView[] {
-  return getQuestBoardViews(character).filter((v) => v.accepted && v.status !== "completed");
+  return getQuestBoardViews(character).filter((v) => v.status === "active" || v.status === "ready");
 }
 
 export function countCompletedQuests(character: Character): number {

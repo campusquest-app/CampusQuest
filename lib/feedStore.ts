@@ -33,6 +33,7 @@ export function mergeRemoteQuadPostsCache(posts: FieldNote[]): void {
     existing.hypeByUserIds = new Set(serverPost.hypeByUserIds ?? serverPost.vouchByUserIds);
     existing.vouchByUserIds = existing.hypeByUserIds;
     existing.isPersisted = serverPost.isPersisted ?? true;
+    existing.commentCount = serverPost.commentCount;
   }
   remoteQuadPostsCache = Array.from(byId.values());
 }
@@ -700,6 +701,20 @@ export function getCommentsByNoteId(noteId: string): QuadComment[] {
   return [...comments]
     .filter((c) => c.noteId === noteId)
     .sort((a, b) => a.createdAt - b.createdAt);
+}
+
+/** Prefer loaded comments length; fall back to server-backed post comment count. */
+export function getDisplayCommentCount(noteId: string, note?: Pick<FieldNote, "commentCount">): number {
+  const loaded = getCommentsByNoteId(noteId).length;
+  const fromPost = note?.commentCount ?? 0;
+  return Math.max(loaded, fromPost);
+}
+
+export function bumpCommentCountForNote(noteId: string): void {
+  forEachNoteCopy(noteId, (note) => {
+    const loaded = getCommentsByNoteId(noteId).length;
+    note.commentCount = Math.max(note.commentCount ?? 0, loaded);
+  });
 }
 
 export interface AddCommentParams {

@@ -310,7 +310,7 @@ export function NotificationsCenter({
         />
       ) : null}
 
-      <div className={listWrapClass}>
+      <div className={listWrapClass} {...(isInbox ? { "data-cq-scroll-root": true } : {})}>
         {sortedNotifications.map((notification) => {
           const isFriendRequest = notification.type === "friend_request";
           const isActorSocial =

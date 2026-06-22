@@ -1,7 +1,8 @@
 import { ZodError } from "zod";
 import { fail, ok, ApiError } from "@/lib/server/http";
+import { fetchProfileRole, userHasPlatformAdminAccess } from "@/lib/server/permissions";
 import { enforceRateLimit } from "@/lib/server/security";
-import { requireAuthUser } from "@/lib/server/supabase";
+import { createAdminClient, requireAuthUser } from "@/lib/server/supabase";
 import { patchQuadPostSchema, readJson, uuidSchema } from "@/lib/server/validation";
 import { formatZodError } from "@/lib/server/zodErrors";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@/lib/server/quadReactions";
 import { logQuadPostError, QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
 import {
+  deleteQuadPost,
   getOwnedQuadPost,
   resolveQuadPostLocationFields,
   syncRealmMomentForPostEdit,
@@ -93,20 +95,20 @@ export async function DELETE(
     const postId = await parsePostId(context);
     enforceRateLimit({ userId: auth.user.id, routeKey: "quad:posts:delete", limit: 60, windowMs: 60_000 });
 
-    await getOwnedQuadPost({ userClient: auth.userClient, postId, userId: auth.user.id });
+    const profileRole = await fetchProfileRole(auth.userClient, auth.user.id, {
+      email: auth.user.email,
+    });
+    const isAdmin = userHasPlatformAdminAccess(auth.user, profileRole);
 
-    const { error: delErr } = await auth.userClient
-      .from("quad_posts")
-      .delete()
-      .eq("id", postId)
-      .eq("user_id", auth.user.id);
+    const result = await deleteQuadPost({
+      userClient: auth.userClient,
+      adminClient: createAdminClient(),
+      postId,
+      userId: auth.user.id,
+      isAdmin,
+    });
 
-    if (delErr) {
-      logQuadPostError("delete", delErr, { postId, userId: auth.user.id });
-      throw new ApiError(400, delErr.message ?? "Could not delete post.", "QUAD_POST_DELETE_FAILED");
-    }
-
-    return ok({ deleted: true as const, postId });
+    return ok({ deleted: true as const, postId: result.postId });
   } catch (error) {
     return fail(error);
   }

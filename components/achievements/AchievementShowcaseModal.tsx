@@ -10,6 +10,8 @@ import {
 } from "@/lib/achievementEngine";
 import { ACHIEVEMENT_CATALOG } from "@/lib/achievementsCatalog";
 import { RARITY_CSS } from "@/lib/achievementRarityStyles";
+import { achievementLabel, AchievementBadgeArt } from "./AchievementBadgeArt";
+import { getAchievementDisplayDescription } from "@/lib/torchBearerBadge";
 
 export function AchievementShowcaseModal({
   character,
@@ -84,10 +86,10 @@ export function AchievementShowcaseModal({
                       key={def.id}
                       className={`rounded-xl border bg-gradient-to-b p-3 text-center ring-1 ${style.ring} ${style.bg} ${style.glow}`}
                     >
-                      <span className="text-2xl" aria-hidden>
-                        {def.icon}
-                      </span>
-                      <p className={`mt-1 text-xs font-bold leading-tight ${style.text}`}>{def.name}</p>
+                      <AchievementBadgeArt def={def} character={character} size="lg" className="mx-auto" />
+                      <p className={`mt-1 text-xs font-bold leading-tight ${style.text}`}>
+                        {achievementLabel(def, character)}
+                      </p>
                       {earnedAt ? (
                         <p className="mt-1 text-[10px] text-white/35">
                           {new Date(earnedAt).toLocaleDateString(undefined, { month: "short", year: "numeric" })}
@@ -113,12 +115,12 @@ export function AchievementShowcaseModal({
                       key={def.id}
                       className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5"
                     >
-                      <span className="text-xl flex-shrink-0" aria-hidden>
-                        {def.icon}
-                      </span>
+                      <AchievementBadgeArt def={def} character={character} size="md" className="flex-shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <p className={`text-sm font-semibold ${style.text}`}>{def.name}</p>
-                        <p className="text-xs text-white/45 mt-0.5 leading-relaxed">{def.description}</p>
+                        <p className={`text-sm font-semibold ${style.text}`}>{achievementLabel(def, character)}</p>
+                        <p className="text-xs text-white/45 mt-0.5 leading-relaxed">
+                          {getAchievementDisplayDescription(def)}
+                        </p>
                         {earnedAt ? (
                           <p className="text-[10px] text-white/30 mt-1">
                             Earned {new Date(earnedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}

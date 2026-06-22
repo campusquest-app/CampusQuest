@@ -17,15 +17,14 @@ export type QuadPostRow = {
   location_name: string | null;
 };
 
-export async function getOwnedQuadPost(args: {
-  userClient: SupabaseClientLike;
-  postId: string;
-  userId: string;
-}): Promise<QuadPostRow> {
-  const { data, error } = await args.userClient
+async function fetchQuadPostRow(
+  userClient: SupabaseClientLike,
+  postId: string,
+): Promise<QuadPostRow> {
+  const { data, error } = await userClient
     .from("quad_posts")
     .select("id, user_id, body, proof_url, visibility, location_id, location_name")
-    .eq("id", args.postId)
+    .eq("id", postId)
     .maybeSingle();
 
   if (error) {
@@ -34,11 +33,51 @@ export async function getOwnedQuadPost(args: {
   if (!data) {
     throw new ApiError(404, "Post not found.", "QUAD_POST_NOT_FOUND");
   }
-  if (data.user_id !== args.userId) {
-    throw new ApiError(403, "You can only change your own posts.", "QUAD_POST_FORBIDDEN");
-  }
 
   return data as QuadPostRow;
+}
+
+export async function getOwnedQuadPost(args: {
+  userClient: SupabaseClientLike;
+  postId: string;
+  userId: string;
+}): Promise<QuadPostRow> {
+  const post = await fetchQuadPostRow(args.userClient, args.postId);
+  if (post.user_id !== args.userId) {
+    throw new ApiError(403, "You can only change your own posts.", "QUAD_POST_FORBIDDEN");
+  }
+  return post;
+}
+
+export async function deleteQuadPost(args: {
+  userClient: SupabaseClientLike;
+  adminClient: SupabaseClientLike;
+  postId: string;
+  userId: string;
+  isAdmin: boolean;
+}): Promise<{ postId: string }> {
+  const post = await fetchQuadPostRow(args.userClient, args.postId);
+
+  if (post.user_id !== args.userId && !args.isAdmin) {
+    throw new ApiError(403, "You can only delete your own posts.", "QUAD_POST_FORBIDDEN");
+  }
+
+  const useAdminClient = args.isAdmin && post.user_id !== args.userId;
+  const client = useAdminClient ? args.adminClient : args.userClient;
+  let query = client.from("quad_posts").delete().eq("id", args.postId);
+  if (!useAdminClient) {
+    query = query.eq("user_id", args.userId);
+  }
+
+  const { data: deleted, error } = await query.select("id").maybeSingle();
+  if (error) {
+    throw new ApiError(400, error.message ?? "Could not delete post.", "QUAD_POST_DELETE_FAILED");
+  }
+  if (!deleted) {
+    throw new ApiError(404, "Post not found or could not be deleted.", "QUAD_POST_NOT_FOUND");
+  }
+
+  return { postId: args.postId };
 }
 
 export async function syncRealmMomentForPostEdit(args: {

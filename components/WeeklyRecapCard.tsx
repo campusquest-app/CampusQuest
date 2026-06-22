@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 import type { Character, StatKey } from "@/lib/types";
-import { STAT_KEYS, STAT_LABELS, STAT_ICONS } from "@/lib/types";
+import { STAT_KEYS, STAT_LABELS } from "@/lib/types";
+import { StatIcon } from "@/components/stats/StatIcon";
 import { getActivityLogs } from "@/lib/store";
 import { getActivityById } from "@/lib/activities";
 import { DAILY_MINIMUM_XP } from "@/lib/level";
@@ -92,8 +93,9 @@ export function WeeklyRecapCard({ character }: { character: Character }) {
           <div className="text-cq-muted text-xs">Top stat (7d)</div>
           {recap.topStat ? (
             <>
-              <div className="text-cq-foreground font-bold text-lg">
-                {STAT_ICONS[recap.topStat]} {STAT_LABELS[recap.topStat]}
+              <div className="flex items-center gap-1.5 text-cq-foreground font-bold text-lg">
+                <StatIcon stat={recap.topStat} size="sm" />
+                {STAT_LABELS[recap.topStat]}
               </div>
               <div className="text-slate-400 text-xs font-mono">+{recap.topStatValue}</div>
             </>

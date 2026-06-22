@@ -104,7 +104,16 @@ export function formatRealmEventLabel(timer: RealmEventTimer): string {
   return m > 0 ? `Starts in ${h}h ${m}m` : `Starts in ${h}h`;
 }
 
-/** Mock Realm data — replace with API when backend is ready. */
+/** Default activity fields — hydrated from map API at runtime. */
+export const EMPTY_REALM_ACTIVITY = {
+  activeQuests: 0,
+  upcomingEvents: 0,
+  studentPhotos: 0,
+  quests: [] as RealmQuest[],
+  eventTimer: { status: "countdown" as const, minutesUntilStart: 999, label: "No scheduled events" },
+};
+
+/** Base campus landmark pins — quest/event counts come from the map API. */
 export const REALM_LOCATIONS: RealmLocation[] = [
   {
     id: "memorial-union",
@@ -116,20 +125,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     major: true,
     x: 47,
     y: 54,
-    activeQuests: 2,
-    upcomingEvents: 1,
-    studentPhotos: 14,
-    eventTimer: { status: "countdown", minutesUntilStart: 18, label: "Campus mixer" },
-    quests: [
-      {
-        id: "mu-check-in",
-        name: "Campus Event Check-In",
-        xp: 100,
-        status: "active",
-        offsetX: -4,
-        offsetY: -7,
-      },
-    ],
+    ...EMPTY_REALM_ACTIVITY,
     moments: [],
   },
   {
@@ -142,20 +138,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     major: true,
     x: 44,
     y: 46,
-    activeQuests: 1,
-    upcomingEvents: 0,
-    studentPhotos: 9,
-    eventTimer: { status: "active", label: "Study Sprint" },
-    quests: [
-      {
-        id: "lib-study",
-        name: "Study Sprint",
-        xp: 50,
-        status: "active",
-        offsetX: 5,
-        offsetY: -5,
-      },
-    ],
+    ...EMPTY_REALM_ACTIVITY,
     moments: [],
   },
   {
@@ -168,20 +151,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     major: true,
     x: 52,
     y: 62,
-    activeQuests: 1,
-    upcomingEvents: 0,
-    studentPhotos: 11,
-    eventTimer: { status: "active", label: "Gym Check-In" },
-    quests: [
-      {
-        id: "rec-gym",
-        name: "Gym Check-In",
-        xp: 80,
-        status: "active",
-        offsetX: 4,
-        offsetY: 4,
-      },
-    ],
+    ...EMPTY_REALM_ACTIVITY,
     moments: [],
   },
   {
@@ -194,20 +164,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     major: false,
     x: 58,
     y: 38,
-    activeQuests: 1,
-    upcomingEvents: 1,
-    studentPhotos: 6,
-    eventTimer: { status: "countdown", minutesUntilStart: 45, label: "Project showcase" },
-    quests: [
-      {
-        id: "eng-lab",
-        name: "Lab Hours Log",
-        xp: 60,
-        status: "upcoming",
-        offsetX: -3,
-        offsetY: 5,
-      },
-    ],
+    ...EMPTY_REALM_ACTIVITY,
     moments: [],
   },
   {
@@ -220,11 +177,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     major: false,
     x: 62,
     y: 42,
-    activeQuests: 0,
-    upcomingEvents: 1,
-    studentPhotos: 4,
-    eventTimer: { status: "countdown", minutesUntilStart: 120, label: "Networking hour" },
-    quests: [],
+    ...EMPTY_REALM_ACTIVITY,
     moments: [],
   },
   {
@@ -237,20 +190,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     major: true,
     x: 46,
     y: 50,
-    activeQuests: 1,
-    upcomingEvents: 0,
-    studentPhotos: 22,
-    eventTimer: { status: "active", label: "Quad vibes" },
-    quests: [
-      {
-        id: "quad-post",
-        name: "Post Drop",
-        xp: 35,
-        status: "active",
-        offsetX: 8,
-        offsetY: 2,
-      },
-    ],
+    ...EMPTY_REALM_ACTIVITY,
     moments: [],
   },
   {
@@ -263,20 +203,7 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     major: false,
     x: 49,
     y: 56,
-    activeQuests: 1,
-    upcomingEvents: 0,
-    studentPhotos: 8,
-    eventTimer: { status: "countdown", minutesUntilStart: 8, label: "Game watch party" },
-    quests: [
-      {
-        id: "den-watch",
-        name: "Game Night Check-In",
-        xp: 45,
-        status: "active",
-        offsetX: -6,
-        offsetY: 3,
-      },
-    ],
+    ...EMPTY_REALM_ACTIVITY,
     moments: [],
   },
 ];

@@ -3,6 +3,7 @@ import { getEarnedAchievements } from "./achievementEngine";
 import { describeCosmeticEquipEffect } from "./gameBuffs";
 import { getCosmeticById } from "./cosmetics";
 import { getLootLogForCharacter } from "./lootLog";
+import { TORCH_BEARER_BADGE_ID, hasTorchBearerBadge } from "./torchBearerBadge";
 import {
   CODEX_SCORE_BY_RARITY,
   CODEX_RARITY_ORDER,
@@ -29,7 +30,12 @@ export type CodexStats = {
 };
 
 export function buildCodexStates(character: Character): CodexItemState[] {
-  const catalog = getCodexCatalog();
+  const catalog = getCodexCatalog().filter((entry) => {
+    if (entry.achievementId === TORCH_BEARER_BADGE_ID && !hasTorchBearerBadge(character)) {
+      return false;
+    }
+    return true;
+  });
   const lootLog = getLootLogForCharacter(character.id);
   const discoveredLoot = new Set<string>();
   const firstLootDrop = new Map<string, { bossName: string; obtainedAt: number }>();

@@ -2,7 +2,8 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import type { StatKey } from "@/lib/types";
-import { STAT_ICONS, STAT_KEYS, STAT_LABELS } from "@/lib/types";
+import { STAT_KEYS, STAT_LABELS } from "@/lib/types";
+import { StatIcon } from "@/components/stats/StatIcon";
 
 export type XPGainBannerProps = {
   title: string;
@@ -85,7 +86,8 @@ export function XPGainBanner({
                     key={k}
                     className="inline-flex items-center justify-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-white/90"
                   >
-                    {STAT_ICONS[k]} +{(stats as Record<string, number>)[k]} {STAT_LABELS[k]}
+                    <StatIcon stat={k} variant="glyph" size="sm" />
+                    {" "}+{((stats as Record<string, number>)[k])} {STAT_LABELS[k]}
                   </span>
                 ))}
               </div>

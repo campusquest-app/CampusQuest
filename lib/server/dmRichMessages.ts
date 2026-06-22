@@ -26,7 +26,7 @@ export type DirectMessageDto = {
   id: string;
   conversationId: string;
   senderId: string;
-  recipientId: string;
+  recipientId: string | null;
   type: DirectMessageType;
   content: string;
   imageUrl: string | null;
@@ -38,6 +38,12 @@ export type DirectMessageDto = {
   createdAt: string;
   readAt: string | null;
   isFavorited: boolean;
+  sender?: {
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+  };
 };
 
 const DM_IMAGES_BUCKET = "dm-images";
@@ -94,7 +100,7 @@ export function mapDirectMessageRow(
     id: string;
     conversation_id: string;
     sender_id: string;
-    recipient_id: string;
+    recipient_id: string | null;
     content: string;
     type?: string | null;
     image_url?: string | null;

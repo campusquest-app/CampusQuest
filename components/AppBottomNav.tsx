@@ -1,7 +1,9 @@
 "use client";
 
-import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { Home, Map, QrCode, Trophy, User } from "lucide-react";
+import { useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { Home, Map, QrCode, Trophy } from "lucide-react";
+import { AvatarDisplay } from "@/components/AvatarDisplay";
+import { getCharacter, subscribeCharacterAvatar } from "@/lib/store";
 
 /** Synced by ResizeObserver on the nav element. */
 export const BOTTOM_NAV_CSS_VAR = "--cq-bottom-nav-h";
@@ -16,20 +18,36 @@ export const CQ_FLOATING_ACTION_BOTTOM =
 
 export type AppBottomNavTab = "quad" | "realm" | "leaderboards" | "character";
 
+const BOTTOM_NAV_AVATAR_PX = 28;
+
+function useLiveUserAvatar(fallback?: unknown): unknown {
+  return useSyncExternalStore(
+    subscribeCharacterAvatar,
+    () => getCharacter()?.avatar ?? fallback,
+    () => fallback,
+  );
+}
+
 export function AppBottomNav({
   activeTab,
   onSelectTab,
   onOpenScanner,
+  userAvatar,
+  avatarLoading = false,
 }: {
   activeTab: AppBottomNavTab | "other";
   onSelectTab: (tab: AppBottomNavTab) => void;
   onOpenScanner: () => void;
+  /** Same avatar payload used across profile, posts, DMs, and leaderboards. */
+  userAvatar?: unknown;
+  avatarLoading?: boolean;
 }) {
   const homeActive = activeTab === "quad";
   const mapActive = activeTab === "realm";
   const leaderboardActive = activeTab === "leaderboards";
   const profileActive = activeTab === "character";
   const navRef = useRef<HTMLElement | null>(null);
+  const liveAvatar = useLiveUserAvatar(userAvatar);
 
   useLayoutEffect(() => {
     const el = navRef.current;
@@ -102,11 +120,12 @@ export function AppBottomNav({
           icon={<Trophy className="h-[22px] w-[22px]" strokeWidth={leaderboardActive ? 2.4 : 2} />}
         />
 
-        <NavItem
+        <ProfileNavItem
           label="Profile"
           active={profileActive}
           onClick={() => onSelectTab("character")}
-          icon={<User className="h-[22px] w-[22px]" strokeWidth={profileActive ? 2.4 : 2} />}
+          avatar={liveAvatar}
+          loading={avatarLoading}
         />
       </div>
     </nav>
@@ -143,6 +162,55 @@ function NavItem({
         }`}
       >
         {icon}
+      </span>
+      <span className={`cq-bottom-nav-label text-[10px] font-semibold tracking-wide ${active ? "text-cyan-50" : "text-white/90"}`}>
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function ProfileNavItem({
+  label,
+  active,
+  onClick,
+  avatar,
+  loading,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  avatar?: unknown;
+  loading?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      aria-label={active ? "Profile, current page" : "Profile"}
+      className={`cq-bottom-nav-item cq-bottom-nav-item--profile flex min-h-[3.35rem] translate-y-0.5 flex-col items-center justify-center gap-0.5 rounded-2xl px-2 pb-2 pt-1.5 transition touch-manipulation ${
+        active ? "text-cyan-100" : "text-white/88 hover:text-white active:text-white"
+      }`}
+    >
+      <span
+        className={`cq-bottom-nav-avatar-slot flex h-10 w-10 items-center justify-center ${
+          active ? "cq-bottom-nav-avatar-slot--active" : ""
+        }`}
+      >
+        {loading ? (
+          <span className="cq-bottom-nav-avatar cq-bottom-nav-avatar--placeholder" aria-hidden />
+        ) : (
+          <span className={`cq-bottom-nav-avatar ${active ? "cq-bottom-nav-avatar--active" : ""}`}>
+            <AvatarDisplay
+              key={typeof avatar === "string" ? avatar : JSON.stringify(avatar ?? "")}
+              avatar={avatar}
+              size={BOTTOM_NAV_AVATAR_PX}
+              fitParent
+              showProp={false}
+            />
+          </span>
+        )}
       </span>
       <span className={`cq-bottom-nav-label text-[10px] font-semibold tracking-wide ${active ? "text-cyan-50" : "text-white/90"}`}>
         {label}

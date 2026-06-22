@@ -6,6 +6,8 @@ import {
   CODEX_RARITY_LABELS,
   CODEX_SOURCE_META,
 } from "@/lib/codexCatalog";
+import type { Character } from "@/lib/types";
+import { getTorchBearerDisplayName, TORCH_BEARER_BADGE_ID } from "@/lib/torchBearerBadge";
 
 function formatEarnedDate(ts: number | null): string {
   if (!ts || Number.isNaN(ts)) return "—";
@@ -18,16 +20,24 @@ function formatEarnedDate(ts: number | null): string {
 
 export function CodexDetailSheet({
   state,
+  character,
   onClose,
 }: {
   state: CodexItemState;
+  character?: Character;
   onClose: () => void;
 }) {
   if (typeof document === "undefined") return null;
 
   const { entry, discovered, earnedAt, whereEarned, isEquipped, equipEffect } = state;
   const sourceMeta = CODEX_SOURCE_META[entry.source];
-  const displayName = discovered || !entry.hiddenUntilFound ? entry.name : "Undiscovered Relic";
+  const isTorchBearer = entry.achievementId === TORCH_BEARER_BADGE_ID;
+  const displayName =
+    discovered && isTorchBearer && character?.torchBearerFounderNumber
+      ? getTorchBearerDisplayName(character.torchBearerFounderNumber)
+      : discovered || !entry.hiddenUntilFound
+        ? entry.name
+        : "Undiscovered Relic";
 
   return createPortal(
     <div
@@ -50,12 +60,21 @@ export function CodexDetailSheet({
             discovered ? "" : "cq-codex-card-icon--locked"
           }`}
         >
-          {discovered ? entry.icon : <span className="cq-codex-silhouette text-4xl">?</span>}
+          {discovered ? (
+            entry.imageUrl ? (
+              <img src={entry.imageUrl} alt="" className="h-full w-full rounded-2xl object-cover" />
+            ) : (
+              entry.icon
+            )
+          ) : (
+            <span className="cq-codex-silhouette text-4xl">?</span>
+          )}
         </div>
 
         <h3 className="text-center font-display text-lg font-bold text-white">{displayName}</h3>
         <p className={`cq-codex-rarity-pill cq-codex-rarity-pill--${entry.rarity} mx-auto mt-2 w-fit`}>
           {CODEX_RARITY_LABELS[entry.rarity]}
+          {isTorchBearer && discovered ? " Founder" : ""}
         </p>
 
         <dl className="mt-4 space-y-3 text-sm">

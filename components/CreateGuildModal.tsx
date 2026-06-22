@@ -54,7 +54,7 @@ export function CreateGuildModal({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value.slice(0, 40))}
-              placeholder="e.g. Library Legends"
+              placeholder="e.g. URI Ramblers"
               maxLength={40}
               className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
             />

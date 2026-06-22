@@ -44,7 +44,8 @@ import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 import { EventsFeed } from "./EventsFeed";
 import { OrganizationsHub } from "./OrganizationsHub";
 import { TheRealm } from "./TheRealm";
-import { STAT_KEYS, STAT_ICONS, STAT_LABELS } from "@/lib/types";
+import { STAT_KEYS, STAT_LABELS } from "@/lib/types";
+import { StatIcon } from "@/components/stats/StatIcon";
 import { getActivityById } from "@/lib/activities";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { isGameMusicMuted, playXpDing, playLevelUpFanfare, setGameMusicMuted } from "@/lib/playGameSound";
@@ -97,6 +98,7 @@ import {
 import { mergeRemoteQuadPostsForMutations } from "@/lib/feedStore";
 import type { FieldNote } from "@/lib/types";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
+import { syncAchievementsAfterHydrate } from "@/lib/client/achievementHydration";
 import { clearSchoolVerificationSnapshot, peekSchoolVerificationSnapshot } from "@/lib/client/schoolVerificationCache";
 import {
   loadBeginnerOnboardingHydrationBundle,
@@ -123,6 +125,7 @@ import { MobileGestureLayerProvider } from "@/components/mobile/MobileGestureLay
 import { DashboardTabSwipeShell } from "@/components/mobile/DashboardTabSwipeShell";
 import { type SwipeNavDirection } from "@/lib/client/mobileGestures";
 import { useDrawerSwipeGestures } from "@/lib/client/useDrawerSwipeGestures";
+import { useScrollChrome } from "@/lib/client/useScrollChrome";
 import { LogoutConfirmModal } from "@/components/LogoutConfirmModal";
 
 /** Load camera + CQ Scanner bundle only after the player taps CQ Scan (avoid mount/worker on cold start). */
@@ -481,7 +484,7 @@ export function Dashboard() {
     invalidateMeSessionCache();
     void fetchMeProfileAndStatsDeduped().then((snap) => {
       if (snap?.profile && snap?.stats) {
-        const merged = buildLocalCharacterFromServer(snap.profile, snap.stats);
+        const merged = syncAchievementsAfterHydrate(buildLocalCharacterFromServer(snap.profile, snap.stats));
         replaceLocalCharacter(merged, { skipRemoteSync: true });
         setCharacter(merged);
       }
@@ -618,6 +621,11 @@ export function Dashboard() {
     sharePostOpen ||
     levelUpModal != null ||
     xpGainSession != null;
+
+  useScrollChrome({
+    enabled: bootstrapStatus === "authenticated" && !quadChromeSuppressed,
+    topChrome: tab === "quad" && !quadChromeSuppressed,
+  });
 
   const tabSwipeGestureDisabled =
     quadChromeSuppressed ||
@@ -1277,7 +1285,7 @@ export function Dashboard() {
         if (onboardingDone) {
           clearLegacyLocalMismatch();
           commitSnap();
-          const merged = buildLocalCharacterFromServer(profileMerged, statsMerged);
+          const merged = syncAchievementsAfterHydrate(buildLocalCharacterFromServer(profileMerged, statsMerged));
           hydrateClientMirrorFromGameState(profileMerged.game_state_json ?? undefined, profileMerged.id);
           replaceLocalCharacter(merged, { skipRemoteSync: true });
           setCharacter(merged);
@@ -1290,7 +1298,7 @@ export function Dashboard() {
         } else if (characterDone) {
           clearLegacyLocalMismatch();
           commitSnap();
-          const merged = buildLocalCharacterFromServer(profileMerged, statsMerged);
+          const merged = syncAchievementsAfterHydrate(buildLocalCharacterFromServer(profileMerged, statsMerged));
           hydrateClientMirrorFromGameState(profileMerged.game_state_json ?? undefined, profileMerged.id);
           replaceLocalCharacter(merged, { skipRemoteSync: true });
           setCharacter(merged);
@@ -1683,7 +1691,7 @@ export function Dashboard() {
     }
   }
 
-  function handleLog(activityId: string, options?: { minutes?: number; proofUrl?: string; tags?: string[] }) {
+  function handleLog(activityId: string, options?: import("@/lib/store").LogActivityOptions) {
     if (!character) return null;
     const before = character;
     const result = logActivity(character.id, activityId, options);
@@ -1987,8 +1995,9 @@ export function Dashboard() {
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-sm">
                       <span className="font-mono text-uri-keaney font-bold">+{gainToast.xp} XP</span>
                       {STAT_KEYS.filter((k) => (gainToast.stats as any)[k] > 0).map((k) => (
-                        <span key={k} className="text-white/80">
-                          {STAT_ICONS[k]} <span className="text-white font-medium">+{(gainToast.stats as any)[k]}</span> {STAT_LABELS[k]}
+                        <span key={k} className="inline-flex items-center gap-1 text-white/80">
+                          <StatIcon stat={k} variant="glyph" size="sm" />
+                          <span className="text-white font-medium">+{(gainToast.stats as any)[k]}</span> {STAT_LABELS[k]}
                         </span>
                       ))}
                     </div>
@@ -2135,6 +2144,7 @@ export function Dashboard() {
             onOpenInbox={() => setTab("inbox")}
             unreadNotificationCount={unreadNotificationCount}
             chromeSuppressed={quadChromeSuppressed}
+            canModeratePosts={moderationAdminNavVisible(pilotCampusState)}
           />
         )}
 
@@ -2208,7 +2218,7 @@ export function Dashboard() {
         )}
 
         {tab === "manual-log" && character && (
-          <ManualLogScreen onLog={handleLog} onBack={() => setTab("quad")} />
+          <ManualLogScreen character={character} onLog={handleLog} onBack={() => setTab("quad")} />
         )}
 
         {tab === "progress-hub" && character && <ProgressHubScreen character={character} />}
@@ -2239,6 +2249,7 @@ export function Dashboard() {
                 onOpenMessage={openDirectMessage}
                 onProfileReload={reloadFriendView}
                 onSharePost={(note) => openSharePostFromNote(note, "quad")}
+                canModeratePosts={moderationAdminNavVisible(pilotCampusState)}
               />
             ) : friendViewError ? (
               <div className="space-y-3 px-3 py-12 text-center">
@@ -2289,6 +2300,8 @@ export function Dashboard() {
 
       <AppBottomNav
         activeTab={bottomNavActive}
+        userAvatar={character?.avatar}
+        avatarLoading={!character}
         onSelectTab={(t) => {
           setTab(t);
           if (t === "quad") setQuadFeedTab("public");

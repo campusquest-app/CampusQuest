@@ -26,6 +26,47 @@ function directKeyFor(userA: string, userB: string) {
   return [userA, userB].sort().join("|");
 }
 
+export type ConversationType = "direct" | "group";
+
+export type GroupMemberSummary = {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  role: "owner" | "member";
+};
+
+export function buildGroupDisplayName(args: {
+  title: string | null;
+  members: Array<{ id: string; displayName: string }>;
+  viewerId: string;
+}): string {
+  const trimmed = args.title?.trim();
+  if (trimmed) return trimmed;
+  const others = args.members.filter((m) => m.id !== args.viewerId);
+  const firstNames = others
+    .map((m) => m.displayName.trim().split(/\s+/)[0] || m.displayName)
+    .filter(Boolean);
+  if (firstNames.length === 0) return "Group chat";
+  if (firstNames.length === 1) return firstNames[0]!;
+  if (firstNames.length === 2) return `${firstNames[0]}, ${firstNames[1]}`;
+  return `${firstNames[0]}, ${firstNames[1]} +${firstNames.length - 2}`;
+}
+
+async function getConversationType(
+  admin: SupabaseClientLike,
+  conversationId: string,
+): Promise<ConversationType> {
+  const { data, error } = await admin
+    .from("direct_conversations")
+    .select("type")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (error) throw new ApiError(400, error.message, "CONVERSATION_LOOKUP_FAILED");
+  if (!data) throw new ApiError(404, "Conversation not found.", "CONVERSATION_NOT_FOUND");
+  return (data.type ?? "direct") as ConversationType;
+}
+
 const ABUSE_RATE_LIMIT_MESSAGE = "You're doing that too often. Please try again later.";
 
 async function getConnectionBetween(userClient: SupabaseClientLike, userId: string, otherUserId: string) {
@@ -586,7 +627,7 @@ export async function getOrCreateDirectConversation(args: {
   const directKey = directKeyFor(userId, otherUserId);
   const { data: conversation, error: conversationError } = await admin
     .from("direct_conversations")
-    .upsert({ direct_key: directKey, created_by: userId }, { onConflict: "direct_key" })
+    .upsert({ direct_key: directKey, created_by: userId, type: "direct" }, { onConflict: "direct_key" })
     .select("id, direct_key, updated_at, created_at")
     .single();
   if (conversationError || !conversation) {
@@ -607,6 +648,221 @@ export async function getOrCreateDirectConversation(args: {
   return conversation;
 }
 
+export async function createGroupConversation(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  memberIds: string[];
+  title?: string;
+}) {
+  const { userClient, userId, memberIds, title } = args;
+  const admin = createAdminClient();
+  await assertAccountCanSocialize(userClient, userId);
+
+  const uniqueMembers = Array.from(new Set(memberIds.filter((id) => id && id !== userId)));
+  if (uniqueMembers.length < 2) {
+    throw new ApiError(400, "Select at least two people for a group chat.", "VALIDATION_ERROR");
+  }
+  if (uniqueMembers.length > 30) {
+    throw new ApiError(400, "Group chats support up to 30 members.", "VALIDATION_ERROR");
+  }
+
+  for (const memberId of uniqueMembers) {
+    const relationship = await getRelationshipStatus({ userClient, userId, otherUserId: memberId });
+    if (!relationship.canMessage) {
+      throw new ApiError(
+        403,
+        "You can only add accepted CampusQuest connections to a group.",
+        "GROUP_MEMBER_NOT_ALLOWED",
+      );
+    }
+  }
+
+  const trimmedTitle = title?.trim().slice(0, 80) || null;
+  const { data: conversation, error: conversationError } = await admin
+    .from("direct_conversations")
+    .insert({
+      type: "group",
+      direct_key: null,
+      created_by: userId,
+      title: trimmedTitle,
+    })
+    .select("id, type, title, created_at, updated_at")
+    .single();
+  if (conversationError || !conversation) {
+    throw new ApiError(400, conversationError?.message ?? "Could not create group.", "GROUP_CREATE_FAILED");
+  }
+
+  const participantRows = [
+    { conversation_id: conversation.id, user_id: userId, role: "owner" },
+    ...uniqueMembers.map((memberId) => ({
+      conversation_id: conversation.id,
+      user_id: memberId,
+      role: "member",
+    })),
+  ];
+  const { error: participantError } = await admin.from("direct_conversation_participants").insert(participantRows);
+  if (participantError) {
+    throw new ApiError(400, participantError.message, "GROUP_PARTICIPANT_FAILED");
+  }
+
+  const details = await getConversationDetails({
+    userClient,
+    userId,
+    conversationId: conversation.id,
+  });
+  return details;
+}
+
+export async function getConversationDetails(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  conversationId: string;
+}) {
+  const { userClient, userId, conversationId } = args;
+  const admin = createAdminClient();
+  await assertConversationParticipant(userClient, userId, conversationId);
+
+  const { data: conversation, error: convoError } = await admin
+    .from("direct_conversations")
+    .select("id, type, title, created_by, created_at, updated_at")
+    .eq("id", conversationId)
+    .single();
+  if (convoError || !conversation) {
+    throw new ApiError(404, "Conversation not found.", "CONVERSATION_NOT_FOUND");
+  }
+
+  const { data: participantRows, error: participantsError } = await admin
+    .from("direct_conversation_participants")
+    .select("user_id, role, joined_at")
+    .eq("conversation_id", conversationId);
+  if (participantsError) {
+    throw new ApiError(400, participantsError.message, "CONVERSATION_PARTICIPANTS_FETCH_FAILED");
+  }
+
+  const memberIds = (participantRows ?? []).map((row) => row.user_id);
+  const { data: profiles, error: profilesError } = await userClient
+    .from("profiles")
+    .select("id, username, display_name, avatar_url")
+    .in("id", memberIds);
+  if (profilesError) throw new ApiError(400, profilesError.message, "CONVERSATION_PROFILES_FETCH_FAILED");
+
+  const profileMap = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
+  const members: GroupMemberSummary[] = (participantRows ?? [])
+    .map((row) => {
+      const profile = profileMap.get(row.user_id);
+      if (!profile) return null;
+      return {
+        id: profile.id,
+        username: profile.username,
+        displayName: profile.display_name,
+        avatarUrl: profile.avatar_url,
+        role: (row.role === "owner" ? "owner" : "member") as "owner" | "member",
+      };
+    })
+    .filter(Boolean) as GroupMemberSummary[];
+
+  const convoType = (conversation.type ?? "direct") as ConversationType;
+  if (convoType === "direct") {
+    const other = members.find((m) => m.id !== userId);
+    if (!other) throw new ApiError(404, "Conversation not found.", "CONVERSATION_NOT_FOUND");
+    return {
+      type: "direct" as const,
+      conversationId: conversation.id,
+      otherUser: {
+        id: other.id,
+        username: other.username,
+        displayName: other.displayName,
+        avatarUrl: other.avatarUrl,
+      },
+      members,
+      createdAt: conversation.created_at,
+      updatedAt: conversation.updated_at,
+    };
+  }
+
+  const displayName = buildGroupDisplayName({
+    title: conversation.title,
+    members: members.map((m) => ({ id: m.id, displayName: m.displayName })),
+    viewerId: userId,
+  });
+
+  const myRole = (participantRows ?? []).find((row) => row.user_id === userId)?.role ?? "member";
+
+  return {
+    type: "group" as const,
+    conversationId: conversation.id,
+    title: conversation.title,
+    displayName,
+    memberCount: members.length,
+    members,
+    myRole: myRole === "owner" ? ("owner" as const) : ("member" as const),
+    createdAt: conversation.created_at,
+    updatedAt: conversation.updated_at,
+  };
+}
+
+export async function updateGroupConversation(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  conversationId: string;
+  title: string;
+}) {
+  const { userClient, userId, conversationId, title } = args;
+  const admin = createAdminClient();
+  const convoType = await getConversationType(admin, conversationId);
+  if (convoType !== "group") {
+    throw new ApiError(400, "Only group conversations can be renamed.", "VALIDATION_ERROR");
+  }
+
+  const { data: participant, error: participantError } = await admin
+    .from("direct_conversation_participants")
+    .select("role")
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (participantError) throw new ApiError(400, participantError.message, "CONVERSATION_PARTICIPANT_CHECK_FAILED");
+  if (!participant) throw new ApiError(403, "Conversation access denied.", "CONVERSATION_FORBIDDEN");
+  if (participant.role !== "owner") {
+    throw new ApiError(403, "Only the group owner can rename the chat.", "FORBIDDEN");
+  }
+
+  const trimmed = title.trim().slice(0, 80);
+  if (!trimmed) throw new ApiError(400, "Group name is required.", "VALIDATION_ERROR");
+
+  const { data, error } = await admin
+    .from("direct_conversations")
+    .update({ title: trimmed })
+    .eq("id", conversationId)
+    .select("id, title, updated_at")
+    .single();
+  if (error || !data) throw new ApiError(400, error?.message ?? "Could not rename group.", "GROUP_UPDATE_FAILED");
+
+  return getConversationDetails({ userClient, userId, conversationId });
+}
+
+export async function leaveGroupConversation(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  conversationId: string;
+}) {
+  const { userClient, userId, conversationId } = args;
+  const admin = createAdminClient();
+  const convoType = await getConversationType(admin, conversationId);
+  if (convoType !== "group") {
+    throw new ApiError(400, "Only group conversations support leaving.", "VALIDATION_ERROR");
+  }
+  await assertConversationParticipant(userClient, userId, conversationId);
+
+  const { error } = await admin
+    .from("direct_conversation_participants")
+    .delete()
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId);
+  if (error) throw new ApiError(400, error.message, "GROUP_LEAVE_FAILED");
+
+  return { left: true };
+}
+
 async function assertConversationParticipant(userClient: SupabaseClientLike, userId: string, conversationId: string) {
   const { data, error } = await userClient
     .from("direct_conversation_participants")
@@ -624,7 +880,7 @@ export async function listConversations(args: { userClient: SupabaseClientLike; 
   const admin = createAdminClient();
   const { data: myParticipants, error: myParticipantsError } = await userClient
     .from("direct_conversation_participants")
-    .select("conversation_id, last_read_at, hidden_at")
+    .select("conversation_id, last_read_at, hidden_at, updated_at")
     .eq("user_id", userId)
     .is("hidden_at", null)
     .order("updated_at", { ascending: false });
@@ -633,62 +889,127 @@ export async function listConversations(args: { userClient: SupabaseClientLike; 
   const conversationIds = (myParticipants ?? []).map((row) => row.conversation_id);
   if (conversationIds.length === 0) return [];
 
-  const [{ data: participants, error: participantsError }, { data: latestMessages, error: latestMessagesError }] =
-    await Promise.all([
-      admin
-        .from("direct_conversation_participants")
-        .select("conversation_id, user_id")
-        .in("conversation_id", conversationIds),
-      userClient
-        .from("direct_messages")
-        .select(MESSAGE_SELECT)
-        .in("conversation_id", conversationIds)
-        .order("created_at", { ascending: false }),
-    ]);
+  const participantByConvo = new Map(
+    (myParticipants ?? []).map((row) => [row.conversation_id, row]),
+  );
+
+  const [
+    { data: convoMetaRows, error: convoMetaError },
+    { data: participants, error: participantsError },
+    { data: latestMessages, error: latestMessagesError },
+  ] = await Promise.all([
+    admin
+      .from("direct_conversations")
+      .select("id, type, title, updated_at")
+      .in("id", conversationIds),
+    admin
+      .from("direct_conversation_participants")
+      .select("conversation_id, user_id, role")
+      .in("conversation_id", conversationIds),
+    userClient
+      .from("direct_messages")
+      .select(MESSAGE_SELECT)
+      .in("conversation_id", conversationIds)
+      .order("created_at", { ascending: false }),
+  ]);
+  if (convoMetaError) throw new ApiError(400, convoMetaError.message, "CONVERSATIONS_META_FETCH_FAILED");
   if (participantsError) throw new ApiError(400, participantsError.message, "CONVERSATION_PARTICIPANTS_FETCH_FAILED");
   if (latestMessagesError) throw new ApiError(400, latestMessagesError.message, "CONVERSATION_MESSAGES_FETCH_FAILED");
 
-  const otherByConversation = new Map<string, string>();
+  const convoTypeById = new Map((convoMetaRows ?? []).map((row) => [row.id, (row.type ?? "direct") as ConversationType]));
+  const convoTitleById = new Map((convoMetaRows ?? []).map((row) => [row.id, row.title as string | null]));
+
+  const participantsByConvo = new Map<string, Array<{ user_id: string; role: string }>>();
   for (const row of participants ?? []) {
-    if (row.user_id !== userId && !otherByConversation.has(row.conversation_id)) {
-      otherByConversation.set(row.conversation_id, row.user_id);
-    }
+    const list = participantsByConvo.get(row.conversation_id) ?? [];
+    list.push({ user_id: row.user_id, role: row.role ?? "member" });
+    participantsByConvo.set(row.conversation_id, list);
   }
 
-  const otherUserIds = Array.from(new Set(otherByConversation.values()));
+  const allUserIds = Array.from(new Set((participants ?? []).map((row) => row.user_id)));
   const { data: profiles, error: profilesError } = await userClient
     .from("profiles")
     .select("id, username, display_name, avatar_url")
-    .in("id", otherUserIds);
+    .in("id", allUserIds);
   if (profilesError) throw new ApiError(400, profilesError.message, "CONVERSATION_PROFILES_FETCH_FAILED");
   const profileMap = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
 
-  const latestByConversation = new Map<string, any>();
+  const latestByConversation = new Map<string, (typeof latestMessages)[number]>();
   for (const message of latestMessages ?? []) {
     if (!latestByConversation.has(message.conversation_id)) {
       latestByConversation.set(message.conversation_id, message);
     }
   }
 
-  return (myParticipants ?? [])
-    .map((participant) => {
-      const otherUserId = otherByConversation.get(participant.conversation_id);
-      if (!otherUserId) return null;
-      const profile = profileMap.get(otherUserId);
-      if (!profile) return null;
-      const latest = latestByConversation.get(participant.conversation_id);
-      return {
-        conversationId: participant.conversation_id,
-        otherUser: {
-          id: profile.id,
-          username: profile.username,
-          displayName: profile.display_name,
-          avatarUrl: profile.avatar_url,
-        },
-        latestMessage: latest ? mapDirectMessageRow(latest, false) : null,
-      };
-    })
-    .filter(Boolean);
+  const results: Array<Record<string, unknown>> = [];
+
+  for (const conversationId of conversationIds) {
+    const convoType = convoTypeById.get(conversationId) ?? "direct";
+    const participant = participantByConvo.get(conversationId);
+    const memberRows = participantsByConvo.get(conversationId) ?? [];
+    const latest = latestByConversation.get(conversationId);
+    const latestMessage = latest ? mapDirectMessageRow(latest, false) : null;
+    const lastReadAt = participant?.last_read_at ?? null;
+
+    if (convoType === "group") {
+      const members: GroupMemberSummary[] = memberRows
+        .map((row) => {
+          const profile = profileMap.get(row.user_id);
+          if (!profile) return null;
+          return {
+            id: profile.id,
+            username: profile.username,
+            displayName: profile.display_name,
+            avatarUrl: profile.avatar_url,
+            role: (row.role === "owner" ? "owner" : "member") as "owner" | "member",
+          };
+        })
+        .filter(Boolean) as GroupMemberSummary[];
+
+      const title = convoTitleById.get(conversationId) ?? null;
+      const displayName = buildGroupDisplayName({
+        title,
+        members: members.map((m) => ({ id: m.id, displayName: m.displayName })),
+        viewerId: userId,
+      });
+
+      results.push({
+        type: "group",
+        conversationId,
+        title,
+        displayName,
+        memberCount: members.length,
+        members,
+        latestMessage,
+        lastReadAt,
+      });
+      continue;
+    }
+
+    const otherUserId = memberRows.find((row) => row.user_id !== userId)?.user_id;
+    if (!otherUserId) continue;
+    const profile = profileMap.get(otherUserId);
+    if (!profile) continue;
+
+    results.push({
+      type: "direct",
+      conversationId,
+      otherUser: {
+        id: profile.id,
+        username: profile.username,
+        displayName: profile.display_name,
+        avatarUrl: profile.avatar_url,
+      },
+      latestMessage,
+      lastReadAt,
+    });
+  }
+
+  return results.sort((a, b) => {
+    const aTime = new Date((a.latestMessage as { createdAt?: string } | null)?.createdAt ?? 0).getTime();
+    const bTime = new Date((b.latestMessage as { createdAt?: string } | null)?.createdAt ?? 0).getTime();
+    return bTime - aTime;
+  });
 }
 
 export async function listConversationMessages(args: {
@@ -698,7 +1019,9 @@ export async function listConversationMessages(args: {
   limit?: number;
 }) {
   const { userClient, userId, conversationId, limit = 50 } = args;
+  const admin = createAdminClient();
   const participant = await assertConversationParticipant(userClient, userId, conversationId);
+  const convoType = await getConversationType(admin, conversationId);
 
   const capped = Math.max(1, Math.min(100, limit));
   const { data, error } = await userClient
@@ -717,19 +1040,28 @@ export async function listConversationMessages(args: {
       .eq("conversation_id", conversationId)
       .eq("user_id", userId);
   }
-  await Promise.all([
-    userClient
-      .from("direct_messages")
-      .update({ read_at: nowIso })
-      .eq("conversation_id", conversationId)
-      .eq("recipient_id", userId)
-      .is("read_at", null),
-    userClient
+
+  if (convoType === "group") {
+    await userClient
       .from("direct_conversation_participants")
       .update({ last_read_at: nowIso })
       .eq("conversation_id", conversationId)
-      .eq("user_id", userId),
-  ]);
+      .eq("user_id", userId);
+  } else {
+    await Promise.all([
+      userClient
+        .from("direct_messages")
+        .update({ read_at: nowIso })
+        .eq("conversation_id", conversationId)
+        .eq("recipient_id", userId)
+        .is("read_at", null),
+      userClient
+        .from("direct_conversation_participants")
+        .update({ last_read_at: nowIso })
+        .eq("conversation_id", conversationId)
+        .eq("user_id", userId),
+    ]);
+  }
 
   const msgRows = data ?? [];
   const messageIds = msgRows.map((m) => m.id);
@@ -744,7 +1076,29 @@ export async function listConversationMessages(args: {
     for (const r of favRows ?? []) favSet.add((r as { message_id: string }).message_id);
   }
 
-  return msgRows.reverse().map((message) => mapDirectMessageRow(message, favSet.has(message.id)));
+  const senderIds = Array.from(new Set(msgRows.map((m) => m.sender_id)));
+  const senderMap = new Map<string, { id: string; username: string; displayName: string; avatarUrl: string | null }>();
+  if (convoType === "group" && senderIds.length > 0) {
+    const { data: senderProfiles, error: senderErr } = await userClient
+      .from("profiles")
+      .select("id, username, display_name, avatar_url")
+      .in("id", senderIds);
+    if (senderErr) throw new ApiError(400, senderErr.message, "MESSAGE_SENDERS_FETCH_FAILED");
+    for (const profile of senderProfiles ?? []) {
+      senderMap.set(profile.id, {
+        id: profile.id,
+        username: profile.username,
+        displayName: profile.display_name,
+        avatarUrl: profile.avatar_url,
+      });
+    }
+  }
+
+  return msgRows.reverse().map((message) => {
+    const dto = mapDirectMessageRow(message, favSet.has(message.id));
+    const sender = senderMap.get(message.sender_id);
+    return sender ? { ...dto, sender } : dto;
+  });
 }
 
 export async function setDirectMessageFavorite(args: {
@@ -843,6 +1197,7 @@ export async function sendConversationMessage(args: {
   const admin = createAdminClient();
   await assertAccountCanSocialize(userClient, userId);
   await assertConversationParticipant(userClient, userId, conversationId);
+  const convoType = await getConversationType(admin, conversationId);
 
   let trimmed = (args.content ?? "").trim();
   let messageMetadata = { ...metadata };
@@ -884,17 +1239,34 @@ export async function sendConversationMessage(args: {
     .eq("conversation_id", conversationId);
   if (participantsError) throw new ApiError(400, participantsError.message, "MESSAGE_PARTICIPANTS_FETCH_FAILED");
 
-  const recipient = (participants ?? []).find((row) => row.user_id !== userId);
-  if (!recipient) throw new ApiError(400, "Recipient not found for conversation.", "MESSAGE_RECIPIENT_NOT_FOUND");
+  const participantIds = (participants ?? []).map((row) => row.user_id);
+  if (participantIds.length === 0) {
+    throw new ApiError(400, "Conversation has no participants.", "MESSAGE_PARTICIPANTS_EMPTY");
+  }
 
-  await assertNotBlocked(userClient, userId, recipient.user_id);
+  const recipientIds =
+    convoType === "group"
+      ? participantIds.filter((id) => id !== userId)
+      : participantIds.filter((id) => id !== userId).slice(0, 1);
+
+  if (recipientIds.length === 0) {
+    throw new ApiError(400, "Recipient not found for conversation.", "MESSAGE_RECIPIENT_NOT_FOUND");
+  }
+
+  if (convoType === "direct") {
+    await assertNotBlocked(userClient, userId, recipientIds[0]!);
+  } else {
+    for (const memberId of recipientIds) {
+      await assertNotBlocked(userClient, userId, memberId);
+    }
+  }
 
   const minuteAgo = new Date(Date.now() - 60_000).toISOString();
   const { count: minuteCount, error: minuteCountError } = await userClient
     .from("direct_messages")
     .select("*", { count: "exact", head: true })
     .eq("sender_id", userId)
-    .eq("recipient_id", recipient.user_id)
+    .eq("conversation_id", conversationId)
     .gte("created_at", minuteAgo);
   if (minuteCountError) throw new ApiError(400, minuteCountError.message, "MESSAGE_SPAM_CHECK_FAILED");
   if ((minuteCount ?? 0) >= 12) {
@@ -907,7 +1279,7 @@ export async function sendConversationMessage(args: {
       .from("direct_messages")
       .select("id")
       .eq("sender_id", userId)
-      .eq("recipient_id", recipient.user_id)
+      .eq("conversation_id", conversationId)
       .eq("content", trimmed)
       .gte("created_at", thirtySecondsAgo)
       .limit(1)
@@ -918,12 +1290,14 @@ export async function sendConversationMessage(args: {
     }
   }
 
+  const recipientId = convoType === "direct" ? recipientIds[0]! : null;
+
   const { data: inserted, error: insertedError } = await userClient
     .from("direct_messages")
     .insert({
       conversation_id: conversationId,
       sender_id: userId,
-      recipient_id: recipient.user_id,
+      recipient_id: recipientId,
       content: trimmed,
       type,
       image_url: type === "image" ? imageUrl?.trim() ?? null : null,
@@ -959,14 +1333,16 @@ export async function sendConversationMessage(args: {
             ? trimmed.slice(0, 120)
             : "Shared a post"
           : trimmed.slice(0, 120);
-    await createNotification({
-      userId: recipient.user_id,
-      type: "direct_message",
-      title: "New direct message",
-      body: notifyBody,
-      relatedEntityType: "conversation",
-      relatedEntityId: conversationId,
-    });
+    for (const notifyUserId of recipientIds) {
+      await createNotification({
+        userId: notifyUserId,
+        type: "direct_message",
+        title: convoType === "group" ? "New group message" : "New direct message",
+        body: notifyBody,
+        relatedEntityType: "conversation",
+        relatedEntityId: conversationId,
+      });
+    }
   } catch {}
 
   return mapDirectMessageRow(inserted, false);

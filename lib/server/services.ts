@@ -599,23 +599,14 @@ export async function scanQrQuest(args: {
     throw new ApiError(409, "QR code was already used by this user.", "ALREADY_USED_QR_CODE");
   }
 
-  const { data: userQuest, error: userQuestError } = await userClient
-    .from("user_quests")
-    .select("id, progress_count, status")
-    .eq("user_id", userId)
-    .eq("quest_id", quest.id)
-    .order("assigned_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (userQuestError) {
+  const userQuest = await getOrCreateActiveUserQuest({
+    userClient,
+    userId,
+    questId: quest.id,
+  }).catch(async (error) => {
     await logScan({ status: "rejected", questLocationId: location.id });
-    throw new ApiError(400, userQuestError.message, "USER_QUEST_FETCH_FAILED");
-  }
-  if (!userQuest) {
-    await logScan({ status: "rejected", questLocationId: location.id });
-    throw new ApiError(404, "No active user quest is linked to this QR code.", "USER_QUEST_NOT_FOUND");
-  }
+    throw error;
+  });
 
   if (userQuest.status === "claimed") {
     await logScan({
@@ -745,34 +736,125 @@ export async function createProofUpload(args: {
   };
 }
 
+export async function getOrCreateActiveUserQuest(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  questId: string;
+}) {
+  const { userClient, userId, questId } = args;
+
+  const { data: existing, error: fetchError } = await userClient
+    .from("user_quests")
+    .select("id, progress_count, status")
+    .eq("user_id", userId)
+    .eq("quest_id", questId)
+    .neq("status", "claimed")
+    .order("assigned_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (fetchError) throw new ApiError(400, fetchError.message, "USER_QUEST_FETCH_FAILED");
+  if (existing) return existing;
+
+  const { data: quest, error: questError } = await userClient
+    .from("quests")
+    .select("id, is_repeatable, is_active")
+    .eq("id", questId)
+    .single();
+  if (questError || !quest) {
+    throw new ApiError(404, "Quest not found.", "QUEST_NOT_FOUND");
+  }
+  if (!quest.is_active) {
+    throw new ApiError(409, "Quest is inactive.", "INACTIVE_QUEST");
+  }
+
+  if (!quest.is_repeatable) {
+    const { count, error: completionError } = await userClient
+      .from("quest_completions")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("quest_id", questId);
+    if (completionError) {
+      throw new ApiError(400, completionError.message, "QUEST_COMPLETION_CHECK_FAILED");
+    }
+    if ((count ?? 0) > 0) {
+      throw new ApiError(409, "Quest was already completed.", "QUEST_ALREADY_CLAIMED");
+    }
+  }
+
+  const { data: created, error: insertError } = await userClient
+    .from("user_quests")
+    .insert({
+      user_id: userId,
+      quest_id: questId,
+      progress_count: 0,
+      status: "active",
+    })
+    .select("id, progress_count, status")
+    .single();
+  if (insertError) throw new ApiError(400, insertError.message, "USER_QUEST_CREATE_FAILED");
+  return created;
+}
+
 export async function fetchActiveUserQuests(args: {
   userClient: SupabaseClientLike;
   userId: string;
   limit: number;
 }) {
   const { userClient, userId, limit } = args;
-  const safeLimit = Math.max(1, Math.min(20, Number(limit) || 5));
+  const safeLimit = Math.max(1, Math.min(50, Number(limit) || 5));
 
-  const { data, error } = await userClient
+  const { data: catalogQuests, error: catalogError } = await userClient
+    .from("quests")
+    .select("id, title, description, xp_reward, target_count, is_active, quest_type")
+    .eq("is_active", true)
+    .order("created_at", { ascending: true });
+  if (catalogError) throw new ApiError(400, catalogError.message, "ACTIVE_QUESTS_CATALOG_FAILED");
+
+  const quests = catalogQuests ?? [];
+  if (quests.length === 0) return [];
+
+  const questIds = quests.map((quest) => quest.id as string);
+  const { data: userQuestRows, error: userQuestError } = await userClient
     .from("user_quests")
-    .select("id, quest_id, progress_count, status, started_at, updated_at, quests(id, title, description, xp_reward, target_count, is_active)")
+    .select("id, quest_id, progress_count, status, started_at, updated_at, assigned_at")
     .eq("user_id", userId)
-    .eq("status", "active")
-    .order("updated_at", { ascending: false })
-    .limit(safeLimit);
-  if (error) throw new ApiError(400, error.message, "ACTIVE_QUESTS_FETCH_FAILED");
+    .in("quest_id", questIds)
+    .order("assigned_at", { ascending: false });
+  if (userQuestError) throw new ApiError(400, userQuestError.message, "ACTIVE_QUESTS_FETCH_FAILED");
 
-  return (data ?? [])
-    .map((row: any) => ({
-      id: row.id,
-      quest_id: row.quest_id,
-      progress_count: Number(row.progress_count ?? 0),
-      status: row.status,
-      started_at: row.started_at,
-      updated_at: row.updated_at,
-      quest: Array.isArray(row.quests) ? row.quests[0] ?? null : row.quests ?? null,
-    }))
-    .filter((row) => row.quest?.is_active !== false);
+  const progressByQuestId = new Map<string, (typeof userQuestRows)[number]>();
+  for (const row of userQuestRows ?? []) {
+    const questId = row.quest_id as string;
+    if (!progressByQuestId.has(questId)) {
+      progressByQuestId.set(questId, row);
+    }
+  }
+
+  return quests
+    .map((quest) => {
+      const row = progressByQuestId.get(quest.id as string);
+      const progressCount = Number(row?.progress_count ?? 0);
+      const status = (row?.status as string | undefined) ?? "active";
+      return {
+        id: (row?.id as string | undefined) ?? null,
+        quest_id: quest.id as string,
+        progress_count: progressCount,
+        status,
+        started_at: (row?.started_at as string | null | undefined) ?? null,
+        updated_at: (row?.updated_at as string | null | undefined) ?? null,
+        quest: {
+          id: quest.id,
+          title: quest.title,
+          description: quest.description,
+          xp_reward: quest.xp_reward,
+          target_count: quest.target_count,
+          is_active: quest.is_active,
+          quest_type: quest.quest_type,
+        },
+      };
+    })
+    .filter((row) => row.status !== "claimed" && row.status !== "expired")
+    .slice(0, safeLimit);
 }
 
 export async function reviewProofSubmission(args: {

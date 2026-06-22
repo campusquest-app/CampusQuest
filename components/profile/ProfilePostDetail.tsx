@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { FieldNote } from "@/lib/types";
-import type { QuadComment } from "@/lib/types";
 import { FieldNoteCard } from "@/components/FieldNoteCard";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
+import { getCommentsByNoteId } from "@/lib/feedStore";
+import { hydrateQuadPostCommentsSafe } from "@/lib/client/quadCommentsHydration";
+import { isPersistedQuadPostId } from "@/lib/quadFieldNote";
 
 export function ProfilePostDetail({
   note,
   currentUserId,
   currentUser,
-  comments,
   likePending,
   onClose,
   onNod,
@@ -23,11 +24,11 @@ export function ProfilePostDetail({
   onPostDeleted,
   onViewAuthor,
   onSharePost,
+  canModeratePosts,
 }: {
   note: FieldNote;
   currentUserId: string;
   currentUser: { id: string; name: string; username: string; avatar: string };
-  comments: QuadComment[];
   likePending?: boolean;
   onClose: () => void;
   onNod: (noteId: string) => void;
@@ -39,7 +40,12 @@ export function ProfilePostDetail({
   onPostDeleted?: (postId: string) => void;
   onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
   onSharePost?: (note: FieldNote) => void;
+  canModeratePosts?: boolean;
 }) {
+  const [commentsTick, setCommentsTick] = useState(0);
+  void commentsTick;
+  const loadedComments = getCommentsByNoteId(note.id);
+
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -47,6 +53,17 @@ export function ProfilePostDetail({
       document.body.style.overflow = prev;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isPersistedQuadPostId(note.id)) return undefined;
+    let cancelled = false;
+    void hydrateQuadPostCommentsSafe(note.id, "profile-post-detail").then((ok) => {
+      if (!cancelled && ok) setCommentsTick((n) => n + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [note.id]);
 
   if (typeof document === "undefined") return null;
 
@@ -73,7 +90,7 @@ export function ProfilePostDetail({
         <FieldNoteCard
           note={note}
           currentUserId={currentUserId}
-          comments={comments}
+          comments={loadedComments}
           onNod={onNod}
           onHype={onHype}
           onVerify={onVerify}
@@ -82,6 +99,7 @@ export function ProfilePostDetail({
           currentUser={currentUser}
           likePending={likePending}
           variant="feed"
+          onCommentsUpdated={() => setCommentsTick((n) => n + 1)}
           onPostUpdated={onPostUpdated}
           onPostDeleted={(id) => {
             onPostDeleted?.(id);
@@ -89,6 +107,7 @@ export function ProfilePostDetail({
           }}
           onViewAuthor={onViewAuthor}
           onSharePost={onSharePost}
+          canModeratePosts={canModeratePosts}
         />
       </div>
     </MobileSwipeBackSurface>,

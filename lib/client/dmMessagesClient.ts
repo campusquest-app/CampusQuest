@@ -27,7 +27,7 @@ export type DirectMessageDto = {
   id: string;
   conversationId: string;
   senderId: string;
-  recipientId: string;
+  recipientId: string | null;
   type: DirectMessageType;
   content: string;
   imageUrl: string | null;
@@ -42,6 +42,12 @@ export type DirectMessageDto = {
   pending?: boolean;
   failed?: boolean;
   uploadProgress?: number;
+  sender?: {
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+  };
 };
 
 export type SharePostTarget = {

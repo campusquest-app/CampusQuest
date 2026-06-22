@@ -18,10 +18,13 @@ import { ProfilePostDetail } from "@/components/profile/ProfilePostDetail";
 import {
   assistFieldNote,
   getCommentsByNoteId,
+  getDisplayCommentCount,
   getNoteForReaction,
   mergeRemoteQuadPostsForMutations,
+  removeRemoteQuadPost,
   verifyFieldNote,
 } from "@/lib/feedStore";
+import { hydrateQuadPostCommentsSafe } from "@/lib/client/quadCommentsHydration";
 import { fetchQuadPostById } from "@/lib/client/quadPostsClient";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
 import { submitQuadComment } from "@/lib/client/quadCommentActions";
@@ -65,6 +68,7 @@ export function RealmArchiveExperience({
   const [entering, setEntering] = useState(false);
   const [detailNote, setDetailNote] = useState<FieldNote | null>(null);
   const [commentsNote, setCommentsNote] = useState<FieldNote | null>(null);
+  const [commentsRefresh, setCommentsRefresh] = useState(0);
   const [detailLoading, setDetailLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
@@ -124,6 +128,19 @@ export function RealmArchiveExperience({
     if (!viewer || !active?.postId) return;
     void ensurePostHydrated(active);
   }, [active?.postId, viewer, ensurePostHydrated]);
+
+  useEffect(() => {
+    if (!commentsNote) return undefined;
+    let cancelled = false;
+    void hydrateQuadPostCommentsSafe(commentsNote.id, "realm-archive-comments").then((ok) => {
+      if (!cancelled && ok) setCommentsRefresh((n) => n + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [commentsNote?.id]);
+
+  void commentsRefresh;
 
   const commitSwipe = useCallback(
     (dir: SwipeDir) => {
@@ -300,7 +317,7 @@ export function RealmArchiveExperience({
   }
 
   function handleAddComment(noteId: string, body: string) {
-    if (!viewer) return Promise.resolve();
+    if (!viewer) return Promise.resolve({ ok: false as const, message: "Please sign in to comment on posts." });
     return submitQuadComment({
       noteId,
       author: {
@@ -310,8 +327,11 @@ export function RealmArchiveExperience({
         authorAvatar: viewer.avatar,
         body,
       },
-      onOptimistic: syncOpenNotes,
-    }).then(() => undefined);
+      onOptimistic: () => {
+        syncOpenNotes();
+        setCommentsRefresh((n) => n + 1);
+      },
+    });
   }
 
   async function handleQuickLike() {
@@ -325,7 +345,7 @@ export function RealmArchiveExperience({
   const hasLiked = Boolean(viewer && activeNote?.nodByUserIds.has(viewer.id));
   const likeCount = activeNote?.nodCount ?? active?.likeCount ?? 0;
   const commentCount = activeNote
-    ? getCommentsByNoteId(active.postId).length
+    ? getDisplayCommentCount(active.postId, activeNote)
     : active?.commentCount ?? 0;
 
   const rotateY = reduceMotion ? 0 : dragX * 0.16;
@@ -536,7 +556,6 @@ export function RealmArchiveExperience({
           note={detailNote}
           currentUserId={viewer.id}
           currentUser={viewer}
-          comments={getCommentsByNoteId(detailNote.id)}
           likePending={pendingReactions.has(detailNote.id)}
           onClose={() => setDetailNote(null)}
           onNod={handleNod}
@@ -545,7 +564,10 @@ export function RealmArchiveExperience({
           onAssist={handleAssist}
           onAddComment={handleAddComment}
           onPostUpdated={(note) => setDetailNote(note)}
-          onPostDeleted={() => setDetailNote(null)}
+          onPostDeleted={(postId) => {
+            removeRemoteQuadPost(postId);
+            setDetailNote(null);
+          }}
           onViewAuthor={
             onViewProfile
               ? (author) => {

@@ -115,12 +115,19 @@ export function AdventurersCodex({ character }: { character: Character }) {
           <p className="py-12 text-center text-sm text-white/50">No entries match this filter.</p>
         ) : (
           filtered.map((state) => (
-            <CodexCard key={state.entry.id} state={state} onSelect={() => setSelectedId(state.entry.id)} />
+            <CodexCard
+              key={state.entry.id}
+              state={state}
+              character={character}
+              onSelect={() => setSelectedId(state.entry.id)}
+            />
           ))
         )}
       </div>
 
-      {selected ? <CodexDetailSheet state={selected} onClose={() => setSelectedId(null)} /> : null}
+      {selected ? (
+        <CodexDetailSheet state={selected} character={character} onClose={() => setSelectedId(null)} />
+      ) : null}
     </div>
   );
 }

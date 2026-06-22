@@ -16,13 +16,16 @@ import {
 import type { FieldNote, QuadComment, StatKey } from "@/lib/types";
 import { isPersistedQuadPostId } from "@/lib/quadFieldNote";
 import { deleteQuadPostRequest, updateQuadPostRequest } from "@/lib/client/quadPostsClient";
-import { removeRemoteQuadPost, replaceRemoteQuadPost, setCommentsForNote } from "@/lib/feedStore";
-import { fetchQuadPostComments } from "@/lib/client/quadCommentsClient";
+import { ApiRequestError } from "@/lib/client/dashboardApi";
+import { getDisplayCommentCount, removeRemoteQuadPost, replaceRemoteQuadPost } from "@/lib/feedStore";
+import { hydrateQuadPostCommentsSafe } from "@/lib/client/quadCommentsHydration";
+import type { QuadCommentActionResult } from "@/lib/client/quadCommentActions";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { formatStreakBadge } from "@/lib/streakMessaging";
 import { CampusQuestNodHeartPop } from "./CampusQuestNodHeartPop";
 import { FieldNoteEditModal } from "./FieldNoteEditModal";
 import { PostCommentsSheet } from "./posts/PostCommentsSheet";
+import { ReportPostSheet } from "./posts/ReportPostSheet";
 
 function ReactionButton({
   active,
@@ -189,6 +192,7 @@ export function FieldNoteCard({
   onCommentsUpdated,
   onViewAuthor,
   onSharePost,
+  canModeratePosts = false,
 }: {
   note: FieldNote;
   currentUserId: string;
@@ -197,7 +201,7 @@ export function FieldNoteCard({
   onHype: (noteId: string) => void;
   onVerify: (noteId: string) => void;
   onAssist: (noteId: string) => void;
-  onAddComment?: (noteId: string, body: string) => void | Promise<void>;
+  onAddComment?: (noteId: string, body: string) => void | Promise<void | QuadCommentActionResult>;
   currentUser?: { id: string; name: string; username: string; avatar: string };
   likePending?: boolean;
   /** Called after persisted comments are loaded from the server (e.g. to refresh counts). */
@@ -211,6 +215,8 @@ export function FieldNoteCard({
   onActionMessage?: (message: string) => void;
   onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
   onSharePost?: (note: FieldNote) => void;
+  /** Platform admins may delete posts they do not own. */
+  canModeratePosts?: boolean;
 }) {
   const [commentsSheetOpen, setCommentsSheetOpen] = useState(false);
   const [showImageNodPop, setShowImageNodPop] = useState(false);
@@ -220,26 +226,19 @@ export function FieldNoteCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
   const lastImageTapAtRef = useRef(0);
   const nodPopTimerRef = useRef<number | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const isOwner = note.authorId === currentUserId && (note.isPersisted ?? isPersistedQuadPostId(note.id));
+  const isPersistedPost = note.isPersisted ?? isPersistedQuadPostId(note.id);
+  const isOwner = note.authorId === currentUserId && isPersistedPost;
+  const canModerateDelete = canModeratePosts && isPersistedPost && note.authorId !== currentUserId;
+  const canReportPost = isPersistedPost && !isOwner;
+  const showPostMenu = isOwner || canModerateDelete || canReportPost;
 
-  useEffect(() => {
-    if (!commentsSheetOpen || !isPersistedQuadPostId(note.id)) return undefined;
-    let cancelled = false;
-    void fetchQuadPostComments(note.id).then((loaded) => {
-      if (cancelled) return;
-      setCommentsForNote(note.id, loaded);
-      onCommentsUpdated?.();
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [commentsSheetOpen, note.id, onCommentsUpdated]);
   const hasNodded = note.nodByUserIds.has(currentUserId);
   const hasHyped = note.hypeByUserIds?.has(currentUserId) ?? note.vouchByUserIds.has(currentUserId);
   const hasVerified = note.verifyByUserIds?.has(currentUserId) ?? false;
@@ -282,6 +281,23 @@ export function FieldNoteCard({
     [onActionMessage],
   );
 
+  useEffect(() => {
+    if (!isPersistedQuadPostId(note.id)) return undefined;
+    const shouldFetch =
+      commentsSheetOpen || ((note.commentCount ?? 0) > 0 && comments.length === 0);
+    if (!shouldFetch) return undefined;
+
+    let cancelled = false;
+    void hydrateQuadPostCommentsSafe(note.id, "field-note-card").then((ok) => {
+      if (cancelled) return;
+      if (ok) onCommentsUpdated?.();
+      else showToast("Could not load comments.");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [commentsSheetOpen, note.id, note.commentCount, comments.length, onCommentsUpdated, showToast]);
+
   async function handleSaveEdit(patch: {
     body: string;
     visibility: "public" | "friends";
@@ -312,16 +328,22 @@ export function FieldNoteCard({
       onPostDeleted?.(note.id);
       setDeleteOpen(false);
       setMenuOpen(false);
-      showToast("Post deleted");
-    } catch {
-      setEditError("Could not delete post.");
-      setDeleteOpen(false);
+      showToast("Post deleted.");
+    } catch (err) {
+      console.error("[cq][quad-post] delete failed", {
+        postId: note.id,
+        message: err instanceof Error ? err.message : String(err),
+        code: err instanceof ApiRequestError ? err.code : undefined,
+        status: err instanceof ApiRequestError ? err.status : undefined,
+      });
+      const message = err instanceof Error ? err.message : "Could not delete post.";
+      showToast(message);
     } finally {
       setActionPending(false);
     }
   }
 
-  const ownerMenu = isOwner ? (
+  const ownerMenu = showPostMenu ? (
     <div ref={menuRef} className="relative shrink-0">
       <button
         type="button"
@@ -338,29 +360,46 @@ export function FieldNoteCard({
           role="menu"
           className="absolute right-0 top-full z-20 mt-1 min-w-[9.5rem] overflow-hidden rounded-xl border border-white/15 bg-cq-elevated py-1 shadow-lg"
         >
-          <button
-            type="button"
-            role="menuitem"
-            className="block w-full px-3 py-2 text-left text-sm text-white/85 hover:bg-cq-elevated/10"
-            onClick={() => {
-              setMenuOpen(false);
-              setEditError(null);
-              setEditOpen(true);
-            }}
-          >
-            Edit Post
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="block w-full px-3 py-2 text-left text-sm text-rose-300 hover:bg-rose-500/10"
-            onClick={() => {
-              setMenuOpen(false);
-              setDeleteOpen(true);
-            }}
-          >
-            Delete Post
-          </button>
+          {isOwner ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-sm text-white/85 hover:bg-cq-elevated/10"
+              onClick={() => {
+                setMenuOpen(false);
+                setEditError(null);
+                setEditOpen(true);
+              }}
+            >
+              Edit Post
+            </button>
+          ) : null}
+          {canReportPost ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-sm text-white/85 hover:bg-cq-elevated/10"
+              onClick={() => {
+                setMenuOpen(false);
+                setReportOpen(true);
+              }}
+            >
+              Report post
+            </button>
+          ) : null}
+          {isOwner || canModerateDelete ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-sm text-rose-300 hover:bg-rose-500/10"
+              onClick={() => {
+                setMenuOpen(false);
+                setDeleteOpen(true);
+              }}
+            >
+              Delete Post
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -549,6 +588,7 @@ export function FieldNoteCard({
     ));
 
   const hypeCount = note.hypeCount ?? note.vouchCount;
+  const displayCommentCount = getDisplayCommentCount(note.id, note);
   const actionsRow = (
     <div
       className={
@@ -573,7 +613,7 @@ export function FieldNoteCard({
           active={commentsSheetOpen}
           onClick={() => setCommentsSheetOpen(true)}
           icon={MessageCircle}
-          count={comments.length}
+          count={displayCommentCount}
           label="View comments"
           compact={isFeed}
         />
@@ -626,14 +666,14 @@ export function FieldNoteCard({
   const previewComment = comments.length > 0 ? comments[comments.length - 1] : null;
 
   const feedCommentsSection =
-    comments.length > 0 ? (
+    displayCommentCount > 0 ? (
       <div className="space-y-1">
         <button
           type="button"
           onClick={() => setCommentsSheetOpen(true)}
           className="text-[13px] font-medium text-white/50 transition hover:text-white/60"
         >
-          View all {comments.length} comment{comments.length === 1 ? "" : "s"}
+          View all {displayCommentCount} comment{displayCommentCount === 1 ? "" : "s"}
         </button>
         {previewComment ? (
           <button
@@ -702,17 +742,19 @@ export function FieldNoteCard({
             </div>
           )}
           <div className="cq-feed-post-engagement px-3">
-            {(note.nodCount > 0 || comments.length > 0) && (
+            {(note.nodCount > 0 || displayCommentCount > 0) && (
               <p className="cq-feed-engagement-summary text-[12px] text-white/50 tabular-nums">
                 {note.nodCount > 0 ? (
                   <span>
                     {note.nodCount.toLocaleString()} like{note.nodCount === 1 ? "" : "s"}
                   </span>
                 ) : null}
-                {note.nodCount > 0 && comments.length > 0 ? <span className="mx-1.5 text-white/25">·</span> : null}
-                {comments.length > 0 ? (
+                {note.nodCount > 0 && displayCommentCount > 0 ? (
+                  <span className="mx-1.5 text-white/25">·</span>
+                ) : null}
+                {displayCommentCount > 0 ? (
                   <span>
-                    {comments.length.toLocaleString()} comment{comments.length === 1 ? "" : "s"}
+                    {displayCommentCount.toLocaleString()} comment{displayCommentCount === 1 ? "" : "s"}
                   </span>
                 ) : null}
               </p>
@@ -786,6 +828,15 @@ export function FieldNoteCard({
         saving={actionPending}
         error={editError}
       />
+
+      {reportOpen ? (
+        <ReportPostSheet
+          postId={note.id}
+          onClose={() => setReportOpen(false)}
+          onSubmitted={() => showToast("Report submitted. Thanks for helping keep CampusQuest safe.")}
+          onError={(message) => showToast(message)}
+        />
+      ) : null}
 
       {deleteOpen && typeof document !== "undefined"
         ? createPortal(

@@ -102,6 +102,15 @@ export const connectionCancelSchema = z.object({
   requestId: uuidSchema,
 });
 
+export const createGroupConversationSchema = z.object({
+  memberIds: z.array(uuidSchema).min(2).max(30),
+  title: z.string().trim().max(80).optional(),
+});
+
+export const updateGroupConversationSchema = z.object({
+  title: z.string().trim().min(1).max(80),
+});
+
 export const directConversationSchema = z.object({
   otherUserId: uuidSchema,
 });
@@ -150,6 +159,26 @@ export const toggleFavoritedSchema = z.object({
 export const reportCampusContentSchema = z.object({
   reason: z.enum(["unsafe", "harassment", "scam", "inappropriate", "spam", "other"]),
   details: z.string().trim().max(1000).optional(),
+});
+
+export const reportQuadPostSchema = z.object({
+  reason: z.enum(["harassment", "hate_speech", "nudity", "violence", "spam", "misinformation", "other"]),
+  details: z.string().trim().max(1000).optional(),
+});
+
+export const resolveQuadPostReportSchema = z.object({
+  reportId: uuidSchema,
+  status: z.enum(["resolved", "dismissed", "reviewing"]),
+  moderatorNote: z.string().trim().max(1000).optional(),
+  reviewerUserId: uuidSchema.optional(),
+  reviewerEmail: z.string().trim().email().optional(),
+});
+
+export const deleteReportedQuadPostSchema = z.object({
+  postId: uuidSchema,
+  moderatorNote: z.string().trim().max(1000).optional(),
+  reviewerUserId: uuidSchema.optional(),
+  reviewerEmail: z.string().trim().email().optional(),
 });
 
 export const resolveCampusContentReportSchema = z.object({
@@ -608,40 +637,87 @@ export const qrCodeTypeSchema = z.enum([
   "permanent_location",
   "tutoring",
   "advising",
+  "reward",
+  "general",
 ]);
 
-export const createQrCodeSchema = z.object({
-  title: z.string().trim().min(1).max(120),
-  description: z.string().trim().max(500).optional(),
-  type: qrCodeTypeSchema,
-  eventId: uuidSchema.optional(),
-  questId: uuidSchema.optional(),
-  locationName: z.string().trim().max(120).optional(),
-  xpReward: z.number().int().min(0).max(500),
-  isActive: z.boolean().optional(),
-  isPermanent: z.boolean().optional(),
-  cooldownHours: z.number().int().min(0).max(24 * 30).optional(),
-  maxScansPerDay: z.number().int().min(0).max(50).optional(),
-  requiresStaffApproval: z.boolean().optional(),
-  expiresAt: z.string().datetime().nullable().optional(),
-  activityName: z.string().trim().max(120).optional(),
-  code: z
-    .string()
-    .trim()
-    .min(2)
-    .max(32)
-    .regex(/^[A-Za-z][A-Za-z0-9_]*$/)
-    .optional(),
-});
-
-export const updateQrCodeSchema = createQrCodeSchema.partial().extend({
-  isActive: z.boolean().optional(),
-});
+export { createQrCodeSchema, updateQrCodeSchema } from "@/lib/server/qrCodeInput";
 
 export const adminQrScansQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
+const adminQuestDifficultySchema = z.enum(["easy", "medium", "hard", "legendary"]);
+const adminQuestTypeSchema = z.enum(["daily", "one_time", "event", "location", "qr"]);
+const adminQuestCompletionMethodSchema = z.enum(["manual_log", "qr_scan", "location_checkin", "admin_approval"]);
+const adminQuestVisibilitySchema = z.enum(["active", "hidden", "draft", "deleted"]);
+const adminQuestRepeatTypeSchema = z.enum(["one_time", "daily", "weekly", "monthly", "custom"]);
+const adminQuestRepeatLimitSchema = z.enum(["once_per_user", "once_per_day", "once_per_week", "unlimited"]);
+
+export const createAdminQuestSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  description: z.string().trim().min(1).max(2000),
+  xpReward: z.number().int().min(1).max(10000),
+  difficulty: adminQuestDifficultySchema,
+  questType: adminQuestTypeSchema,
+  locationName: z.string().trim().max(200).optional(),
+  locationKey: z.enum(["quad", "library", "memorial_union", "mackal_rec_center", "ryan_center", "dining_hall", "dorm_residence", "academic_building", "other"]).optional(),
+  locationAddress: z.string().trim().max(300).optional(),
+  locationLat: z.number().min(-90).max(90).optional(),
+  locationLng: z.number().min(-180).max(180).optional(),
+  mapPinX: z.number().min(0).max(100).optional(),
+  mapPinY: z.number().min(0).max(100).optional(),
+  requiresQr: z.boolean().optional(),
+  completionMethod: adminQuestCompletionMethodSchema,
+  visibilityStatus: adminQuestVisibilitySchema.optional(),
+  startsAt: z.string().datetime().optional(),
+  endsAt: z.string().datetime().optional(),
+  activeDurationMinutes: z.number().int().min(1).max(60 * 24 * 90).optional(),
+  repeatType: adminQuestRepeatTypeSchema.optional(),
+  repeatLimit: adminQuestRepeatLimitSchema.optional(),
+  isRepeatable: z.boolean().optional(),
+  expiresAutomatically: z.boolean().optional(),
+  icon: z.string().trim().max(16).optional(),
+  imageUrl: z.string().url().optional(),
+  organizationId: uuidSchema.optional(),
+  eventId: uuidSchema.optional(),
+});
+
+export const updateAdminQuestSchema = createAdminQuestSchema.partial();
+
+export const adminQuestVisibilitySchema2 = z.object({
+  visibilityStatus: adminQuestVisibilitySchema,
+});
+
+export const adminQuestDeleteSchema = z.object({
+  hardDelete: z.boolean().optional(),
+});
+
+export const completeAdminQuestSchema = z.object({
+  proofUrl: z.string().trim().max(2000).optional(),
+});
+
+export const questBoardQuerySchema = z.object({
+  filter: z.enum(["all", "daily", "nearby", "qr", "active", "completed"]).optional(),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
+});
+
+export const createQuestTemplateSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  category: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(2000).optional(),
+  defaultXp: z.number().int().min(1).max(10000),
+  defaultDifficulty: adminQuestDifficultySchema,
+  defaultCompletionMethod: adminQuestCompletionMethodSchema,
+  defaultQuestType: adminQuestTypeSchema,
+  defaultRepeatType: adminQuestRepeatTypeSchema.optional(),
+  defaultRepeatLimit: adminQuestRepeatLimitSchema.optional(),
+  defaultDurationMinutes: z.number().int().min(1).optional(),
+  defaultRequiresQr: z.boolean().optional(),
+  defaultMapEnabled: z.boolean().optional(),
+  defaultImage: z.string().trim().max(500).optional(),
+});
 
 export const realmMarkerPositionSchema = z.object({
   x: z.number().min(0).max(100),

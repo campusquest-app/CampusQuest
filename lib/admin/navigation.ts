@@ -6,7 +6,8 @@ export type AdminSectionId =
   | "analytics"
   | "audit"
   | "legal"
-  | "system";
+  | "system"
+  | "quests";
 
 export type ModerationTabId = "messages" | "content" | "safety" | "appeals";
 
@@ -76,6 +77,15 @@ export const ADMIN_NAV: AdminNavItem[] = [
     children: [
       { id: "policy", label: "Policy Versions" },
       { id: "consent", label: "Re-consent Controls" },
+    ],
+  },
+  {
+    id: "quests",
+    label: "Quests",
+    icon: "🎯",
+    children: [
+      { id: "manage", label: "Quest Management" },
+      { id: "templates", label: "Templates" },
     ],
   },
   {

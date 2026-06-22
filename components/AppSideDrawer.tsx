@@ -4,17 +4,20 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  Activity,
-  Award,
   Bell,
   BookOpen,
   Building2,
   Calendar,
+  ChevronDown,
   ChevronRight,
+  ClipboardList,
+  Gamepad2,
   HelpCircle,
   Home,
   Map,
   Settings,
+  Sparkles,
+  Swords,
   Target,
   Trophy,
   User,
@@ -73,36 +76,41 @@ type MenuSection = {
 
 const ICON = "h-[1.125rem] w-[1.125rem] shrink-0 stroke-[1.75]";
 
-const DISCOVER_NAV: MenuItem[] = [
+const MAIN_NAV: MenuItem[] = [
   { id: "quad", label: "Quad", icon: <Home className={ICON} aria-hidden /> },
-  { id: "realm", label: "The Realm", icon: <Map className={ICON} aria-hidden /> },
+  { id: "realm", label: "Map", icon: <Map className={ICON} aria-hidden /> },
   { id: "friends", label: "Friends", icon: <Users className={ICON} aria-hidden /> },
-  { id: "leaderboards", label: "Leaderboard", icon: <Trophy className={ICON} aria-hidden /> },
+  { id: "leaderboards", label: "Ranks", icon: <Trophy className={ICON} aria-hidden /> },
+  { id: "profile", label: "Profile", icon: <User className={ICON} aria-hidden /> },
 ];
 
-const ENGAGE_NAV: MenuItem[] = [
+const PROGRESS_NAV: MenuItem[] = [
+  { id: "character-sheet", label: "Character", icon: <Sparkles className={ICON} aria-hidden /> },
+  { id: "manual-log", label: "Manual Log", icon: <ClipboardList className={ICON} aria-hidden /> },
   { id: "quest-board", label: "Quests", icon: <Target className={ICON} aria-hidden /> },
+];
+
+const MINI_GAMES_NAV: MenuItem[] = [
+  { id: "battle", label: "Boss Battle", icon: <Swords className={ICON} aria-hidden /> },
+  { id: "mini-games", label: "Training Grounds", icon: <Gamepad2 className={ICON} aria-hidden /> },
+];
+
+const CAMPUS_NAV: MenuItem[] = [
   { id: "events", label: "Events", icon: <Calendar className={ICON} aria-hidden /> },
   { id: "organizations", label: "Organizations", icon: <Building2 className={ICON} aria-hidden /> },
 ];
 
-const PROGRESS_NAV: MenuItem[] = [
-  { id: "profile", label: "Profile", icon: <User className={ICON} aria-hidden /> },
-  { id: "achievements", label: "Trophy Room", icon: <Award className={ICON} aria-hidden /> },
-  { id: "progress-hub", label: "Progress", icon: <Activity className={ICON} aria-hidden /> },
-];
-
-const ACCOUNT_NAV: MenuItem[] = [
+const SETTINGS_NAV: MenuItem[] = [
+  { id: "settings", label: "Account", icon: <Settings className={ICON} aria-hidden /> },
   { id: "inbox", label: "Notifications", icon: <Bell className={ICON} aria-hidden /> },
-  { id: "settings", label: "Settings", icon: <Settings className={ICON} aria-hidden /> },
-  { id: "help", label: "Help & Support", icon: <HelpCircle className={ICON} aria-hidden /> },
+  { id: "help", label: "Help / Support", icon: <HelpCircle className={ICON} aria-hidden /> },
 ];
 
-const MENU_SECTIONS: MenuSection[] = [
-  { id: "discover", title: "Discover", items: DISCOVER_NAV },
-  { id: "engage", title: "Engage", items: ENGAGE_NAV },
+const FLAT_MENU_SECTIONS: MenuSection[] = [
+  { id: "main", title: "Main", items: MAIN_NAV },
   { id: "progress", title: "Progress", items: PROGRESS_NAV },
-  { id: "account", title: "Account", items: ACCOUNT_NAV },
+  { id: "campus", title: "Campus", items: CAMPUS_NAV },
+  { id: "settings", title: "Settings", items: SETTINGS_NAV },
 ];
 
 const DRAWER_CLOSE_MS = 320;
@@ -196,6 +204,7 @@ export function AppSideDrawer({
   const [mounted, setMounted] = useState(false);
   const [closing, setClosing] = useState(false);
   const [entered, setEntered] = useState(false);
+  const [miniGamesExpanded, setMiniGamesExpanded] = useState(false);
 
   useEffect(() => {
     if (open || isDraggingDrawer) {
@@ -245,6 +254,14 @@ export function AppSideDrawer({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const tab = activeContext?.tab ?? "";
+    if (tab === "battle" || tab === "mini-games") {
+      setMiniGamesExpanded(true);
+    }
+  }, [open, activeContext?.tab]);
 
   if (!mounted || typeof document === "undefined") return null;
 
@@ -319,7 +336,25 @@ export function AppSideDrawer({
               </div>
 
               <nav className="cq-drawer-nav flex-1 overflow-y-auto overscroll-y-contain px-3 pb-4" aria-label="Main">
-                {MENU_SECTIONS.map((section, sectionIndex) => (
+                {FLAT_MENU_SECTIONS.slice(0, 2).map((section, sectionIndex) => (
+                  <DrawerSection
+                    key={section.id}
+                    title={section.title}
+                    items={section.items}
+                    onSelect={handleItem}
+                    activeContext={ctx}
+                    isFirst={sectionIndex === 0}
+                  />
+                ))}
+                <DrawerCollapsibleSection
+                  title="Mini Games"
+                  items={MINI_GAMES_NAV}
+                  expanded={miniGamesExpanded}
+                  onToggle={() => setMiniGamesExpanded((open) => !open)}
+                  onSelect={handleItem}
+                  activeContext={ctx}
+                />
+                {FLAT_MENU_SECTIONS.slice(2).map((section) => (
                   <DrawerSection
                     key={section.id}
                     title={section.title}
@@ -328,7 +363,6 @@ export function AppSideDrawer({
                     badgeId="inbox"
                     unread={unreadNotificationCount}
                     activeContext={ctx}
-                    isFirst={sectionIndex === 0}
                   />
                 ))}
               </nav>
@@ -369,6 +403,76 @@ export function AppSideDrawer({
       </aside>
     </>,
     document.body,
+  );
+}
+
+function DrawerCollapsibleSection({
+  title,
+  items,
+  expanded,
+  onToggle,
+  onSelect,
+  activeContext,
+}: {
+  title: string;
+  items: MenuItem[];
+  expanded: boolean;
+  onToggle: () => void;
+  onSelect: (id: MenuItemId) => void;
+  activeContext: DrawerActiveContext;
+}) {
+  const childActive = items.some((item) => isMenuItemActive(item.id, activeContext));
+
+  return (
+    <section className="cq-drawer-section">
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`cq-drawer-item group flex w-full min-h-[44px] items-center gap-3 rounded-lg px-2 py-2.5 text-left touch-manipulation ${
+          childActive ? "cq-drawer-item--active" : ""
+        }`}
+        aria-expanded={expanded}
+      >
+        <span className={`cq-drawer-item-icon ${childActive ? "cq-drawer-item-icon--active" : ""}`}>
+          <Gamepad2 className={ICON} aria-hidden />
+        </span>
+        <span className={`cq-drawer-item-label flex-1 ${childActive ? "cq-drawer-item-label--active" : ""}`}>
+          {title}
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-white/25 transition group-hover:text-white/45 ${
+            expanded ? "rotate-180" : ""
+          }`}
+          aria-hidden
+        />
+      </button>
+      {expanded ? (
+        <ul className="cq-drawer-section-list ml-2 border-l border-white/10 pl-2">
+          {items.map((item) => {
+            const active = isMenuItemActive(item.id, activeContext);
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(item.id)}
+                  className={`cq-drawer-item group flex w-full min-h-[40px] items-center gap-3 rounded-lg px-2 py-2 text-left touch-manipulation ${
+                    active ? "cq-drawer-item--active" : ""
+                  }`}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <span className={`cq-drawer-item-icon ${active ? "cq-drawer-item-icon--active" : ""}`}>
+                    {item.icon}
+                  </span>
+                  <span className={`cq-drawer-item-label flex-1 text-sm ${active ? "cq-drawer-item-label--active" : ""}`}>
+                    {item.label}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 

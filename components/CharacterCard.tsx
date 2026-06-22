@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import type { Character, StatKey } from "@/lib/types";
-import { STAT_KEYS, STAT_LABELS, STAT_ICONS, MAX_STAT } from "@/lib/types";
+import type { Character } from "@/lib/types";
+import { STAT_KEYS, STAT_LABELS, MAX_STAT } from "@/lib/types";
+import { STAT_FILL_COLORS } from "@/lib/statAssets";
+import { StatIcon } from "@/components/stats/StatIcon";
 import { xpProgressInLevel } from "@/lib/level";
 import { updateCharacter, prestigeStat } from "@/lib/store";
 import { registerLogoutPrepare } from "@/lib/client/logoutPrepare";
@@ -15,15 +17,6 @@ import { AvatarBuilder } from "./AvatarBuilder";
 import { AchievementShowcaseModal } from "./achievements/AchievementShowcaseModal";
 import { EquipmentStrip } from "./EquipmentStrip";
 import { getEquippedTitleLabel } from "@/lib/achievementEngine";
-
-/** Progress bar fill colors – Keaney/accent for cohesion with URI palette */
-const STAT_FILL_COLORS: Record<StatKey, string> = {
-  strength: "bg-amber-400",
-  stamina: "bg-uri-teal",
-  knowledge: "bg-uri-keaney",
-  social: "bg-uri-green",
-  focus: "bg-uri-purple",
-};
 
 export function CharacterCard({
   character,
@@ -239,9 +232,7 @@ export function CharacterCard({
                 key={key}
                 className="stat-card-row flex items-center gap-3 rounded-xl border border-cq-border bg-cq-elevated/80 px-2.5 py-2.5 sm:px-3"
               >
-                <span className="w-6 flex-shrink-0 text-base" title={STAT_LABELS[key]}>
-                  {STAT_ICONS[key]}
-                </span>
+                <StatIcon stat={key} size="sm" label={STAT_LABELS[key]} />
                 <div className="min-w-0 flex-1">
                   <div className="mb-0.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                     <span className="flex items-center gap-1.5 text-white/70">

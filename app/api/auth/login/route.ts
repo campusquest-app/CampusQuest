@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
 import { createPublicClient } from "@/lib/server/supabase";
+import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { touchUserActivityById } from "@/lib/server/userActivity";
 import { authLoginSchema, readJson } from "@/lib/server/validation";
 
@@ -74,6 +75,12 @@ export async function POST(request: Request) {
       displayName: (data.user.user_metadata?.display_name as string | undefined) ?? undefined,
     });
 
+    const torchBearer = await tryAwardTorchBearerBadge({
+      userId: data.user.id,
+      user: data.user,
+      email: data.user.email,
+    });
+
     touchUserActivityById(data.user.id, { force: true });
 
     return ok({
@@ -84,6 +91,7 @@ export async function POST(request: Request) {
       session: data.session,
       profile: player.profile,
       stats: player.stats,
+      torchBearer,
     });
   } catch (error) {
     if (error instanceof ZodError) {

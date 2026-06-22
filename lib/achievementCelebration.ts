@@ -1,13 +1,25 @@
 import type { AchievementDef } from "./achievementsCatalog";
 
-type CelebrationListener = (def: AchievementDef) => void;
+export type AchievementCelebrationPayload = {
+  def: AchievementDef;
+  founderNumber?: number;
+};
 
-const queue: AchievementDef[] = [];
+type CelebrationListener = (payload: AchievementCelebrationPayload) => void;
+
+const queue: AchievementCelebrationPayload[] = [];
 const listeners = new Set<CelebrationListener>();
 
-export function queueAchievementCelebration(def: AchievementDef): void {
+export function queueAchievementCelebration(
+  def: AchievementDef,
+  options?: { founderNumber?: number },
+): void {
   if (typeof window === "undefined") return;
-  queue.push(def);
+  const payload: AchievementCelebrationPayload = {
+    def,
+    founderNumber: options?.founderNumber,
+  };
+  queue.push(payload);
   const next = queue[0];
   if (next) listeners.forEach((fn) => fn(next));
 }
@@ -18,7 +30,7 @@ export function subscribeAchievementCelebrations(listener: CelebrationListener):
   return () => listeners.delete(listener);
 }
 
-export function dismissAchievementCelebration(): AchievementDef | undefined {
+export function dismissAchievementCelebration(): AchievementCelebrationPayload | undefined {
   queue.shift();
   const next = queue[0];
   if (next) listeners.forEach((fn) => fn(next));

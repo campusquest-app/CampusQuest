@@ -58,6 +58,7 @@ export async function GET(
       },
     });
   } catch (error) {
+    console.error("[cq][quad-comments][GET]", error);
     return fail(error);
   }
 }
@@ -87,8 +88,10 @@ export async function POST(
     return ok({ comment }, 201);
   } catch (error) {
     if (error instanceof ZodError) {
+      console.error("[cq][quad-comments][POST] validation", error.issues);
       return fail(new ApiError(400, error.issues[0]?.message ?? "Invalid payload.", "VALIDATION_ERROR"));
     }
+    console.error("[cq][quad-comments][POST]", error);
     return fail(error);
   }
 }

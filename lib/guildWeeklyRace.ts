@@ -85,7 +85,19 @@ export function getGuildWeeklyXpBoostPercent(characterId: string): number {
 
 export function getGuildWeeklyScores(): { guildId: string; score: number }[] {
   const state = loadWeeklyState();
+  const activeGuildIds = new Set<string>();
+  try {
+    const raw = localStorage.getItem(GUILDS_KEY);
+    if (raw) {
+      const guilds = JSON.parse(raw) as { id: string }[];
+      for (const guild of guilds) activeGuildIds.add(guild.id);
+    }
+  } catch {
+    // ignore
+  }
+
   return Object.entries(state.scores)
+    .filter(([guildId]) => activeGuildIds.has(guildId))
     .map(([guildId, score]) => ({ guildId, score }))
     .sort((a, b) => b.score - a.score);
 }

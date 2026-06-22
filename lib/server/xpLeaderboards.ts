@@ -2,6 +2,7 @@ import {
   accountSafetyAllowsPublicLeaderboardExposure,
   assertAccountCanSocialize,
 } from "@/lib/server/accountSafety";
+import { compareXpLeaderboardEntries } from "@/lib/leaderboardRanking";
 import { xpToLevel } from "@/lib/level";
 import { ApiError } from "@/lib/server/http";
 import { listAcceptedFriendUserIds } from "@/lib/server/messaging";
@@ -43,6 +44,7 @@ export type LeaderboardXpRow = {
   totalXp: number;
   streakDays: number;
   avatar: string;
+  scholarGuildId?: string | null;
   strength: number;
   stamina: number;
   knowledge: number;
@@ -115,17 +117,11 @@ function sortKeyValue(entry: Omit<LeaderboardXpRow, "rank">, mode: LeaderboardSo
 export function sortAndRank(entries: Omit<LeaderboardXpRow, "rank">[], mode: LeaderboardSortMode): LeaderboardXpRow[] {
   const sorted = [...entries].sort((a, b) => {
     if (mode === "totalXp") {
-      if (b.totalXp !== a.totalXp) return b.totalXp - a.totalXp;
-      if (b.level !== a.level) return b.level - a.level;
-      if (b.streakDays !== a.streakDays) return b.streakDays - a.streakDays;
-      return a.username.localeCompare(b.username, undefined, { sensitivity: "base" });
+      return compareXpLeaderboardEntries(a, b);
     }
     const diff = sortKeyValue(b, mode) - sortKeyValue(a, mode);
     if (diff !== 0) return diff;
-    if (b.totalXp !== a.totalXp) return b.totalXp - a.totalXp;
-    if (b.level !== a.level) return b.level - a.level;
-    if (b.streakDays !== a.streakDays) return b.streakDays - a.streakDays;
-    return a.username.localeCompare(b.username, undefined, { sensitivity: "base" });
+    return compareXpLeaderboardEntries(a, b);
   });
   return sorted.map((row, idx) => ({ ...row, rank: idx + 1 }));
 }
@@ -155,6 +151,7 @@ type ProfileStatRow = {
   display_name: string;
   avatar_url: string | null;
   avatar_custom_json: string | null;
+  scholar_guild_id?: string | null;
   streak_days?: number | null;
   user_stats: UserStatsRow | UserStatsRow[] | null;
 };
@@ -206,6 +203,7 @@ export function mapProfileToLeaderboardEntry(row: ProfileStatRow): Omit<Leaderbo
       bossesDefeated: 0,
       finalBossesDefeated: 0,
       avatar: avatarPayload(row),
+      scholarGuildId: row.scholar_guild_id ?? null,
     };
   }
 
@@ -226,6 +224,7 @@ export function mapProfileToLeaderboardEntry(row: ProfileStatRow): Omit<Leaderbo
     bossesDefeated: Math.max(0, Number(s.bosses_defeated ?? 0)),
     finalBossesDefeated: Math.max(0, Number(s.final_bosses_defeated ?? 0)),
     avatar: avatarPayload(row),
+    scholarGuildId: row.scholar_guild_id ?? null,
   };
 }
 
@@ -234,7 +233,7 @@ async function fetchProfilesAndStats(admin: SupabaseClientLike, userIds: string[
   const { data: profiles, error } = await admin
     .from("profiles")
     .select(
-      "id, username, display_name, avatar_url, avatar_custom_json, streak_days, user_stats(level, total_xp, strength, stamina, knowledge, social, focus, bosses_defeated, final_bosses_defeated)",
+      "id, username, display_name, avatar_url, avatar_custom_json, scholar_guild_id, streak_days, user_stats(level, total_xp, strength, stamina, knowledge, social, focus, bosses_defeated, final_bosses_defeated)",
     )
     .in("id", userIds);
   if (error) throw new ApiError(400, error.message, "LEADERBOARD_PROFILES_FETCH_FAILED");

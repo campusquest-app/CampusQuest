@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import type { FieldNote, QuadComment } from "@/lib/types";
 import { QUAD_COMMENT_MAX_CHARS } from "@/lib/types";
+import type { QuadCommentActionResult } from "@/lib/client/quadCommentActions";
 
 const DISMISS_DRAG_PX = 96;
 
@@ -34,11 +35,12 @@ export function PostCommentsSheet({
   comments: QuadComment[];
   currentUser: { id: string; name: string; username: string; avatar: string };
   onClose: () => void;
-  onAddComment?: (noteId: string, body: string) => void | Promise<void>;
+  onAddComment?: (noteId: string, body: string) => void | Promise<void | QuadCommentActionResult>;
   onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [entered, setEntered] = useState(false);
@@ -51,6 +53,7 @@ export function PostCommentsSheet({
       setEntered(false);
       setDragY(0);
       setDraft("");
+      setSubmitError(null);
       return undefined;
     }
     const frame = window.requestAnimationFrame(() => setEntered(true));
@@ -110,13 +113,20 @@ export function PostCommentsSheet({
     const body = draft.trim().slice(0, QUAD_COMMENT_MAX_CHARS);
     if (!body || submitting || !onAddComment) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
-      await onAddComment(note.id, body);
+      const result = await onAddComment(note.id, body);
+      if (result && typeof result === "object" && "ok" in result && !result.ok) {
+        setSubmitError(result.message || "Comment could not be saved.");
+        return;
+      }
       setDraft("");
       window.requestAnimationFrame(() => {
         const el = listRef.current;
         if (el) el.scrollTop = el.scrollHeight;
       });
+    } catch {
+      setSubmitError("Comment could not be saved.");
     } finally {
       setSubmitting(false);
     }
@@ -227,6 +237,11 @@ export function PostCommentsSheet({
 
         {onAddComment ? (
           <form className="cq-comments-sheet-composer" onSubmit={handleSubmit}>
+            {submitError ? (
+              <p className="cq-comments-sheet-error col-span-full text-sm text-red-300" role="alert">
+                {submitError}
+              </p>
+            ) : null}
             <div className="cq-comments-sheet-composer-avatar cq-avatar-slot">
               <AvatarDisplay avatar={currentUser.avatar} fitParent size={32} />
             </div>

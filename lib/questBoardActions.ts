@@ -28,27 +28,6 @@ function ensureAchievementOnClaim(c: Character): void {
   });
 }
 
-export function acceptQuest(character: Character, questId: string): Character | null {
-  const def = getQuestBoardDef(questId);
-  if (!def) return null;
-  if ((character.questBoardClaims ?? {})[questId]) return null;
-  if (def.legacySpecialQuestId && (character.completedSpecialQuests ?? []).includes(def.legacySpecialQuestId)) {
-    return null;
-  }
-
-  const accepted = character.acceptedQuestIds ?? [];
-  if (accepted.includes(questId)) return character;
-
-  if (def.chainId != null && def.chainStep != null) {
-    const progress = character.questChainProgress?.[def.chainId] ?? -1;
-    if (def.chainStep > progress + 1) return null;
-  }
-
-  character.acceptedQuestIds = [...accepted, questId];
-  replaceLocalCharacter(character);
-  return character;
-}
-
 export function claimQuest(
   character: Character,
   questId: string,
@@ -57,9 +36,6 @@ export function claimQuest(
   const def = getQuestBoardDef(questId);
   if (!def) return null;
   if ((character.questBoardClaims ?? {})[questId]) return null;
-
-  const accepted = character.acceptedQuestIds ?? [];
-  if (!accepted.includes(questId)) return null;
 
   const ctx = buildQuestProgressContext(character);
   let progress = getQuestProgress(def, ctx);
@@ -96,7 +72,9 @@ export function claimQuest(
   }
 
   if (totalXp > 0) grantBoardQuestXp(character, totalXp);
-  character.acceptedQuestIds = (character.acceptedQuestIds ?? []).filter((id) => id !== questId);
+  if (character.acceptedQuestIds?.includes(questId)) {
+    character.acceptedQuestIds = character.acceptedQuestIds.filter((id) => id !== questId);
+  }
 
   replaceLocalCharacter(character);
   ensureAchievementOnClaim(character);

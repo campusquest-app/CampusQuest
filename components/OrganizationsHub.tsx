@@ -1,6 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { X } from "lucide-react";
 import { fetchAuthed, postAuthed, deleteAuthed } from "@/lib/client/dashboardApi";
 import {
   ExternalEventLocationDetail,
@@ -8,7 +10,6 @@ import {
 } from "@/components/ExternalEventLocationDisplay";
 import { isUpcomingEvent } from "@/lib/client/eventsFeedFilters";
 import { OrganizationAdminPortal } from "@/components/OrganizationAdminPortal";
-import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
 import {
   ORGANIZATION_REQUEST_CATEGORIES,
@@ -87,6 +88,86 @@ function formatExternalEventDateTime(startsAt: string | null): { date: string; t
     date: start.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }),
     time: start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
   };
+}
+
+function OrgHubModalOverlay({
+  open,
+  onClose,
+  ariaLabel,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  ariaLabel: string;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      className="cq-org-hub-overlay fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={ariaLabel}
+    >
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/75 backdrop-blur-[2px]"
+        onClick={onClose}
+        aria-label="Close dialog"
+      />
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
+function OrgHubModalPanel({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="cq-org-hub-modal relative z-10 flex w-full max-w-lg max-h-[min(88vh,720px)] flex-col overflow-hidden rounded-2xl border border-white/12 bg-[#0a0a0a] shadow-[0_24px_80px_rgba(0,0,0,0.72)]"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-4 py-3.5 sm:px-5">
+        <h4 className="min-w-0 pr-2 text-base font-semibold leading-snug text-white sm:text-lg">{title}</h4>
+        <button
+          type="button"
+          onClick={onClose}
+          className="cq-org-hub-modal-close flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white"
+          aria-label="Close"
+        >
+          <X className="h-5 w-5" strokeWidth={1.75} />
+        </button>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-4 sm:px-5" data-cq-scroll-root>{children}</div>
+    </div>
+  );
 }
 
 type HubOrganization =
@@ -857,76 +938,63 @@ export function OrganizationsHub({
       </p>
 
       {activeOrg ? (
-        <MobileSwipeBackSurface
-          onBack={() => setActiveOrg(null)}
-          className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/65 p-3"
-        >
-          <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-uri-navy p-5 space-y-3">
-            <div className="flex justify-between gap-3">
-              <h4 className="text-white text-lg font-semibold">{activeOrg.name}</h4>
-              <button type="button" className="text-white/60 hover:text-white" onClick={() => setActiveOrg(null)}>
-                ✕
-              </button>
+        <OrgHubModalOverlay open onClose={() => setActiveOrg(null)} ariaLabel={`${activeOrg.name} organization`}>
+          <OrgHubModalPanel title={activeOrg.name} onClose={() => setActiveOrg(null)}>
+            <div className="space-y-3">
+              <p className="text-sm text-white/75">{activeOrg.description}</p>
+              <p className="text-xs text-white/65">
+                {activeOrg.schoolName} · {organizationRequestCategoryLabel(activeOrg.category)} · {activeOrg.memberCount} members · {activeOrg.followerCount} followers
+              </p>
+              {activeOrg.contactLink ? (
+                <a
+                  href={activeOrg.contactLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block text-xs text-uri-keaney hover:underline"
+                >
+                  Contact / Learn more
+                </a>
+              ) : null}
+              <div className="space-y-1 border-t border-white/10 pt-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-white/50">Upcoming events</p>
+                {activeOrg.upcomingEvents.length === 0 ? (
+                  <p className="text-xs text-white/50">No upcoming events yet.</p>
+                ) : (
+                  activeOrg.upcomingEvents.slice(0, 5).map((event) => (
+                    <div key={event.id} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <p className="text-sm text-white">{event.title}</p>
+                      <p className="text-xs text-white/60">
+                        {new Date(event.startsAt).toLocaleString()} · {event.location}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-            <p className="text-sm text-white/75">{activeOrg.description}</p>
-            <p className="text-xs text-white/65">
-              {activeOrg.schoolName} · {organizationRequestCategoryLabel(activeOrg.category)} · {activeOrg.memberCount} members · {activeOrg.followerCount} followers
-            </p>
-            {activeOrg.contactLink ? (
-              <a
-                href={activeOrg.contactLink}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-block text-xs text-uri-keaney hover:underline"
-              >
-                Contact / Learn more
-              </a>
-            ) : null}
-            <div className="space-y-1">
-              <p className="text-xs text-white/60">Upcoming events</p>
-              {activeOrg.upcomingEvents.length === 0 ? (
-                <p className="text-xs text-white/50">No upcoming events yet.</p>
-              ) : (
-                activeOrg.upcomingEvents.slice(0, 5).map((event) => (
-                  <div key={event.id} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                    <p className="text-sm text-white">{event.title}</p>
-                    <p className="text-xs text-white/60">
-                      {new Date(event.startsAt).toLocaleString()} · {event.location}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </MobileSwipeBackSurface>
+          </OrgHubModalPanel>
+        </OrgHubModalOverlay>
       ) : null}
       {activeExternalOrg ? (
-        <MobileSwipeBackSurface
-          onBack={() => (activeExternalEvent ? setActiveExternalEvent(null) : closeExternalOrgModal())}
-          className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/65 p-3"
-        >
-          <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-uri-navy p-5 space-y-3 max-h-[90vh] overflow-y-auto">
+        <OrgHubModalOverlay open onClose={closeExternalOrgModal} ariaLabel={`${activeExternalOrg.name} events`}>
+          <OrgHubModalPanel
+            title={activeExternalEvent ? activeExternalEvent.title : activeExternalOrg.name}
+            onClose={closeExternalOrgModal}
+          >
             {activeExternalEvent ? (
-              <>
-                <div className="flex items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    className="text-xs text-white/65 hover:text-white"
-                    onClick={() => setActiveExternalEvent(null)}
-                  >
-                    ← Back
-                  </button>
-                  <button type="button" className="text-white/60 hover:text-white" onClick={closeExternalOrgModal}>
-                    ✕
-                  </button>
-                </div>
-                <h4 className="text-white text-lg font-semibold">{activeExternalEvent.title}</h4>
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  className="text-xs font-medium text-white/65 transition hover:text-white"
+                  onClick={() => setActiveExternalEvent(null)}
+                >
+                  ← Back to events
+                </button>
                 {activeExternalEvent.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={activeExternalEvent.imageUrl}
                     alt=""
-                    className="w-full max-h-48 object-cover rounded-lg border border-white/10"
+                    className="w-full max-h-48 rounded-lg border border-white/10 object-cover"
                   />
                 ) : null}
                 {(() => {
@@ -953,26 +1021,20 @@ export function OrganizationsHub({
                     href={activeExternalEvent.eventUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex px-3 py-2 rounded-lg text-xs font-semibold border border-cyan-400/35 text-cyan-200 hover:bg-cyan-500/10"
+                    className="inline-flex rounded-lg border border-cyan-400/35 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/10"
                   >
                     View on URInvolved
                   </a>
                 ) : null}
-              </>
+              </div>
             ) : (
-              <>
-                <div className="flex justify-between gap-3">
-                  <h4 className="text-white text-lg font-semibold">{activeExternalOrg.name}</h4>
-                  <button type="button" className="text-white/60 hover:text-white" onClick={closeExternalOrgModal}>
-                    ✕
-                  </button>
-                </div>
+              <div className="space-y-3">
                 {activeExternalOrg.logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={activeExternalOrg.logoUrl}
                     alt=""
-                    className="h-16 w-16 rounded-lg object-cover border border-white/10"
+                    className="h-16 w-16 rounded-lg border border-white/10 object-cover"
                   />
                 ) : null}
                 <p className="text-sm text-white/75">{activeExternalOrg.description}</p>
@@ -984,7 +1046,7 @@ export function OrganizationsHub({
                 ) : null}
                 <p className="text-xs text-cyan-200/80">Source: URInvolved</p>
 
-                <div className="space-y-2 pt-1 border-t border-white/10">
+                <div className="space-y-2 border-t border-white/10 pt-3">
                   <h5 className="text-sm font-semibold text-white">Upcoming Events</h5>
                   {activeExternalOrgEvents.length === 0 ? (
                     <p className="text-xs text-white/50">No upcoming events currently scheduled.</p>
@@ -997,10 +1059,10 @@ export function OrganizationsHub({
                             <button
                               type="button"
                               onClick={() => setActiveExternalEvent(event)}
-                              className="w-full text-left rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 hover:bg-white/10 transition-colors"
+                              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-left transition-colors hover:bg-white/10"
                             >
                               <p className="text-sm font-medium text-white">{event.title}</p>
-                              <p className="text-xs text-white/60 mt-0.5">
+                              <p className="mt-0.5 text-xs text-white/60">
                                 {date}
                                 {time ? ` · ${time}` : ""}
                               </p>
@@ -1015,11 +1077,11 @@ export function OrganizationsHub({
                                 <img
                                   src={event.imageUrl}
                                   alt=""
-                                  className="mt-2 w-full max-h-28 object-cover rounded-md border border-white/10"
+                                  className="mt-2 max-h-28 w-full rounded-md border border-white/10 object-cover"
                                 />
                               ) : null}
                               {event.description ? (
-                                <p className="text-xs text-white/55 mt-1.5 line-clamp-2">{event.description}</p>
+                                <p className="mt-1.5 line-clamp-2 text-xs text-white/55">{event.description}</p>
                               ) : null}
                             </button>
                           </li>
@@ -1034,15 +1096,15 @@ export function OrganizationsHub({
                     href={activeExternalOrg.organizationUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-block text-[11px] text-white/40 hover:text-white/60 hover:underline pt-1"
+                    className="inline-block pt-1 text-[11px] text-white/40 hover:text-white/60 hover:underline"
                   >
                     View Organization on URInvolved
                   </a>
                 ) : null}
-              </>
+              </div>
             )}
-          </div>
-        </MobileSwipeBackSurface>
+          </OrgHubModalPanel>
+        </OrgHubModalOverlay>
       ) : null}
       {adminPortalOrg ? (
         <div className="space-y-2">

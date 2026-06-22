@@ -25,7 +25,6 @@ import {
 import type { DmPendingImageDraft } from "@/lib/client/dmMediaComposer";
 import { DmThreadComposer } from "@/components/messages/DmThreadComposer";
 import { fetchQuadPostById } from "@/lib/client/quadPostsClient";
-import { getCommentsByNoteId } from "@/lib/feedStore";
 import { DmImageMessage } from "@/components/messages/DmImageMessage";
 import { DmSharedPostCard } from "@/components/messages/DmSharedPostCard";
 import { ProfilePostDetail } from "@/components/profile/ProfilePostDetail";
@@ -676,7 +675,6 @@ export function DirectMessageThread({
             username: currentUser.username,
             avatar: currentUser.avatar,
           }}
-          comments={getCommentsByNoteId(sharedPostDetail.id)}
           onClose={() => setSharedPostDetail(null)}
           onNod={() => undefined}
           onHype={() => undefined}

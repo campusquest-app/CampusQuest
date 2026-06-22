@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { Character, FieldNote } from "@/lib/types";
-import { getCommentsByNoteId } from "@/lib/feedStore";
 import { getActivityLogs } from "@/lib/store";
 import { ProfileSocialHeader } from "./ProfileSocialHeader";
 import { ProfileStatsRow } from "./ProfileStatsRow";
@@ -52,6 +51,7 @@ export function ProfileSocialPage({
   reactionNotice,
   activeProfileTab,
   onProfileTabChange,
+  canModeratePosts,
 }: {
   character: Character;
   viewer: Pick<Character, "id" | "name" | "username" | "avatar">;
@@ -88,6 +88,7 @@ export function ProfileSocialPage({
   reactionNotice?: string | null;
   activeProfileTab?: ProfileTab;
   onProfileTabChange?: (tab: ProfileTab) => void;
+  canModeratePosts?: boolean;
 }) {
   const [tab, setTab] = useState<ProfileTab>(activeProfileTab ?? "posts");
   const [selectedPost, setSelectedPost] = useState<FieldNote | null>(null);
@@ -221,7 +222,6 @@ export function ProfileSocialPage({
           note={activePost}
           currentUserId={viewer.id}
           currentUser={viewer}
-          comments={getCommentsByNoteId(activePost.id)}
           likePending={pendingReactions.has(activePost.id)}
           onClose={() => setSelectedPost(null)}
           onNod={onNod}
@@ -230,8 +230,12 @@ export function ProfileSocialPage({
           onAssist={onAssist}
           onAddComment={onAddComment}
           onPostUpdated={onPostUpdated}
-          onPostDeleted={onPostDeleted}
+          onPostDeleted={(postId) => {
+            setSelectedPost(null);
+            onPostDeleted?.(postId);
+          }}
           onSharePost={onSharePost}
+          canModeratePosts={canModeratePosts}
         />
       ) : null}
 

@@ -22,6 +22,7 @@ import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { syncEquipmentTableFromGameState } from "@/lib/server/equipmentLoadoutDb";
+import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { patchMeProfileSchema, readJson } from "@/lib/server/validation";
 
 function normalizeDisplayName(value: string) {
@@ -36,6 +37,13 @@ export async function GET(request: Request) {
   try {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:profile:get", limit: 80, windowMs: 60_000 });
+
+    await tryAwardTorchBearerBadge({
+      userId: auth.user.id,
+      user: auth.user,
+      email: auth.user.email,
+    });
+
     const { data, error } = await auth.userClient
       .from("profiles")
       .select("*")

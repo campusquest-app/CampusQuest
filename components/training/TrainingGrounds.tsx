@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { ChevronRight, Flame, Sparkles, Swords, X } from "lucide-react";
 import type { Character, StatKey } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS } from "@/lib/types";
+import { StatIcon } from "@/components/stats/StatIcon";
 import { grantMiniGameTrainingXp } from "@/lib/store";
 import {
   canPlayMiniGameTraining,
@@ -245,8 +246,8 @@ function TrainingGameCard({
     >
       <div className="cq-training-card-shimmer pointer-events-none absolute inset-0 opacity-40" aria-hidden />
       <div className="relative z-[1] flex items-start justify-between gap-2">
-        <span className="text-2xl" aria-hidden>
-          {game.icon}
+        <span aria-hidden>
+          <StatIcon stat={game.stat} size="md" />
         </span>
         <span
           className={`rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${

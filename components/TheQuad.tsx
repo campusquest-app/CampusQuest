@@ -24,7 +24,6 @@ import { ScreenDataState } from "@/components/ui/ScreenDataState";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { QuadCreatePostFab } from "@/components/QuadCreatePostFab";
 import { TopNav } from "@/components/TopNav";
-import { useScrollChrome } from "@/lib/client/useScrollChrome";
 import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
 import {
   clearStaleAuthClientState,
@@ -68,6 +67,7 @@ export function TheQuad({
   onOpenInbox,
   unreadNotificationCount,
   chromeSuppressed = false,
+  canModeratePosts = false,
 }: {
   character: Character;
   onRefresh?: () => void;
@@ -84,6 +84,7 @@ export function TheQuad({
   unreadNotificationCount?: number;
   /** Hide Quad chrome instantly (drawer, modals, overlays). */
   chromeSuppressed?: boolean;
+  canModeratePosts?: boolean;
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
@@ -94,17 +95,11 @@ export function TheQuad({
   const quadHeaderRef = useRef<HTMLDivElement | null>(null);
   const showQuadChrome = !chromeSuppressed;
 
-  useScrollChrome(showQuadChrome);
-
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
     document.documentElement.setAttribute("data-cq-on-quad", "true");
     return () => {
       document.documentElement.removeAttribute("data-cq-on-quad");
-      document.documentElement.removeAttribute("data-cq-quad-chrome");
-      document.documentElement.removeAttribute("data-cq-bottom-chrome");
-      document.documentElement.style.removeProperty("--cq-quad-header-offset");
-      document.documentElement.style.removeProperty("--cq-topnav-offset");
       document.documentElement.style.removeProperty("--cq-topnav-h");
       document.documentElement.style.removeProperty("--cq-quad-header-h");
     };
@@ -378,6 +373,7 @@ export function TheQuad({
       if (!result.ok && result.message) {
         setPostActionMessage(result.message);
       }
+      return result;
     });
   }
 
@@ -522,6 +518,7 @@ export function TheQuad({
                   onPostDeleted={(postId) => {
                     setNotes((prev) => prev.filter((n) => n.id !== postId));
                   }}
+                  canModeratePosts={canModeratePosts}
                   onActionMessage={setPostActionMessage}
                   onViewAuthor={onViewAuthor}
                   onSharePost={onSharePost}

@@ -3,6 +3,8 @@
 import type { Character } from "@/lib/types";
 import { getEquippedTitleLabel, getFeaturedAchievementViews } from "@/lib/achievementEngine";
 import { RARITY_CSS } from "@/lib/achievementRarityStyles";
+import { achievementLabel, AchievementBadgeArt } from "./AchievementBadgeArt";
+import { getAchievementDisplayDescription } from "@/lib/torchBearerBadge";
 
 export function AchievementShowcaseStrip({
   character,
@@ -33,13 +35,13 @@ export function AchievementShowcaseStrip({
             return (
               <span
                 key={def.id}
-                title={def.description}
+                title={getAchievementDisplayDescription(def)}
                 className={`inline-flex items-center gap-1 rounded-full border bg-gradient-to-r px-2 py-0.5 ring-1 ${style.ring} ${style.bg} ${style.glow} ${
                   compact ? "text-[10px]" : "text-[11px]"
                 }`}
               >
-                <span aria-hidden>{def.icon}</span>
-                <span className={`font-medium ${style.text}`}>{def.name}</span>
+                <AchievementBadgeArt def={def} character={character} size="sm" className="!h-4 !w-4 !rounded-full" />
+                <span className={`font-medium ${style.text}`}>{achievementLabel(def, character)}</span>
               </span>
             );
           })}

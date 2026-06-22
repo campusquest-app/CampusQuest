@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { Lock } from "lucide-react";
 import {
   avatarFromConnectionProfile,
   cancelOutgoingConnectionRequest,
@@ -25,7 +26,8 @@ import {
 } from "@/lib/guildStore";
 import { getGuildWeeklyScores } from "@/lib/guildWeeklyRace";
 import type { Character, Friend, Guild, GuildInterest } from "@/lib/types";
-import { STAT_KEYS, STAT_LABELS, STAT_ICONS } from "@/lib/types";
+import { STAT_KEYS, STAT_LABELS } from "@/lib/types";
+import { StatIcon } from "@/components/stats/StatIcon";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { formatStreakBadge } from "@/lib/streakMessaging";
 import { GuildCard } from "./GuildCard";
@@ -169,6 +171,7 @@ export function FindFriends({
   }));
 
   const weeklyRace = getGuildWeeklyScores().slice(0, 5);
+  const canCreateGuild = character.totalXP >= 300;
 
   return (
     <section className="cq-tab-shell space-y-6 pb-8">
@@ -395,20 +398,36 @@ export function FindFriends({
           </div>
           <button
             type="button"
-            onClick={() => character.totalXP >= 300 && setShowCreateGuild(true)}
-            disabled={character.totalXP < 300}
-            title={character.totalXP < 300 ? "Reach 300 total XP to create a guild" : undefined}
-            className={`px-4 py-2.5 rounded-xl font-semibold border shrink-0 transition-colors ${
-              character.totalXP >= 300
-                ? "bg-uri-keaney text-white hover:bg-uri-keaney/90 border-uri-keaney/40 cursor-pointer"
-                : "bg-slate-100 text-cq-muted border-cq-border cursor-not-allowed"
-            }`}
+            onClick={() => canCreateGuild && setShowCreateGuild(true)}
+            disabled={!canCreateGuild}
+            title={!canCreateGuild ? "Reach 300 total XP to create a guild" : undefined}
+            className="cq-guild-create-btn"
+            aria-label={canCreateGuild ? "Create Guild" : "Create Guild — unlock at 300 XP"}
           >
-            {character.totalXP < 300 ? "🔒 Create guild (Unlock at 300 XP)" : "Create Guild"}
+            {canCreateGuild ? (
+              "Create Guild"
+            ) : (
+              <>
+                <Lock className="h-4 w-4 shrink-0" aria-hidden strokeWidth={2.25} />
+                Create Guild (Unlock at 300 XP)
+              </>
+            )}
           </button>
         </div>
 
-        <p className="text-xs text-cq-muted mt-4 mb-3">Recommended Guilds for You</p>
+        <p className="text-xs text-cq-muted mt-4 mb-3">Browse guilds</p>
+        {recommendedByInterest.every(({ guilds }) => guilds.length === 0) ? (
+          <ScreenDataState
+            variant="empty"
+            message="No guilds have been created yet."
+            detail={
+              canCreateGuild
+                ? "Be the first to create a guild, or search above when guilds become available."
+                : "Join a guild when guilds become available, or unlock Create Guild at 300 XP."
+            }
+            compact
+          />
+        ) : (
         <div className="space-y-4">
           {recommendedByInterest.map(({ interest, guilds }) =>
             guilds.length > 0 ? (
@@ -435,6 +454,7 @@ export function FindFriends({
             ) : null
           )}
         </div>
+        )}
       </div>
 
       <div className="card p-4 sm:p-5">
@@ -585,9 +605,7 @@ function FriendCard({
                   className="flex min-w-0 flex-col gap-1 rounded-[14px] border border-sky-300/[0.18] bg-white/[0.06] px-2.5 py-2"
                 >
                   <div className="flex min-w-0 items-center gap-1">
-                    <span className="shrink-0 text-sm leading-none" aria-hidden>
-                      {STAT_ICONS[key]}
-                    </span>
+                    <StatIcon stat={key} size="sm" label={STAT_LABELS[key]} />
                     <span className="truncate text-[11px] text-white/[0.78]">{STAT_LABELS[key]}</span>
                   </div>
                   <span className="font-mono text-[15px] font-bold leading-none text-white/[0.95]">

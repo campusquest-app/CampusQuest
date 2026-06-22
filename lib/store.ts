@@ -101,13 +101,40 @@ function scheduleMirrorSyncIfBacked(): void {
   void import("@/lib/client/gameStateSync").then((m) => m.scheduleCharacterSync(c));
 }
 
+let characterAvatarListeners = new Set<() => void>();
+
+/** Subscribe to local avatar changes (e.g. bottom nav profile thumbnail). */
+export function subscribeCharacterAvatar(listener: () => void): () => void {
+  characterAvatarListeners.add(listener);
+  return () => {
+    characterAvatarListeners.delete(listener);
+  };
+}
+
+function notifyCharacterAvatarListeners(): void {
+  characterAvatarListeners.forEach((listener) => listener());
+}
+
 function saveCharacter(c: Character, opts?: { skipRemoteSync?: boolean }): void {
   if (typeof window === "undefined") return;
+  let previousAvatar: string | undefined;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_CHARACTER);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Character;
+      previousAvatar = parsed.avatar;
+    }
+  } catch {
+    // ignore parse errors
+  }
   c.level = xpToLevel(c.totalXP);
   try {
     localStorage.setItem(STORAGE_KEY_CHARACTER, JSON.stringify(c));
   } catch {
     // Persistence may fail on some mobile browsers (e.g. QuotaExceededError / blocked storage).
+  }
+  if (previousAvatar !== c.avatar) {
+    notifyCharacterAvatarListeners();
   }
   registerCharacterInFriends(c);
   if (!opts?.skipRemoteSync) {
@@ -594,6 +621,8 @@ export interface LogActivityOptions {
   minutes?: number;
   proofUrl?: string;
   tags?: string[];
+  /** Cap total XP for lightweight manual log submissions. */
+  maxXp?: number;
 }
 
 /** Spec: verify_proof — proof must be non-empty (image/link/text evidence). */
@@ -644,12 +673,18 @@ export function logActivity(
   const today = todayString();
   const surprise = getTodaysSurpriseQuest(characterId);
   if (
+    options?.maxXp == null &&
     c.lastSurpriseQuestCompletedDay !== today &&
     surprise.matchingActivityIds.includes(activityId)
   ) {
     surpriseBonusXp = surprise.xpReward;
     xpEarned += surpriseBonusXp;
     c.lastSurpriseQuestCompletedDay = today;
+  }
+
+  if (options?.maxXp != null) {
+    xpEarned = Math.min(xpEarned, options.maxXp);
+    surpriseBonusXp = 0;
   }
 
   const logs = loadLogs();
@@ -698,16 +733,7 @@ export function logActivity(
       : undefined;
 
   const breakdownOut: XpBreakdown =
-    surpriseBonusXp > 0
-      ? {
-          ...breakdown,
-          finalXp: xpEarned,
-          lines: [
-            ...breakdown.lines,
-            { label: `Surprise quest +${surpriseBonusXp} XP`, multiplier: 1, emoji: surprise.icon },
-          ],
-        }
-      : breakdown;
+    surpriseBonusXp > 0 ? { ...breakdown, finalXp: xpEarned } : breakdown;
 
   return { character: c, lastBossDrop, xpBreakdown: breakdownOut, surpriseBonusXp: surpriseBonusXp || undefined, leveledUp };
 }
@@ -850,13 +876,6 @@ export function logQrActivity(
   const lines: XpModifierLine[] = [
     { label: `${payload.activityName} · QR check-in`, multiplier: 1, emoji: "📷" },
   ];
-  if (surpriseBonusXp > 0) {
-    lines.push({
-      label: `Surprise quest +${surpriseBonusXp} XP`,
-      multiplier: 1,
-      emoji: surprise.icon,
-    });
-  }
 
   const breakdownOut: XpBreakdown = {
     baseAfterMinutes: payload.xp,

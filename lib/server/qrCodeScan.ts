@@ -5,7 +5,8 @@ import { applyQrLocationMilestones } from "@/lib/server/qrMilestones";
 import { normalizeQrCode } from "@/lib/qrCodeExtract";
 import { logQrScanServer } from "@/lib/server/qrScanServerLog";
 import { auditQrScanPatterns } from "@/lib/server/qrSuspiciousActivity";
-import { addXpInternal, completeQuest, getPlayerProgressSnapshot } from "@/lib/server/services";
+import { completeAdminQuestFromQr } from "@/lib/server/adminQuests";
+import { addXpInternal, completeQuest, getOrCreateActiveUserQuest, getPlayerProgressSnapshot } from "@/lib/server/services";
 import { createAdminClient } from "@/lib/server/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -19,6 +20,7 @@ export type QrCodeRow = {
   type: string;
   event_id: string | null;
   quest_id: string | null;
+  admin_quest_id: string | null;
   location_name: string | null;
   activity_name: string | null;
   xp_reward: number;
@@ -179,6 +181,23 @@ function alreadyClaimedMessage(qr: QrCodeRow): string {
   return "You already claimed this QR reward.";
 }
 
+async function tryCompleteAdminLinkedQuest(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  adminQuestId: string | null;
+}) {
+  if (!args.adminQuestId) return null;
+  try {
+    return await completeAdminQuestFromQr({
+      userClient: args.userClient,
+      userId: args.userId,
+      adminQuestId: args.adminQuestId,
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function tryCompleteLinkedQuest(args: {
   userClient: SupabaseClientLike;
   userId: string;
@@ -187,17 +206,8 @@ async function tryCompleteLinkedQuest(args: {
   const { userClient, userId, questId } = args;
   if (!questId) return null;
 
-  const { data: userQuest } = await userClient
-    .from("user_quests")
-    .select("id, status, progress_count")
-    .eq("user_id", userId)
-    .eq("quest_id", questId)
-    .neq("status", "claimed")
-    .order("assigned_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!userQuest || userQuest.status === "claimed") return null;
+  const userQuest = await getOrCreateActiveUserQuest({ userClient, userId, questId });
+  if (userQuest.status === "claimed") return null;
 
   await userClient
     .from("user_quests")
@@ -235,7 +245,7 @@ function scanFailureMessage(reason: ScanFailReason, qr: QrCodeRow): string {
 }
 
 const QR_CODE_LOOKUP_SELECT =
-  "id, code, title, description, type, location_name, activity_name, xp_reward, is_active, is_permanent, cooldown_hours, max_scans_per_day, expires_at";
+  "id, code, title, description, type, location_name, activity_name, xp_reward, is_active, is_permanent, cooldown_hours, max_scans_per_day, expires_at, quest_id, admin_quest_id";
 
 function mapQrCodeRow(row: Record<string, unknown>): QrCodeRow {
   return {
@@ -246,6 +256,7 @@ function mapQrCodeRow(row: Record<string, unknown>): QrCodeRow {
     type: String(row.type),
     event_id: (row.event_id as string | null) ?? null,
     quest_id: (row.quest_id as string | null) ?? null,
+    admin_quest_id: (row.admin_quest_id as string | null) ?? null,
     location_name: (row.location_name as string | null) ?? null,
     activity_name: (row.activity_name as string | null) ?? null,
     xp_reward: Number(row.xp_reward ?? 0),
@@ -437,7 +448,7 @@ export async function scanCampusQuestQrCode(args: {
     throw new ApiError(409, message, code);
   }
 
-  const xpAmount = Math.max(0, Number(qr.xp_reward ?? 0));
+  const xpAmount = qr.admin_quest_id ? 0 : Math.max(0, Number(qr.xp_reward ?? 0));
   const scanStatus: "success" | "admin_bypass" = eligibility.bypass ? "admin_bypass" : "success";
 
   const claimId = await reserveSuccessScanClaim({
@@ -509,11 +520,19 @@ export async function scanCampusQuestQrCode(args: {
     }
   }
 
-  const questCompletion = await tryCompleteLinkedQuest({
+  const adminQuestCompletion = await tryCompleteAdminLinkedQuest({
     userClient,
     userId,
-    questId: qr.quest_id,
+    adminQuestId: qr.admin_quest_id,
   });
+
+  const questCompletion = adminQuestCompletion
+    ? null
+    : await tryCompleteLinkedQuest({
+        userClient,
+        userId,
+        questId: qr.quest_id,
+      });
 
   const milestonesUnlocked =
     scanStatus === "success"

@@ -1,5 +1,4 @@
 import type { DailyQuest, StatKey } from "./types";
-import { STAT_ICONS } from "./types";
 
 // Seed for "today" so quests are stable per day in MVP
 function getTodaySeed(): string {
@@ -38,6 +37,3 @@ export function getDailyQuests(): DailyQuest[] {
   return q;
 }
 
-export function getQuestIcon(stat: StatKey): string {
-  return STAT_ICONS[stat] ?? "📌";
-}

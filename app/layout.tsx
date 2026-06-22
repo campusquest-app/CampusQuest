@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import { AppRootProviders } from "@/components/AppRootProviders";
 import "./globals.css";
+import "./manual-log.css";
 
 const display = Space_Grotesk({
   variable: "--font-display",

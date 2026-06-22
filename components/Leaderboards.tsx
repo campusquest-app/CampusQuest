@@ -4,6 +4,10 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { Clock, Trophy } from "lucide-react";
 import { getCharacterById } from "@/lib/friendsStore";
 import { getGuildDisplayLevel, getGuilds, GUILD_INTEREST_LABELS } from "@/lib/guildStore";
+import {
+  compareScholarGuildMemberEntries,
+  sortAndRankXpEntries,
+} from "@/lib/leaderboardRanking";
 import type { Guild } from "@/lib/types";
 import { GuildEmblem } from "@/components/guild/GuildEmblem";
 import { fetchAuthed } from "@/lib/client/dashboardApi";
@@ -30,124 +34,86 @@ const SCHOLAR_GUILDS = [
   { id: "undecided", name: "Undecided Scholars", crest: "🎓" },
 ];
 
-const SCHOLAR_GUILD_SEED_MEMBERS = [
-  // Arts & Sciences
-  { guildId: "arts_sciences", name: "Alex Carter", totalXP: 420, avatar: "📘" },
-  { guildId: "arts_sciences", name: "Priya Desai", totalXP: 380, avatar: "📗" },
-  { guildId: "arts_sciences", name: "Evan Morales", totalXP: 360, avatar: "📙" },
-  { guildId: "arts_sciences", name: "Jordan Li", totalXP: 340, avatar: "📖" },
-  { guildId: "arts_sciences", name: "Sofia Ramirez", totalXP: 325, avatar: "🖋️" },
-  { guildId: "arts_sciences", name: "Logan Bennett", totalXP: 310, avatar: "🎨" },
-  { guildId: "arts_sciences", name: "Hannah Cole", totalXP: 295, avatar: "🎭" },
-  { guildId: "arts_sciences", name: "Mateo Silva", totalXP: 280, avatar: "📚" },
-  { guildId: "arts_sciences", name: "Grace Young", totalXP: 265, avatar: "✏️" },
-  { guildId: "arts_sciences", name: "Omar Aziz", totalXP: 250, avatar: "📜" },
-  { guildId: "arts_sciences", name: "Avery Ross", totalXP: 235, avatar: "📒" },
+type ServerGuildLeaderboardRow = {
+  rank: number;
+  id: string;
+  name: string;
+  description: string;
+  total_xp: number;
+  member_count: number;
+  is_public: boolean;
+  created_at: string;
+};
 
-  // Business
-  { guildId: "business", name: "Jordan Reyes", totalXP: 430, avatar: "📊" },
-  { guildId: "business", name: "Lena Howard", totalXP: 390, avatar: "💳" },
-  { guildId: "business", name: "Marcus Allen", totalXP: 370, avatar: "💹" },
-  { guildId: "business", name: "Emily Chen", totalXP: 350, avatar: "🏦" },
-  { guildId: "business", name: "Tyler Scott", totalXP: 330, avatar: "📈" },
-  { guildId: "business", name: "Riya Kapoor", totalXP: 310, avatar: "🧾" },
-  { guildId: "business", name: "Dylan Price", totalXP: 295, avatar: "💼" },
-  { guildId: "business", name: "Bella Martinez", totalXP: 280, avatar: "📋" },
-  { guildId: "business", name: "Owen Carter", totalXP: 265, avatar: "💰" },
-  { guildId: "business", name: "Chloe Nguyen", totalXP: 250, avatar: "📌" },
-  { guildId: "business", name: "Isaac Lopez", totalXP: 235, avatar: "🧮" },
+type GuildLeaderboardItem = {
+  id: string;
+  name: string;
+  crest: string;
+  interest: Guild["interest"];
+  level: number;
+  memberCount: number;
+  description?: string;
+  source: "server" | "local";
+  localGuild?: Guild;
+};
 
-  // Education
-  { guildId: "education", name: "Sam Patel", totalXP: 360, avatar: "📝" },
-  { guildId: "education", name: "Mia Robinson", totalXP: 340, avatar: "📓" },
-  { guildId: "education", name: "Aiden Brooks", totalXP: 325, avatar: "📎" },
-  { guildId: "education", name: "Lila Gomez", totalXP: 310, avatar: "📚" },
-  { guildId: "education", name: "Ethan Wright", totalXP: 295, avatar: "🧑‍🏫" },
-  { guildId: "education", name: "Nora Hayes", totalXP: 280, avatar: "✏️" },
-  { guildId: "education", name: "Caleb Morris", totalXP: 265, avatar: "📒" },
-  { guildId: "education", name: "Riley James", totalXP: 250, avatar: "📘" },
-  { guildId: "education", name: "Zoe Carter", totalXP: 235, avatar: "📗" },
-  { guildId: "education", name: "Noah Green", totalXP: 220, avatar: "📙" },
-  { guildId: "education", name: "Isla Ford", totalXP: 205, avatar: "📖" },
+type ScholarGuildMember = {
+  guildId: string;
+  userId: string;
+  name: string;
+  totalXP: number;
+  avatar: string;
+};
 
-  // Engineering
-  { guildId: "engineering", name: "Riley Nguyen", totalXP: 440, avatar: "🔧" },
-  { guildId: "engineering", name: "Diego Alvarez", totalXP: 420, avatar: "🛠️" },
-  { guildId: "engineering", name: "Linh Tran", totalXP: 400, avatar: "📐" },
-  { guildId: "engineering", name: "Mason Clark", totalXP: 385, avatar: "📏" },
-  { guildId: "engineering", name: "Sara Khan", totalXP: 370, avatar: "💡" },
-  { guildId: "engineering", name: "Leo Turner", totalXP: 355, avatar: "⚙️" },
-  { guildId: "engineering", name: "Ariana Flores", totalXP: 340, avatar: "🔩" },
-  { guildId: "engineering", name: "Jasper Lin", totalXP: 325, avatar: "🧪" },
-  { guildId: "engineering", name: "Mila Brooks", totalXP: 310, avatar: "🧰" },
-  { guildId: "engineering", name: "Hudson Lee", totalXP: 295, avatar: "🔬" },
-  { guildId: "engineering", name: "Ivy Sanders", totalXP: 280, avatar: "🛰️" },
+const GUILD_XP_PER_LEVEL = 100;
 
-  // Health Sciences
-  { guildId: "health_sciences", name: "Casey Ortiz", totalXP: 380, avatar: "🧬" },
-  { guildId: "health_sciences", name: "Nia Thompson", totalXP: 360, avatar: "🫀" },
-  { guildId: "health_sciences", name: "Griffin Shaw", totalXP: 345, avatar: "🧫" },
-  { guildId: "health_sciences", name: "Aaliyah Stone", totalXP: 330, avatar: "🧬" },
-  { guildId: "health_sciences", name: "Logan Pierce", totalXP: 315, avatar: "🧪" },
-  { guildId: "health_sciences", name: "Ruby Adams", totalXP: 300, avatar: "💊" },
-  { guildId: "health_sciences", name: "Owen Fisher", totalXP: 285, avatar: "🩺" },
-  { guildId: "health_sciences", name: "Chase Rivera", totalXP: 270, avatar: "🩹" },
-  { guildId: "health_sciences", name: "Lena Brooks", totalXP: 255, avatar: "🧻" },
-  { guildId: "health_sciences", name: "Faith Long", totalXP: 240, avatar: "🧴" },
-  { guildId: "health_sciences", name: "Eli Parker", totalXP: 225, avatar: "🧼" },
+function guildLevelFromTotalXp(totalXp: number): number {
+  return 1 + Math.floor(Math.max(0, totalXp) / GUILD_XP_PER_LEVEL);
+}
 
-  // Environment & Life Sciences
-  { guildId: "environment_life_sciences", name: "Morgan Lee", totalXP: 360, avatar: "🌎" },
-  { guildId: "environment_life_sciences", name: "Owen Brooks", totalXP: 340, avatar: "🌱" },
-  { guildId: "environment_life_sciences", name: "Hazel Kim", totalXP: 325, avatar: "🌿" },
-  { guildId: "environment_life_sciences", name: "River James", totalXP: 310, avatar: "🌊" },
-  { guildId: "environment_life_sciences", name: "Sienna Lopez", totalXP: 295, avatar: "🌤️" },
-  { guildId: "environment_life_sciences", name: "Theo Grant", totalXP: 280, avatar: "🦋" },
-  { guildId: "environment_life_sciences", name: "Lila Stone", totalXP: 265, avatar: "🍃" },
-  { guildId: "environment_life_sciences", name: "Arlo King", totalXP: 250, avatar: "🌾" },
-  { guildId: "environment_life_sciences", name: "Jun Park", totalXP: 235, avatar: "🍀" },
-  { guildId: "environment_life_sciences", name: "Piper Cruz", totalXP: 220, avatar: "🌻" },
-  { guildId: "environment_life_sciences", name: "Rowan Hill", totalXP: 205, avatar: "🌲" },
+function scholarGuildIdForUser(scholarGuildId: string | null | undefined): string {
+  const g = scholarGuildId?.trim();
+  return g && g !== "undecided" ? g : "undecided";
+}
 
-  // Nursing
-  { guildId: "nursing", name: "Taylor Kim", totalXP: 390, avatar: "🩹" },
-  { guildId: "nursing", name: "Isabella Rossi", totalXP: 370, avatar: "🧑‍⚕️" },
-  { guildId: "nursing", name: "Quinn Foster", totalXP: 355, avatar: "🩺" },
-  { guildId: "nursing", name: "Liam Torres", totalXP: 340, avatar: "💊" },
-  { guildId: "nursing", name: "Amara Singh", totalXP: 325, avatar: "🩻" },
-  { guildId: "nursing", name: "Brooke Hayes", totalXP: 310, avatar: "🧴" },
-  { guildId: "nursing", name: "Kai Morgan", totalXP: 295, avatar: "💉" },
-  { guildId: "nursing", name: "Olivia Shaw", totalXP: 280, avatar: "🧼" },
-  { guildId: "nursing", name: "Elias Ward", totalXP: 265, avatar: "🧪" },
-  { guildId: "nursing", name: "Sage Bell", totalXP: 250, avatar: "🧫" },
-  { guildId: "nursing", name: "Maya Cruz", totalXP: 235, avatar: "🩺" },
+function serverGuildToLeaderboardItem(row: ServerGuildLeaderboardRow): GuildLeaderboardItem {
+  return {
+    id: row.id,
+    name: row.name,
+    crest: "🛡️",
+    interest: "clubs",
+    level: guildLevelFromTotalXp(row.total_xp),
+    memberCount: row.member_count,
+    description: row.description,
+    source: "server",
+  };
+}
 
-  // Pharmacy
-  { guildId: "pharmacy", name: "Jamie Park", totalXP: 385, avatar: "🧪" },
-  { guildId: "pharmacy", name: "Noah Clarke", totalXP: 365, avatar: "💉" },
-  { guildId: "pharmacy", name: "Ava Mitchell", totalXP: 350, avatar: "💊" },
-  { guildId: "pharmacy", name: "Ethan Rivera", totalXP: 335, avatar: "🧫" },
-  { guildId: "pharmacy", name: "Lily Chen", totalXP: 320, avatar: "🧴" },
-  { guildId: "pharmacy", name: "Carter James", totalXP: 305, avatar: "🧪" },
-  { guildId: "pharmacy", name: "Zoey Carter", totalXP: 290, avatar: "📘" },
-  { guildId: "pharmacy", name: "Miles Brown", totalXP: 275, avatar: "📗" },
-  { guildId: "pharmacy", name: "Aria Lee", totalXP: 260, avatar: "📙" },
-  { guildId: "pharmacy", name: "Jude Foster", totalXP: 245, avatar: "📚" },
-  { guildId: "pharmacy", name: "Nolan Price", totalXP: 230, avatar: "📒" },
+function localGuildToLeaderboardItem(guild: Guild): GuildLeaderboardItem {
+  return {
+    id: guild.id,
+    name: guild.name,
+    crest: guild.crest,
+    interest: guild.interest,
+    level: getGuildDisplayLevel(guild),
+    memberCount: guild.memberIds.length,
+    description: guild.weeklyQuestGoal,
+    source: "local",
+    localGuild: guild,
+  };
+}
 
-  // Undecided
-  { guildId: "undecided", name: "Chris Allen", totalXP: 210, avatar: "🎒" },
-  { guildId: "undecided", name: "Harper Green", totalXP: 200, avatar: "📎" },
-  { guildId: "undecided", name: "Rory Blake", totalXP: 190, avatar: "📓" },
-  { guildId: "undecided", name: "Skyler Jones", totalXP: 180, avatar: "🧠" },
-  { guildId: "undecided", name: "Peyton Hall", totalXP: 170, avatar: "📘" },
-  { guildId: "undecided", name: "Jules Carter", totalXP: 160, avatar: "📗" },
-  { guildId: "undecided", name: "River Fox", totalXP: 150, avatar: "📙" },
-  { guildId: "undecided", name: "Blake Simmons", totalXP: 140, avatar: "📚" },
-  { guildId: "undecided", name: "Emerson Lee", totalXP: 130, avatar: "📒" },
-  { guildId: "undecided", name: "Kendall Watts", totalXP: 120, avatar: "📝" },
-  { guildId: "undecided", name: "Sasha Nguyen", totalXP: 110, avatar: "📎" },
-];
+function mergeGuildLeaderboardItems(server: ServerGuildLeaderboardRow[], local: Guild[]): GuildLeaderboardItem[] {
+  const serverItems = server.map(serverGuildToLeaderboardItem);
+  const serverNames = new Set(server.map((g) => g.name.trim().toLowerCase()));
+  const localItems = local
+    .filter((g) => !serverNames.has(g.name.trim().toLowerCase()))
+    .map(localGuildToLeaderboardItem);
+  return [...serverItems, ...localItems].sort((a, b) => {
+    if (b.level !== a.level) return b.level - a.level;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+}
 
 type XpLeaderboardRowUi = {
   rank: number;
@@ -157,6 +123,7 @@ type XpLeaderboardRowUi = {
   level: number;
   totalXp: number;
   avatar: string;
+  scholarGuildId?: string | null;
   strength: number;
   stamina: number;
   knowledge: number;
@@ -210,45 +177,48 @@ export function Leaderboards({
   const [friendsLb, setFriendsLb] = useState<XpLeaderboardPayload | null>(null);
   const [xpLoading, setXpLoading] = useState(false);
   const [xpError, setXpError] = useState<string | null>(null);
+  const [guildLbLoading, setGuildLbLoading] = useState(false);
+  const [guildLbError, setGuildLbError] = useState<string | null>(null);
+  const [serverGuilds, setServerGuilds] = useState<ServerGuildLeaderboardRow[]>([]);
+  const [myServerGuildId, setMyServerGuildId] = useState<string | null>(null);
 
   const scholarGuildsRanked = useMemo(() => {
-    return SCHOLAR_GUILDS.map((g) => {
-      const baseMembers = SCHOLAR_GUILD_SEED_MEMBERS.filter((m) => m.guildId === g.id);
-      const members = [...baseMembers];
-      if (character.scholarGuildId === g.id || (!character.scholarGuildId && g.id === "undecided")) {
-        members.push({
-          guildId: g.id,
-          name: character.name,
-          totalXP: character.totalXP,
-          avatar: character.avatar,
-        });
-      }
-      const totalXP = members.reduce((sum, m) => sum + m.totalXP, 0);
-      return {
-        id: g.id,
-        name: g.name,
-        crest: g.crest,
-        totalXP,
-        members,
-      };
-    }).sort((a, b) => b.totalXP - a.totalXP);
-  }, [character]);
+    if (!campusLb) return [];
+    const users = campusLb.topUsers;
+    const me = campusLb.currentUserEntry;
+    const allRows = me && !users.some((u) => u.userId === me.userId) ? [...users, me] : users;
+    if (allRows.length === 0) return [];
 
-  const guildsSorted = useMemo(() => {
-    const list = getGuilds();
-    return [...list].sort((a, b) => {
-      const levelA = getGuildDisplayLevel(a);
-      const levelB = getGuildDisplayLevel(b);
-      if (levelB !== levelA) return levelB - levelA;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-    });
-  }, []);
+    return SCHOLAR_GUILDS.map((g) => {
+      const members: ScholarGuildMember[] = allRows
+        .filter((u) => scholarGuildIdForUser(u.scholarGuildId) === g.id)
+        .map((u) => ({
+          guildId: g.id,
+          userId: u.userId,
+          name: u.displayName,
+          totalXP: u.totalXp,
+          avatar: u.avatar,
+        }))
+        .sort(compareScholarGuildMemberEntries);
+      const totalXP = members.reduce((sum, m) => sum + m.totalXP, 0);
+      return { id: g.id, name: g.name, crest: g.crest, totalXP, members };
+    })
+      .filter((g) => g.members.length > 0)
+      .sort((a, b) => b.totalXP - a.totalXP);
+  }, [campusLb]);
+
+  const guildsSorted = useMemo(() => mergeGuildLeaderboardItems(serverGuilds, getGuilds()), [serverGuilds]);
+
+  const userGuildIds = useMemo(() => {
+    const ids = new Set(character.guildIds ?? []);
+    if (myServerGuildId) ids.add(myServerGuildId);
+    return ids;
+  }, [character.guildIds, myServerGuildId]);
 
   const userGuildRank = useMemo(() => {
-    const ids = character.guildIds ?? [];
-    if (ids.length === 0 || guildsSorted.length === 0) return null;
-    let best: { guild: Guild; rank: number } | null = null;
-    for (const guildId of ids) {
+    if (userGuildIds.size === 0 || guildsSorted.length === 0) return null;
+    let best: { guild: GuildLeaderboardItem; rank: number } | null = null;
+    for (const guildId of Array.from(userGuildIds)) {
       const index = guildsSorted.findIndex((g) => g.id === guildId);
       if (index < 0) continue;
       const rank = index + 1;
@@ -257,7 +227,26 @@ export function Leaderboards({
       }
     }
     return best;
-  }, [character.guildIds, guildsSorted]);
+  }, [userGuildIds, guildsSorted]);
+
+  const loadGuildLeaderboard = useCallback(async () => {
+    setGuildLbLoading(true);
+    setGuildLbError(null);
+    try {
+      const [guildRes, myGuildRes] = await Promise.all([
+        fetchAuthed<{ guilds: ServerGuildLeaderboardRow[] }>("/api/leaderboards/guilds"),
+        fetchAuthed<{ guild: { id: string } }>("/api/guilds/me").catch(() => null),
+      ]);
+      setServerGuilds(guildRes.guilds ?? []);
+      setMyServerGuildId(myGuildRes?.guild?.id ?? null);
+    } catch (err) {
+      setGuildLbError(err instanceof Error ? err.message : "Could not load guild leaderboard.");
+      setServerGuilds([]);
+      setMyServerGuildId(null);
+    } finally {
+      setGuildLbLoading(false);
+    }
+  }, []);
 
   const loadXpLeaderboards = useCallback(async () => {
     if (sortBy === "guildLevel") return;
@@ -307,9 +296,12 @@ export function Leaderboards({
   }, [character.level, character.totalXP]);
 
   const handlePullRefresh = useCallback(async () => {
-    await Promise.all([loadXpLeaderboards(), refreshPlayerSnapshotFromServer()]);
+    await Promise.all([
+      sortBy === "guildLevel" ? loadGuildLeaderboard() : loadXpLeaderboards(),
+      refreshPlayerSnapshotFromServer(),
+    ]);
     onRefresh?.();
-  }, [loadXpLeaderboards, onRefresh]);
+  }, [loadGuildLeaderboard, loadXpLeaderboards, onRefresh, sortBy]);
 
   useEffect(() => {
     if (sortBy === "guildLevel") return;
@@ -322,7 +314,20 @@ export function Leaderboards({
       cancelled = true;
       window.clearTimeout(deferId);
     };
-  }, [loadXpLeaderboards]);
+  }, [loadXpLeaderboards, sortBy]);
+
+  useEffect(() => {
+    if (sortBy !== "guildLevel") return;
+    let cancelled = false;
+    const deferId = scheduleNonCriticalWork(() => {
+      if (cancelled) return;
+      void loadGuildLeaderboard();
+    });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(deferId);
+    };
+  }, [loadGuildLeaderboard, sortBy]);
 
   const xpActive = xpTab === "campus" ? campusLb : friendsLb;
   const xpFriendsAcceptedCount = friendsLb?.acceptedFriendCount ?? 0;
@@ -341,17 +346,31 @@ export function Leaderboards({
   const xpCampusEmpty = xpTab === "campus" && !xpLoading && !xpError && (xpActive?.totalRankedUsers ?? 0) === 0;
   const xpHasBoard = Boolean(!xpLoading && !xpError && xpActive != null && xpActive.totalRankedUsers > 0);
 
+  const xpDisplayBoard = useMemo(() => {
+    if (!xpActive?.topUsers.length) return xpActive;
+    const rerankedTop = sortAndRankXpEntries(
+      xpActive.topUsers.map(({ rank: _rank, ...row }) => row),
+    );
+    const meInTop = rerankedTop.find((row) => row.userId === character.id);
+    return {
+      ...xpActive,
+      topUsers: rerankedTop,
+      currentUserEntry: meInTop ?? xpActive.currentUserEntry,
+      currentUserRank: meInTop?.rank ?? xpActive.currentUserRank,
+    };
+  }, [character.id, xpActive]);
+
   const podiumUsers = useMemo(() => {
-    if (!xpActive?.topUsers.length) return [];
+    if (!xpDisplayBoard?.topUsers.length) return [];
     return ([2, 1, 3] as const)
-      .map((rank) => xpActive.topUsers.find((row) => row.rank === rank))
+      .map((rank) => xpDisplayBoard.topUsers.find((row) => row.rank === rank))
       .filter((row): row is XpLeaderboardRowUi => row != null);
-  }, [xpActive?.topUsers]);
+  }, [xpDisplayBoard?.topUsers]);
 
   const listUsers = useMemo(() => {
-    if (!xpActive?.topUsers.length) return [];
-    return xpActive.topUsers.filter((row) => row.rank > 3);
-  }, [xpActive?.topUsers]);
+    if (!xpDisplayBoard?.topUsers.length) return [];
+    return xpDisplayBoard.topUsers.filter((row) => row.rank > 3);
+  }, [xpDisplayBoard?.topUsers]);
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh} disabled={xpLoading}>
@@ -434,8 +453,23 @@ export function Leaderboards({
             </p>
           </div>
 
-          {guildsSorted.length === 0 ? (
-            <LeaderboardEmptyState message="No guilds yet." detail="Create or join one in Find Friends to start climbing rankings." />
+          {guildLbError ? (
+            <ScreenDataState
+              variant="error"
+              message="Couldn't load guild leaderboard."
+              detail="Check your connection and try again."
+              onRetry={() => void loadGuildLeaderboard()}
+              compact
+            />
+          ) : guildLbLoading ? (
+            <div className="cq-lb-state" role="status" aria-live="polite">
+              <p className="text-white/70">Loading guild rankings…</p>
+            </div>
+          ) : guildsSorted.length === 0 ? (
+            <LeaderboardEmptyState
+              message="No guilds have been created yet."
+              detail="Create a guild in Find Friends, or join one when guilds become available."
+            />
           ) : (
             <div className="space-y-3">
               <GuildChampionHero guild={guildsSorted[0]} />
@@ -461,7 +495,7 @@ export function Leaderboards({
                         key={guild.id}
                         guild={guild}
                         rank={index + 2}
-                        isMember={character.guildIds?.includes(guild.id) ?? false}
+                        isMember={userGuildIds.has(guild.id)}
                         isExpanded={expandedGuildId === guild.id}
                         onToggle={() => setExpandedGuildId(expandedGuildId === guild.id ? null : guild.id)}
                       />
@@ -508,13 +542,13 @@ export function Leaderboards({
                 message="No leaderboard data yet."
                 detail="As more students verify their school email, the campus leaderboard fills in."
               />
-            ) : xpHasBoard && xpActive ? (
+            ) : xpHasBoard && xpDisplayBoard ? (
               <div className="space-y-3">
-                {xpActive.currentUserEntry ? (
+                {xpDisplayBoard.currentUserEntry ? (
                   <ScholarsYourRankCard
-                    entry={xpActive.currentUserEntry}
+                    entry={xpDisplayBoard.currentUserEntry}
                     character={character}
-                    totalRanked={xpActive.totalRankedUsers}
+                    totalRanked={xpDisplayBoard.totalRankedUsers}
                     mode={xpTab}
                   />
                 ) : null}
@@ -534,7 +568,7 @@ export function Leaderboards({
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <h3 className="text-xs font-semibold uppercase tracking-wider text-white/50">Rankings</h3>
                       <span className="text-[10px] text-white/40 tabular-nums">
-                        {xpActive.totalRankedUsers.toLocaleString()} scholars · Total XP
+                        {xpDisplayBoard.totalRankedUsers.toLocaleString()} scholars · Total XP
                       </span>
                     </div>
                     <ul className="space-y-2" aria-label="Leaderboard rankings">
@@ -562,6 +596,7 @@ export function Leaderboards({
             ) : null}
           </div>
 
+          {scholarGuildsRanked.length > 0 ? (
           <details className="cq-lb-scholars">
             <summary className="cq-lb-scholars-summary">Scholars Guild rankings</summary>
             <div className="cq-lb-scholars-body">
@@ -594,14 +629,17 @@ export function Leaderboards({
                     {isExpanded && (
                       <div className="border-t border-white/10 bg-black/20 px-3 py-3">
                         <p className="text-xs font-semibold text-white/45 uppercase tracking-wider mb-2">
-                          Example scholars
+                          Scholars
                         </p>
                         <ul className="space-y-1.5">
-                          {g.members.map((m) => (
+                          {g.members.map((m, memberIndex) => (
                             <li
-                              key={`${g.id}-${m.name}`}
+                              key={`${g.id}-${m.userId}`}
                               className="flex items-center gap-2 rounded-lg bg-white/[0.04] border border-white/10 px-2.5 py-2"
                             >
+                              <span className="text-[10px] font-semibold text-white/35 w-6 shrink-0 tabular-nums">
+                                #{memberIndex + 1}
+                              </span>
                               <div className="cq-avatar-slot h-8 w-8 shrink-0 rounded-lg border border-white/10 bg-white/[0.06]">
                                 <AvatarDisplay avatar={m.avatar} fitParent size={32} />
                               </div>
@@ -622,6 +660,7 @@ export function Leaderboards({
             </ul>
             </div>
           </details>
+          ) : null}
         </>
       )}
     </section>
@@ -708,10 +747,9 @@ function guildRowRankClass(rank: number): string {
   return "";
 }
 
-function GuildChampionHero({ guild }: { guild: Guild }) {
-  const level = getGuildDisplayLevel(guild);
+function GuildChampionHero({ guild }: { guild: GuildLeaderboardItem }) {
   return (
-    <div className="cq-lb-guild-hero" aria-label={`Rank 1 guild, ${guild.name}, level ${level}`}>
+    <div className="cq-lb-guild-hero" aria-label={`Rank 1 guild, ${guild.name}, level ${guild.level}`}>
       <div className="cq-lb-guild-hero-glow" aria-hidden />
       <p className="cq-lb-guild-hero-eyebrow">
         <Trophy className="h-3.5 w-3.5" aria-hidden strokeWidth={2.25} />
@@ -720,9 +758,9 @@ function GuildChampionHero({ guild }: { guild: Guild }) {
       <GuildEmblem interest={guild.interest} crest={guild.crest} size="hero" rank={1} />
       <h3 className="cq-lb-guild-hero-name">{guild.name}</h3>
       <p className="cq-lb-guild-hero-meta">
-        <span className="cq-lb-level-badge">Lv.{level}</span>
+        <span className="cq-lb-level-badge">Lv.{guild.level}</span>
         <span className="cq-lb-guild-hero-dot" aria-hidden />
-        <span>{guild.memberIds.length} members</span>
+        <span>{guild.memberCount} members</span>
       </p>
       <span className="cq-lb-guild-hero-badge">Guild Champion</span>
       <p className="cq-lb-guild-hero-interest">{GUILD_INTEREST_LABELS[guild.interest]}</p>
@@ -775,15 +813,15 @@ function GuildRankRow({
   isExpanded,
   onToggle,
 }: {
-  guild: Guild;
+  guild: GuildLeaderboardItem;
   rank: number;
   isMember: boolean;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
-  const level = getGuildDisplayLevel(guild);
   const rankTone = guildRowRankClass(rank);
   const emblemRank = rank <= 3 ? (rank as 1 | 2 | 3) : undefined;
+  const localGuild = guild.localGuild;
 
   return (
     <li className={`cq-lb-guild-row cq-lb-guild-row--animated overflow-hidden ${rankTone} ${isMember ? "cq-lb-guild-row--yours" : ""}`}>
@@ -803,8 +841,8 @@ function GuildRankRow({
           <p className="text-xs text-white/50">{GUILD_INTEREST_LABELS[guild.interest]}</p>
         </div>
         <div className="flex-shrink-0 text-right">
-          <p className="text-uri-keaney font-semibold tabular-nums">Lv.{level}</p>
-          <p className="text-xs text-white/50">{guild.memberIds.length} members</p>
+          <p className="text-uri-keaney font-semibold tabular-nums">Lv.{guild.level}</p>
+          <p className="text-xs text-white/50">{guild.memberCount} members</p>
         </div>
         <span className="text-white/40 text-xs flex-shrink-0" aria-hidden>
           {isExpanded ? "▾" : "▸"}
@@ -813,33 +851,39 @@ function GuildRankRow({
       {isExpanded ? (
         <div className="border-t border-white/10 bg-black/20 px-3 py-3">
           <p className="text-xs font-semibold text-white/45 uppercase tracking-wider mb-2">Members</p>
-          <ul className="space-y-2">
-            {guild.memberIds.length === 0 ? (
-              <li className="text-sm text-white/50">No members yet.</li>
-            ) : (
-              guild.memberIds.map((memberId) => {
-                const member = getCharacterById(memberId);
-                const isCreator = memberId === guild.createdByUserId;
-                return (
-                  <li
-                    key={memberId}
-                    className="flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.04] border border-white/10"
-                  >
-                    <div className="cq-avatar-slot w-9 h-9 bg-white/[0.06] border border-white/10">
-                      {member ? <AvatarDisplay avatar={member.avatar} fitParent size={36} /> : <span className="text-lg text-white/40">?</span>}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-white text-sm truncate">{member ? member.name : "Unknown"}</p>
-                      <p className="text-xs text-white/50 truncate">{member ? `@${member.username}` : memberId}</p>
-                    </div>
-                    {isCreator ? (
-                      <span className="text-[10px] font-semibold text-uri-gold px-1.5 py-0.5 rounded bg-uri-gold/15 flex-shrink-0">Founder</span>
-                    ) : null}
-                  </li>
-                );
-              })
-            )}
-          </ul>
+          {localGuild ? (
+            <ul className="space-y-2">
+              {localGuild.memberIds.length === 0 ? (
+                <li className="text-sm text-white/50">No members yet.</li>
+              ) : (
+                localGuild.memberIds.map((memberId) => {
+                  const member = getCharacterById(memberId);
+                  const isCreator = memberId === localGuild.createdByUserId;
+                  return (
+                    <li
+                      key={memberId}
+                      className="flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.04] border border-white/10"
+                    >
+                      <div className="cq-avatar-slot w-9 h-9 bg-white/[0.06] border border-white/10">
+                        {member ? <AvatarDisplay avatar={member.avatar} fitParent size={36} /> : <span className="text-lg text-white/40">?</span>}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-white text-sm truncate">{member ? member.name : "Unknown"}</p>
+                        <p className="text-xs text-white/50 truncate">{member ? `@${member.username}` : memberId}</p>
+                      </div>
+                      {isCreator ? (
+                        <span className="text-[10px] font-semibold text-uri-gold px-1.5 py-0.5 rounded bg-uri-gold/15 flex-shrink-0">Founder</span>
+                      ) : null}
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          ) : (
+            <p className="text-sm text-white/50">
+              {guild.memberCount} member{guild.memberCount === 1 ? "" : "s"}. Open Find Friends to view guild details.
+            </p>
+          )}
         </div>
       ) : null}
     </li>

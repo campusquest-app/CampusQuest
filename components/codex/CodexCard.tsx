@@ -2,17 +2,26 @@
 
 import type { CodexItemState } from "@/lib/codexState";
 import { CODEX_RARITY_LABELS } from "@/lib/codexCatalog";
+import { getAchievementById } from "@/lib/achievementsCatalog";
+import { getTorchBearerDisplayName, TORCH_BEARER_BADGE_ID } from "@/lib/torchBearerBadge";
+import type { Character } from "@/lib/types";
 
 type CodexCardProps = {
   state: CodexItemState;
+  character?: Character;
   onSelect: () => void;
 };
 
-export function CodexCard({ state, onSelect }: CodexCardProps) {
+export function CodexCard({ state, character, onSelect }: CodexCardProps) {
   const { entry, discovered, isEquipped } = state;
   const showSilhouette = !discovered;
+  const torchDef = entry.achievementId === TORCH_BEARER_BADGE_ID ? getAchievementById(TORCH_BEARER_BADGE_ID) : undefined;
   const displayName =
-    discovered || !entry.hiddenUntilFound ? entry.name : "???";
+    discovered && entry.achievementId === TORCH_BEARER_BADGE_ID && character?.torchBearerFounderNumber
+      ? getTorchBearerDisplayName(character.torchBearerFounderNumber)
+      : discovered || !entry.hiddenUntilFound
+        ? entry.name
+        : "???";
 
   return (
     <button
@@ -32,6 +41,12 @@ export function CodexCard({ state, onSelect }: CodexCardProps) {
           <span className="cq-codex-silhouette text-xl sm:text-2xl" aria-hidden>
             ?
           </span>
+        ) : entry.imageUrl || torchDef?.imageUrl ? (
+          <img
+            src={entry.imageUrl ?? torchDef?.imageUrl}
+            alt=""
+            className="h-full w-full rounded-lg object-cover"
+          />
         ) : (
           <span aria-hidden>{entry.icon}</span>
         )}

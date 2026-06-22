@@ -13,7 +13,8 @@ import {
   MIN_BOSS_HP,
 } from "@/lib/store";
 import type { UserBoss, Character, StatKey } from "@/lib/types";
-import { STAT_KEYS, STAT_ICONS, STAT_LABELS } from "@/lib/types";
+import { STAT_KEYS, STAT_LABELS } from "@/lib/types";
+import { StatIcon } from "@/components/stats/StatIcon";
 import { getCosmeticById } from "@/lib/cosmetics";
 import { describeCosmeticEquipEffect } from "@/lib/gameBuffs";
 import { CampusBossRaid } from "@/components/CampusBossRaid";
@@ -175,7 +176,7 @@ function BossFightRow({
             )}
             {weakness && (
               <span className="rounded-full border border-white/15 bg-white/[0.08] px-2 py-1 text-[11px] text-white/80">
-                Weak: {STAT_ICONS[weakness]} {STAT_LABELS[weakness]}
+                Weak: <StatIcon stat={weakness} variant="glyph" size="sm" className="inline" /> {STAT_LABELS[weakness]}
               </span>
             )}
           </div>
@@ -485,9 +486,8 @@ export function BossBattles({ character, onRefresh }: { character: Character; on
                               : "border-white/15 bg-white/[0.08] font-medium text-white/75 hover:bg-white/[0.12]"
                           }`}
                         >
-                          <span className="text-lg leading-none sm:text-base" aria-hidden>
-                            {STAT_ICONS[key]}
-                          </span>
+                          <StatIcon stat={key} size="md" className="sm:hidden" />
+                          <StatIcon stat={key} size="sm" className="hidden sm:inline-flex" />
                           <span className="max-w-[4.5rem] text-[10px] leading-tight sm:max-w-none sm:text-xs">{STAT_LABELS[key]}</span>
                         </button>
                       ))}

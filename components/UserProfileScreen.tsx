@@ -37,6 +37,7 @@ export function UserProfileScreen({
   onOpenMessage,
   onProfileReload,
   onSharePost,
+  canModeratePosts = false,
 }: {
   character: Character;
   viewer: Pick<Character, "id" | "name" | "username" | "avatar">;
@@ -51,6 +52,7 @@ export function UserProfileScreen({
   onOpenMessage?: (other: { userId: string; username: string; name: string; avatar: string }) => void;
   onProfileReload?: () => void | Promise<void>;
   onSharePost?: (note: FieldNote) => void;
+  canModeratePosts?: boolean;
 }) {
   const [character, setCharacter] = useState(initialCharacter);
   const [canViewPrivateContent, setCanViewPrivateContent] = useState(initialCanView);
@@ -247,9 +249,14 @@ export function UserProfileScreen({
         setPosts((prev) => prev.map((p) => (p.id === note.id ? note : p)));
         syncPostsFromCache();
       }}
+      onPostDeleted={(postId) => {
+        setPosts((prev) => prev.filter((p) => p.id !== postId));
+        syncPostsFromCache();
+      }}
       pendingReactions={pendingReactions}
       reactionNotice={reactionNotice}
       onSharePost={onSharePost}
+      canModeratePosts={canModeratePosts}
     />
   );
 

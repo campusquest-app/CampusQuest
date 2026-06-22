@@ -1,11 +1,21 @@
 -- Comments on Quad posts (separate from legacy public.posts comments)
 
-alter table public.quad_posts
-  add column if not exists comments_count integer not null default 0 check (comments_count >= 0);
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.tables
+    where table_schema = 'public'
+      and table_name = 'quad_posts'
+  ) then
+    alter table public.quad_posts
+      add column if not exists comments_count integer not null default 0 check (comments_count >= 0);
+  end if;
+end $$;
 
 create table if not exists public.quad_post_comments (
   id uuid primary key default gen_random_uuid(),
-  post_id uuid not null references public.quad_posts(id) on delete cascade,
+  post_id uuid not null,
   user_id uuid not null references public.profiles(id) on delete cascade,
   body text not null check (char_length(body) >= 1 and char_length(body) <= 200),
   created_at timestamptz not null default now()
@@ -13,6 +23,22 @@ create table if not exists public.quad_post_comments (
 
 create index if not exists quad_post_comments_post_created_idx
   on public.quad_post_comments (post_id, created_at asc);
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.tables
+    where table_schema = 'public'
+      and table_name = 'quad_posts'
+  ) and not exists (
+    select 1 from pg_constraint where conname = 'quad_post_comments_post_id_fkey'
+  ) then
+    alter table public.quad_post_comments
+      add constraint quad_post_comments_post_id_fkey
+      foreign key (post_id) references public.quad_posts(id) on delete cascade;
+  end if;
+end $$;
 
 create or replace function public.sync_quad_post_comments_count()
 returns trigger
@@ -36,10 +62,20 @@ begin
 end;
 $$;
 
-drop trigger if exists trg_sync_quad_post_comments_count on public.quad_post_comments;
-create trigger trg_sync_quad_post_comments_count
-after insert or delete on public.quad_post_comments
-for each row execute function public.sync_quad_post_comments_count();
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.tables
+    where table_schema = 'public'
+      and table_name = 'quad_posts'
+  ) then
+    drop trigger if exists trg_sync_quad_post_comments_count on public.quad_post_comments;
+    create trigger trg_sync_quad_post_comments_count
+    after insert or delete on public.quad_post_comments
+    for each row execute function public.sync_quad_post_comments_count();
+  end if;
+end $$;
 
 alter table public.quad_post_comments enable row level security;
 

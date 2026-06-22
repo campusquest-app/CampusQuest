@@ -30,6 +30,7 @@ export type QuadPostApiRow = {
   viewer_reactions?: QuadReactionType[];
   like_count?: number;
   current_user_has_liked?: boolean;
+  comments_count?: number;
   profiles?: {
     display_name: string | null;
     username: string | null;
@@ -91,5 +92,6 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
     locationId: row.location_id ?? undefined,
     locationName: row.location_name ?? undefined,
     isPersisted: true,
+    commentCount: Math.max(0, row.comments_count ?? 0),
   };
 }

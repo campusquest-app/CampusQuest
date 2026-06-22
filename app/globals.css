@@ -1209,6 +1209,43 @@
   color: rgba(255, 255, 255, 0.55);
 }
 
+/* Find Friends — Create Guild (locked + unlocked) */
+.cq-guild-create-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.625rem 1rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.75);
+  cursor: not-allowed;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    filter 150ms ease,
+    transform 100ms ease;
+}
+
+.cq-guild-create-btn:not(:disabled) {
+  border-color: rgba(104, 171, 232, 0.4);
+  background: linear-gradient(180deg, #7bb8eb 0%, var(--uri-keaney) 100%);
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 4px 14px -2px rgba(104, 171, 232, 0.35);
+}
+
+.cq-guild-create-btn:not(:disabled):hover {
+  filter: brightness(1.06);
+}
+
+.cq-guild-create-btn:not(:disabled):active {
+  transform: scale(0.98);
+}
+
 .cq-tab-shell {
   background: transparent;
   min-height: 50vh;
@@ -2668,6 +2705,75 @@
   border-color: var(--cq-border-strong);
   background: var(--cq-bg-elevated);
 }
+
+/* Official CampusQuest stat icons — shared across Character, Manual Log, etc. */
+.cq-stat-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.65rem;
+  border: 1px solid transparent;
+}
+
+.cq-stat-icon--sm {
+  height: 1.5rem;
+  width: 1.5rem;
+}
+
+.cq-stat-icon--md {
+  height: 2rem;
+  width: 2rem;
+  border-radius: 0.75rem;
+}
+
+.cq-stat-icon--lg {
+  height: 2.5rem;
+  width: 2.5rem;
+  border-radius: 0.75rem;
+}
+
+.cq-stat-icon--strength {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.14);
+  border-color: rgba(251, 191, 36, 0.22);
+}
+
+.cq-stat-icon--stamina {
+  color: #00838f;
+  background: rgba(0, 131, 143, 0.14);
+  border-color: rgba(0, 131, 143, 0.22);
+}
+
+.cq-stat-icon--knowledge {
+  color: #68abe8;
+  background: rgba(104, 171, 232, 0.14);
+  border-color: rgba(104, 171, 232, 0.24);
+}
+
+.cq-stat-icon--social {
+  color: #2e7d32;
+  background: rgba(46, 125, 50, 0.14);
+  border-color: rgba(46, 125, 50, 0.22);
+}
+
+.cq-stat-icon--focus {
+  color: #5e35b1;
+  background: rgba(94, 53, 177, 0.14);
+  border-color: rgba(94, 53, 177, 0.24);
+}
+
+.cq-stat-glyph--strength { color: #fbbf24; }
+.cq-stat-glyph--stamina { color: #00838f; }
+.cq-stat-glyph--knowledge { color: #68abe8; }
+.cq-stat-glyph--social { color: #2e7d32; }
+.cq-stat-glyph--focus { color: #5e35b1; }
+
+.cq-stat-border--strength { border-color: rgba(251, 191, 36, 0.18); }
+.cq-stat-border--stamina { border-color: rgba(0, 131, 143, 0.18); }
+.cq-stat-border--knowledge { border-color: rgba(104, 171, 232, 0.22); }
+.cq-stat-border--social { border-color: rgba(46, 125, 50, 0.18); }
+.cq-stat-border--focus { border-color: rgba(94, 53, 177, 0.2); }
 
 /* Game juice: screen shake, level-up, stat bursts */
 @keyframes cq-shake {
@@ -4907,13 +5013,13 @@
 }
 
 .cq-bottom-nav {
-  transform: translateY(0);
+  transform: translateY(calc(var(--cq-bottom-chrome-conceal, 0) * var(--cq-bottom-nav-h, 5.75rem)));
   opacity: 1;
   transition:
     background-color 280ms cubic-bezier(0.32, 0.72, 0, 1),
     backdrop-filter 280ms cubic-bezier(0.32, 0.72, 0, 1),
     box-shadow 280ms cubic-bezier(0.32, 0.72, 0, 1);
-  will-change: background-color;
+  will-change: transform;
 }
 
 .cq-bottom-nav-inner {
@@ -4960,6 +5066,12 @@ html[data-cq-quad-chrome="hidden"] .cq-quad-header {
 }
 
 /* Bottom nav: minimize on scroll (icons stay visible) — never slide off-screen */
+html[data-cq-bottom-chrome="concealing"] .cq-bottom-nav-label {
+  opacity: calc(1 - var(--cq-bottom-chrome-conceal, 0));
+  max-height: calc((1 - var(--cq-bottom-chrome-conceal, 0)) * 1.25rem);
+  transform: translateY(calc(var(--cq-bottom-chrome-conceal, 0) * 4px));
+}
+
 html[data-cq-bottom-chrome="minimized"] .cq-nav-shell-bottom {
   background-color: rgba(4, 30, 66, 0.78);
   background-image: linear-gradient(0deg, rgba(4, 30, 66, 0.88) 0%, rgba(16, 42, 92, 0.72) 100%);
@@ -5476,6 +5588,53 @@ html[data-cq-quad-chrome] .cq-top-nav-meta {
 
 .cq-bottom-nav svg {
   filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.45));
+}
+
+.cq-bottom-nav-avatar-slot {
+  flex-shrink: 0;
+  transition:
+    box-shadow 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.cq-bottom-nav-avatar-slot--active {
+  filter: drop-shadow(0 0 10px rgba(104, 171, 232, 0.45));
+}
+
+.cq-bottom-nav-avatar {
+  display: block;
+  width: 1.75rem;
+  height: 1.75rem;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: var(--cq-bg-elevated);
+}
+
+.cq-bottom-nav-avatar .avatar-display-frame {
+  width: 100%;
+  height: 100%;
+}
+
+.cq-bottom-nav-avatar--active {
+  box-shadow:
+    0 0 0 2px var(--cq-nav-bg, #041e42),
+    0 0 0 3.5px var(--uri-keaney, #68abe8);
+}
+
+.cq-bottom-nav-avatar--placeholder {
+  background: rgba(255, 255, 255, 0.12);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
 }
 
 /* —— Quad create-post FAB —— */
@@ -9386,4 +9545,17 @@ html[data-realm-map-panning] {
 
 .cq-dm-shared-post {
   border: 0;
+}
+
+.cq-org-hub-overlay {
+  overscroll-behavior: contain;
+}
+
+.cq-org-hub-modal-close {
+  border: 0;
+  background: transparent;
+}
+
+.cq-org-hub-modal-close:active {
+  transform: scale(0.94);
 }

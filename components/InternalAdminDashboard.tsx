@@ -12,6 +12,7 @@ import { AdminModerationSection } from "@/components/admin/AdminModerationSectio
 import { AdminOrganizationsSection } from "@/components/admin/AdminOrganizationsSection";
 import type { AdminSearchNavigatePayload } from "@/components/admin/AdminGlobalSearch";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { AdminQuestsSection } from "@/components/admin/AdminQuestsSection";
 import { AdminSystemSection } from "@/components/admin/AdminSystemSection";
 import { AdminUrinvolvedSection } from "@/components/admin/AdminUrinvolvedSection";
 
@@ -163,6 +164,7 @@ export function InternalAdminDashboard() {
       {section === "analytics" ? <AdminAnalyticsSection /> : null}
       {section === "audit" ? <AdminAuditSection initialSearch={auditQuery} /> : null}
       {section === "legal" ? <AdminLegalSection /> : null}
+      {section === "quests" ? <AdminQuestsSection /> : null}
       {section === "system" ? <AdminSystemSection /> : null}
     </AdminShell>
   );

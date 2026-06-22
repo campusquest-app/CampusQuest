@@ -74,7 +74,7 @@ export function SpecialQuests({
           <p className="text-[10px] uppercase tracking-[0.2em] text-uri-gold font-medium mt-0.5">One-time · bonus XP</p>
         </div>
       </div>
-      <p className="text-xs text-white/60 mb-4 pl-14">Post proof at the event to claim. Higher rewards than daily quests.</p>
+      <p className="text-xs text-white/60 mb-4 pl-14">Post proof at the event to claim. Higher rewards than routine activities.</p>
       <div className="space-y-3">
         {quests.map((q) => {
           const done = completedIds.has(q.id);

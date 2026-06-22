@@ -75,6 +75,7 @@ export type CodexEntry = {
   description: string;
   lore: string;
   icon: string;
+  imageUrl?: string;
   rarity: CodexRarity;
   source: CodexSource;
   categoryLabel: string;
@@ -86,7 +87,7 @@ export type CodexEntry = {
   slot?: CosmeticSlot;
 };
 
-const FOUNDER_IDS = new Set(["founding_student", "beta_tester", "talent_pioneer"]);
+const FOUNDER_IDS = new Set(["founding_student", "beta_tester", "talent_pioneer", "torch_bearer_badge"]);
 
 const LOCATION_LOOT_IDS = new Set([
   "hat:ram",
@@ -96,7 +97,13 @@ const LOCATION_LOOT_IDS = new Set([
   "backpack:books",
 ]);
 
-const SEASONAL_ACHIEVEMENT_IDS = new Set(["founding_student", "beta_tester", "talent_pioneer", "campus_legend"]);
+const SEASONAL_ACHIEVEMENT_IDS = new Set([
+  "founding_student",
+  "beta_tester",
+  "talent_pioneer",
+  "torch_bearer_badge",
+  "campus_legend",
+]);
 
 export function mapLootRarityToCodex(rarity: LootRarity): CodexRarity {
   switch (rarity) {
@@ -175,6 +182,9 @@ function resolveAchievementSource(def: AchievementDef): CodexSource {
 function achievementObtainHint(def: AchievementDef, source: CodexSource): string {
   if (def.id === "founding_student") return "Joined CampusQuest during the founding semester.";
   if (def.id === "beta_tester") return "Participated in the CampusQuest beta program.";
+  if (def.id === "torch_bearer_badge") {
+    return "Awarded to one of the first 30 CampusQuest beta testers who helped ignite the journey.";
+  }
   if (def.id === "talent_pioneer") return "Recognized for advancing URI talent development.";
   if (source === "events") return "Attend campus events and check in.";
   if (source === "guilds") return "Grow your guild presence on campus.";
@@ -210,10 +220,14 @@ function achievementEntry(def: AchievementDef): CodexEntry {
     description: def.description,
     lore: `${def.description} A permanent mark on your adventurer record.`,
     icon: def.icon,
+    imageUrl: def.imageUrl,
     rarity: def.rarity,
     source,
     categoryLabel: CATEGORY_META[def.category].label,
-    hiddenUntilFound: def.rarity === "mythic" || (def.rarity === "legendary" && !FOUNDER_IDS.has(def.id)),
+    hiddenUntilFound:
+      def.codexHiddenUntilEarned ||
+      def.rarity === "mythic" ||
+      (def.rarity === "legendary" && !FOUNDER_IDS.has(def.id)),
     obtainHint: achievementObtainHint(def, source),
     achievementId: def.id,
   };

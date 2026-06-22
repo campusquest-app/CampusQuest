@@ -2,6 +2,7 @@ import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { isPasswordRequirementFailure } from "@/lib/passwordRequirements";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
+import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { createPublicClient } from "@/lib/server/supabase";
 import { authSignupSchema, readJson } from "@/lib/server/validation";
 
@@ -64,6 +65,14 @@ export async function POST(request: Request) {
       throw setupError;
     }
 
+    const torchBearer = data.session
+      ? await tryAwardTorchBearerBadge({
+          userId: data.user.id,
+          user: data.user,
+          email: data.user.email,
+        })
+      : null;
+
     return ok(
       {
         user: {
@@ -73,6 +82,7 @@ export async function POST(request: Request) {
         session: data.session,
         profile: player.profile,
         stats: player.stats,
+        torchBearer,
       },
       201,
     );
