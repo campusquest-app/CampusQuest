@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
+import { UserSearchInput } from "@/components/ui/UserSearchInput";
 import { postAuthed } from "@/lib/client/dashboardApi";
 import {
   avatarFromConnectionProfile,
@@ -11,6 +12,7 @@ import {
   type ConnectionItem,
 } from "@/lib/client/socialConnectionsClient";
 import { sharePostToConversations, type SharePostTarget } from "@/lib/client/dmMessagesClient";
+import type { UserSearchResult } from "@/lib/client/userSearchClient";
 
 export function SharePostSheet({
   open,
@@ -61,13 +63,18 @@ export function SharePostSheet({
     };
   }, [open]);
 
+  const connectionIds = useMemo(() => new Set(connections.map((row) => row.userId)), [connections]);
+
+  const filterToConnections = useCallback(
+    (results: UserSearchResult[]) => results.filter((row) => connectionIds.has(row.userId)),
+    [connectionIds],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return connections;
     return connections.filter(
-      (c) =>
-        c.displayName.toLowerCase().includes(q) ||
-        c.username.toLowerCase().includes(q),
+      (c) => c.displayName.toLowerCase().includes(q) || c.username.toLowerCase().includes(q),
     );
   }, [connections, query]);
 
@@ -134,12 +141,16 @@ export function SharePostSheet({
               <p className="line-clamp-2 text-xs text-white/65">{target.caption || "Campus post"}</p>
             </div>
           </div>
-          <input
-            type="search"
+          <UserSearchInput
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={setQuery}
+            onSelectUser={(user) => toggleUser(user.userId)}
+            filterResults={filterToConnections}
             placeholder="Search friends…"
-            className="mt-3 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
+            inputClassName="mt-3 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
+            ariaLabel="Search friends to share with"
+            panelClassName="cq-user-search-panel--sheet"
+            emptyMessage="No friends found."
           />
         </div>
 

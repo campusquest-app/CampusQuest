@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import type { Character, FieldNote } from "@/lib/types";
 import type { Friend } from "@/lib/types";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
@@ -30,6 +31,10 @@ import { DmSharedPostCard } from "@/components/messages/DmSharedPostCard";
 import { ProfilePostDetail } from "@/components/profile/ProfilePostDetail";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
+import { fetchFriendCharacter } from "@/lib/client/friendProfileClient";
+
+const SAFETY_NOTICE =
+  "Keep conversations respectful. Harassment, threats, scams, or unsafe conduct may lead to removal from CampusQuest and referral to university conduct offices.";
 
 export function DirectMessageThread({
   currentUser,
@@ -61,7 +66,13 @@ export function DirectMessageThread({
   const [sending, setSending] = useState(false);
   const [sendingConnectionRequest, setSendingConnectionRequest] = useState(false);
   const [favBusy, setFavBusy] = useState<string | null>(null);
+  const [otherProfile, setOtherProfile] = useState<Character | null>(null);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const displayAvatar = otherProfile?.avatar ?? otherUser.avatar;
+  const displayLevel = otherProfile?.level ?? 1;
 
   const pinnedMessages = useMemo(() => {
     const fav = messages.filter((m) => m.isFavorited);
@@ -81,6 +92,35 @@ export function DirectMessageThread({
     setRequestId(relationship.requestId);
     return relationship;
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProfile() {
+      try {
+        const profile = await fetchFriendCharacter(otherUser.userId);
+        if (!cancelled) setOtherProfile(profile);
+      } catch {
+        if (!cancelled) setOtherProfile(null);
+      }
+    }
+
+    void loadProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [otherUser.userId]);
+
+  useEffect(() => {
+    if (!headerMenuOpen) return undefined;
+    function onPointerDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setHeaderMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [headerMenuOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -381,73 +421,85 @@ export function DirectMessageThread({
       m.type === "text" ||
       (m.type === "image" && m.content.trim() && m.content.trim() !== "📷 Photo") ||
       (m.type === "shared_post" && m.content.trim() && m.content.trim() !== "Shared a post");
+    const isSharedPost = m.type === "shared_post" && m.sharedPostPreview;
+    const isImageOnly = m.type === "image" && m.imageUrl && !showCaption;
+
+    const bubbleClass = isMe ? "cq-dm-bubble cq-dm-bubble--sent" : "cq-dm-bubble cq-dm-bubble--received";
+    const timestampClass = isMe ? "text-white/55" : "text-white/40";
 
     return (
       <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
         <div
-          className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${
-            favorited ? "ring-1 ring-uri-gold/55 ring-offset-1 ring-offset-uri-navy/40 " : ""
-          } ${
-            isMe
-              ? "bg-uri-keaney text-uri-navy rounded-br-md"
-              : "bg-white/15 text-white border border-white/10 rounded-bl-md"
-          } ${m.pending ? "opacity-70" : ""} ${m.failed ? "ring-1 ring-rose-400/40" : ""}`}
+          className={`max-w-[78%] ${favorited ? "ring-1 ring-uri-gold/45 rounded-2xl" : ""} ${
+            m.pending ? "opacity-70" : ""
+          } ${m.failed ? "ring-1 ring-rose-400/40 rounded-2xl" : ""}`}
         >
-          {m.type === "image" && m.imageUrl ? (
-            <div className="mb-2">
+          {isImageOnly ? (
+            <div className="overflow-hidden rounded-2xl">
               <DmImageMessage
-                imageUrl={m.imageUrl}
+                imageUrl={m.imageUrl!}
                 pending={m.pending}
                 uploadProgress={m.uploadProgress}
               />
             </div>
-          ) : null}
-          {m.type === "shared_post" && m.sharedPostPreview ? (
-            <div className={`mb-2 ${isMe ? "[&_.cq-dm-shared-post]:border-uri-navy/20" : ""}`}>
+          ) : isSharedPost ? (
+            <div className={`${bubbleClass} p-1.5`}>
               <DmSharedPostCard
-                preview={m.sharedPostPreview}
+                preview={m.sharedPostPreview!}
                 onOpen={() => void openSharedPost(m.sharedPostPreview!)}
               />
+              {showCaption ? (
+                <p className="mt-1.5 px-1 text-sm whitespace-pre-wrap break-words text-white">{m.content}</p>
+              ) : null}
             </div>
-          ) : null}
-          {showCaption ? (
-            <p className="text-sm whitespace-pre-wrap break-words">{m.content}</p>
-          ) : null}
-          <p className={`text-[10px] mt-1 ${isMe ? "text-uri-navy/70" : "text-white/50"}`}>
-            {m.pending ? "Sending…" : m.failed ? "Failed to send" : new Date(m.createdAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
-            {isMe && m.readAt ? " · Read" : ""}
-          </p>
-          {!m.pending && !m.failed ? (
-            <div className="flex flex-wrap gap-2 mt-1.5 items-center">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => toggleMessageFavorite(m.id, !favorited)}
-                className={`text-[10px] font-semibold rounded-md px-1.5 py-0.5 border transition-colors disabled:opacity-50 ${
-                  favorited
-                    ? isMe
-                      ? "border-uri-navy/40 text-uri-navy bg-uri-navy/10"
-                      : "border-uri-gold/45 text-uri-gold bg-uri-gold/15"
-                    : isMe
-                      ? "border-uri-navy/30 text-uri-navy/80 hover:bg-uri-navy/10"
-                      : "border-white/25 text-white/75 hover:bg-white/10"
-                }`}
-                aria-pressed={favorited}
-                title={favorited ? "Unfavorite" : "Favorite"}
-              >
-                {favorited ? "Unfavorite" : "Favorite"}
-              </button>
-              {!isMe && (
+          ) : (
+            <div className={`${bubbleClass} px-3.5 py-2`}>
+              {m.type === "image" && m.imageUrl ? (
+                <div className="mb-2 -mx-1 overflow-hidden rounded-xl">
+                  <DmImageMessage
+                    imageUrl={m.imageUrl}
+                    pending={m.pending}
+                    uploadProgress={m.uploadProgress}
+                  />
+                </div>
+              ) : null}
+              {showCaption ? (
+                <p className="text-[15px] leading-snug whitespace-pre-wrap break-words">{m.content}</p>
+              ) : null}
+            </div>
+          )}
+
+          <div className={`mt-1 flex flex-wrap items-center gap-2 px-1 ${isMe ? "justify-end" : "justify-start"}`}>
+            <p className={`text-[10px] ${timestampClass}`}>
+              {m.pending ? "Sending…" : m.failed ? "Failed to send" : new Date(m.createdAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+              {isMe && m.readAt ? " · Seen" : ""}
+            </p>
+            {!m.pending && !m.failed ? (
+              <>
                 <button
                   type="button"
-                  onClick={() => void handleReportMessage(m.id)}
-                  className="text-[10px] underline text-rose-300/95 hover:text-rose-100"
+                  disabled={busy}
+                  onClick={() => toggleMessageFavorite(m.id, !favorited)}
+                  className={`text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                    favorited ? "text-uri-gold" : "text-white/30 hover:text-white/55"
+                  }`}
+                  aria-pressed={favorited}
+                  title={favorited ? "Unfavorite" : "Favorite"}
                 >
-                  Report safety issue
+                  {favorited ? "★" : "☆"}
                 </button>
-              )}
-            </div>
-          ) : null}
+                {!isMe ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleReportMessage(m.id)}
+                    className="text-[10px] text-white/30 hover:text-rose-300/80"
+                  >
+                    Report
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
     );
@@ -456,146 +508,157 @@ export function DirectMessageThread({
   const content = (
     <MobileSwipeBackSurface
       onBack={onClose}
-      className="fixed inset-0 z-[100] flex flex-col bg-uri-navy"
+      className="cq-dm-thread fixed inset-0 z-[100] flex flex-col bg-black"
       role="dialog"
       aria-modal="true"
       aria-label={`Direct message with ${otherUser.name}`}
     >
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-hidden />
-      <div className="relative z-10 flex flex-col flex-1 min-h-0 max-h-[100vh] w-full max-w-lg mx-auto rounded-t-2xl border border-b-0 border-uri-keaney/20 bg-uri-navy shadow-xl">
-        {/* Header */}
-        <div className="flex items-center gap-3 p-3 border-b border-white/10 flex-shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 -ml-1 rounded-xl text-white/70 hover:text-white hover:bg-white/10"
-            aria-label="Close"
-          >
-            ←
+      <header className="cq-dm-header shrink-0 border-b border-white/[0.08] pt-[max(0.25rem,env(safe-area-inset-top))]">
+        <div className="flex items-center gap-2 px-2 py-2">
+          <button type="button" onClick={onClose} className="cq-dm-header-btn shrink-0" aria-label="Back">
+            <ArrowLeft className="h-6 w-6" strokeWidth={1.75} />
           </button>
-          <div className="cq-avatar-slot w-10 h-10 bg-white/10 border border-uri-keaney/30">
-            <AvatarDisplay avatar={otherUser.avatar} fitParent size={40} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold text-white truncate">{otherUser.name}</p>
-            <p className="text-xs text-uri-keaney/90 truncate">@{otherUser.username}</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void handleBlockUser()}
-            className="text-[11px] px-2.5 py-1.5 rounded-lg border border-rose-300/30 text-rose-200 hover:bg-rose-500/10"
-          >
-            Block
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleHideConversation()}
-            disabled={!conversationId}
-            className="text-[11px] px-2.5 py-1.5 rounded-lg border border-white/25 text-white/80 hover:bg-white/10 disabled:opacity-40"
-          >
-            Hide
-          </button>
-        </div>
 
-        {/* Messages */}
-        <div
-          ref={listRef}
-          className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0"
-        >
-          {loading && <p className="text-sm text-white/60 text-center py-6">Loading conversation...</p>}
-          {!loading && error && (
-            <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-300/30 rounded-lg px-3 py-2">
-              {error}
+          <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-[#262626]">
+            <AvatarDisplay avatar={displayAvatar} fitParent size={36} />
+          </div>
+
+          <div className="min-w-0 flex-1 pr-1">
+            <p className="truncate text-[15px] font-semibold leading-tight text-white">{otherUser.name}</p>
+            <p className="truncate text-xs text-white/45">
+              @{otherUser.username} · Level {displayLevel}
             </p>
-          )}
-          {!loading && connectionNotice && !error && (
-            <p className="text-xs text-cyan-100/90 bg-cyan-500/10 border border-cyan-300/25 rounded-lg px-3 py-2">
-              {connectionNotice}
-            </p>
-          )}
-          {!loading && !canMessage && !blockedByMe && !blockedByOther && (
-            <div className="rounded-xl border border-white/15 bg-white/[0.04] p-4 text-sm text-white/80">
-              <p className="mb-3">Messaging is available only after both students are connected on CampusQuest.</p>
-              {isConnected ? (
-                <span className="inline-flex rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100">
-                  Friends
-                </span>
-              ) : incomingPending ? (
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleAcceptRequest()}
-                    className="min-h-[44px] px-3 py-2 rounded-lg text-sm font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleDeclineRequest()}
-                    className="min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium border border-white/20 text-white/80 hover:bg-white/10"
-                  >
-                    Deny
-                  </button>
-                </div>
-              ) : outgoingPending ? (
-                <span className="inline-flex rounded-lg border border-white/15 bg-white/[0.05] px-3 py-2 text-xs font-medium text-white/55">
-                  Request Sent
-                </span>
-              ) : (
+          </div>
+
+          <div className="relative shrink-0" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setHeaderMenuOpen((open) => !open)}
+              className="cq-dm-header-btn"
+              aria-label="Conversation options"
+              aria-expanded={headerMenuOpen}
+            >
+              <MoreHorizontal className="h-[22px] w-[22px]" strokeWidth={1.75} />
+            </button>
+            {headerMenuOpen ? (
+              <div className="cq-dm-header-menu absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-xl border border-white/10 bg-[#121212] py-1 shadow-xl">
                 <button
                   type="button"
-                  disabled={sendingConnectionRequest}
-                  onClick={() => void handleSendConnectionRequest()}
-                  className="min-h-[44px] px-3 py-2 rounded-lg text-sm font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90 disabled:opacity-60"
+                  onClick={() => {
+                    setHeaderMenuOpen(false);
+                    void handleHideConversation();
+                  }}
+                  disabled={!conversationId}
+                  className="cq-dm-header-menu-item w-full px-4 py-2.5 text-left text-sm text-white disabled:opacity-40"
                 >
-                  {sendingConnectionRequest ? "Sending..." : "Add Friend"}
+                  Hide conversation
                 </button>
-              )}
-            </div>
-          )}
-          {!loading && (blockedByMe || blockedByOther) && (
-            <p className="text-sm text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-3">
-              {blockedByMe ? "You blocked this user. Unblock from settings to message again." : "You cannot message this user."}
-            </p>
-          )}
-          {canMessage &&
-            messages.length === 0 &&
-            !loading && (
-              <p className="text-sm text-white/50 text-center py-6">No messages yet. Say hi!</p>
-            )}
-          {pinnedMessages.length > 0 && canMessage && !blockedByMe && !blockedByOther && (
-            <div className="mb-4 pb-4 border-b border-uri-gold/25 space-y-2">
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-uri-gold/90">Pinned favorites</p>
-              {pinnedMessages.map((m) => (
-                <MessageBubbleRow key={`pin-${m.id}`} m={m} />
-              ))}
-            </div>
-          )}
-          {threadMessages.map((m) => (
-            <MessageBubbleRow key={m.id} m={m} />
-          ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHeaderMenuOpen(false);
+                    void handleBlockUser();
+                  }}
+                  className="cq-dm-header-menu-item w-full px-4 py-2.5 text-left text-sm text-rose-300"
+                >
+                  Block user
+                </button>
+                <div className="border-t border-white/[0.08] px-4 py-2.5">
+                  <p className="text-[10px] leading-relaxed text-white/35">{SAFETY_NOTICE}</p>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
+      </header>
 
-        {/* Input */}
-        {canMessage && !blockedByMe && !blockedByOther ? (
-          <DmThreadComposer
-            input={input}
-            onInputChange={setInput}
-            onSubmit={handleSend}
-            disabled={!canMessage}
-            sending={sending}
-            imageDraft={imageDraft}
-            onImageDraftChange={setImageDraft}
-            onImageSend={(args) => void handleImageSend(args)}
-            onImageSendError={setError}
-            uploadProgress={uploadProgress}
-          />
-        ) : (
-          <p className="p-3 text-center text-sm text-amber-400/90">
-            Connect first to message through CampusQuest.
+      <div ref={listRef} className="cq-dm-messages flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-3 space-y-2">
+        {loading && <p className="py-10 text-center text-sm text-white/40">Loading conversation…</p>}
+        {!loading && error ? (
+          <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90">{error}</p>
+        ) : null}
+        {!loading && connectionNotice && !error ? (
+          <p className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs text-white/60">{connectionNotice}</p>
+        ) : null}
+        {!loading && !canMessage && !blockedByMe && !blockedByOther ? (
+          <div className="rounded-xl bg-[#121212] p-4 text-sm text-white/75">
+            <p className="mb-3">Messaging is available only after both students are connected on CampusQuest.</p>
+            {isConnected ? (
+              <span className="inline-flex rounded-lg bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-200">
+                Friends
+              </span>
+            ) : incomingPending ? (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleAcceptRequest()}
+                  className="min-h-[44px] rounded-lg bg-[#0095f6] px-3 py-2 text-sm font-semibold text-white"
+                >
+                  Accept
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeclineRequest()}
+                  className="min-h-[44px] rounded-lg bg-white/10 px-3 py-2 text-sm font-medium text-white/80"
+                >
+                  Deny
+                </button>
+              </div>
+            ) : outgoingPending ? (
+              <span className="inline-flex rounded-lg bg-white/[0.06] px-3 py-2 text-xs font-medium text-white/55">
+                Request Sent
+              </span>
+            ) : (
+              <button
+                type="button"
+                disabled={sendingConnectionRequest}
+                onClick={() => void handleSendConnectionRequest()}
+                className="min-h-[44px] rounded-lg bg-[#0095f6] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {sendingConnectionRequest ? "Sending…" : "Add Friend"}
+              </button>
+            )}
+          </div>
+        ) : null}
+        {!loading && (blockedByMe || blockedByOther) ? (
+          <p className="rounded-lg bg-rose-500/10 px-3 py-3 text-sm text-rose-200/90">
+            {blockedByMe ? "You blocked this user. Unblock from settings to message again." : "You cannot message this user."}
           </p>
-        )}
+        ) : null}
+        {canMessage && messages.length === 0 && !loading ? (
+          <p className="py-10 text-center text-sm text-white/40">No messages yet. Say hi!</p>
+        ) : null}
+        {pinnedMessages.length > 0 && canMessage && !blockedByMe && !blockedByOther ? (
+          <div className="mb-3 space-y-2 border-b border-white/[0.08] pb-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-uri-gold/80">Pinned</p>
+            {pinnedMessages.map((m) => (
+              <MessageBubbleRow key={`pin-${m.id}`} m={m} />
+            ))}
+          </div>
+        ) : null}
+        {threadMessages.map((m) => (
+          <MessageBubbleRow key={m.id} m={m} />
+        ))}
       </div>
+
+      {canMessage && !blockedByMe && !blockedByOther ? (
+        <DmThreadComposer
+          input={input}
+          onInputChange={setInput}
+          onSubmit={handleSend}
+          disabled={!canMessage}
+          sending={sending}
+          imageDraft={imageDraft}
+          onImageDraftChange={setImageDraft}
+          onImageSend={(args) => void handleImageSend(args)}
+          onImageSendError={setError}
+          uploadProgress={uploadProgress}
+        />
+      ) : (
+        <p className="shrink-0 px-4 py-3 text-center text-sm text-white/40">
+          Connect first to message through CampusQuest.
+        </p>
+      )}
     </MobileSwipeBackSurface>
   );
 

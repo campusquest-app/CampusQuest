@@ -138,6 +138,10 @@ export const reportMessageSchema = z.object({
   details: z.string().trim().max(1000).optional(),
 });
 
+export const pinDmUserSchema = z.object({
+  pinnedUserId: uuidSchema,
+});
+
 /** Favorite / unfavorite inbox items (notifications & DMs); not moderation report. */
 export const toggleFavoritedSchema = z.object({
   favorited: z.boolean(),

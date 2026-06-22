@@ -1117,6 +1117,70 @@
   color: inherit;
 }
 
+.cq-live-search-action--muted {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cq-user-search {
+  position: relative;
+}
+
+.cq-user-search-panel {
+  margin-top: 0.5rem;
+  overflow: hidden;
+  border-radius: 0.875rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #000000;
+  box-shadow: 0 16px 40px -20px rgba(0, 0, 0, 0.85);
+}
+
+.cq-user-search-panel--inbox,
+.cq-user-search-panel--sheet {
+  max-height: min(42vh, 18rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.cq-user-search-message {
+  padding: 0.85rem 1rem;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cq-user-search-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cq-user-search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cq-user-search-row:first-child {
+  border-top: 0;
+}
+
+.cq-user-search-row:hover,
+.cq-user-search-row:focus-within {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cq-user-search-row-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 0.75rem;
+  border: 0;
+  background: transparent;
+  padding: 0.7rem 0.85rem;
+  color: inherit;
+}
+
 .cq-live-search-action {
   display: inline-flex;
   align-items: center;
@@ -9054,4 +9118,272 @@ html[data-realm-map-panning] {
     transform-origin: center bottom;
     margin-left: calc(min(100%, 480px) / -2);
   }
+}
+
+/* ── Instagram-style Inbox (DM list) ── */
+.cq-inbox {
+  color: #ffffff;
+  background: #000000;
+}
+
+.cq-inbox-header {
+  background: #000000;
+}
+
+.cq-inbox-header__title {
+  max-width: 55%;
+  border: 0;
+  background: transparent;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  transition: background 140ms ease;
+}
+
+.cq-inbox-header__title:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cq-inbox-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: #ffffff;
+  transition: background 140ms ease, transform 100ms ease;
+}
+
+.cq-inbox-icon-btn:active {
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(0.94);
+}
+
+.cq-inbox-tab {
+  position: relative;
+  border: 0;
+  background: transparent;
+}
+
+.cq-inbox-tab--active::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 4.5rem;
+  height: 2px;
+  border-radius: 1px;
+  background: #0095f6;
+  transform: translateX(-50%);
+}
+
+.cq-inbox-search {
+  border: 0;
+  background: #262626;
+  outline: none;
+}
+
+.cq-inbox-search:focus {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.cq-inbox-story {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+.cq-inbox-story:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
+.cq-inbox-story-ring {
+  padding: 2px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.cq-inbox-story-ring--active {
+  background: linear-gradient(45deg, #0095f6, #4cc9ff, #0095f6);
+}
+
+.cq-inbox-story-ring--pinned {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.cq-inbox-pin-btn {
+  border: 0;
+  background: transparent;
+  margin-right: 0.25rem;
+}
+
+.cq-inbox-pin-btn:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cq-inbox-story-avatar {
+  width: 3.5rem;
+  height: 3.5rem;
+  border: 2px solid #000000;
+  border-radius: 9999px;
+}
+
+.cq-inbox-story-dot {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid #000000;
+  border-radius: 9999px;
+  background: #0095f6;
+}
+
+.cq-inbox-thread-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cq-inbox-thread-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.625rem 1rem;
+  border: 0;
+  background: transparent;
+  transition: background 140ms ease, transform 100ms ease;
+}
+
+.cq-inbox-thread-row > button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+}
+
+.cq-inbox-thread-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cq-inbox-thread-row:active {
+  background: rgba(255, 255, 255, 0.07);
+  transform: scale(0.995);
+}
+
+.cq-inbox-unread-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: #0095f6;
+}
+
+.cq-inbox-notif-row {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  transition: background 140ms ease;
+}
+
+.cq-inbox-notif-row--unread {
+  background: rgba(0, 149, 246, 0.06);
+}
+
+.cq-inbox-notif-row:active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cq-inbox-new-chat {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.55);
+}
+
+/* ── Instagram-style DM thread ── */
+.cq-dm-thread {
+  color: #ffffff;
+  background: #000000;
+}
+
+.cq-dm-header {
+  background: #000000;
+}
+
+.cq-dm-header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: #ffffff;
+  transition: background 140ms ease, transform 100ms ease;
+}
+
+.cq-dm-header-btn:active {
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(0.94);
+}
+
+.cq-dm-header-menu-item {
+  border: 0;
+  background: transparent;
+  transition: background 140ms ease;
+}
+
+.cq-dm-header-menu-item:hover,
+.cq-dm-header-menu-item:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cq-dm-messages {
+  background: #000000;
+}
+
+.cq-dm-bubble {
+  border-radius: 1.125rem;
+  color: #ffffff;
+}
+
+.cq-dm-bubble--sent {
+  background: #0095f6;
+  border-bottom-right-radius: 0.25rem;
+}
+
+.cq-dm-bubble--received {
+  background: #262626;
+  border-bottom-left-radius: 0.25rem;
+}
+
+.cq-dm-composer-pill {
+  min-height: 2.75rem;
+}
+
+.cq-dm-composer-icon {
+  border: 0;
+  background: transparent;
+  transition: color 140ms ease, background 140ms ease;
+}
+
+.cq-dm-composer-icon:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cq-dm-composer-send {
+  border: 0;
+  transition: opacity 140ms ease, transform 100ms ease;
+}
+
+.cq-dm-composer-send:active {
+  transform: scale(0.94);
+}
+
+.cq-dm-shared-post {
+  border: 0;
 }

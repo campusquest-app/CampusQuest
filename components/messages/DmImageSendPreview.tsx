@@ -20,7 +20,7 @@ export function DmImageSendPreview({
   uploadProgress: number;
 }) {
   return (
-    <div className="mb-3 overflow-hidden rounded-2xl border border-white/15 bg-black/25">
+    <div className="mb-3 overflow-hidden rounded-2xl bg-[#121212]">
       <div className="relative aspect-[4/5] max-h-[min(52vh,420px)] w-full bg-black/40">
         <img src={imageUrl} alt="Photo preview" className="h-full w-full object-contain" />
         {sending ? (
@@ -67,7 +67,7 @@ export function DmImageSendPreview({
             type="button"
             onClick={onSend}
             disabled={sending}
-            className="flex-1 rounded-xl bg-uri-keaney py-2.5 text-sm font-semibold text-uri-navy hover:bg-uri-keaney/90 disabled:opacity-50"
+            className="flex-1 rounded-xl bg-[#0095f6] py-2.5 text-sm font-semibold text-white hover:bg-[#0086e0] disabled:opacity-50"
           >
             {sending ? "Sending…" : "Send"}
           </button>

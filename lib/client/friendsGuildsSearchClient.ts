@@ -1,19 +1,53 @@
 "use client";
 
+import {
+  avatarFromUserSearchResult,
+  isUserSearchQueryActive,
+  searchUsers,
+  USER_SEARCH_DEBOUNCE_MS,
+  USER_SEARCH_LIMIT,
+  USER_SEARCH_MIN_LEN,
+  type UserSearchResult,
+} from "@/lib/client/userSearchClient";
+
+export type {
+  UserSearchConnectionStatus,
+  UserSearchResult,
+} from "@/lib/client/userSearchClient";
+
+export {
+  USER_SEARCH_MIN_LEN,
+  USER_SEARCH_DEBOUNCE_MS,
+  USER_SEARCH_LIMIT,
+  avatarFromUserSearchResult,
+  isUserSearchQueryActive,
+  searchUsers,
+  userSearchConnectionLabel,
+} from "@/lib/client/userSearchClient";
+
+/** @deprecated Use UserSearchResult */
+export type PeopleSearchResult = UserSearchResult;
+
+export const MIN_QUERY_LEN = USER_SEARCH_MIN_LEN;
+export const DEBOUNCE_MS = USER_SEARCH_DEBOUNCE_MS;
+const SEARCH_LIMIT = USER_SEARCH_LIMIT;
+
+export function isLiveSearchQueryActive(query: string): boolean {
+  return isUserSearchQueryActive(query);
+}
+
+export async function searchPeopleLive(query: string): Promise<UserSearchResult[]> {
+  return searchUsers(query, SEARCH_LIMIT);
+}
+
+export function avatarFromPeopleSearchResult(row: UserSearchResult): string {
+  return avatarFromUserSearchResult(row);
+}
+
+// Guild search remains in this module.
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { GUILD_INTEREST_LABELS, getGuilds } from "@/lib/guildStore";
 import type { Guild, GuildInterest } from "@/lib/types";
-
-export type PeopleSearchResult = {
-  userId: string;
-  username: string;
-  displayName: string;
-  avatarUrl: string | null;
-  avatarCustomJson: string | null;
-  level: number;
-  totalXp: number;
-  mutualFriendsCount: number;
-};
 
 export type GuildSearchResult = {
   guildId: string;
@@ -28,24 +62,9 @@ export type GuildSearchResult = {
   source: "supabase" | "local";
 };
 
-const MIN_QUERY_LEN = 2;
-const SEARCH_LIMIT = 8;
-
-export function isLiveSearchQueryActive(query: string): boolean {
-  return query.trim().length >= MIN_QUERY_LEN;
-}
-
-export async function searchPeopleLive(query: string): Promise<PeopleSearchResult[]> {
-  const q = query.trim();
-  if (!isLiveSearchQueryActive(q)) return [];
-  const params = new URLSearchParams({ q, limit: String(SEARCH_LIMIT) });
-  const data = await fetchAuthed<{ results: PeopleSearchResult[] }>(`/api/social/people/search?${params}`);
-  return data.results ?? [];
-}
-
 export async function searchGuildsLive(query: string): Promise<GuildSearchResult[]> {
   const q = query.trim();
-  if (!isLiveSearchQueryActive(q)) return [];
+  if (q.length < 2) return [];
 
   const params = new URLSearchParams({ q, limit: String(SEARCH_LIMIT) });
   let remote: GuildSearchResult[] = [];
@@ -68,7 +87,7 @@ export async function searchGuildsLive(query: string): Promise<GuildSearchResult
 
 function filterLocalGuilds(query: string): GuildSearchResult[] {
   const needle = query.trim().toLowerCase();
-  if (needle.length < MIN_QUERY_LEN) return [];
+  if (needle.length < 2) return [];
 
   return getGuilds()
     .filter((guild) => guildMatchesQuery(guild, needle))
@@ -77,14 +96,7 @@ function filterLocalGuilds(query: string): GuildSearchResult[] {
 
 function guildMatchesQuery(guild: Guild, needle: string): boolean {
   const interestLabel = GUILD_INTEREST_LABELS[guild.interest as GuildInterest] ?? guild.interest;
-  const haystack = [
-    guild.name,
-    interestLabel,
-    guild.weeklyQuestGoal,
-    guild.interest,
-  ]
-    .join(" ")
-    .toLowerCase();
+  const haystack = [guild.name, interestLabel, guild.weeklyQuestGoal, guild.interest].join(" ").toLowerCase();
   return haystack.includes(needle);
 }
 
@@ -124,12 +136,4 @@ export async function joinGuildRemote(guildId: string): Promise<void> {
   await postAuthed<{ joined: boolean; guildId: string }, { guildId: string }>("/api/guilds/join", {
     guildId,
   });
-}
-
-export function avatarFromPeopleSearchResult(row: PeopleSearchResult): string {
-  const custom = row.avatarCustomJson?.trim();
-  if (custom) return custom;
-  const url = row.avatarUrl?.trim();
-  if (url) return url;
-  return "🎓";
 }

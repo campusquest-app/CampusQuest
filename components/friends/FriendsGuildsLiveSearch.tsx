@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  avatarFromPeopleSearchResult,
+  DEBOUNCE_MS,
   isLiveSearchQueryActive,
   joinGuildRemote,
+  MIN_QUERY_LEN,
   searchGuildsLive,
-  searchPeopleLive,
   type GuildSearchResult,
   type PeopleSearchResult,
 } from "@/lib/client/friendsGuildsSearchClient";
@@ -19,21 +19,11 @@ import { requestConnection } from "@/lib/client/connectionRequestActions";
 import { hasRequestedInvite, joinGuild as joinLocalGuild } from "@/lib/guildStore";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { GuildEmblem } from "@/components/guild/GuildEmblem";
+import { UserSearchInput } from "@/components/ui/UserSearchInput";
+import { useDebouncedValue } from "@/lib/client/useDebouncedValue";
 import type { Character, GuildInterest } from "@/lib/types";
 
-const DEBOUNCE_MS = 300;
-const MIN_QUERY_LEN = 2;
-
 type PeopleConnectionState = "follow" | "requested" | "friends" | "follow_back";
-
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [value, delayMs]);
-  return debounced;
-}
 
 function resolvePeopleConnectionState(args: {
   userId: string;
@@ -152,50 +142,8 @@ export function PeopleLiveSearchField({
   onClearError: () => void;
 }) {
   const [query, setQuery] = useState("");
-  const debouncedQuery = useDebouncedValue(query, DEBOUNCE_MS);
-  const [results, setResults] = useState<PeopleSearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
   const [actionUserId, setActionUserId] = useState<string | null>(null);
   const [optimisticRequestedUserIds, setOptimisticRequestedUserIds] = useState<Set<string>>(() => new Set());
-
-  const showPanel = isLiveSearchQueryActive(query);
-  const awaitingDebounce = showPanel && query.trim() !== debouncedQuery.trim();
-  const showLoading = loading || awaitingDebounce;
-
-  useEffect(() => {
-    const active = isLiveSearchQueryActive(debouncedQuery);
-    if (!active) {
-      setResults([]);
-      setLoading(false);
-      setSearched(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    setSearched(false);
-
-    void searchPeopleLive(debouncedQuery)
-      .then((rows) => {
-        if (cancelled) return;
-        setResults(rows);
-        setSearched(true);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setResults([]);
-        setSearched(true);
-        onError(error instanceof Error ? error.message : "Could not search people.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedQuery, onError]);
 
   const handlePeopleAction = useCallback(
     async (row: PeopleSearchResult, connectionState: PeopleConnectionState) => {
@@ -236,102 +184,40 @@ export function PeopleLiveSearchField({
   );
 
   return (
-    <div className="cq-live-search">
-      <input
-        type="search"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          onClearError();
-        }}
-        placeholder="Search by name or username…"
-        autoComplete="off"
-        spellCheck={false}
-        className="cq-search-input w-full px-3 py-2.5 rounded-xl focus:outline-none"
-        aria-label="Search people"
-        aria-expanded={showPanel}
-        aria-controls="people-live-search-results"
-      />
-
-      {showPanel ? (
-        <div id="people-live-search-results" className="cq-live-search-panel" role="listbox" aria-label="People search results">
-          {showLoading ? (
-            <p className="cq-live-search-message">Searching…</p>
-          ) : searched && results.length === 0 ? (
-            <p className="cq-live-search-message">No users found.</p>
-          ) : (
-            <ul className="cq-live-search-list">
-              {results.map((row) => {
-                const connectionState = resolvePeopleConnectionState({
-                  userId: row.userId,
-                  username: row.username,
-                  connections,
-                  outgoing,
-                  incoming,
-                  optimisticRequestedUserIds,
-                });
-                const profileLink = onViewProfile ? (
-                  <button
-                    type="button"
-                    onClick={() => onViewProfile(row.userId)}
-                    className="cq-live-search-row-main touch-manipulation"
-                  >
-                    <div className="cq-avatar-slot h-10 w-10 border border-white/10">
-                      <AvatarDisplay avatar={avatarFromPeopleSearchResult(row)} fitParent size={40} />
-                    </div>
-                    <div className="min-w-0 flex-1 text-left">
-                      <p className="truncate text-sm font-semibold text-white">{row.displayName}</p>
-                      <p className="truncate text-xs text-uri-keaney/90">@{row.username}</p>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/55">
-                        <span>Lv.{row.level}</span>
-                        {row.mutualFriendsCount > 0 ? (
-                          <span>
-                            {row.mutualFriendsCount} mutual connection{row.mutualFriendsCount === 1 ? "" : "s"}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </button>
-                ) : (
-                  <div className="cq-live-search-row-main">
-                    <div className="cq-avatar-slot h-10 w-10 border border-white/10">
-                      <AvatarDisplay avatar={avatarFromPeopleSearchResult(row)} fitParent size={40} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-white">{row.displayName}</p>
-                      <p className="truncate text-xs text-uri-keaney/90">@{row.username}</p>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/55">
-                        <span>Lv.{row.level}</span>
-                        {row.mutualFriendsCount > 0 ? (
-                          <span>
-                            {row.mutualFriendsCount} mutual connection{row.mutualFriendsCount === 1 ? "" : "s"}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                );
-
-                return (
-                  <li key={row.userId} className="cq-live-search-row" role="option">
-                    {profileLink}
-                    <PeopleConnectionButton
-                      state={connectionState}
-                      disabled={
-                        actionUserId === row.userId ||
-                        connectionState === "friends" ||
-                        connectionState === "requested"
-                      }
-                      onClick={() => void handlePeopleAction(row, connectionState)}
-                    />
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      ) : null}
-    </div>
+    <UserSearchInput
+      value={query}
+      onChange={(next) => {
+        setQuery(next);
+        onClearError();
+      }}
+      onSelectUser={(row) => onViewProfile?.(row.userId)}
+      onError={(message) => {
+        if (message) onError(message);
+      }}
+      placeholder="Search by name or username…"
+      ariaLabel="Search people"
+      renderAction={(row) => {
+        const connectionState = resolvePeopleConnectionState({
+          userId: row.userId,
+          username: row.username,
+          connections,
+          outgoing,
+          incoming,
+          optimisticRequestedUserIds,
+        });
+        return (
+          <PeopleConnectionButton
+            state={connectionState}
+            disabled={
+              actionUserId === row.userId ||
+              connectionState === "friends" ||
+              connectionState === "requested"
+            }
+            onClick={() => void handlePeopleAction(row, connectionState)}
+          />
+        );
+      }}
+    />
   );
 }
 

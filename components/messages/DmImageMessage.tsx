@@ -23,9 +23,9 @@ export function DmImageMessage({
           type="button"
           onClick={() => !pending && setExpanded(true)}
           disabled={pending}
-          className="block overflow-hidden rounded-2xl border border-white/15 disabled:cursor-default"
+          className="block overflow-hidden rounded-2xl disabled:cursor-default"
         >
-          <img src={imageUrl} alt={alt} className="max-h-64 w-full object-cover" loading="lazy" />
+          <img src={imageUrl} alt={alt} className="max-h-72 w-full max-w-[240px] object-cover" loading="lazy" />
         </button>
         {pending ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-black/50">

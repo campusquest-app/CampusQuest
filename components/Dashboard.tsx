@@ -208,6 +208,21 @@ export function Dashboard() {
   const [xpGainSession, setXpGainSession] = useState<ActivityXPGainSession | null>(null);
   const qrXpHandoffLockRef = useRef(false);
   const [dmWithOther, setDmWithOther] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
+
+  const openDirectMessage = useCallback(
+    (other: { userId: string; username: string; name: string; avatar: string }) => {
+      setDmWithOther(other);
+      setInboxSubTab("messages");
+      setTab("inbox");
+    },
+    [],
+  );
+
+  const closeDirectMessage = useCallback(() => {
+    setDmWithOther(null);
+    setInboxSubTab("messages");
+    setTab("inbox");
+  }, []);
   const [sharePostTarget, setSharePostTarget] = useState<SharePostTarget | null>(null);
   const [sharePostOpen, setSharePostOpen] = useState(false);
   const [friendView, setFriendView] = useState<{
@@ -1769,7 +1784,7 @@ export function Dashboard() {
     };
   }
 
-  const characterTabFullBleed = tab === "character";
+  const tabFullBleed = tab === "quad" || tab === "character" || tab === "inbox";
 
   return (
     <MobileGestureLayerProvider>
@@ -2092,13 +2107,13 @@ export function Dashboard() {
         onTabEnterDirectionDone={() => setTabEnterDirection(null)}
         onTabChange={handleBottomNavSwipe}
         disabled={tabSwipeGestureDisabled}
-        className={`tab-content-enter cq-tab-shell ${tab === "quad" || characterTabFullBleed ? "w-full pb-0" : "space-y-6 sm:space-y-7 px-4 pb-8"}`}
+        className={`tab-content-enter cq-tab-shell ${tabFullBleed ? "w-full pb-0" : "space-y-6 sm:space-y-7 px-4 pb-8"}`}
       >
         {tab === "inbox" && character && renderPilotCampusGate(
           <Inbox
             character={character}
             onBack={() => setTab("quad")}
-            onOpenDm={setDmWithOther}
+            onOpenDm={openDirectMessage}
             personalization={onboardingPreferences}
             subTab={inboxSubTab}
             onSubTabChange={setInboxSubTab}
@@ -2128,7 +2143,7 @@ export function Dashboard() {
             <FindFriends
               character={character}
               onRefresh={refresh}
-              onOpenDm={setDmWithOther}
+              onOpenDm={openDirectMessage}
               onViewProfile={openFriendView}
             />,
           )}
@@ -2221,7 +2236,7 @@ export function Dashboard() {
                 postCount={friendView.payload.counts.posts}
                 guildLabel={friendView.payload.user.guild}
                 onBack={closeFriendView}
-                onOpenMessage={setDmWithOther}
+                onOpenMessage={openDirectMessage}
                 onProfileReload={reloadFriendView}
                 onSharePost={(note) => openSharePostFromNote(note, "quad")}
               />
@@ -2289,7 +2304,7 @@ export function Dashboard() {
         <DirectMessageThread
           currentUser={character}
           otherUser={dmWithOther}
-          onClose={() => setDmWithOther(null)}
+          onClose={closeDirectMessage}
           onMessageSent={refresh}
         />
       )}

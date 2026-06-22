@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Camera, Plus } from "lucide-react";
+import { Camera, ImageIcon, Mic, Send } from "lucide-react";
 import {
   imageAcceptAttribute,
   resetFileInput,
@@ -10,7 +10,6 @@ import {
   type DmPendingImageDraft,
 } from "@/lib/client/dmMediaComposer";
 import { readImageFileAsDataUrl } from "@/lib/client/dmMessagesClient";
-import { DmAttachMenuSheet } from "@/components/messages/DmAttachMenuSheet";
 import { DmMediaActionSheet, type DmCameraAction } from "@/components/messages/DmMediaActionSheet";
 import { DmImageSendPreview } from "@/components/messages/DmImageSendPreview";
 
@@ -37,7 +36,6 @@ export function DmThreadComposer({
   onImageSendError: (message: string) => void;
   uploadProgress: number;
 }) {
-  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [cameraSheetOpen, setCameraSheetOpen] = useState(false);
   const [previewCaption, setPreviewCaption] = useState("");
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -109,22 +107,16 @@ export function DmThreadComposer({
         }}
       />
 
-      <DmAttachMenuSheet
-        open={attachMenuOpen}
-        onClose={() => setAttachMenuOpen(false)}
-        onSelect={(item) => {
-          setAttachMenuOpen(false);
-          if (item.kind === "image") openPicker("library");
-        }}
-      />
-
       <DmMediaActionSheet
         open={cameraSheetOpen}
         onClose={() => setCameraSheetOpen(false)}
         onSelect={handleCameraAction}
       />
 
-      <form onSubmit={onSubmit} className="p-3 border-t border-white/10 flex-shrink-0">
+      <form
+        onSubmit={onSubmit}
+        className="cq-dm-composer shrink-0 border-t border-white/[0.06] px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+      >
         {imageDraft ? (
           <DmImageSendPreview
             imageUrl={imageDraft.dataUrl}
@@ -137,25 +129,17 @@ export function DmThreadComposer({
           />
         ) : null}
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setAttachMenuOpen(true)}
-            disabled={disabled || sending}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 text-white/80 hover:bg-white/10 disabled:opacity-50 touch-manipulation"
-            aria-label="Attach"
-          >
-            <Plus className="h-5 w-5" />
-          </button>
+        <div className="cq-dm-composer-pill flex items-center gap-1 rounded-full bg-[#262626] px-2 py-1">
           <button
             type="button"
             onClick={() => setCameraSheetOpen(true)}
-            disabled={disabled || sending}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 text-white/80 hover:bg-white/10 disabled:opacity-50 touch-manipulation"
+            disabled={disabled || sending || Boolean(imageDraft)}
+            className="cq-dm-composer-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/85 disabled:opacity-40"
             aria-label="Camera"
           >
-            <Camera className="h-5 w-5" />
+            <Camera className="h-[22px] w-[22px]" strokeWidth={1.75} />
           </button>
+
           <input
             type="text"
             value={input}
@@ -163,31 +147,50 @@ export function DmThreadComposer({
             placeholder="Message..."
             maxLength={2000}
             disabled={disabled || Boolean(imageDraft)}
-            className="flex-1 min-w-0 px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 disabled:opacity-60"
+            className="min-w-0 flex-1 border-0 bg-transparent px-2 py-2 text-[15px] text-white placeholder:text-white/40 focus:outline-none disabled:opacity-60"
           />
+
           {imageDraft ? (
             <button
               type="button"
               onClick={() => onImageSend({ draft: imageDraft, caption: previewCaption.trim() })}
               disabled={!canSendImage}
-              className="px-4 py-2.5 rounded-xl font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90 disabled:opacity-50 disabled:pointer-events-none transition-colors touch-manipulation"
+              className="cq-dm-composer-send flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0095f6] text-white disabled:opacity-40"
+              aria-label="Send photo"
             >
-              {sending ? "Sending..." : "Send"}
+              <Send className="h-4 w-4" strokeWidth={2} />
             </button>
-          ) : (
+          ) : canSendText ? (
             <button
               type="submit"
-              disabled={!canSendText || sending || disabled}
-              className="px-4 py-2.5 rounded-xl font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90 disabled:opacity-50 disabled:pointer-events-none transition-colors touch-manipulation"
+              disabled={sending || disabled}
+              className="cq-dm-composer-send flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0095f6] text-white disabled:opacity-40"
+              aria-label="Send message"
             >
-              {sending ? "Sending..." : "Send"}
+              <Send className="h-4 w-4" strokeWidth={2} />
             </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={disabled || sending}
+                className="cq-dm-composer-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/55 disabled:opacity-40"
+                aria-label="Voice message"
+              >
+                <Mic className="h-[18px] w-[18px]" strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                onClick={() => openPicker("library")}
+                disabled={disabled || sending}
+                className="cq-dm-composer-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/55 disabled:opacity-40"
+                aria-label="Photo library"
+              >
+                <ImageIcon className="h-[18px] w-[18px]" strokeWidth={1.75} />
+              </button>
+            </>
           )}
         </div>
-        <p className="mt-2 text-[11px] text-white/55 leading-relaxed">
-          Keep conversations respectful. Harassment, threats, scams, or unsafe conduct may lead to removal from
-          CampusQuest and referral to university conduct offices.
-        </p>
       </form>
     </>
   );

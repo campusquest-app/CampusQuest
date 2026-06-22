@@ -8,7 +8,7 @@ export async function GET(request: Request) {
     const auth = await requireAuthUser(request);
     enforceRateLimit({
       userId: auth.user.id,
-      routeKey: "social:people:search",
+      routeKey: "social:users:search",
       limit: 60,
       windowMs: 60_000,
     });

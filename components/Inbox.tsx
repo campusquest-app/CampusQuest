@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, ChevronDown, Pin, Search, SquarePen, X } from "lucide-react";
 import type { Character } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { DirectMessageThread } from "./DirectMessageThread";
@@ -19,6 +21,14 @@ import {
 } from "@/lib/inboxMessageSearch";
 import { NotificationsCenter } from "./NotificationsCenter";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
+import { UserSearchInput } from "@/components/ui/UserSearchInput";
+import { avatarFromUserSearchResult } from "@/lib/client/userSearchClient";
+import {
+  fetchPinnedDmUsers,
+  pinDmUser,
+  unpinDmUser,
+  type PinnedDmUserRow,
+} from "@/lib/client/pinnedDmUsersClient";
 
 export type InboxSubTab = "messages" | "notifications";
 
@@ -51,6 +61,49 @@ type IncomingConnectionRequest = {
   createdAt: string;
 };
 
+function formatIgTimestamp(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const diffMs = Date.now() - d.getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "Now";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}w`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function resolvePersonAvatar(
+  userId: string,
+  avatarUrl: string | null,
+  friendsById: Map<string, InboxFriendRow>,
+): string {
+  const friend = friendsById.get(userId);
+  if (friend) return avatarFromConnectionProfile(friend);
+  const url = avatarUrl?.trim();
+  if (url) return url;
+  return "";
+}
+
+function enrichSearchResults(
+  results: InboxMessageSearchResult[],
+  friendsById: Map<string, InboxFriendRow>,
+  conversations: ConversationItem[],
+): InboxMessageSearchResult[] {
+  return results.map((result) => {
+    if (result.kind === "group") return result;
+    const friend = friendsById.get(result.userId);
+    const conv = conversations.find((c) => c.otherUser.id === result.userId);
+    const avatar = friend
+      ? avatarFromConnectionProfile(friend)
+      : resolvePersonAvatar(result.userId, conv?.otherUser.avatarUrl ?? null, friendsById);
+    return avatar ? { ...result, avatar } : result;
+  });
+}
+
 export function Inbox({
   character,
   onBack,
@@ -78,26 +131,67 @@ export function Inbox({
   const [friends, setFriends] = useState<InboxFriendRow[]>([]);
   const [incomingRequests, setIncomingRequests] = useState<IncomingConnectionRequest[]>([]);
   const [debouncedMessageSearch, setDebouncedMessageSearch] = useState("");
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [requestsExpanded, setRequestsExpanded] = useState(false);
+  const [pinnedUsers, setPinnedUsers] = useState<PinnedDmUserRow[]>([]);
+  const [pinBusyUserId, setPinBusyUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedMessageSearch(messageSearch);
-    }, 200);
+    const timer = window.setTimeout(() => setDebouncedMessageSearch(messageSearch), 200);
     return () => window.clearTimeout(timer);
   }, [messageSearch]);
 
-  const messageSearchResults = useMemo(
-    () =>
-      buildInboxMessageSearchResults({
-        query: debouncedMessageSearch,
-        conversations,
-        friends,
-        avatarForFriend: avatarFromConnectionProfile,
-      }),
-    [debouncedMessageSearch, conversations, friends],
-  );
+  const friendsById = useMemo(() => new Map(friends.map((f) => [f.userId, f])), [friends]);
+
+  const messageSearchResults = useMemo(() => {
+    const raw = buildInboxMessageSearchResults({
+      query: debouncedMessageSearch,
+      conversations,
+      friends,
+      avatarForFriend: avatarFromConnectionProfile,
+    });
+    return enrichSearchResults(raw, friendsById, conversations);
+  }, [debouncedMessageSearch, conversations, friends, friendsById]);
 
   const isSearchActive = debouncedMessageSearch.trim().length > 0;
+
+  const pinnedUserIds = useMemo(
+    () => new Set(pinnedUsers.map((row) => row.pinnedUserId)),
+    [pinnedUsers],
+  );
+
+  const recentConversationUserIds = useMemo(
+    () =>
+      new Set(
+        conversations
+          .filter((c) => {
+            const at = c.latestMessage?.createdAt;
+            if (!at) return false;
+            return Date.now() - new Date(at).getTime() < 1000 * 60 * 60 * 24 * 3;
+          })
+          .map((c) => c.otherUser.id),
+      ),
+    [conversations],
+  );
+
+  const pinnedRowUsers = useMemo(() => {
+    return pinnedUsers
+      .filter((row) => row.pinnedUserId !== character.id)
+      .map((row) => {
+        const friend = friendsById.get(row.pinnedUserId);
+        const avatar = friend
+          ? avatarFromConnectionProfile(friend)
+          : avatarFromConnectionProfile({
+              avatarUrl: row.avatarUrl,
+              avatarCustomJson: row.avatarCustomJson,
+            });
+        return {
+          ...row,
+          avatar,
+          isActive: recentConversationUserIds.has(row.pinnedUserId),
+        };
+      });
+  }, [pinnedUsers, character.id, friendsById, recentConversationUserIds]);
 
   const loadMessageCenter = useCallback(async () => {
     setMessageLoading(true);
@@ -111,41 +205,100 @@ export function Inbox({
       setConversations(convoPayload.conversations ?? []);
       setIncomingRequests(incomingPayload.requests ?? []);
       setFriends(mapConnectionsToFriends(connectionsPayload.connections));
+
+      const pinnedPayload = await fetchPinnedDmUsers();
+      setPinnedUsers(pinnedPayload.filter((row) => row.pinnedUserId !== character.id));
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Could not load messages.";
       setMessageError(message);
+      setPinnedUsers([]);
     } finally {
       setMessageLoading(false);
     }
-  }, []);
+  }, [character.id]);
+
+  async function handleTogglePin(userId: string, nextPinned: boolean, profileHint?: PinnedDmUserRow) {
+    if (userId === character.id) return;
+
+    const previousPinned = pinnedUsers;
+    setPinBusyUserId(userId);
+
+    if (nextPinned) {
+      const friend = friendsById.get(userId);
+      const conv = conversations.find((c) => c.otherUser.id === userId);
+      const optimistic: PinnedDmUserRow =
+        profileHint ??
+        (friend
+          ? {
+              pinnedUserId: friend.userId,
+              username: friend.username,
+              displayName: friend.displayName,
+              avatarUrl: friend.avatarUrl,
+              avatarCustomJson: friend.avatarCustomJson,
+              pinnedAt: new Date().toISOString(),
+            }
+          : conv
+            ? {
+                pinnedUserId: conv.otherUser.id,
+                username: conv.otherUser.username,
+                displayName: conv.otherUser.displayName,
+                avatarUrl: conv.otherUser.avatarUrl,
+                avatarCustomJson: null,
+                pinnedAt: new Date().toISOString(),
+              }
+            : {
+                pinnedUserId: userId,
+                username: "",
+                displayName: "Pinned user",
+                avatarUrl: null,
+                avatarCustomJson: null,
+                pinnedAt: new Date().toISOString(),
+              });
+
+      setPinnedUsers((rows) => {
+        if (rows.some((row) => row.pinnedUserId === userId)) return rows;
+        return [...rows.filter((row) => row.pinnedUserId !== character.id), optimistic];
+      });
+    } else {
+      setPinnedUsers((rows) => rows.filter((row) => row.pinnedUserId !== userId));
+    }
+
+    try {
+      if (nextPinned) {
+        await pinDmUser(userId);
+      } else {
+        await unpinDmUser(userId);
+      }
+      setMessageError(null);
+    } catch (pinError) {
+      setPinnedUsers(previousPinned);
+      const message = pinError instanceof Error ? pinError.message : "Could not update pin.";
+      setMessageError(message.replace(/^Backend request failed:[^.]*\.\s*/i, ""));
+    } finally {
+      setPinBusyUserId(null);
+    }
+  }
 
   useEffect(() => {
-    if (subTab === "messages") {
-      void loadMessageCenter();
-    }
+    if (subTab === "messages") void loadMessageCenter();
   }, [subTab, loadMessageCenter]);
 
   useEffect(() => {
     if (subTab !== "messages") return;
-    const unsubscribe = subscribeSocialSync(() => {
-      void loadMessageCenter();
-    });
+    const unsubscribe = subscribeSocialSync(() => void loadMessageCenter());
     return unsubscribe;
   }, [subTab, loadMessageCenter]);
 
   function handleOpenDm(userId: string, username: string, name: string, avatar: string) {
     if (onOpenDm) {
       onOpenDm({ userId, username, name, avatar });
-      onBack();
-    } else {
-      setDmWith({ userId, username, name, avatar });
+      return;
     }
+    setDmWith({ userId, username, name, avatar });
   }
 
   function handleOpenSearchResult(result: InboxMessageSearchResult) {
-    if (result.kind === "group") {
-      return;
-    }
+    if (result.kind === "group") return;
     handleOpenDm(result.userId, result.username, result.displayName, result.avatar);
   }
 
@@ -159,18 +312,11 @@ export function Inbox({
     setSendingRequest(true);
     setMessageError(null);
     try {
-      const outcome = await requestConnection({ username });
+      await requestConnection({ username });
       setConnectionUsername("");
-      setMessageError(null);
+      setNewChatOpen(false);
       await loadMessageCenter();
       emitSocialSync({ source: "inbox" });
-      if (process.env.NODE_ENV !== "production") {
-        console.info("[cq:friend-request:success]", {
-          targetUsername: username,
-          status: outcome.status,
-          friendRequestId: outcome.result.connection.id,
-        });
-      }
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : "Could not send connection request.";
       setMessageError(message.replace(/^Backend request failed:[^.]*\.\s*/i, ""));
@@ -201,198 +347,430 @@ export function Inbox({
     }
   }
 
+  const emptyCopy = isSearchActive
+    ? "No matches found."
+    : personalization?.discoveryFocus?.includes("meet_students")
+      ? `No conversations yet. Tap + to connect with students${personalization.schoolName ? ` at ${personalization.schoolName}` : ""}.`
+      : "No conversations yet. Tap + to start a new chat.";
+
   return (
-    <MobileSwipeBackSurface onBack={onBack} className="cq-tab-shell flex min-h-[60vh] flex-col space-y-4 pb-8">
-      <header className="cq-screen-header mb-4">
-        <div className="flex items-start gap-3">
+    <MobileSwipeBackSurface onBack={onBack} className="cq-inbox flex min-h-[100dvh] flex-col bg-black">
+      <header className="cq-inbox-header shrink-0 pt-[max(0.5rem,env(safe-area-inset-top))]">
+        <div className="cq-inbox-header__bar flex items-center justify-between gap-2 px-3 py-2">
+          <button type="button" onClick={onBack} className="cq-inbox-icon-btn" aria-label="Back">
+            <ArrowLeft className="h-6 w-6" strokeWidth={1.75} />
+          </button>
+
           <button
             type="button"
-            onClick={onBack}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/20 text-white/85 transition hover:bg-cq-elevated/10 hover:text-white"
-            aria-label="Back"
+            className="cq-inbox-header__title flex min-w-0 items-center gap-1"
+            aria-label={`${character.username} inbox`}
           >
-            ←
+            <span className="truncate font-semibold text-[17px] text-white">{character.username}</span>
+            <ChevronDown className="h-[18px] w-[18px] shrink-0 text-white/70" strokeWidth={2} aria-hidden />
           </button>
-          <div className="min-w-0 flex-1">
-            <p className="cq-screen-header__eyebrow">Messages &amp; Alerts</p>
-            <h2 className="cq-screen-header__title">Inbox</h2>
-          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMessageError(null);
+              setNewChatOpen(true);
+            }}
+            className="cq-inbox-icon-btn"
+            aria-label="New message"
+          >
+            <SquarePen className="h-[22px] w-[22px]" strokeWidth={1.75} />
+          </button>
         </div>
-        <div className="mt-4 flex rounded-xl border border-white/15 bg-black/25 p-1">
+
+        <div className="cq-inbox-tabs flex border-b border-white/[0.08]">
           <button
             type="button"
             onClick={() => onSubTabChange("messages")}
-            className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-all ${
-              subTab === "messages"
-                ? "bg-uri-keaney text-white shadow-sm"
-                : "text-white/65 hover:bg-cq-elevated/10 hover:text-white"
+            className={`cq-inbox-tab flex-1 py-3 text-[13px] font-semibold transition ${
+              subTab === "messages" ? "cq-inbox-tab--active text-white" : "text-white/45"
             }`}
+            aria-current={subTab === "messages" ? "page" : undefined}
           >
             Messages
           </button>
           <button
             type="button"
             onClick={() => onSubTabChange("notifications")}
-            className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-all ${
-              subTab === "notifications"
-                ? "bg-uri-keaney text-white shadow-sm"
-                : "text-white/65 hover:bg-cq-elevated/10 hover:text-white"
+            className={`cq-inbox-tab flex-1 py-3 text-[13px] font-semibold transition ${
+              subTab === "notifications" ? "cq-inbox-tab--active text-white" : "text-white/45"
             }`}
+            aria-current={subTab === "notifications" ? "page" : undefined}
           >
             Notifications
           </button>
         </div>
       </header>
 
-      {/* Content */}
-      <div className="flex-1 card overflow-hidden p-0">
-        {subTab === "notifications" && (
-          <NotificationsCenter
-            embedded
-            onUnreadCountChange={onUnreadCountChange}
-            personalization={personalization}
-          />
-        )}
+      {subTab === "messages" ? (
+        <>
+          <div className="cq-inbox-search-wrap shrink-0 px-3 py-2.5">
+            <label htmlFor="inbox-msg-search" className="sr-only">
+              Search messages
+            </label>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-[1.125rem] z-[1] h-4 w-4 -translate-y-1/2 text-white/35" aria-hidden />
+              <UserSearchInput
+                value={messageSearch}
+                onChange={setMessageSearch}
+                onSelectUser={(user) => {
+                  handleOpenDm(
+                    user.userId,
+                    user.username,
+                    user.displayName,
+                    avatarFromUserSearchResult(user),
+                  );
+                  setMessageSearch("");
+                }}
+                inputId="inbox-msg-search"
+                placeholder="Search"
+                inputClassName="cq-inbox-search w-full rounded-[10px] py-2 pl-9 pr-3 text-[15px] text-white placeholder:text-white/35"
+                ariaLabel="Search messages and users"
+                panelClassName="cq-user-search-panel--inbox absolute inset-x-0 top-full z-20 mt-1"
+                className="w-full"
+              />
+            </div>
+          </div>
 
-        {subTab === "messages" && (
-          <>
-            <div className="border-b border-cq-border bg-cq-elevated p-3 sm:p-4">
-              <form onSubmit={handleSendConnectionRequest} className="mb-3 flex gap-2">
-                <input
-                  type="text"
-                  value={connectionUsername}
-                  onChange={(e) => setConnectionUsername(e.target.value)}
-                  placeholder="Connect by username (e.g. alex_rhody)"
-                  className="flex-1 rounded-xl border border-cq-border bg-cq-elevated px-3 py-2.5 text-sm text-cq-foreground placeholder:text-cq-muted focus:border-uri-keaney/50 focus:outline-none focus:ring-2 focus:ring-uri-keaney/25"
-                />
-                <button
-                  type="submit"
-                  disabled={sendingRequest}
-                  className="px-3 py-2.5 rounded-xl text-sm font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90 disabled:opacity-60"
-                >
-                  {sendingRequest ? "Sending..." : "Connect"}
-                </button>
-              </form>
-              {incomingRequests.length > 0 && (
-                <div className="mb-3 space-y-2">
+          {!isSearchActive ? (
+            <div className="cq-inbox-stories shrink-0 border-b border-white/[0.06] pb-3">
+              {pinnedRowUsers.length > 0 ? (
+                <div className="flex gap-3 overflow-x-auto px-3 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {pinnedRowUsers.map((pinned) => (
+                    <button
+                      key={pinned.pinnedUserId}
+                      type="button"
+                      onClick={() =>
+                        handleOpenDm(
+                          pinned.pinnedUserId,
+                          pinned.username,
+                          pinned.displayName,
+                          pinned.avatar,
+                        )
+                      }
+                      className="cq-inbox-story flex w-[4.25rem] shrink-0 flex-col items-center gap-1.5"
+                    >
+                      <div className={`cq-inbox-story-ring cq-inbox-story-ring--pinned ${pinned.isActive ? "cq-inbox-story-ring--active" : ""} relative`}>
+                        <div className="cq-inbox-story-avatar overflow-hidden rounded-full bg-[#262626]">
+                          <AvatarDisplay avatar={pinned.avatar} fitParent size={56} />
+                        </div>
+                        {pinned.isActive ? <span className="cq-inbox-story-dot" aria-hidden /> : null}
+                      </div>
+                      <span className="w-full truncate text-center text-[11px] text-white/80">
+                        {pinned.displayName.split(" ")[0]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : !messageLoading ? (
+                <p className="px-4 pt-1 pb-0.5 text-center text-[11px] text-white/35">No pinned chats yet</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {incomingRequests.length > 0 ? (
+            <div className="shrink-0 border-b border-white/[0.06]">
+              <button
+                type="button"
+                onClick={() => setRequestsExpanded((v) => !v)}
+                className="flex w-full items-center justify-between px-4 py-3 text-left active:bg-white/[0.04]"
+              >
+                <span className="text-sm font-semibold text-white">Message requests</span>
+                <span className="rounded-full bg-[#0095f6] px-2 py-0.5 text-[11px] font-bold text-white">
+                  {incomingRequests.length}
+                </span>
+              </button>
+              {requestsExpanded ? (
+                <ul className="border-t border-white/[0.06]">
                   {incomingRequests.map((request) => (
-                    <div key={request.requestId} className="flex items-center justify-between gap-2 rounded-lg border border-cq-border bg-cq-elevated p-2">
-                      <p className="text-xs text-cq-foreground truncate">
-                        <span className="font-semibold">{request.displayName}</span> @{request.username} wants to connect
-                      </p>
-                      <div className="flex gap-1.5 flex-shrink-0">
+                    <li key={request.requestId} className="flex items-center gap-3 px-4 py-3">
+                      <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-[#262626]">
+                        <AvatarDisplay avatar={request.avatarUrl ?? ""} fitParent size={48} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-white">{request.displayName}</p>
+                        <p className="truncate text-xs text-white/45">@{request.username}</p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
                         <button
                           type="button"
                           onClick={() => void handleAcceptConnection(request.requestId)}
-                          className="px-2.5 py-1 rounded-md text-xs font-semibold bg-uri-keaney text-uri-navy"
+                          className="rounded-lg bg-[#0095f6] px-3 py-1.5 text-xs font-semibold text-white"
                         >
                           Accept
                         </button>
                         <button
                           type="button"
                           onClick={() => void handleDeclineConnection(request.requestId)}
-                          className="px-2.5 py-1 rounded-md text-xs font-semibold border border-cq-border text-cq-muted hover:bg-cq-elevated"
+                          className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-white"
                         >
-                          Deny
+                          Delete
                         </button>
                       </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
-              )}
-              <label htmlFor="inbox-msg-search" className="sr-only">
-                Search messages by name
-              </label>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cq-muted" aria-hidden>
-                  🔍
-                </span>
-                <input
-                  id="inbox-msg-search"
-                  type="search"
-                  value={messageSearch}
-                  onChange={(e) => setMessageSearch(e.target.value)}
-                  placeholder="Search by name…"
-                  autoComplete="off"
-                  className="w-full rounded-xl border border-cq-border bg-cq-elevated py-2.5 pl-10 pr-3 text-sm text-cq-foreground placeholder:text-cq-muted transition-colors focus:border-uri-keaney/50 focus:outline-none focus:ring-2 focus:ring-uri-keaney/25"
-                />
-              </div>
+                </ul>
+              ) : null}
             </div>
-            {messageError && (
-              <div className="mx-3 mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                {messageError}
-              </div>
-            )}
-            <ul className="max-h-[min(50vh,28rem)] divide-y divide-cq-border overflow-y-auto overscroll-y-contain">
+          ) : null}
+
+          {messageError && !newChatOpen ? (
+            <p className="mx-4 mt-2 text-xs text-amber-300/90" role="alert">
+              {messageError}
+            </p>
+          ) : null}
+
+          <ul className="cq-inbox-thread-list flex-1 overflow-y-auto overscroll-y-contain">
             {messageLoading ? (
-              <li className="px-4 py-10 text-center text-sm text-cq-muted">Loading conversations...</li>
+              <li className="px-4 py-16 text-center text-sm text-white/40">Loading…</li>
             ) : messageSearchResults.length === 0 ? (
-              <li className="px-4 py-10 text-center">
-                <p className="text-sm text-cq-muted">
-                  {isSearchActive
-                    ? "No matches found."
-                    : personalization?.discoveryFocus?.includes("meet_students")
-                      ? `No conversations yet. Meet students ${personalization.schoolName ? `at ${personalization.schoolName}` : "on campus"} by sending your first connection request.`
-                      : "No conversations yet. Connect with a student to start messaging."}
-                </p>
-              </li>
+              <li className="px-4 py-16 text-center text-sm text-white/40">{emptyCopy}</li>
             ) : (
               messageSearchResults.map((result) => (
-                <li key={result.key}>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenSearchResult(result)}
-                    className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-cq-elevated"
-                  >
-                    <div className="cq-avatar-slot h-11 w-11 border border-cq-border bg-cq-elevated">
-                      <AvatarDisplay avatar={result.avatar} fitParent size={44} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="truncate text-sm font-semibold text-cq-foreground">
-                          {result.kind === "group" ? result.name : result.displayName}
-                        </p>
-                        <InboxSearchKindBadge kind={result.kind} />
-                      </div>
-                      <p className="truncate text-xs text-cq-muted">
-                        {result.kind === "group"
-                          ? result.meta ?? "Group chat"
-                          : result.kind === "friend"
-                            ? `@${result.username}`
-                            : `@${result.username}`}
-                      </p>
-                      {(result.kind === "conversation" || result.kind === "group") && (
-                        <p className="truncate text-sm text-cq-muted">{result.subtitle}</p>
-                      )}
-                      {result.kind === "conversation" && result.meta && (
-                        <p className="mt-0.5 text-xs text-cq-subtle">
-                          {new Date(result.meta).toLocaleString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      )}
-                    </div>
-                  </button>
-                </li>
+                <InboxThreadRow
+                  key={result.key}
+                  result={result}
+                  conversations={conversations}
+                  currentUserId={character.id}
+                  isPinned={result.kind !== "group" ? pinnedUserIds.has(result.userId) : false}
+                  pinBusy={result.kind !== "group" && pinBusyUserId === result.userId}
+                  onTogglePin={(userId, nextPinned) => void handleTogglePin(userId, nextPinned)}
+                  onSelect={() => handleOpenSearchResult(result)}
+                />
               ))
             )}
-            </ul>
-          </>
-        )}
-      </div>
+          </ul>
+        </>
+      ) : (
+        <NotificationsCenter
+          embedded
+          theme="inbox"
+          onUnreadCountChange={onUnreadCountChange}
+          personalization={personalization}
+        />
+      )}
 
-      {dmWith && (
+      {newChatOpen ? (
+        <InboxNewChatSheet
+          connectionUsername={connectionUsername}
+          sendingRequest={sendingRequest}
+          error={messageError}
+          friends={friends}
+          onUsernameChange={setConnectionUsername}
+          onClose={() => {
+            setNewChatOpen(false);
+            setMessageError(null);
+          }}
+          onSubmit={handleSendConnectionRequest}
+          onSelectFriend={(friend) => {
+            setNewChatOpen(false);
+            handleOpenDm(
+              friend.userId,
+              friend.username,
+              friend.displayName,
+              avatarFromConnectionProfile(friend),
+            );
+          }}
+        />
+      ) : null}
+
+      {dmWith ? (
         <DirectMessageThread
           currentUser={character}
           otherUser={dmWith}
           onClose={() => setDmWith(null)}
           onMessageSent={() => void loadMessageCenter()}
         />
-      )}
+      ) : null}
     </MobileSwipeBackSurface>
+  );
+}
+
+function InboxThreadRow({
+  result,
+  conversations,
+  currentUserId,
+  isPinned,
+  pinBusy,
+  onTogglePin,
+  onSelect,
+}: {
+  result: InboxMessageSearchResult;
+  conversations: ConversationItem[];
+  currentUserId: string;
+  isPinned: boolean;
+  pinBusy: boolean;
+  onTogglePin: (userId: string, nextPinned: boolean) => void;
+  onSelect: () => void;
+}) {
+  const conv =
+    result.kind === "conversation"
+      ? conversations.find((c) => c.conversationId === result.conversationId)
+      : null;
+  const isUnread = Boolean(
+    conv?.latestMessage && conv.latestMessage.senderId !== currentUserId && !conv.latestMessage.readAt,
+  );
+
+  const preview =
+    result.kind === "conversation" || result.kind === "group"
+      ? result.subtitle
+      : result.kind === "friend"
+        ? "Tap to message"
+        : "";
+
+  const timestamp = result.kind === "conversation" ? formatIgTimestamp(result.meta) : "";
+  const canPin = result.kind !== "group" && result.userId !== currentUserId;
+
+  return (
+    <li>
+      <div className="cq-inbox-thread-row group flex w-full items-center gap-0 text-left">
+        <button type="button" onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="relative h-[56px] w-[56px] shrink-0 overflow-hidden rounded-full bg-[#262626]">
+            <AvatarDisplay avatar={result.kind === "group" ? result.avatar : result.avatar} fitParent size={56} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className={`truncate text-[15px] ${isUnread ? "font-bold text-white" : "font-semibold text-white"}`}>
+                {result.kind === "group" ? result.name : result.displayName}
+              </p>
+              {timestamp ? (
+                <span className={`shrink-0 text-xs ${isUnread ? "font-semibold text-[#0095f6]" : "text-white/40"}`}>
+                  {timestamp}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-0.5 flex items-center gap-2">
+              <p className={`min-w-0 flex-1 truncate text-sm ${isUnread ? "font-semibold text-white" : "text-white/45"}`}>
+                {result.kind !== "group" ? (
+                  <>
+                    <span className="text-white/55">@{result.username}</span>
+                    {preview ? <span className="text-white/35"> · {preview}</span> : null}
+                  </>
+                ) : (
+                  preview
+                )}
+              </p>
+              {isUnread ? <span className="cq-inbox-unread-dot shrink-0" aria-label="Unread" /> : null}
+            </div>
+          </div>
+        </button>
+        {canPin ? (
+          <button
+            type="button"
+            disabled={pinBusy}
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePin(result.userId, !isPinned);
+            }}
+            className={`cq-inbox-pin-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition disabled:opacity-40 ${
+              isPinned ? "text-[#0095f6]" : "text-white/30 hover:text-white/55"
+            }`}
+            aria-label={isPinned ? "Unpin chat" : "Pin chat"}
+            aria-pressed={isPinned}
+          >
+            <Pin className={`h-[18px] w-[18px] ${isPinned ? "fill-current" : ""}`} strokeWidth={1.75} />
+          </button>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function InboxNewChatSheet({
+  connectionUsername,
+  sendingRequest,
+  error,
+  friends,
+  onUsernameChange,
+  onClose,
+  onSubmit,
+  onSelectFriend,
+}: {
+  connectionUsername: string;
+  sendingRequest: boolean;
+  error: string | null;
+  friends: InboxFriendRow[];
+  onUsernameChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: (e: React.FormEvent) => void;
+  onSelectFriend: (friend: InboxFriendRow) => void;
+}) {
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[130] flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label="New message">
+      <button type="button" className="absolute inset-0 bg-black/70 backdrop-blur-[2px]" onClick={onClose} aria-label="Close" />
+      <div className="cq-inbox-new-chat relative z-10 w-full max-w-md rounded-t-2xl bg-[#121212] sm:rounded-2xl">
+        <div className="flex items-center justify-between border-b border-white/[0.08] px-4 py-3">
+          <button type="button" onClick={onClose} className="cq-inbox-icon-btn" aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
+          <p className="text-[15px] font-semibold text-white">New message</p>
+          <span className="w-9" aria-hidden />
+        </div>
+
+        <form onSubmit={onSubmit} className="border-b border-white/[0.08] px-4 py-3">
+          <p className="mb-2 text-sm text-white/55">To:</p>
+          <UserSearchInput
+            value={connectionUsername}
+            onChange={onUsernameChange}
+            onSelectUser={(user) => {
+              onUsernameChange(user.username);
+              onSelectFriend({
+                userId: user.userId,
+                username: user.username,
+                displayName: user.displayName,
+                avatarUrl: user.avatarUrl,
+                avatarCustomJson: user.avatarCustomJson,
+              });
+            }}
+            placeholder="Search name or username"
+            inputClassName="w-full rounded-[10px] border border-white/10 bg-black/30 px-3 py-2 text-[15px] text-white placeholder:text-white/30 focus:outline-none focus:border-white/20"
+            ariaLabel="Search users to message"
+            autoFocus
+            panelClassName="cq-user-search-panel--sheet"
+          />
+          {error ? <p className="mt-2 text-xs text-amber-300/90">{error}</p> : null}
+          <button
+            type="submit"
+            disabled={sendingRequest || !connectionUsername.trim()}
+            className="mt-3 w-full rounded-lg bg-[#0095f6] py-2.5 text-sm font-semibold text-white disabled:opacity-45"
+          >
+            {sendingRequest ? "Sending…" : "Connect & message"}
+          </button>
+        </form>
+
+        {friends.length > 0 ? (
+          <ul className="max-h-[min(50vh,20rem)] overflow-y-auto">
+            {friends.map((friend) => (
+              <li key={friend.userId}>
+                <button
+                  type="button"
+                  onClick={() => onSelectFriend(friend)}
+                  className="cq-inbox-thread-row w-full text-left"
+                >
+                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-[#262626]">
+                    <AvatarDisplay avatar={avatarFromConnectionProfile(friend)} fitParent size={48} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-white">{friend.displayName}</p>
+                    <p className="truncate text-xs text-white/45">@{friend.username}</p>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-4 py-6 text-center text-sm text-white/40">Connect with someone by username to start chatting.</p>
+        )}
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -404,22 +782,4 @@ function mapConnectionsToFriends(connections: ConnectionItem[]): InboxFriendRow[
     avatarUrl: connection.avatarUrl,
     avatarCustomJson: connection.avatarCustomJson,
   }));
-}
-
-function InboxSearchKindBadge({ kind }: { kind: InboxMessageSearchResult["kind"] }) {
-  const label = kind === "conversation" ? "Conversation" : kind === "friend" ? "Friend" : "Group";
-  const className =
-    kind === "conversation"
-      ? "bg-uri-keaney/15 text-uri-keaney"
-      : kind === "friend"
-        ? "bg-emerald-500/15 text-emerald-300"
-        : "bg-amber-500/15 text-amber-300";
-
-  return (
-    <span
-      className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${className}`}
-    >
-      {label}
-    </span>
-  );
 }

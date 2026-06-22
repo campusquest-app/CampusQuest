@@ -33,11 +33,13 @@ export function NotificationsCenter({
   onUnreadCountChange,
   personalization: _personalization,
   embedded,
+  theme = "default",
 }: {
   onUnreadCountChange?: (count: number) => void;
   personalization?: { discoveryFocus?: string[] } | null;
   /** Render inside Inbox (no duplicate page chrome). */
   embedded?: boolean;
+  theme?: "default" | "inbox";
 }) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -200,7 +202,21 @@ export function NotificationsCenter({
     }
   }
 
-  const headerRow = embedded ? (
+  const isInbox = embedded && theme === "inbox";
+
+  const headerRow = isInbox ? (
+    <div className="flex items-center justify-between gap-3 px-4 py-3">
+      <p className="text-xs text-white/45">{unreadCount === 0 ? "All caught up" : `${unreadCount} unread`}</p>
+      <button
+        type="button"
+        disabled={markingAll || unreadCount === 0}
+        onClick={() => void markAllRead()}
+        className="text-xs font-semibold text-[#0095f6] disabled:opacity-40"
+      >
+        {markingAll ? "Marking…" : "Mark all read"}
+      </button>
+    </div>
+  ) : embedded ? (
     <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-cq-border">
       <p className="text-xs text-cq-muted">
         {unreadCount === 0 ? "All caught up" : `${unreadCount} unread`}
@@ -231,31 +247,37 @@ export function NotificationsCenter({
     </div>
   );
 
-  const listWrapClass = embedded
-    ? "px-2 py-2 space-y-2 max-h-[min(50vh,28rem)] overflow-y-auto overscroll-y-contain"
-    : "space-y-2";
+  const listWrapClass = isInbox
+    ? "flex-1 overflow-y-auto overscroll-y-contain"
+    : embedded
+      ? "px-2 py-2 space-y-2 max-h-[min(50vh,28rem)] overflow-y-auto overscroll-y-contain"
+      : "space-y-2";
 
   const itemClass = (read: boolean) =>
-    embedded
-      ? `rounded-xl border p-3 space-y-1.5 ${
-          read
-            ? "border-cq-border bg-cq-card"
-            : "border-cq-border border-l-[3px] border-l-uri-keaney bg-cq-elevated"
-        }`
-      : `card p-4 border ${
-          read ? "border-cq-border" : "border-cq-border border-l-[3px] border-l-uri-keaney bg-cq-elevated"
-        } space-y-1.5`;
+    isInbox
+      ? `cq-inbox-notif-row ${read ? "" : "cq-inbox-notif-row--unread"}`
+      : embedded
+        ? `rounded-xl border p-3 space-y-1.5 ${
+            read
+              ? "border-cq-border bg-cq-card"
+              : "border-cq-border border-l-[3px] border-l-uri-keaney bg-cq-elevated"
+          }`
+        : `card p-4 border ${
+            read ? "border-cq-border" : "border-cq-border border-l-[3px] border-l-uri-keaney bg-cq-elevated"
+          } space-y-1.5`;
 
-  const emptyCopy = embedded
+  const emptyCopy = isInbox
     ? "You're caught up. RSVPs, org updates, and campus activity will show up here."
-    : "No notifications yet. When something needs your attention, it will appear here.";
+    : embedded
+      ? "You're caught up. RSVPs, org updates, and campus activity will show up here."
+      : "No notifications yet. When something needs your attention, it will appear here.";
 
   const body = (
     <>
       {actionToast ? (
         <div
-          className={`rounded-lg border border-uri-keaney/40 bg-uri-navy/90 px-3 py-2 text-sm text-white ${
-            embedded ? "mx-4 mt-3" : ""
+          className={`text-sm text-white ${
+            isInbox ? "mx-4 mt-3 rounded-lg bg-white/10 px-3 py-2" : `rounded-lg border border-uri-keaney/40 bg-uri-navy/90 px-3 py-2 ${embedded ? "mx-4 mt-3" : ""}`
           }`}
         >
           {actionToast}
@@ -273,9 +295,9 @@ export function NotificationsCenter({
         />
       ) : null}
       {loading ? (
-        <div className={`space-y-2 ${embedded ? "px-4 pt-3" : ""}`}>
-          <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
-          <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
+        <div className={`space-y-2 ${isInbox ? "px-4 pt-3" : embedded ? "px-4 pt-3" : ""}`}>
+          <div className={`h-16 animate-pulse ${isInbox ? "bg-white/[0.06]" : "rounded-xl bg-slate-100"}`} />
+          <div className={`h-16 animate-pulse ${isInbox ? "bg-white/[0.06]" : "rounded-xl bg-slate-100"}`} />
         </div>
       ) : null}
       {!loading && !error && notifications.length === 0 ? (
@@ -305,13 +327,13 @@ export function NotificationsCenter({
             <article key={notification.id} className={itemClass(Boolean(notification.readAt))}>
               <div className="flex items-start gap-3">
                 {isActorSocial ? (
-                  <div className="cq-avatar-slot w-10 h-10 border border-cq-border">
-                    <AvatarDisplay avatar={actorAvatar} fitParent size={40} />
+                  <div className={`shrink-0 overflow-hidden rounded-full bg-[#262626] ${isInbox ? "h-11 w-11" : "cq-avatar-slot w-10 h-10 border border-cq-border"}`}>
+                    <AvatarDisplay avatar={actorAvatar} fitParent size={isInbox ? 44 : 40} />
                   </div>
                 ) : null}
                 <div className="flex-1 min-w-0 space-y-1.5">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-cq-foreground font-semibold text-sm min-w-0 flex-1">
+                    <p className={`min-w-0 flex-1 text-sm font-semibold ${isInbox ? "text-white" : "text-cq-foreground"}`}>
                       {isActorSocial && notification.actorUsername
                         ? `@${notification.actorUsername}`
                         : notification.title}
@@ -323,8 +345,12 @@ export function NotificationsCenter({
                         onClick={() => void toggleFavorite(notification.id, !notification.isFavorited)}
                         className={`p-2 rounded-lg text-sm transition-colors disabled:opacity-50 ${
                           notification.isFavorited
-                            ? "text-uri-gold bg-uri-gold/15 border border-uri-gold/35"
-                            : "text-cq-muted hover:text-uri-gold border border-cq-border hover:bg-slate-100"
+                            ? isInbox
+                              ? "text-uri-gold"
+                              : "text-uri-gold bg-uri-gold/15 border border-uri-gold/35"
+                            : isInbox
+                              ? "text-white/35 hover:text-white/60"
+                              : "text-cq-muted hover:text-uri-gold border border-cq-border hover:bg-slate-100"
                         }`}
                         title={notification.isFavorited ? "Unfavorite" : "Favorite"}
                         aria-label={notification.isFavorited ? "Unfavorite" : "Favorite"}
@@ -336,14 +362,18 @@ export function NotificationsCenter({
                         <button
                           type="button"
                           onClick={() => void markRead(notification.id)}
-                          className="px-2.5 py-1 rounded-md text-[11px] font-semibold border border-cq-border text-slate-700 hover:bg-slate-100"
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold ${
+                            isInbox
+                              ? "text-[#0095f6]"
+                              : "border border-cq-border text-slate-700 hover:bg-slate-100"
+                          }`}
                         >
                           Mark read
                         </button>
                       ) : null}
                     </div>
                   </div>
-                  <p className="text-sm text-cq-muted">
+                  <p className={`text-sm ${isInbox ? "text-white/55" : "text-cq-muted"}`}>
                     {isFriendRequest && notification.actorUsername
                       ? `${notification.actorUsername} sent you a follow request`
                       : notification.body}
@@ -354,7 +384,11 @@ export function NotificationsCenter({
                         type="button"
                         disabled={respondingRequestId === requestId}
                         onClick={() => void handleFriendRequestAction(notification, "accept")}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90 disabled:opacity-60"
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 ${
+                          isInbox
+                            ? "bg-[#0095f6] text-white"
+                            : "bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90"
+                        }`}
                       >
                         Follow Back
                       </button>
@@ -362,13 +396,19 @@ export function NotificationsCenter({
                         type="button"
                         disabled={respondingRequestId === requestId}
                         onClick={() => void handleFriendRequestAction(notification, "decline")}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 border border-cq-border hover:bg-slate-100 disabled:opacity-60"
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 ${
+                          isInbox
+                            ? "bg-white/10 text-white"
+                            : "text-slate-700 border border-cq-border hover:bg-slate-100"
+                        }`}
                       >
                         Deny
                       </button>
                     </div>
                   ) : null}
-                  <p className="text-[11px] text-cq-muted">{new Date(notification.createdAt).toLocaleString()}</p>
+                  <p className={`text-[11px] ${isInbox ? "text-white/35" : "text-cq-muted"}`}>
+                    {new Date(notification.createdAt).toLocaleString()}
+                  </p>
                 </div>
               </div>
             </article>
@@ -379,7 +419,7 @@ export function NotificationsCenter({
   );
 
   return embedded ? (
-    <div className="flex flex-col min-h-0">{body}</div>
+    <div className={`flex min-h-0 flex-col ${isInbox ? "flex-1" : ""}`}>{body}</div>
   ) : (
     <section className="space-y-4">{body}</section>
   );
