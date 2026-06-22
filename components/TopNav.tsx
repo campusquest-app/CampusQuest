@@ -49,7 +49,7 @@ export function TopNav({
       window.visualViewport?.removeEventListener?.("resize", sync);
       document.documentElement.style.removeProperty(TOPNAV_CSS_VAR);
     };
-  }, [character?.id, character?.level, character?.totalXP]);
+  }, [character?.id, character?.level, character?.totalXP, character?.streakDays]);
 
   return (
     <header
@@ -110,7 +110,7 @@ export function TopNav({
 
         {character ? (
           <div className="cq-top-nav-meta">
-            <TopNavLevelProgress level={character.level} totalXP={character.totalXP} />
+            <TopNavLevelProgress character={character} />
           </div>
         ) : null}
       </div>

@@ -3,11 +3,13 @@
 import { ChevronLeft, Map } from "lucide-react";
 import { RealmMap } from "@/components/realm/RealmMap";
 import type { RealmLocation } from "@/lib/realm/locations";
+import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 
 export function TheRealm({
   onBack,
   onCreatePost,
   onViewProfile,
+  onSharePost,
   viewer = null,
   userId = null,
   isAdmin = false,
@@ -16,6 +18,7 @@ export function TheRealm({
   onBack?: () => void;
   onCreatePost?: () => void;
   onViewProfile?: (userId: string) => void;
+  onSharePost?: (target: SharePostTarget) => void;
   viewer?: { id: string; name: string; username: string; avatar: string } | null;
   userId?: string | null;
   isAdmin?: boolean;
@@ -56,6 +59,7 @@ export function TheRealm({
         onViewQuests={handleViewQuests}
         onCreatePost={onCreatePost}
         onViewProfile={onViewProfile}
+        onSharePost={onSharePost}
         viewer={viewer}
         userId={userId}
         isAdmin={isAdmin}

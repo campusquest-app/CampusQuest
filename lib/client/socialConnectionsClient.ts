@@ -1,6 +1,7 @@
 "use client";
 
 import { deleteAuthed, fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import type { CharacterStats, Friend } from "@/lib/types";
 
 export type ConnectionRequestItem = {
   requestId: string;
@@ -13,6 +14,14 @@ export type ConnectionRequestItem = {
   mutualFriendsCount: number | null;
 };
 
+export type ConnectionPlayerStats = {
+  strength: number;
+  stamina: number;
+  knowledge: number;
+  social: number;
+  focus: number;
+};
+
 export type ConnectionItem = {
   connectionId: string;
   userId: string;
@@ -20,6 +29,14 @@ export type ConnectionItem = {
   displayName: string;
   avatarUrl: string | null;
   avatarCustomJson: string | null;
+  relationshipStatus?: "connected";
+  level?: number;
+  xp?: number;
+  streakDays?: number;
+  title?: string | null;
+  guild?: string | null;
+  stats?: ConnectionPlayerStats;
+  statsAvailable?: boolean;
 };
 
 export type SendConnectionRequestResult = {
@@ -57,6 +74,30 @@ export function avatarFromConnectionProfile(profile: {
   const url = profile.avatarUrl?.trim();
   if (url) return url;
   return "🎓";
+}
+
+const EMPTY_STATS: CharacterStats = {
+  strength: 0,
+  stamina: 0,
+  knowledge: 0,
+  social: 0,
+  focus: 0,
+};
+
+/** Map API connection row to Friend card display model using server stats when present. */
+export function connectionItemToFriend(connection: ConnectionItem, addedAt = Date.now()): Friend {
+  const stats = connection.stats ?? EMPTY_STATS;
+  return {
+    userId: connection.userId,
+    username: connection.username,
+    name: connection.displayName,
+    avatar: avatarFromConnectionProfile(connection),
+    level: connection.level ?? 1,
+    totalXP: connection.xp ?? 0,
+    streakDays: connection.streakDays ?? 0,
+    stats,
+    addedAt,
+  };
 }
 
 export function formatRequestSentAt(iso: string): string {

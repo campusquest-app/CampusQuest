@@ -7,6 +7,7 @@ import type { RealmLocation, RealmQuest } from "@/lib/realm/locations";
 import { formatRealmEventLabel, getRealmEventUrgency } from "@/lib/realm/locations";
 import { RealmArchiveExperience } from "./RealmArchiveExperience";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
+import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 
 type SheetView = "archive" | "overview" | "quests" | "events";
 
@@ -23,6 +24,7 @@ export function RealmLocationSheet({
   onViewQuests,
   onRefreshMoments,
   onViewProfile,
+  onSharePost,
 }: {
   location: RealmLocation | null;
   open: boolean;
@@ -34,6 +36,7 @@ export function RealmLocationSheet({
   onViewQuests?: (location: RealmLocation) => void;
   onRefreshMoments?: () => void;
   onViewProfile?: (userId: string) => void;
+  onSharePost?: (target: SharePostTarget) => void;
 }) {
   const [view, setView] = useState<SheetView>("archive");
   const [mounted, setMounted] = useState(false);
@@ -78,22 +81,23 @@ export function RealmLocationSheet({
 
   if (!mounted || !open || !location || typeof document === "undefined") return null;
 
-  const momentCount = location.activeMomentCount ?? location.moments.length;
-  const urgency = getRealmEventUrgency(location.eventTimer);
-  const eventLabel = formatRealmEventLabel(location.eventTimer);
-  const activityLine = buildActivityLine(location);
+  const activeLocation = location;
+  const momentCount = activeLocation.activeMomentCount ?? activeLocation.moments.length;
+  const urgency = getRealmEventUrgency(activeLocation.eventTimer);
+  const eventLabel = formatRealmEventLabel(activeLocation.eventTimer);
+  const activityLine = buildActivityLine(activeLocation);
 
   return createPortal(
     <>
       <button
         type="button"
         aria-label="Close location archive"
-        className="realm-sheet-backdrop fixed inset-0 z-[85] bg-black/60 backdrop-blur-[3px]"
+        className="realm-sheet-backdrop fixed inset-0 bg-black/60 backdrop-blur-[3px]"
         onClick={onClose}
       />
       <MobileSwipeBackSurface
         onBack={handleSwipeBack}
-        className="cq-realm-archive-screen cq-realm-archive-sheet fixed inset-0 z-[86] mx-auto max-w-lg animate-realm-sheet-up"
+        className="cq-realm-archive-panel cq-realm-archive-screen cq-realm-archive-sheet mx-auto max-w-lg animate-realm-sheet-up"
         role="dialog"
         aria-modal="true"
         aria-labelledby="realm-sheet-title"
@@ -103,7 +107,7 @@ export function RealmLocationSheet({
           {view === "archive" ? (
             <>
               <RealmArchiveHeader
-                location={location}
+                location={activeLocation}
                 momentCount={momentCount}
                 momentsLoaded={momentsLoaded}
                 onBack={onClose}
@@ -117,21 +121,22 @@ export function RealmLocationSheet({
                   Memory Archive
                 </p>
                 <RealmArchiveExperience
-                  location={location}
-                  moments={location.moments}
+                  location={activeLocation}
+                  moments={activeLocation.moments}
                   loaded={momentsLoaded}
                   viewer={viewer}
                   onCreatePost={onCreatePost}
                   onViewProfile={onViewProfile}
+                  onSharePost={onSharePost}
                 />
               </div>
 
               <RealmArchiveSecondary
-                location={location}
+                location={activeLocation}
                 urgency={urgency}
                 eventLabel={eventLabel}
                 onViewQuests={() => {
-                  onViewQuests?.(location);
+                  onViewQuests?.(activeLocation);
                   setView("quests");
                 }}
                 onViewEvents={() => setView("events")}
@@ -146,14 +151,14 @@ export function RealmLocationSheet({
           ) : (
             <RealmDetailView
               view={view}
-              location={location}
+              location={activeLocation}
               urgency={urgency}
               eventLabel={eventLabel}
               momentCount={momentCount}
               onBack={() => setView(view === "overview" ? "archive" : "overview")}
               onClose={onClose}
               onViewQuests={() => {
-                onViewQuests?.(location);
+                onViewQuests?.(activeLocation);
                 setView("quests");
               }}
               onViewEvents={() => setView("events")}

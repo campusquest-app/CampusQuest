@@ -104,7 +104,7 @@ export function WeeklyRecapCard({ character }: { character: Character }) {
         <div className="rounded-xl bg-cq-secondary border border-cq-border p-3">
           <div className="text-cq-muted text-xs">Best streak (7d)</div>
           <div className="text-cq-foreground font-bold text-lg">{recap.bestStreak} day{recap.bestStreak === 1 ? "" : "s"}</div>
-          <div className="text-slate-400 text-xs">Min {DAILY_MINIMUM_XP} XP/day</div>
+          <div className="text-slate-400 text-xs">{DAILY_MINIMUM_XP} XP daily keeps the flame alive</div>
         </div>
       </div>
     </section>

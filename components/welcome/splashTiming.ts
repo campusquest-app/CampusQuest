@@ -1,8 +1,8 @@
 /** Total time for progress to ease 0 → 100% (smooth cubic ease-in-out). */
-export const SPLASH_PROGRESS_MS = 7700;
+export const SPLASH_PROGRESS_MS = 5800;
 
-/** Brief dwell at 100% so completion FX reads before fade. */
-export const SPLASH_COMPLETE_DWELL_MS = 450;
+/** Brief dwell at 100% so completion leap + FX read before fade. */
+export const SPLASH_COMPLETE_DWELL_MS = 680;
 
 export const SPLASH_FADEOUT_MS = 800;
 

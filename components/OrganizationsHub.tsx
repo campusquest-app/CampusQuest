@@ -9,6 +9,7 @@ import {
 import { isUpcomingEvent } from "@/lib/client/eventsFeedFilters";
 import { OrganizationAdminPortal } from "@/components/OrganizationAdminPortal";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
+import { ScreenDataState } from "@/components/ui/ScreenDataState";
 import {
   ORGANIZATION_REQUEST_CATEGORIES,
   ORGANIZATION_REQUEST_CATEGORY_LABELS,
@@ -714,18 +715,28 @@ export function OrganizationsHub({
         </div>
       </div>
 
-      {error ? <div className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</div> : null}
+      {error ? (
+        <ScreenDataState
+          variant="error"
+          message="Could not load organizations."
+          detail={error}
+          onRetry={() => void loadOrganizations()}
+          compact
+        />
+      ) : null}
       {loading ? (
         <div className="space-y-2">
           <div className="h-20 rounded-xl bg-white/10 animate-pulse" />
           <div className="h-20 rounded-xl bg-white/10 animate-pulse" />
         </div>
       ) : null}
-      {!loading && allOrganizations.length === 0 ? (
-        <div className="card p-6 text-center space-y-1">
-          <p className="text-sm font-semibold text-white">No organizations found.</p>
-          <p className="text-xs text-white/55">Try changing your search or filter.</p>
-        </div>
+      {!loading && !error && allOrganizations.length === 0 ? (
+        <ScreenDataState
+          variant="empty"
+          message="No organizations found."
+          detail="Try changing your search or filter, or submit a new organization request."
+          compact
+        />
       ) : null}
 
       <div className="space-y-3">

@@ -7,11 +7,11 @@ import {
 } from "@/lib/dicebearFrame";
 
 describe("dicebearFrame", () => {
-  it("clamps unsafe scale values to 75", () => {
-    expect(clampDiceBearScale(120)).toBe(75);
-    expect(clampDiceBearScale(100)).toBe(75);
-    expect(clampDiceBearScale(75)).toBe(75);
-    expect(clampDiceBearScale(70)).toBe(70);
+  it("clamps unsafe scale values to 100", () => {
+    expect(clampDiceBearScale(120)).toBe(100);
+    expect(clampDiceBearScale(100)).toBe(100);
+    expect(clampDiceBearScale(75)).toBe(100);
+    expect(clampDiceBearScale(70)).toBe(100);
   });
 
   it("builds safe create options and strips framing overrides from appearance", () => {
@@ -31,7 +31,7 @@ describe("dicebearFrame", () => {
     expect(opts).toMatchObject({
       seed: "CQ Rhody Knight",
       size: DICEBEAR_SAFE_FRAME.size,
-      scale: 75,
+      scale: 100,
       translateX: 0,
       translateY: 0,
       radius: 50,

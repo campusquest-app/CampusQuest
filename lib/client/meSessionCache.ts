@@ -1,6 +1,7 @@
 "use client";
 
-import { fetchAuthed } from "@/lib/client/dashboardApi";
+import { getAccessToken } from "@/lib/client/apiSession";
+import { fetchAuthed, isMissingSessionError } from "@/lib/client/dashboardApi";
 import type { MeProfileRow, MeStatsRow } from "@/lib/client/profileCharacter";
 
 export type MeSessionSnapshot = {
@@ -13,7 +14,7 @@ const LOG = "[cq:load]";
 
 let committed: MeSessionSnapshot | null = null;
 /** One in-flight concurrent profile+stats request (dedupe parallel callers). */
-let inflight: Promise<MeSessionSnapshot> | null = null;
+let inflight: Promise<MeSessionSnapshot | null> | null = null;
 const subscribers = new Set<(snap: MeSessionSnapshot | null) => void>();
 
 function notify(): void {
@@ -36,6 +37,11 @@ export function invalidateMeSessionCache(): void {
   notify();
 }
 
+/** Drop deduped in-flight profile fetch (logout / missing session). */
+export function resetMeSessionInflight(): void {
+  inflight = null;
+}
+
 export function subscribeMeSessionSnapshot(fn: (snap: MeSessionSnapshot | null) => void): () => void {
   fn(committed);
   subscribers.add(fn);
@@ -45,7 +51,13 @@ export function subscribeMeSessionSnapshot(fn: (snap: MeSessionSnapshot | null) 
 }
 
 /** Deduplicates concurrent callers; fresh network each invocation (caller should invalidate first on bootstrap restart). */
-export async function fetchMeProfileAndStatsDeduped(): Promise<MeSessionSnapshot> {
+export async function fetchMeProfileAndStatsDeduped(): Promise<MeSessionSnapshot | null> {
+  if (!getAccessToken()) {
+    resetMeSessionInflight();
+    invalidateMeSessionCache();
+    return null;
+  }
+
   if (inflight) {
     console.log(`${LOG} profile+stats using in-flight duplicate (deduped)`);
     return inflight;
@@ -62,6 +74,12 @@ export async function fetchMeProfileAndStatsDeduped(): Promise<MeSessionSnapshot
       const ms = typeof performance !== "undefined" ? performance.now() - t0 : 0;
       console.log(`${LOG} profile+stats parallel done ${Math.round(ms)}ms`);
       return { userId: profile.id, profile, stats };
+    } catch (err) {
+      if (isMissingSessionError(err)) {
+        invalidateMeSessionCache();
+        return null;
+      }
+      throw err;
     } finally {
       inflight = null;
     }

@@ -19,6 +19,7 @@ import { deleteQuadPostRequest, updateQuadPostRequest } from "@/lib/client/quadP
 import { removeRemoteQuadPost, replaceRemoteQuadPost, setCommentsForNote } from "@/lib/feedStore";
 import { fetchQuadPostComments } from "@/lib/client/quadCommentsClient";
 import { AvatarDisplay } from "./AvatarDisplay";
+import { formatStreakBadge } from "@/lib/streakMessaging";
 import { CampusQuestNodHeartPop } from "./CampusQuestNodHeartPop";
 import { FieldNoteEditModal } from "./FieldNoteEditModal";
 import { PostCommentsSheet } from "./posts/PostCommentsSheet";
@@ -123,9 +124,7 @@ function formatTime(ts: number): string {
 
 function streakBadge(days: number | undefined): string | null {
   if (days == null || days < 3) return null;
-  if (days >= 30) return `🔥 ${days}-day streak`;
-  if (days >= 7) return `🔥 ${days}-day streak`;
-  return `🔥 ${days}d`;
+  return formatStreakBadge(days);
 }
 
 function FeedCaption({ name, body, tags }: { name: string; body: string; tags: string[] }) {
@@ -189,6 +188,7 @@ export function FieldNoteCard({
   onActionMessage,
   onCommentsUpdated,
   onViewAuthor,
+  onSharePost,
 }: {
   note: FieldNote;
   currentUserId: string;
@@ -210,6 +210,7 @@ export function FieldNoteCard({
   onPostDeleted?: (postId: string) => void;
   onActionMessage?: (message: string) => void;
   onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
+  onSharePost?: (note: FieldNote) => void;
 }) {
   const [commentsSheetOpen, setCommentsSheetOpen] = useState(false);
   const [showImageNodPop, setShowImageNodPop] = useState(false);
@@ -412,6 +413,10 @@ export function FieldNoteCard({
   }
 
   const handleShare = useCallback(async () => {
+    if (onSharePost && (note.isPersisted ?? isPersistedQuadPostId(note.id))) {
+      onSharePost(note);
+      return;
+    }
     const url = typeof window !== "undefined" ? window.location.href : "";
     const text = note.body.slice(0, 200);
     try {
@@ -427,7 +432,7 @@ export function FieldNoteCard({
     } catch {
       /* user cancelled share */
     }
-  }, [note.authorName, note.body]);
+  }, [note, onSharePost]);
 
   function handleProofImageTap() {
     const now = Date.now();
@@ -439,10 +444,10 @@ export function FieldNoteCard({
     lastImageTapAtRef.current = now;
   }
 
-  const avatarFrameClass = `flex items-center justify-center flex-shrink-0 border overflow-hidden ${
+  const avatarFrameClass = `cq-avatar-slot flex-shrink-0 border ${
     isFeed
-      ? "h-12 w-12 rounded-full border-white/15 bg-cq-elevated/8"
-      : "w-11 h-11 rounded-xl bg-cq-elevated border border-white/15"
+      ? "h-12 w-12 border-white/15 bg-cq-elevated/8"
+      : "h-11 w-11 bg-cq-elevated border-white/15"
   } ${
     highlightStat === "strength"
       ? "stat-aura-strength"
@@ -467,11 +472,11 @@ export function FieldNoteCard({
       className={`${avatarFrameClass} touch-manipulation transition hover:opacity-90`}
       aria-label={`View ${note.authorName}'s profile`}
     >
-      <AvatarDisplay avatar={note.authorAvatar} size={isFeed ? 44 : 40} />
+      <AvatarDisplay avatar={note.authorAvatar} fitParent size={isFeed ? 48 : 44} />
     </button>
   ) : (
     <div className={avatarFrameClass}>
-      <AvatarDisplay avatar={note.authorAvatar} size={isFeed ? 44 : 40} />
+      <AvatarDisplay avatar={note.authorAvatar} fitParent size={isFeed ? 48 : 44} />
     </div>
   );
 

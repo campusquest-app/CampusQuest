@@ -26,7 +26,7 @@ export function EquipmentStrip({
         <span aria-hidden>🎁</span> Equipment loadout
       </h4>
       <p className="text-[11px] text-white/50 mb-3">
-        {readOnly ? "Equipped loot on this Ram." : "Equip unlocked loot for real XP & streak-save bonuses."}
+        {readOnly ? "Equipped loot on this Ram." : "Equip unlocked loot for XP boosts and flame protection."}
       </p>
       {buffs.lines.length > 0 && (
         <ul className="text-xs text-emerald-200/90 space-y-0.5 mb-3">

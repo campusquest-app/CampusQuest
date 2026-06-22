@@ -5,6 +5,7 @@ import { xpProgressInLevel } from "@/lib/level";
 import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { getEquippedTitleLabel } from "@/lib/achievementEngine";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
+import { formatStreakBadge } from "@/lib/streakMessaging";
 
 export function ProfileSocialHeader({
   character,
@@ -29,9 +30,10 @@ export function ProfileSocialHeader({
       <div className="flex items-start gap-4">
         <div className="relative flex-shrink-0">
           <div className="character-avatar-frame cq-profile-avatar-shell flex h-[5.5rem] w-[5.5rem] shrink-0 items-center justify-center rounded-full p-[3px]">
-            <div className="cq-profile-avatar-inner cq-profile-avatar-inner--header flex items-center justify-center">
+            <div className="cq-profile-avatar-inner cq-profile-avatar-inner--header">
               <AvatarDisplay
                 avatar={character.avatar}
+                fitParent
                 size={82}
                 className="rounded-full"
                 classId={character.classId}
@@ -84,7 +86,7 @@ export function ProfileSocialHeader({
           ) : null}
 
           {character.streakDays >= 3 ? (
-            <p className="mt-1 text-xs font-semibold text-uri-gold">🔥 {character.streakDays}-day streak</p>
+            <p className="mt-1 text-xs font-semibold text-uri-gold">{formatStreakBadge(character.streakDays)}</p>
           ) : null}
         </div>
       </div>

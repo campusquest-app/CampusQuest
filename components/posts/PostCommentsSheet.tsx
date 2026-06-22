@@ -186,11 +186,11 @@ export function PostCommentsSheet({
                       className="cq-comments-sheet-item-avatar touch-manipulation transition hover:opacity-90"
                       aria-label={`View ${c.authorName}'s profile`}
                     >
-                      <AvatarDisplay avatar={c.authorAvatar} size={32} />
+                      <AvatarDisplay avatar={c.authorAvatar} fitParent size={32} />
                     </button>
                   ) : (
                     <div className="cq-comments-sheet-item-avatar">
-                      <AvatarDisplay avatar={c.authorAvatar} size={32} />
+                      <AvatarDisplay avatar={c.authorAvatar} fitParent size={32} />
                     </div>
                   )}
                   <div className="cq-comments-sheet-item-body">
@@ -227,8 +227,8 @@ export function PostCommentsSheet({
 
         {onAddComment ? (
           <form className="cq-comments-sheet-composer" onSubmit={handleSubmit}>
-            <div className="cq-comments-sheet-composer-avatar">
-              <AvatarDisplay avatar={currentUser.avatar} size={32} />
+            <div className="cq-comments-sheet-composer-avatar cq-avatar-slot">
+              <AvatarDisplay avatar={currentUser.avatar} fitParent size={32} />
             </div>
             <input
               type="text"

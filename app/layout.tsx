@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { AppRootProviders } from "@/components/AppRootProviders";
 import "./globals.css";
 
 const display = Space_Grotesk({
@@ -45,7 +46,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${display.variable} ${mono.variable}`}>
       <body className="font-sans flex min-h-[100dvh] flex-col overflow-x-hidden bg-cq-app">
-        {children}
+        <AppRootProviders>{children}</AppRootProviders>
       </body>
     </html>
   );

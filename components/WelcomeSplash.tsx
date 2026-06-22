@@ -88,12 +88,8 @@ export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
               <div className="welcome-splash-orbit" />
             </div>
 
-            <p className="welcome-splash-title relative z-10 mb-2 w-full shrink-0 font-semibold uppercase text-uri-keaney/95">
-              Welcome to
-            </p>
-
             <motion.div
-              className="relative z-10 mb-2 w-full shrink-0"
+              className="relative z-10 mb-3 w-full shrink-0"
               animate={
                 reduceMotion
                   ? undefined
@@ -109,6 +105,10 @@ export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
             >
               <CampusQuestLogo variant="splash" priority className="mx-auto block" />
             </motion.div>
+
+            <p className="welcome-splash-word relative z-10 mb-2 w-full shrink-0 font-black uppercase text-white">
+              CampusQuest
+            </p>
 
             <p className="welcome-splash-tagline relative z-10 mb-8 w-full shrink-0 text-balance font-medium leading-snug tracking-[0.12em] text-uri-keaney/92 sm:tracking-[0.16em]">
               Level Up Your College Experience

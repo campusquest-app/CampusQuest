@@ -26,6 +26,8 @@ export function ProfileSocialPage({
   postCount,
   posts,
   postsLoading,
+  postsError,
+  onRetryPosts,
   friendsCount,
   friendsLoading,
   followingCount,
@@ -45,8 +47,11 @@ export function ProfileSocialPage({
   onAddComment,
   onPostUpdated,
   onPostDeleted,
+  onSharePost,
   pendingReactions,
   reactionNotice,
+  activeProfileTab,
+  onProfileTabChange,
 }: {
   character: Character;
   viewer: Pick<Character, "id" | "name" | "username" | "avatar">;
@@ -58,6 +63,8 @@ export function ProfileSocialPage({
   guildLabel?: string | null;
   posts: FieldNote[];
   postsLoading: boolean;
+  postsError?: string | null;
+  onRetryPosts?: () => void;
   friendsCount: number;
   friendsLoading?: boolean;
   followingCount: number;
@@ -76,10 +83,13 @@ export function ProfileSocialPage({
   onAddComment?: (noteId: string, body: string) => void;
   onPostUpdated?: (note: FieldNote) => void;
   onPostDeleted?: (postId: string) => void;
+  onSharePost?: (note: FieldNote) => void;
   pendingReactions: Set<string>;
   reactionNotice?: string | null;
+  activeProfileTab?: ProfileTab;
+  onProfileTabChange?: (tab: ProfileTab) => void;
 }) {
-  const [tab, setTab] = useState<ProfileTab>("posts");
+  const [tab, setTab] = useState<ProfileTab>(activeProfileTab ?? "posts");
   const [selectedPost, setSelectedPost] = useState<FieldNote | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [connectionToast, setConnectionToast] = useState<string | null>(null);
@@ -89,6 +99,18 @@ export function ProfileSocialPage({
     const tid = window.setTimeout(() => setConnectionToast(null), 2800);
     return () => window.clearTimeout(tid);
   }, [connectionToast]);
+
+  useEffect(() => {
+    if (activeProfileTab) setTab(activeProfileTab);
+  }, [activeProfileTab]);
+
+  const handleProfileTabChange = useCallback(
+    (next: ProfileTab) => {
+      setTab(next);
+      onProfileTabChange?.(next);
+    },
+    [onProfileTabChange],
+  );
 
   const activitiesCount = canViewPrivateContent ? getActivityLogs(character.id).length : 0;
   const activePost = selectedPost ? posts.find((p) => p.id === selectedPost.id) ?? selectedPost : null;
@@ -172,7 +194,7 @@ export function ProfileSocialPage({
         </>
       ) : (
         <>
-          <ProfileTabNav active={tab} onChange={setTab} />
+          <ProfileTabNav active={tab} onChange={handleProfileTabChange} />
 
           <div className="cq-profile-tab-panel pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]">
             {reactionNotice && tab === "posts" ? (
@@ -180,7 +202,13 @@ export function ProfileSocialPage({
             ) : null}
 
             {tab === "posts" ? (
-              <ProfilePostsGrid posts={posts} loading={postsLoading} onSelectPost={setSelectedPost} />
+              <ProfilePostsGrid
+                posts={posts}
+                loading={postsLoading}
+                error={postsError}
+                onRetry={onRetryPosts}
+                onSelectPost={setSelectedPost}
+              />
             ) : null}
             {tab === "collectibles" ? <ProfileCollectiblesTab character={character} /> : null}
             {tab === "activity" ? <ProfileActivityTab character={character} /> : null}
@@ -203,6 +231,7 @@ export function ProfileSocialPage({
           onAddComment={onAddComment}
           onPostUpdated={onPostUpdated}
           onPostDeleted={onPostDeleted}
+          onSharePost={onSharePost}
         />
       ) : null}
 

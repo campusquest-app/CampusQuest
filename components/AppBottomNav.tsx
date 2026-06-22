@@ -68,7 +68,7 @@ export function AppBottomNav({
       }}
       aria-label="Main navigation"
     >
-      <div className="grid w-full grid-cols-5 items-end gap-0 px-2 pb-3 pt-0">
+      <div className="cq-bottom-nav-inner grid w-full grid-cols-5 items-end gap-0 px-2 pb-3 pt-0">
         <NavItem
           label="Quad"
           active={homeActive}
@@ -83,12 +83,12 @@ export function AppBottomNav({
           icon={<Map className="h-[22px] w-[22px]" strokeWidth={mapActive ? 2.4 : 2} />}
         />
 
-        <div className="flex items-end justify-center">
+        <div className="cq-bottom-nav-scan flex items-end justify-center">
           <button
             type="button"
             onClick={onOpenScanner}
             aria-label="Open CQ Scanner"
-            className="cq-scanner-fab -mt-6 flex h-[4.25rem] w-[4.25rem] flex-col items-center justify-center rounded-full border border-cyan-300/40 bg-gradient-to-b from-cyan-400/90 via-cyan-500/85 to-[#1e6a9a] text-white shadow-[0_0_32px_-4px_rgba(56,189,248,0.75),0_12px_28px_-8px_rgba(0,0,0,0.65)] transition active:scale-95 touch-manipulation"
+            className="cq-scanner-fab cq-bottom-nav-scan-btn -mt-6 flex h-[4.25rem] w-[4.25rem] flex-col items-center justify-center rounded-full border border-cyan-300/40 bg-gradient-to-b from-cyan-400/90 via-cyan-500/85 to-[#1e6a9a] text-white shadow-[0_0_32px_-4px_rgba(56,189,248,0.75),0_12px_28px_-8px_rgba(0,0,0,0.65)] transition active:scale-95 touch-manipulation"
           >
             <QrCode className="h-7 w-7" strokeWidth={2.2} />
             <span className="cq-bottom-nav-label mt-0.5 text-[9px] font-bold uppercase tracking-[0.14em]">Scan</span>
@@ -129,14 +129,14 @@ function NavItem({
       type="button"
       onClick={onClick}
       aria-current={active ? "page" : undefined}
-      className={`flex min-h-[3.35rem] translate-y-0.5 flex-col items-center justify-center gap-0.5 rounded-2xl px-2 pb-2 pt-1.5 transition touch-manipulation ${
+      className={`cq-bottom-nav-item flex min-h-[3.35rem] translate-y-0.5 flex-col items-center justify-center gap-0.5 rounded-2xl px-2 pb-2 pt-1.5 transition touch-manipulation ${
         active
           ? "text-cyan-100"
           : "text-white/88 hover:text-white active:text-white"
       }`}
     >
       <span
-        className={`flex h-10 w-10 items-center justify-center rounded-2xl transition ${
+        className={`cq-bottom-nav-icon-slot flex h-10 w-10 items-center justify-center rounded-2xl transition ${
           active
             ? "bg-cyan-500/15 shadow-[0_0_20px_-6px_rgba(56,189,248,0.55)] ring-1 ring-cyan-400/25"
             : ""

@@ -57,4 +57,30 @@ describe("buildInboxMessageSearchResults", () => {
     });
     expect(results.some((row) => row.kind === "conversation")).toBe(true);
   });
+
+  it("shows photo preview for image messages", () => {
+    const imageConversations: InboxConversationRow[] = [
+      {
+        conversationId: "c2",
+        otherUser: { id: "u3", username: "sam_ram", displayName: "Sam", avatarUrl: null },
+        latestMessage: {
+          id: "m2",
+          senderId: "u3",
+          recipientId: "me",
+          content: "📷 Photo",
+          type: "image",
+          previewText: "📷 Photo",
+          createdAt: "2026-06-02T12:00:00.000Z",
+          readAt: null,
+        },
+      },
+    ];
+    const results = buildInboxMessageSearchResults({
+      query: "",
+      conversations: imageConversations,
+      friends: [],
+      avatarForFriend: () => "🎓",
+    });
+    expect(results[0]?.subtitle).toBe("📷 Photo");
+  });
 });

@@ -18,6 +18,7 @@ export const DRAWER_SWIPE_IGNORE_SELECTOR = [
   "select",
   "[role='button']",
   "[data-no-drawer-swipe='true']",
+  "[data-map-marker='true']",
   "[data-horizontal-scroll='true']",
   "[data-cq-horizontal-scroll='true']",
   ".horizontal-scroll",
@@ -27,6 +28,8 @@ export const DRAWER_SWIPE_IGNORE_SELECTOR = [
   ".tabs",
   ".map-pin",
   ".realm-pin",
+  ".realm-marker",
+  ".location-marker",
   ".post-actions",
 ].join(", ");
 

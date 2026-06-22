@@ -32,8 +32,15 @@ import { Leaderboards } from "./Leaderboards";
 import { MyProfileScreen } from "./MyProfileScreen";
 import { UserProfileScreen } from "./UserProfileScreen";
 import { CharacterProfilePaneToggle } from "./profile/CharacterProfilePaneToggle";
+import type { ProfileTab } from "./profile/ProfileTabNav";
 import { DirectMessageThread } from "./DirectMessageThread";
 import { Inbox, type InboxSubTab } from "./Inbox";
+import { SharePostSheet } from "@/components/messages/SharePostSheet";
+import {
+  buildShareTargetFromFieldNote,
+  type SharePostTarget,
+} from "@/lib/client/dmMessagesClient";
+import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 import { EventsFeed } from "./EventsFeed";
 import { OrganizationsHub } from "./OrganizationsHub";
 import { TheRealm } from "./TheRealm";
@@ -55,7 +62,7 @@ import { buildRewardAnimationSnapshot } from "@/lib/client/rewardAnimationSnapsh
 import { estimateXpOverlayDurationMs, readMobileViewport } from "@/lib/client/xpRewardAnimation";
 import { describeCosmeticEquipEffect } from "@/lib/gameBuffs";
 import { TrainingGrounds } from "./training/TrainingGrounds";
-import { HallOfLegends } from "./achievements/HallOfLegends";
+import { TrophyRoom } from "./achievements/TrophyRoom";
 import { AchievementUnlockCelebration } from "./achievements/AchievementUnlockCelebration";
 import { QuestBoard } from "./quests/QuestBoard";
 import { QuestCompleteCelebration } from "./quests/QuestCompleteCelebration";
@@ -63,6 +70,7 @@ import { FirstTimeJourney } from "./FirstTimeJourney";
 import { AuthOnboardingFlow } from "./auth/AuthOnboardingFlow";
 import type { StatKey } from "@/lib/types";
 import { clearAccessToken, getAccessToken } from "@/lib/client/apiSession";
+import { clearStaleAuthClientState } from "@/lib/client/authSessionClient";
 import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/agreementAccess";
 import {
   ApiRequestError,
@@ -77,9 +85,9 @@ import {
   fetchMeProfileAndStatsDeduped,
   getMeSessionSnapshot,
   invalidateMeSessionCache,
+  resetMeSessionInflight,
 } from "@/lib/client/meSessionCache";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
-import { subscribeSocialSync } from "@/lib/client/socialSync";
 import {
   fetchUserProfileView,
   buildCharacterFromProfileView,
@@ -108,7 +116,6 @@ import { LevelUpOverlay } from "@/components/xp/LevelUpOverlay";
 import { XPGainBanner } from "@/components/xp/XPGainBanner";
 import type { ActivityXPGainSession } from "@/components/xp/xpGainTypes";
 import type { CampusQuestQrActivityPayloadParsed } from "@/lib/qrCampusQuestActivity";
-import { TopNav } from "@/components/TopNav";
 import { AppSideDrawer, type AppDrawerDestination } from "@/components/AppSideDrawer";
 import type { SettingsActionId } from "@/components/AppSettingsPanel";
 import { AppBottomNav, type AppBottomNavTab } from "@/components/AppBottomNav";
@@ -116,7 +123,6 @@ import { MobileGestureLayerProvider } from "@/components/mobile/MobileGestureLay
 import { DashboardTabSwipeShell } from "@/components/mobile/DashboardTabSwipeShell";
 import { type SwipeNavDirection } from "@/lib/client/mobileGestures";
 import { useDrawerSwipeGestures } from "@/lib/client/useDrawerSwipeGestures";
-import { useScrollChrome } from "@/lib/client/useScrollChrome";
 import { LogoutConfirmModal } from "@/components/LogoutConfirmModal";
 
 /** Load camera + CQ Scanner bundle only after the player taps CQ Scan (avoid mount/worker on cold start). */
@@ -175,9 +181,9 @@ export function Dashboard() {
   const [showWelcomeSplash, setShowWelcomeSplash] = useState(true);
   const [tab, setTab] = useState<Tab>("quad");
   const [quadFeedTab, setQuadFeedTab] = useState<QuadFeedTab>("public");
-  useScrollChrome(tab === "quad" && character != null);
   const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
   const [characterPane, setCharacterPane] = useState<CharacterPane>("sheet");
+  const [profileTab, setProfileTab] = useState<ProfileTab>("posts");
   const [tabEnterDirection, setTabEnterDirection] = useState<SwipeNavDirection | null>(null);
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -202,6 +208,8 @@ export function Dashboard() {
   const [xpGainSession, setXpGainSession] = useState<ActivityXPGainSession | null>(null);
   const qrXpHandoffLockRef = useRef(false);
   const [dmWithOther, setDmWithOther] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
+  const [sharePostTarget, setSharePostTarget] = useState<SharePostTarget | null>(null);
+  const [sharePostOpen, setSharePostOpen] = useState(false);
   const [friendView, setFriendView] = useState<{
     payload: UserProfileViewPayload;
     character: Character;
@@ -352,6 +360,16 @@ export function Dashboard() {
     setCharacter(getCharacter());
   }, []);
 
+  const openSharePost = useCallback((target: SharePostTarget) => {
+    setSharePostTarget(target);
+    setSharePostOpen(true);
+  }, []);
+
+  const openSharePostFromNote = useCallback((note: FieldNote, postType: "quad" | "memory" = "quad") => {
+    const target = buildShareTargetFromFieldNote(note, postType);
+    if (target) openSharePost(target);
+  }, [openSharePost]);
+
   useEffect(() => {
     tabRef.current = tab;
   }, [tab]);
@@ -444,6 +462,7 @@ export function Dashboard() {
   }, []);
 
   const refreshAuthoritativeProfileInBackground = useCallback(() => {
+    if (!getAccessToken()) return;
     invalidateMeSessionCache();
     void fetchMeProfileAndStatsDeduped().then((snap) => {
       if (snap?.profile && snap?.stats) {
@@ -452,6 +471,16 @@ export function Dashboard() {
         setCharacter(merged);
       }
     });
+  }, []);
+
+  const handleClientSessionMissing = useCallback(() => {
+    clearStaleAuthClientState();
+    clearSchoolVerificationSnapshot();
+    storeLogout();
+    setCharacter(null);
+    setFriendView(null);
+    setFriendViewError(null);
+    setBootstrapStatus("unauthenticated");
   }, []);
 
   const navigateToQuad = useCallback(() => {
@@ -478,7 +507,7 @@ export function Dashboard() {
   }, []);
 
   const handleDrawerNavigate = useCallback(
-    (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings" | "manual-log" | "progress-hub" | "skills-lore") => {
+    (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings" | "manual-log" | "progress-hub" | "skills-lore" | "collectibles") => {
       switch (dest) {
         case "friends":
           setTab("friends");
@@ -537,6 +566,12 @@ export function Dashboard() {
         case "profile":
           setTab("character");
           setCharacterPane("profile");
+          setProfileTab("posts");
+          break;
+        case "collectibles":
+          setTab("character");
+          setCharacterPane("profile");
+          setProfileTab("collectibles");
           break;
         case "settings":
           setDrawerSubPanel("settings");
@@ -560,13 +595,17 @@ export function Dashboard() {
 
   const bottomNavSwipeActive: AppBottomNavTab | null = bottomNavActive === "other" ? null : bottomNavActive;
 
-  const tabSwipeGestureDisabled =
+  const quadChromeSuppressed =
     qrScannerOpen ||
     sideMenuOpen ||
     showLogoutConfirm ||
     dmWithOther != null ||
+    sharePostOpen ||
     levelUpModal != null ||
-    xpGainSession != null ||
+    xpGainSession != null;
+
+  const tabSwipeGestureDisabled =
+    quadChromeSuppressed ||
     friendView != null;
 
   const handleBottomNavSwipe = useCallback(
@@ -589,13 +628,7 @@ export function Dashboard() {
     setDrawerSubPanel("menu");
   }, []);
 
-  const drawerSwipeDisabled =
-    qrScannerOpen ||
-    showLogoutConfirm ||
-    dmWithOther != null ||
-    levelUpModal != null ||
-    xpGainSession != null ||
-    friendView != null;
+  const drawerSwipeDisabled = quadChromeSuppressed || friendView != null;
 
   const {
     drawerWidth,
@@ -806,6 +839,7 @@ export function Dashboard() {
     }
     clearAccessToken();
     invalidateMeSessionCache();
+    resetMeSessionInflight();
     clearSchoolVerificationSnapshot();
     storeLogout();
     setCharacter(null);
@@ -1119,6 +1153,19 @@ export function Dashboard() {
       try {
         const tCrit = typeof performance !== "undefined" ? performance.now() : 0;
         const snap0 = await fetchMeProfileAndStatsDeduped();
+        if (!snap0?.profile || !snap0?.stats) {
+          if (!cancelled) {
+            failUnauthenticated({ invalidateToken: true });
+            logBootstrapDecision({
+              sessionFound: true,
+              sessionValidated: false,
+              onboardingCompleted: null,
+              route: "unauthenticated",
+            });
+            setBootstrapStatus("unauthenticated");
+          }
+          return;
+        }
         let profileMerged = snap0.profile;
         let statsMerged = snap0.stats;
 
@@ -1132,6 +1179,9 @@ export function Dashboard() {
           const { pushCharacterProgressToServer } = await import("@/lib/client/gameStateSync");
           await pushCharacterProgressToServer(localPre);
           const snap1 = await fetchMeProfileAndStatsDeduped();
+          if (!snap1?.profile || !snap1?.stats) {
+            throw new Error("profile_resync_failed");
+          }
           profileMerged = snap1.profile;
           statsMerged = snap1.stats;
         }
@@ -1528,19 +1578,14 @@ export function Dashboard() {
 
   if (!character) {
     return (
-      <>
-        <TopNav username={null} character={null} />
-        <div style={{ paddingTop: "var(--cq-topnav-h, 56px)" }}>
-          <CharacterGate
-            prefillProfile={gatePrefillProfile}
-            onReady={() => {
-              refresh();
-              setTab("quad");
-              setBootstrapNonce((n) => n + 1);
-            }}
-          />
-        </div>
-      </>
+      <CharacterGate
+        prefillProfile={gatePrefillProfile}
+        onReady={() => {
+          refresh();
+          setTab("quad");
+          setBootstrapNonce((n) => n + 1);
+        }}
+      />
     );
   }
 
@@ -1729,13 +1774,6 @@ export function Dashboard() {
   return (
     <MobileGestureLayerProvider>
       <div className="cq-app-shell min-h-[100dvh]">
-      <TopNav
-        username={character?.username ?? null}
-        character={character}
-        onOpenMenu={openSideMenu}
-        onOpenInbox={() => setTab("inbox")}
-        unreadNotificationCount={unreadNotificationCount}
-      />
       <AppSideDrawer
         open={sideMenuOpen}
         onClose={closeSideMenu}
@@ -1747,7 +1785,7 @@ export function Dashboard() {
         showAdminNav={moderationAdminNavVisible(pilotCampusState)}
         unreadNotificationCount={unreadNotificationCount}
         musicMuted={musicMuted}
-        activeContext={{ tab, quadFeedTab }}
+        activeContext={{ tab, quadFeedTab, characterPane, profileTab }}
         drawerWidth={drawerWidth}
         drawerTranslateX={drawerTranslateX}
         isDraggingDrawer={isDraggingDrawer}
@@ -2075,6 +2113,13 @@ export function Dashboard() {
             feedTab={quadFeedTab}
             onFeedTabChange={setQuadFeedTab}
             onViewAuthor={(author) => void openFriendView(author.userId)}
+            onSharePost={(note) => openSharePostFromNote(note, "quad")}
+            sessionReady={bootstrapStatus === "authenticated"}
+            onSessionMissing={handleClientSessionMissing}
+            onOpenMenu={openSideMenu}
+            onOpenInbox={() => setTab("inbox")}
+            unreadNotificationCount={unreadNotificationCount}
+            chromeSuppressed={quadChromeSuppressed}
           />
         )}
 
@@ -2102,6 +2147,7 @@ export function Dashboard() {
               onBack={() => setTab("quad")}
               onCreatePost={() => setTab("quad")}
               onViewProfile={openFriendView}
+              onSharePost={openSharePost}
               viewer={
                 character
                   ? {
@@ -2139,7 +2185,7 @@ export function Dashboard() {
         )}
 
         {tab === "achievements" && (
-          <HallOfLegends character={character} onRefresh={refresh} />
+          <TrophyRoom character={character} onRefresh={refresh} />
         )}
 
         {tab === "quest-board" && (
@@ -2177,6 +2223,7 @@ export function Dashboard() {
                 onBack={closeFriendView}
                 onOpenMessage={setDmWithOther}
                 onProfileReload={reloadFriendView}
+                onSharePost={(note) => openSharePostFromNote(note, "quad")}
               />
             ) : friendViewError ? (
               <div className="space-y-3 px-3 py-12 text-center">
@@ -2195,7 +2242,10 @@ export function Dashboard() {
                 onLogout={handleLogout}
                 onRefresh={refresh}
                 onViewFriend={openFriendView}
+                onSharePost={(note) => openSharePostFromNote(note, "quad")}
                 moderationAdminAccess={moderationAdminNavVisible(pilotCampusState)}
+                activeProfileTab={profileTab}
+                onProfileTabChange={setProfileTab}
               />
             ) : (
               <CharacterCard character={character} onRefresh={refresh} />
@@ -2227,7 +2277,10 @@ export function Dashboard() {
         onSelectTab={(t) => {
           setTab(t);
           if (t === "quad") setQuadFeedTab("public");
-          if (t === "character") setCharacterPane("profile");
+          if (t === "character") {
+            setCharacterPane("profile");
+            setProfileTab("posts");
+          }
         }}
         onOpenScanner={openQrScanner}
       />
@@ -2240,6 +2293,16 @@ export function Dashboard() {
           onMessageSent={refresh}
         />
       )}
+
+      <SharePostSheet
+        open={sharePostOpen}
+        target={sharePostTarget}
+        onClose={() => {
+          setSharePostOpen(false);
+          setSharePostTarget(null);
+        }}
+        onShared={() => emitSocialSync({ source: "inbox" })}
+      />
 
       {character && qrScannerEverOpened ? (
         <QRScannerModalLazy

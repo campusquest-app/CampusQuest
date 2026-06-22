@@ -30,5 +30,12 @@ export function createDiceBearSvgString(data: DiceBearAvatarV2): string {
     options: data.options,
   }) as Parameters<typeof createAvatar>[1]);
 
-  return stripSvgClipPaths(avatar.toString());
+  return ensureSvgCoverAspect(stripSvgClipPaths(avatar.toString()));
+}
+
+function ensureSvgCoverAspect(svg: string): string {
+  if (/preserveAspectRatio=/i.test(svg)) {
+    return svg.replace(/preserveAspectRatio="[^"]*"/i, 'preserveAspectRatio="xMidYMid slice"');
+  }
+  return svg.replace(/<svg\b/i, '<svg preserveAspectRatio="xMidYMid slice"');
 }

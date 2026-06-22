@@ -4,7 +4,7 @@ export type ProfileTab = "posts" | "collectibles" | "activity";
 
 const TABS: { id: ProfileTab; label: string }[] = [
   { id: "posts", label: "Posts" },
-  { id: "collectibles", label: "Collectibles" },
+  { id: "collectibles", label: "The Codex" },
   { id: "activity", label: "Activity" },
 ];
 

@@ -41,8 +41,9 @@ describe("buildUserStatePatchBodies", () => {
     expect(stats.totalXp).toBe(1200);
     expect(stats.finalBossesDefeated).toBe(3);
     expect(stats.bossesDefeated).toBe(2);
-    expect(profile.displayName).toBe("Sam");
-    expect(profile.username).toBe("sam_rpg");
+    // Identity fields are edited via dedicated profile UX — not synced from local gameplay state.
+    expect(profile.displayName).toBeUndefined();
+    expect(profile.username).toBeUndefined();
     expect(profile.avatarCustomJson).toBe('{"v":2}');
     expect(profile.bio).toBe("URI rower");
     expect(profile.characterClassId).toBe("knight");

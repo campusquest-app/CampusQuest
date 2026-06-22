@@ -8,6 +8,7 @@ import {
 } from "@/lib/client/socialConnectionsClient";
 import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 import { AvatarDisplay } from "./AvatarDisplay";
+import { ScreenDataState } from "@/components/ui/ScreenDataState";
 
 type NotificationItem = {
   id: string;
@@ -262,13 +263,14 @@ export function NotificationsCenter({
       ) : null}
       {headerRow}
       {error ? (
-        <div
-          className={`rounded-lg border border-rose-200 bg-rose-50 py-2 text-xs text-rose-700 ${
-            embedded ? "mx-4 mt-3" : ""
-          } px-3`}
-        >
-          {error}
-        </div>
+        <ScreenDataState
+          variant="error"
+          message="Could not load notifications."
+          detail={error}
+          onRetry={() => void loadNotifications()}
+          compact
+          className={embedded ? "mx-4 mt-3" : ""}
+        />
       ) : null}
       {loading ? (
         <div className={`space-y-2 ${embedded ? "px-4 pt-3" : ""}`}>
@@ -276,13 +278,23 @@ export function NotificationsCenter({
           <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
         </div>
       ) : null}
-      {!loading && notifications.length === 0 ? (
-        <p className={`text-sm text-cq-muted ${embedded ? "px-4 py-10 text-center" : ""}`}>{emptyCopy}</p>
+      {!loading && !error && notifications.length === 0 ? (
+        <ScreenDataState
+          variant="empty"
+          message={embedded ? "You're all caught up." : "No notifications yet."}
+          detail={emptyCopy}
+          compact
+          className={embedded ? "mx-4 my-4" : "my-4"}
+        />
       ) : null}
 
       <div className={listWrapClass}>
         {sortedNotifications.map((notification) => {
           const isFriendRequest = notification.type === "friend_request";
+          const isActorSocial =
+            isFriendRequest ||
+            notification.type === "quad_post_like" ||
+            notification.type === "quad_post_comment";
           const requestId = notification.friendRequestId ?? notification.relatedEntityId;
           const actorAvatar = avatarFromConnectionProfile({
             avatarUrl: notification.actorAvatarUrl ?? null,
@@ -292,15 +304,15 @@ export function NotificationsCenter({
           return (
             <article key={notification.id} className={itemClass(Boolean(notification.readAt))}>
               <div className="flex items-start gap-3">
-                {isFriendRequest ? (
-                  <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-cq-border">
-                    <AvatarDisplay avatar={actorAvatar} size={40} />
+                {isActorSocial ? (
+                  <div className="cq-avatar-slot w-10 h-10 border border-cq-border">
+                    <AvatarDisplay avatar={actorAvatar} fitParent size={40} />
                   </div>
                 ) : null}
                 <div className="flex-1 min-w-0 space-y-1.5">
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-cq-foreground font-semibold text-sm min-w-0 flex-1">
-                      {isFriendRequest && notification.actorUsername
+                      {isActorSocial && notification.actorUsername
                         ? `@${notification.actorUsername}`
                         : notification.title}
                     </p>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   AnimatePresence,
   motion,
@@ -11,15 +11,12 @@ import {
 } from "framer-motion";
 
 const LORE_MESSAGES = [
-  "Preparing Your Adventure...",
-  "Gathering Quests...",
-  "Synchronizing XP...",
-  "Opening The Quad...",
-  "Awakening CQ Scanner...",
-  "Entering The Realm...",
+  "Preparing The Quad...",
+  "Gathering Campus Quests...",
+  "Summoning Guilds...",
+  "Scanning The Realm...",
+  "Loading Adventures...",
 ] as const;
-
-const MESSAGE_ROTATE_MS = 3200;
 
 const SPLASH_RAM_SRC = "/assets/ram-transparent.png";
 
@@ -44,7 +41,9 @@ type ArcaneSplashLoaderProps = {
 
 export function ArcaneSplashLoader({ progress, className = "" }: ArcaneSplashLoaderProps) {
   const reduceMotion = useReducedMotion();
-  const [messageIndex, setMessageIndex] = useState(0);
+  const [activeMessage] = useState(
+    () => LORE_MESSAGES[Math.floor(Math.random() * LORE_MESSAGES.length)] ?? LORE_MESSAGES[0],
+  );
   const [displayPct, setDisplayPct] = useState(0);
   const [sparkKey, setSparkKey] = useState(0);
   const [burstKey, setBurstKey] = useState(0);
@@ -111,38 +110,27 @@ export function ArcaneSplashLoader({ progress, className = "" }: ArcaneSplashLoa
     }
   }, [complete]);
 
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setMessageIndex((i) => (i + 1) % LORE_MESSAGES.length);
-    }, MESSAGE_ROTATE_MS);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const activeMessage = useMemo(() => LORE_MESSAGES[messageIndex] ?? LORE_MESSAGES[0], [messageIndex]);
-
-  const ramLeftStaticPx =
-    (Math.max(0, Math.min(100, progress)) / 100) * Math.max(0, travel.barW - travel.ramW);
-
   const ramMascot = (
-    <div className="cq-splash-ram-runner relative flex items-end justify-center">
+    <div
+      className={`cq-splash-ram-runner relative flex items-end justify-center ${complete || reduceMotion ? "" : "welcome-splash-ram-walker"}`}
+    >
+      <div className="welcome-splash-ram-glow pointer-events-none absolute inset-0 -z-[1] rounded-full" aria-hidden />
       <div className="cq-splash-ram-foot-glow pointer-events-none absolute bottom-0 left-1/2 z-0 h-3 w-[70%] -translate-x-1/2" aria-hidden />
       <img
         ref={ramImgRef}
         src={SPLASH_RAM_SRC}
         alt=""
-        width={200}
-        height={120}
-        className="cq-splash-ram-img relative z-[2] block w-auto max-w-none object-contain object-bottom"
-        style={{
-          opacity: 1,
-          filter: "none",
-          mixBlendMode: "normal",
-        }}
+        width={870}
+        height={755}
+        className="cq-splash-ram-img relative z-[2]"
         draggable={false}
         aria-hidden
       />
     </div>
   );
+
+  const ramLeftStaticPx =
+    (Math.max(0, Math.min(100, progress)) / 100) * Math.max(0, travel.barW - travel.ramW);
 
   const ramAnchorClass =
     "pointer-events-none absolute left-0 z-20 flex items-end cq-splash-ram-anchor";
@@ -176,7 +164,7 @@ export function ArcaneSplashLoader({ progress, className = "" }: ArcaneSplashLoa
       <div className="flex w-full flex-col items-center text-center">
         <div className="mb-4 flex w-full items-baseline justify-center gap-[clamp(0.375rem,2vw,0.5rem)]">
           <span className="cq-splash-status-label font-semibold uppercase text-cyan-200/80">
-            Adventure Loading
+            Gaining XP
           </span>
           <motion.span
             className="cq-splash-status-pct font-mono font-black tabular-nums text-cyan-100"
@@ -189,6 +177,35 @@ export function ArcaneSplashLoader({ progress, className = "" }: ArcaneSplashLoa
 
         <div className="cq-splash-road relative w-full overflow-visible">
           <div className="cq-splash-road-stage relative w-full overflow-visible">
+            <div className="cq-splash-ram-lane relative w-full overflow-visible">
+              {reduceMotion ? (
+                <div className={ramAnchorClass} style={{ left: ramLeftStaticPx }}>
+                  {ramMascot}
+                </div>
+              ) : (
+                <motion.div
+                  className={`${ramAnchorClass}${complete ? " cq-splash-ram-anchor--leap" : ""}`}
+                  style={{ left: ramLeftPx }}
+                  animate={
+                    complete
+                      ? {
+                          y: [0, -26, -10, 0],
+                          scale: [1, 1.08, 1.02, 1],
+                        }
+                      : { y: 0, scale: 1 }
+                  }
+                  transition={
+                    complete
+                      ? { duration: 0.62, ease: [0.22, 1, 0.36, 1], times: [0, 0.35, 0.65, 1] }
+                      : { duration: 0.2 }
+                  }
+                >
+                  {ramAnchorContent}
+                </motion.div>
+              )}
+            </div>
+
+            <div className="cq-splash-track-row relative w-full overflow-visible">
             <motion.div
               className={`cq-splash-track-rail-glow pointer-events-none absolute inset-x-0 bottom-0 z-0 translate-y-1/2 ${complete ? "cq-splash-track-rail-glow--complete" : ""}`}
               aria-hidden
@@ -301,33 +318,15 @@ export function ArcaneSplashLoader({ progress, className = "" }: ArcaneSplashLoa
                 </>
               ) : null}
             </AnimatePresence>
-
-            {reduceMotion ? (
-              <div className={ramAnchorClass} style={{ left: ramLeftStaticPx }}>
-                {ramMascot}
-              </div>
-            ) : (
-              <motion.div className={ramAnchorClass} style={{ left: ramLeftPx }}>
-                {ramAnchorContent}
-              </motion.div>
-            )}
+            </div>
           </div>
         </div>
       </div>
 
       <div className="relative min-h-[2.5rem] w-full text-center">
-        <AnimatePresence mode="wait">
-          <motion.p
-            key={activeMessage}
-            className="cq-splash-lore-text mx-auto w-full text-balance font-medium leading-snug text-white/88"
-            initial={reduceMotion ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
-            transition={{ duration: 0.45, ease: "easeInOut" }}
-          >
-            {activeMessage}
-          </motion.p>
-        </AnimatePresence>
+        <p className="cq-splash-lore-text mx-auto w-full text-balance font-medium leading-snug text-white/88">
+          {activeMessage}
+        </p>
       </div>
     </div>
   );

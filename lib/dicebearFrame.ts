@@ -1,9 +1,9 @@
-/** Safe DiceBear framing so the full head stays visible in circular avatars. */
+/** DiceBear framing tuned for full-bleed circular avatars (object-fit: cover behavior). */
 export const DICEBEAR_RENDER_SIZE = 128;
 
 export const DICEBEAR_SAFE_FRAME = {
   size: DICEBEAR_RENDER_SIZE,
-  scale: 75,
+  scale: 100,
   translateX: 0,
   translateY: 0,
   radius: 50,
@@ -13,8 +13,8 @@ const FRAME_OPTION_KEYS = new Set(["size", "scale", "translateX", "translateY", 
 
 export function clampDiceBearScale(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return DICEBEAR_SAFE_FRAME.scale;
-  if (value > 80) return DICEBEAR_SAFE_FRAME.scale;
-  if (value < 50) return DICEBEAR_SAFE_FRAME.scale;
+  if (value > 100) return 100;
+  if (value < 80) return DICEBEAR_SAFE_FRAME.scale;
   return Math.round(value);
 }
 

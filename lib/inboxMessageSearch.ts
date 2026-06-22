@@ -1,3 +1,5 @@
+import { conversationPreviewText, type DirectMessageType } from "@/lib/client/dmMessagesClient";
+
 export type InboxConversationRow = {
   conversationId: string;
   otherUser: {
@@ -11,6 +13,8 @@ export type InboxConversationRow = {
     senderId: string;
     recipientId: string;
     content: string;
+    type?: DirectMessageType;
+    previewText?: string;
     createdAt: string;
     readAt: string | null;
   } | null;
@@ -117,7 +121,7 @@ export function buildInboxMessageSearchResults(args: {
         username: conversation.otherUser.username,
         displayName: conversation.otherUser.displayName,
         avatar: conversation.otherUser.avatarUrl ?? "🎓",
-        subtitle: conversation.latestMessage?.content ?? "No messages yet",
+        subtitle: conversationPreviewText(conversation.latestMessage),
         meta: conversation.latestMessage?.createdAt ?? null,
         conversationId: conversation.conversationId,
       }));
@@ -140,7 +144,7 @@ export function buildInboxMessageSearchResults(args: {
       username: conversation.otherUser.username,
       displayName: conversation.otherUser.displayName,
       avatar: conversation.otherUser.avatarUrl ?? "🎓",
-      subtitle: conversation.latestMessage?.content ?? "No messages yet",
+      subtitle: conversationPreviewText(conversation.latestMessage),
       meta: conversation.latestMessage?.createdAt ?? null,
       conversationId: conversation.conversationId,
     }));

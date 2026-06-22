@@ -48,8 +48,13 @@ export const CATEGORY_META: Record<
   legendary: { label: "Legendary", icon: "👑", blurb: "Extremely rare accomplishments" },
 };
 
-export const HALL_OF_LEGENDS_TITLE = "THE HALL OF LEGENDS";
-export const HALL_OF_LEGENDS_SUBTITLE = "Every achievement tells part of your story.";
+export const TROPHY_ROOM_TITLE = "🏆 Trophy Room";
+export const TROPHY_ROOM_SUBTITLE = "Your achievements, collectibles, and milestones.";
+
+/** @deprecated Use TROPHY_ROOM_TITLE */
+export const HALL_OF_LEGENDS_TITLE = TROPHY_ROOM_TITLE;
+/** @deprecated Use TROPHY_ROOM_SUBTITLE */
+export const HALL_OF_LEGENDS_SUBTITLE = TROPHY_ROOM_SUBTITLE;
 
 export const ACHIEVEMENT_CATALOG: AchievementDef[] = [
   {

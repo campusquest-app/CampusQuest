@@ -19,9 +19,18 @@ import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { getCharacterById } from "@/lib/friendsStore";
 import type { FieldNote, Character } from "@/lib/types";
 import { FieldNoteCard } from "@/components/FieldNoteCard";
+import { QuadFeedSkeleton } from "@/components/QuadFeedSkeleton";
+import { ScreenDataState } from "@/components/ui/ScreenDataState";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { QuadCreatePostFab } from "@/components/QuadCreatePostFab";
+import { TopNav } from "@/components/TopNav";
+import { useScrollChrome } from "@/lib/client/useScrollChrome";
 import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
+import {
+  clearStaleAuthClientState,
+  hasClientAccessSession,
+  isMissingSessionError,
+} from "@/lib/client/authSessionClient";
 
 export type QuadFeedTab = QuadFeedType | "trending";
 
@@ -52,64 +61,184 @@ export function TheQuad({
   feedTab,
   onFeedTabChange,
   onViewAuthor,
+  onSharePost,
+  sessionReady = true,
+  onSessionMissing,
+  onOpenMenu,
+  onOpenInbox,
+  unreadNotificationCount,
+  chromeSuppressed = false,
 }: {
   character: Character;
   onRefresh?: () => void;
   feedTab: QuadFeedTab;
   onFeedTabChange: (tab: QuadFeedTab) => void;
   onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
+  onSharePost?: (note: FieldNote) => void;
+  /** When false, skip authed API calls (e.g. auth still bootstrapping). */
+  sessionReady?: boolean;
+  /** Called when authed APIs report a missing/expired session. */
+  onSessionMissing?: () => void;
+  onOpenMenu?: () => void;
+  onOpenInbox?: () => void;
+  unreadNotificationCount?: number;
+  /** Hide Quad chrome instantly (drawer, modals, overlays). */
+  chromeSuppressed?: boolean;
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [feedError, setFeedError] = useState<string | null>(null);
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
   const [postActionMessage, setPostActionMessage] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
   const quadHeaderRef = useRef<HTMLDivElement | null>(null);
+  const showQuadChrome = !chromeSuppressed;
+
+  useScrollChrome(showQuadChrome);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    document.documentElement.setAttribute("data-cq-on-quad", "true");
+    return () => {
+      document.documentElement.removeAttribute("data-cq-on-quad");
+      document.documentElement.removeAttribute("data-cq-quad-chrome");
+      document.documentElement.removeAttribute("data-cq-bottom-chrome");
+      document.documentElement.style.removeProperty("--cq-quad-header-offset");
+      document.documentElement.style.removeProperty("--cq-topnav-offset");
+      document.documentElement.style.removeProperty("--cq-topnav-h");
+      document.documentElement.style.removeProperty("--cq-quad-header-h");
+    };
+  }, []);
 
   const baseFeedType: QuadFeedType = feedTab === "friends" ? "friends" : "public";
 
-  const refresh = useCallback(async () => {
-    if (feedTab === "friends") {
-      try {
-        const remote = await fetchQuadFriendsPosts(character.id, 80);
-        let list = remote.map(enrichNote);
-        setNotes(cloneFeedNotesForDisplay(list));
-      } catch {
-        setNotes([]);
-      }
+  const handleSessionMissing = useCallback(() => {
+    clearStaleAuthClientState();
+    onSessionMissing?.();
+  }, [onSessionMissing]);
+
+  const refreshPlayerSnapshotSafe = useCallback(async () => {
+    if (!hasClientAccessSession()) return;
+    try {
       await refreshPlayerSnapshotFromServer();
-      onRefresh?.();
+    } catch (err) {
+      if (isMissingSessionError(err)) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("No active session, skipping player snapshot refresh");
+        }
+        handleSessionMissing();
+        return;
+      }
+      console.error("[cq:quad] player snapshot refresh failed", err);
+    }
+  }, [handleSessionMissing]);
+
+  const refresh = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    if (!sessionReady) return;
+    if (!hasClientAccessSession()) {
+      setFeedLoading(false);
       return;
+    }
+    if (!silent) {
+      setFeedLoading(true);
+      setFeedError(null);
     }
 
     try {
-      const remote = await fetchQuadHomePosts(character.id, 80);
-      mergeRemoteQuadPostsCache(remote);
-    } catch {
-      // Keep cached posts on transient failures so reactions are not lost in-session.
+      if (feedTab === "friends") {
+        try {
+          const remote = await fetchQuadFriendsPosts(character.id, 80);
+          const list = remote.map(enrichNote);
+          setNotes(cloneFeedNotesForDisplay(list));
+          setFeedError(null);
+        } catch (err) {
+          if (isMissingSessionError(err)) {
+            handleSessionMissing();
+            return;
+          }
+          setNotes([]);
+          setFeedError("Could not load your Following feed.");
+        }
+        await refreshPlayerSnapshotSafe();
+        onRefresh?.();
+        return;
+      }
+
+      let homeFetchFailed = false;
+      try {
+        const remote = await fetchQuadHomePosts(character.id, 80);
+        mergeRemoteQuadPostsCache(remote);
+      } catch (err) {
+        if (isMissingSessionError(err)) {
+          handleSessionMissing();
+          return;
+        }
+        homeFetchFailed = true;
+        // Keep cached posts on transient failures so reactions are not lost in-session.
+      }
+      let list = getFeed(character.id, baseFeedType).map(enrichNote);
+      if (feedTab === "trending") {
+        list = [...list].sort((a, b) => {
+          const diff = trendingScore(b) - trendingScore(a);
+          return diff !== 0 ? diff : b.createdAt - a.createdAt;
+        });
+      }
+      setNotes(cloneFeedNotesForDisplay(list));
+      if (homeFetchFailed && list.length === 0) {
+        setFeedError("Could not load The Quad right now.");
+      } else {
+        setFeedError(null);
+      }
+      await refreshPlayerSnapshotSafe();
+      onRefresh?.();
+    } finally {
+      setFeedLoading(false);
     }
-    let list = getFeed(character.id, baseFeedType).map(enrichNote);
-    if (feedTab === "trending") {
-      list = [...list].sort((a, b) => {
-        const diff = trendingScore(b) - trendingScore(a);
-        return diff !== 0 ? diff : b.createdAt - a.createdAt;
-      });
-    }
-    setNotes(cloneFeedNotesForDisplay(list));
-    await refreshPlayerSnapshotFromServer();
-    onRefresh?.();
-  }, [character.id, baseFeedType, feedTab, onRefresh]);
+  }, [
+    character.id,
+    baseFeedType,
+    feedTab,
+    onRefresh,
+    sessionReady,
+    handleSessionMissing,
+    refreshPlayerSnapshotSafe,
+  ]);
 
   const handlePullRefresh = useCallback(async () => {
-    await refresh();
+    await refresh({ silent: true });
   }, [refresh]);
 
   useEffect(() => {
+    setFeedLoading(true);
+    setNotes([]);
+  }, [feedTab]);
+
+  useEffect(() => {
+    if (!sessionReady || !hasClientAccessSession()) return undefined;
+
     const tid = scheduleNonCriticalWork(() => {
-      void refresh();
+      void refresh().catch((err) => {
+        if (!isMissingSessionError(err)) {
+          console.error("[cq:quad] refresh failed", err);
+        }
+      });
     });
-    const unsubscribe = subscribeSocialSync(() => void refresh());
+    const unsubscribe = subscribeSocialSync(() => {
+      void refresh({ silent: true }).catch((err) => {
+        if (!isMissingSessionError(err)) {
+          console.error("[cq:quad] refresh failed", err);
+        }
+      });
+    });
     const onFocus = () => {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState === "visible") {
+        void refresh({ silent: true }).catch((err) => {
+          if (!isMissingSessionError(err)) {
+            console.error("[cq:quad] refresh failed", err);
+          }
+        });
+      }
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
@@ -119,7 +248,7 @@ export function TheQuad({
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [refresh]);
+  }, [refresh, sessionReady]);
 
   useEffect(() => {
     if (!postActionMessage) return undefined;
@@ -128,6 +257,13 @@ export function TheQuad({
   }, [postActionMessage]);
 
   useLayoutEffect(() => {
+    if (!showQuadChrome) {
+      if (typeof document !== "undefined") {
+        document.documentElement.style.removeProperty(QUAD_HEADER_CSS_VAR);
+      }
+      return undefined;
+    }
+
     const el = quadHeaderRef.current;
     if (!el || typeof document === "undefined") return undefined;
 
@@ -151,7 +287,7 @@ export function TheQuad({
       window.visualViewport?.removeEventListener?.("resize", sync);
       document.documentElement.style.removeProperty(QUAD_HEADER_CSS_VAR);
     };
-  }, [feedTab]);
+  }, [feedTab, showQuadChrome]);
 
   const emptyCopy = useMemo(() => {
     if (feedTab === "friends") {
@@ -217,13 +353,13 @@ export function TheQuad({
 
   function handleVerify(noteId: string) {
     verifyFieldNote(noteId, character.id);
-    refresh();
+    void refresh({ silent: true });
     onRefresh?.();
   }
 
   function handleAssist(noteId: string) {
     assistFieldNote(noteId, character.id);
-    refresh();
+    void refresh({ silent: true });
     onRefresh?.();
   }
 
@@ -237,7 +373,7 @@ export function TheQuad({
         authorAvatar: character.avatar,
         body,
       },
-      onOptimistic: refresh,
+      onOptimistic: () => refresh({ silent: true }),
     }).then((result) => {
       if (!result.ok && result.message) {
         setPostActionMessage(result.message);
@@ -245,7 +381,10 @@ export function TheQuad({
     });
   }
 
-  const quadHeader = (
+  const quadChromeStackPadding =
+    "calc(var(--cq-topnav-offset, var(--cq-topnav-h, 0px)) + var(--cq-quad-header-offset, var(--cq-quad-header-h, 52px)))";
+
+  const quadHeader = showQuadChrome ? (
     <div
       ref={quadHeaderRef}
       className="cq-quad-header cq-nav-shell-quad fixed inset-x-0 z-40 w-full"
@@ -284,25 +423,59 @@ export function TheQuad({
         </div>
       </div>
     </div>
-  );
+  ) : null;
+
+  const quadTopChrome =
+    showQuadChrome && typeof document !== "undefined"
+      ? createPortal(
+          <>
+            <TopNav
+              username={character.username}
+              character={character}
+              onOpenMenu={onOpenMenu}
+              onOpenInbox={onOpenInbox}
+              unreadNotificationCount={unreadNotificationCount}
+            />
+            {quadHeader}
+          </>,
+          document.body,
+        )
+      : null;
+
+  const feedLoadingLabel =
+    feedTab === "friends"
+      ? "Loading Following feed…"
+      : feedTab === "trending"
+        ? "Loading trending posts…"
+        : "Loading The Quad…";
 
   return (
     <>
-      {typeof document !== "undefined" ? createPortal(quadHeader, document.body) : null}
+      {quadTopChrome}
 
       <PullToRefresh
         onRefresh={handlePullRefresh}
-        indicatorTop="calc(var(--cq-topnav-h, 56px) + var(--cq-quad-header-offset, var(--cq-quad-header-h, 52px)))"
+        indicatorTop={quadChromeStackPadding}
       >
       <div className="flex min-h-[50vh] w-full flex-col bg-cq-app">
         <div
           className="cq-quad-feed-body w-full flex-1"
-          style={{ paddingTop: "var(--cq-quad-header-offset, var(--cq-quad-header-h, 52px))" }}
+          style={{ paddingTop: showQuadChrome ? quadChromeStackPadding : "0px" }}
         >
-          {notes.length === 0 ? (
-            <div className="px-[2.5vw] py-16 text-center sm:px-[3vw]">
-              <p className="font-display text-base font-bold text-white">{emptyCopy.title}</p>
-              <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-white/55">{emptyCopy.body}</p>
+          {feedLoading ? (
+            <QuadFeedSkeleton label={feedLoadingLabel} />
+          ) : feedError ? (
+            <div className="px-[2.5vw] py-10 sm:px-[3vw]">
+              <ScreenDataState
+                variant="error"
+                message={feedError}
+                detail="Check your connection and try again."
+                onRetry={() => void refresh()}
+              />
+            </div>
+          ) : notes.length === 0 ? (
+            <div className="px-[2.5vw] py-10 sm:px-[3vw]">
+              <ScreenDataState variant="empty" message={emptyCopy.title} detail={emptyCopy.body} />
             </div>
           ) : (
             <div className="cq-quad-feed-stream">
@@ -351,6 +524,7 @@ export function TheQuad({
                   }}
                   onActionMessage={setPostActionMessage}
                   onViewAuthor={onViewAuthor}
+                  onSharePost={onSharePost}
                   currentUser={{
                     id: character.id,
                     name: character.name,
@@ -368,7 +542,7 @@ export function TheQuad({
       <QuadCreatePostFab
         feedTab={feedTab}
         character={character}
-        onPosted={refresh}
+        onPosted={() => refresh({ silent: true })}
       />
     </>
   );

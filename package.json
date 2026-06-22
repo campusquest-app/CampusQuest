@@ -15,6 +15,7 @@
     "logo:transparent": "node scripts/make-logo-transparent.cjs",
     "ram:transparent": "node scripts/make-ram-transparent.cjs",
     "db:apply-qr": "node scripts/apply-qr-tables-bootstrap.mjs",
+    "db:apply-dm": "node scripts/apply-dm-rich-messages.mjs",
     "verify:qr": "tsx scripts/verify-qr-reward.ts",
     "generate:gym-qr": "node scripts/generate-gym-qr.mjs"
   },

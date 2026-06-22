@@ -59,7 +59,7 @@ export function AchievementShowcaseModal({
               </p>
             </div>
             <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5 text-center">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/45">Legend score</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/45">Trophy score</p>
               <p className="mt-1 font-display text-lg font-bold text-uri-gold">{legendScore.toLocaleString()}</p>
             </div>
           </div>

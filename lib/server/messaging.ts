@@ -1,4 +1,12 @@
 import { ApiError } from "@/lib/server/http";
+import {
+  buildSharedPostPreview,
+  mapDirectMessageRow,
+  MESSAGE_SELECT,
+  type DirectMessageType,
+  type SharedPostType,
+} from "@/lib/server/dmRichMessages";
+import { mapPlayerPublicStats } from "@/lib/server/playerPublicStats";
 import { logNotificationError, logNotificationInfo } from "@/lib/server/notificationDebug";
 import {
   createFriendRequestNotification,
@@ -76,6 +84,27 @@ async function assertNotBlocked(userClient: SupabaseClientLike, userId: string, 
   }
 }
 
+/** Accepted friend user ids from `student_connections` (excludes the viewer). */
+export async function listAcceptedFriendUserIds(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+}): Promise<string[]> {
+  const { userClient, userId } = args;
+  const { data, error } = await userClient
+    .from("student_connections")
+    .select("requester_id, addressee_id")
+    .eq("status", "accepted")
+    .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+
+  if (error) throw new ApiError(400, error.message, "CONNECTIONS_FETCH_FAILED");
+
+  return Array.from(
+    new Set(
+      (data ?? []).map((row) => (row.requester_id === userId ? row.addressee_id : row.requester_id)),
+    ),
+  ).filter(Boolean);
+}
+
 export async function listConnections(args: { userClient: SupabaseClientLike; userId: string }) {
   const { userClient, userId } = args;
   const { data, error } = await userClient
@@ -93,7 +122,9 @@ export async function listConnections(args: { userClient: SupabaseClientLike; us
 
   const { data: profiles, error: profilesError } = await userClient
     .from("profiles")
-    .select("id, username, display_name, avatar_url, avatar_custom_json")
+    .select(
+      "id, username, display_name, avatar_url, avatar_custom_json, character_class_id, scholar_guild_id, streak_days, game_state_json, user_stats(level, total_xp, strength, stamina, knowledge, social, focus)",
+    )
     .in("id", otherUserIds);
   if (profilesError) throw new ApiError(400, profilesError.message, "CONNECTION_PROFILES_FETCH_FAILED");
 
@@ -103,6 +134,7 @@ export async function listConnections(args: { userClient: SupabaseClientLike; us
       const otherUserId = row.requester_id === userId ? row.addressee_id : row.requester_id;
       const profile = map.get(otherUserId);
       if (!profile) return null;
+      const player = mapPlayerPublicStats(profile);
       return {
         connectionId: row.id,
         userId: profile.id,
@@ -110,6 +142,14 @@ export async function listConnections(args: { userClient: SupabaseClientLike; us
         displayName: profile.display_name,
         avatarUrl: profile.avatar_url,
         avatarCustomJson: profile.avatar_custom_json,
+        relationshipStatus: "connected" as const,
+        level: player.level,
+        xp: player.xp,
+        streakDays: player.streakDays,
+        title: player.title,
+        guild: player.guild,
+        stats: player.stats,
+        statsAvailable: player.statsAvailable,
       };
     })
     .filter(Boolean);
@@ -601,7 +641,7 @@ export async function listConversations(args: { userClient: SupabaseClientLike; 
         .in("conversation_id", conversationIds),
       userClient
         .from("direct_messages")
-        .select("id, conversation_id, sender_id, recipient_id, content, created_at, read_at")
+        .select(MESSAGE_SELECT)
         .in("conversation_id", conversationIds)
         .order("created_at", { ascending: false }),
     ]);
@@ -645,16 +685,7 @@ export async function listConversations(args: { userClient: SupabaseClientLike; 
           displayName: profile.display_name,
           avatarUrl: profile.avatar_url,
         },
-        latestMessage: latest
-          ? {
-              id: latest.id,
-              senderId: latest.sender_id,
-              recipientId: latest.recipient_id,
-              content: latest.content,
-              createdAt: latest.created_at,
-              readAt: latest.read_at,
-            }
-          : null,
+        latestMessage: latest ? mapDirectMessageRow(latest, false) : null,
       };
     })
     .filter(Boolean);
@@ -672,7 +703,7 @@ export async function listConversationMessages(args: {
   const capped = Math.max(1, Math.min(100, limit));
   const { data, error } = await userClient
     .from("direct_messages")
-    .select("id, conversation_id, sender_id, recipient_id, content, created_at, read_at")
+    .select(MESSAGE_SELECT)
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(capped);
@@ -713,16 +744,7 @@ export async function listConversationMessages(args: {
     for (const r of favRows ?? []) favSet.add((r as { message_id: string }).message_id);
   }
 
-  return msgRows.reverse().map((message) => ({
-    id: message.id,
-    conversationId: message.conversation_id,
-    senderId: message.sender_id,
-    recipientId: message.recipient_id,
-    content: message.content,
-    createdAt: message.created_at,
-    readAt: message.read_at,
-    isFavorited: favSet.has(message.id),
-  }));
+  return msgRows.reverse().map((message) => mapDirectMessageRow(message, favSet.has(message.id)));
 }
 
 export async function setDirectMessageFavorite(args: {
@@ -801,15 +823,60 @@ export async function sendConversationMessage(args: {
   userClient: SupabaseClientLike;
   userId: string;
   conversationId: string;
-  content: string;
+  content?: string;
+  type?: DirectMessageType;
+  imageUrl?: string | null;
+  sharedPostId?: string | null;
+  sharedPostType?: SharedPostType | null;
+  metadata?: Record<string, unknown>;
 }) {
-  const { userClient, userId, conversationId, content } = args;
+  const {
+    userClient,
+    userId,
+    conversationId,
+    type = "text",
+    imageUrl = null,
+    sharedPostId = null,
+    sharedPostType = null,
+    metadata = {},
+  } = args;
   const admin = createAdminClient();
   await assertAccountCanSocialize(userClient, userId);
-  const trimmed = content.trim();
-  if (!trimmed) throw new ApiError(400, "Message content is required.", "VALIDATION_ERROR");
-  if (trimmed.length > 2000) throw new ApiError(400, "Message is too long.", "VALIDATION_ERROR");
   await assertConversationParticipant(userClient, userId, conversationId);
+
+  let trimmed = (args.content ?? "").trim();
+  let messageMetadata = { ...metadata };
+
+  if (type === "text") {
+    if (!trimmed) throw new ApiError(400, "Message content is required.", "VALIDATION_ERROR");
+  } else if (type === "image") {
+    const url = imageUrl?.trim();
+    if (!url) throw new ApiError(400, "Image URL is required.", "VALIDATION_ERROR");
+    if (!/^https?:\/\//i.test(url)) {
+      throw new ApiError(400, "Invalid image URL.", "VALIDATION_ERROR");
+    }
+    if (!trimmed) trimmed = "📷 Photo";
+  } else if (type === "shared_post") {
+    if (!sharedPostId) throw new ApiError(400, "sharedPostId is required.", "VALIDATION_ERROR");
+    if (!sharedPostType) throw new ApiError(400, "sharedPostType is required.", "VALIDATION_ERROR");
+    const preview = await buildSharedPostPreview({
+      userClient,
+      viewerId: userId,
+      postId: sharedPostId,
+      postType: sharedPostType,
+      locationName:
+        typeof metadata.locationName === "string" ? metadata.locationName : null,
+    });
+    if (preview.unavailable) {
+      throw new ApiError(404, "Post not found.", "SHARED_POST_NOT_FOUND");
+    }
+    messageMetadata = { ...messageMetadata, sharedPostPreview: preview };
+    if (!trimmed) trimmed = "Shared a post";
+  } else {
+    throw new ApiError(400, "Invalid message type.", "VALIDATION_ERROR");
+  }
+
+  if (trimmed.length > 2000) throw new ApiError(400, "Message is too long.", "VALIDATION_ERROR");
 
   const { data: participants, error: participantsError } = await admin
     .from("direct_conversation_participants")
@@ -835,18 +902,20 @@ export async function sendConversationMessage(args: {
   }
 
   const thirtySecondsAgo = new Date(Date.now() - 30_000).toISOString();
-  const { data: duplicateRecent, error: duplicateError } = await userClient
-    .from("direct_messages")
-    .select("id")
-    .eq("sender_id", userId)
-    .eq("recipient_id", recipient.user_id)
-    .eq("content", trimmed)
-    .gte("created_at", thirtySecondsAgo)
-    .limit(1)
-    .maybeSingle();
-  if (duplicateError) throw new ApiError(400, duplicateError.message, "MESSAGE_SPAM_CHECK_FAILED");
-  if (duplicateRecent) {
-    throw new ApiError(429, ABUSE_RATE_LIMIT_MESSAGE, "ABUSE_RATE_LIMITED");
+  if (type === "text") {
+    const { data: duplicateRecent, error: duplicateError } = await userClient
+      .from("direct_messages")
+      .select("id")
+      .eq("sender_id", userId)
+      .eq("recipient_id", recipient.user_id)
+      .eq("content", trimmed)
+      .gte("created_at", thirtySecondsAgo)
+      .limit(1)
+      .maybeSingle();
+    if (duplicateError) throw new ApiError(400, duplicateError.message, "MESSAGE_SPAM_CHECK_FAILED");
+    if (duplicateRecent) {
+      throw new ApiError(429, ABUSE_RATE_LIMIT_MESSAGE, "ABUSE_RATE_LIMITED");
+    }
   }
 
   const { data: inserted, error: insertedError } = await userClient
@@ -856,8 +925,13 @@ export async function sendConversationMessage(args: {
       sender_id: userId,
       recipient_id: recipient.user_id,
       content: trimmed,
+      type,
+      image_url: type === "image" ? imageUrl?.trim() ?? null : null,
+      shared_post_id: type === "shared_post" ? sharedPostId : null,
+      shared_post_type: type === "shared_post" ? sharedPostType : null,
+      metadata: messageMetadata,
     })
-    .select("id, conversation_id, sender_id, recipient_id, content, created_at, read_at")
+    .select(MESSAGE_SELECT)
     .single();
   if (insertedError || !inserted) {
     throw new ApiError(400, insertedError?.message ?? "Could not send message.", "MESSAGE_SEND_FAILED");
@@ -875,26 +949,58 @@ export async function sendConversationMessage(args: {
   ]);
 
   try {
+    const notifyBody =
+      type === "image"
+        ? trimmed !== "📷 Photo"
+          ? `📷 ${trimmed.slice(0, 100)}`
+          : "📷 Photo"
+        : type === "shared_post"
+          ? trimmed !== "Shared a post"
+            ? trimmed.slice(0, 120)
+            : "Shared a post"
+          : trimmed.slice(0, 120);
     await createNotification({
       userId: recipient.user_id,
       type: "direct_message",
       title: "New direct message",
-      body: trimmed.slice(0, 120),
+      body: notifyBody,
       relatedEntityType: "conversation",
       relatedEntityId: conversationId,
     });
   } catch {}
 
-  return {
-    id: inserted.id,
-    conversationId: inserted.conversation_id,
-    senderId: inserted.sender_id,
-    recipientId: inserted.recipient_id,
-    content: inserted.content,
-    createdAt: inserted.created_at,
-    readAt: inserted.read_at,
-    isFavorited: false,
-  };
+  return mapDirectMessageRow(inserted, false);
+}
+
+export async function sharePostToConversations(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  postId: string;
+  postType: SharedPostType;
+  conversationIds: string[];
+  optionalText?: string;
+  locationName?: string | null;
+}) {
+  const uniqueIds = Array.from(new Set(args.conversationIds.filter(Boolean)));
+  if (uniqueIds.length === 0) {
+    throw new ApiError(400, "Select at least one conversation.", "VALIDATION_ERROR");
+  }
+
+  const messages = [];
+  for (const conversationId of uniqueIds) {
+    const message = await sendConversationMessage({
+      userClient: args.userClient,
+      userId: args.userId,
+      conversationId,
+      type: "shared_post",
+      sharedPostId: args.postId,
+      sharedPostType: args.postType,
+      content: args.optionalText?.trim() || undefined,
+      metadata: args.locationName ? { locationName: args.locationName } : {},
+    });
+    messages.push(message);
+  }
+  return messages;
 }
 
 export async function blockUser(args: {

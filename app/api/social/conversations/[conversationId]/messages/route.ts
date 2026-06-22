@@ -37,11 +37,20 @@ export async function POST(request: Request, context: { params: { conversationId
     });
     const input = await readJson(request, sendDirectMessageSchema);
     touchUserActivityFromAuth(auth);
+    const type = input.type ?? "text";
+    if (type === "text" && !(input.content?.trim())) {
+      return fail(new ApiError(400, "Message content is required.", "VALIDATION_ERROR"));
+    }
     const message = await sendConversationMessage({
       userClient: auth.userClient,
       userId: auth.user.id,
       conversationId: context.params.conversationId,
       content: input.content,
+      type,
+      imageUrl: input.imageUrl,
+      sharedPostId: input.sharedPostId,
+      sharedPostType: input.sharedPostType,
+      metadata: input.metadata,
     });
     return ok({ message }, 201);
   } catch (error) {

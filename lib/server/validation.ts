@@ -107,7 +107,25 @@ export const directConversationSchema = z.object({
 });
 
 export const sendDirectMessageSchema = z.object({
-  content: z.string().trim().min(1).max(2000),
+  content: z.string().trim().max(2000).optional(),
+  type: z.enum(["text", "image", "shared_post"]).optional(),
+  imageUrl: z.string().trim().url().max(2048).optional(),
+  sharedPostId: uuidSchema.optional(),
+  sharedPostType: z.enum(["quad", "memory"]).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const dmImageUploadSchema = z.object({
+  conversationId: uuidSchema,
+  imageDataUrl: z.string().trim().min(32).max(8_000_000),
+});
+
+export const sharePostToDmSchema = z.object({
+  postId: uuidSchema,
+  postType: z.enum(["quad", "memory"]),
+  conversationIds: z.array(uuidSchema).min(1).max(20),
+  optionalText: z.string().trim().max(2000).optional(),
+  locationName: z.string().trim().max(120).optional(),
 });
 
 export const blockUserSchema = z.object({

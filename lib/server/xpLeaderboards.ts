@@ -4,6 +4,7 @@ import {
 } from "@/lib/server/accountSafety";
 import { xpToLevel } from "@/lib/level";
 import { ApiError } from "@/lib/server/http";
+import { listAcceptedFriendUserIds } from "@/lib/server/messaging";
 import { requireVerifiedSchoolForCoreAccess } from "@/lib/server/schoolVerification";
 import { createAdminClient } from "@/lib/server/supabase";
 
@@ -30,7 +31,7 @@ export function parseLeaderboardSort(searchParams: URLSearchParams): Leaderboard
   if (raw && (LEADERBOARD_SORT_MODES as readonly string[]).includes(raw)) {
     return raw as LeaderboardSortMode;
   }
-  return "level";
+  return "totalXp";
 }
 
 export type LeaderboardXpRow = {
@@ -40,6 +41,7 @@ export type LeaderboardXpRow = {
   displayName: string;
   level: number;
   totalXp: number;
+  streakDays: number;
   avatar: string;
   strength: number;
   stamina: number;
@@ -55,6 +57,8 @@ export type LeaderboardXpResponse = {
   currentUserRank: number | null;
   currentUserEntry: LeaderboardXpRow | null;
   totalRankedUsers: number;
+  /** Accepted friends in `student_connections` (viewer excluded). */
+  acceptedFriendCount: number;
 };
 
 function normalizedSchoolDomain(value: string) {
@@ -62,11 +66,22 @@ function normalizedSchoolDomain(value: string) {
 }
 
 function avatarPayload(p: {
-  avatar_custom_json?: string | null;
+  avatar_custom_json?: string | Record<string, unknown> | null;
   avatar_url?: string | null;
 }): string {
-  const j = (p.avatar_custom_json ?? "").trim();
-  if (j) return j;
+  const raw = p.avatar_custom_json;
+  if (raw != null) {
+    if (typeof raw === "string") {
+      const j = raw.trim();
+      if (j) return j;
+    } else if (typeof raw === "object") {
+      try {
+        return JSON.stringify(raw);
+      } catch {
+        // fall through
+      }
+    }
+  }
   const u = (p.avatar_url ?? "").trim();
   if (u) return u;
   return "🎓";
@@ -97,11 +112,19 @@ function sortKeyValue(entry: Omit<LeaderboardXpRow, "rank">, mode: LeaderboardSo
   }
 }
 
-function sortAndRank(entries: Omit<LeaderboardXpRow, "rank">[], mode: LeaderboardSortMode): LeaderboardXpRow[] {
+export function sortAndRank(entries: Omit<LeaderboardXpRow, "rank">[], mode: LeaderboardSortMode): LeaderboardXpRow[] {
   const sorted = [...entries].sort((a, b) => {
+    if (mode === "totalXp") {
+      if (b.totalXp !== a.totalXp) return b.totalXp - a.totalXp;
+      if (b.level !== a.level) return b.level - a.level;
+      if (b.streakDays !== a.streakDays) return b.streakDays - a.streakDays;
+      return a.username.localeCompare(b.username, undefined, { sensitivity: "base" });
+    }
     const diff = sortKeyValue(b, mode) - sortKeyValue(a, mode);
     if (diff !== 0) return diff;
     if (b.totalXp !== a.totalXp) return b.totalXp - a.totalXp;
+    if (b.level !== a.level) return b.level - a.level;
+    if (b.streakDays !== a.streakDays) return b.streakDays - a.streakDays;
     return a.username.localeCompare(b.username, undefined, { sensitivity: "base" });
   });
   return sorted.map((row, idx) => ({ ...row, rank: idx + 1 }));
@@ -132,6 +155,7 @@ type ProfileStatRow = {
   display_name: string;
   avatar_url: string | null;
   avatar_custom_json: string | null;
+  streak_days?: number | null;
   user_stats: UserStatsRow | UserStatsRow[] | null;
 };
 
@@ -162,9 +186,29 @@ function levelFromTotalXp(totalXp: number, storedLevel: number | null | undefine
   return calculated;
 }
 
-function mapProfileToEntry(row: ProfileStatRow): Omit<LeaderboardXpRow, "rank"> | null {
+export function mapProfileToLeaderboardEntry(row: ProfileStatRow): Omit<LeaderboardXpRow, "rank"> {
   const stats = Array.isArray(row.user_stats) ? row.user_stats[0] : row.user_stats;
-  if (!stats) return null;
+  const streakDays = Math.max(0, Number(row.streak_days ?? 0));
+
+  if (!stats) {
+    return {
+      userId: row.id,
+      username: row.username,
+      displayName: row.display_name,
+      level: 1,
+      totalXp: 0,
+      streakDays,
+      strength: 0,
+      stamina: 0,
+      knowledge: 0,
+      social: 0,
+      focus: 0,
+      bossesDefeated: 0,
+      finalBossesDefeated: 0,
+      avatar: avatarPayload(row),
+    };
+  }
+
   const s = stats as UserStatsRow;
   const totalXp = Math.max(0, Number(s.total_xp ?? 0));
   return {
@@ -173,6 +217,7 @@ function mapProfileToEntry(row: ProfileStatRow): Omit<LeaderboardXpRow, "rank"> 
     displayName: row.display_name,
     level: levelFromTotalXp(totalXp, s.level, row.id),
     totalXp,
+    streakDays,
     strength: Math.max(0, Number(s.strength ?? 0)),
     stamina: Math.max(0, Number(s.stamina ?? 0)),
     knowledge: Math.max(0, Number(s.knowledge ?? 0)),
@@ -185,10 +230,11 @@ function mapProfileToEntry(row: ProfileStatRow): Omit<LeaderboardXpRow, "rank"> 
 }
 
 async function fetchProfilesAndStats(admin: SupabaseClientLike, userIds: string[]) {
+  if (userIds.length === 0) return [];
   const { data: profiles, error } = await admin
     .from("profiles")
     .select(
-      "id, username, display_name, avatar_url, avatar_custom_json, user_stats(level, total_xp, strength, stamina, knowledge, social, focus, bosses_defeated, final_bosses_defeated)",
+      "id, username, display_name, avatar_url, avatar_custom_json, streak_days, user_stats(level, total_xp, strength, stamina, knowledge, social, focus, bosses_defeated, final_bosses_defeated)",
     )
     .in("id", userIds);
   if (error) throw new ApiError(400, error.message, "LEADERBOARD_PROFILES_FETCH_FAILED");
@@ -222,6 +268,22 @@ async function reconcileStaleStoredLevels(admin: SupabaseClientLike, rows: Profi
       admin.from("user_stats").update({ level }).eq("user_id", user_id),
     ),
   );
+}
+
+function buildLeaderboardResponse(args: {
+  ranked: LeaderboardXpRow[];
+  userId: string;
+  acceptedFriendCount: number;
+}): LeaderboardXpResponse {
+  const { ranked, userId, acceptedFriendCount } = args;
+  const me = ranked.find((r) => r.userId === userId) ?? null;
+  return {
+    topUsers: ranked.slice(0, XP_LEADERBOARD_TOP_LIMIT),
+    currentUserRank: me?.rank ?? null,
+    currentUserEntry: me,
+    totalRankedUsers: ranked.length,
+    acceptedFriendCount,
+  };
 }
 
 export async function fetchCampusXpLeaderboard(args: {
@@ -263,28 +325,18 @@ export async function fetchCampusXpLeaderboard(args: {
   const userIdsEligible = candidateIds.filter((id) => allowedSafety.has(id));
 
   if (userIdsEligible.length === 0) {
-    return { topUsers: [], currentUserRank: null, currentUserEntry: null, totalRankedUsers: 0 };
+    return buildLeaderboardResponse({ ranked: [], userId, acceptedFriendCount: 0 });
   }
 
   const profilesRows = await fetchProfilesAndStats(admin, userIdsEligible);
   const baseEntries: Omit<LeaderboardXpRow, "rank">[] = [];
   for (const row of profilesRows) {
-    const mapped = mapProfileToEntry(row);
-    if (mapped && allowedSafety.has(mapped.userId)) baseEntries.push(mapped);
+    const mapped = mapProfileToLeaderboardEntry(row);
+    if (allowedSafety.has(mapped.userId)) baseEntries.push(mapped);
   }
 
-  const ranked = sortAndRank(baseEntries, sort);
-  const totalRankedUsers = ranked.length;
-  const me = ranked.find((r) => r.userId === userId);
-
-  const topUsers = ranked.slice(0, XP_LEADERBOARD_TOP_LIMIT);
-
-  return {
-    topUsers,
-    currentUserRank: me?.rank ?? null,
-    currentUserEntry: me ?? null,
-    totalRankedUsers,
-  };
+  const ranked = sortAndRank(baseEntries, "totalXp");
+  return buildLeaderboardResponse({ ranked, userId, acceptedFriendCount: 0 });
 }
 
 export async function fetchFriendsXpLeaderboard(args: {
@@ -300,7 +352,7 @@ export async function fetchFriendsXpLeaderboard(args: {
   const nowMs = Date.now();
 
   await assertAccountCanSocialize(userClient, userId);
-  const school = await requireVerifiedSchoolForCoreAccess({
+  await requireVerifiedSchoolForCoreAccess({
     userClient,
     user: {
       id: userId,
@@ -310,77 +362,50 @@ export async function fetchFriendsXpLeaderboard(args: {
     },
   });
 
-  const [{ data: outRows, error: outErr }, { data: inRows, error: inErr }] = await Promise.all([
-    userClient
-      .from("student_connections")
-      .select("addressee_id")
-      .eq("requester_id", userId)
-      .eq("status", "accepted"),
-    userClient
-      .from("student_connections")
-      .select("requester_id")
-      .eq("addressee_id", userId)
-      .eq("status", "accepted"),
-  ]);
+  const friendIds = await listAcceptedFriendUserIds({ userClient, userId });
+  const acceptedFriendCount = friendIds.length;
 
-  if (outErr) throw new ApiError(400, outErr.message, "FRIENDS_LEADERBOARD_OUT_FAILED");
-  if (inErr) throw new ApiError(400, inErr.message, "FRIENDS_LEADERBOARD_IN_FAILED");
-
-  const friendIds = Array.from(
-    new Set([
-      ...(outRows ?? []).map((r: any) => r.addressee_id as string),
-      ...(inRows ?? []).map((r: any) => r.requester_id as string),
-    ]),
-  ).filter(Boolean);
-
-  if (friendIds.length === 0) {
-    return { topUsers: [], currentUserRank: null, currentUserEntry: null, totalRankedUsers: 0 };
+  if (acceptedFriendCount === 0) {
+    return buildLeaderboardResponse({ ranked: [], userId, acceptedFriendCount: 0 });
   }
 
-  const viewerDomain = normalizedSchoolDomain(school.schoolDomain ?? "");
-
-  const { data: friendVerifs, error: fvErr } = await admin
-    .from("user_school_verifications")
-    .select("user_id, school_domain, status")
-    .in("user_id", friendIds);
-  if (fvErr) throw new ApiError(400, fvErr.message, "FRIENDS_LEADERBOARD_SCHOOL_LOOKUP_FAILED");
-
-  const sameCampusFriendIds = friendIds.filter((fid) => {
-    const fv = (friendVerifs ?? []).find((row: any) => row.user_id === fid);
-    return (
-      fv?.status === "verified" &&
-      normalizedSchoolDomain(String((fv as any).school_domain ?? "")) === viewerDomain
-    );
-  });
-
-  if (sameCampusFriendIds.length === 0) {
-    return { topUsers: [], currentUserRank: null, currentUserEntry: null, totalRankedUsers: 0 };
-  }
-
-  const cohortIds = Array.from(new Set([userId, ...sameCampusFriendIds]));
+  /** Viewer + accepted friends — same source as Friends tab (`student_connections`). */
+  const cohortIds = Array.from(new Set([userId, ...friendIds]));
   const safetyAllowedSet = await loadSafetyAllowedSet(admin, cohortIds, nowMs);
-
-  /** Only peers that pass safety screening are ranked (viewer excluded from empty check already). */
   const rankedIdsAll = cohortIds.filter((id) => safetyAllowedSet.has(id));
 
   const profilesRows = await fetchProfilesAndStats(admin, rankedIdsAll);
 
+  const profileById = new Map(profilesRows.map((row) => [row.id, row]));
   const baseEntries: Omit<LeaderboardXpRow, "rank">[] = [];
-  for (const row of profilesRows) {
-    const mapped = mapProfileToEntry(row);
-    if (mapped && safetyAllowedSet.has(mapped.userId)) baseEntries.push(mapped);
+  for (const id of rankedIdsAll) {
+    const row = profileById.get(id);
+    if (!row) {
+      console.warn("[cq][leaderboard] friends cohort profile missing", { userId, missingUserId: id });
+      continue;
+    }
+    baseEntries.push(mapProfileToLeaderboardEntry(row));
   }
 
-  const ranked = sortAndRank(baseEntries, sort);
-  const totalRankedUsers = ranked.length;
-  const me = ranked.find((r) => r.userId === userId);
+  const ranked = sortAndRank(baseEntries, "totalXp");
 
-  const topUsers = ranked.slice(0, XP_LEADERBOARD_TOP_LIMIT);
+  if (acceptedFriendCount > 0 && ranked.length === 0) {
+    console.error("[cq][leaderboard] friends leaderboard empty despite accepted connections", {
+      userId,
+      acceptedFriendCount,
+      cohortIds,
+      rankedIdsAll,
+      profilesFetched: profilesRows.length,
+      sort,
+    });
+  } else if (process.env.NODE_ENV !== "production") {
+    console.info("[cq][leaderboard] friends cohort", {
+      userId,
+      acceptedFriendCount,
+      totalRankedUsers: ranked.length,
+      viewerRank: ranked.find((row) => row.userId === userId)?.rank ?? null,
+    });
+  }
 
-  return {
-    topUsers,
-    currentUserRank: me?.rank ?? null,
-    currentUserEntry: me ?? null,
-    totalRankedUsers,
-  };
+  return buildLeaderboardResponse({ ranked, userId, acceptedFriendCount });
 }

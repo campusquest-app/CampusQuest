@@ -35,6 +35,8 @@ type ConversationItem = {
     senderId: string;
     recipientId: string;
     content: string;
+    type?: "text" | "image" | "shared_post";
+    previewText?: string;
     createdAt: string;
     readAt: string | null;
   } | null;
@@ -342,8 +344,8 @@ export function Inbox({
                     onClick={() => handleOpenSearchResult(result)}
                     className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-cq-elevated"
                   >
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-cq-border bg-cq-elevated">
-                      <AvatarDisplay avatar={result.avatar} size={44} />
+                    <div className="cq-avatar-slot h-11 w-11 border border-cq-border bg-cq-elevated">
+                      <AvatarDisplay avatar={result.avatar} fitParent size={44} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">

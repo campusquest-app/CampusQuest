@@ -18,7 +18,27 @@ export class ApiRequestError extends Error {
     public readonly details?: unknown,
   ) {
     super(message);
+    this.name = "ApiRequestError";
   }
+}
+
+/** Thrown client-side when Bearer token is unavailable before an authed request. */
+export class AuthSessionMissingError extends ApiRequestError {
+  constructor(message = "Session required. Sign in from CampusQuest, then try again.") {
+    super(message, 401, CQ_MISSING_SESSION_CODE);
+    this.name = "AuthSessionMissingError";
+  }
+}
+
+export function isMissingSessionError(error: unknown): boolean {
+  if (error instanceof AuthSessionMissingError) return true;
+  if (error instanceof ApiRequestError && error.code === CQ_MISSING_SESSION_CODE) return true;
+  if (error instanceof Error && error.message.includes("Session required")) return true;
+  if (error instanceof ApiRequestError && error.status === 401) {
+    const msg = error.message.toLowerCase();
+    return msg.includes("session") || msg.includes("sign in");
+  }
+  return false;
 }
 
 /** Dev-only diagnostics; never logs tokens or cookies. */
@@ -36,11 +56,7 @@ function logAuthedRequestDev(payload: {
 
 function missingSessionThrow(method: string, path: string): never {
   logAuthedRequestDev({ phase: "pre", method, path, sessionPresent: false });
-  throw new ApiRequestError(
-    "Session required. Sign in from CampusQuest, then try again.",
-    401,
-    CQ_MISSING_SESSION_CODE,
-  );
+  throw new AuthSessionMissingError();
 }
 
 function formatDevHttpMessage(path: string, status: number, statusText: string, fallback?: string) {

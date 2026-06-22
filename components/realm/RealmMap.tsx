@@ -24,6 +24,7 @@ import {
 } from "@/lib/client/realmMarkerPositionsClient";
 import { fetchAuthed } from "@/lib/client/dashboardApi";
 import { fetchRealmMoments, mapApiMomentToRealmMoment } from "@/lib/client/realmMomentsClient";
+import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 
 type ExternalMapEventMarker = {
   id: string;
@@ -44,6 +45,8 @@ import { RealmMapDebugPanel } from "./RealmMapDebugPanel";
 import { RealmMarkerEditorPanel, type RealmMarkerEditorDebug } from "./RealmMarkerEditorPanel";
 import { RealmPathsLayer } from "./RealmPathsLayer";
 import { useRealmMapDiagnostics } from "./useRealmMapDiagnostics";
+import { useMapMarkerTap } from "@/lib/client/mapMarkerTap";
+import { ScreenDataState } from "@/components/ui/ScreenDataState";
 
 const MAP_ASPECT = REALM_MAP_VIEW_WIDTH / REALM_MAP_VIEW_HEIGHT;
 const MAP_BASE_WIDTH = 920;
@@ -74,6 +77,7 @@ export function RealmMap({
   onViewQuests,
   onCreatePost,
   onViewProfile,
+  onSharePost,
   viewer = null,
   userId = null,
   isAdmin = false,
@@ -82,6 +86,7 @@ export function RealmMap({
   onViewQuests?: (location: RealmLocation) => void;
   onCreatePost?: () => void;
   onViewProfile?: (userId: string) => void;
+  onSharePost?: (target: SharePostTarget) => void;
   viewer?: { id: string; name: string; username: string; avatar: string } | null;
   userId?: string | null;
   isAdmin?: boolean;
@@ -100,6 +105,7 @@ export function RealmMap({
   const [savePending, setSavePending] = useState(false);
   const [sheetInitialView, setSheetInitialView] = useState<"archive" | "overview">("archive");
   const [momentsLoaded, setMomentsLoaded] = useState(false);
+  const [momentsLoadError, setMomentsLoadError] = useState<string | null>(null);
   const [momentsByLocation, setMomentsByLocation] = useState<Record<string, ReturnType<typeof mapApiMomentToRealmMoment>[]>>({});
   const [externalEventMarkers, setExternalEventMarkers] = useState<ExternalMapEventMarker[]>([]);
   const [selectedExternalEvent, setSelectedExternalEvent] = useState<ExternalMapEventMarker | null>(null);
@@ -137,6 +143,7 @@ export function RealmMap({
   });
 
   const loadRealmMoments = useCallback(async () => {
+    setMomentsLoadError(null);
     try {
       const rows = await fetchRealmMoments();
       const grouped: Record<string, ReturnType<typeof mapApiMomentToRealmMoment>[]> = {};
@@ -149,6 +156,7 @@ export function RealmMap({
       setMomentsByLocation(grouped);
     } catch {
       setMomentsByLocation({});
+      setMomentsLoadError("Could not load campus moments for The Realm.");
     } finally {
       setMomentsLoaded(true);
     }
@@ -221,9 +229,6 @@ export function RealmMap({
   const openLocation = useCallback(
     (location: RealmLocation) => {
       if (editMode) return;
-      if (process.env.NODE_ENV === "development") {
-        console.log("[RealmMap] pin clicked:", location.id, location.name);
-      }
       setSelectedLocation(location);
       setActiveMarkerId(location.id);
       setSheetInitialView("archive");
@@ -231,18 +236,6 @@ export function RealmMap({
     },
     [editMode],
   );
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === "development" && selectedLocation) {
-      console.log("[RealmMap] selectedLocation:", selectedLocation.id, selectedLocation.name);
-    }
-  }, [selectedLocation]);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === "development") {
-      console.log("[RealmMap] archive sheet open:", sheetOpen);
-    }
-  }, [sheetOpen]);
 
   const closeSheet = useCallback(() => {
     setSheetOpen(false);
@@ -334,6 +327,23 @@ export function RealmMap({
 
   return (
     <>
+      {!momentsLoaded ? (
+        <ScreenDataState variant="loading" message="Loading The Realm…" compact className="mb-3" />
+      ) : null}
+      {momentsLoadError ? (
+        <div className="mb-3">
+          <ScreenDataState
+            variant="error"
+            message={momentsLoadError}
+            detail="The map is still available. Retry to load landmark moments."
+            onRetry={() => {
+              setMomentsLoaded(false);
+              void loadRealmMoments();
+            }}
+            compact
+          />
+        </div>
+      ) : null}
       <div
         ref={mapRootRef}
         data-cq-gesture-block="all"
@@ -356,8 +366,9 @@ export function RealmMap({
             disabled: mapPanningDisabled,
             velocityDisabled: false,
             wheelPanning: false,
-            excluded: ["realm-pin", "realm-map-markers"],
+            excluded: ["realm-pin", "realm-map-markers", "map-pin", "realm-external-event-pin", "realm-marker", "location-marker"],
           }}
+          doubleClick={{ disabled: true }}
           alignmentAnimation={{ animationTime: 280, velocityAlignmentTime: 320 }}
           onPanningStart={() => {
             if (!mapPanningDisabled) setPanning(true);
@@ -387,7 +398,7 @@ export function RealmMap({
 
                 <div
                   data-no-drawer-swipe="true"
-                  className={`realm-map-markers absolute inset-0 z-[3] ${editMode ? "realm-map-markers--edit" : "pointer-events-none"}`}
+                  className={`realm-map-markers absolute inset-0 z-[10] ${editMode ? "realm-map-markers--edit" : ""}`}
                   style={{ "--realm-map-scale": mapScale } as React.CSSProperties}
                 >
                   {locations.map((location) => (
@@ -460,6 +471,7 @@ export function RealmMap({
         onCreatePost={handleCreatePost}
         onRefreshMoments={loadRealmMoments}
         onViewProfile={onViewProfile}
+        onSharePost={onSharePost}
       />
 
       {selectedExternalEvent ? (
@@ -509,17 +521,22 @@ function ExternalEventPin({
   active: boolean;
   onTap: () => void;
 }) {
+  const { onPointerDown, onPointerUp, onClick } = useMapMarkerTap(onTap);
+
   return (
     <button
       type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        onTap();
-      }}
-      className={`realm-external-event-pin touch-manipulation ${active ? "realm-external-event-pin--active" : ""}`}
+      onClick={onClick}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      className={`realm-external-event-pin realm-marker location-marker map-pin touch-manipulation ${
+        active ? "realm-external-event-pin--active" : ""
+      }`}
       style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
       aria-label={`${marker.title}. URInvolved event.`}
       data-external-event-id={marker.id}
+      data-map-marker="true"
+      data-no-drawer-swipe="true"
     >
       <span className="realm-external-event-pin-dot" aria-hidden>
         📅
@@ -558,10 +575,17 @@ function LocationPin({
   const hasActiveQuest = location.activeQuests > 0;
   const hasActiveMoments = (location.activeMomentCount ?? location.moments.length) > 0;
   const dragRef = useRef({ active: false, pointerId: -1, moved: false });
+  const { onPointerDown: onTapPointerDown, onPointerUp: onTapPointerUp, onClick: onTapClick } = useMapMarkerTap(
+    onTap,
+    editMode,
+  );
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     e.stopPropagation();
-    if (!editMode) return;
+    if (!editMode) {
+      onTapPointerDown(e);
+      return;
+    }
 
     dragRef.current = { active: true, pointerId: e.pointerId, moved: false };
     onSelect();
@@ -582,7 +606,10 @@ function LocationPin({
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!editMode) return;
+    if (!editMode) {
+      onTapPointerUp(e);
+      return;
+    }
     if (e.pointerId !== dragRef.current.pointerId) return;
 
     e.stopPropagation();
@@ -599,21 +626,15 @@ function LocationPin({
     }
   };
 
-  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation();
-    if (editMode) return;
-    onTap();
-  };
-
   return (
     <button
       type="button"
-      onClick={handleClick}
-      onPointerDown={editMode ? handlePointerDown : (e) => e.stopPropagation()}
+      onClick={editMode ? (e) => e.stopPropagation() : onTapClick}
+      onPointerDown={handlePointerDown}
       onPointerMove={editMode ? handlePointerMove : undefined}
-      onPointerUp={editMode ? handlePointerUp : undefined}
+      onPointerUp={handlePointerUp}
       onPointerCancel={editMode ? handlePointerUp : undefined}
-      className={`realm-pin map-pin group touch-manipulation ${
+      className={`realm-pin realm-marker location-marker map-pin group touch-manipulation ${
         active ? "realm-pin--active" : ""
       } ${hasActiveQuest && !editMode ? "realm-pin--quest" : ""} ${
         hasActiveMoments && !editMode ? "realm-pin--moments" : ""
@@ -626,6 +647,8 @@ function LocationPin({
           : `${location.name}. Tap for details.`
       }
       data-location-id={location.id}
+      data-map-marker="true"
+      data-no-drawer-swipe="true"
     >
       {hasActiveQuest && !editMode ? <span className="realm-pin-quest-glow" aria-hidden /> : null}
       {hasActiveMoments && !editMode ? <span className="realm-pin-moments-glow" aria-hidden /> : null}

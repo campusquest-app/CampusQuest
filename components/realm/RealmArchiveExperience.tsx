@@ -10,6 +10,7 @@ import {
   MapPin,
   MessageCircle,
   MoreHorizontal,
+  Share2,
 } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { PostCommentsSheet } from "@/components/posts/PostCommentsSheet";
@@ -27,6 +28,8 @@ import { submitQuadComment } from "@/lib/client/quadCommentActions";
 import { avatarPayloadForDisplay, getMomentCaption } from "@/lib/realm/momentDisplay";
 import type { RealmLocation, RealmMoment } from "@/lib/realm/locations";
 import type { FieldNote } from "@/lib/types";
+import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
+import { buildShareTargetFromFieldNote, buildShareTargetFromRealmMoment } from "@/lib/client/dmMessagesClient";
 
 const SWIPE_COMMIT_PX = 72;
 const SWIPE_MAX_DRAG_PX = 140;
@@ -42,6 +45,7 @@ export function RealmArchiveExperience({
   viewer,
   onCreatePost,
   onViewProfile,
+  onSharePost,
 }: {
   location: RealmLocation;
   moments: RealmMoment[];
@@ -49,6 +53,7 @@ export function RealmArchiveExperience({
   viewer: Viewer | null;
   onCreatePost?: () => void;
   onViewProfile?: (userId: string) => void;
+  onSharePost?: (target: SharePostTarget) => void;
 }) {
   const reduceMotion = useReducedMotion();
   const [index, setIndex] = useState(0);
@@ -229,6 +234,12 @@ export function RealmArchiveExperience({
     } finally {
       setDetailLoading(false);
     }
+  }
+
+  function handleShareMemory() {
+    if (!active || !onSharePost) return;
+    const target = buildShareTargetFromRealmMoment(active, location.name);
+    if (target) onSharePost(target);
   }
 
   function syncOpenNotes() {
@@ -457,6 +468,15 @@ export function RealmArchiveExperience({
           </button>
           <button
             type="button"
+            onClick={handleShareMemory}
+            disabled={!viewer || !onSharePost}
+            className="cq-realm-archive-icon-btn"
+            aria-label="Share memory"
+          >
+            <Share2 className="h-[18px] w-[18px]" />
+          </button>
+          <button
+            type="button"
             onClick={() => void openDetail(active)}
             disabled={detailLoading || !viewer}
             className="cq-realm-archive-primary-btn"
@@ -534,6 +554,14 @@ export function RealmArchiveExperience({
                 }
               : undefined
           }
+          onSharePost={
+            onSharePost
+              ? (note) => {
+                  const target = buildShareTargetFromFieldNote(note, "memory");
+                  if (target) onSharePost(target);
+                }
+              : undefined
+          }
         />
       ) : null}
     </div>
@@ -580,11 +608,11 @@ function ArchiveCardFace({
       className="cq-realm-archive-avatar touch-manipulation transition hover:opacity-90"
       aria-label={`View ${moment.displayName}'s profile`}
     >
-      <AvatarDisplay avatar={avatarPayloadForDisplay(moment.authorAvatar)} size={30} showProp={false} />
+      <AvatarDisplay avatar={avatarPayloadForDisplay(moment.authorAvatar)} fitParent size={32} showProp={false} />
     </button>
   ) : (
     <span className="cq-realm-archive-avatar">
-      <AvatarDisplay avatar={avatarPayloadForDisplay(moment.authorAvatar)} size={30} showProp={false} />
+      <AvatarDisplay avatar={avatarPayloadForDisplay(moment.authorAvatar)} fitParent size={32} showProp={false} />
     </span>
   );
 

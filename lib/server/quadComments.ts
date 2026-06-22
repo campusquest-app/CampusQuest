@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/server/http";
 import { assertModerationSafeText } from "@/lib/server/security";
+import { notifyQuadPostCommented } from "@/lib/server/quadPostNotifications";
 import { createAdminClient } from "@/lib/server/supabase";
 
 type SupabaseClientLike = ReturnType<typeof createAdminClient>;
@@ -95,7 +96,14 @@ export async function addQuadPostComment(args: {
 }) {
   const { userClient, userId, postId, body } = args;
   assertModerationSafeText({ text: body, field: "comment", maxLen: 200 });
-  await assertQuadPostReadable(userClient, postId);
+
+  const { data: postRow, error: postError } = await userClient
+    .from("quad_posts")
+    .select("id, user_id")
+    .eq("id", postId)
+    .maybeSingle();
+  if (postError) throw new ApiError(400, postError.message, "QUAD_POST_LOOKUP_FAILED");
+  if (!postRow) throw new ApiError(404, "Post not found.", "QUAD_POST_NOT_FOUND");
 
   const { data, error } = await userClient
     .from("quad_post_comments")
@@ -105,5 +113,19 @@ export async function addQuadPostComment(args: {
   if (error) throw new ApiError(400, error.message, "QUAD_COMMENT_CREATE_FAILED");
 
   const profileMap = await loadCommentProfiles(userClient, [userId]);
-  return formatQuadPostComment(data as QuadPostCommentRow, profileMap.get(userId) as CommentProfile | undefined);
+  const profile = profileMap.get(userId) as CommentProfile | undefined;
+  const comment = formatQuadPostComment(data as QuadPostCommentRow, profile);
+
+  if (postRow.user_id !== userId) {
+    await notifyQuadPostCommented({
+      postOwnerUserId: postRow.user_id,
+      actorUserId: userId,
+      actorUsername: profile?.username ?? "someone",
+      postId,
+      commentId: comment.id,
+      commentBody: body,
+    });
+  }
+
+  return comment;
 }

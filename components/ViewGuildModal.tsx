@@ -204,8 +204,8 @@ export function ViewGuildModal({
                   const canSetCofounder = isCreator && !isFounder && id !== guild.cofounderUserId;
                   return (
                     <li key={id} className="flex items-center gap-3 p-2 rounded-lg bg-white/5 border border-white/10">
-                      <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center overflow-hidden flex-shrink-0">
-                        {c ? <AvatarDisplay avatar={c.avatar} size={36} /> : <span className="text-lg opacity-60">👤</span>}
+                      <div className="cq-avatar-slot w-9 h-9 bg-white/10">
+                        {c ? <AvatarDisplay avatar={c.avatar} fitParent size={36} /> : <span className="text-lg opacity-60">👤</span>}
                       </div>
                       <div className="min-w-0 flex-1">
                         {c ? (

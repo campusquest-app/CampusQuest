@@ -32,6 +32,7 @@ export function FieldNoteComposer({
   const [visibility, setVisibility] = useState<QuadPostVisibility>(defaultVisibility);
   const [locationId, setLocationId] = useState<RealmLocationId | "">("");
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const proofFileRef = useRef<HTMLInputElement>(null);
 
@@ -90,6 +91,7 @@ export function FieldNoteComposer({
     }
     setError(null);
     setSuccessMessage(null);
+    setIsSubmitting(true);
     try {
       const selectedLocation = REALM_LOCATION_OPTIONS.find((l) => l.id === locationId);
       const { note, realmMoment } = await createQuadPostRequest(
@@ -134,6 +136,8 @@ export function FieldNoteComposer({
           ? detail
           : "Could not post right now. Check your connection and try again.",
       );
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -272,8 +276,8 @@ export function FieldNoteComposer({
       {successMessage ? <p className="cq-composer-success">{successMessage}</p> : null}
       {error ? <p className="cq-composer-error">{error}</p> : null}
 
-      <button type="submit" disabled={!body.trim()} className="cq-composer-btn-submit">
-        {visibility === "public" ? "Post to Public Quad" : "Post to Following only"}
+      <button type="submit" disabled={!body.trim() || isSubmitting} className="cq-composer-btn-submit">
+        {isSubmitting ? "Posting…" : visibility === "public" ? "Post to Public Quad" : "Post to Following only"}
       </button>
     </form>
   );

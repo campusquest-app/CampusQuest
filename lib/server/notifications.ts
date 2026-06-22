@@ -23,6 +23,8 @@ export type CampusNotificationType =
   | "direct_message"
   | "connection_accepted"
   | "friend_request"
+  | "quad_post_like"
+  | "quad_post_comment"
   | "event_rsvp_reminder"
   | "organization_event_announcement"
   | "moderation_safety_update"

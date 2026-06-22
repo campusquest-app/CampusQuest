@@ -22,6 +22,7 @@ export function ProfilePostDetail({
   onPostUpdated,
   onPostDeleted,
   onViewAuthor,
+  onSharePost,
 }: {
   note: FieldNote;
   currentUserId: string;
@@ -37,6 +38,7 @@ export function ProfilePostDetail({
   onPostUpdated?: (note: FieldNote) => void;
   onPostDeleted?: (postId: string) => void;
   onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
+  onSharePost?: (note: FieldNote) => void;
 }) {
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -86,6 +88,7 @@ export function ProfilePostDetail({
             onClose();
           }}
           onViewAuthor={onViewAuthor}
+          onSharePost={onSharePost}
         />
       </div>
     </MobileSwipeBackSurface>,

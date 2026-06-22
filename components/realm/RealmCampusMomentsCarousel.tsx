@@ -64,9 +64,10 @@ export function RealmCampusMomentsCarousel({
             )}
             <div className="border-t border-slate-200 bg-white p-3">
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+                <span className="cq-avatar-slot h-8 w-8 border border-slate-200 bg-slate-100">
                   <AvatarDisplay
                     avatar={avatarPayloadForDisplay(active.authorAvatar)}
+                    fitParent
                     size={32}
                     showProp={false}
                   />

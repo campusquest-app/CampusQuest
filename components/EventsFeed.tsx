@@ -8,6 +8,7 @@ import {
 } from "@/components/ExternalEventLocationDisplay";
 import { ExternalEventDetailScreen } from "@/components/ExternalEventDetailScreen";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
+import { ScreenDataState } from "@/components/ui/ScreenDataState";
 import {
   type EventsFeedTimeframe,
   isUpcomingEvent,
@@ -348,7 +349,15 @@ export function EventsFeed({
         </div>
       </div>
 
-      {error ? <div className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</div> : null}
+      {error ? (
+        <ScreenDataState
+          variant="error"
+          message="Could not load events."
+          detail={error}
+          onRetry={() => void loadEvents()}
+          compact
+        />
+      ) : null}
       {externalLoadWarning && !error ? (
         <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
           URInvolved events could not be loaded. CampusQuest events may still appear below.

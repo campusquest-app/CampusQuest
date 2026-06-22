@@ -26,6 +26,7 @@ import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } fro
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { ProfileSocialPage } from "./profile/ProfileSocialPage";
+import type { ProfileTab } from "./profile/ProfileTabNav";
 import {
   formatNextChangeDateLabel,
   getNextIdentityChangeEligibleAt,
@@ -57,6 +58,9 @@ export function MyProfileScreen({
   omitCharacterStatPanel = false,
   moderationAdminAccess = false,
   onViewFriend,
+  onSharePost,
+  activeProfileTab,
+  onProfileTabChange,
 }: {
   character: Character;
   onLogout?: () => void | Promise<void>;
@@ -64,6 +68,9 @@ export function MyProfileScreen({
   omitCharacterStatPanel?: boolean;
   moderationAdminAccess?: boolean;
   onViewFriend?: (userId: string) => void;
+  onSharePost?: (note: FieldNote) => void;
+  activeProfileTab?: ProfileTab;
+  onProfileTabChange?: (tab: ProfileTab) => void;
 }) {
   const [posts, setPosts] = useState<FieldNote[]>([]);
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
@@ -85,6 +92,7 @@ export function MyProfileScreen({
   const [repairPreserveCooldown, setRepairPreserveCooldown] = useState(true);
   const [bioDraft, setBioDraft] = useState(character.bio ?? "");
   const [profileQuadPostsReady, setProfileQuadPostsReady] = useState(false);
+  const [postsLoadError, setPostsLoadError] = useState<string | null>(null);
   const [apiConnections, setApiConnections] = useState<ConnectionItem[]>([]);
   const [followingCount, setFollowingCount] = useState(0);
   const [unfriendingId, setUnfriendingId] = useState<string | null>(null);
@@ -107,6 +115,7 @@ export function MyProfileScreen({
 
   useEffect(() => {
     setProfileQuadPostsReady(false);
+    setPostsLoadError(null);
   }, [character.id]);
 
   const refresh = useCallback(() => {
@@ -119,8 +128,15 @@ export function MyProfileScreen({
         }
         mergeRemoteQuadPostsForMutations(mine);
         setPosts(mine);
-      } catch {
-        setPosts(getFeedByAuthorId(character.id));
+        setPostsLoadError(null);
+      } catch (loadError) {
+        const fallback = getFeedByAuthorId(character.id);
+        setPosts(fallback);
+        if (fallback.length === 0) {
+          setPostsLoadError(loadError instanceof Error ? loadError.message : "Could not load profile posts.");
+        } else {
+          setPostsLoadError(null);
+        }
       } finally {
         setProfileQuadPostsReady(true);
       }
@@ -413,6 +429,8 @@ export function MyProfileScreen({
         isOwner
         posts={posts}
         postsLoading={!profileQuadPostsReady}
+        postsError={postsLoadError}
+        onRetryPosts={refresh}
         friendsCount={friendsCount}
         followingCount={followingCount}
         onEditBio={() => {
@@ -451,6 +469,9 @@ export function MyProfileScreen({
         }}
         pendingReactions={pendingReactions}
         reactionNotice={reactionNotice}
+        onSharePost={onSharePost}
+        activeProfileTab={activeProfileTab}
+        onProfileTabChange={onProfileTabChange}
       />
 
       {friendsListOpen && typeof document !== "undefined" && createPortal(
@@ -477,8 +498,8 @@ export function MyProfileScreen({
                         }}
                         className="flex items-center gap-3 min-w-0 flex-1 text-left"
                       >
-                        <div className="w-10 h-10 rounded-full bg-cq-elevated flex items-center justify-center overflow-hidden flex-shrink-0 border border-uri-keaney/30">
-                          <AvatarDisplay avatar={avatar} size={40} />
+                        <div className="cq-avatar-slot w-10 h-10 bg-cq-elevated border border-uri-keaney/30">
+                          <AvatarDisplay avatar={avatar} fitParent size={40} />
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="font-medium text-cq-foreground truncate">{f.displayName}</p>

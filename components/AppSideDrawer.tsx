@@ -1,30 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  Activity,
+  Award,
+  Bell,
   BookOpen,
-  ClipboardPen,
   Building2,
   Calendar,
   ChevronRight,
-  Compass,
-  Gamepad2,
   HelpCircle,
   Home,
-  Inbox,
   Map,
-  Medal,
-  ScrollText,
   Settings,
-  Shield,
-  Sparkles,
-  Swords,
   Target,
-  TrendingUp,
   Trophy,
-  UserCircle,
+  User,
   Users,
 } from "lucide-react";
 import type { Character } from "@/lib/types";
@@ -63,86 +56,53 @@ type MenuItemId =
   | "settings"
   | "manual-log"
   | "progress-hub"
-  | "skills-lore";
+  | "skills-lore"
+  | "collectibles";
 
 type MenuItem = {
   id: MenuItemId;
   label: string;
   icon: React.ReactNode;
-  description?: string;
-  tier?: "core" | "default";
 };
 
 type MenuSection = {
   id: string;
   title: string;
-  icon: React.ReactNode;
   items: MenuItem[];
 };
 
-const CORE: MenuItem[] = [
-  { id: "realm", label: "The Realm", icon: <Map className="h-5 w-5" />, tier: "core" },
-  { id: "quad", label: "Quad", icon: <Home className="h-5 w-5" />, tier: "core" },
-  { id: "friends", label: "Friends", icon: <Users className="h-5 w-5" />, tier: "core" },
-  { id: "events", label: "Events", icon: <Calendar className="h-5 w-5" />, tier: "core" },
-  { id: "leaderboards", label: "Leaderboard", icon: <Trophy className="h-5 w-5" />, tier: "core" },
+const ICON = "h-[1.125rem] w-[1.125rem] shrink-0 stroke-[1.75]";
+
+const DISCOVER_NAV: MenuItem[] = [
+  { id: "quad", label: "Quad", icon: <Home className={ICON} aria-hidden /> },
+  { id: "realm", label: "The Realm", icon: <Map className={ICON} aria-hidden /> },
+  { id: "friends", label: "Friends", icon: <Users className={ICON} aria-hidden /> },
+  { id: "leaderboards", label: "Leaderboard", icon: <Trophy className={ICON} aria-hidden /> },
 ];
 
-const COMMUNITY: MenuItem[] = [
-  { id: "organizations", label: "Orgs", icon: <Building2 className="h-5 w-5" />, description: "Campus organizations" },
+const ENGAGE_NAV: MenuItem[] = [
+  { id: "quest-board", label: "Quests", icon: <Target className={ICON} aria-hidden /> },
+  { id: "events", label: "Events", icon: <Calendar className={ICON} aria-hidden /> },
+  { id: "organizations", label: "Organizations", icon: <Building2 className={ICON} aria-hidden /> },
 ];
 
-const PROGRESS: MenuItem[] = [
-  {
-    id: "progress-hub",
-    label: "My Progress",
-    icon: <TrendingUp className="h-5 w-5" />,
-    description: "Streaks, recap & activity",
-  },
-  {
-    id: "manual-log",
-    label: "Manual Log",
-    icon: <ClipboardPen className="h-5 w-5" />,
-    description: "Log activities for XP",
-  },
-  {
-    id: "skills-lore",
-    label: "Skills & Lore",
-    icon: <ScrollText className="h-5 w-5" />,
-    description: "Skill tree & lore archive",
-  },
-  {
-    id: "guilds",
-    label: "Guilds",
-    icon: <Shield className="h-5 w-5" />,
-    description: "Team up for bonus XP",
-  },
+const PROGRESS_NAV: MenuItem[] = [
+  { id: "profile", label: "Profile", icon: <User className={ICON} aria-hidden /> },
+  { id: "achievements", label: "Trophy Room", icon: <Award className={ICON} aria-hidden /> },
+  { id: "progress-hub", label: "Progress", icon: <Activity className={ICON} aria-hidden /> },
 ];
 
-const GAME_MODES: MenuItem[] = [
-  { id: "battle", label: "Boss Battle", icon: <Swords className="h-5 w-5" /> },
-  { id: "mini-games", label: "Mini Games", icon: <Gamepad2 className="h-5 w-5" /> },
-  { id: "achievements", label: "Hall of Legends", icon: <Medal className="h-5 w-5" /> },
-  {
-    id: "quest-board",
-    label: "Quest Board",
-    icon: <Target className="h-5 w-5" />,
-    description: "Daily & tracked quests",
-  },
-];
-
-const ACCOUNT: MenuItem[] = [
-  { id: "inbox", label: "Inbox", icon: <Inbox className="h-5 w-5" /> },
-  { id: "settings", label: "Settings", icon: <Settings className="h-5 w-5" /> },
-  { id: "help", label: "Help & Support", icon: <HelpCircle className="h-5 w-5" /> },
+const ACCOUNT_NAV: MenuItem[] = [
+  { id: "inbox", label: "Notifications", icon: <Bell className={ICON} aria-hidden /> },
+  { id: "settings", label: "Settings", icon: <Settings className={ICON} aria-hidden /> },
+  { id: "help", label: "Help & Support", icon: <HelpCircle className={ICON} aria-hidden /> },
 ];
 
 const MENU_SECTIONS: MenuSection[] = [
-  { id: "core", title: "Core", icon: <Compass className="h-3 w-3" />, items: CORE },
-  { id: "community", title: "Community", icon: <Building2 className="h-3 w-3" />, items: COMMUNITY },
-  { id: "progress", title: "Progress", icon: <Sparkles className="h-3 w-3" />, items: PROGRESS },
-  { id: "game-modes", title: "Game Modes", icon: <Swords className="h-3 w-3" />, items: GAME_MODES },
-  { id: "account", title: "Account", icon: <UserCircle className="h-3 w-3" />, items: ACCOUNT },
+  { id: "discover", title: "Discover", items: DISCOVER_NAV },
+  { id: "engage", title: "Engage", items: ENGAGE_NAV },
+  { id: "progress", title: "Progress", items: PROGRESS_NAV },
+  { id: "account", title: "Account", items: ACCOUNT_NAV },
 ];
 
 const DRAWER_CLOSE_MS = 320;
@@ -150,10 +110,12 @@ const DRAWER_CLOSE_MS = 320;
 export type DrawerActiveContext = {
   tab: string;
   quadFeedTab?: string;
+  characterPane?: string;
+  profileTab?: string;
 };
 
 function isMenuItemActive(id: MenuItemId, ctx: DrawerActiveContext): boolean {
-  const { tab, quadFeedTab } = ctx;
+  const { tab, quadFeedTab, characterPane, profileTab } = ctx;
   switch (id) {
     case "quad":
       return tab === "quad";
@@ -186,6 +148,12 @@ function isMenuItemActive(id: MenuItemId, ctx: DrawerActiveContext): boolean {
       return tab === "quest-board";
     case "inbox":
       return tab === "inbox";
+    case "profile":
+      return tab === "character" && characterPane === "profile" && profileTab !== "collectibles";
+    case "collectibles":
+      return tab === "character" && characterPane === "profile" && profileTab === "collectibles";
+    case "character-sheet":
+      return tab === "character" && characterPane === "sheet";
     default:
       return false;
   }
@@ -332,73 +300,71 @@ export function AppSideDrawer({
         aria-hidden={!isPanelOpen}
         inert={isPanelOpen ? undefined : true}
       >
-        <div className="cq-drawer-parallax" aria-hidden />
-        <div className="cq-drawer-glass" aria-hidden />
         <div className="cq-drawer-body flex min-h-0 flex-1 flex-col">
-        {panel === "menu" ? (
-          <>
-            <div className="cq-drawer-profile-sticky shrink-0 border-b border-white/[0.08]">
-              {character ? (
-                <DrawerPlayerProfileCard
+          {panel === "menu" ? (
+            <>
+              <div className="cq-drawer-profile-sticky shrink-0">
+                {character ? (
+                  <DrawerPlayerProfileCard
                   character={character}
+                  menuOpen={open || isDraggingDrawer}
                   onOpenProfile={() => handleItem("profile")}
                 />
-              ) : (
-                <div className="px-5 py-4">
-                  <CampusQuestLogo variant="drawer" />
-                  <p className="mt-2 text-xs text-white/45">Level up your campus life</p>
-                </div>
-              )}
-            </div>
+                ) : (
+                  <div className="px-5 py-4">
+                    <CampusQuestLogo variant="drawer" />
+                    <p className="mt-2 text-xs text-white/45">Your campus, connected</p>
+                  </div>
+                )}
+              </div>
 
-            <nav className="cq-drawer-nav flex-1 overflow-y-auto overscroll-y-contain px-2.5 pb-3 pt-2">
-              {MENU_SECTIONS.map((section, sectionIndex) => (
-                <DrawerSection
-                  key={section.id}
-                  title={section.title}
-                  icon={section.icon}
-                  items={section.items}
-                  onSelect={handleItem}
-                  badgeId="inbox"
-                  unread={unreadNotificationCount}
-                  activeContext={ctx}
-                  sectionIndex={sectionIndex}
-                />
-              ))}
-            </nav>
+              <nav className="cq-drawer-nav flex-1 overflow-y-auto overscroll-y-contain px-3 pb-4" aria-label="Main">
+                {MENU_SECTIONS.map((section, sectionIndex) => (
+                  <DrawerSection
+                    key={section.id}
+                    title={section.title}
+                    items={section.items}
+                    onSelect={handleItem}
+                    badgeId="inbox"
+                    unread={unreadNotificationCount}
+                    activeContext={ctx}
+                    isFirst={sectionIndex === 0}
+                  />
+                ))}
+              </nav>
 
-            <div
-              className="cq-drawer-footer shrink-0 border-t border-white/[0.05] px-4 py-2"
-              style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
-            >
-              {showAdminNav ? (
-                <Link
-                  href="/internal/admin"
-                  onClick={onClose}
-                  className="mb-2 flex min-h-[40px] items-center gap-3 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/15"
-                >
-                  <BookOpen className="h-4 w-4" />
-                  Admin tools
-                </Link>
-              ) : null}
-              <p className="cq-drawer-version text-center">CampusQuest v0.1</p>
-            </div>
-          </>
-        ) : panel === "settings" ? (
-          <AppSettingsPanel
-            onBack={() => setPanel("menu")}
-            onRequestSignOut={onRequestSignOut}
-            onAction={(action) => {
-              onSettingsAction(action);
-              if (action !== "sound" && action !== "appearance") {
-                onClose();
-              }
-            }}
-            musicMuted={musicMuted}
-          />
-        ) : (
-          <AppHelpSupportPanel onBack={() => setPanel("menu")} />
-        )}
+              <div
+                className="cq-drawer-footer shrink-0 px-4 py-2"
+                style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+              >
+                {showAdminNav ? (
+                  <Link
+                    href="/internal/admin"
+                    onClick={onClose}
+                    className="mb-2 flex min-h-[40px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/[0.06] hover:text-white"
+                  >
+                    <BookOpen className="h-4 w-4" aria-hidden />
+                    Admin tools
+                  </Link>
+                ) : null}
+                <p className="cq-drawer-version text-center">CampusQuest v0.1</p>
+              </div>
+            </>
+          ) : panel === "settings" ? (
+            <AppSettingsPanel
+              onBack={() => setPanel("menu")}
+              onRequestSignOut={onRequestSignOut}
+              onAction={(action) => {
+                onSettingsAction(action);
+                if (action !== "sound" && action !== "appearance") {
+                  onClose();
+                }
+              }}
+              musicMuted={musicMuted}
+            />
+          ) : (
+            <AppHelpSupportPanel onBack={() => setPanel("menu")} />
+          )}
         </div>
       </aside>
     </>,
@@ -408,81 +374,51 @@ export function AppSideDrawer({
 
 function DrawerSection({
   title,
-  icon,
   items,
   onSelect,
   badgeId,
   unread = 0,
   activeContext,
-  sectionIndex,
+  isFirst = false,
 }: {
   title: string;
-  icon: React.ReactNode;
   items: MenuItem[];
   onSelect: (id: MenuItemId) => void;
   badgeId?: string;
   unread?: number;
   activeContext: DrawerActiveContext;
-  sectionIndex: number;
+  isFirst?: boolean;
 }) {
   return (
-    <div className="cq-drawer-section mb-3.5">
-      <div className="cq-drawer-section-header mb-1.5 flex items-center gap-2 px-2">
-        <span className="cq-drawer-section-icon flex h-4 w-4 items-center justify-center">{icon}</span>
-        <p className="cq-drawer-section-label flex-1 text-[10px] font-bold uppercase tracking-[0.18em]">
-          {title}
-        </p>
-        <span className="cq-drawer-section-rule h-px flex-1 bg-gradient-to-r from-cyan-400/20 to-transparent" aria-hidden />
-      </div>
-      <ul className="space-y-0.5">
-        {items.map((item, itemIndex) => {
+    <section className={`cq-drawer-section ${isFirst ? "cq-drawer-section--first" : ""}`}>
+      <h2 className="cq-drawer-section-label">{title}</h2>
+      <ul className="cq-drawer-section-list">
+        {items.map((item) => {
           const active = isMenuItemActive(item.id, activeContext);
-          const staggerIndex = sectionIndex * 10 + itemIndex;
           return (
-            <li
-              key={item.id}
-              className="cq-drawer-item-enter"
-              style={{ animationDelay: `${48 + staggerIndex * 24}ms` }}
-            >
+            <li key={item.id}>
               <button
                 type="button"
                 onClick={() => onSelect(item.id)}
-                className={`cq-drawer-item group flex w-full min-h-[44px] items-center gap-2.5 rounded-xl px-2.5 py-2 text-left touch-manipulation ${
+                className={`cq-drawer-item group flex w-full min-h-[44px] items-center gap-3 rounded-lg px-2 py-2.5 text-left touch-manipulation ${
                   active ? "cq-drawer-item--active" : ""
-                } ${item.tier === "core" ? "cq-drawer-item--core" : ""}`}
+                }`}
                 aria-current={active ? "page" : undefined}
               >
-                <span
-                  className={`cq-drawer-item-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
-                    active ? "cq-drawer-item-icon--active" : ""
-                  }`}
-                >
-                  {item.icon}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span
-                    className={`cq-drawer-item-label flex items-center gap-2 leading-tight ${
-                      item.tier === "core" ? "cq-drawer-item-label--core" : ""
-                    } ${active ? "cq-drawer-item-label--active" : ""}`}
-                  >
-                    {item.label}
-                  </span>
-                  {item.description ? (
-                    <span className="cq-drawer-item-desc block truncate">{item.description}</span>
-                  ) : null}
+                <span className={`cq-drawer-item-icon ${active ? "cq-drawer-item-icon--active" : ""}`}>{item.icon}</span>
+                <span className={`cq-drawer-item-label flex-1 ${active ? "cq-drawer-item-label--active" : ""}`}>
+                  {item.label}
                 </span>
                 {badgeId === item.id && unread > 0 ? (
-                  <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                    {Math.min(99, unread)}
-                  </span>
+                  <span className="cq-drawer-item-badge">{Math.min(99, unread)}</span>
                 ) : item.id === "settings" || item.id === "help" ? (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-white/22 transition group-hover:text-white/42" />
+                  <ChevronRight className="h-4 w-4 shrink-0 text-white/25 transition group-hover:text-white/45" aria-hidden />
                 ) : null}
               </button>
             </li>
           );
         })}
       </ul>
-    </div>
+    </section>
   );
 }

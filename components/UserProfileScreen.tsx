@@ -36,6 +36,7 @@ export function UserProfileScreen({
   onBack,
   onOpenMessage,
   onProfileReload,
+  onSharePost,
 }: {
   character: Character;
   viewer: Pick<Character, "id" | "name" | "username" | "avatar">;
@@ -49,6 +50,7 @@ export function UserProfileScreen({
   onBack?: () => void;
   onOpenMessage?: (other: { userId: string; username: string; name: string; avatar: string }) => void;
   onProfileReload?: () => void | Promise<void>;
+  onSharePost?: (note: FieldNote) => void;
 }) {
   const [character, setCharacter] = useState(initialCharacter);
   const [canViewPrivateContent, setCanViewPrivateContent] = useState(initialCanView);
@@ -60,6 +62,7 @@ export function UserProfileScreen({
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
   const [profileQuadPostsReady, setProfileQuadPostsReady] = useState(true);
+  const [postsLoadError, setPostsLoadError] = useState<string | null>(null);
   const [socialCountsReady, setSocialCountsReady] = useState(true);
 
   useEffect(() => {
@@ -107,10 +110,16 @@ export function UserProfileScreen({
       return;
     }
     setProfileQuadPostsReady(false);
+    setPostsLoadError(null);
     try {
       await reloadProfile();
-    } catch {
-      setPosts(getFeedByAuthorId(character.id));
+      setPostsLoadError(null);
+    } catch (loadError) {
+      const fallback = getFeedByAuthorId(character.id);
+      setPosts(fallback);
+      if (fallback.length === 0) {
+        setPostsLoadError(loadError instanceof Error ? loadError.message : "Could not load profile posts.");
+      }
     } finally {
       setProfileQuadPostsReady(true);
     }
@@ -208,6 +217,8 @@ export function UserProfileScreen({
       guildLabel={guildLabel}
       posts={posts}
       postsLoading={!profileQuadPostsReady}
+      postsError={postsLoadError}
+      onRetryPosts={() => void refresh()}
       friendsCount={friendsCount}
       friendsLoading={!socialCountsReady}
       followingCount={friendsCount}
@@ -238,6 +249,7 @@ export function UserProfileScreen({
       }}
       pendingReactions={pendingReactions}
       reactionNotice={reactionNotice}
+      onSharePost={onSharePost}
     />
   );
 

@@ -4,8 +4,8 @@
  * - v:2 — DiceBear (see lib/dicebearAvatar.ts)
  */
 
-import type { DiceBearAvatarV2 } from "./dicebearAvatar";
-import { parseDiceBearAvatar } from "./dicebearAvatar";
+import type { DiceBearAvatarV2 } from "@/lib/dicebearAvatar";
+import { parseDiceBearAvatar } from "@/lib/dicebearAvatar";
 
 export const SKIN_TONES = [
   { id: "1", label: "Porcelain", color: "#fbe3d6" },
@@ -135,12 +135,16 @@ export function getDefaultCustomAvatar(): CustomAvatarData {
   return { ...DEFAULT_AVATAR };
 }
 
-export function parseAvatar(avatar: string): CustomAvatarData | DiceBearAvatarV2 | null {
-  const dice = parseDiceBearAvatar(avatar);
+export function parseAvatar(avatar: unknown): CustomAvatarData | DiceBearAvatarV2 | null {
+  const normalized =
+    typeof avatar === "string" ? avatar.trim() : typeof avatar === "object" && avatar != null ? JSON.stringify(avatar) : "";
+  if (!normalized) return null;
+
+  const dice = parseDiceBearAvatar(normalized);
   if (dice) return dice;
-  if (typeof avatar !== "string" || !avatar.startsWith("{")) return null;
+  if (!normalized.startsWith("{")) return null;
   try {
-    const data = JSON.parse(avatar) as CustomAvatarData;
+    const data = JSON.parse(normalized) as CustomAvatarData;
     if (data.v === 1) {
       if (data.face == null) (data as CustomAvatarData).face = "smile";
       if (data.hat == null) (data as CustomAvatarData).hat = "none";

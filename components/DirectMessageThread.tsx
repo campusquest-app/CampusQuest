@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
-import type { Character } from "@/lib/types";
+import type { Character, FieldNote } from "@/lib/types";
 import type { Friend } from "@/lib/types";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import {
@@ -16,6 +16,18 @@ import {
   requestConnection,
 } from "@/lib/client/connectionRequestActions";
 import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
+import {
+  sendRichDirectMessage,
+  uploadDmImage,
+  type DirectMessageDto,
+} from "@/lib/client/dmMessagesClient";
+import type { DmPendingImageDraft } from "@/lib/client/dmMediaComposer";
+import { DmThreadComposer } from "@/components/messages/DmThreadComposer";
+import { fetchQuadPostById } from "@/lib/client/quadPostsClient";
+import { getCommentsByNoteId } from "@/lib/feedStore";
+import { DmImageMessage } from "@/components/messages/DmImageMessage";
+import { DmSharedPostCard } from "@/components/messages/DmSharedPostCard";
+import { ProfilePostDetail } from "@/components/profile/ProfilePostDetail";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 
@@ -30,16 +42,11 @@ export function DirectMessageThread({
   onClose: () => void;
   onMessageSent?: () => void;
 }) {
-  const [messages, setMessages] = useState<Array<{
-    id: string;
-    senderId: string;
-    recipientId: string;
-    content: string;
-    createdAt: string;
-    readAt: string | null;
-    isFavorited?: boolean;
-  }>>([]);
+  const [messages, setMessages] = useState<DirectMessageDto[]>([]);
   const [input, setInput] = useState("");
+  const [imageDraft, setImageDraft] = useState<DmPendingImageDraft | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [sharedPostDetail, setSharedPostDetail] = useState<FieldNote | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [canMessage, setCanMessage] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -100,15 +107,9 @@ export function DirectMessageThread({
         const nextConversationId = conversationPayload.conversation.id;
         setConversationId(nextConversationId);
 
-        const messagesPayload = await fetchAuthed<{ messages: Array<{
-          id: string;
-          senderId: string;
-          recipientId: string;
-          content: string;
-          createdAt: string;
-          readAt: string | null;
-          isFavorited?: boolean;
-        }> }>(`/api/social/conversations/${nextConversationId}/messages?limit=100`);
+        const messagesPayload = await fetchAuthed<{ messages: DirectMessageDto[] }>(
+          `/api/social/conversations/${nextConversationId}/messages?limit=100`,
+        );
         if (cancelled) return;
         setMessages(messagesPayload.messages);
       } catch (loadError) {
@@ -135,29 +136,127 @@ export function DirectMessageThread({
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed || !canMessage || !conversationId || sending) return;
+    if (!canMessage || !conversationId || sending || !trimmed || imageDraft) return;
+
     setSending(true);
     try {
-      const payload = await postAuthed<{ message: {
-        id: string;
-        senderId: string;
-        recipientId: string;
-        content: string;
-        createdAt: string;
-        readAt: string | null;
-        isFavorited?: boolean;
-      } }, { content: string }>(`/api/social/conversations/${conversationId}/messages`, {
+      const message = await sendRichDirectMessage({
+        conversationId,
+        type: "text",
         content: trimmed,
       });
-      setMessages((prev) => [...prev, { ...payload.message, isFavorited: payload.message.isFavorited ?? false }]);
+      setMessages((prev) => [...prev, message]);
       setInput("");
       setError(null);
       onMessageSent?.();
+      emitSocialSync({ source: "inbox" });
     } catch (sendError) {
       const message = sendError instanceof Error ? sendError.message : "Could not send message.";
       setError(message);
     } finally {
       setSending(false);
+    }
+  }
+
+  const handleImageSend = useCallback(
+    async ({ draft, caption }: { draft: DmPendingImageDraft; caption: string }) => {
+      if (!canMessage || !conversationId || sending) return;
+
+      setMessages((prev) => prev.filter((m) => !m.failed));
+      setSending(true);
+      setUploadProgress(12);
+
+      const optimisticId = `pending-${Date.now()}`;
+      const displayContent = caption || "📷 Photo";
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: optimisticId,
+          conversationId,
+          senderId: currentUser.id,
+          recipientId: otherUser.userId,
+          type: "image",
+          content: displayContent,
+          imageUrl: draft.dataUrl,
+          sharedPostId: null,
+          sharedPostType: null,
+          metadata: { pickSource: draft.source },
+          sharedPostPreview: null,
+          previewText: displayContent,
+          createdAt: new Date().toISOString(),
+          readAt: null,
+          isFavorited: false,
+          pending: true,
+          uploadProgress: 12,
+        },
+      ]);
+
+      const progressTimer = window.setInterval(() => {
+        setUploadProgress((prev) => {
+          const next = prev >= 88 ? prev : prev + 6;
+          setMessages((messages) =>
+            messages.map((m) => (m.id === optimisticId ? { ...m, uploadProgress: next } : m)),
+          );
+          return next;
+        });
+      }, 220);
+
+      try {
+        setUploadProgress(35);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimisticId ? { ...m, uploadProgress: 35 } : m)),
+        );
+
+        const imageUrl = await uploadDmImage({ conversationId, imageDataUrl: draft.dataUrl });
+
+        setUploadProgress(82);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimisticId ? { ...m, uploadProgress: 82 } : m)),
+        );
+
+        const message = await sendRichDirectMessage({
+          conversationId,
+          type: "image",
+          imageUrl,
+          content: caption || undefined,
+        });
+
+        setUploadProgress(100);
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId).concat(message));
+        setImageDraft(null);
+        setInput("");
+        setError(null);
+        onMessageSent?.();
+        emitSocialSync({ source: "inbox" });
+      } catch (sendError) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === optimisticId ? { ...m, pending: false, failed: true, uploadProgress: 0 } : m,
+          ),
+        );
+        const message = sendError instanceof Error ? sendError.message : "Could not send photo.";
+        setError(message);
+      } finally {
+        window.clearInterval(progressTimer);
+        setSending(false);
+        setUploadProgress(0);
+      }
+    },
+    [canMessage, conversationId, sending, currentUser.id, otherUser.userId, onMessageSent],
+  );
+
+  async function openSharedPost(preview: NonNullable<DirectMessageDto["sharedPostPreview"]>) {
+    if (preview.unavailable || preview.locked) return;
+    try {
+      const note = await fetchQuadPostById(preview.postId, currentUser.id);
+      if (!note) {
+        setError("Post unavailable.");
+        return;
+      }
+      setSharedPostDetail(note);
+    } catch {
+      setError("Post unavailable.");
     }
   }
 
@@ -274,20 +373,14 @@ export function DirectMessageThread({
     })();
   }
 
-  type ThreadMsg = {
-    id: string;
-    senderId: string;
-    recipientId: string;
-    content: string;
-    createdAt: string;
-    readAt: string | null;
-    isFavorited?: boolean;
-  };
-
-  function MessageBubbleRow({ m }: { m: ThreadMsg }) {
+  function MessageBubbleRow({ m }: { m: DirectMessageDto }) {
     const isMe = m.senderId !== otherUser.userId;
     const favorited = Boolean(m.isFavorited);
     const busy = favBusy === m.id;
+    const showCaption =
+      m.type === "text" ||
+      (m.type === "image" && m.content.trim() && m.content.trim() !== "📷 Photo") ||
+      (m.type === "shared_post" && m.content.trim() && m.content.trim() !== "Shared a post");
 
     return (
       <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
@@ -298,42 +391,63 @@ export function DirectMessageThread({
             isMe
               ? "bg-uri-keaney text-uri-navy rounded-br-md"
               : "bg-white/15 text-white border border-white/10 rounded-bl-md"
-          }`}
+          } ${m.pending ? "opacity-70" : ""} ${m.failed ? "ring-1 ring-rose-400/40" : ""}`}
         >
-          <p className="text-sm whitespace-pre-wrap break-words">{m.content}</p>
+          {m.type === "image" && m.imageUrl ? (
+            <div className="mb-2">
+              <DmImageMessage
+                imageUrl={m.imageUrl}
+                pending={m.pending}
+                uploadProgress={m.uploadProgress}
+              />
+            </div>
+          ) : null}
+          {m.type === "shared_post" && m.sharedPostPreview ? (
+            <div className={`mb-2 ${isMe ? "[&_.cq-dm-shared-post]:border-uri-navy/20" : ""}`}>
+              <DmSharedPostCard
+                preview={m.sharedPostPreview}
+                onOpen={() => void openSharedPost(m.sharedPostPreview!)}
+              />
+            </div>
+          ) : null}
+          {showCaption ? (
+            <p className="text-sm whitespace-pre-wrap break-words">{m.content}</p>
+          ) : null}
           <p className={`text-[10px] mt-1 ${isMe ? "text-uri-navy/70" : "text-white/50"}`}>
-            {new Date(m.createdAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+            {m.pending ? "Sending…" : m.failed ? "Failed to send" : new Date(m.createdAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
             {isMe && m.readAt ? " · Read" : ""}
           </p>
-          <div className="flex flex-wrap gap-2 mt-1.5 items-center">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => toggleMessageFavorite(m.id, !favorited)}
-              className={`text-[10px] font-semibold rounded-md px-1.5 py-0.5 border transition-colors disabled:opacity-50 ${
-                favorited
-                  ? isMe
-                    ? "border-uri-navy/40 text-uri-navy bg-uri-navy/10"
-                    : "border-uri-gold/45 text-uri-gold bg-uri-gold/15"
-                  : isMe
-                    ? "border-uri-navy/30 text-uri-navy/80 hover:bg-uri-navy/10"
-                    : "border-white/25 text-white/75 hover:bg-white/10"
-              }`}
-              aria-pressed={favorited}
-              title={favorited ? "Unfavorite" : "Favorite"}
-            >
-              {favorited ? "Unfavorite" : "Favorite"}
-            </button>
-            {!isMe && (
+          {!m.pending && !m.failed ? (
+            <div className="flex flex-wrap gap-2 mt-1.5 items-center">
               <button
                 type="button"
-                onClick={() => void handleReportMessage(m.id)}
-                className="text-[10px] underline text-rose-300/95 hover:text-rose-100"
+                disabled={busy}
+                onClick={() => toggleMessageFavorite(m.id, !favorited)}
+                className={`text-[10px] font-semibold rounded-md px-1.5 py-0.5 border transition-colors disabled:opacity-50 ${
+                  favorited
+                    ? isMe
+                      ? "border-uri-navy/40 text-uri-navy bg-uri-navy/10"
+                      : "border-uri-gold/45 text-uri-gold bg-uri-gold/15"
+                    : isMe
+                      ? "border-uri-navy/30 text-uri-navy/80 hover:bg-uri-navy/10"
+                      : "border-white/25 text-white/75 hover:bg-white/10"
+                }`}
+                aria-pressed={favorited}
+                title={favorited ? "Unfavorite" : "Favorite"}
               >
-                Report safety issue
+                {favorited ? "Unfavorite" : "Favorite"}
               </button>
-            )}
-          </div>
+              {!isMe && (
+                <button
+                  type="button"
+                  onClick={() => void handleReportMessage(m.id)}
+                  className="text-[10px] underline text-rose-300/95 hover:text-rose-100"
+                >
+                  Report safety issue
+                </button>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -359,8 +473,8 @@ export function DirectMessageThread({
           >
             ←
           </button>
-          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center overflow-hidden flex-shrink-0 border border-uri-keaney/30">
-            <AvatarDisplay avatar={otherUser.avatar} size={40} />
+          <div className="cq-avatar-slot w-10 h-10 bg-white/10 border border-uri-keaney/30">
+            <AvatarDisplay avatar={otherUser.avatar} fitParent size={40} />
           </div>
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-white truncate">{otherUser.name}</p>
@@ -464,29 +578,18 @@ export function DirectMessageThread({
 
         {/* Input */}
         {canMessage && !blockedByMe && !blockedByOther ? (
-          <form onSubmit={handleSend} className="p-3 border-t border-white/10 flex-shrink-0">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value.slice(0, 2000))}
-                placeholder="Message..."
-                maxLength={2000}
-                className="flex-1 min-w-0 px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
-              />
-              <button
-                type="submit"
-                disabled={!input.trim() || sending}
-                className="px-4 py-2.5 rounded-xl font-semibold bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90 disabled:opacity-50 disabled:pointer-events-none transition-colors"
-              >
-                {sending ? "Sending..." : "Send"}
-              </button>
-            </div>
-            <p className="mt-2 text-[11px] text-white/55 leading-relaxed">
-              Keep conversations respectful. Harassment, threats, scams, or unsafe conduct may lead to removal from
-              CampusQuest and referral to university conduct offices.
-            </p>
-          </form>
+          <DmThreadComposer
+            input={input}
+            onInputChange={setInput}
+            onSubmit={handleSend}
+            disabled={!canMessage}
+            sending={sending}
+            imageDraft={imageDraft}
+            onImageDraftChange={setImageDraft}
+            onImageSend={(args) => void handleImageSend(args)}
+            onImageSendError={setError}
+            uploadProgress={uploadProgress}
+          />
         ) : (
           <p className="p-3 text-center text-sm text-amber-400/90">
             Connect first to message through CampusQuest.
@@ -497,5 +600,28 @@ export function DirectMessageThread({
   );
 
   if (typeof document === "undefined") return null;
-  return createPortal(content, document.body);
+  return createPortal(
+    <>
+      {content}
+      {sharedPostDetail ? (
+        <ProfilePostDetail
+          note={sharedPostDetail}
+          currentUserId={currentUser.id}
+          currentUser={{
+            id: currentUser.id,
+            name: currentUser.name,
+            username: currentUser.username,
+            avatar: currentUser.avatar,
+          }}
+          comments={getCommentsByNoteId(sharedPostDetail.id)}
+          onClose={() => setSharedPostDetail(null)}
+          onNod={() => undefined}
+          onHype={() => undefined}
+          onVerify={() => undefined}
+          onAssist={() => undefined}
+        />
+      ) : null}
+    </>,
+    document.body,
+  );
 }

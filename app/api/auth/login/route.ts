@@ -6,70 +6,12 @@ import { createPublicClient } from "@/lib/server/supabase";
 import { touchUserActivityById } from "@/lib/server/userActivity";
 import { authLoginSchema, readJson } from "@/lib/server/validation";
 
+const GENERIC_LOGIN_ERROR = "Invalid email or password.";
+
 type SafeLoginFailure = {
   status: number;
-  code: string;
   message: string;
 };
-
-type LoginDebug = {
-  supabase_url_present: boolean;
-  supabase_url_hostname: string | null;
-  supabase_anon_key_present: boolean;
-  supabase_auth_error_message: string | null;
-  supabase_auth_error_code: string | null;
-  fetch_network_error_message: string | null;
-};
-
-function getSupabaseHostname(url: string | undefined): string | null {
-  if (!url) return null;
-  try {
-    return new URL(url).hostname || null;
-  } catch {
-    return null;
-  }
-}
-
-function buildLoginDebug(error: unknown): LoginDebug {
-  const rawMessage =
-    error && typeof error === "object" && "message" in error ? String((error as { message?: unknown }).message ?? "") : "";
-  const rawCode =
-    error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
-  const message = rawMessage.toLowerCase();
-  const code = rawCode.toLowerCase();
-  const isFetchLikeError =
-    code.includes("fetch") ||
-    message.includes("fetch failed") ||
-    message.includes("failed to fetch") ||
-    message.includes("network") ||
-    message.includes("getaddrinfo") ||
-    message.includes("enotfound");
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  return {
-    supabase_url_present: Boolean(supabaseUrl),
-    supabase_url_hostname: getSupabaseHostname(supabaseUrl),
-    supabase_anon_key_present: Boolean(supabaseAnonKey),
-    supabase_auth_error_message: rawMessage || null,
-    supabase_auth_error_code: rawCode || null,
-    fetch_network_error_message: isFetchLikeError ? rawMessage || "Fetch/network failure detected." : null,
-  };
-}
-
-function devFail(failure: SafeLoginFailure, error: unknown) {
-  return NextResponse.json(
-    {
-      error: {
-        message: failure.message,
-        code: failure.code,
-      },
-      debug: buildLoginDebug(error),
-    },
-    { status: failure.status },
-  );
-}
 
 function classifyLoginFailure(error: unknown): SafeLoginFailure {
   const rawMessage =
@@ -88,46 +30,32 @@ function classifyLoginFailure(error: unknown): SafeLoginFailure {
     message.includes("failed to fetch")
   ) {
     return {
-      status: 502,
-      code: "SUPABASE_FETCH_FAILED",
-      message: "Supabase auth request failed. Check network, Supabase URL, and DNS resolution.",
+      status: 503,
+      message: "Unable to connect. Please try again.",
     };
   }
 
   if (code.includes("email_not_confirmed") || message.includes("email not confirmed")) {
     return {
       status: 401,
-      code: "EMAIL_NOT_CONFIRMED",
-      message: "Email is not confirmed.",
-    };
-  }
-
-  if (code.includes("user_not_found") || message.includes("user not found")) {
-    return {
-      status: 401,
-      code: "USER_NOT_FOUND",
-      message: "User not found.",
-    };
-  }
-
-  if (code.includes("invalid_credentials") || message.includes("invalid login credentials")) {
-    return {
-      status: 401,
-      code: "INVALID_CREDENTIALS",
-      message: "Invalid login credentials.",
+      message: "Please confirm your email before signing in.",
     };
   }
 
   return {
     status: 401,
-    code: "LOGIN_FAILED",
-    message: "Login failed.",
+    message: GENERIC_LOGIN_ERROR,
   };
 }
 
-export async function POST(request: Request) {
-  const isDev = process.env.NODE_ENV !== "production";
+function loginFail(failure: SafeLoginFailure) {
+  if (process.env.NODE_ENV !== "production") {
+    console.error("[auth:login] failed", { status: failure.status });
+  }
+  return NextResponse.json({ error: failure.message }, { status: failure.status });
+}
 
+export async function POST(request: Request) {
   try {
     const input = await readJson(request, authLoginSchema);
     const supabase = createPublicClient();
@@ -137,11 +65,7 @@ export async function POST(request: Request) {
       password: input.password,
     });
     if (error || !data.user || !data.session) {
-      const failure = classifyLoginFailure(error);
-      if (isDev) {
-        return devFail(failure, error);
-      }
-      throw new ApiError(failure.status, "Login failed.", "LOGIN_FAILED");
+      return loginFail(classifyLoginFailure(error));
     }
 
     const player = await ensurePlayerSetup({
@@ -165,14 +89,9 @@ export async function POST(request: Request) {
     if (error instanceof ZodError) {
       return fail(new ApiError(400, error.issues[0]?.message ?? "Invalid payload.", "VALIDATION_ERROR"));
     }
-    if (!(error instanceof ApiError)) {
-      const failure = classifyLoginFailure(error);
-      if (isDev) {
-        return devFail(failure, error);
-      }
-      return fail(new ApiError(failure.status, "Login failed.", "LOGIN_FAILED"));
+    if (error instanceof ApiError) {
+      return fail(error);
     }
-    return fail(error);
+    return loginFail(classifyLoginFailure(error));
   }
 }
-

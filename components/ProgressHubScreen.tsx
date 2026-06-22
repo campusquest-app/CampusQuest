@@ -28,7 +28,9 @@ export function ProgressHubScreen({ character }: { character: Character }) {
           </div>
           <div className="rounded-xl border border-cq-border bg-cq-elevated px-2 py-2.5 text-center sm:px-3">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-cq-muted">Streak</div>
-            <div className="mt-0.5 font-display text-lg font-bold text-cq-foreground sm:text-xl">{character.streakDays}d</div>
+            <div className="mt-0.5 font-display text-lg font-bold text-cq-foreground sm:text-xl">
+              {character.streakDays > 0 ? `${character.streakDays}d` : "—"}
+            </div>
           </div>
           <div className="rounded-xl border border-cq-border bg-cq-elevated px-2 py-2.5 text-center sm:px-3">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-cq-muted">XP</div>

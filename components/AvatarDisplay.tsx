@@ -14,6 +14,7 @@ import {
 } from "@/lib/avatarOptions";
 import type { DiceBearAvatarV2 } from "@/lib/dicebearAvatar";
 import { getPropIconForClass, getPropIconForWeapon } from "@/lib/characterClasses";
+import { DEFAULT_DISPLAY_AVATAR, normalizeAvatarInput } from "@/lib/resolveAvatarForDisplay";
 
 function getSkinColor(id: string): string {
   return SKIN_TONES.find((t) => t.id === id)?.color ?? "#e8b4a0";
@@ -458,8 +459,8 @@ function CustomAvatarSvg({
       viewBox={viewBox}
       width="100%"
       height="100%"
-      className="block max-h-full max-w-full"
-      preserveAspectRatio="xMidYMid meet"
+      className="avatar-display-svg block h-full w-full"
+      preserveAspectRatio="xMidYMid slice"
       aria-hidden
     >
       <defs>
@@ -539,10 +540,6 @@ function DiceBearAvatarSvg({ data }: { data: DiceBearAvatarV2 }) {
   );
 }
 
-function avatarFramePadding(size: number): number {
-  return Math.max(2, Math.round(size * 0.065));
-}
-
 function propBadgeSize(size: number): number {
   return Math.max(12, Math.min(30, Math.round(size * 0.3)));
 }
@@ -571,24 +568,30 @@ function AvatarFrame({
   children: ReactNode;
   propIcon?: string | null;
 }) {
-  const effectiveSize = size;
-  const pad = avatarFramePadding(effectiveSize);
-  const badgeSize = propBadgeSize(effectiveSize);
-  const badgeOffset = propBadgeOffset(effectiveSize);
-  const frameStyle: React.CSSProperties = {
-    width: effectiveSize,
-    height: effectiveSize,
-    minWidth: effectiveSize,
-    minHeight: effectiveSize,
-    aspectRatio: "1 / 1",
-    ...(fitParent ? { maxWidth: "100%", maxHeight: "100%" } : {}),
-  };
+  const badgeSize = propBadgeSize(size);
+  const badgeOffset = propBadgeOffset(size);
+  const frameStyle: React.CSSProperties = fitParent
+    ? {
+        width: "100%",
+        height: "100%",
+        minWidth: 0,
+        minHeight: 0,
+        aspectRatio: "1 / 1",
+      }
+    : {
+        width: size,
+        height: size,
+        minWidth: size,
+        minHeight: size,
+        aspectRatio: "1 / 1",
+      };
 
   return (
-    <span className={`avatar-display-frame ${className}`.trim()} style={frameStyle}>
-      <span className="avatar-display-frame__inner" style={{ padding: pad }}>
-        {children}
-      </span>
+    <span
+      className={`avatar-display-frame rounded-full ${className}`.trim()}
+      style={frameStyle}
+    >
+      <span className="avatar-display-frame__inner">{children}</span>
       {propIcon ? (
         <span
           className="avatar-display-prop-badge"
@@ -624,7 +627,7 @@ export function AvatarDisplay({
   starterWeapon,
   showProp = true,
 }: {
-  avatar: string;
+  avatar: unknown;
   size?: number;
   /** Fill the parent container (use inside sized avatar rings). */
   fitParent?: boolean;
@@ -637,7 +640,8 @@ export function AvatarDisplay({
   showProp?: boolean;
 }) {
   const propIcon = showProp ? getPropIcon(classId, starterWeapon) : null;
-  const parsed = parseAvatar(avatar);
+  const avatarValue = normalizeAvatarInput(avatar);
+  const parsed = parseAvatar(avatarValue);
   const customRenderSize = Math.max(32, size);
 
   if (parsed && isDiceBearAvatarPayload(parsed)) {
@@ -656,15 +660,19 @@ export function AvatarDisplay({
     );
   }
 
-  if (isAvatarImageUrl(avatar)) {
+  if (isAvatarImageUrl(avatarValue)) {
     return (
       <AvatarFrame size={size} fitParent={fitParent} className={className} propIcon={propIcon}>
-        <img src={avatar.trim()} alt="" className="avatar-display-img" />
+        <img src={avatarValue.trim()} alt="" className="avatar-display-img" />
       </AvatarFrame>
     );
   }
 
-  const emoji = avatar && avatar.length <= 4 && !avatar.startsWith("{") ? avatar : "🎓";
+  const emoji =
+    avatarValue && avatarValue.length <= 8 && !avatarValue.startsWith("{") && !avatarValue.startsWith("[")
+      ? avatarValue
+      : DEFAULT_DISPLAY_AVATAR;
+
   return (
     <AvatarFrame size={size} fitParent={fitParent} className={className} propIcon={propIcon}>
       <span

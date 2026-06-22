@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { Clock, Trophy } from "lucide-react";
 import { getCharacterById } from "@/lib/friendsStore";
 import { getGuildDisplayLevel, getGuilds, GUILD_INTEREST_LABELS } from "@/lib/guildStore";
@@ -11,19 +11,12 @@ import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import type { Character } from "@/lib/types";
-import { STAT_KEYS, STAT_LABELS, STAT_ICONS } from "@/lib/types";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { AchievementShowcaseStrip } from "./achievements/AchievementShowcaseStrip";
+import { normalizeAvatarInput } from "@/lib/resolveAvatarForDisplay";
+import { ScreenDataState } from "@/components/ui/ScreenDataState";
 
-type SortBy = "level" | (typeof STAT_KEYS)[number] | "bossesDefeated" | "finalBossesDefeated" | "guildLevel";
-
-const SORT_OPTIONS: { value: SortBy; label: string; icon: string }[] = [
-  { value: "level", label: "Level", icon: "⭐" },
-  ...STAT_KEYS.map((key) => ({ value: key as SortBy, label: STAT_LABELS[key], icon: STAT_ICONS[key] })),
-  { value: "bossesDefeated", label: "Bosses defeated", icon: "⚔️" },
-  { value: "finalBossesDefeated", label: "Final bosses defeated", icon: "👑" },
-  { value: "guildLevel", label: "Guild level", icon: "🛡️" },
-];
+type SortBy = "totalXp" | "guildLevel";
 
 const SCHOLAR_GUILDS = [
   { id: "arts_sciences", name: "College of Arts & Sciences", crest: "📚" },
@@ -173,31 +166,31 @@ type XpLeaderboardRowUi = {
   finalBossesDefeated: number;
 };
 
+function sanitizeLeaderboardRow(row: XpLeaderboardRowUi): XpLeaderboardRowUi {
+  return {
+    ...row,
+    avatar: normalizeAvatarInput(row.avatar),
+  };
+}
+
+function sanitizeLeaderboardPayload(payload: XpLeaderboardPayload): XpLeaderboardPayload {
+  return {
+    ...payload,
+    topUsers: payload.topUsers.map(sanitizeLeaderboardRow),
+    currentUserEntry: payload.currentUserEntry ? sanitizeLeaderboardRow(payload.currentUserEntry) : null,
+  };
+}
+
 type XpLeaderboardPayload = {
   topUsers: XpLeaderboardRowUi[];
   currentUserRank: number | null;
   currentUserEntry: XpLeaderboardRowUi | null;
   totalRankedUsers: number;
+  acceptedFriendCount?: number;
 };
 
-function xpLeaderboardMetricProps(sortBy: SortBy, row: XpLeaderboardRowUi) {
-  if (sortBy === "guildLevel" || sortBy === "level") {
-    return { sortBy: "level" as const };
-  }
-  const map: Partial<Record<SortBy, { key: keyof XpLeaderboardRowUi; label: string }>> = {
-    strength: { key: "strength", label: STAT_LABELS.strength },
-    stamina: { key: "stamina", label: STAT_LABELS.stamina },
-    knowledge: { key: "knowledge", label: STAT_LABELS.knowledge },
-    social: { key: "social", label: STAT_LABELS.social },
-    focus: { key: "focus", label: STAT_LABELS.focus },
-    bossesDefeated: { key: "bossesDefeated", label: "Bosses defeated" },
-    finalBossesDefeated: { key: "finalBossesDefeated", label: "Final bosses defeated" },
-  };
-  const spec = map[sortBy];
-  if (!spec) return { sortBy: "level" as const };
-  const raw = row[spec.key];
-  const statValue = typeof raw === "number" ? raw : Number(raw ?? 0);
-  return { sortBy, statValue, statLabel: spec.label };
+function xpLeaderboardMetricProps(_sortBy: SortBy, _row: XpLeaderboardRowUi) {
+  return { sortBy: "totalXp" as const };
 }
 
 export function Leaderboards({
@@ -209,7 +202,7 @@ export function Leaderboards({
   onRefresh?: () => void;
   onViewProfile?: (userId: string) => void;
 }) {
-  const [sortBy, setSortBy] = useState<SortBy>("level");
+  const [sortBy, setSortBy] = useState<SortBy>("totalXp");
   const [expandedGuildId, setExpandedGuildId] = useState<string | null>(null);
   const [expandedScholarGuildId, setExpandedScholarGuildId] = useState<string | null>(null);
   const [xpTab, setXpTab] = useState<"campus" | "friends">("campus");
@@ -272,13 +265,13 @@ export function Leaderboards({
     setXpError(null);
     const t0 = typeof performance !== "undefined" ? performance.now() : 0;
     try {
-      const qs = new URLSearchParams({ sort: sortBy }).toString();
+      const qs = new URLSearchParams({ sort: "totalXp" }).toString();
       const [c, f] = await Promise.all([
         fetchAuthed<XpLeaderboardPayload>(`/api/leaderboards/campus?${qs}`),
         fetchAuthed<XpLeaderboardPayload>(`/api/leaderboards/friends?${qs}`),
       ]);
-      setCampusLb(c);
-      setFriendsLb(f);
+      setCampusLb(sanitizeLeaderboardPayload(c));
+      setFriendsLb(sanitizeLeaderboardPayload(f));
       const campusMe = c.currentUserEntry;
       const friendsMe = f.currentUserEntry;
       if (campusMe || friendsMe) {
@@ -291,6 +284,16 @@ export function Leaderboards({
           friendsTotalXp: friendsMe?.totalXp ?? null,
         });
       }
+      if (
+        process.env.NODE_ENV !== "production" &&
+        (f.acceptedFriendCount ?? 0) > 0 &&
+        f.totalRankedUsers === 0
+      ) {
+        console.error("[cq][leaderboard] friends tab empty but acceptedFriendCount > 0", {
+          acceptedFriendCount: f.acceptedFriendCount,
+          totalRankedUsers: f.totalRankedUsers,
+        });
+      }
       if (typeof performance !== "undefined") {
         console.log("[cq:load] leaderboards campus+friends", Math.round(performance.now() - t0), "ms");
       }
@@ -301,7 +304,7 @@ export function Leaderboards({
     } finally {
       setXpLoading(false);
     }
-  }, [sortBy, character.level, character.totalXP]);
+  }, [character.level, character.totalXP]);
 
   const handlePullRefresh = useCallback(async () => {
     await Promise.all([loadXpLeaderboards(), refreshPlayerSnapshotFromServer()]);
@@ -319,22 +322,24 @@ export function Leaderboards({
       cancelled = true;
       window.clearTimeout(deferId);
     };
-  }, [loadXpLeaderboards, sortBy]);
+  }, [loadXpLeaderboards]);
 
   const xpActive = xpTab === "campus" ? campusLb : friendsLb;
+  const xpFriendsAcceptedCount = friendsLb?.acceptedFriendCount ?? 0;
   const xpFriendsEmpty =
-    xpTab === "friends" && !xpLoading && !xpError && (xpActive?.totalRankedUsers ?? 0) === 0;
+    xpTab === "friends" &&
+    !xpLoading &&
+    !xpError &&
+    xpFriendsAcceptedCount === 0 &&
+    (xpActive?.totalRankedUsers ?? 0) === 0;
+  const xpFriendsDataMissing =
+    xpTab === "friends" &&
+    !xpLoading &&
+    !xpError &&
+    xpFriendsAcceptedCount > 0 &&
+    (xpActive?.totalRankedUsers ?? 0) === 0;
   const xpCampusEmpty = xpTab === "campus" && !xpLoading && !xpError && (xpActive?.totalRankedUsers ?? 0) === 0;
   const xpHasBoard = Boolean(!xpLoading && !xpError && xpActive != null && xpActive.totalRankedUsers > 0);
-
-  const xpInTopSlice = xpActive?.topUsers.some((row) => row.userId === character.id) ?? false;
-
-  const xpShowPinnedCard = xpHasBoard && xpActive?.currentUserEntry != null && !xpInTopSlice;
-
-  const xpSortLabel = useMemo(
-    () => SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? "Level",
-    [sortBy],
-  );
 
   const podiumUsers = useMemo(() => {
     if (!xpActive?.topUsers.length) return [];
@@ -348,16 +353,17 @@ export function Leaderboards({
     return xpActive.topUsers.filter((row) => row.rank > 3);
   }, [xpActive?.topUsers]);
 
-  const statSortOptions = SORT_OPTIONS.filter((opt) => opt.value !== "level" && opt.value !== "guildLevel");
-
   return (
     <PullToRefresh onRefresh={handlePullRefresh} disabled={xpLoading}>
     <section className="cq-lb-shell cq-tab-shell">
       <header className="cq-lb-header cq-screen-header sticky top-0 z-10">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <h1 className="cq-screen-header__title">Leaderboard</h1>
-            <p className="cq-screen-header__subtitle">Compete with other Rams</p>
+            <h1 className="cq-screen-header__title flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-uri-gold/90 shrink-0" aria-hidden strokeWidth={2.25} />
+              Scholars Leaderboard
+            </h1>
+            <p className="cq-screen-header__subtitle">Ranked by total XP · all time</p>
           </div>
           <button
             type="button"
@@ -378,11 +384,11 @@ export function Leaderboards({
             role="tab"
             aria-selected={sortBy !== "guildLevel"}
             onClick={() => {
-              if (sortBy === "guildLevel") setSortBy("level");
+              if (sortBy === "guildLevel") setSortBy("totalXp");
             }}
             className={`cq-lb-filter ${sortBy !== "guildLevel" ? "cq-lb-filter--active" : ""}`}
           >
-            Overall XP
+            Scholars
           </button>
           <button
             type="button"
@@ -396,29 +402,26 @@ export function Leaderboards({
         </div>
 
         {sortBy !== "guildLevel" ? (
-          <>
-            <div className="cq-lb-scope-track" role="tablist" aria-label="Leaderboard scope">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={xpTab === "campus"}
-                onClick={() => setXpTab("campus")}
-                className={`cq-lb-scope flex-1 ${xpTab === "campus" ? "cq-lb-scope--active" : ""}`}
-              >
-                Campus
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={xpTab === "friends"}
-                onClick={() => setXpTab("friends")}
-                className={`cq-lb-scope flex-1 ${xpTab === "friends" ? "cq-lb-scope--active" : ""}`}
-              >
-                Friends
-              </button>
-            </div>
-            <LeaderboardStatFilterScroll sortBy={sortBy} onSortByChange={setSortBy} options={statSortOptions} />
-          </>
+          <div className="cq-lb-scope-track" role="tablist" aria-label="Leaderboard scope">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={xpTab === "campus"}
+              onClick={() => setXpTab("campus")}
+              className={`cq-lb-scope flex-1 ${xpTab === "campus" ? "cq-lb-scope--active" : ""}`}
+            >
+              Campus
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={xpTab === "friends"}
+              onClick={() => setXpTab("friends")}
+              className={`cq-lb-scope flex-1 ${xpTab === "friends" ? "cq-lb-scope--active" : ""}`}
+            >
+              Friends
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -473,10 +476,13 @@ export function Leaderboards({
         <>
           <div className="cq-lb-arena space-y-3">
             {xpError ? (
-              <div className="cq-lb-state cq-lb-state--error" role="alert">
-                <p className="font-medium text-rose-100">Couldn&apos;t load leaderboard.</p>
-                <p className="text-sm text-rose-100/80 mt-1">Pull to refresh or try again.</p>
-              </div>
+              <ScreenDataState
+                variant="error"
+                message="Couldn't load leaderboard."
+                detail="Check your connection and try again."
+                onRetry={() => void loadXpLeaderboards()}
+                compact
+              />
             ) : null}
 
             {xpLoading ? (
@@ -484,10 +490,18 @@ export function Leaderboards({
                 <p className="text-white/70">Loading leaderboard…</p>
                 <XpLeaderboardSkeleton />
               </div>
+            ) : xpFriendsDataMissing ? (
+              <ScreenDataState
+                variant="error"
+                message="Couldn't load friend rankings."
+                detail={`You have ${xpFriendsAcceptedCount} connected friend${xpFriendsAcceptedCount === 1 ? "" : "s"}, but ranking data didn't load.`}
+                onRetry={() => void loadXpLeaderboards()}
+                compact
+              />
             ) : xpFriendsEmpty ? (
               <LeaderboardEmptyState
-                message="No leaderboard data yet."
-                detail={`Add friends to compare rankings by ${xpSortLabel.toLowerCase()}.`}
+                message="Add friends to compare rankings by level."
+                detail="Send a friend request from Find Friends, then come back to see how you rank by total XP."
               />
             ) : xpCampusEmpty ? (
               <LeaderboardEmptyState
@@ -496,43 +510,23 @@ export function Leaderboards({
               />
             ) : xpHasBoard && xpActive ? (
               <div className="space-y-3">
+                {xpActive.currentUserEntry ? (
+                  <ScholarsYourRankCard
+                    entry={xpActive.currentUserEntry}
+                    character={character}
+                    totalRanked={xpActive.totalRankedUsers}
+                    mode={xpTab}
+                  />
+                ) : null}
+
                 {podiumUsers.length > 0 ? (
                   <TopThreePodium
                     users={podiumUsers}
                     currentUserId={character.id}
-                    sortBy={sortBy}
                     character={character}
                     onViewProfile={onViewProfile}
                     metricProps={xpLeaderboardMetricProps}
                   />
-                ) : null}
-
-                {xpActive.currentUserRank != null ? (
-                  <XpRankHighlight
-                    rank={xpActive.currentUserRank}
-                    totalRanked={xpActive.totalRankedUsers}
-                    mode={xpTab}
-                    sortLabel={xpSortLabel}
-                  />
-                ) : null}
-
-                {xpShowPinnedCard && xpActive.currentUserEntry ? (
-                  <div className="cq-lb-you-card rounded-xl border border-uri-keaney/35 bg-uri-keaney/[0.08] p-2.5">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-uri-keaney mb-1.5">Your rank</p>
-                    <LeaderboardRow
-                      userId={xpActive.currentUserEntry.userId}
-                      rank={xpActive.currentUserEntry.rank}
-                      name={xpActive.currentUserEntry.displayName}
-                      username={xpActive.currentUserEntry.username}
-                      avatar={xpActive.currentUserEntry.avatar}
-                      level={xpActive.currentUserEntry.level}
-                      totalXP={xpActive.currentUserEntry.totalXp}
-                      isCurrentUser
-                      showcaseCharacter={character}
-                      onViewProfile={onViewProfile}
-                      {...xpLeaderboardMetricProps(sortBy, xpActive.currentUserEntry)}
-                    />
-                  </div>
                 ) : null}
 
                 {listUsers.length > 0 ? (
@@ -540,7 +534,7 @@ export function Leaderboards({
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <h3 className="text-xs font-semibold uppercase tracking-wider text-white/50">Rankings</h3>
                       <span className="text-[10px] text-white/40 tabular-nums">
-                        {xpActive.topUsers.length} · {xpSortLabel}
+                        {xpActive.totalRankedUsers.toLocaleString()} scholars · Total XP
                       </span>
                     </div>
                     <ul className="space-y-2" aria-label="Leaderboard rankings">
@@ -557,7 +551,7 @@ export function Leaderboards({
                           isCurrentUser={row.userId === character.id}
                           showcaseCharacter={row.userId === character.id ? character : undefined}
                           onViewProfile={onViewProfile}
-                          {...xpLeaderboardMetricProps(sortBy, row)}
+                          {...xpLeaderboardMetricProps("totalXp", row)}
                         />
                       ))}
                     </ul>
@@ -608,8 +602,8 @@ export function Leaderboards({
                               key={`${g.id}-${m.name}`}
                               className="flex items-center gap-2 rounded-lg bg-white/[0.04] border border-white/10 px-2.5 py-2"
                             >
-                              <div className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center text-lg flex-shrink-0">
-                                {m.avatar}
+                              <div className="cq-avatar-slot h-8 w-8 shrink-0 rounded-lg border border-white/10 bg-white/[0.06]">
+                                <AvatarDisplay avatar={m.avatar} fitParent size={32} />
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-white truncate">{m.name}</p>
@@ -644,16 +638,66 @@ function LeaderboardEmptyState({ message, detail }: { message: string; detail?: 
   );
 }
 
-function RankBadge({ rank, large = false }: { rank: number; large?: boolean }) {
+function RankBadge({ rank, large = false, showMedal = true }: { rank: number; large?: boolean; showMedal?: boolean }) {
   const tone =
     rank === 1 ? "cq-lb-rank--gold" : rank === 2 ? "cq-lb-rank--silver" : rank === 3 ? "cq-lb-rank--bronze" : "";
+  const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
   return (
     <span
       className={`cq-lb-rank ${tone} ${large ? "cq-lb-rank--lg" : ""}`}
       aria-label={`Rank ${rank}`}
     >
+      {showMedal && medal ? <span className="cq-lb-rank-medal" aria-hidden>{medal}</span> : null}
       #{rank}
     </span>
+  );
+}
+
+function ScholarsYourRankCard({
+  entry,
+  character,
+  totalRanked,
+  mode,
+}: {
+  entry: XpLeaderboardRowUi;
+  character: Character;
+  totalRanked: number;
+  mode: "campus" | "friends";
+}) {
+  const peopleWord = mode === "campus" ? "students" : "friends";
+  const isChampion = entry.rank === 1;
+
+  return (
+    <div
+      className={`cq-lb-your-rank ${isChampion ? "cq-lb-your-rank--champion" : ""}`}
+      aria-label={`Your rank is ${entry.rank} with ${entry.totalXp.toLocaleString()} XP`}
+    >
+      <p className="cq-lb-your-rank-eyebrow">
+        <Trophy className="h-3.5 w-3.5" aria-hidden strokeWidth={2.25} />
+        Your Rank
+      </p>
+      <div className="cq-lb-your-rank-body">
+        <RankBadge rank={entry.rank} large showMedal />
+        <span className="cq-lb-your-rank-avatar">
+          <AvatarDisplay avatar={entry.avatar} fitParent size={52} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="cq-lb-your-rank-name truncate">{entry.displayName}</p>
+          <p className="cq-lb-your-rank-xp tabular-nums">{entry.totalXp.toLocaleString()} XP</p>
+          <p className="cq-lb-your-rank-meta tabular-nums">
+            Lv.{entry.level}
+            {totalRanked > 1 ? ` · #${entry.rank} of ${totalRanked.toLocaleString()} ${peopleWord}` : null}
+          </p>
+        </div>
+        <span className="cq-lb-you-badge shrink-0">YOU</span>
+      </div>
+      {isChampion ? (
+        <p className="cq-lb-your-rank-champion-note">
+          🏆 {mode === "campus" ? "Campus Champion" : "Friends Champion"} — you lead the board.
+        </p>
+      ) : null}
+      <AchievementShowcaseStrip character={character} compact />
+    </div>
   );
 }
 
@@ -781,8 +825,8 @@ function GuildRankRow({
                     key={memberId}
                     className="flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.04] border border-white/10"
                   >
-                    <div className="w-9 h-9 rounded-lg bg-white/[0.06] flex items-center justify-center overflow-hidden flex-shrink-0 border border-white/10">
-                      {member ? <AvatarDisplay avatar={member.avatar} size={36} /> : <span className="text-lg text-white/40">?</span>}
+                    <div className="cq-avatar-slot w-9 h-9 bg-white/[0.06] border border-white/10">
+                      {member ? <AvatarDisplay avatar={member.avatar} fitParent size={36} /> : <span className="text-lg text-white/40">?</span>}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-white text-sm truncate">{member ? member.name : "Unknown"}</p>
@@ -805,20 +849,18 @@ function GuildRankRow({
 function TopThreePodium({
   users,
   currentUserId,
-  sortBy,
   character,
   onViewProfile,
   metricProps,
 }: {
   users: XpLeaderboardRowUi[];
   currentUserId: string;
-  sortBy: SortBy;
   character: Character;
   onViewProfile?: (userId: string) => void;
   metricProps: (sortBy: SortBy, row: XpLeaderboardRowUi) => ReturnType<typeof xpLeaderboardMetricProps>;
 }) {
   return (
-    <div className="cq-lb-podium" role="list" aria-label="Top three players">
+    <div className="cq-lb-podium" role="list" aria-label="Top three scholars by total XP">
       {users.map((user) => (
         <PodiumCard
           key={user.userId}
@@ -826,7 +868,7 @@ function TopThreePodium({
           isCurrentUser={user.userId === currentUserId}
           showcaseCharacter={user.userId === currentUserId ? character : undefined}
           onViewProfile={onViewProfile}
-          {...metricProps(sortBy, user)}
+          {...metricProps("totalXp", user)}
         />
       ))}
     </div>
@@ -837,17 +879,11 @@ function PodiumCard({
   user,
   isCurrentUser,
   showcaseCharacter,
-  sortBy,
-  statValue,
-  statLabel,
   onViewProfile,
 }: {
   user: XpLeaderboardRowUi;
   isCurrentUser: boolean;
   showcaseCharacter?: Character;
-  sortBy?: SortBy;
-  statValue?: number;
-  statLabel?: string;
   onViewProfile?: (userId: string) => void;
 }) {
   const place = user.rank as 1 | 2 | 3;
@@ -862,18 +898,16 @@ function PodiumCard({
       ) : null}
       <RankBadge rank={user.rank} large={place === 1} />
       <div className={`cq-lb-podium-avatar cq-lb-podium-avatar--${place}`}>
-        <AvatarDisplay avatar={user.avatar} size={place === 1 ? 52 : place === 2 ? 44 : 40} />
+        <AvatarDisplay avatar={user.avatar} fitParent size={place === 1 ? 60 : place === 2 ? 52 : 50} />
       </div>
-      <p className="cq-lb-podium-name truncate">{user.displayName}</p>
+      <p className="cq-lb-podium-name truncate">
+        {user.displayName}
+        {isCurrentUser ? <span className="cq-lb-you-badge cq-lb-you-badge--inline">YOU</span> : null}
+      </p>
       <p className="cq-lb-podium-username truncate">@{user.username}</p>
       {showcaseCharacter ? <AchievementShowcaseStrip character={showcaseCharacter} compact /> : null}
       <div className="cq-lb-podium-stats">
         <span className="cq-lb-level-badge">Lv.{user.level}</span>
-        {sortBy !== "level" && statLabel != null && statValue != null ? (
-          <span className="text-[11px] text-white/55 tabular-nums">
-            {statValue.toLocaleString()} {statLabel}
-          </span>
-        ) : null}
         <span className="text-xs font-semibold text-uri-keaney tabular-nums">{user.totalXp.toLocaleString()} XP</span>
       </div>
     </>
@@ -896,65 +930,6 @@ function PodiumCard({
   return (
     <div className={cardClass} role="listitem" aria-label={aria}>
       {body}
-    </div>
-  );
-}
-
-function XpRankHighlight({
-  rank,
-  totalRanked,
-  mode,
-  sortLabel,
-}: {
-  rank: number;
-  totalRanked: number;
-  mode: "campus" | "friends";
-  sortLabel: string;
-}) {
-  const peopleWord =
-    mode === "campus" ? (totalRanked === 1 ? "student" : "students") : totalRanked === 1 ? "friend" : "friends";
-  const championTitle = mode === "campus" ? "Campus Champion" : "Friends Champion";
-  const isChampion = rank === 1;
-
-  return (
-    <div
-      className={`cq-lb-you-banner ${isChampion ? "cq-lb-you-banner--champion" : ""}`}
-      aria-label={`Your rank is ${rank}`}
-    >
-      <div className="flex items-center gap-3">
-        {isChampion ? (
-          <span className="cq-lb-champion-trophy" aria-hidden>
-            <Trophy className="h-5 w-5" strokeWidth={2.25} />
-          </span>
-        ) : (
-          <RankBadge rank={rank} large />
-        )}
-        <div className="min-w-0 flex-1">
-          {isChampion ? (
-            <>
-              <p className="cq-lb-champion-title">
-                <span aria-hidden>🏆</span> {championTitle}
-              </p>
-              <p className="cq-lb-champion-rank">Rank #1</p>
-              <p className="cq-lb-champion-meta">
-                {totalRanked <= 1
-                  ? `First on the board — invite more ${mode === "campus" ? "classmates" : "friends"} to compete.`
-                  : `Out of ${totalRanked.toLocaleString()} ${peopleWord}`}
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-uri-keaney/90">Your rank</p>
-              <p className="mt-0.5 text-sm font-semibold text-white">Rank #{rank}</p>
-              <p className="mt-0.5 text-xs text-white/50">
-                {totalRanked <= 1
-                  ? `Climb higher as more ${peopleWord} join.`
-                  : `Out of ${totalRanked.toLocaleString()} ${peopleWord} · ${sortLabel.toLowerCase()}`}
-              </p>
-            </>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -990,9 +965,6 @@ function LeaderboardRow({
   totalXP,
   isCurrentUser,
   showcaseCharacter,
-  sortBy,
-  statValue,
-  statLabel,
   actions,
   onViewProfile,
 }: {
@@ -1005,9 +977,6 @@ function LeaderboardRow({
   totalXP: number;
   isCurrentUser: boolean;
   showcaseCharacter?: Character;
-  sortBy?: SortBy;
-  statValue?: number;
-  statLabel?: string;
   actions?: React.ReactNode;
   onViewProfile?: (userId: string) => void;
 }) {
@@ -1016,12 +985,12 @@ function LeaderboardRow({
     <>
       <RankBadge rank={rank} />
       <span className="cq-lb-row-avatar">
-        <AvatarDisplay avatar={avatar} size={40} />
+        <AvatarDisplay avatar={avatar} fitParent size={44} />
       </span>
       <div className="flex-1 min-w-0 text-left">
-        <p className="font-medium text-white truncate">
-          {name}
-          {isCurrentUser ? <span className="text-xs text-uri-keaney font-normal ml-1.5">(you)</span> : null}
+        <p className="font-medium text-white truncate flex items-center gap-1.5 min-w-0">
+          <span className="truncate">{name}</span>
+          {isCurrentUser ? <span className="cq-lb-you-badge shrink-0">YOU</span> : null}
         </p>
         <p className="text-xs text-white/50 truncate">@{username}</p>
         {showcaseCharacter ? <AchievementShowcaseStrip character={showcaseCharacter} compact /> : null}
@@ -1029,15 +998,7 @@ function LeaderboardRow({
       </div>
       <div className="flex-shrink-0 text-right min-w-[5.25rem]">
         <span className="cq-lb-level-badge inline-block mb-1">Lv.{level}</span>
-        {sortBy !== "level" && statLabel != null && statValue != null ? (
-          <>
-            <p className="text-sm font-bold text-white tabular-nums leading-none">{statValue.toLocaleString()}</p>
-            <p className="text-[10px] text-uri-keaney mt-0.5">{statLabel}</p>
-            <p className="text-[10px] text-white/45 mt-1 tabular-nums">{totalXP.toLocaleString()} XP</p>
-          </>
-        ) : (
-          <p className="text-sm font-semibold text-uri-keaney tabular-nums">{totalXP.toLocaleString()} XP</p>
-        )}
+        <p className="text-sm font-semibold text-uri-keaney tabular-nums">{totalXP.toLocaleString()} XP</p>
       </div>
       {actions != null ? <div className="flex-shrink-0 hidden sm:block">{actions}</div> : null}
     </>
@@ -1059,88 +1020,4 @@ function LeaderboardRow({
   }
 
   return <li className={`${rowClass} flex items-center gap-3 p-3.5 min-h-[72px]`}>{inner}</li>;
-}
-
-function LeaderboardStatFilterScroll({
-  sortBy,
-  onSortByChange,
-  options,
-}: {
-  sortBy: SortBy;
-  onSortByChange: (value: SortBy) => void;
-  options: { value: SortBy; label: string }[];
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [edgeFade, setEdgeFade] = useState({ left: false, right: false });
-
-  const updateEdgeFade = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const maxScroll = el.scrollWidth - el.clientWidth;
-    setEdgeFade({
-      left: el.scrollLeft > 6,
-      right: maxScroll > 6 && el.scrollLeft < maxScroll - 6,
-    });
-  }, []);
-
-  useEffect(() => {
-    updateEdgeFade();
-    const el = scrollRef.current;
-    if (!el) return undefined;
-
-    el.addEventListener("scroll", updateEdgeFade, { passive: true });
-    const observer = new ResizeObserver(updateEdgeFade);
-    observer.observe(el);
-    return () => {
-      el.removeEventListener("scroll", updateEdgeFade);
-      observer.disconnect();
-    };
-  }, [updateEdgeFade, options.length, sortBy]);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const active = el.querySelector<HTMLElement>('[aria-selected="true"]');
-    const smooth =
-      typeof window !== "undefined" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    active?.scrollIntoView({ behavior: smooth ? "smooth" : "auto", inline: "nearest", block: "nearest" });
-  }, [sortBy]);
-
-  const chips: { value: SortBy; label: string }[] = [{ value: "level", label: "Level" }, ...options];
-
-  return (
-    <div
-      className="cq-lb-stat-scroll-wrap leaderboard-filter-row filter-scroll"
-      data-no-drawer-swipe="true"
-      data-horizontal-scroll="true"
-      data-cq-horizontal-scroll="true"
-      data-cq-gesture-block="all"
-    >
-      <div
-        className={`cq-lb-stat-scroll-fade cq-lb-stat-scroll-fade--left ${edgeFade.left ? "is-visible" : ""}`}
-        aria-hidden
-      />
-      <div
-        className={`cq-lb-stat-scroll-fade cq-lb-stat-scroll-fade--right ${edgeFade.right ? "is-visible" : ""}`}
-        aria-hidden
-      />
-      <div ref={scrollRef} className="cq-lb-stat-scroll" role="tablist" aria-label="Sort by stat">
-        {chips.map((chip) => {
-          const active = sortBy === chip.value;
-          return (
-            <button
-              key={chip.value}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => onSortByChange(chip.value)}
-              className={`cq-lb-stat-chip ${active ? "cq-lb-stat-chip--active" : ""}`}
-            >
-              {chip.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
 }

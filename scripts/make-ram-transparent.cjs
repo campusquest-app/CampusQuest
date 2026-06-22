@@ -17,7 +17,7 @@ const SOURCES = [
     "projects",
     "Users-nicklockhart-campusquest",
     "assets",
-    "image-d313c875-bdb2-4c82-a26a-a448dd7217dd.png",
+    "Ram_Logo-52743785-5db2-4ea1-a780-7c3ac51feb7a.png",
   ),
   path.join(__dirname, "..", "public", "campusquest-splash-ram.png"),
 ];
@@ -36,14 +36,40 @@ function luminance(r, g, b) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** Pixels reachable from image edges through near-white, low-saturation areas. */
-function floodBackgroundMask(data, width, height, channels) {
+function detectBackgroundMode(data, width, height, channels) {
+  let edgeLum = 0;
+  let edgeCount = 0;
+  const sample = (x, y) => {
+    const i = (y * width + x) * channels;
+    edgeLum += luminance(data[i], data[i + 1], data[i + 2]);
+    edgeCount += 1;
+  };
+  for (let x = 0; x < width; x++) {
+    sample(x, 0);
+    sample(x, height - 1);
+  }
+  for (let y = 0; y < height; y++) {
+    sample(0, y);
+    sample(width - 1, y);
+  }
+  return edgeLum / edgeCount < 128 ? "dark" : "light";
+}
+
+/** Pixels reachable from image edges through near-uniform background areas. */
+function floodBackgroundMask(data, width, height, channels, mode) {
   const bg = new Uint8Array(width * height);
   const queue = [];
 
   function isBgPixel(r, g, b) {
     const sat = saturation(r, g, b);
     const lum = luminance(r, g, b);
+    if (mode === "dark") {
+      const distBlack = Math.hypot(r, g, b);
+      if (lum < 22 && sat < 0.22) return true;
+      if (lum < 42 && sat < 0.12) return true;
+      if (distBlack < 24) return true;
+      return false;
+    }
     const dist = Math.hypot(255 - r, 255 - g, 255 - b);
     if (lum > 248 && sat < 0.14) return true;
     if (lum > 235 && sat < 0.1 && dist < 40) return true;
@@ -170,7 +196,8 @@ async function main() {
   const { data, info } = await sharp(source).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const { width, height, channels } = info;
 
-  const bg = floodBackgroundMask(data, width, height, channels);
+  const mode = detectBackgroundMode(data, width, height, channels);
+  const bg = floodBackgroundMask(data, width, height, channels, mode);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -198,7 +225,7 @@ async function main() {
     .png({ compressionLevel: 9, effort: 10 })
     .toFile(tmpPath);
 
-  await sharp(tmpPath).trim({ threshold: 12 }).png().toFile(OUT_PATH);
+  await sharp(tmpPath).trim({ threshold: 4 }).png().toFile(OUT_PATH);
   fs.unlinkSync(tmpPath);
 
   const meta = await sharp(OUT_PATH).metadata();

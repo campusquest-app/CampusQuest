@@ -1,53 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 
-/**
- * Fallback when Next shows the global not-found UI. We avoid server `redirect("/")` here
- * (it can trigger ERR_TOO_MANY_REDIRECTS). For any non-home path, do a single full
- * navigation to `/` so the real app shell loads reliably.
- */
 export default function NotFound() {
-  const [stuckOnHome, setStuckOnHome] = useState(false);
-
-  useEffect(() => {
-    const path = window.location.pathname;
-    if (path === "/" || path === "") {
-      setStuckOnHome(true);
+  function handleGoBack() {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
       return;
     }
-    window.location.replace("/");
-  }, []);
-
-  if (stuckOnHome) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-uri-navy bg-gradient-to-b from-uri-navy from-0% via-[#061e3a] via-40% to-[#041a35] to-100% text-white px-6">
-        <p className="font-display text-lg font-semibold text-uri-keaney/95">Could not load CampusQuest</p>
-        <p className="mt-2 text-sm text-white/60 text-center max-w-sm">
-          The app shell did not render on the home URL. Try a hard refresh (Cmd+Shift+R or Ctrl+Shift+R), restart{" "}
-          <code className="text-white/80">npm run dev</code>, or clear site data for this localhost origin.
-        </p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="mt-5 inline-flex items-center justify-center rounded-xl bg-uri-keaney/20 border border-uri-keaney/50 px-5 py-2.5 text-sm font-semibold text-uri-keaney hover:bg-uri-keaney/30 transition-colors"
-        >
-          Reload page
-        </button>
-        <Link
-          href="/"
-          className="mt-3 text-sm text-uri-keaney/90 underline underline-offset-4 hover:text-uri-keaney"
-        >
-          Open home again
-        </Link>
-      </div>
-    );
+    window.location.href = "/";
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-uri-navy bg-gradient-to-b from-uri-navy from-0% via-[#061e3a] via-40% to-[#041a35] to-100% text-white px-6">
-      <p className="font-display text-sm font-semibold tracking-wide text-uri-keaney/90">Opening CampusQuest…</p>
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-uri-navy bg-gradient-to-b from-uri-navy via-[#061e3a] to-[#041a35] px-6 py-10 text-white">
+      <p className="font-display text-[11px] font-bold uppercase tracking-[0.28em] text-uri-keaney/90">CampusQuest</p>
+      <h1 className="mt-3 font-display text-2xl font-semibold text-white">Page not found</h1>
+      <p className="mt-2 max-w-sm text-center text-sm leading-relaxed text-white/60">
+        This link may be broken or the page may have moved.
+      </p>
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+        <Link
+          href="/"
+          className="inline-flex min-w-[7.5rem] items-center justify-center rounded-xl bg-uri-keaney px-5 py-2.5 text-sm font-semibold text-uri-navy transition hover:bg-uri-keaney/90"
+        >
+          Go to Quad
+        </Link>
+        <button
+          type="button"
+          onClick={handleGoBack}
+          className="inline-flex min-w-[7.5rem] items-center justify-center rounded-xl border border-white/25 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15"
+        >
+          Go Back
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,9 @@
 import { ApiError } from "@/lib/server/http";
 import { addXpInternal } from "@/lib/server/services";
+import {
+  notifyQuadPostLiked,
+  removeQuadPostLikeNotification,
+} from "@/lib/server/quadPostNotifications";
 import { createAdminClient } from "@/lib/server/supabase";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 
@@ -210,6 +214,11 @@ async function deletePostLike(args: {
   throw new ApiError(400, deleteError.message ?? "Could not remove like.", "POST_LIKE_DELETE_FAILED");
 }
 
+async function loadActorUsername(userClient: SupabaseClientLike, userId: string): Promise<string> {
+  const { data } = await userClient.from("profiles").select("username").eq("id", userId).maybeSingle();
+  return data?.username?.trim() || "someone";
+}
+
 export async function setQuadPostLike(args: {
   userClient: SupabaseClientLike;
   userId: string;
@@ -218,12 +227,29 @@ export async function setQuadPostLike(args: {
 }): Promise<QuadPostLikeResult> {
   const { userClient, userId, postId, liked } = args;
 
-  await loadPostForReaction(userClient, postId);
+  const post = await loadPostForReaction(userClient, postId);
+  const before = await loadUserReactionState(userClient, postId, userId);
 
   if (liked) {
     await insertPostLike({ userClient, userId, postId });
+    if (!before.liked && post.user_id !== userId) {
+      const actorUsername = await loadActorUsername(userClient, userId);
+      await notifyQuadPostLiked({
+        postOwnerUserId: post.user_id,
+        actorUserId: userId,
+        actorUsername,
+        postId,
+      });
+    }
   } else {
     await deletePostLike({ userClient, userId, postId });
+    if (before.liked && post.user_id !== userId) {
+      await removeQuadPostLikeNotification({
+        postOwnerUserId: post.user_id,
+        actorUserId: userId,
+        postId,
+      });
+    }
   }
 
   const refreshed = await loadPostForReaction(userClient, postId);

@@ -2,6 +2,7 @@
 
 import type { FieldNote } from "@/lib/types";
 import { getPostThumbnailUrl, isTextOnlyPost } from "./profilePostUtils";
+import { ScreenDataState } from "@/components/ui/ScreenDataState";
 
 function TextPostTile({ note }: { note: FieldNote }) {
   const preview = note.body.trim().slice(0, 120) || note.ramMarks.map((r) => `#${r.tag}`).join(" ");
@@ -25,10 +26,14 @@ function TextPostTile({ note }: { note: FieldNote }) {
 export function ProfilePostsGrid({
   posts,
   loading,
+  error,
+  onRetry,
   onSelectPost,
 }: {
   posts: FieldNote[];
   loading: boolean;
+  error?: string | null;
+  onRetry?: () => void;
   onSelectPost: (note: FieldNote) => void;
 }) {
   if (loading) {
@@ -41,14 +46,29 @@ export function ProfilePostsGrid({
     );
   }
 
+  if (error) {
+    return (
+      <div className="px-4 py-8">
+        <ScreenDataState
+          variant="error"
+          message="Could not load posts."
+          detail={error}
+          onRetry={onRetry}
+          compact
+        />
+      </div>
+    );
+  }
+
   if (posts.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-        <span className="text-4xl" aria-hidden>
-          📷
-        </span>
-        <p className="mt-3 font-display text-base font-semibold text-white">No posts yet</p>
-        <p className="mt-1 max-w-xs text-sm text-white/60">Share campus moments on The Quad to fill your grid.</p>
+      <div className="px-4 py-8">
+        <ScreenDataState
+          variant="empty"
+          message="No posts yet"
+          detail="Share campus moments on The Quad to fill your grid."
+          compact
+        />
       </div>
     );
   }

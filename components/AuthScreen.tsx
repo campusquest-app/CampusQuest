@@ -12,6 +12,7 @@ import { SchoolVerificationScreen } from "@/components/SchoolVerificationScreen"
 import { AuthOnboardingFlow } from "@/components/auth/AuthOnboardingFlow";
 import { AuthPasswordRequirementsAlert } from "@/components/auth/AuthPasswordRequirementsAlert";
 import { AuthPasswordRequirementsHints } from "@/components/auth/AuthPasswordRequirementsHints";
+import { PasswordInput } from "@/components/auth/PasswordInput";
 import { CampusQuestLogo } from "@/components/CampusQuestLogo";
 import {
   isPasswordRequirementFailure,
@@ -19,7 +20,7 @@ import {
 } from "@/lib/passwordRequirements";
 
 type Mode = "signin" | "signup";
-type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } };
+type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } | string };
 const REMEMBER_EMAIL_KEY = "cq_auth_remember_email";
 
 class HttpRequestError extends Error {
@@ -59,10 +60,10 @@ function mapSignupError(error: unknown): { passwordRequirements: true } | { mess
 function mapSigninError(error: unknown): string {
   if (error instanceof HttpRequestError) {
     const raw = error.message ?? "";
-    if (error.status === 401 || raw.toLowerCase().includes("invalid login credentials")) {
+    if (error.status === 401 || raw.toLowerCase().includes("invalid email or password")) {
       return "Incorrect email or password.";
     }
-    if (raw.toLowerCase().includes("email not confirmed")) {
+    if (raw.toLowerCase().includes("confirm your email")) {
       return "Please confirm your email before signing in.";
     }
     return "Unable to connect. Please try again.";
@@ -92,13 +93,13 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<ApiRespon
   }
   const payload = (await response.json().catch(() => ({}))) as ApiResponse<T>;
   if (!response.ok) {
-    throw new HttpRequestError(
-      payload?.error?.message ?? "Request failed.",
-      path,
-      response.status,
-      response.statusText || "Unknown",
-      payload?.error?.code,
-    );
+    const apiError = payload?.error;
+    const message =
+      typeof apiError === "string"
+        ? apiError
+        : apiError?.message ?? "Request failed.";
+    const code = typeof apiError === "string" ? undefined : apiError?.code;
+    throw new HttpRequestError(message, path, response.status, response.statusText || "Unknown", code);
   }
   return payload;
 }
@@ -504,14 +505,12 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                     {isResettingPassword ? "Sending..." : "Forgot Password?"}
                   </button>
                 </div>
-                <input
+                <PasswordInput
                   id="auth-password-signin"
-                  type="password"
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="cq-auth-input"
                 />
               </div>
               <label className="flex items-center gap-2.5 text-sm text-white/55">
@@ -598,9 +597,8 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                 <label htmlFor="auth-password-signup" className="cq-auth-label">
                   Password
                 </label>
-                <input
+                <PasswordInput
                   id="auth-password-signup"
-                  type="password"
                   autoComplete="new-password"
                   value={password}
                   onChange={(e) => {
@@ -608,7 +606,6 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                     if (showPasswordRequirementsError) setShowPasswordRequirementsError(false);
                   }}
                   placeholder="••••••••"
-                  className="cq-auth-input"
                   aria-invalid={showPasswordRequirementsError}
                   aria-describedby="auth-password-requirements"
                 />
@@ -620,14 +617,12 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                 <label htmlFor="auth-confirm-password" className="cq-auth-label">
                   Confirm Password
                 </label>
-                <input
+                <PasswordInput
                   id="auth-confirm-password"
-                  type="password"
                   autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="cq-auth-input"
                 />
               </div>
               {showPasswordRequirementsError ? <AuthPasswordRequirementsAlert /> : null}
