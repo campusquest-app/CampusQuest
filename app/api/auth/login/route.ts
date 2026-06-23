@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { NextResponse } from "next/server";
 import { ApiError, fail, ok } from "@/lib/server/http";
+import { confirmEmailAndSignIn, findAuthUserIdByEmail, logAuthFlow } from "@/lib/server/authBootstrap";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
 import { createPublicClient } from "@/lib/server/supabase";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
@@ -49,10 +50,12 @@ function classifyLoginFailure(error: unknown): SafeLoginFailure {
   };
 }
 
-function loginFail(failure: SafeLoginFailure) {
-  if (process.env.NODE_ENV !== "production") {
-    console.error("[auth:login] failed", { status: failure.status });
-  }
+function loginFail(failure: SafeLoginFailure, debug?: Record<string, unknown>) {
+  logAuthFlow("login", "failed", {
+    status: failure.status,
+    message: failure.message,
+    ...debug,
+  });
   return NextResponse.json({ error: failure.message }, { status: failure.status });
 }
 
@@ -65,30 +68,92 @@ export async function POST(request: Request) {
       email: input.email,
       password: input.password,
     });
-    if (error || !data.user || !data.session) {
-      return loginFail(classifyLoginFailure(error));
+    logAuthFlow("login", "auth_sign_in", {
+      ok: !error && Boolean(data.user?.id) && Boolean(data.session),
+      userId: data.user?.id ?? null,
+      hasSession: Boolean(data.session),
+      emailConfirmed: Boolean(data.user?.email_confirmed_at ?? data.user?.confirmed_at),
+      error: error?.message ?? null,
+      code: error?.code ?? null,
+    });
+
+    let authUser = data.user;
+    let authSession = data.session;
+
+    if ((error || !authUser || !authSession) && error) {
+      const failure = classifyLoginFailure(error);
+      const isUnconfirmed =
+        failure.message.toLowerCase().includes("confirm your email") ||
+        String(error.code ?? "").toLowerCase().includes("email_not_confirmed");
+
+      if (isUnconfirmed) {
+        const userId = await findAuthUserIdByEmail(input.email);
+        if (userId) {
+          const recovered = await confirmEmailAndSignIn({
+            publicClient: supabase,
+            userId,
+            email: input.email,
+            password: input.password,
+            route: "login",
+          });
+          if (recovered) {
+            authUser = recovered.user;
+            authSession = recovered.session;
+          }
+        }
+      }
     }
 
-    const player = await ensurePlayerSetup({
-      userId: data.user.id,
-      email: data.user.email,
-      displayName: (data.user.user_metadata?.display_name as string | undefined) ?? undefined,
-    });
+    if (!authUser || !authSession) {
+      return loginFail(classifyLoginFailure(error), {
+        userId: authUser?.id ?? data.user?.id ?? null,
+        hasSession: Boolean(authSession),
+      });
+    }
+
+    let player;
+    try {
+      player = await ensurePlayerSetup({
+        userId: authUser.id,
+        email: authUser.email,
+        displayName: (authUser.user_metadata?.display_name as string | undefined) ?? undefined,
+      });
+      logAuthFlow("login", "profile_setup", {
+        userId: authUser.id,
+        profileId: player.profile.id,
+        username: player.profile.username,
+      });
+    } catch (setupError) {
+      if (setupError instanceof ApiError) {
+        logAuthFlow("login", "profile_setup_failed", {
+          userId: authUser.id,
+          code: setupError.code ?? null,
+          message: setupError.message,
+        });
+        return fail(setupError);
+      }
+      throw setupError;
+    }
 
     const torchBearer = await tryAwardTorchBearerBadge({
-      userId: data.user.id,
-      user: data.user,
-      email: data.user.email,
+      userId: authUser.id,
+      user: authUser,
+      email: authUser.email,
     });
 
-    touchUserActivityById(data.user.id, { force: true });
+    touchUserActivityById(authUser.id, { force: true });
+
+    logAuthFlow("login", "success", {
+      userId: authUser.id,
+      profileId: player.profile.id,
+    });
 
     return ok({
       user: {
-        id: data.user.id,
-        email: data.user.email,
+        id: authUser.id,
+        email: authUser.email,
       },
-      session: data.session,
+      session: authSession,
       profile: player.profile,
       stats: player.stats,
       torchBearer,

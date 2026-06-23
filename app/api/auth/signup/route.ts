@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { isPasswordRequirementFailure } from "@/lib/passwordRequirements";
+import { confirmEmailAndSignIn, logAuthFlow } from "@/lib/server/authBootstrap";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { createPublicClient } from "@/lib/server/supabase";
@@ -16,6 +17,14 @@ export async function POST(request: Request) {
       email: input.email,
       password: input.password,
       options: input.displayName ? { data: { display_name: input.displayName } } : undefined,
+    });
+    logAuthFlow("signup", "auth_sign_up", {
+      ok: !error && Boolean(data.user?.id),
+      userId: data.user?.id ?? null,
+      hasSession: Boolean(data.session),
+      emailConfirmed: Boolean(data.user?.email_confirmed_at ?? data.user?.confirmed_at),
+      error: error?.message ?? null,
+      code: error?.code ?? null,
     });
     if (error) {
       const msg = error.message ?? "Sign up failed.";
@@ -43,6 +52,11 @@ export async function POST(request: Request) {
         displayName: input.displayName,
         username: input.username,
       });
+      logAuthFlow("signup", "profile_setup", {
+        userId: data.user.id,
+        profileId: player.profile.id,
+        username: player.profile.username,
+      });
     } catch (setupError) {
       if (setupError instanceof ApiError) {
         const msg = setupError.message ?? "";
@@ -65,21 +79,42 @@ export async function POST(request: Request) {
       throw setupError;
     }
 
-    const torchBearer = data.session
-      ? await tryAwardTorchBearerBadge({
+    let authUser = data.user;
+    let authSession = data.session;
+    if (!authSession) {
+      const confirmed = await confirmEmailAndSignIn({
+        publicClient: supabase,
+        userId: data.user.id,
+        email: input.email,
+        password: input.password,
+        route: "signup",
+      });
+      if (confirmed) {
+        authUser = confirmed.user;
+        authSession = confirmed.session;
+      } else {
+        logAuthFlow("signup", "session_unavailable", {
           userId: data.user.id,
-          user: data.user,
-          email: data.user.email,
+          reason: "email_confirmation_pending",
+        });
+      }
+    }
+
+    const torchBearer = authSession
+      ? await tryAwardTorchBearerBadge({
+          userId: authUser.id,
+          user: authUser,
+          email: authUser.email,
         })
       : null;
 
     return ok(
       {
         user: {
-          id: data.user.id,
-          email: data.user.email,
+          id: authUser.id,
+          email: authUser.email,
         },
-        session: data.session,
+        session: authSession,
         profile: player.profile,
         stats: player.stats,
         torchBearer,

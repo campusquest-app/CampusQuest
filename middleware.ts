@@ -22,6 +22,7 @@ function isConsentExempt(pathname: string, method: string): boolean {
   if (m === "GET" && pathname === "/api/me/profile") return true;
   if (m === "GET" && pathname === "/api/me/stats") return true;
   if (m === "GET" && pathname === "/api/me/safety-status") return true;
+  if (m === "GET" && pathname === "/api/me/school-verification") return true;
   return false;
 }
 
