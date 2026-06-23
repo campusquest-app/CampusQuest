@@ -1,7 +1,13 @@
 import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
-import { isPasswordRequirementFailure } from "@/lib/passwordRequirements";
-import { confirmEmailAndSignIn, logAuthFlow } from "@/lib/server/authBootstrap";
+import {
+  classifyProfileSetupError,
+  confirmEmailAndSignIn,
+  getMissingSupabaseEnvVarNames,
+  logAuthError,
+  logAuthFlow,
+  provisionSignupAuthUser,
+} from "@/lib/server/authBootstrap";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { createPublicClient } from "@/lib/server/supabase";
@@ -9,92 +15,71 @@ import { authSignupSchema, readJson } from "@/lib/server/validation";
 
 export async function POST(request: Request) {
   try {
+    const missingEnv = getMissingSupabaseEnvVarNames();
+    if (missingEnv.length > 0) {
+      logAuthError("signup", "env_missing", { missing: missingEnv });
+    }
+
     const input = await readJson(request, authSignupSchema);
     const supabase = createPublicClient();
-    const isDev = process.env.NODE_ENV !== "production";
 
-    const { data, error } = await supabase.auth.signUp({
+    const provisioned = await provisionSignupAuthUser({
+      publicClient: supabase,
       email: input.email,
       password: input.password,
-      options: input.displayName ? { data: { display_name: input.displayName } } : undefined,
+      displayName: input.displayName,
     });
+    const authUser = provisioned.user;
+
     logAuthFlow("signup", "auth_sign_up", {
-      ok: !error && Boolean(data.user?.id),
-      userId: data.user?.id ?? null,
-      hasSession: Boolean(data.session),
-      emailConfirmed: Boolean(data.user?.email_confirmed_at ?? data.user?.confirmed_at),
-      error: error?.message ?? null,
-      code: error?.code ?? null,
+      ok: true,
+      userId: authUser.id,
+      hasSession: Boolean(provisioned.session),
+      emailConfirmed: Boolean(authUser.email_confirmed_at ?? authUser.confirmed_at),
+      source: provisioned.source,
     });
-    if (error) {
-      const msg = error.message ?? "Sign up failed.";
-      if (isPasswordRequirementFailure(msg)) {
-        throw new ApiError(400, "Password does not meet requirements.", "PASSWORD_REQUIREMENTS");
-      }
-      if (msg.toLowerCase().includes("username") || msg.toLowerCase().includes("duplicate")) {
-        throw new ApiError(409, "This username is already taken.", "USERNAME_TAKEN");
-      }
-      throw new ApiError(400, "Unable to create your account. Please try again.", "SIGNUP_FAILED");
-    }
-    if (!data.user?.id) {
-      throw new ApiError(
-        400,
-        "We couldn't finish creating your account right now. Please try again in a moment.",
-        "SIGNUP_USER_MISSING",
-      );
-    }
 
     let player;
     try {
       player = await ensurePlayerSetup({
-        userId: data.user.id,
-        email: data.user.email,
+        userId: authUser.id,
+        email: authUser.email,
         displayName: input.displayName,
         username: input.username,
       });
       logAuthFlow("signup", "profile_setup", {
-        userId: data.user.id,
+        userId: authUser.id,
         profileId: player.profile.id,
         username: player.profile.username,
       });
     } catch (setupError) {
       if (setupError instanceof ApiError) {
-        const msg = setupError.message ?? "";
-        if (msg.toLowerCase().includes("username") || msg.toLowerCase().includes("duplicate")) {
-          throw new ApiError(409, "This username is already taken.", "USERNAME_TAKEN");
-        }
-        if (isDev) {
-          throw new ApiError(
-            400,
-            `Auth signup succeeded, but profile setup failed (${setupError.code ?? "PROFILE_SETUP_FAILED"}): ${setupError.message}`,
-            "SIGNUP_PROFILE_SETUP_FAILED",
-          );
-        }
-        throw new ApiError(
-          400,
-          "Your account was created, but profile setup is still finishing. Please sign in again shortly.",
-          "SIGNUP_PROFILE_SETUP_FAILED",
-        );
+        logAuthError("signup", "profile_setup_failed", {
+          userId: authUser.id,
+          code: setupError.code ?? null,
+          message: setupError.message,
+        });
+        throw classifyProfileSetupError(setupError);
       }
       throw setupError;
     }
 
-    let authUser = data.user;
-    let authSession = data.session;
+    let sessionUser = authUser;
+    let authSession = provisioned.session;
     if (!authSession) {
       const confirmed = await confirmEmailAndSignIn({
         publicClient: supabase,
-        userId: data.user.id,
+        userId: authUser.id,
         email: input.email,
         password: input.password,
         route: "signup",
       });
       if (confirmed) {
-        authUser = confirmed.user;
+        sessionUser = confirmed.user;
         authSession = confirmed.session;
       } else {
         logAuthFlow("signup", "session_unavailable", {
-          userId: data.user.id,
+          userId: authUser.id,
           reason: "email_confirmation_pending",
         });
       }
@@ -102,17 +87,17 @@ export async function POST(request: Request) {
 
     const torchBearer = authSession
       ? await tryAwardTorchBearerBadge({
-          userId: authUser.id,
-          user: authUser,
-          email: authUser.email,
+          userId: sessionUser.id,
+          user: sessionUser,
+          email: sessionUser.email,
         })
       : null;
 
     return ok(
       {
         user: {
-          id: authUser.id,
-          email: authUser.email,
+          id: sessionUser.id,
+          email: sessionUser.email,
         },
         session: authSession,
         profile: player.profile,
@@ -129,7 +114,17 @@ export async function POST(request: Request) {
       }
       return fail(new ApiError(400, "Please check your information and try again.", "VALIDATION_ERROR"));
     }
+    if (error instanceof ApiError) {
+      logAuthError("signup", "api_error", {
+        status: error.status,
+        code: error.code ?? null,
+        message: error.message,
+      });
+    } else {
+      logAuthError("signup", "unexpected_error", {
+        message: error instanceof Error ? error.message : "unknown",
+      });
+    }
     return fail(error);
   }
 }
-

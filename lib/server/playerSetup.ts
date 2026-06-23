@@ -55,6 +55,7 @@ export async function ensurePlayerSetup(args: {
       username,
       display_name: defaultName.slice(0, 50),
       bio: "",
+      role: "student",
     },
     { onConflict: "id", ignoreDuplicates: true },
   );

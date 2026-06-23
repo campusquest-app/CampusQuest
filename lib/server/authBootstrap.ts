@@ -1,10 +1,27 @@
 import type { Session, User } from "@supabase/supabase-js";
+import { ApiError } from "@/lib/server/http";
+import { isPasswordRequirementFailure } from "@/lib/passwordRequirements";
 import { createAdminClient, createPublicClient } from "@/lib/server/supabase";
 
 type PublicAuthClient = ReturnType<typeof createPublicClient>;
 
+type AuthSupabaseError = {
+  message?: string;
+  code?: string;
+  status?: number;
+};
+
 function authDebugEnabled(): boolean {
   return process.env.NODE_ENV !== "production" || process.env.AUTH_DEBUG === "1";
+}
+
+/** Names of required Supabase env vars that are missing (never returns secret values). */
+export function getMissingSupabaseEnvVarNames(): string[] {
+  const missing: string[] = [];
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()) missing.push("NEXT_PUBLIC_SUPABASE_URL");
+  if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()) missing.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) missing.push("SUPABASE_SERVICE_ROLE_KEY");
+  return missing;
 }
 
 /** Dev-only auth flow logging — never logs passwords or tokens. */
@@ -15,6 +32,199 @@ export function logAuthFlow(
 ): void {
   if (!authDebugEnabled()) return;
   console.info(`[auth:${route}] ${phase}`, details);
+}
+
+/** Always-on safe auth error logging for production triage — never logs passwords or tokens. */
+export function logAuthError(
+  route: "signup" | "login",
+  phase: string,
+  details: Record<string, unknown>,
+): void {
+  console.error(`[auth:${route}] ${phase}`, details);
+}
+
+/**
+ * Supabase may create the auth user but fail sending the confirmation email
+ * (rate limits, SMTP issues). Profile setup + admin confirm can still succeed.
+ */
+export function isRecoverableSignupAuthError(error: AuthSupabaseError): boolean {
+  const code = (error.code ?? "").toLowerCase();
+  const msg = (error.message ?? "").toLowerCase();
+  return (
+    code === "over_email_send_rate_limit" ||
+    msg.includes("rate limit") ||
+    msg.includes("error sending confirmation email") ||
+    (msg.includes("confirmation email") && msg.includes("error"))
+  );
+}
+
+export function classifySupabaseSignupError(error: AuthSupabaseError): ApiError {
+  const code = (error.code ?? "").toLowerCase();
+  const msg = (error.message ?? "").toLowerCase();
+  const rawMessage = error.message ?? "Sign up failed.";
+
+  if (isPasswordRequirementFailure(rawMessage, error.code)) {
+    return new ApiError(400, "Password does not meet requirements.", "PASSWORD_REQUIREMENTS");
+  }
+
+  if (code === "over_email_send_rate_limit" || msg.includes("email rate limit") || msg.includes("rate limit exceeded")) {
+    return new ApiError(
+      429,
+      "Too many signup attempts. Please wait a few minutes and try again.",
+      "EMAIL_RATE_LIMIT",
+    );
+  }
+
+  if (
+    code === "user_already_exists" ||
+    code === "email_exists" ||
+    msg.includes("already registered") ||
+    msg.includes("already been registered") ||
+    msg.includes("user already registered")
+  ) {
+    return new ApiError(
+      409,
+      "An account with this email already exists. Try signing in instead.",
+      "EMAIL_ALREADY_EXISTS",
+    );
+  }
+
+  if ((msg.includes("invalid") && msg.includes("email")) || code === "validation_failed") {
+    return new ApiError(400, "Please enter a valid email address.", "INVALID_EMAIL");
+  }
+
+  if (code === "signup_disabled" || msg.includes("signups not allowed") || msg.includes("signup is disabled")) {
+    return new ApiError(403, "New signups are temporarily disabled. Please try again later.", "SIGNUP_DISABLED");
+  }
+
+  if (msg.includes("username") || msg.includes("duplicate key") || msg.includes("unique constraint")) {
+    return new ApiError(409, "This username is already taken.", "USERNAME_TAKEN");
+  }
+
+  if (
+    code.includes("fetch") ||
+    msg.includes("fetch failed") ||
+    msg.includes("network") ||
+    msg.includes("getaddrinfo") ||
+    msg.includes("enotfound")
+  ) {
+    return new ApiError(
+      503,
+      "Unable to connect to the authentication service. Please try again.",
+      "AUTH_SERVICE_UNAVAILABLE",
+    );
+  }
+
+  return new ApiError(400, "Unable to create your account. Please try again.", "SIGNUP_FAILED");
+}
+
+export function classifyProfileSetupError(setupError: ApiError): ApiError {
+  const msg = (setupError.message ?? "").toLowerCase();
+  const code = setupError.code ?? "";
+
+  if (msg.includes("username") || msg.includes("duplicate") || msg.includes("unique")) {
+    return new ApiError(409, "This username is already taken.", "USERNAME_TAKEN");
+  }
+
+  if (code === "AUTH_USER_NOT_READY") {
+    return setupError;
+  }
+
+  if (code === "PROFILE_SETUP_FAILED" && msg.includes("username")) {
+    return new ApiError(409, "This username is already taken.", "USERNAME_TAKEN");
+  }
+
+  return new ApiError(
+    400,
+    "Your account was created, but profile setup is still finishing. Please sign in again shortly.",
+    "SIGNUP_PROFILE_SETUP_FAILED",
+  );
+}
+
+/** When public signUp fails before creating a user, provision via admin API (no confirmation email). */
+export function shouldFallbackToAdminSignup(error: AuthSupabaseError, hasUser: boolean): boolean {
+  if (hasUser) return false;
+  return isRecoverableSignupAuthError(error);
+}
+
+export async function provisionSignupAuthUser(args: {
+  publicClient: PublicAuthClient;
+  email: string;
+  password: string;
+  displayName?: string;
+}): Promise<{ user: User; session: Session | null; source: "sign_up" | "admin_create" }> {
+  const signUpOptions = args.displayName ? { data: { display_name: args.displayName } } : undefined;
+
+  const { data, error } = await args.publicClient.auth.signUp({
+    email: args.email,
+    password: args.password,
+    options: signUpOptions,
+  });
+
+  const signUpUser = data.user;
+  const hasUser = Boolean(signUpUser?.id);
+
+  if (!error && hasUser) {
+    return { user: signUpUser!, session: data.session, source: "sign_up" };
+  }
+
+  if (error && hasUser && isRecoverableSignupAuthError(error)) {
+    return { user: signUpUser!, session: data.session, source: "sign_up" };
+  }
+
+  if (error && !shouldFallbackToAdminSignup(error, hasUser)) {
+    throw classifySupabaseSignupError(error);
+  }
+
+  if (hasUser) {
+    return { user: signUpUser!, session: data.session, source: "sign_up" };
+  }
+
+  logAuthFlow("signup", "admin_create_fallback", {
+    code: error?.code ?? null,
+    message: error?.message ?? null,
+  });
+
+  const admin = createAdminClient();
+  const { data: created, error: createError } = await admin.auth.admin.createUser({
+    email: args.email,
+    password: args.password,
+    email_confirm: true,
+    user_metadata: args.displayName ? { display_name: args.displayName } : undefined,
+  });
+
+  if (createError || !created.user?.id) {
+    logAuthError("signup", "admin_create_failed", {
+      code: createError?.code ?? null,
+      message: createError?.message ?? "missing user",
+    });
+    throw classifySupabaseSignupError(createError ?? { message: "Sign up failed." });
+  }
+
+  const { data: signInData, error: signInError } = await args.publicClient.auth.signInWithPassword({
+    email: args.email,
+    password: args.password,
+  });
+
+  if (signInError || !signInData.user) {
+    logAuthError("signup", "admin_create_sign_in_failed", {
+      userId: created.user.id,
+      message: signInError?.message ?? "missing session",
+      code: signInError?.code ?? null,
+    });
+    return { user: created.user, session: signInData.session ?? null, source: "admin_create" };
+  }
+
+  logAuthFlow("signup", "admin_create_ok", {
+    userId: signInData.user.id,
+    hasSession: Boolean(signInData.session),
+  });
+
+  return {
+    user: signInData.user,
+    session: signInData.session,
+    source: "admin_create",
+  };
 }
 
 export async function findAuthUserIdByEmail(email: string): Promise<string | null> {

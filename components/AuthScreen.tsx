@@ -40,14 +40,8 @@ function mapSignupError(error: unknown): { passwordRequirements: true } | { mess
     if (error.code === "PASSWORD_REQUIREMENTS" || isPasswordRequirementFailure(error.message, error.code)) {
       return { passwordRequirements: true };
     }
-    if (error.code === "USERNAME_TAKEN" || error.status === 409) {
-      return { message: "This username is already taken." };
-    }
-    if (error.message.toLowerCase().includes("username")) {
-      return { message: "This username is already taken." };
-    }
-    if (error.code === "VALIDATION_ERROR") {
-      return { message: "Please check your information and try again." };
+    if (error.message.trim()) {
+      return { message: error.message };
     }
     return { message: "Unable to create your account. Please try again." };
   }
