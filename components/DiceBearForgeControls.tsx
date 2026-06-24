@@ -7,6 +7,7 @@ import {
   HAIR_COLOR_SWATCHES,
   SKIN_TONE_SWATCHES,
   dicebearAdvancedUi as U,
+  hairstyleNumberLabel,
 } from "@/lib/dicebearAdvancedOptions";
 
 function ForgeSection({
@@ -62,6 +63,49 @@ function jsonEq(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+export function DiceBearBackgroundPicker({
+  data,
+  applyBg,
+}: {
+  data: DiceBearAvatarV2;
+  applyBg: (backgroundColor: string[]) => void;
+}) {
+  const o = data.options;
+
+  return (
+    <ForgeSection icon="🌌" title="Background" subtitle="Color behind your avatar">
+      <OptionGrid>
+        {BG_FANTASY_PRESETS.map((b) => {
+          const active = jsonEq(o.backgroundColor, b.backgroundColor);
+          return (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => applyBg(b.backgroundColor)}
+              className={`relative ${BACKDROP_CARD} ${
+                active
+                  ? "border-2 border-uri-keaney bg-uri-keaney/20 shadow-[0_0_18px_rgba(104,171,232,0.32)] ring-2 ring-uri-keaney/35"
+                  : "border-white/12 bg-white/5 hover:border-white/25"
+              }`}
+            >
+              {active ? (
+                <span
+                  className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-uri-keaney text-[11px] font-bold text-white shadow-md"
+                  aria-hidden
+                >
+                  ✓
+                </span>
+              ) : null}
+              <span className="text-[11px] font-semibold text-white leading-snug truncate w-full pr-5">{b.label}</span>
+              <span className="text-[10px] text-white/45 leading-snug truncate w-full">{b.sub}</span>
+            </button>
+          );
+        })}
+      </OptionGrid>
+    </ForgeSection>
+  );
+}
+
 function skinPatch(style: DiceBearStyleId, skinColor: string[]): Record<string, unknown> {
   if (style === "micah") return { baseColor: skinColor };
   return { skinColor };
@@ -73,21 +117,23 @@ export function DiceBearForgeControls({
   applyBg,
   onSeedChange,
   compact,
+  hideBackground = false,
 }: {
   data: DiceBearAvatarV2;
   patchOptions: (partial: Record<string, unknown>) => void;
   applyBg: (backgroundColor: string[]) => void;
   onSeedChange: (seed: string) => void;
   compact: boolean;
+  hideBackground?: boolean;
 }) {
   const st = data.style;
   const o = data.options;
 
   const loreleiShared = (neutral: boolean) => (
     <>
-      <ForgeSection icon="💇" title="Hairstyles" subtitle={neutral ? "Lorelei neutral cuts" : "Lorelei cuts & crowns"}>
+      <ForgeSection icon="💇" title="Hairstyles">
         <OptionGrid>
-          {U.LORELEI_HAIR.map((h) => (
+          {U.LORELEI_HAIR.map((h, i) => (
             <button
               key={h.v}
               type="button"
@@ -96,7 +142,7 @@ export function DiceBearForgeControls({
                 jsonEq(o.hair, [h.v]) ? "border-uri-keaney bg-uri-keaney/25 text-white" : "border-white/12 bg-white/5 text-white/85 hover:border-uri-keaney/40"
               }`}
             >
-              {h.label}
+              {hairstyleNumberLabel(i)}
             </button>
           ))}
         </OptionGrid>
@@ -193,9 +239,9 @@ export function DiceBearForgeControls({
 
   const pixelShared = (neutral: boolean) => (
     <>
-      <ForgeSection icon="💇" title="Hero hair" subtitle={neutral ? "Neutral pixel locks" : "Retro sprites"}>
+      <ForgeSection icon="💇" title="Hairstyles">
         <OptionGrid>
-          {U.PIXEL_HAIR.map((h) => (
+          {U.PIXEL_HAIR.map((h, i) => (
             <button
               key={h.v}
               type="button"
@@ -204,7 +250,7 @@ export function DiceBearForgeControls({
                 jsonEq(o.hair, [h.v]) ? "border-uri-keaney bg-uri-keaney/25 text-white" : "border-white/12 bg-white/5 text-white/85"
               }`}
             >
-              {h.label}
+              {hairstyleNumberLabel(i)}
             </button>
           ))}
         </OptionGrid>
@@ -322,9 +368,9 @@ export function DiceBearForgeControls({
 
   const advShared = () => (
     <>
-      <ForgeSection icon="💇" title="Hair" subtitle="Quest-ready mane">
+      <ForgeSection icon="💇" title="Hairstyles">
         <OptionGrid>
-          {U.ADV_HAIR.map((h) => (
+          {U.ADV_HAIR.map((h, i) => (
             <button
               key={h.v}
               type="button"
@@ -333,7 +379,7 @@ export function DiceBearForgeControls({
                 jsonEq(o.hair, [h.v]) ? "border-uri-keaney bg-uri-keaney/25" : "border-white/12 bg-white/5"
               }`}
             >
-              {h.label}
+              {hairstyleNumberLabel(i)}
             </button>
           ))}
         </OptionGrid>
@@ -419,9 +465,9 @@ export function DiceBearForgeControls({
 
   const micahBlock = (
     <>
-      <ForgeSection icon="💇" title="Hair styles" subtitle="Micah cuts">
+      <ForgeSection icon="💇" title="Hairstyles">
         <OptionGrid>
-          {U.MICAH_HAIR.map((h) => (
+          {U.MICAH_HAIR.map((h, i) => (
             <button
               key={h.v}
               type="button"
@@ -430,7 +476,7 @@ export function DiceBearForgeControls({
                 jsonEq(o.hair, [h.v]) ? "border-uri-keaney bg-uri-keaney/25" : "border-white/12 bg-white/5"
               }`}
             >
-              {h.label}
+              {hairstyleNumberLabel(i)}
             </button>
           ))}
         </OptionGrid>
@@ -508,9 +554,9 @@ export function DiceBearForgeControls({
 
   const peepsBlock = (
     <>
-      <ForgeSection icon="💇" title="Hair & helms" subtitle="Open Peeps — crowning glory">
+      <ForgeSection icon="💇" title="Hairstyles">
         <OptionGrid>
-          {U.PEEPS_HEAD.map((h) => (
+          {U.PEEPS_HEAD.map((h, i) => (
             <button
               key={h.v}
               type="button"
@@ -519,7 +565,7 @@ export function DiceBearForgeControls({
                 jsonEq(o.head, [h.v]) ? "border-uri-keaney bg-uri-keaney/25" : "border-white/12 bg-white/5"
               }`}
             >
-              {h.label}
+              {hairstyleNumberLabel(i)}
             </button>
           ))}
         </OptionGrid>
@@ -627,31 +673,6 @@ export function DiceBearForgeControls({
     </ForgeSection>
   ) : null;
 
-  const bgSection = (
-    <ForgeSection icon="🌌" title="Battle backdrop" subtitle="Ambient mana">
-      <OptionGrid>
-        {BG_FANTASY_PRESETS.map((b) => {
-          const active = jsonEq(o.backgroundColor, b.backgroundColor);
-          return (
-            <button
-              key={b.id}
-              type="button"
-              onClick={() => applyBg(b.backgroundColor)}
-              className={`${BACKDROP_CARD} ${
-                active ? "border-uri-keaney bg-uri-keaney/20" : "border-white/12 bg-white/5 hover:border-white/25"
-              }`}
-            >
-              <span className="text-[11px] font-semibold text-white break-words leading-snug [overflow-wrap:anywhere]">
-                {b.label}
-              </span>
-              <span className="text-[9px] text-white/45 break-words leading-snug [overflow-wrap:anywhere]">{b.sub}</span>
-            </button>
-          );
-        })}
-      </OptionGrid>
-    </ForgeSection>
-  );
-
   let styleBlock: ReactNode = null;
 
   switch (st) {
@@ -683,7 +704,7 @@ export function DiceBearForgeControls({
 
   return (
     <div className="space-y-4 min-w-0">
-      {bgSection}
+      {!hideBackground ? <DiceBearBackgroundPicker data={data} applyBg={applyBg} /> : null}
       {skinSection}
       {hairColorSection}
       {styleBlock}

@@ -22,19 +22,13 @@ export function DashboardBootstrapShellSkeleton() {
         </div>
       </div>
 
-      <div
-        className="cq-nav-shell-bottom fixed inset-x-0 bottom-0 z-50 w-full"
-        style={{
-          paddingBottom: "env(safe-area-inset-bottom, 0px)",
-          paddingLeft: "env(safe-area-inset-left, 0px)",
-          paddingRight: "env(safe-area-inset-right, 0px)",
-        }}
-        aria-hidden
-      >
-        <div className="grid w-full grid-cols-3 gap-0 px-2 pt-2">
-          <div className="cq-skeleton mx-auto mt-2 h-10 w-10 rounded-2xl" />
-          <div className="cq-skeleton mx-auto -mt-4 h-16 w-16 rounded-full" />
-          <div className="cq-skeleton mx-auto mt-2 h-10 w-10 rounded-2xl" />
+      <div className="cq-dock-nav" aria-hidden>
+        <div className="cq-dock-nav__rail">
+          <div className="flex w-full items-center justify-between gap-1 px-1">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="cq-skeleton mx-auto h-10 w-10 rounded-full" />
+            ))}
+          </div>
         </div>
       </div>
     </div>

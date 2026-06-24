@@ -12,7 +12,7 @@ import {
 import { DICEBEAR_STYLE_MODULES } from "@/lib/dicebearSvg";
 import { buildDiceBearForClass, CHARACTER_CLASSES, STARTER_WEAPONS, type CharacterClassId } from "@/lib/characterClasses";
 import { AvatarDisplay } from "./AvatarDisplay";
-import { DiceBearForgeControls } from "./DiceBearForgeControls";
+import { DiceBearForgeControls, DiceBearBackgroundPicker } from "./DiceBearForgeControls";
 import { randomAppearanceOptions, randomBackgroundColors } from "@/lib/dicebearAdvancedOptions";
 
 type UnlockContext = {
@@ -21,15 +21,15 @@ type UnlockContext = {
   unlockedCosmetics?: string[] | null;
 } | null;
 
-const STYLE_CHOICES: { id: DiceBearStyleId; label: string; icon: string; blurb: string }[] = [
-  { id: "lorelei", label: "Lorelei", icon: "✨", blurb: "Expressive · great hair & faces" },
-  { id: "loreleiNeutral", label: "Lorelei neutral", icon: "🌿", blurb: "Soft tones" },
-  { id: "pixelArt", label: "Pixel hero", icon: "🎮", blurb: "Retro RPG pixels" },
-  { id: "pixelArtNeutral", label: "Pixel neutral", icon: "👾", blurb: "Retro · neutral" },
-  { id: "openPeeps", label: "Open Peeps", icon: "🧑‍🎓", blurb: "Friendly illustrated" },
-  { id: "adventurer", label: "Adventurer", icon: "⚔️", blurb: "Quest-ready" },
-  { id: "adventurerNeutral", label: "Adventurer+", icon: "🛡️", blurb: "Bold shapes" },
-  { id: "micah", label: "Micah", icon: "📘", blurb: "Clean illustration" },
+const STYLE_CHOICES: { id: DiceBearStyleId; icon: string }[] = [
+  { id: "lorelei", icon: "✨" },
+  { id: "loreleiNeutral", icon: "🌿" },
+  { id: "pixelArt", icon: "🎮" },
+  { id: "pixelArtNeutral", icon: "👾" },
+  { id: "openPeeps", icon: "🧑‍🎓" },
+  { id: "adventurer", icon: "⚔️" },
+  { id: "adventurerNeutral", icon: "🛡️" },
+  { id: "micah", icon: "📘" },
 ];
 
 function cloneDice(d: DiceBearAvatarV2): DiceBearAvatarV2 {
@@ -52,6 +52,7 @@ export function AvatarBuilder({
   onWeaponChange,
   unlockContext: _unlockContext,
   preview,
+  hidePreview = false,
 }: {
   value: string;
   onChange: (avatar: string) => void;
@@ -70,6 +71,8 @@ export function AvatarBuilder({
     totalXp: number;
     classLabel: string;
   };
+  /** Hide inline preview (modal provides a pinned preview). */
+  hidePreview?: boolean;
 }) {
   const [data, setData] = useState<DiceBearAvatarV2>(() => parseDiceBearAvatar(value) ?? getDefaultDiceBearAvatar());
 
@@ -143,66 +146,70 @@ export function AvatarBuilder({
   const xpPct = Math.min(100, (pv.totalXp / xpMax) * 100);
 
   const controls = (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 sm:px-3.5 sm:py-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:items-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-uri-keaney/85 whitespace-nowrap">
-            Roll a new face
-          </p>
-          <p
-            className="text-[10px] text-white/45 leading-snug line-clamp-1 sm:line-clamp-none sm:whitespace-normal"
-            title="Randomize uses a new seed, remixed features for your current style, and a random backdrop."
-          >
-            New seed, full remix, random backdrop.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 shrink-0 sm:ml-1">
-          <button
-            type="button"
-            onClick={randomize}
-            title="Randomize uses a new seed, remixed features for your current style, and a random backdrop."
-            className="rounded-xl border border-uri-gold/50 bg-gradient-to-r from-uri-gold/25 to-amber-500/20 px-3 py-2 text-sm font-bold text-amber-100 shadow-[0_0_20px_rgba(245,158,11,0.12)] hover:from-uri-gold/35 hover:to-amber-500/30 min-h-[40px] sm:min-h-0"
-          >
-            🎲 Randomize
-          </button>
-          <button
-            type="button"
-            onClick={resetToDefault}
-            className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-white/85 hover:border-white/25 hover:bg-white/10 min-h-[40px] sm:min-h-0"
-          >
-            ↺ Reset default
-          </button>
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3.5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white">Random Avatar</p>
+            <p className="mt-0.5 text-xs text-white/55">Generate a new avatar instantly.</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={randomize}
+              className="rounded-xl border border-uri-gold/50 bg-gradient-to-r from-uri-gold/25 to-amber-500/20 px-4 py-2.5 text-sm font-bold text-amber-100 shadow-[0_0_20px_rgba(245,158,11,0.12)] hover:from-uri-gold/35 hover:to-amber-500/30 min-h-[44px]"
+            >
+              🎲 Randomize
+            </button>
+            <button
+              type="button"
+              onClick={resetToDefault}
+              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/85 hover:border-white/25 hover:bg-white/10 min-h-[44px]"
+            >
+              Reset
+            </button>
+          </div>
         </div>
       </div>
 
       <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50 mb-2.5 leading-snug">
-          Portrait engine
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-          {STYLE_CHOICES.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setStyle(s.id)}
-              title={s.blurb}
-              className={`rounded-2xl border px-3 py-3 text-left transition-all min-h-[4.5rem] min-w-0 flex flex-col justify-center ${
-                data.style === s.id
-                  ? "border-uri-keaney bg-uri-keaney/25 ring-1 ring-uri-keaney/50"
-                  : "border-white/10 bg-white/[0.06] hover:border-white/20"
-              }`}
-            >
-              <span className="text-lg shrink-0" aria-hidden>
-                {s.icon}
-              </span>
-              <p className="text-xs font-semibold text-white mt-1 break-words leading-snug">{s.label}</p>
-              <p className="text-[10px] text-white/45 leading-snug mt-0.5 break-words [overflow-wrap:anywhere]">
-                {s.blurb}
-              </p>
-            </button>
-          ))}
+        <p className="text-sm font-semibold text-white">Choose a look</p>
+        <p className="mt-0.5 text-xs text-white/55">Tap a hairstyle style to try it on.</p>
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+          {STYLE_CHOICES.map((s, index) => {
+            const selected = data.style === s.id;
+            const label = `Hairstyle ${index + 1}`;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setStyle(s.id)}
+                aria-label={label}
+                className={`relative rounded-2xl border px-3 py-3.5 text-left transition-all min-h-[4.75rem] min-w-0 flex flex-col items-start justify-center gap-1.5 ${
+                  selected
+                    ? "border-2 border-uri-keaney bg-uri-keaney/20 shadow-[0_0_22px_rgba(104,171,232,0.35)] ring-2 ring-uri-keaney/35"
+                    : "border-white/12 bg-white/[0.06] hover:border-white/25 hover:bg-white/[0.09]"
+                }`}
+              >
+                {selected ? (
+                  <span
+                    className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-uri-keaney text-[11px] font-bold text-white shadow-md"
+                    aria-hidden
+                  >
+                    ✓
+                  </span>
+                ) : null}
+                <span className="text-xl shrink-0 leading-none" aria-hidden>
+                  {s.icon}
+                </span>
+                <p className="text-sm font-semibold text-white leading-tight whitespace-nowrap">{label}</p>
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      <DiceBearBackgroundPicker data={data} applyBg={applyBg} />
 
       <DiceBearForgeControls
         data={data}
@@ -210,6 +217,7 @@ export function AvatarBuilder({
         applyBg={applyBg}
         onSeedChange={(seed) => commit({ ...cloneDice(data), seed })}
         compact={compact}
+        hideBackground
       />
     </div>
   );
@@ -309,31 +317,33 @@ export function AvatarBuilder({
   if (compact) {
     return (
       <div className="space-y-4">
-        {preview ? (
-          <div className="rounded-2xl border border-white/12 bg-gradient-to-br from-uri-navy/95 to-black/40 px-3 py-3">
-            <div className="flex items-center gap-3">
-              <div className="rounded-xl border border-white/10 bg-black/30 p-1.5 shrink-0">
-                <AvatarDisplay avatar={serializeDiceBearAvatar(data)} size={72} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-white truncate">{preview.displayName}</p>
-                <p className="text-[11px] text-uri-keaney/90 font-mono truncate">@{preview.username}</p>
-                <p className="text-[10px] text-white/50 mt-0.5 truncate">
-                  Lv.{preview.level} · {preview.totalXp.toLocaleString()} XP · {preview.classLabel}
-                </p>
+        {!hidePreview ? (
+          preview ? (
+            <div className="rounded-2xl border border-white/12 bg-gradient-to-br from-uri-navy/95 to-black/40 px-3 py-3">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl border border-white/10 bg-black/30 p-1.5 shrink-0">
+                  <AvatarDisplay avatar={serializeDiceBearAvatar(data)} size={72} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-white truncate">{preview.displayName}</p>
+                  <p className="text-[11px] text-uri-keaney/90 font-mono truncate">@{preview.username}</p>
+                  <p className="text-[10px] text-white/50 mt-0.5 truncate">
+                    Lv.{preview.level} · {preview.totalXp.toLocaleString()} XP · {preview.classLabel}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <div
-              className="rounded-2xl border border-white/15 bg-white/5 p-2"
-              style={{ width: previewSize + 20, height: previewSize + 20 }}
-            >
-              <AvatarDisplay avatar={serializeDiceBearAvatar(data)} size={previewSize} />
+          ) : (
+            <div className="flex justify-center">
+              <div
+                className="rounded-2xl border border-white/15 bg-white/5 p-2"
+                style={{ width: previewSize + 20, height: previewSize + 20 }}
+              >
+                <AvatarDisplay avatar={serializeDiceBearAvatar(data)} size={previewSize} />
+              </div>
             </div>
-          </div>
-        )}
+          )
+        ) : null}
         {controls}
       </div>
     );

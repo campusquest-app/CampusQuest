@@ -98,41 +98,61 @@ export function CharacterCard({
               </button>
             ) : null}
             {editingAvatar && typeof document !== "undefined" && createPortal(
-              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && setEditingAvatar(false)} role="dialog" aria-modal="true" aria-label="Edit your avatar">
+              <div
+                className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center sm:p-4"
+                onClick={(e) => e.target === e.currentTarget && setEditingAvatar(false)}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Customize avatar"
+              >
                 <div className="absolute inset-0 bg-black/85" aria-hidden onClick={() => setEditingAvatar(false)} />
-                <div className="relative z-10 w-[min(22rem,92vw)] max-h-[85vh] overflow-y-auto rounded-2xl border border-uri-keaney/30 bg-uri-navy p-4 shadow-xl shadow-black/50">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/80">
-                    Edit your avatar
-                  </p>
-                  <div className="max-h-[60vh] overflow-y-auto pr-1">
-                    <AvatarBuilder
-                      value={editingAvatarValue}
-                      onChange={setEditingAvatarValue}
-                      compact
-                      preview={{
-                        displayName: character.name,
-                        username: character.username,
-                        level: character.level,
-                        totalXp: character.totalXP,
-                        classLabel:
-                          [getClassTitle(character.classId), getClassRealm(character.classId)]
-                            .filter(Boolean)
-                            .join(" · ") || "Adventurer",
-                      }}
-                    />
+                <div className="relative z-10 flex max-h-[min(92dvh,100%)] w-full max-w-xl flex-col rounded-t-3xl border border-uri-keaney/30 bg-uri-navy shadow-xl shadow-black/50 sm:max-h-[88vh] sm:rounded-2xl lg:max-w-3xl">
+                  <div className="shrink-0 border-b border-white/10 px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
+                    <h2 className="font-display text-lg font-bold text-white sm:text-xl">Customize Avatar</h2>
+                    <p className="mt-1 text-sm text-white/60">
+                      Choose your avatar style, background, and save your look.
+                    </p>
                   </div>
-                  <div className="mt-4 flex gap-2">
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+                    <div className="sticky top-0 z-10 shrink-0 border-b border-white/10 bg-uri-navy px-4 py-4 sm:px-5 lg:static lg:w-56 lg:border-b-0 lg:border-r lg:py-5">
+                      <div className="flex flex-col items-center text-center">
+                        <div className="rounded-2xl border border-white/15 bg-white/5 p-3 shadow-inner">
+                          <AvatarDisplay avatar={editingAvatarValue} size={120} />
+                        </div>
+                        <p className="mt-3 text-xs text-white/55">Preview your avatar before saving.</p>
+                      </div>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
+                      <AvatarBuilder
+                        value={editingAvatarValue}
+                        onChange={setEditingAvatarValue}
+                        compact
+                        hidePreview
+                        preview={{
+                          displayName: character.name,
+                          username: character.username,
+                          level: character.level,
+                          totalXp: character.totalXP,
+                          classLabel:
+                            [getClassTitle(character.classId), getClassRealm(character.classId)]
+                              .filter(Boolean)
+                              .join(" · ") || "Adventurer",
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-2 border-t border-white/10 bg-uri-navy/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:px-5">
                     <button
                       type="button"
                       onClick={() => setEditingAvatar(false)}
-                      className="flex-1 rounded-xl py-2 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+                      className="flex-1 rounded-xl border border-white/15 py-3 text-sm font-medium text-white/75 hover:bg-white/10 hover:text-white"
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
                       onClick={handleAvatarSave}
-                      className="flex-1 rounded-xl bg-uri-keaney py-2 text-sm font-semibold text-uri-navy hover:bg-uri-keaney/90"
+                      className="flex-1 rounded-xl bg-uri-keaney py-3 text-sm font-semibold text-uri-navy hover:bg-uri-keaney/90"
                     >
                       Save
                     </button>

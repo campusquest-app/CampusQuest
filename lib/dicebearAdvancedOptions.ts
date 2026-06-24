@@ -9,6 +9,11 @@ function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
+/** User-facing label for hair shape options (underlying DiceBear values unchanged). */
+export function hairstyleNumberLabel(index: number): string {
+  return `Hairstyle ${index + 1}`;
+}
+
 // —— Shared fantasy palette (hex without #, DiceBear convention) ——
 
 export const SKIN_TONE_SWATCHES: { label: string; skinColor: string[] }[] = [

@@ -45,8 +45,11 @@
   /* App chrome — synced at runtime by TopNav (Quad only) / AppBottomNav / TheQuad */
   --cq-topnav-h: 0px;
   --cq-quad-header-h: 2.75rem;
-  --cq-bottom-nav-h: calc(5.75rem + env(safe-area-inset-bottom, 0px));
-  --cq-feed-bottom-clearance: calc(var(--cq-bottom-nav-h) + 1rem);
+  --cq-bottom-nav-h: 3.75rem;
+  --cq-dock-bottom-offset: 14px;
+  --cq-dock-scale: 1;
+  --cq-dock-opacity: 1;
+  --cq-feed-bottom-clearance: calc(var(--cq-bottom-nav-h) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 0.875rem);
 }
 
 /* Welcome splash animation */
@@ -1405,13 +1408,15 @@
   transform: rotate(-0.8deg);
 }
 
-/* Quad feed — Instagram-style stream (full-bleed media, padded text chrome) */
+/* Quad feed — centered column, full image visible (no cover crop) */
 .cq-quad-feed-stream {
   position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 100%;
+  max-width: min(100%, 36rem);
+  margin-left: auto;
+  margin-right: auto;
   background: transparent;
   box-sizing: border-box;
 }
@@ -1427,7 +1432,54 @@
   overflow: visible;
   content-visibility: auto;
   contain-intrinsic-size: auto 28rem;
-  contain: layout style paint;
+  contain: layout style;
+}
+
+.cq-feed-post--menu-open {
+  position: relative;
+  z-index: 40;
+}
+
+.cq-feed-post-menu-anchor {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.cq-feed-post-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  width: auto;
+  max-width: min(280px, calc(100vw - 1rem));
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--cq-bg-elevated, #163670);
+  padding: 0.25rem 0;
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.55);
+}
+
+.cq-feed-post-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: rgba(255, 255, 255, 0.88);
+  white-space: nowrap;
+}
+
+.cq-feed-post-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cq-feed-post-menu-item--danger {
+  color: rgb(252, 165, 165);
+}
+
+.cq-feed-post-menu-item--danger:hover {
+  background: rgba(244, 63, 94, 0.12);
 }
 
 .cq-quad-feed-stream > .cq-feed-post:not(:last-child) {
@@ -1443,7 +1495,8 @@
 
 .cq-feed-post-header {
   position: relative;
-  z-index: 1;
+  z-index: 2;
+  overflow: visible;
 }
 
 .cq-feed-post-actions {
@@ -1518,48 +1571,41 @@
 .quad-feed-media-wrap {
   position: relative;
   width: 100%;
-  max-width: none;
+  max-width: 100%;
   margin: 0;
   padding: 0;
   border: none;
   border-radius: 0;
   box-shadow: none;
-  background: transparent;
-  overflow: hidden;
+  background: rgba(0, 0, 0, 0.18);
+  overflow: visible;
 }
 
 .quad-feed-media-wrap button {
   display: block;
   width: 100%;
-  max-width: none;
+  max-width: 100%;
   margin: 0;
   padding: 0;
   border: none;
   border-radius: 0;
   background: transparent;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .quad-feed-media-img {
   display: block;
   width: 100%;
-  max-width: none;
+  max-width: 100%;
   height: auto;
   margin: 0;
   padding: 0;
   border: none;
   border-radius: 0;
   box-shadow: none;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   vertical-align: top;
-  max-height: min(
-    52dvh,
-    calc(
-      100dvh - var(--cq-topnav-h, 4rem) - var(--cq-quad-header-h, 3.25rem) - var(--cq-bottom-nav-h, 5.75rem) - 9rem
-    ),
-    28rem
-  );
 }
 
 /* Comment threads expand naturally — page scroll only (no nested scroll in feed cards) */
@@ -5013,14 +5059,151 @@
   will-change: transform, opacity;
 }
 
-.cq-bottom-nav {
-  transform: translateY(calc(var(--cq-bottom-chrome-conceal, 0) * var(--cq-bottom-nav-h, 5.75rem)));
-  opacity: 1;
+/* —— Floating dock nav (Instagram-style) —— */
+.cq-dock-nav {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--cq-dock-bottom-offset, 14px));
+  z-index: 9999;
+  width: min(92vw, 520px);
+  transform: translateX(-50%) scale(var(--cq-dock-scale, 1));
+  transform-origin: center bottom;
+  opacity: var(--cq-dock-opacity, 1);
+  transition: transform 180ms ease, opacity 180ms ease, bottom 180ms ease;
+  pointer-events: none;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  box-sizing: border-box;
+}
+
+.cq-dock-nav__rail {
+  pointer-events: auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.125rem;
+  min-height: 3.25rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(10, 14, 18, 0.72);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 16px 48px -12px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.cq-dock-nav__indicator {
+  position: absolute;
+  top: 50%;
+  z-index: 0;
+  height: calc(100% - 0.5rem);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  transform: translateY(-50%);
   transition:
-    background-color 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    backdrop-filter 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    box-shadow 280ms cubic-bezier(0.32, 0.72, 0, 1);
-  will-change: transform;
+    left 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    width 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  pointer-events: none;
+}
+
+.cq-dock-nav__item {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.68);
+  transition: color 180ms ease, transform 180ms ease;
+}
+
+.cq-dock-nav__item:active {
+  transform: scale(0.94);
+}
+
+.cq-dock-nav__item--active {
+  color: #ffffff;
+}
+
+.cq-dock-nav__icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cq-dock-nav__item svg {
+  filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.35));
+}
+
+.cq-dock-nav__badge {
+  position: absolute;
+  top: -0.1rem;
+  right: -0.15rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: #f43f5e;
+  border: 2px solid rgba(10, 14, 18, 0.92);
+  box-shadow: 0 0 8px rgba(244, 63, 94, 0.55);
+}
+
+.cq-dock-nav__badge--avatar {
+  top: -0.05rem;
+  right: -0.05rem;
+}
+
+.cq-dock-nav__avatar {
+  position: relative;
+  display: block;
+  width: 1.75rem;
+  height: 1.75rem;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.12);
+  box-sizing: border-box;
+}
+
+.cq-dock-nav__avatar .avatar-display-frame {
+  width: 100%;
+  height: 100%;
+}
+
+.cq-dock-nav__avatar--active {
+  box-shadow:
+    0 0 0 2px rgba(10, 14, 18, 0.95),
+    0 0 0 3px rgba(255, 255, 255, 0.92);
+}
+
+.cq-dock-nav__avatar-placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(104, 171, 232, 0.35), rgba(255, 255, 255, 0.08));
+  animation: cq-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+.cq-dock-nav__avatar-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.92);
+  background: linear-gradient(145deg, rgba(104, 171, 232, 0.45), rgba(16, 42, 92, 0.85));
 }
 
 .cq-bottom-nav-inner {
@@ -5125,6 +5308,9 @@ html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-scan-btn svg {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .cq-dock-nav,
+  .cq-dock-nav__indicator,
+  .cq-dock-nav__item,
   .cq-bottom-nav,
   .cq-bottom-nav-inner,
   .cq-bottom-nav-item,

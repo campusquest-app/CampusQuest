@@ -1,24 +1,27 @@
 "use client";
 
-import { useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
-import { Home, Map, QrCode, Trophy } from "lucide-react";
+import { forwardRef, useLayoutEffect, useRef, useState, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
+import { Home, Map, MessageCircle, Search } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { getCharacter, subscribeCharacterAvatar } from "@/lib/store";
+import { DEFAULT_DISPLAY_AVATAR, normalizeAvatarInput } from "@/lib/resolveAvatarForDisplay";
 
-/** Synced by ResizeObserver on the nav element. */
+/** Synced by ResizeObserver on the dock element. */
 export const BOTTOM_NAV_CSS_VAR = "--cq-bottom-nav-h";
 
-/** Content clearance above fixed bottom nav (grid row + labels + safe area). */
+/** Content clearance above floating dock (pill + offset + safe area). */
 export const CQ_BOTTOM_NAV_CLEARANCE =
-  "calc(var(--cq-bottom-nav-h, 5.75rem) + env(safe-area-inset-bottom, 0px) + 0.5rem)";
+  "calc(var(--cq-bottom-nav-h, 3.75rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 0.875rem)";
 
-/** Floating action buttons (compose, etc.) sit just above the nav bar. */
+/** Floating action buttons (compose, etc.) sit just above the dock. */
 export const CQ_FLOATING_ACTION_BOTTOM =
-  "calc(var(--cq-bottom-nav-h, 5.75rem) + env(safe-area-inset-bottom, 0px) + 1.25rem)";
+  "calc(var(--cq-bottom-nav-h, 3.75rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 1.25rem)";
 
-export type AppBottomNavTab = "quad" | "realm" | "leaderboards" | "character";
+export type AppBottomNavTab = "quad" | "realm" | "inbox" | "friends" | "character";
 
-const BOTTOM_NAV_AVATAR_PX = 28;
+const BOTTOM_NAV_AVATAR_PX = 26;
+
+const DOCK_TABS: AppBottomNavTab[] = ["quad", "realm", "inbox", "friends", "character"];
 
 function useLiveUserAvatar(fallback?: unknown): unknown {
   return useSyncExternalStore(
@@ -28,26 +31,56 @@ function useLiveUserAvatar(fallback?: unknown): unknown {
   );
 }
 
+function useLiveCharacterName(): string | undefined {
+  return useSyncExternalStore(
+    subscribeCharacterAvatar,
+    () => getCharacter()?.name,
+    () => undefined,
+  );
+}
+
+function profileInitials(name?: string | null): string {
+  const trimmed = name?.trim();
+  if (!trimmed) return "?";
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]![0] ?? ""}${parts[parts.length - 1]![0] ?? ""}`.toUpperCase();
+  }
+  return trimmed.slice(0, 2).toUpperCase();
+}
+
+function shouldShowInitialsAvatar(avatar: unknown): boolean {
+  if (avatar == null) return true;
+  if (typeof avatar === "string" && !avatar.trim()) return true;
+  return normalizeAvatarInput(avatar) === DEFAULT_DISPLAY_AVATAR;
+}
+
 export function AppBottomNav({
   activeTab,
   onSelectTab,
-  onOpenScanner,
   userAvatar,
   avatarLoading = false,
+  unreadBadgeCount = 0,
 }: {
   activeTab: AppBottomNavTab | "other";
   onSelectTab: (tab: AppBottomNavTab) => void;
-  onOpenScanner: () => void;
-  /** Same avatar payload used across profile, posts, DMs, and leaderboards. */
   userAvatar?: unknown;
   avatarLoading?: boolean;
+  /** Unread messages / notifications — shows dots on Messages + Profile. */
+  unreadBadgeCount?: number;
 }) {
-  const homeActive = activeTab === "quad";
-  const mapActive = activeTab === "realm";
-  const leaderboardActive = activeTab === "leaderboards";
-  const profileActive = activeTab === "character";
   const navRef = useRef<HTMLElement | null>(null);
+  const railRef = useRef<HTMLDivElement | null>(null);
+  const itemRefs = useRef<Partial<Record<AppBottomNavTab, HTMLButtonElement | null>>>({});
   const liveAvatar = useLiveUserAvatar(userAvatar);
+  const characterName = useLiveCharacterName();
+  const showBadge = unreadBadgeCount > 0;
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+
+  const resolvedActive: AppBottomNavTab | null =
+    activeTab === "other" || !DOCK_TABS.includes(activeTab as AppBottomNavTab)
+      ? null
+      : (activeTab as AppBottomNavTab);
 
   useLayoutEffect(() => {
     const el = navRef.current;
@@ -55,7 +88,7 @@ export function AppBottomNav({
 
     const sync = (): void => {
       const raw = Math.ceil(el.getBoundingClientRect().height);
-      document.documentElement.style.setProperty(BOTTOM_NAV_CSS_VAR, `${Math.max(88, raw)}px`);
+      document.documentElement.style.setProperty(BOTTOM_NAV_CSS_VAR, `${Math.max(60, raw)}px`);
     };
 
     sync();
@@ -75,146 +108,204 @@ export function AppBottomNav({
     };
   }, []);
 
+  useLayoutEffect(() => {
+    if (!resolvedActive) {
+      setIndicator(null);
+      return undefined;
+    }
+    const rail = railRef.current;
+    const activeEl = itemRefs.current[resolvedActive];
+    if (!rail || !activeEl) return undefined;
+
+    const syncIndicator = (): void => {
+      const railRect = rail.getBoundingClientRect();
+      const itemRect = activeEl.getBoundingClientRect();
+      setIndicator({
+        left: itemRect.left - railRect.left,
+        width: itemRect.width,
+      });
+    };
+
+    syncIndicator();
+    let ro: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => syncIndicator());
+      ro.observe(rail);
+    }
+    window.addEventListener("resize", syncIndicator);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", syncIndicator);
+    };
+  }, [resolvedActive]);
+
   return (
-    <nav
-      ref={navRef}
-      className="cq-bottom-nav cq-nav-shell-bottom fixed inset-x-0 bottom-0 z-50 w-full"
-      style={{
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
-        paddingLeft: "env(safe-area-inset-left, 0px)",
-        paddingRight: "env(safe-area-inset-right, 0px)",
-      }}
-      aria-label="Main navigation"
-    >
-      <div className="cq-bottom-nav-inner grid w-full grid-cols-5 items-end gap-0 px-2 pb-3 pt-0">
-        <NavItem
+    <nav ref={navRef} className="cq-dock-nav" aria-label="Main navigation">
+      <div ref={railRef} className="cq-dock-nav__rail">
+        {indicator ? (
+          <span
+            className="cq-dock-nav__indicator"
+            aria-hidden
+            style={{
+              left: indicator.left,
+              width: indicator.width,
+            }}
+          />
+        ) : null}
+
+        <DockItem
+          ref={(node) => {
+            itemRefs.current.quad = node;
+          }}
           label="Quad"
-          active={homeActive}
+          active={resolvedActive === "quad"}
           onClick={() => onSelectTab("quad")}
-          icon={<Home className="h-[22px] w-[22px]" strokeWidth={homeActive ? 2.4 : 2} />}
+          icon={
+            <Home
+              className="h-[22px] w-[22px]"
+              strokeWidth={resolvedActive === "quad" ? 2.5 : 2}
+              fill={resolvedActive === "quad" ? "currentColor" : "none"}
+            />
+          }
         />
 
-        <NavItem
+        <DockItem
+          ref={(node) => {
+            itemRefs.current.realm = node;
+          }}
           label="Map"
-          active={mapActive}
+          active={resolvedActive === "realm"}
           onClick={() => onSelectTab("realm")}
-          icon={<Map className="h-[22px] w-[22px]" strokeWidth={mapActive ? 2.4 : 2} />}
+          icon={<Map className="h-[22px] w-[22px]" strokeWidth={resolvedActive === "realm" ? 2.5 : 2} />}
         />
 
-        <div className="cq-bottom-nav-scan flex items-end justify-center">
-          <button
-            type="button"
-            onClick={onOpenScanner}
-            aria-label="Open CQ Scanner"
-            className="cq-scanner-fab cq-bottom-nav-scan-btn -mt-6 flex h-[4.25rem] w-[4.25rem] flex-col items-center justify-center rounded-full border border-cyan-300/40 bg-gradient-to-b from-cyan-400/90 via-cyan-500/85 to-[#1e6a9a] text-white shadow-[0_0_32px_-4px_rgba(56,189,248,0.75),0_12px_28px_-8px_rgba(0,0,0,0.65)] transition active:scale-95 touch-manipulation"
-          >
-            <QrCode className="h-7 w-7" strokeWidth={2.2} />
-            <span className="cq-bottom-nav-label mt-0.5 text-[9px] font-bold uppercase tracking-[0.14em]">Scan</span>
-          </button>
-        </div>
-
-        <NavItem
-          label="Ranks"
-          active={leaderboardActive}
-          onClick={() => onSelectTab("leaderboards")}
-          icon={<Trophy className="h-[22px] w-[22px]" strokeWidth={leaderboardActive ? 2.4 : 2} />}
+        <DockItem
+          ref={(node) => {
+            itemRefs.current.inbox = node;
+          }}
+          label="Messages"
+          active={resolvedActive === "inbox"}
+          onClick={() => onSelectTab("inbox")}
+          showBadge={showBadge}
+          icon={
+            <MessageCircle
+              className="h-[22px] w-[22px]"
+              strokeWidth={resolvedActive === "inbox" ? 2.5 : 2}
+              fill={resolvedActive === "inbox" ? "currentColor" : "none"}
+            />
+          }
         />
 
-        <ProfileNavItem
+        <DockItem
+          ref={(node) => {
+            itemRefs.current.friends = node;
+          }}
+          label="Search"
+          active={resolvedActive === "friends"}
+          onClick={() => onSelectTab("friends")}
+          icon={<Search className="h-[22px] w-[22px]" strokeWidth={resolvedActive === "friends" ? 2.5 : 2} />}
+        />
+
+        <DockProfileItem
+          ref={(node) => {
+            itemRefs.current.character = node;
+          }}
           label="Profile"
-          active={profileActive}
+          active={resolvedActive === "character"}
           onClick={() => onSelectTab("character")}
           avatar={liveAvatar}
+          initials={profileInitials(characterName)}
+          useInitials={shouldShowInitialsAvatar(liveAvatar)}
           loading={avatarLoading}
+          showBadge={showBadge}
         />
       </div>
     </nav>
   );
 }
 
-function NavItem({
-  label,
-  active,
-  onClick,
-  icon,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  icon: ReactNode;
-}) {
+const DockItem = forwardRef(function DockItem(
+  {
+    label,
+    active,
+    onClick,
+    icon,
+    showBadge = false,
+  }: {
+    label: string;
+    active: boolean;
+    onClick: () => void;
+    icon: ReactNode;
+    showBadge?: boolean;
+  },
+  ref: ForwardedRef<HTMLButtonElement>,
+) {
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       aria-current={active ? "page" : undefined}
-      className={`cq-bottom-nav-item flex min-h-[3.35rem] translate-y-0.5 flex-col items-center justify-center gap-0.5 rounded-2xl px-2 pb-2 pt-1.5 transition touch-manipulation ${
-        active
-          ? "text-cyan-100"
-          : "text-white/88 hover:text-white active:text-white"
-      }`}
+      aria-label={label}
+      className={`cq-dock-nav__item touch-manipulation ${active ? "cq-dock-nav__item--active" : ""}`}
     >
-      <span
-        className={`cq-bottom-nav-icon-slot flex h-10 w-10 items-center justify-center rounded-2xl transition ${
-          active
-            ? "bg-cyan-500/15 shadow-[0_0_20px_-6px_rgba(56,189,248,0.55)] ring-1 ring-cyan-400/25"
-            : ""
-        }`}
-      >
+      <span className="cq-dock-nav__icon-wrap">
         {icon}
-      </span>
-      <span className={`cq-bottom-nav-label text-[10px] font-semibold tracking-wide ${active ? "text-cyan-50" : "text-white/90"}`}>
-        {label}
+        {showBadge ? <span className="cq-dock-nav__badge" aria-hidden /> : null}
       </span>
     </button>
   );
-}
+});
 
-function ProfileNavItem({
-  label,
-  active,
-  onClick,
-  avatar,
-  loading,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  avatar?: unknown;
-  loading?: boolean;
-}) {
+const DockProfileItem = forwardRef(function DockProfileItem(
+  {
+    label,
+    active,
+    onClick,
+    avatar,
+    initials,
+    useInitials = false,
+    loading,
+    showBadge = false,
+  }: {
+    label: string;
+    active: boolean;
+    onClick: () => void;
+    avatar?: unknown;
+    initials: string;
+    useInitials?: boolean;
+    loading?: boolean;
+    showBadge?: boolean;
+  },
+  ref: ForwardedRef<HTMLButtonElement>,
+) {
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       aria-label={active ? "Profile, current page" : "Profile"}
-      className={`cq-bottom-nav-item cq-bottom-nav-item--profile flex min-h-[3.35rem] translate-y-0.5 flex-col items-center justify-center gap-0.5 rounded-2xl px-2 pb-2 pt-1.5 transition touch-manipulation ${
-        active ? "text-cyan-100" : "text-white/88 hover:text-white active:text-white"
-      }`}
+      className={`cq-dock-nav__item cq-dock-nav__item--profile touch-manipulation ${active ? "cq-dock-nav__item--active" : ""}`}
     >
-      <span
-        className={`cq-bottom-nav-avatar-slot flex h-10 w-10 items-center justify-center ${
-          active ? "cq-bottom-nav-avatar-slot--active" : ""
-        }`}
-      >
+      <span className={`cq-dock-nav__avatar ${active ? "cq-dock-nav__avatar--active" : ""}`}>
         {loading ? (
-          <span className="cq-bottom-nav-avatar cq-bottom-nav-avatar--placeholder" aria-hidden />
-        ) : (
-          <span className={`cq-bottom-nav-avatar ${active ? "cq-bottom-nav-avatar--active" : ""}`}>
-            <AvatarDisplay
-              key={typeof avatar === "string" ? avatar : JSON.stringify(avatar ?? "")}
-              avatar={avatar}
-              size={BOTTOM_NAV_AVATAR_PX}
-              fitParent
-              showProp={false}
-            />
+          <span className="cq-dock-nav__avatar-placeholder" aria-hidden />
+        ) : useInitials ? (
+          <span className="cq-dock-nav__avatar-initials" aria-hidden>
+            {initials}
           </span>
+        ) : (
+          <AvatarDisplay
+            key={typeof avatar === "string" ? avatar : JSON.stringify(avatar ?? "")}
+            avatar={avatar}
+            size={BOTTOM_NAV_AVATAR_PX}
+            fitParent
+            showProp={false}
+          />
         )}
-      </span>
-      <span className={`cq-bottom-nav-label text-[10px] font-semibold tracking-wide ${active ? "text-cyan-50" : "text-white/90"}`}>
-        {label}
+        {showBadge ? <span className="cq-dock-nav__badge cq-dock-nav__badge--avatar" aria-hidden /> : null}
       </span>
     </button>
   );
-}
+});

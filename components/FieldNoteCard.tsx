@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import {
   Heart,
@@ -266,7 +266,9 @@ function FieldNoteCardInner({
   const [actionToast, setActionToast] = useState<string | null>(null);
   const lastImageTapAtRef = useRef(0);
   const nodPopTimerRef = useRef<number | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuAnchorRef = useRef<HTMLDivElement | null>(null);
+  const menuDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
   const isPersistedPost = note.isPersisted ?? isPersistedQuadPostId(note.id);
   const isOwner = note.authorId === currentUserId && isPersistedPost;
   const canModerateDelete = canModeratePosts && isPersistedPost && note.authorId !== currentUserId;
@@ -292,13 +294,50 @@ function FieldNoteCardInner({
     };
   }, []);
 
+  const syncMenuAnchor = useCallback(() => {
+    const el = menuAnchorRef.current;
+    if (!el || typeof window === "undefined") return;
+    const rect = el.getBoundingClientRect();
+    setMenuAnchor({
+      top: rect.bottom,
+      right: Math.max(8, window.innerWidth - rect.right),
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setMenuAnchor(null);
+      return;
+    }
+    syncMenuAnchor();
+  }, [menuOpen, syncMenuAnchor]);
+
   useEffect(() => {
     if (!menuOpen) return undefined;
-    function handlePointerDown(e: MouseEvent) {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    const onViewportChange = () => syncMenuAnchor();
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("scroll", onViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange, true);
+    };
+  }, [menuOpen, syncMenuAnchor]);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    function closeIfOutside(event: Event) {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (menuAnchorRef.current?.contains(target)) return;
+      if (menuDropdownRef.current?.contains(target)) return;
+      setMenuOpen(false);
     }
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
+    document.addEventListener("mousedown", closeIfOutside);
+    document.addEventListener("touchstart", closeIfOutside, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", closeIfOutside);
+      document.removeEventListener("touchstart", closeIfOutside);
+    };
   }, [menuOpen]);
 
   useEffect(() => {
@@ -355,6 +394,7 @@ function FieldNoteCardInner({
   }
 
   async function handleConfirmDelete() {
+    console.log("Deleting post", note.id);
     setActionPending(true);
     try {
       await deleteQuadPostRequest(note.id);
@@ -366,9 +406,12 @@ function FieldNoteCardInner({
     } catch (err) {
       console.error("[cq][quad-post] delete failed", {
         postId: note.id,
+        authorId: note.authorId,
+        currentUserId,
         message: err instanceof Error ? err.message : String(err),
         code: err instanceof ApiRequestError ? err.code : undefined,
         status: err instanceof ApiRequestError ? err.status : undefined,
+        error: err,
       });
       const message = err instanceof Error ? err.message : "Could not delete post.";
       showToast(message);
@@ -377,8 +420,65 @@ function FieldNoteCardInner({
     }
   }
 
+  const menuDropdown =
+    menuOpen && menuAnchor && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={menuDropdownRef}
+            role="menu"
+            className="cq-feed-post-menu"
+            style={{
+              top: menuAnchor.top + 4,
+              right: menuAnchor.right,
+            }}
+          >
+            {isOwner ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="cq-feed-post-menu-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setEditError(null);
+                  setEditOpen(true);
+                }}
+              >
+                Edit Post
+              </button>
+            ) : null}
+            {canReportPost ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="cq-feed-post-menu-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setReportOpen(true);
+                }}
+              >
+                Report post
+              </button>
+            ) : null}
+            {isOwner || canModerateDelete ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="cq-feed-post-menu-item cq-feed-post-menu-item--danger"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setDeleteOpen(true);
+                }}
+              >
+                Delete Post
+              </button>
+            ) : null}
+          </div>,
+          document.body,
+        )
+      : null;
+
   const ownerMenu = showPostMenu ? (
-    <div ref={menuRef} className="relative shrink-0">
+    <div ref={menuAnchorRef} className="cq-feed-post-menu-anchor relative shrink-0" data-menu-open={menuOpen ? "true" : "false"}>
       <button
         type="button"
         onClick={() => setMenuOpen((open) => !open)}
@@ -389,53 +489,7 @@ function FieldNoteCardInner({
       >
         <MoreHorizontal className="h-[18px] w-[18px]" strokeWidth={2} />
       </button>
-      {menuOpen ? (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-20 mt-1 min-w-[9.5rem] overflow-hidden rounded-xl border border-white/15 bg-cq-elevated py-1 shadow-lg"
-        >
-          {isOwner ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="block w-full px-3 py-2 text-left text-sm text-white/85 hover:bg-cq-elevated/10"
-              onClick={() => {
-                setMenuOpen(false);
-                setEditError(null);
-                setEditOpen(true);
-              }}
-            >
-              Edit Post
-            </button>
-          ) : null}
-          {canReportPost ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="block w-full px-3 py-2 text-left text-sm text-white/85 hover:bg-cq-elevated/10"
-              onClick={() => {
-                setMenuOpen(false);
-                setReportOpen(true);
-              }}
-            >
-              Report post
-            </button>
-          ) : null}
-          {isOwner || canModerateDelete ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="block w-full px-3 py-2 text-left text-sm text-rose-300 hover:bg-rose-500/10"
-              onClick={() => {
-                setMenuOpen(false);
-                setDeleteOpen(true);
-              }}
-            >
-              Delete Post
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      {menuDropdown}
     </div>
   ) : null;
 
@@ -594,8 +648,8 @@ function FieldNoteCardInner({
             loading="lazy"
             decoding="async"
             fetchPriority="low"
-            sizes="100vw"
-            className="quad-feed-media-img w-full rounded-none object-cover"
+            sizes="(min-width: 640px) 36rem, 100vw"
+            className="quad-feed-media-img w-full max-w-full rounded-none"
           />
           {showImageNodPop ? (
             <span className="pointer-events-none absolute left-1/2 top-1/2 z-[2] -translate-x-1/2 -translate-y-1/2">
@@ -729,8 +783,8 @@ function FieldNoteCardInner({
     <article
       className={
         isFeed
-          ? "cq-feed-post quad-feed-post bg-transparent"
-          : "p-4 transition-colors hover:bg-cq-elevated/8"
+          ? `cq-feed-post quad-feed-post bg-transparent${menuOpen ? " cq-feed-post--menu-open" : ""}`
+          : `p-4 transition-colors hover:bg-cq-elevated/8${menuOpen ? " cq-feed-post--menu-open" : ""}`
       }
     >
       {actionToast ? (

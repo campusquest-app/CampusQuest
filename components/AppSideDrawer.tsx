@@ -15,6 +15,7 @@ import {
   HelpCircle,
   Home,
   Map,
+  QrCode,
   Settings,
   Sparkles,
   Swords,
@@ -60,7 +61,8 @@ type MenuItemId =
   | "manual-log"
   | "progress-hub"
   | "skills-lore"
-  | "collectibles";
+  | "collectibles"
+  | "scan";
 
 type MenuItem = {
   id: MenuItemId;
@@ -85,6 +87,7 @@ const MAIN_NAV: MenuItem[] = [
 ];
 
 const PROGRESS_NAV: MenuItem[] = [
+  { id: "scan", label: "CQ Scanner", icon: <QrCode className={ICON} aria-hidden /> },
   { id: "character-sheet", label: "Character", icon: <Sparkles className={ICON} aria-hidden /> },
   { id: "manual-log", label: "Manual Log", icon: <ClipboardList className={ICON} aria-hidden /> },
   { id: "quest-board", label: "Quests", icon: <Target className={ICON} aria-hidden /> },

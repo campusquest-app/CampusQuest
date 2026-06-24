@@ -516,7 +516,7 @@ export function Dashboard() {
   }, []);
 
   const handleDrawerNavigate = useCallback(
-    (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings" | "manual-log" | "progress-hub" | "skills-lore" | "collectibles") => {
+    (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings" | "manual-log" | "progress-hub" | "skills-lore" | "collectibles" | "scan") => {
       switch (dest) {
         case "friends":
           setTab("friends");
@@ -590,15 +590,18 @@ export function Dashboard() {
           setDrawerSubPanel("help");
           setSideMenuOpen(true);
           break;
+        case "scan":
+          openQrScanner();
+          break;
         default:
           break;
       }
     },
-    [],
+    [openQrScanner],
   );
 
   const bottomNavActive: AppBottomNavTab | "other" =
-    tab === "quad" || tab === "realm" || tab === "leaderboards" || tab === "character"
+    tab === "quad" || tab === "realm" || tab === "inbox" || tab === "friends" || tab === "character"
       ? tab
       : "other";
 
@@ -627,7 +630,11 @@ export function Dashboard() {
       setTabEnterDirection(direction);
       setTab(nextTab);
       if (nextTab === "quad") setQuadFeedTab("public");
-      if (nextTab === "character") setCharacterPane("profile");
+      if (nextTab === "inbox") setInboxSubTab("messages");
+      if (nextTab === "character") {
+        setCharacterPane("profile");
+        setProfileTab("posts");
+      }
     },
     [],
   );
@@ -2222,15 +2229,16 @@ export function Dashboard() {
         activeTab={bottomNavActive}
         userAvatar={character?.avatar}
         avatarLoading={!character}
+        unreadBadgeCount={unreadNotificationCount}
         onSelectTab={(t) => {
           setTab(t);
           if (t === "quad") setQuadFeedTab("public");
+          if (t === "inbox") setInboxSubTab("messages");
           if (t === "character") {
             setCharacterPane("profile");
             setProfileTab("posts");
           }
         }}
-        onOpenScanner={openQrScanner}
       />
 
       {dmWithOther && character && (

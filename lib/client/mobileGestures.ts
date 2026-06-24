@@ -44,7 +44,7 @@ const DRAWER_HORIZONTAL_SCROLL_SELECTOR = [
   ".tabs",
 ].join(", ");
 
-export const BOTTOM_NAV_SWIPE_TABS: AppBottomNavTab[] = ["quad", "realm", "leaderboards", "character"];
+export const BOTTOM_NAV_SWIPE_TABS: AppBottomNavTab[] = ["quad", "realm", "inbox", "friends", "character"];
 
 export type SwipeNavDirection = "forward" | "back";
 

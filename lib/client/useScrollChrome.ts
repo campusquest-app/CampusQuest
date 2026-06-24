@@ -75,6 +75,13 @@ function applyBottomConceal(concealPx: number): void {
   lastAppliedBottomState = nextState;
   document.documentElement.style.setProperty("--cq-bottom-chrome-conceal", String(progressRounded));
   document.documentElement.setAttribute("data-cq-bottom-chrome", nextState);
+
+  const dockScale = 1 - progressRounded * 0.14;
+  const dockOpacity = 1 - progressRounded * 0.12;
+  const dockBottom = 14 - progressRounded * 6;
+  document.documentElement.style.setProperty("--cq-dock-scale", String(dockScale));
+  document.documentElement.style.setProperty("--cq-dock-opacity", String(dockOpacity));
+  document.documentElement.style.setProperty("--cq-dock-bottom-offset", `${dockBottom}px`);
 }
 
 function resetScrollChrome(): void {
@@ -84,6 +91,9 @@ function resetScrollChrome(): void {
   document.documentElement.style.removeProperty("--cq-quad-header-offset");
   document.documentElement.style.removeProperty("--cq-topnav-offset");
   document.documentElement.style.removeProperty("--cq-bottom-chrome-conceal");
+  document.documentElement.style.removeProperty("--cq-dock-scale");
+  document.documentElement.style.removeProperty("--cq-dock-opacity");
+  document.documentElement.style.removeProperty("--cq-dock-bottom-offset");
   lastAppliedBottomProgress = -1;
   lastAppliedBottomState = null;
   lastAppliedTopHidden = null;
@@ -201,6 +211,9 @@ export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOpti
       setTopChromeHidden(false);
     }
     applyBottomConceal(0);
+    document.documentElement.style.setProperty("--cq-dock-scale", "1");
+    document.documentElement.style.setProperty("--cq-dock-opacity", "1");
+    document.documentElement.style.setProperty("--cq-dock-bottom-offset", "14px");
     lastScrollY = readScrollY(activeRoot);
 
     document.addEventListener("scroll", onScrollCapture, { passive: true, capture: true });

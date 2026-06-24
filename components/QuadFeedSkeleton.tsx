@@ -15,7 +15,7 @@ function QuadFeedPostSkeleton({ showMedia = true }: { showMedia?: boolean }) {
 
       {showMedia ? (
         <div className="quad-feed-media-wrap" aria-hidden>
-          <div className="cq-skeleton aspect-[4/5] max-h-[min(72vh,520px)] w-full rounded-none" />
+          <div className="cq-skeleton min-h-[12rem] w-full rounded-none sm:min-h-[14rem]" />
         </div>
       ) : null}
 
