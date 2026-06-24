@@ -1,5 +1,12 @@
 import type { MeProfileRow } from "@/lib/client/profileCharacter";
 
+/** Product flag: guided onboarding / tutorial UI is disabled app-wide. */
+export const ONBOARDING_TUTORIAL_DISABLED = true;
+
+export function isOnboardingTutorialDisabled(): boolean {
+  return ONBOARDING_TUTORIAL_DISABLED;
+}
+
 export const BEGINNER_CHAIN_QUEST_IDS = ["profile", "activity", "boss", "leaderboard", "guild"] as const;
 
 /** Minimal beginner status shape (avoids importing `beginnerOnboardingHydration`, which imports this module). */
@@ -22,6 +29,7 @@ export function isTutorialChainUiComplete(flags: {
   beginnerStatus: BeginnerClaimsShape;
   celebrationAcknowledgedMerged: boolean;
 }): boolean {
+  if (isOnboardingTutorialDisabled()) return true;
   const claims = flags.beginnerStatus.claims.length;
   if (claims < BEGINNER_CHAIN_QUEST_IDS.length) return false;
   const serverSeen =
@@ -36,6 +44,7 @@ export function shouldSkipStarterIntroOverlay(flags: {
   claimCountFromServer: number;
   lsIntroMarkedSeen: boolean;
 }): boolean {
+  if (isOnboardingTutorialDisabled()) return true;
   const p = flags.profile ?? {};
   if (flags.lsIntroMarkedSeen) return true;
   if (Boolean(p.onboarding_completed)) return true;

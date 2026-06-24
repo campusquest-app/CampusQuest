@@ -20,7 +20,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import type { Character } from "@/lib/types";
 import { CharacterCard } from "./CharacterCard";
 import { CharacterGate } from "./CharacterGate";
-import { WelcomeSplash } from "./WelcomeSplash";
 import { AuthScreen } from "./AuthScreen";
 import { ManualLogScreen } from "./ManualLogScreen";
 import { ProgressHubScreen } from "./ProgressHubScreen";
@@ -67,8 +66,6 @@ import { TrophyRoom } from "./achievements/TrophyRoom";
 import { AchievementUnlockCelebration } from "./achievements/AchievementUnlockCelebration";
 import { QuestBoard } from "./quests/QuestBoard";
 import { QuestCompleteCelebration } from "./quests/QuestCompleteCelebration";
-import { FirstTimeJourney } from "./FirstTimeJourney";
-import { AuthOnboardingFlow } from "./auth/AuthOnboardingFlow";
 import type { StatKey } from "@/lib/types";
 import { clearAccessToken, getAccessToken } from "@/lib/client/apiSession";
 import { clearStaleAuthClientState } from "@/lib/client/authSessionClient";
@@ -100,14 +97,12 @@ import type { FieldNote } from "@/lib/types";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { syncAchievementsAfterHydrate } from "@/lib/client/achievementHydration";
 import { clearSchoolVerificationSnapshot, peekSchoolVerificationSnapshot } from "@/lib/client/schoolVerificationCache";
-import {
-  loadBeginnerOnboardingHydrationBundle,
-  type BeginnerOnboardingHydrationBootstrap,
-} from "@/lib/client/beginnerOnboardingHydration";
+import { SchoolVerificationScreen } from "@/components/SchoolVerificationScreen";
+import { dismissOnboardingTutorialOnServer } from "@/lib/client/dismissOnboardingTutorial";
+import { resetMobileViewportScale } from "@/lib/client/modalViewportCleanup";
 import { LOGOUT_BLOCKED_SAVE_MESSAGE, isServerBackedUserId, resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
 import { hydrateUserPersistenceFromServer } from "@/lib/client/hydrateUserPersistence";
-import { SchoolVerificationScreen } from "./SchoolVerificationScreen";
-import { WelcomeBackCommunityReminder, communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
+import { communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
 import { DashboardBootstrapShellSkeleton } from "./DashboardBootstrapShellSkeleton";
 import { buildQrXpSession } from "@/lib/client/buildQrXpSession";
 import { normalizeQrScanInput } from "@/lib/client/normalizeQrScanInput";
@@ -181,7 +176,6 @@ export function Dashboard() {
   const router = useRouter();
   const [character, setCharacter] = useState<Character | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [showWelcomeSplash, setShowWelcomeSplash] = useState(true);
   const [tab, setTab] = useState<Tab>("quad");
   const [quadFeedTab, setQuadFeedTab] = useState<QuadFeedTab>("public");
   const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
@@ -247,7 +241,6 @@ export function Dashboard() {
     discoveryFocus: string[];
     major?: string | null;
   } | null>(null);
-  const [needsOnboardingPreferences, setNeedsOnboardingPreferences] = useState(false);
   const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("bootstrapping");
   const [bootstrapNonce, setBootstrapNonce] = useState(0);
   const [gatePrefillProfile, setGatePrefillProfile] = useState<MeProfileRow | null>(null);
@@ -256,8 +249,6 @@ export function Dashboard() {
   const [showCampusSlowNotice, setShowCampusSlowNotice] = useState(false);
   const campusFetchGenRef = useRef(0);
   const [musicMuted, setMusicMuted] = useState(false);
-  /** Beginner onboarding bundle: parent fetches before mounting FirstTimeJourney to avoid completion UI flashing before server/LS reconciliation. */
-  const [beginnerJourneyHydration, setBeginnerJourneyHydration] = useState<BeginnerOnboardingHydrationBootstrap | null>(null);
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
   /** Mount scanner module after first open so AnimatePresence can exit; chunk still loads on first tap only. */
   const [qrScannerEverOpened, setQrScannerEverOpened] = useState(false);
@@ -868,12 +859,10 @@ export function Dashboard() {
     setCharacter(null);
     setGatePrefillProfile(null);
     setOnboardingPreferences(null);
-    setNeedsOnboardingPreferences(false);
     setXpGainSession(null);
     setQrScannerOpen(false);
     setQrScannerEverOpened(false);
     setBootstrapStatus("bootstrapping");
-    setShowWelcomeSplash(false);
     setCampusFetchNonce(0);
     setPilotCampusState({ status: "loading" });
     setBootstrapNonce((n) => n + 1);
@@ -1032,33 +1021,14 @@ export function Dashboard() {
   }, [bootstrapStatus]);
 
   useEffect(() => {
-    if (bootstrapStatus !== "authenticated" || !character?.id) {
-      setBeginnerJourneyHydration(null);
-      return;
-    }
-    let cancelled = false;
-    const characterId = character.id;
-    setBeginnerJourneyHydration(null);
-    void loadBeginnerOnboardingHydrationBundle(characterId, getMeSessionSnapshot()).then((hydrationPayload) => {
-      if (!cancelled) setBeginnerJourneyHydration(hydrationPayload);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [bootstrapStatus, character?.id]);
+    if (bootstrapStatus !== "authenticated") return;
+    resetMobileViewportScale();
+  }, [bootstrapStatus, bootstrapNonce]);
 
   useEffect(() => {
-    if (process.env.NODE_ENV === "production" || !beginnerJourneyHydration || !character) return;
-    console.info("[cq] onboardingUiDecision", {
-      onboarding_completed_flag: beginnerJourneyHydration.onboarding_completed_flag,
-      tutorial_completed_flag: beginnerJourneyHydration.tutorial_completed_flag,
-      skipStarterIntroOverlay: beginnerJourneyHydration.skipStarterIntroOverlay,
-      hideBeginnerStarterPanel: beginnerJourneyHydration.hideBeginnerStarterPanel,
-      welcomeBackReminderEligible: beginnerJourneyHydration.welcomeBackReminderEligible,
-      beginnerPanel: beginnerJourneyHydration.hideBeginnerStarterPanel ? "hidden:tutorial_complete" : "shown:chain_active",
-      firstTimeJourneyMounted: !beginnerJourneyHydration.hideBeginnerStarterPanel,
-    });
-  }, [character?.id, beginnerJourneyHydration]);
+    if (bootstrapStatus !== "authenticated" || !character?.id) return;
+    void dismissOnboardingTutorialOnServer();
+  }, [bootstrapStatus, character?.id]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
@@ -1083,7 +1053,6 @@ export function Dashboard() {
           onboardingIntroLsKey,
           beginnerCelebrationAckKey,
           beginnerClaimedKey,
-          loadBeginnerOnboardingHydrationBundle: loadHydration,
         } = await import("@/lib/client/beginnerOnboardingHydration");
         try {
           localStorage.removeItem(onboardingIntroLsKey(id));
@@ -1097,10 +1066,8 @@ export function Dashboard() {
           starterIntroSeenReset: true,
           beginnerChainCelebrationSeenReset: true,
         });
-        const next = await loadHydration(id, getMeSessionSnapshot());
-        setBeginnerJourneyHydration(next);
       } catch {
-        setBeginnerJourneyHydration(null);
+        /* ignore */
       }
     })();
   }, [searchParams, bootstrapStatus, character?.id]);
@@ -1121,7 +1088,6 @@ export function Dashboard() {
         storeLogout();
         clearSchoolVerificationSnapshot();
         setGatePrefillProfile(null);
-        setNeedsOnboardingPreferences(false);
         setOnboardingPreferences(null);
         refresh();
       };
@@ -1264,17 +1230,9 @@ export function Dashboard() {
                 } else {
                   setOnboardingPreferences(null);
                 }
-                if (onboardingDone) {
-                  setNeedsOnboardingPreferences(false);
-                } else if (characterDone) {
-                  setNeedsOnboardingPreferences(!prefsResp.exists);
-                } else {
-                  setNeedsOnboardingPreferences(false);
-                }
               } catch {
                 if (cancelled) return;
                 setOnboardingPreferences(null);
-                if (characterDone && !onboardingDone) setNeedsOnboardingPreferences(true);
               }
             })();
           });
@@ -1290,9 +1248,7 @@ export function Dashboard() {
           replaceLocalCharacter(merged, { skipRemoteSync: true });
           setCharacter(merged);
           resetUserSaveSyncAfterHydrate();
-          setNeedsOnboardingPreferences(false);
           setGatePrefillProfile(null);
-          setShowWelcomeSplash(false);
           setTab("quad");
           routeDecision = "app";
         } else if (characterDone) {
@@ -1303,17 +1259,13 @@ export function Dashboard() {
           replaceLocalCharacter(merged, { skipRemoteSync: true });
           setCharacter(merged);
           resetUserSaveSyncAfterHydrate();
-          setNeedsOnboardingPreferences(false);
           setGatePrefillProfile(null);
-          setShowWelcomeSplash(false);
           setTab("quad");
           routeDecision = "app";
         } else {
           clearLegacyLocalMismatch();
           commitSnap();
-          setNeedsOnboardingPreferences(false);
           setGatePrefillProfile(profileMerged);
-          setShowWelcomeSplash(false);
           refresh();
           routeDecision = "character_gate";
         }
@@ -1587,9 +1539,6 @@ export function Dashboard() {
   }
 
   if (bootstrapStatus === "unauthenticated") {
-    if (showWelcomeSplash) {
-      return <WelcomeSplash onComplete={() => setShowWelcomeSplash(false)} />;
-    }
     return (
       <AuthScreen
         onComplete={() => {
@@ -1822,35 +1771,6 @@ export function Dashboard() {
         onConfirm={() => void confirmLogout()}
       />
       <div className={screenShake ? "cq-screen-shake cq-dashboard-scroll-pad" : "cq-dashboard-scroll-pad"}>
-        {character && beginnerJourneyHydration?.welcomeBackReminderEligible ? (
-          <div className="px-4">
-            <WelcomeBackCommunityReminder characterId={character.id} />
-          </div>
-        ) : null}
-        {character &&
-          (beginnerJourneyHydration === null ? (
-            <div className="mb-4 px-4 sm:mb-5">
-              <div
-                className="card min-h-[7rem] rounded-2xl border border-uri-gold/20 bg-white/[0.02] p-4 cq-skeleton-wrap overflow-hidden"
-                aria-busy="true"
-                aria-label="Loading beginner quest status"
-              >
-                <div className="cq-skeleton mb-3 h-4 w-44 rounded-lg" />
-                <div className="cq-skeleton mb-2 h-3 w-full rounded-lg" />
-                <div className="cq-skeleton h-3 max-w-[92%] rounded-lg" />
-              </div>
-            </div>
-          ) : beginnerJourneyHydration.hideBeginnerStarterPanel ? null : (
-            <div className="mb-4 px-4 sm:mb-5">
-              <FirstTimeJourney
-                character={character}
-                currentTab={tab}
-                onNavigateTab={setTab}
-                onRefresh={refresh}
-                onboardingHydrationBootstrap={beginnerJourneyHydration}
-              />
-            </div>
-          ))}
         {xpGainSession && (
           <LevelUpOverlay
             session={xpGainSession}
@@ -2346,17 +2266,6 @@ export function Dashboard() {
           prefillErrorBanner={qrDeepLinkError}
           allowRepeatQrScan={adminQrUnlimited}
         />
-      ) : null}
-
-      {bootstrapStatus === "authenticated" && needsOnboardingPreferences && character ? (
-        <div className="fixed inset-0 z-[120]">
-          <AuthOnboardingFlow
-            onComplete={() => {
-              setNeedsOnboardingPreferences(false);
-              setBootstrapNonce((n) => n + 1);
-            }}
-          />
-        </div>
       ) : null}
 
       {character ? (

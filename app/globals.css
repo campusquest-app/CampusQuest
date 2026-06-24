@@ -1011,6 +1011,8 @@
     background-color: var(--cq-bg-app);
     min-height: 100%;
     min-height: 100dvh;
+    width: 100%;
+    overflow-x: hidden;
   }
   body {
     @apply text-uri-white antialiased;
@@ -1018,8 +1020,18 @@
     background-color: var(--cq-bg-app);
     min-height: 100%;
     min-height: 100dvh;
+    width: 100%;
+    overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+  /* iOS Safari zooms focused inputs below 16px — enforce minimum on mobile form controls */
+  @media screen and (max-width: 767px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+    select,
+    textarea {
+      font-size: 16px;
+    }
   }
   /* Visible focus for accessibility */
   *:focus-visible {
@@ -1967,14 +1979,6 @@
     filter: blur(0);
   }
 }
-@keyframes onboarding-tip-pulse {
-  0%, 100% {
-    box-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.6), 0 0 0 0 rgba(104, 171, 232, 0.28);
-  }
-  50% {
-    box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.65), 0 0 0 6px rgba(104, 171, 232, 0.07);
-  }
-}
 @keyframes quest-reward-pop {
   0% {
     opacity: 0;
@@ -1991,9 +1995,6 @@
 }
 .onboarding-enter {
   animation: onboarding-enter 0.4s cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
-}
-.cq-onboarding-tip {
-  animation: onboarding-tip-pulse 2.2s ease-in-out infinite;
 }
 .quest-reward-pop {
   animation: quest-reward-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
@@ -4021,7 +4022,6 @@
   .cq-level-up-sparkle::before,
   .cq-level-up-sparkle::after,
   .onboarding-enter,
-  .cq-onboarding-tip,
   .quest-reward-pop,
   .cq-qr-nav-glow,
   .cq-qr-spinner,
@@ -5769,6 +5769,8 @@ html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-avatar {
   background: rgba(255, 255, 255, 0.08);
   color: var(--cq-text-primary);
   caret-color: var(--cq-accent);
+  /* 16px prevents iOS Safari from zooming the page when inputs are focused */
+  font-size: 16px;
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -5778,12 +5780,12 @@ html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-avatar {
 .cq-composer-input,
 .cq-composer-select {
   padding: 0.625rem 0.75rem;
-  font-size: 0.875rem;
 }
 
 .cq-composer-textarea {
   resize: none;
   padding: 0.625rem 0.75rem;
+  line-height: 1.45;
 }
 
 .cq-composer-input::placeholder,
@@ -7778,7 +7780,8 @@ html[data-realm-map-panning] {
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.06);
   padding: 0.8rem 0.95rem;
-  font-size: 0.9375rem;
+  /* 16px prevents iOS Safari from zooming the page when inputs are focused */
+  font-size: 16px;
   color: #fff;
   transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
 }

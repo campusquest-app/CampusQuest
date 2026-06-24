@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { isCreatePostModalOpen } from "@/lib/client/modalViewportCleanup";
 
 const TOP_REVEAL_Y = 40;
 /** Scroll down at least this many px before hiding chrome. */
@@ -89,6 +90,8 @@ function resetScrollChrome(): void {
   document.documentElement.style.removeProperty("--cq-bottom-chrome-conceal");
 }
 
+export { resetScrollChrome };
+
 /** Pure scroll-linked conceal math (Instagram-style; no idle restore). */
 export function computeBottomConcealPx(args: {
   prevConcealPx: number;
@@ -164,6 +167,7 @@ export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOpti
     };
 
     const onScrollCapture = (event: Event): void => {
+      if (isCreatePostModalOpen()) return;
       const root = scrollRootFromEvent(event);
       if (!isTrackedScrollRoot(root)) return;
 

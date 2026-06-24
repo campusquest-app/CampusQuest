@@ -4,6 +4,7 @@ import type { MeProfileRow } from "@/lib/client/profileCharacter";
 import { syncCharacterProgressFromBackend } from "@/lib/store";
 import {
   BEGINNER_CHAIN_QUEST_IDS,
+  isOnboardingTutorialDisabled,
   isTutorialChainUiComplete,
   logTutorialGating,
   shouldSkipStarterIntroOverlay,
@@ -201,10 +202,27 @@ function mergeBeginnerHydrationPieces(
  * Fetches onboarding status + merges celebration ack from LS. Syncs XP/streak into client store when API succeeds.
  * When `preloadedSession` matches `characterId`, reuses cached profile/stats from MeSessionSnapshot (only hits beginner-quests status).
  */
+function createSkippedTutorialHydration(): BeginnerOnboardingHydrationBootstrap {
+  return {
+    beginnerStatus: { claims: [] },
+    celebrationSeenFromServer: null,
+    celebrationAcknowledged: true,
+    onboarding_completed_flag: true,
+    tutorial_completed_flag: true,
+    skipStarterIntroOverlay: true,
+    hideBeginnerStarterPanel: true,
+    welcomeBackReminderEligible: false,
+  };
+}
+
 export async function loadBeginnerOnboardingHydrationBundle(
   characterId: string,
   preloadedSession?: MeSessionSnapshot | null,
 ): Promise<BeginnerOnboardingHydrationBootstrap> {
+  if (isOnboardingTutorialDisabled()) {
+    logTutorialGating("tutorialDisabledSkipFetch", { characterId });
+    return createSkippedTutorialHydration();
+  }
   try {
     if (preloadedSession?.userId === characterId) {
       const t0 = typeof performance !== "undefined" ? performance.now() : 0;

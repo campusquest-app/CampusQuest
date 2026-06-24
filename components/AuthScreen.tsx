@@ -10,6 +10,9 @@ import { LegalConsentScreen } from "@/components/LegalConsentScreen";
 import { AccountSafetyStatusScreen } from "@/components/AccountSafetyStatusScreen";
 import { SchoolVerificationScreen } from "@/components/SchoolVerificationScreen";
 import { AuthOnboardingFlow } from "@/components/auth/AuthOnboardingFlow";
+import { isOnboardingTutorialDisabled } from "@/lib/client/onboardingTutorialGating";
+import { dismissOnboardingTutorialOnServer } from "@/lib/client/dismissOnboardingTutorial";
+import { resetMobileViewportScale } from "@/lib/client/modalViewportCleanup";
 import { AuthPasswordRequirementsAlert } from "@/components/auth/AuthPasswordRequirementsAlert";
 import { AuthPasswordRequirementsHints } from "@/components/auth/AuthPasswordRequirementsHints";
 import { PasswordInput } from "@/components/auth/PasswordInput";
@@ -211,13 +214,21 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     const verifiedForCampus = await checkSchoolVerification(token);
     if (!verifiedForCampus) return;
 
-    if (opts.isSignup) {
+    if (opts.isSignup && !isOnboardingTutorialDisabled()) {
       setShowPostSignupOnboarding(true);
       return;
     }
 
-    setSuccessBanner("Welcome Back!");
-    window.setTimeout(() => onComplete(), 700);
+    if (opts.isSignup) {
+      void dismissOnboardingTutorialOnServer();
+    }
+
+    resetMobileViewportScale();
+    setSuccessBanner(opts.isSignup ? "Welcome to CampusQuest!" : "Welcome Back!");
+    window.setTimeout(() => {
+      resetMobileViewportScale();
+      onComplete();
+    }, 700);
   }
 
   async function handleConsentContinue() {
@@ -457,7 +468,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     );
   }
 
-  if (showPostSignupOnboarding) {
+  if (showPostSignupOnboarding && !isOnboardingTutorialDisabled()) {
     return <AuthOnboardingFlow onComplete={onComplete} />;
   }
 

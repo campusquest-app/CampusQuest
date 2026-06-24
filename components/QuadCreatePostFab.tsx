@@ -1,6 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import {
+  lockBodyScrollForModal,
+  markCreatePostModalOpen,
+  releaseModalViewportState,
+  restoreBodyScrollLock,
+} from "@/lib/client/modalViewportCleanup";
+import { resetScrollChrome } from "@/lib/client/useScrollChrome";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Award,
@@ -70,7 +77,19 @@ export function QuadCreatePostFab({
   function handleClose() {
     setOpen(false);
     setPostType(null);
+    releaseModalViewportState();
+    resetScrollChrome();
   }
+
+  useEffect(() => {
+    if (!open) return undefined;
+    markCreatePostModalOpen(true);
+    lockBodyScrollForModal();
+    return () => {
+      restoreBodyScrollLock();
+      markCreatePostModalOpen(false);
+    };
+  }, [open]);
 
   function handleSelectType(type: PostType) {
     setPostType(type);

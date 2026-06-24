@@ -64,6 +64,15 @@ type BeginnerClaimResponse = {
 };
 
 const VISITED_LEADERBOARD_KEY = (characterId: string) => `cq_onboarding_visited_leaderboard_v1_${characterId}`;
+const GUIDED_STEP_DISMISSED_KEY = (characterId: string) => `cq_onboarding_guided_step_dismissed_v1_${characterId}`;
+
+function readGuidedStepDismissed(characterId: string): boolean {
+  try {
+    return localStorage.getItem(GUIDED_STEP_DISMISSED_KEY(characterId)) === "1";
+  } catch {
+    return false;
+  }
+}
 
 function readLsIntro(characterId: string): boolean {
   try {
@@ -132,6 +141,7 @@ export function FirstTimeJourney({
   );
   const [justCompletedChainThisSession, setJustCompletedChainThisSession] = useState(false);
   const [celebrationFadeOut, setCelebrationFadeOut] = useState(false);
+  const [guidedStepDismissed, setGuidedStepDismissed] = useState(() => readGuidedStepDismissed(character.id));
   const celebrationPatchSentRef = useRef(false);
 
   function canUseLocalFallback() {
@@ -190,6 +200,7 @@ export function FirstTimeJourney({
     } catch {
       setVisitedLeaderboard(false);
     }
+    setGuidedStepDismissed(readGuidedStepDismissed(character.id));
   }, [character.id, onboardingHydrationBootstrap, applyHydrationBootstrap]);
 
   useEffect(() => {
@@ -252,6 +263,13 @@ export function FirstTimeJourney({
   const completionPct = Math.round((quests.filter((q) => claimed.includes(q.id)).length / quests.length) * 100);
   const nextQuest = quests.find((q) => q.done && !claimed.includes(q.id)) ?? quests.find((q) => !q.done);
   const allClaimed = quests.every((q) => claimed.includes(q.id));
+  /** Profile spawn step is always complete — list item is enough; no separate guided card. */
+  const showGuidedStep =
+    currentTab === "quad" &&
+    !!nextQuest &&
+    !allClaimed &&
+    !guidedStepDismissed &&
+    nextQuest.id !== "profile";
   /** Never show banner if server persisted celebration_seen_at (strict even if acknowledgement state desynced). */
   const serverSaysCelebrationRecorded =
     typeof celebrationSeenFromServer === "string" && celebrationSeenFromServer.length > 0;
@@ -354,6 +372,15 @@ export function FirstTimeJourney({
       // best effort only
     }
     void patchAuthed("/api/me/profile", { starterIntroSeen: true }).catch(() => {});
+  }
+
+  function dismissGuidedStep() {
+    setGuidedStepDismissed(true);
+    try {
+      localStorage.setItem(GUIDED_STEP_DISMISSED_KEY(character.id), "1");
+    } catch {
+      // best effort only
+    }
   }
 
   async function claimQuest(quest: BeginnerQuest) {
@@ -499,6 +526,35 @@ export function FirstTimeJourney({
             </span>
           </div>
 
+          {showGuidedStep && nextQuest ? (
+            <div className="mt-3 rounded-xl border border-uri-keaney/45 bg-uri-keaney/[0.08] p-3">
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-uri-keaney/90">Guided Step</p>
+                  <p className="mt-1 text-sm font-semibold text-white">{nextQuest.title}</p>
+                  <p className="mt-0.5 text-xs text-white/65">{nextQuest.description}</p>
+                  {!nextQuest.done && nextQuest.ctaTab && nextQuest.ctaLabel ? (
+                    <button
+                      type="button"
+                      onClick={() => onNavigateTab(nextQuest.ctaTab!)}
+                      className="mt-2 rounded-lg bg-uri-keaney px-3 py-1.5 text-xs font-semibold text-white hover:bg-uri-keaney/90"
+                    >
+                      {nextQuest.ctaLabel}
+                    </button>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={dismissGuidedStep}
+                  className="shrink-0 rounded-lg border border-white/15 px-2 py-1 text-xs text-white/60 hover:bg-white/10 hover:text-white"
+                  aria-label="Dismiss guided step"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="mt-3 h-2.5 overflow-hidden rounded-full border border-uri-gold/35 bg-black/35">
             <div className="h-full rounded-full bg-gradient-to-r from-uri-gold via-amber-300 to-uri-keaney transition-all duration-700" style={{ width: `${completionPct}%` }} />
           </div>
@@ -601,23 +657,6 @@ export function FirstTimeJourney({
           <p className="mt-1 text-xs text-white/60">You are now fully initiated. Keep stacking quests to maintain momentum.</p>
         </section>
       ) : null}
-
-      {nextQuest && !allClaimed && (
-        <div className="cq-onboarding-tip fixed bottom-[5.8rem] left-1/2 z-20 w-[min(24rem,92vw)] -translate-x-1/2 rounded-xl border border-uri-keaney/45 bg-uri-navy/95 p-3 shadow-xl">
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-uri-keaney/90">Guided Step</p>
-          <p className="mt-1 text-sm font-semibold text-white">{nextQuest.title}</p>
-          <p className="mt-0.5 text-xs text-white/65">{nextQuest.description}</p>
-          {!nextQuest.done && nextQuest.ctaTab && nextQuest.ctaLabel && (
-            <button
-              type="button"
-              onClick={() => onNavigateTab(nextQuest.ctaTab!)}
-              className="mt-2 rounded-lg bg-uri-keaney px-3 py-1.5 text-xs font-semibold text-white hover:bg-uri-keaney/90"
-            >
-              {nextQuest.ctaLabel}
-            </button>
-          )}
-        </div>
-      )}
 
       {showReward && (
         <div className="fixed inset-0 z-[121] flex items-center justify-center p-4" role="dialog" aria-modal="true">

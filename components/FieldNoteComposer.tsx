@@ -112,6 +112,9 @@ export function FieldNoteComposer({
       setRamMarks([]);
       setProofUrl("");
       setLocationId("");
+      if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
       if (realmMoment) {
         setSuccessMessage(`Posted to Quad and added to ${realmMoment.locationName} Moments.`);
       } else {
@@ -264,7 +267,7 @@ export function FieldNoteComposer({
               onChange={(e) => setRamMarkInput(e.target.value.slice(0, RAMMARK_MAX_LENGTH))}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRamMark())}
               placeholder={`#tag (max ${RAMMARK_MAX_LENGTH})`}
-              className="cq-composer-input w-28 py-1 text-xs"
+              className="cq-composer-input w-28 py-1"
             />
             <button type="button" onClick={addRamMark} disabled={!canAddRamMark} className="cq-composer-btn-add">
               Add

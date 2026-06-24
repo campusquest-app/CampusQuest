@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ApiRequestError, fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { ApiRequestError, deleteAuthed, fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 
 type AdminUser = {
   id: string;
@@ -117,6 +117,27 @@ export function UserSafetyManagementCard({ initialQuery }: { initialQuery?: stri
     }
   }
 
+  async function deleteUserAccount(user: AdminUser) {
+    const confirmed = window.confirm(
+      `Permanently delete ${user.displayName} (${user.email ?? user.id})?\n\nThis removes their auth account, profile, and app data. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await deleteAuthed(`/api/internal/admin/users/${encodeURIComponent(user.id)}`);
+      setSuccess(`Deleted ${user.displayName}.`);
+      await searchUsers(query);
+    } catch (deleteError) {
+      const message = deleteError instanceof Error ? deleteError.message : "Could not delete user.";
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function updateStatus(user: AdminUser, status: "active" | "suspended" | "banned") {
     let reason: string | undefined;
     let suspendedUntil: string | undefined;
@@ -228,6 +249,14 @@ export function UserSafetyManagementCard({ initialQuery }: { initialQuery?: stri
                 className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-emerald-400/35 text-emerald-200 bg-emerald-500/10 disabled:opacity-50"
               >
                 Reactivate
+              </button>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => void deleteUserAccount(user)}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-rose-500/45 text-rose-200 bg-rose-500/10 disabled:opacity-50"
+              >
+                Delete user
               </button>
             </div>
             {milestoneDebugUserId === user.id ? (
