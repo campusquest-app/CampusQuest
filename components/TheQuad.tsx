@@ -306,76 +306,133 @@ export function TheQuad({
     setNotes(cloneFeedNotesForDisplay(list));
   }, [character.id, baseFeedType, feedTab]);
 
-  function handleNod(noteId: string) {
-    if (pendingReactions.has(noteId)) return;
-    setPendingReactions((prev) => new Set(prev).add(noteId));
-    setReactionNotice(null);
-    void toggleQuadLike({
-      noteId,
-      userId: character.id,
-      onOptimistic: syncNotesFromFeed,
-    }).then((result) => {
-      setPendingReactions((prev) => {
-        const next = new Set(prev);
-        next.delete(noteId);
-        return next;
+  const pendingReactionsRef = useRef(pendingReactions);
+  pendingReactionsRef.current = pendingReactions;
+
+  const handleNod = useCallback(
+    (noteId: string) => {
+      if (pendingReactionsRef.current.has(noteId)) return;
+      setPendingReactions((prev) => new Set(prev).add(noteId));
+      setReactionNotice(null);
+      void toggleQuadLike({
+        noteId,
+        userId: character.id,
+        onOptimistic: syncNotesFromFeed,
+      }).then((result) => {
+        setPendingReactions((prev) => {
+          const next = new Set(prev);
+          next.delete(noteId);
+          return next;
+        });
+        if (!result.ok && result.message) {
+          setReactionNotice(result.message);
+        }
       });
-      if (!result.ok && result.message) {
-        setReactionNotice(result.message);
-      }
-    });
-  }
+    },
+    [character.id, syncNotesFromFeed],
+  );
 
-  function handleHype(noteId: string) {
-    if (pendingReactions.has(noteId)) return;
-    setPendingReactions((prev) => new Set(prev).add(noteId));
-    setReactionNotice(null);
-    void toggleQuadSpark({
-      noteId,
-      userId: character.id,
-      onOptimistic: syncNotesFromFeed,
-    }).then((result) => {
-      setPendingReactions((prev) => {
-        const next = new Set(prev);
-        next.delete(noteId);
-        return next;
+  const handleHype = useCallback(
+    (noteId: string) => {
+      if (pendingReactionsRef.current.has(noteId)) return;
+      setPendingReactions((prev) => new Set(prev).add(noteId));
+      setReactionNotice(null);
+      void toggleQuadSpark({
+        noteId,
+        userId: character.id,
+        onOptimistic: syncNotesFromFeed,
+      }).then((result) => {
+        setPendingReactions((prev) => {
+          const next = new Set(prev);
+          next.delete(noteId);
+          return next;
+        });
+        if (!result.ok && result.message) {
+          setReactionNotice(result.message);
+        }
       });
-      if (!result.ok && result.message) {
-        setReactionNotice(result.message);
-      }
-    });
-  }
+    },
+    [character.id, syncNotesFromFeed],
+  );
 
-  function handleVerify(noteId: string) {
-    verifyFieldNote(noteId, character.id);
-    void refresh({ silent: true });
-    onRefresh?.();
-  }
+  const handleVerify = useCallback(
+    (noteId: string) => {
+      verifyFieldNote(noteId, character.id);
+      void refresh({ silent: true });
+      onRefresh?.();
+    },
+    [character.id, onRefresh, refresh],
+  );
 
-  function handleAssist(noteId: string) {
-    assistFieldNote(noteId, character.id);
-    void refresh({ silent: true });
-    onRefresh?.();
-  }
+  const handleAssist = useCallback(
+    (noteId: string) => {
+      assistFieldNote(noteId, character.id);
+      void refresh({ silent: true });
+      onRefresh?.();
+    },
+    [character.id, onRefresh, refresh],
+  );
 
-  function handleAddComment(noteId: string, body: string) {
-    return submitQuadComment({
-      noteId,
-      author: {
-        authorId: character.id,
-        authorName: character.name,
-        authorUsername: character.username,
-        authorAvatar: character.avatar,
-        body,
-      },
-      onOptimistic: () => refresh({ silent: true }),
-    }).then((result) => {
-      if (!result.ok && result.message) {
-        setPostActionMessage(result.message);
-      }
-      return result;
-    });
-  }
+  const handleAddComment = useCallback(
+    (noteId: string, body: string) => {
+      return submitQuadComment({
+        noteId,
+        author: {
+          authorId: character.id,
+          authorName: character.name,
+          authorUsername: character.username,
+          authorAvatar: character.avatar,
+          body,
+        },
+        onOptimistic: () => refresh({ silent: true }),
+      }).then((result) => {
+        if (!result.ok && result.message) {
+          setPostActionMessage(result.message);
+        }
+        return result;
+      });
+    },
+    [character.avatar, character.id, character.name, character.username, refresh],
+  );
+
+  const handleCommentsUpdated = useCallback(() => {
+    setNotes((prev) => prev.slice());
+  }, []);
+
+  const handlePostUpdated = useCallback((updated: FieldNote) => {
+    setNotes((prev) =>
+      prev.map((n) =>
+        n.id === updated.id
+          ? {
+              ...updated,
+              nodByUserIds: n.nodByUserIds,
+              hypeByUserIds: n.hypeByUserIds,
+              vouchByUserIds: n.vouchByUserIds,
+              verifyByUserIds: n.verifyByUserIds,
+              assistByUserIds: n.assistByUserIds,
+            }
+          : n,
+      ),
+    );
+  }, []);
+
+  const handlePostDeleted = useCallback((postId: string) => {
+    setNotes((prev) => prev.filter((n) => n.id !== postId));
+  }, []);
+
+  const handleActionMessage = useCallback((message: string) => {
+    setPostActionMessage(message);
+  }, []);
+
+  const quadCurrentUser = useMemo(
+    () => ({
+      id: character.id,
+      name: character.name,
+      username: character.username,
+      avatar: character.avatar,
+    }),
+    [character.avatar, character.id, character.name, character.username],
+  );
 
   const quadChromeStackPadding =
     "calc(var(--cq-topnav-offset, var(--cq-topnav-h, 0px)) + var(--cq-quad-header-offset, var(--cq-quad-header-h, 52px)))";
@@ -497,37 +554,15 @@ export function TheQuad({
                   onVerify={handleVerify}
                   onAssist={handleAssist}
                   onAddComment={handleAddComment}
-                  onCommentsUpdated={() => setNotes((prev) => prev.slice())}
+                  onCommentsUpdated={handleCommentsUpdated}
                   likePending={pendingReactions.has(note.id)}
-                  onPostUpdated={(updated) => {
-                    setNotes((prev) =>
-                      prev.map((n) =>
-                        n.id === updated.id
-                          ? {
-                              ...updated,
-                              nodByUserIds: n.nodByUserIds,
-                              hypeByUserIds: n.hypeByUserIds,
-                              vouchByUserIds: n.vouchByUserIds,
-                              verifyByUserIds: n.verifyByUserIds,
-                              assistByUserIds: n.assistByUserIds,
-                            }
-                          : n,
-                      ),
-                    );
-                  }}
-                  onPostDeleted={(postId) => {
-                    setNotes((prev) => prev.filter((n) => n.id !== postId));
-                  }}
+                  onPostUpdated={handlePostUpdated}
+                  onPostDeleted={handlePostDeleted}
                   canModeratePosts={canModeratePosts}
-                  onActionMessage={setPostActionMessage}
+                  onActionMessage={handleActionMessage}
                   onViewAuthor={onViewAuthor}
                   onSharePost={onSharePost}
-                  currentUser={{
-                    id: character.id,
-                    name: character.name,
-                    username: character.username,
-                    avatar: character.avatar,
-                  }}
+                  currentUser={quadCurrentUser}
                 />
               ))}
             </div>

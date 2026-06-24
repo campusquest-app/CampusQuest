@@ -87,7 +87,7 @@ export function ProfilePostsGrid({
           >
             {thumb ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={thumb} alt="" className="h-full w-full object-cover transition duration-200 group-active:scale-[0.98]" loading="lazy" />
+              <img src={thumb} alt="" className="h-full w-full object-cover transition duration-200 group-active:scale-[0.98]" loading="lazy" decoding="async" fetchPriority="low" />
             ) : isTextOnlyPost(note) ? (
               <TextPostTile note={note} />
             ) : null}

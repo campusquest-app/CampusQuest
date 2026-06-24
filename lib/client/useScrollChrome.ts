@@ -12,6 +12,7 @@ const SCROLL_UP_DELTA = 4;
 const SCROLL_DELTA_MIN = 1.5;
 /** Pixels of scroll to fully conceal the bottom nav (Instagram-style linked offset). */
 const BOTTOM_CONCEAL_MAX = 72;
+const SCROLL_IDLE_MS = 150;
 
 /** Optional inner scroll container (falls back to window). */
 export const QUAD_SCROLL_ROOT_SELECTOR = "[data-cq-quad-scroll-root]";
@@ -38,26 +39,6 @@ function readScrollY(root: ScrollRoot): number {
   return window.scrollY || document.documentElement.scrollTop || 0;
 }
 
-function scrollRootFromEvent(event: Event): ScrollRoot {
-  const target = event.target;
-  if (target === document || target === document.documentElement) {
-    return window;
-  }
-  if (target instanceof HTMLElement) {
-    return target;
-  }
-  return window;
-}
-
-function isTrackedScrollRoot(root: ScrollRoot): boolean {
-  if (root === window) return true;
-  if (!(root instanceof HTMLElement)) return false;
-  if (root.matches(SCROLL_ROOT_SELECTOR) || root.matches(QUAD_SCROLL_ROOT_SELECTOR)) {
-    return true;
-  }
-  return root.closest(SCROLL_ROOT_SELECTOR) === root || root.closest(QUAD_SCROLL_ROOT_SELECTOR) === root;
-}
-
 function setTopChromeHidden(hidden: boolean): void {
   document.documentElement.setAttribute("data-cq-quad-chrome", hidden ? "hidden" : "visible");
   if (hidden) {
@@ -69,25 +50,43 @@ function setTopChromeHidden(hidden: boolean): void {
   }
 }
 
+let lastAppliedBottomProgress = -1;
+let lastAppliedBottomState: "expanded" | "concealing" | "minimized" | null = null;
+let lastAppliedTopHidden: boolean | null = null;
+
 function applyBottomConceal(concealPx: number): void {
   const progress = clamp(concealPx / BOTTOM_CONCEAL_MAX, 0, 1);
-  document.documentElement.style.setProperty("--cq-bottom-chrome-conceal", String(progress));
+  const progressRounded = Math.round(progress * 100) / 100;
 
-  if (progress <= 0.01) {
-    document.documentElement.setAttribute("data-cq-bottom-chrome", "expanded");
-  } else if (progress >= 0.92) {
-    document.documentElement.setAttribute("data-cq-bottom-chrome", "minimized");
+  let nextState: "expanded" | "concealing" | "minimized";
+  if (progressRounded <= 0.01) {
+    nextState = "expanded";
+  } else if (progressRounded >= 0.92) {
+    nextState = "minimized";
   } else {
-    document.documentElement.setAttribute("data-cq-bottom-chrome", "concealing");
+    nextState = "concealing";
   }
+
+  if (progressRounded === lastAppliedBottomProgress && nextState === lastAppliedBottomState) {
+    return;
+  }
+
+  lastAppliedBottomProgress = progressRounded;
+  lastAppliedBottomState = nextState;
+  document.documentElement.style.setProperty("--cq-bottom-chrome-conceal", String(progressRounded));
+  document.documentElement.setAttribute("data-cq-bottom-chrome", nextState);
 }
 
 function resetScrollChrome(): void {
   document.documentElement.removeAttribute("data-cq-quad-chrome");
   document.documentElement.removeAttribute("data-cq-bottom-chrome");
+  document.documentElement.removeAttribute("data-cq-scrolling");
   document.documentElement.style.removeProperty("--cq-quad-header-offset");
   document.documentElement.style.removeProperty("--cq-topnav-offset");
   document.documentElement.style.removeProperty("--cq-bottom-chrome-conceal");
+  lastAppliedBottomProgress = -1;
+  lastAppliedBottomState = null;
+  lastAppliedTopHidden = null;
 }
 
 export { resetScrollChrome };
@@ -136,13 +135,26 @@ export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOpti
       return undefined;
     }
 
-    let activeRoot: ScrollRoot = window;
+    const activeRoot: ScrollRoot = window;
     let lastScrollY = readScrollY(activeRoot);
     let bottomConcealPx = 0;
     let topHidden = false;
+    let rafId: number | null = null;
+    let scrollIdleTimer: number | null = null;
 
-    const syncChrome = (root: ScrollRoot): void => {
-      const currentY = readScrollY(root);
+    const markScrolling = (): void => {
+      document.documentElement.setAttribute("data-cq-scrolling", "true");
+      if (scrollIdleTimer != null) {
+        window.clearTimeout(scrollIdleTimer);
+      }
+      scrollIdleTimer = window.setTimeout(() => {
+        document.documentElement.removeAttribute("data-cq-scrolling");
+        scrollIdleTimer = null;
+      }, SCROLL_IDLE_MS);
+    };
+
+    const syncChrome = (): void => {
+      const currentY = readScrollY(activeRoot);
       const delta = currentY - lastScrollY;
 
       bottomConcealPx = computeBottomConcealPx({
@@ -154,35 +166,38 @@ export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOpti
 
       if (topChrome) {
         const topChange = computeTopChromeHidden({ scrollY: currentY, delta });
-        if (topChange === false) {
+        if (topChange === false && topHidden !== false) {
           topHidden = false;
-          setTopChromeHidden(false);
-        } else if (topChange === true) {
+          if (lastAppliedTopHidden !== false) {
+            lastAppliedTopHidden = false;
+            setTopChromeHidden(false);
+          }
+        } else if (topChange === true && topHidden !== true) {
           topHidden = true;
-          setTopChromeHidden(true);
+          if (lastAppliedTopHidden !== true) {
+            lastAppliedTopHidden = true;
+            setTopChromeHidden(true);
+          }
         }
       }
 
       lastScrollY = currentY;
+      markScrolling();
     };
 
-    const onScrollCapture = (event: Event): void => {
+    const onScrollCapture = (): void => {
       if (isCreatePostModalOpen()) return;
-      const root = scrollRootFromEvent(event);
-      if (!isTrackedScrollRoot(root)) return;
-
-      if (root !== activeRoot) {
-        activeRoot = root;
-        lastScrollY = readScrollY(root);
-        return;
-      }
-
-      syncChrome(root);
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        syncChrome();
+      });
     };
 
     topHidden = false;
     bottomConcealPx = 0;
     if (topChrome) {
+      lastAppliedTopHidden = false;
       setTopChromeHidden(false);
     }
     applyBottomConceal(0);
@@ -192,6 +207,12 @@ export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOpti
 
     return () => {
       document.removeEventListener("scroll", onScrollCapture, { capture: true });
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      if (scrollIdleTimer != null) {
+        window.clearTimeout(scrollIdleTimer);
+      }
       resetScrollChrome();
     };
   }, [enabled, topChrome]);

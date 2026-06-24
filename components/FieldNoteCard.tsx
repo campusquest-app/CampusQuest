@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import {
   Heart,
@@ -173,7 +173,65 @@ function looksLikeImageProofUrl(url: string): boolean {
   return false;
 }
 
-export function FieldNoteCard({
+type FieldNoteCardProps = {
+  note: FieldNote;
+  currentUserId: string;
+  comments?: QuadComment[];
+  onNod: (noteId: string) => void;
+  onHype: (noteId: string) => void;
+  onVerify: (noteId: string) => void;
+  onAssist: (noteId: string) => void;
+  onAddComment?: (noteId: string, body: string) => void | Promise<void | QuadCommentActionResult>;
+  currentUser?: { id: string; name: string; username: string; avatar: string };
+  likePending?: boolean;
+  onCommentsUpdated?: () => void;
+  highlightStat?: StatKey | null;
+  variant?: "default" | "feed";
+  onPostUpdated?: (note: FieldNote) => void;
+  onPostDeleted?: (postId: string) => void;
+  onActionMessage?: (message: string) => void;
+  onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
+  onSharePost?: (note: FieldNote) => void;
+  canModeratePosts?: boolean;
+};
+
+function userHasReacted(note: FieldNote, userId: string): boolean {
+  return (
+    note.nodByUserIds.has(userId) ||
+    (note.hypeByUserIds?.has(userId) ?? note.vouchByUserIds.has(userId)) ||
+    (note.verifyByUserIds?.has(userId) ?? false) ||
+    (note.assistByUserIds?.has(userId) ?? false)
+  );
+}
+
+function fieldNoteCardPropsAreEqual(prev: FieldNoteCardProps, next: FieldNoteCardProps): boolean {
+  if (prev.note.id !== next.note.id) return false;
+  if (prev.likePending !== next.likePending) return false;
+  if (prev.variant !== next.variant) return false;
+  if (prev.canModeratePosts !== next.canModeratePosts) return false;
+  if (prev.currentUserId !== next.currentUserId) return false;
+  if (prev.highlightStat !== next.highlightStat) return false;
+  if ((prev.comments?.length ?? 0) !== (next.comments?.length ?? 0)) return false;
+
+  const pn = prev.note;
+  const nn = next.note;
+  if (pn.nodCount !== nn.nodCount) return false;
+  if ((pn.hypeCount ?? pn.vouchCount ?? 0) !== (nn.hypeCount ?? nn.vouchCount ?? 0)) return false;
+  if ((pn.verifyCount ?? 0) !== (nn.verifyCount ?? 0)) return false;
+  if ((pn.assistCount ?? 0) !== (nn.assistCount ?? 0)) return false;
+  if (getDisplayCommentCount(pn.id, pn) !== getDisplayCommentCount(nn.id, nn)) return false;
+  if (pn.body !== nn.body) return false;
+  if (pn.proofUrl !== nn.proofUrl) return false;
+  if (pn.authorName !== nn.authorName) return false;
+  if (pn.authorUsername !== nn.authorUsername) return false;
+  if (pn.authorAvatar !== nn.authorAvatar) return false;
+  if (pn.locationName !== nn.locationName) return false;
+  if (userHasReacted(pn, prev.currentUserId) !== userHasReacted(nn, next.currentUserId)) return false;
+
+  return true;
+}
+
+function FieldNoteCardInner({
   note,
   currentUserId,
   comments = [],
@@ -193,31 +251,7 @@ export function FieldNoteCard({
   onViewAuthor,
   onSharePost,
   canModeratePosts = false,
-}: {
-  note: FieldNote;
-  currentUserId: string;
-  comments?: QuadComment[];
-  onNod: (noteId: string) => void;
-  onHype: (noteId: string) => void;
-  onVerify: (noteId: string) => void;
-  onAssist: (noteId: string) => void;
-  onAddComment?: (noteId: string, body: string) => void | Promise<void | QuadCommentActionResult>;
-  currentUser?: { id: string; name: string; username: string; avatar: string };
-  likePending?: boolean;
-  /** Called after persisted comments are loaded from the server (e.g. to refresh counts). */
-  onCommentsUpdated?: () => void;
-  /** Micro celebration on author row when this post's activity matches */
-  highlightStat?: StatKey | null;
-  /** `feed` = full-width media, border-between-posts (Quad). `default` = padded card row (Profile). */
-  variant?: "default" | "feed";
-  onPostUpdated?: (note: FieldNote) => void;
-  onPostDeleted?: (postId: string) => void;
-  onActionMessage?: (message: string) => void;
-  onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
-  onSharePost?: (note: FieldNote) => void;
-  /** Platform admins may delete posts they do not own. */
-  canModeratePosts?: boolean;
-}) {
+}: FieldNoteCardProps) {
   const [commentsSheetOpen, setCommentsSheetOpen] = useState(false);
   const [showImageNodPop, setShowImageNodPop] = useState(false);
   const [likePulse, setLikePulse] = useState(false);
@@ -559,6 +593,8 @@ export function FieldNoteCard({
             alt=""
             loading="lazy"
             decoding="async"
+            fetchPriority="low"
+            sizes="100vw"
             className="quad-feed-media-img w-full rounded-none object-cover"
           />
           {showImageNodPop ? (
@@ -573,6 +609,7 @@ export function FieldNoteCard({
           alt=""
           loading="lazy"
           decoding="async"
+          fetchPriority="low"
           className="w-full max-h-48 object-cover"
         />
       )
@@ -880,3 +917,5 @@ export function FieldNoteCard({
     </article>
   );
 }
+
+export const FieldNoteCard = memo(FieldNoteCardInner, fieldNoteCardPropsAreEqual);

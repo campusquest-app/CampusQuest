@@ -26,6 +26,30 @@ export function usePullToRefresh({ onRefresh, disabled = false, scrollRootRef }:
   const pullingRef = useRef(false);
   const refreshLockRef = useRef(false);
   const pullDistanceRef = useRef(0);
+  const pullRafRef = useRef<number | null>(null);
+  const lastRenderedPullRef = useRef(0);
+
+  const schedulePullDistanceRender = useCallback((next: number) => {
+    pullDistanceRef.current = next;
+    if (pullRafRef.current !== null) return;
+    pullRafRef.current = window.requestAnimationFrame(() => {
+      pullRafRef.current = null;
+      const value = pullDistanceRef.current;
+      if (Math.abs(value - lastRenderedPullRef.current) < 0.5) return;
+      lastRenderedPullRef.current = value;
+      setPullDistance(value);
+    });
+  }, []);
+
+  const flushPullDistanceRender = useCallback((next: number) => {
+    pullDistanceRef.current = next;
+    lastRenderedPullRef.current = next;
+    if (pullRafRef.current !== null) {
+      window.cancelAnimationFrame(pullRafRef.current);
+      pullRafRef.current = null;
+    }
+    setPullDistance(next);
+  }, []);
 
   const getScrollRoot = useCallback((): Window | HTMLElement => {
     return scrollRootRef?.current ?? window;
@@ -39,20 +63,18 @@ export function usePullToRefresh({ onRefresh, disabled = false, scrollRootRef }:
     if (disabled || refreshLockRef.current) return;
     refreshLockRef.current = true;
     setRefreshing(true);
-    setPullDistance(PTR_PULL_THRESHOLD);
-    pullDistanceRef.current = PTR_PULL_THRESHOLD;
+    flushPullDistanceRender(PTR_PULL_THRESHOLD);
     try {
       await onRefresh();
     } catch (error) {
       console.error("[cq][pull-to-refresh] refresh failed", error);
     } finally {
       setRefreshing(false);
-      setPullDistance(0);
-      pullDistanceRef.current = 0;
+      flushPullDistanceRender(0);
       pullingRef.current = false;
       refreshLockRef.current = false;
     }
-  }, [disabled, onRefresh]);
+  }, [disabled, flushPullDistanceRender, onRefresh]);
 
   useEffect(() => {
     if (disabled) return undefined;
@@ -69,19 +91,16 @@ export function usePullToRefresh({ onRefresh, disabled = false, scrollRootRef }:
       if (!pullingRef.current || refreshLockRef.current) return;
       if (!atScrollTop()) {
         pullingRef.current = false;
-        setPullDistance(0);
-        pullDistanceRef.current = 0;
+        flushPullDistanceRender(0);
         return;
       }
       const delta = event.touches[0].clientY - startYRef.current;
       if (delta <= 0) {
-        setPullDistance(0);
-        pullDistanceRef.current = 0;
+        flushPullDistanceRender(0);
         return;
       }
       const next = Math.min(PTR_MAX_PULL, delta * 0.55);
-      pullDistanceRef.current = next;
-      setPullDistance(next);
+      schedulePullDistanceRender(next);
       if (next > 10 && event.cancelable) {
         event.preventDefault();
       }
@@ -94,8 +113,7 @@ export function usePullToRefresh({ onRefresh, disabled = false, scrollRootRef }:
         void triggerRefresh();
         return;
       }
-      setPullDistance(0);
-      pullDistanceRef.current = 0;
+      flushPullDistanceRender(0);
     };
 
     let mousePulling = false;
@@ -110,19 +128,16 @@ export function usePullToRefresh({ onRefresh, disabled = false, scrollRootRef }:
       if (!mousePulling || refreshLockRef.current) return;
       if (!atScrollTop()) {
         mousePulling = false;
-        setPullDistance(0);
-        pullDistanceRef.current = 0;
+        flushPullDistanceRender(0);
         return;
       }
       const delta = event.clientY - startYRef.current;
       if (delta <= 0) {
-        setPullDistance(0);
-        pullDistanceRef.current = 0;
+        flushPullDistanceRender(0);
         return;
       }
       const next = Math.min(PTR_MAX_PULL, delta * 0.55);
-      pullDistanceRef.current = next;
-      setPullDistance(next);
+      schedulePullDistanceRender(next);
     };
 
     const onMouseUp = () => {
@@ -132,8 +147,7 @@ export function usePullToRefresh({ onRefresh, disabled = false, scrollRootRef }:
         void triggerRefresh();
         return;
       }
-      setPullDistance(0);
-      pullDistanceRef.current = 0;
+      flushPullDistanceRender(0);
     };
 
     document.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -144,6 +158,9 @@ export function usePullToRefresh({ onRefresh, disabled = false, scrollRootRef }:
     document.addEventListener("mouseup", onMouseUp);
 
     return () => {
+      if (pullRafRef.current !== null) {
+        window.cancelAnimationFrame(pullRafRef.current);
+      }
       document.removeEventListener("touchstart", onTouchStart);
       document.removeEventListener("touchmove", onTouchMove);
       document.removeEventListener("touchend", onTouchEnd);
@@ -151,7 +168,7 @@ export function usePullToRefresh({ onRefresh, disabled = false, scrollRootRef }:
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
     };
-  }, [atScrollTop, disabled, triggerRefresh]);
+  }, [atScrollTop, disabled, flushPullDistanceRender, schedulePullDistanceRender, triggerRefresh]);
 
   const progress = refreshing ? 1 : Math.min(1, pullDistance / PTR_PULL_THRESHOLD);
   const indicatorVisible = pullDistance > 4 || refreshing;
