@@ -5080,11 +5080,11 @@
   pointer-events: auto;
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 0.125rem;
   min-height: 3.25rem;
-  padding: 0.375rem 0.5rem;
+  padding: 0.75rem 0.5rem 0.375rem;
   border-radius: 999px;
   background: rgba(10, 14, 18, 0.72);
   backdrop-filter: blur(22px);
@@ -5093,6 +5093,7 @@
   box-shadow:
     0 16px 48px -12px rgba(0, 0, 0, 0.72),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  overflow: visible;
 }
 
 .cq-dock-nav__indicator {
@@ -5206,6 +5207,59 @@
   background: linear-gradient(145deg, rgba(104, 171, 232, 0.45), rgba(16, 42, 92, 0.85));
 }
 
+.cq-dock-nav__scan-slot {
+  position: relative;
+  z-index: 2;
+  flex: 1 1 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 3rem;
+}
+
+.cq-dock-nav__scan-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: -1.35rem;
+  height: 3.65rem;
+  width: 3.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.45);
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.95) 0%, rgba(14, 116, 178, 0.92) 55%, rgba(30, 106, 154, 1) 100%);
+  color: #fff;
+  box-shadow:
+    0 0 32px -4px rgba(56, 189, 248, 0.75),
+    0 12px 28px -8px rgba(0, 0, 0, 0.65);
+  transition: transform 180ms ease;
+}
+
+.cq-dock-nav__scan-btn:active {
+  transform: scale(0.94);
+}
+
+.cq-dock-nav__scan-ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 999px;
+  border: 2px solid rgba(125, 211, 252, 0.5);
+  animation: cq-dock-scan-ring 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes cq-dock-scan-ring {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.65;
+  }
+  50% {
+    transform: scale(1.14);
+    opacity: 0.12;
+  }
+}
+
 .cq-bottom-nav-inner {
   transition:
     padding 280ms cubic-bezier(0.32, 0.72, 0, 1),
@@ -5311,6 +5365,9 @@ html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-scan-btn svg {
   .cq-dock-nav,
   .cq-dock-nav__indicator,
   .cq-dock-nav__item,
+  .cq-dock-nav__scan-btn,
+  .cq-dock-nav__scan-ring,
+  .cq-scanner-fab,
   .cq-bottom-nav,
   .cq-bottom-nav-inner,
   .cq-bottom-nav-item,
