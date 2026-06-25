@@ -263,6 +263,7 @@ export const createPostSchema = z.object({
 
 export const commentSchema = z.object({
   body: z.string().trim().min(1).max(300),
+  parentCommentId: uuidSchema.nullable().optional(),
 });
 
 export const likeSchema = z.object({

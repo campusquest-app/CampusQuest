@@ -61,6 +61,9 @@ describe("submitQuadComment", () => {
       authorAvatar: "🎓",
       body: "Nice post",
       createdAt: Date.now(),
+      parentCommentId: null,
+      likeCount: 0,
+      viewerHasLiked: false,
     });
 
     const onOptimistic = vi.fn();

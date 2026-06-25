@@ -703,6 +703,10 @@ export function getCommentsByNoteId(noteId: string): QuadComment[] {
     .sort((a, b) => a.createdAt - b.createdAt);
 }
 
+export function getCommentById(commentId: string): QuadComment | undefined {
+  return comments.find((c) => c.id === commentId);
+}
+
 /** Prefer loaded comments length; fall back to server-backed post comment count. */
 export function getDisplayCommentCount(noteId: string, note?: Pick<FieldNote, "commentCount">): number {
   const loaded = getCommentsByNoteId(noteId).length;
@@ -723,6 +727,7 @@ export interface AddCommentParams {
   authorUsername: string;
   authorAvatar: string;
   body: string;
+  parentCommentId?: string | null;
 }
 
 export function setCommentsForNote(noteId: string, incoming: QuadComment[]): void {
@@ -744,6 +749,12 @@ export function removeCommentById(commentId: string): void {
   comments = comments.filter((c) => c.id !== commentId);
 }
 
+export function patchCommentLike(commentId: string, likeCount: number, viewerHasLiked: boolean): void {
+  const idx = comments.findIndex((c) => c.id === commentId);
+  if (idx < 0) return;
+  comments[idx] = { ...comments[idx]!, likeCount, viewerHasLiked };
+}
+
 export function addCommentWithId(noteId: string, params: AddCommentParams, commentId: string): QuadComment | null {
   const body = params.body.trim().slice(0, QUAD_COMMENT_MAX_CHARS);
   if (!body) return null;
@@ -759,6 +770,9 @@ export function addCommentWithId(noteId: string, params: AddCommentParams, comme
     authorAvatar: params.authorAvatar,
     body,
     createdAt: Date.now(),
+    parentCommentId: params.parentCommentId ?? null,
+    likeCount: 0,
+    viewerHasLiked: false,
   };
   comments.push(comment);
   return comment;

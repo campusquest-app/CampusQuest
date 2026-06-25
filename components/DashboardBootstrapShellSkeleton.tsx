@@ -24,10 +24,10 @@ export function DashboardBootstrapShellSkeleton() {
 
       <div className="cq-dock-nav" aria-hidden>
         <div className="cq-dock-nav__rail">
-          <div className="flex w-full items-end justify-between gap-1 px-1">
+          <div className="flex w-full items-center justify-between gap-1 px-1">
             <div className="cq-skeleton mx-auto h-10 w-10 rounded-full" />
             <div className="cq-skeleton mx-auto h-10 w-10 rounded-full" />
-            <div className="cq-skeleton -mt-5 mx-auto h-14 w-14 rounded-full" />
+            <div className="cq-skeleton mx-auto h-12 w-12 rounded-full" />
             <div className="cq-skeleton mx-auto h-10 w-10 rounded-full" />
             <div className="cq-skeleton mx-auto h-10 w-10 rounded-full" />
           </div>

@@ -45,6 +45,7 @@ export async function GET(
     const offset = parseIntParam(url.searchParams.get("offset"), 0);
     const comments = await listQuadPostComments({
       userClient: auth.userClient,
+      viewerId: auth.user.id,
       postId,
       limit,
       offset,
@@ -84,6 +85,7 @@ export async function POST(
       userId: auth.user.id,
       postId,
       body: input.body,
+      parentCommentId: input.parentCommentId ?? null,
     });
     return ok({ comment }, 201);
   } catch (error) {

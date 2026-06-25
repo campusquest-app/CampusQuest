@@ -374,9 +374,10 @@ export function TheQuad({
   );
 
   const handleAddComment = useCallback(
-    (noteId: string, body: string) => {
+    (noteId: string, body: string, parentCommentId?: string | null) => {
       return submitQuadComment({
         noteId,
+        parentCommentId,
         author: {
           authorId: character.id,
           authorName: character.name,

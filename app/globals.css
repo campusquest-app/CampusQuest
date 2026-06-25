@@ -5084,7 +5084,7 @@
   justify-content: space-between;
   gap: 0.125rem;
   min-height: 3.25rem;
-  padding: 0.75rem 0.5rem 0.375rem;
+  padding: 0.5rem 0.5rem 0.375rem;
   border-radius: 999px;
   background: rgba(10, 14, 18, 0.72);
   backdrop-filter: blur(22px);
@@ -5212,9 +5212,9 @@
   z-index: 2;
   flex: 1 1 0;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  min-width: 3rem;
+  min-width: 2.75rem;
 }
 
 .cq-dock-nav__scan-btn {
@@ -5222,16 +5222,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: -1.35rem;
-  height: 3.65rem;
-  width: 3.65rem;
+  margin-top: -0.35rem;
+  height: 3rem;
+  width: 3rem;
   border-radius: 999px;
-  border: 1px solid rgba(125, 211, 252, 0.45);
+  border: 1px solid rgba(125, 211, 252, 0.4);
   background: linear-gradient(180deg, rgba(56, 189, 248, 0.95) 0%, rgba(14, 116, 178, 0.92) 55%, rgba(30, 106, 154, 1) 100%);
   color: #fff;
   box-shadow:
-    0 0 32px -4px rgba(56, 189, 248, 0.75),
-    0 12px 28px -8px rgba(0, 0, 0, 0.65);
+    0 0 24px -6px rgba(56, 189, 248, 0.7),
+    0 8px 20px -8px rgba(0, 0, 0, 0.6);
   transition: transform 180ms ease;
 }
 
@@ -5241,9 +5241,9 @@
 
 .cq-dock-nav__scan-ring {
   position: absolute;
-  inset: -5px;
+  inset: -3px;
   border-radius: 999px;
-  border: 2px solid rgba(125, 211, 252, 0.5);
+  border: 1.5px solid rgba(125, 211, 252, 0.45);
   animation: cq-dock-scan-ring 2.6s ease-in-out infinite;
   pointer-events: none;
 }
@@ -9289,7 +9289,7 @@ html[data-realm-map-panning] {
 .cq-comments-sheet-root {
   position: fixed;
   inset: 0;
-  z-index: 140;
+  z-index: 10050;
   pointer-events: none;
 }
 
@@ -9314,7 +9314,7 @@ html[data-realm-map-panning] {
   bottom: 0;
   display: flex;
   flex-direction: column;
-  max-height: min(88dvh, 720px);
+  max-height: min(90dvh, 760px);
   border-radius: 16px 16px 0 0;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-bottom: 0;
@@ -9416,6 +9416,88 @@ html[data-realm-map-panning] {
   padding: 10px 0;
 }
 
+.cq-comments-sheet-item--reply {
+  padding-top: 8px;
+}
+
+.cq-comments-sheet-item-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.cq-comments-sheet-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.cq-comments-sheet-reply-btn,
+.cq-comments-sheet-cancel-reply {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.cq-comments-sheet-reply-btn:hover,
+.cq-comments-sheet-cancel-reply:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cq-comments-sheet-like-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  padding: 2px 0 0;
+  color: rgba(255, 255, 255, 0.45);
+  min-width: 28px;
+}
+
+.cq-comments-sheet-like-btn--active {
+  color: #f43f5e;
+}
+
+.cq-comments-sheet-like-btn:disabled {
+  opacity: 0.5;
+}
+
+.cq-comments-sheet-like-count {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.cq-comments-sheet-replies {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cq-comments-sheet-replies .cq-comments-sheet-item {
+  padding-left: 0;
+}
+
+.cq-comments-sheet-replying {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
 .cq-comments-sheet-item-avatar {
   flex-shrink: 0;
   width: 32px;
@@ -9445,6 +9527,9 @@ html[data-realm-map-panning] {
 }
 
 .cq-comments-sheet-item-author {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 13px;
   font-weight: 700;
   color: #fff;
 }
@@ -9464,11 +9549,18 @@ html[data-realm-map-panning] {
 .cq-comments-sheet-composer {
   flex-shrink: 0;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 0;
   padding: 10px 14px max(12px, env(safe-area-inset-bottom, 0px));
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   background: #12141a;
+}
+
+.cq-comments-sheet-composer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
 }
 
 .cq-comments-sheet-composer-avatar {

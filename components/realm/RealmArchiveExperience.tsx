@@ -316,10 +316,11 @@ export function RealmArchiveExperience({
     syncOpenNotes();
   }
 
-  function handleAddComment(noteId: string, body: string) {
+  function handleAddComment(noteId: string, body: string, parentCommentId?: string | null) {
     if (!viewer) return Promise.resolve({ ok: false as const, message: "Please sign in to comment on posts." });
     return submitQuadComment({
       noteId,
+      parentCommentId,
       author: {
         authorId: viewer.id,
         authorName: viewer.name,

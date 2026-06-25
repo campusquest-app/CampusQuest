@@ -189,7 +189,7 @@ export function AppBottomNav({
             className="cq-dock-nav__scan-btn cq-scanner-fab touch-manipulation"
           >
             <span className="cq-dock-nav__scan-ring" aria-hidden />
-            <QrCode className="relative z-[1] h-7 w-7" strokeWidth={2.2} />
+            <QrCode className="relative z-[1] h-[22px] w-[22px]" strokeWidth={2.2} />
           </button>
         </div>
 

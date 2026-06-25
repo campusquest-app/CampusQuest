@@ -192,10 +192,11 @@ export function UserProfileScreen({
     void refresh();
   }
 
-  function handleAddComment(noteId: string, body: string) {
+  function handleAddComment(noteId: string, body: string, parentCommentId?: string | null) {
     if (!canViewPrivateContent) return Promise.resolve();
     return submitQuadComment({
       noteId,
+      parentCommentId,
       author: {
         authorId: viewer.id,
         authorName: viewer.name,

@@ -20,6 +20,7 @@ import { ApiRequestError } from "@/lib/client/dashboardApi";
 import { getDisplayCommentCount, removeRemoteQuadPost, replaceRemoteQuadPost } from "@/lib/feedStore";
 import { hydrateQuadPostCommentsSafe } from "@/lib/client/quadCommentsHydration";
 import type { QuadCommentActionResult } from "@/lib/client/quadCommentActions";
+import { toggleQuadCommentLike } from "@/lib/client/quadCommentActions";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { formatStreakBadge } from "@/lib/streakMessaging";
 import { CampusQuestNodHeartPop } from "./CampusQuestNodHeartPop";
@@ -130,14 +131,13 @@ function streakBadge(days: number | undefined): string | null {
   return formatStreakBadge(days);
 }
 
-function FeedCaption({ name, body, tags }: { name: string; body: string; tags: string[] }) {
+function FeedCaption({ body, tags }: { body: string; tags: string[] }) {
   const trimmed = body.trim();
   if (!trimmed && tags.length === 0) return null;
 
   return (
     <p className="break-words text-[13px] leading-[1.45] text-white/88">
-      <span className="font-semibold text-white">{name}</span>
-      {trimmed ? <span className="whitespace-pre-wrap"> {trimmed}</span> : null}
+      {trimmed ? <span className="whitespace-pre-wrap">{trimmed}</span> : null}
       {trimmed && tags.length > 0 ? " " : null}
       {tags.map((tag, index) => (
         <span key={`${tag}-${index}`} className="font-medium text-cyan-400/85">
@@ -181,7 +181,11 @@ type FieldNoteCardProps = {
   onHype: (noteId: string) => void;
   onVerify: (noteId: string) => void;
   onAssist: (noteId: string) => void;
-  onAddComment?: (noteId: string, body: string) => void | Promise<void | QuadCommentActionResult>;
+  onAddComment?: (
+    noteId: string,
+    body: string,
+    parentCommentId?: string | null,
+  ) => void | Promise<void | QuadCommentActionResult>;
   currentUser?: { id: string; name: string; username: string; avatar: string };
   likePending?: boolean;
   onCommentsUpdated?: () => void;
@@ -370,6 +374,17 @@ function FieldNoteCardInner({
       cancelled = true;
     };
   }, [commentsSheetOpen, note.id, note.commentCount, comments.length, onCommentsUpdated, showToast]);
+
+  const handleToggleCommentLike = useCallback(
+    (commentId: string, liked: boolean) => {
+      return toggleQuadCommentLike({
+        commentId,
+        liked,
+        onOptimistic: () => onCommentsUpdated?.(),
+      });
+    },
+    [onCommentsUpdated],
+  );
 
   async function handleSaveEdit(patch: {
     body: string;
@@ -826,7 +841,6 @@ function FieldNoteCardInner({
           {(note.body.trim() || note.ramMarks.length > 0) && (
             <div className="cq-feed-post-caption px-3">
               <FeedCaption
-                name={note.authorName}
                 body={note.body}
                 tags={note.ramMarks.map((r) => r.tag)}
               />
@@ -904,6 +918,7 @@ function FieldNoteCardInner({
           currentUser={currentUser}
           onClose={() => setCommentsSheetOpen(false)}
           onAddComment={onAddComment}
+          onToggleCommentLike={handleToggleCommentLike}
           onViewAuthor={onViewAuthor}
         />
       ) : null}

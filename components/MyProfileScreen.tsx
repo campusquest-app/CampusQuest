@@ -405,9 +405,10 @@ export function MyProfileScreen({
     onRefresh?.();
   }
 
-  function handleAddComment(noteId: string, body: string) {
+  function handleAddComment(noteId: string, body: string, parentCommentId?: string | null) {
     return submitQuadComment({
       noteId,
+      parentCommentId,
       author: {
         authorId: character.id,
         authorName: character.name,

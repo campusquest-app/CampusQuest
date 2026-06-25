@@ -80,7 +80,7 @@ export function ProfileSocialPage({
   onHype: (noteId: string) => void;
   onVerify: (noteId: string) => void;
   onAssist: (noteId: string) => void;
-  onAddComment?: (noteId: string, body: string) => void;
+  onAddComment?: (noteId: string, body: string, parentCommentId?: string | null) => void;
   onPostUpdated?: (note: FieldNote) => void;
   onPostDeleted?: (postId: string) => void;
   onSharePost?: (note: FieldNote) => void;

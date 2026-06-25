@@ -319,6 +319,9 @@ export interface QuadComment {
   authorAvatar: string;
   body: string;
   createdAt: number;
+  parentCommentId?: string | null;
+  likeCount: number;
+  viewerHasLiked: boolean;
 }
 
 // —— Daily quests ——
