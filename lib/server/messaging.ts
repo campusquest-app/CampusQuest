@@ -1,3 +1,4 @@
+import { resolveProfileAvatar } from "@/lib/avatarSource";
 import { ApiError } from "@/lib/server/http";
 import {
   buildSharedPostPreview,
@@ -742,7 +743,7 @@ export async function getConversationDetails(args: {
   const memberIds = (participantRows ?? []).map((row) => row.user_id);
   const { data: profiles, error: profilesError } = await userClient
     .from("profiles")
-    .select("id, username, display_name, avatar_url")
+    .select("id, username, display_name, avatar_url, avatar_custom_json")
     .in("id", memberIds);
   if (profilesError) throw new ApiError(400, profilesError.message, "CONVERSATION_PROFILES_FETCH_FAILED");
 
@@ -755,7 +756,7 @@ export async function getConversationDetails(args: {
         id: profile.id,
         username: profile.username,
         displayName: profile.display_name,
-        avatarUrl: profile.avatar_url,
+        avatarUrl: resolveProfileAvatar(profile),
         role: (row.role === "owner" ? "owner" : "member") as "owner" | "member",
       };
     })
@@ -929,7 +930,7 @@ export async function listConversations(args: { userClient: SupabaseClientLike; 
   const allUserIds = Array.from(new Set((participants ?? []).map((row) => row.user_id)));
   const { data: profiles, error: profilesError } = await userClient
     .from("profiles")
-    .select("id, username, display_name, avatar_url")
+    .select("id, username, display_name, avatar_url, avatar_custom_json")
     .in("id", allUserIds);
   if (profilesError) throw new ApiError(400, profilesError.message, "CONVERSATION_PROFILES_FETCH_FAILED");
   const profileMap = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
@@ -960,7 +961,7 @@ export async function listConversations(args: { userClient: SupabaseClientLike; 
             id: profile.id,
             username: profile.username,
             displayName: profile.display_name,
-            avatarUrl: profile.avatar_url,
+            avatarUrl: resolveProfileAvatar(profile),
             role: (row.role === "owner" ? "owner" : "member") as "owner" | "member",
           };
         })
@@ -998,7 +999,7 @@ export async function listConversations(args: { userClient: SupabaseClientLike; 
         id: profile.id,
         username: profile.username,
         displayName: profile.display_name,
-        avatarUrl: profile.avatar_url,
+        avatarUrl: resolveProfileAvatar(profile),
       },
       latestMessage,
       lastReadAt,
@@ -1081,7 +1082,7 @@ export async function listConversationMessages(args: {
   if (convoType === "group" && senderIds.length > 0) {
     const { data: senderProfiles, error: senderErr } = await userClient
       .from("profiles")
-      .select("id, username, display_name, avatar_url")
+      .select("id, username, display_name, avatar_url, avatar_custom_json")
       .in("id", senderIds);
     if (senderErr) throw new ApiError(400, senderErr.message, "MESSAGE_SENDERS_FETCH_FAILED");
     for (const profile of senderProfiles ?? []) {
@@ -1089,7 +1090,7 @@ export async function listConversationMessages(args: {
         id: profile.id,
         username: profile.username,
         displayName: profile.display_name,
-        avatarUrl: profile.avatar_url,
+        avatarUrl: resolveProfileAvatar(profile),
       });
     }
   }
@@ -1458,7 +1459,7 @@ export async function listBlockedUsers(args: { userClient: SupabaseClientLike; u
   if (blockedIds.length === 0) return [];
   const { data: profiles, error: profilesError } = await userClient
     .from("profiles")
-    .select("id, username, display_name, avatar_url")
+    .select("id, username, display_name, avatar_url, avatar_custom_json")
     .in("id", blockedIds);
   if (profilesError) throw new ApiError(400, profilesError.message, "BLOCKED_USER_PROFILES_FAILED");
   const profileMap = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
@@ -1470,7 +1471,7 @@ export async function listBlockedUsers(args: { userClient: SupabaseClientLike; u
         userId: profile.id,
         username: profile.username,
         displayName: profile.display_name,
-        avatarUrl: profile.avatar_url,
+        avatarUrl: resolveProfileAvatar(profile),
         blockedAt: row.created_at,
       };
     })

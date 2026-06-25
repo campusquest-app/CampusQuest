@@ -1,5 +1,6 @@
 "use client";
 
+import { resolveProfileAvatar } from "@/lib/avatarSource";
 import type { Character, CharacterStats } from "@/lib/types";
 import { xpToLevel } from "@/lib/level";
 
@@ -63,12 +64,7 @@ function defaultStats(s: Partial<CharacterStats>): CharacterStats {
 /** Build local gameplay character from authoritative profile + stats (Supabase uuid as id). */
 export function buildLocalCharacterFromServer(profile: MeProfileRow, stats: MeStatsRow): Character {
   const totalXP = Math.max(0, Number(stats.total_xp ?? 0));
-  const avatar =
-    typeof profile.avatar_custom_json === "string" && profile.avatar_custom_json.trim().length > 0
-      ? profile.avatar_custom_json.trim()
-      : profile.avatar_url && profile.avatar_url.trim().length > 0
-        ? profile.avatar_url.trim()
-        : "🎓";
+  const avatar = resolveProfileAvatar(profile);
 
   const gs = profile.game_state_json;
   const achievements =

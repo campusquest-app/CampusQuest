@@ -1,5 +1,6 @@
 "use client";
 
+import { resolveAvatarParts } from "@/lib/avatarSource";
 import { deleteAuthed, fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import type { CharacterStats, Friend } from "@/lib/types";
 
@@ -69,11 +70,7 @@ export function avatarFromConnectionProfile(profile: {
   avatarUrl: string | null;
   avatarCustomJson: string | null;
 }): string {
-  const custom = profile.avatarCustomJson?.trim();
-  if (custom) return custom;
-  const url = profile.avatarUrl?.trim();
-  if (url) return url;
-  return "🎓";
+  return resolveAvatarParts(profile);
 }
 
 const EMPTY_STATS: CharacterStats = {

@@ -1,3 +1,4 @@
+import { resolveProfileAvatar } from "@/lib/avatarSource";
 import { ApiError } from "@/lib/server/http";
 import { QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
 import { getAcceptedFriendUserIds } from "@/lib/server/friendProfileAccess";
@@ -67,17 +68,6 @@ function extensionForMime(mime: string): string {
     default:
       return "jpg";
   }
-}
-
-function avatarFromProfile(p: {
-  avatar_custom_json?: string | null;
-  avatar_url?: string | null;
-}): string {
-  const custom = p.avatar_custom_json?.trim();
-  if (custom) return custom;
-  const url = p.avatar_url?.trim();
-  if (url) return url;
-  return "🎓";
 }
 
 export function buildDirectMessagePreviewText(args: {
@@ -265,10 +255,7 @@ export async function buildSharedPostPreview(args: {
 
   const authorName = profile?.display_name?.trim() || "Student";
   const authorUsername = profile?.username?.trim() || "student";
-  const authorAvatar = avatarFromProfile({
-    avatar_custom_json: profile?.avatar_custom_json ?? null,
-    avatar_url: null,
-  });
+  const authorAvatar = resolveProfileAvatar(profile ?? undefined);
 
   if (!canView) {
     return {

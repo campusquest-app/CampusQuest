@@ -1,5 +1,6 @@
 "use client";
 
+import { resolveAvatarParts } from "@/lib/avatarSource";
 import { fetchAuthed } from "@/lib/client/dashboardApi";
 
 export const USER_SEARCH_MIN_LEN = 1;
@@ -35,11 +36,7 @@ export async function searchUsers(query: string, limit = USER_SEARCH_LIMIT): Pro
 }
 
 export function avatarFromUserSearchResult(row: Pick<UserSearchResult, "avatarUrl" | "avatarCustomJson">): string {
-  const custom = row.avatarCustomJson?.trim();
-  if (custom) return custom;
-  const url = row.avatarUrl?.trim();
-  if (url) return url;
-  return "🎓";
+  return resolveAvatarParts(row);
 }
 
 export function userSearchConnectionLabel(status: UserSearchConnectionStatus): string | null {

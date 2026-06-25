@@ -1,3 +1,4 @@
+import { resolveProfileAvatar } from "@/lib/avatarSource";
 import { ApiError } from "@/lib/server/http";
 import { assertModerationSafeText } from "@/lib/server/security";
 import { notifyQuadPostCommented } from "@/lib/server/quadPostNotifications";
@@ -40,17 +41,6 @@ export type QuadPostCommentDto = {
   replies: QuadPostCommentDto[];
 };
 
-function avatarFromProfile(profile: {
-  avatar_custom_json: string | null;
-  avatar_url: string | null;
-} | undefined): string | null {
-  const custom = profile?.avatar_custom_json?.trim();
-  if (custom) return custom;
-  const url = profile?.avatar_url?.trim();
-  if (url) return url;
-  return null;
-}
-
 export function formatQuadPostComment(
   row: QuadPostCommentRow,
   profile: CommentProfile | undefined,
@@ -68,7 +58,7 @@ export function formatQuadPostComment(
       id: row.user_id,
       username: profile?.username ?? null,
       displayName: profile?.display_name ?? null,
-      avatarUrl: avatarFromProfile(profile),
+      avatarUrl: resolveProfileAvatar(profile),
     },
     replies: [],
   };

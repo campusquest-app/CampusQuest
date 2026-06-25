@@ -12,7 +12,8 @@ export const QUAD_POSTS_WITH_PROFILE_SELECT = `
   ${QUAD_POST_PROFILE_EMBED} (
     display_name,
     username,
-    avatar_custom_json
+    avatar_custom_json,
+    avatar_url
   )
 `;
 

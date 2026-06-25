@@ -1,3 +1,4 @@
+import { resolveProfileAvatar } from "./avatarSource";
 import type { FieldNote, RamMark } from "./types";
 
 export type QuadReactionType = "like" | "spark";
@@ -35,10 +36,12 @@ export type QuadPostApiRow = {
     display_name: string | null;
     username: string | null;
     avatar_custom_json?: string | null;
+    avatar_url?: string | null;
   } | null | Array<{
     display_name: string | null;
     username: string | null;
     avatar_custom_json?: string | null;
+    avatar_url?: string | null;
   }>;
 };
 
@@ -47,11 +50,7 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
   const prof = Array.isArray(p) ? p[0] : p;
   const name = (prof?.display_name ?? "Student").trim() || "Student";
   const username = (prof?.username ?? "student").trim().toLowerCase().replace(/\s+/g, "_") || "student";
-  let avatar = "🎓";
-  const aj = prof?.avatar_custom_json;
-  if (typeof aj === "string" && aj.trim().length > 0) {
-    avatar = aj.trim();
-  }
+  const avatar = resolveProfileAvatar(prof ?? undefined);
 
   let ramMarks: RamMark[] = [];
   if (Array.isArray(row.ram_marks)) {

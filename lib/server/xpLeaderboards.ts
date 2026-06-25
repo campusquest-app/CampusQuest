@@ -1,3 +1,4 @@
+import { resolveProfileAvatar } from "@/lib/avatarSource";
 import {
   accountSafetyAllowsPublicLeaderboardExposure,
   assertAccountCanSocialize,
@@ -65,28 +66,6 @@ export type LeaderboardXpResponse = {
 
 function normalizedSchoolDomain(value: string) {
   return value.trim().toLowerCase();
-}
-
-function avatarPayload(p: {
-  avatar_custom_json?: string | Record<string, unknown> | null;
-  avatar_url?: string | null;
-}): string {
-  const raw = p.avatar_custom_json;
-  if (raw != null) {
-    if (typeof raw === "string") {
-      const j = raw.trim();
-      if (j) return j;
-    } else if (typeof raw === "object") {
-      try {
-        return JSON.stringify(raw);
-      } catch {
-        // fall through
-      }
-    }
-  }
-  const u = (p.avatar_url ?? "").trim();
-  if (u) return u;
-  return "🎓";
 }
 
 function sortKeyValue(entry: Omit<LeaderboardXpRow, "rank">, mode: LeaderboardSortMode): number {
@@ -202,7 +181,7 @@ export function mapProfileToLeaderboardEntry(row: ProfileStatRow): Omit<Leaderbo
       focus: 0,
       bossesDefeated: 0,
       finalBossesDefeated: 0,
-      avatar: avatarPayload(row),
+      avatar: resolveProfileAvatar(row),
       scholarGuildId: row.scholar_guild_id ?? null,
     };
   }
@@ -223,7 +202,7 @@ export function mapProfileToLeaderboardEntry(row: ProfileStatRow): Omit<Leaderbo
     focus: Math.max(0, Number(s.focus ?? 0)),
     bossesDefeated: Math.max(0, Number(s.bosses_defeated ?? 0)),
     finalBossesDefeated: Math.max(0, Number(s.final_bosses_defeated ?? 0)),
-    avatar: avatarPayload(row),
+    avatar: resolveProfileAvatar(row),
     scholarGuildId: row.scholar_guild_id ?? null,
   };
 }

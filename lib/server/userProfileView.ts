@@ -1,3 +1,4 @@
+import { resolveProfileAvatar } from "@/lib/avatarSource";
 import { ApiError } from "@/lib/server/http";
 import { getClassTitle } from "@/lib/characterClasses";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
@@ -31,17 +32,6 @@ const SCHOLAR_GUILD_LABELS: Record<string, string> = {
   nursing: "Nursing Guild",
   pharmacy: "Pharmacy Guild",
 };
-
-function avatarFromProfile(profile: {
-  avatar_custom_json: string | null;
-  avatar_url: string | null;
-}): string {
-  const custom = profile.avatar_custom_json?.trim();
-  if (custom) return custom;
-  const url = profile.avatar_url?.trim();
-  if (url) return url;
-  return "🎓";
-}
 
 function guildLabelFromProfile(profile: {
   scholar_guild_id: string | null;
@@ -206,7 +196,7 @@ export async function getUserProfileForViewer(args: {
     id: profile.id,
     displayName: profile.display_name?.trim() || "Student",
     username: profile.username?.trim().toLowerCase().replace(/\s+/g, "_") || "student",
-    avatar: avatarFromProfile(profile),
+    avatar: resolveProfileAvatar(profile),
     level,
     title: classTitle,
     guild: guildLabelFromProfile({

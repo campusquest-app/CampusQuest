@@ -1,3 +1,4 @@
+import { resolveProfileAvatar } from "@/lib/avatarSource";
 import { REALM_LOCATION_GEO, isRealmLocationId } from "@/lib/realm/locationGeo";
 import { formatExpiresIn, formatPostedAgo } from "@/lib/realm/momentTime";
 import { getRealmLocationName, type RealmLocationId } from "@/lib/realm/locations";
@@ -69,11 +70,7 @@ type RealmMomentDbRow = {
 
 function avatarFromProfile(p: RealmMomentDbRow["profiles"]): string {
   const prof = Array.isArray(p) ? p[0] : p;
-  const custom = (prof?.avatar_custom_json ?? "").trim();
-  if (custom) return custom;
-  const url = (prof?.avatar_url ?? "").trim();
-  if (url) return url;
-  return "🎓";
+  return resolveProfileAvatar(prof ?? undefined);
 }
 
 function mapMomentRow(row: RealmMomentDbRow, nowMs = Date.now()): RealmMomentApiRow | null {
