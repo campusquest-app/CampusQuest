@@ -576,37 +576,43 @@ export const quadPostProofUploadSchema = z.object({
     .refine((s) => s.trim().startsWith("data:image/"), "proofDataUrl must be a data:image/ URL."),
 });
 
-export const postQuadPostSchema = z.object({
-  body: z.string().trim().min(1).max(300),
-  proofUrl: z.preprocess(
-    (val) => {
-      if (val === null || val === undefined) return undefined;
-      if (typeof val === "string" && val.trim() === "") return undefined;
-      return typeof val === "string" ? val.trim() : val;
-    },
-    z
-      .string()
-      .max(2048, "proofUrl must be a storage URL (upload the image first).")
-      .refine((s) => !s.startsWith("data:"), "Upload the image before posting; raw image data is not accepted.")
-      .refine((s) => /^https?:\/\//i.test(s), "proofUrl must be an http(s) URL.")
+export const postQuadPostSchema = z
+  .object({
+    // Caption may be empty when an image is attached (image-only photo post).
+    body: z.string().trim().max(300),
+    proofUrl: z.preprocess(
+      (val) => {
+        if (val === null || val === undefined) return undefined;
+        if (typeof val === "string" && val.trim() === "") return undefined;
+        return typeof val === "string" ? val.trim() : val;
+      },
+      z
+        .string()
+        .max(2048, "proofUrl must be a storage URL (upload the image first).")
+        .refine((s) => !s.startsWith("data:"), "Upload the image before posting; raw image data is not accepted.")
+        .refine((s) => /^https?:\/\//i.test(s), "proofUrl must be an http(s) URL.")
+        .optional(),
+    ),
+    visibility: z.enum(["public", "friends"]).optional(),
+    ramMarks: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          tag: z.string().trim().min(1).max(15),
+        }),
+      )
+      .max(10)
       .optional(),
-  ),
-  visibility: z.enum(["public", "friends"]).optional(),
-  ramMarks: z
-    .array(
-      z.object({
-        id: z.string().optional(),
-        tag: z.string().trim().min(1).max(15),
-      }),
-    )
-    .max(10)
-    .optional(),
-  relatedActivityId: z.string().trim().max(120).nullable().optional(),
-  relatedQuestSlug: z.string().trim().max(120).nullable().optional(),
-  authorStreakDays: z.number().int().min(0).max(10_000).optional(),
-  locationId: z.enum(REALM_LOCATION_IDS).optional(),
-  locationName: z.string().trim().max(80).optional(),
-});
+    relatedActivityId: z.string().trim().max(120).nullable().optional(),
+    relatedQuestSlug: z.string().trim().max(120).nullable().optional(),
+    authorStreakDays: z.number().int().min(0).max(10_000).optional(),
+    locationId: z.enum(REALM_LOCATION_IDS).optional(),
+    locationName: z.string().trim().max(80).optional(),
+  })
+  .refine((data) => data.body.length > 0 || (typeof data.proofUrl === "string" && data.proofUrl.length > 0), {
+    message: "Add a caption or a photo to post.",
+    path: ["body"],
+  });
 
 export const patchQuadPostSchema = z
   .object({

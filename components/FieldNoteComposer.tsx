@@ -1,9 +1,23 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import {
+  Camera,
+  Image as ImageIcon,
+  Calendar,
+  Award,
+  ChevronLeft,
+  X,
+  Heart,
+  MapPin,
+  MessageCircle,
+  Share2,
+} from "lucide-react";
 import { normalizeRamMarkTag, prependRemoteQuadPost } from "@/lib/feedStore";
 import { createQuadPostRequest } from "@/lib/client/quadPostsClient";
+import { readImageFileAsDataUrl } from "@/lib/client/readImageFile";
 import { ApiRequestError } from "@/lib/client/dashboardApi";
+import { AvatarDisplay } from "@/components/AvatarDisplay";
 import type { Character } from "@/lib/types";
 import type { QuadPostVisibility } from "@/lib/types";
 import { FIELD_NOTE_MAX_CHARS, RAMMARK_MAX_LENGTH, RAMMARK_MAX_PER_POST } from "@/lib/types";
@@ -11,39 +25,81 @@ import type { RamMark } from "@/lib/types";
 import type { RealmLocationId } from "@/lib/realm/locations";
 import { REALM_LOCATION_OPTIONS } from "@/lib/realm/locations";
 
+type CaptionStarter = "event" | "achievement";
+
+const CAPTION_PREFIX: Record<CaptionStarter, string> = {
+  event: "What's happening on campus: ",
+  achievement: "Just unlocked: ",
+};
+
 export function FieldNoteComposer({
   character,
   onPosted,
+  onCancel,
+  onBack,
+  onDirtyChange,
   defaultVisibility = "public",
   initialBody = "",
+  initialImage = "",
   autoOpenPhotoPicker = false,
 }: {
   character: Character;
   onPosted: () => void;
+  /** Hard-close the composer (Cancel / after posting). */
+  onCancel?: () => void;
+  /** Go back to the previous step (media picker). Renders a Back button. */
+  onBack?: () => void;
+  /** Report whether the composer holds unsaved content. */
+  onDirtyChange?: (dirty: boolean) => void;
   /** Default selected feed when opening composer (e.g. current tab). */
   defaultVisibility?: QuadPostVisibility;
   initialBody?: string;
+  /** Pre-selected image (data URL) carried over from the media picker step. */
+  initialImage?: string;
   autoOpenPhotoPicker?: boolean;
 }) {
   const [body, setBody] = useState(initialBody);
   const [ramMarkInput, setRamMarkInput] = useState("");
   const [ramMarks, setRamMarks] = useState<RamMark[]>([]);
-  const [proofUrl, setProofUrl] = useState("");
+  const [proofUrl, setProofUrl] = useState(initialImage);
   const [visibility, setVisibility] = useState<QuadPostVisibility>(defaultVisibility);
   const [locationId, setLocationId] = useState<RealmLocationId | "">("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [posted, setPosted] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const proofFileRef = useRef<HTMLInputElement>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const photoFileRef = useRef<HTMLInputElement>(null);
+  const cameraFileRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const locationSelectRef = useRef<HTMLSelectElement>(null);
+
+  const openLocationOptions = useCallback(() => {
+    setMoreOpen(true);
+    window.requestAnimationFrame(() => {
+      locationSelectRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      locationSelectRef.current?.focus();
+    });
+  }, []);
 
   useEffect(() => {
     if (!autoOpenPhotoPicker) return undefined;
-    const tid = window.setTimeout(() => proofFileRef.current?.click(), 150);
+    const tid = window.setTimeout(() => photoFileRef.current?.click(), 150);
     return () => window.clearTimeout(tid);
   }, [autoOpenPhotoPicker]);
 
+  const hasImage = proofUrl.trim().length > 0;
   const bodyCount = body.length;
-  const canAddRamMark = ramMarks.length < RAMMARK_MAX_PER_POST && ramMarkInput.trim().length > 0 &&
+  const canPost = (body.trim().length > 0 || hasImage) && bodyCount <= FIELD_NOTE_MAX_CHARS;
+
+  const dirty = body.trim().length > 0 || hasImage || ramMarks.length > 0 || locationId !== "";
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  const canAddRamMark =
+    ramMarks.length < RAMMARK_MAX_PER_POST &&
+    ramMarkInput.trim().length > 0 &&
     normalizeRamMarkTag(ramMarkInput).length <= RAMMARK_MAX_LENGTH;
 
   const addRamMark = useCallback(() => {
@@ -61,28 +117,46 @@ export function FieldNoteComposer({
     setRamMarks((prev) => prev.filter((r) => r.tag !== tag));
   }, []);
 
-  function handleProofFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  const applyCaptionStarter = useCallback((starter: CaptionStarter) => {
+    const prefix = CAPTION_PREFIX[starter];
+    setBody((prev) => {
+      if (prev.startsWith(prefix)) return prev;
+      const next = `${prefix}${prev}`.slice(0, FIELD_NOTE_MAX_CHARS);
+      return next;
+    });
+    window.requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (el) {
+        el.focus();
+        const end = el.value.length;
+        el.setSelectionRange(end, end);
+      }
+    });
+  }, []);
+
+  async function readImageFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file (e.g. JPEG, PNG).");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setProofUrl(reader.result as string);
-      setError(null);
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+    if (!file) return;
+    try {
+      const dataUrl = await readImageFileAsDataUrl(file);
+      setProofUrl(dataUrl);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not read that image.");
+    }
+  }
+
+  function removeImage() {
+    setProofUrl("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     const trimmed = body.trim();
-    if (!trimmed) {
-      setError("Write something for your post.");
+    if (!trimmed && !hasImage) {
+      setError("Add a caption or a photo to post.");
       return;
     }
     if (trimmed.length > FIELD_NOTE_MAX_CHARS) {
@@ -120,7 +194,9 @@ export function FieldNoteComposer({
       } else {
         setSuccessMessage("Posted to Quad.");
       }
-      onPosted();
+      setPosted(true);
+      // Brief success animation before the parent closes/refreshes the feed.
+      window.setTimeout(() => onPosted(), 850);
     } catch (err) {
       console.error("[cq][quad-post] submit failed", {
         message: err instanceof Error ? err.message : String(err),
@@ -144,144 +220,290 @@ export function FieldNoteComposer({
     }
   }
 
+  const previewName = character.name || "You";
+  const previewUsername = character.username || "you";
+  const showPreview = body.trim().length > 0 || hasImage;
+
   return (
-    <form onSubmit={handleSubmit} className="cq-composer space-y-3">
-      <div>
-        <span className="cq-composer-label">Post to</span>
-        <div className="cq-composer-segment">
-          <button
-            type="button"
-            onClick={() => setVisibility("public")}
-            className={`cq-composer-segment-btn ${visibility === "public" ? "cq-composer-segment-btn--active" : ""}`}
-          >
-            🌐 Public Quad
+    <form onSubmit={handleSubmit} className="cq-composer-sheet">
+      <header className="cq-composer-head">
+        {onBack ? (
+          <button type="button" onClick={() => onBack()} className="cq-composer-head-cancel cq-composer-head-back">
+            <ChevronLeft className="h-5 w-5" strokeWidth={2.4} />
+            <span>Back</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setVisibility("friends")}
-            className={`cq-composer-segment-btn ${visibility === "friends" ? "cq-composer-segment-btn--active" : ""}`}
-          >
-            👥 Following only
+        ) : (
+          <button type="button" onClick={() => onCancel?.()} className="cq-composer-head-cancel">
+            Cancel
           </button>
-        </div>
-      </div>
-
-      <div>
-        <label htmlFor="field-note-location" className="cq-composer-label">
-          Add to Realm Map
-        </label>
-        <select
-          id="field-note-location"
-          value={locationId}
-          onChange={(e) => setLocationId(e.target.value as RealmLocationId | "")}
-          className="cq-composer-select"
+        )}
+        <span className="cq-composer-head-title">New Post</span>
+        <button
+          type="submit"
+          disabled={!canPost || isSubmitting || posted}
+          className={`cq-composer-head-post ${canPost && !isSubmitting && !posted ? "cq-composer-head-post--ready" : ""}`}
         >
-          <option value="">No location</option>
-          {REALM_LOCATION_OPTIONS.map((loc) => (
-            <option key={loc.id} value={loc.id}>
-              {loc.name}
-            </option>
-          ))}
-        </select>
-        <p className="cq-composer-hint">
-          Public posts with a location appear as Realm Moments for 24 hours.
-        </p>
-      </div>
+          {posted ? "Posted" : isSubmitting ? "Posting…" : "Post"}
+        </button>
+      </header>
 
-      <div>
-        <label htmlFor="field-note-body" className="cq-composer-label">
-          Caption
-        </label>
+      <div className="cq-composer-scroll">
+        <div className="cq-composer-identity">
+          <div className="cq-composer-identity-avatar">
+            <AvatarDisplay avatar={character.avatar} fitParent size={44} />
+          </div>
+          <div className="min-w-0">
+            <p className="cq-composer-identity-name">{previewName}</p>
+            <div className="cq-composer-visibility" role="group" aria-label="Who can see this post">
+              <button
+                type="button"
+                onClick={() => setVisibility("public")}
+                className={`cq-composer-visibility-btn ${visibility === "public" ? "cq-composer-visibility-btn--active" : ""}`}
+              >
+                🌐 Public
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibility("friends")}
+                className={`cq-composer-visibility-btn ${visibility === "friends" ? "cq-composer-visibility-btn--active" : ""}`}
+              >
+                👥 Following
+              </button>
+            </div>
+          </div>
+        </div>
+
         <textarea
+          ref={textareaRef}
           id="field-note-body"
           value={body}
           onChange={(e) => setBody(e.target.value.slice(0, FIELD_NOTE_MAX_CHARS))}
           placeholder="What's happening on campus?"
-          rows={3}
-          className="cq-composer-textarea"
+          rows={4}
+          className="cq-composer-maintext"
+          aria-label="Post caption"
+          autoFocus
         />
-        <div className="mt-1.5 flex items-center justify-between">
-          <span
-            className={`cq-composer-counter ${bodyCount > FIELD_NOTE_MAX_CHARS ? "cq-composer-counter--over" : ""}`}
-          >
+
+        <div className="cq-composer-meta-row">
+          <span className={`cq-composer-counter ${bodyCount > FIELD_NOTE_MAX_CHARS ? "cq-composer-counter--over" : ""}`}>
             {bodyCount} / {FIELD_NOTE_MAX_CHARS}
           </span>
         </div>
-      </div>
 
-      <div>
-        <label htmlFor="field-note-proof-url" className="cq-composer-label">
-          Proof photo (optional)
-        </label>
-        <input
-          id="field-note-proof-url"
-          type="url"
-          value={proofUrl.startsWith("data:") ? "" : proofUrl}
-          onChange={(e) => setProofUrl(e.target.value)}
-          placeholder="Paste image URL or add from device"
-          className="cq-composer-input"
-        />
-        <input
-          ref={proofFileRef}
-          type="file"
-          accept="image/*"
-          onChange={handleProofFileChange}
-          className="hidden"
-          aria-label="Add photo from device or open camera to scan QR code"
-        />
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button type="button" onClick={() => proofFileRef.current?.click()} className="cq-composer-btn-accent">
-            📷 Add photo from device
-          </button>
-          <button type="button" onClick={() => proofFileRef.current?.click()} className="cq-composer-btn-secondary">
-            📱 Open camera to scan QR code
-          </button>
-        </div>
-        {proofUrl.startsWith("data:") && (
-          <div className="mt-2 max-w-[180px] overflow-hidden rounded-xl border border-white/15">
-            <img src={proofUrl} alt="Proof" className="h-20 w-full object-cover" />
-          </div>
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="cq-composer-label mb-0">RAMarks (optional):</span>
-        {ramMarks.map((r) => (
-          <span key={r.id} className="ram-mark flex items-center gap-1">
-            #{r.tag}
+        {hasImage ? (
+          <div className="cq-composer-image-preview">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={proofUrl} alt="Selected media preview" />
             <button
               type="button"
-              onClick={() => removeRamMark(r.tag)}
-              className="cq-composer-rammark-remove"
-              aria-label={`Remove ${r.tag}`}
+              onClick={removeImage}
+              className="cq-composer-image-remove"
+              aria-label="Remove image"
             >
-              ×
+              <X className="h-4 w-4" strokeWidth={2.5} />
             </button>
-          </span>
-        ))}
-        {ramMarks.length < RAMMARK_MAX_PER_POST && (
-          <>
-            <input
-              type="text"
-              value={ramMarkInput}
-              onChange={(e) => setRamMarkInput(e.target.value.slice(0, RAMMARK_MAX_LENGTH))}
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRamMark())}
-              placeholder={`#tag (max ${RAMMARK_MAX_LENGTH})`}
-              className="cq-composer-input w-28 py-1"
-            />
-            <button type="button" onClick={addRamMark} disabled={!canAddRamMark} className="cq-composer-btn-add">
-              Add
+            <button
+              type="button"
+              onClick={() => photoFileRef.current?.click()}
+              className="cq-composer-image-replace"
+            >
+              Replace
             </button>
-          </>
-        )}
+          </div>
+        ) : null}
+
+        {/* Hidden inputs reuse existing upload logic */}
+        <input
+          ref={photoFileRef}
+          type="file"
+          accept="image/*"
+          onChange={readImageFile}
+          className="hidden"
+          aria-label="Choose photo from library"
+        />
+        <input
+          ref={cameraFileRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={readImageFile}
+          className="hidden"
+          aria-label="Take a photo with the camera"
+        />
+
+        <div className="cq-composer-actionbar" role="group" aria-label="Add to your post">
+          <button
+            type="button"
+            onClick={() => cameraFileRef.current?.click()}
+            className="cq-composer-action"
+            aria-label="Open camera"
+          >
+            <Camera className="h-[20px] w-[20px]" strokeWidth={2} />
+            <span>Camera</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => photoFileRef.current?.click()}
+            className="cq-composer-action"
+            aria-label="Add photo from library"
+          >
+            <ImageIcon className="h-[20px] w-[20px]" strokeWidth={2} />
+            <span>Photo</span>
+          </button>
+          <button
+            type="button"
+            onClick={openLocationOptions}
+            className={`cq-composer-action cq-composer-action--pill ${locationId ? "cq-composer-action--on" : ""}`}
+            aria-label="Add a location"
+          >
+            <MapPin className="h-[18px] w-[18px]" strokeWidth={2} />
+            <span>Location</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => applyCaptionStarter("achievement")}
+            className="cq-composer-action cq-composer-action--pill"
+            aria-label="Start an achievement post"
+          >
+            <Award className="h-[18px] w-[18px]" strokeWidth={2} />
+            <span>Achievement</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => applyCaptionStarter("event")}
+            className="cq-composer-action cq-composer-action--pill"
+            aria-label="Start an event post"
+          >
+            <Calendar className="h-[18px] w-[18px]" strokeWidth={2} />
+            <span>Event</span>
+          </button>
+        </div>
+
+        <div className="cq-composer-more">
+          <button
+            type="button"
+            className="cq-composer-more-summary"
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen((v) => !v)}
+          >
+            More options
+          </button>
+          {moreOpen ? (
+          <div className="cq-composer-more-body">
+            <label htmlFor="field-note-location" className="cq-composer-label">
+              Add to Realm Map
+            </label>
+            <select
+              ref={locationSelectRef}
+              id="field-note-location"
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value as RealmLocationId | "")}
+              className="cq-composer-select"
+            >
+              <option value="">No location</option>
+              {REALM_LOCATION_OPTIONS.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name}
+                </option>
+              ))}
+            </select>
+            <p className="cq-composer-hint">Public posts with a location appear as Realm Moments for 24 hours.</p>
+
+            <div className="cq-composer-rammarks">
+              <span className="cq-composer-label mb-0">RAMarks</span>
+              {ramMarks.map((r) => (
+                <span key={r.id} className="ram-mark flex items-center gap-1">
+                  #{r.tag}
+                  <button
+                    type="button"
+                    onClick={() => removeRamMark(r.tag)}
+                    className="cq-composer-rammark-remove"
+                    aria-label={`Remove ${r.tag}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              {ramMarks.length < RAMMARK_MAX_PER_POST && (
+                <>
+                  <input
+                    type="text"
+                    value={ramMarkInput}
+                    onChange={(e) => setRamMarkInput(e.target.value.slice(0, RAMMARK_MAX_LENGTH))}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRamMark())}
+                    placeholder={`#tag (max ${RAMMARK_MAX_LENGTH})`}
+                    className="cq-composer-input w-28 py-1"
+                    aria-label="Add a RAMark tag"
+                  />
+                  <button type="button" onClick={addRamMark} disabled={!canAddRamMark} className="cq-composer-btn-add">
+                    Add
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          ) : null}
+        </div>
+
+        {showPreview ? (
+          <div className="cq-composer-preview" aria-label="Post preview">
+            <span className="cq-composer-preview-tag">Preview</span>
+            <div className="cq-composer-preview-card">
+              <div className="cq-composer-preview-head">
+                <div className="cq-composer-preview-avatar">
+                  <AvatarDisplay avatar={character.avatar} fitParent size={36} />
+                </div>
+                <div className="min-w-0">
+                  <p className="cq-composer-preview-name">{previewName}</p>
+                  <p className="cq-composer-preview-sub">@{previewUsername} · now</p>
+                </div>
+              </div>
+              {body.trim() ? <p className="cq-composer-preview-body">{body.trim()}</p> : null}
+              {hasImage ? (
+                <div className="cq-composer-preview-media">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={proofUrl} alt="Post media preview" />
+                </div>
+              ) : null}
+              {ramMarks.length > 0 ? (
+                <div className="cq-composer-preview-tags">
+                  {ramMarks.map((r) => (
+                    <span key={r.id}>#{r.tag}</span>
+                  ))}
+                </div>
+              ) : null}
+              <div className="cq-composer-preview-actions" aria-hidden>
+                <span>
+                  <Heart className="h-[18px] w-[18px]" strokeWidth={2} /> Like
+                </span>
+                <span>
+                  <MessageCircle className="h-[18px] w-[18px]" strokeWidth={2} /> Comment
+                </span>
+                <span>
+                  <Share2 className="h-[18px] w-[18px]" strokeWidth={2} /> Share
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {successMessage && !posted ? <p className="cq-composer-success">{successMessage}</p> : null}
+        {error ? <p className="cq-composer-error" role="alert">{error}</p> : null}
       </div>
 
-      {successMessage ? <p className="cq-composer-success">{successMessage}</p> : null}
-      {error ? <p className="cq-composer-error">{error}</p> : null}
-
-      <button type="submit" disabled={!body.trim() || isSubmitting} className="cq-composer-btn-submit">
-        {isSubmitting ? "Posting…" : visibility === "public" ? "Post to Public Quad" : "Post to Following only"}
-      </button>
+      {posted ? (
+        <div className="cq-composer-success-overlay" role="status" aria-live="polite">
+          <div className="cq-composer-success-burst" aria-hidden />
+          <div className="cq-composer-success-check" aria-hidden>
+            <svg viewBox="0 0 52 52" className="h-16 w-16">
+              <circle className="cq-success-ring" cx="26" cy="26" r="23" fill="none" strokeWidth="3" />
+              <path className="cq-success-tick" fill="none" strokeWidth="4" d="M14 27 l8 8 l16 -18" />
+            </svg>
+          </div>
+          <p className="cq-composer-success-text">{successMessage ?? "Posted to Quad."}</p>
+        </div>
+      ) : null}
     </form>
   );
 }

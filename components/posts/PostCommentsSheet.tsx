@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Heart, X } from "lucide-react";
+import { Heart, Image as ImageIcon, X } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import type { FieldNote, QuadComment } from "@/lib/types";
 import { QUAD_COMMENT_MAX_CHARS } from "@/lib/types";
@@ -10,6 +10,7 @@ import type { QuadCommentActionResult } from "@/lib/client/quadCommentActions";
 import { nestQuadComments, type QuadCommentNode } from "@/lib/quadCommentsTree";
 
 const DISMISS_DRAG_PX = 96;
+const QUICK_EMOJIS = ["❤️", "🙌", "🔥", "👏", "😮", "😂", "🎉", "💯"] as const;
 
 function formatCommentTime(ts: number): string {
   const d = new Date(ts);
@@ -183,11 +184,16 @@ export function PostCommentsSheet({
       return undefined;
     }
     const frame = window.requestAnimationFrame(() => setEntered(true));
-    const prev = document.body.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    document.documentElement.setAttribute("data-cq-comments-open", "true");
     return () => {
       window.cancelAnimationFrame(frame);
-      document.body.style.overflow = prev;
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.documentElement.removeAttribute("data-cq-comments-open");
     };
   }, [open]);
 
@@ -284,19 +290,21 @@ export function PostCommentsSheet({
   };
 
   return createPortal(
-    <div className="cq-comments-sheet-root" role="presentation">
-      <button
-        type="button"
-        className={`cq-comments-sheet-backdrop ${entered ? "cq-comments-sheet-backdrop--open" : ""}`}
-        aria-label="Close comments"
-        onClick={onClose}
-      />
+    <div
+      className={`cq-comments-sheet-root${entered ? " cq-comments-sheet-root--open" : ""}`}
+      role="presentation"
+      onClick={() => {
+        if (entered) onClose();
+      }}
+    >
       <div
         className={`cq-comments-sheet ${entered ? "cq-comments-sheet--open" : ""}`}
         style={sheetStyle}
         role="dialog"
         aria-modal="true"
         aria-label="Comments"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <div
           className="cq-comments-sheet-grab"
@@ -321,7 +329,9 @@ export function PostCommentsSheet({
 
         <div ref={listRef} className="cq-comments-sheet-list">
           {threadedComments.length === 0 ? (
-            <p className="cq-comments-sheet-empty">No comments yet. Start the conversation.</p>
+            <div className="cq-comments-sheet-empty-wrap">
+              <p className="cq-comments-sheet-empty">No comments yet. Start the conversation.</p>
+            </div>
           ) : (
             <ul className="cq-comments-sheet-items">
               {threadedComments.map((comment) => (
@@ -355,6 +365,22 @@ export function PostCommentsSheet({
                 {submitError}
               </p>
             ) : null}
+            <div className="cq-comments-sheet-emoji-row" aria-label="Quick reactions">
+              {QUICK_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  className="cq-comments-sheet-emoji-btn"
+                  onClick={() => {
+                    setDraft((prev) => (prev + emoji).slice(0, QUAD_COMMENT_MAX_CHARS));
+                    inputRef.current?.focus();
+                  }}
+                  aria-label={`Add ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
             <div className="cq-comments-sheet-composer-row">
               <div className="cq-comments-sheet-composer-avatar cq-avatar-slot">
                 <AvatarDisplay avatar={currentUser.avatar} fitParent size={32} />
@@ -364,11 +390,32 @@ export function PostCommentsSheet({
                 type="text"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value.slice(0, QUAD_COMMENT_MAX_CHARS))}
-                placeholder={replyingTo ? `Reply to @${replyingTo.authorUsername}...` : "Add a comment..."}
+                placeholder={replyingTo ? `Reply to @${replyingTo.authorUsername}...` : "What do you think of this?"}
                 maxLength={QUAD_COMMENT_MAX_CHARS}
                 className="cq-comments-sheet-input"
                 autoComplete="off"
+                enterKeyHint="send"
               />
+              <div className="cq-comments-sheet-composer-tools">
+                <button
+                  type="button"
+                  className="cq-comments-sheet-tool-btn"
+                  disabled
+                  aria-label="Add image (coming soon)"
+                  title="Coming soon"
+                >
+                  <ImageIcon className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  className="cq-comments-sheet-tool-btn"
+                  disabled
+                  aria-label="Add GIF (coming soon)"
+                  title="Coming soon"
+                >
+                  <span className="cq-comments-sheet-gif-label">GIF</span>
+                </button>
+              </div>
               <button
                 type="submit"
                 disabled={!draft.trim() || submitting}
