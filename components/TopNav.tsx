@@ -54,7 +54,7 @@ export function TopNav({
   return (
     <header
       ref={shellRef}
-      className="cq-top-nav cq-nav-shell-top fixed inset-x-0 top-0 z-50 w-full min-w-0 shrink-0"
+      className="cq-top-nav cq-nav-shell-top relative z-10 w-full min-w-0 shrink-0"
       style={{
         paddingTop: "env(safe-area-inset-top, 0px)",
       }}

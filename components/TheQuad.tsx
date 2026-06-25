@@ -435,14 +435,15 @@ export function TheQuad({
     [character.avatar, character.id, character.name, character.username],
   );
 
+  // Stable spacer equal to the full fixed-header height so feed content never
+  // jumps while the scroll-linked header translates up/down with the user.
   const quadChromeStackPadding =
-    "calc(var(--cq-topnav-offset, var(--cq-topnav-h, 0px)) + var(--cq-quad-header-offset, var(--cq-quad-header-h, 52px)))";
+    "calc(var(--cq-topnav-h, 0px) + var(--cq-quad-header-h, 52px))";
 
   const quadHeader = showQuadChrome ? (
     <div
       ref={quadHeaderRef}
-      className="cq-quad-header cq-nav-shell-quad fixed inset-x-0 z-40 w-full"
-      style={{ top: "var(--cq-topnav-h, 64px)" }}
+      className="cq-quad-header cq-nav-shell-quad relative w-full"
     >
       <div className="w-full px-[2.5vw] pb-2 pt-2 sm:px-[3vw] sm:pb-2.5">
         <div className="cq-quad-header-row tabs" data-no-drawer-swipe="true">
@@ -482,7 +483,7 @@ export function TheQuad({
   const quadTopChrome =
     showQuadChrome && typeof document !== "undefined"
       ? createPortal(
-          <>
+          <div className="cq-quad-header-shell" data-cq-quad-header-shell>
             <TopNav
               username={character.username}
               character={character}
@@ -491,7 +492,7 @@ export function TheQuad({
               unreadNotificationCount={unreadNotificationCount}
             />
             {quadHeader}
-          </>,
+          </div>,
           document.body,
         )
       : null;

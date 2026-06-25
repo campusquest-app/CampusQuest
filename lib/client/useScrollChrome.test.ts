@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeBottomConcealPx,
-  computeTopChromeHidden,
+  computeTopOffset,
 } from "@/lib/client/useScrollChrome";
 
 describe("useScrollChrome", () => {
@@ -29,10 +29,30 @@ describe("useScrollChrome", () => {
     expect(conceal).toBe(30);
   });
 
-  it("drives top chrome from direction thresholds", () => {
-    expect(computeTopChromeHidden({ scrollY: 200, delta: 20 })).toBe(true);
-    expect(computeTopChromeHidden({ scrollY: 200, delta: -6 })).toBe(false);
-    expect(computeTopChromeHidden({ scrollY: 200, delta: 2 })).toBe(null);
-    expect(computeTopChromeHidden({ scrollY: 10, delta: 20 })).toBe(false);
+  it("moves the header 1:1 with scroll delta", () => {
+    let offset = 0;
+    offset = computeTopOffset({ prevOffset: offset, delta: 10, scrollY: 100, maxOffset: 120 });
+    expect(offset).toBe(10);
+    offset = computeTopOffset({ prevOffset: offset, delta: 10, scrollY: 110, maxOffset: 120 });
+    expect(offset).toBe(20);
+  });
+
+  it("returns the header immediately on upward scroll", () => {
+    const offset = computeTopOffset({ prevOffset: 40, delta: -10, scrollY: 200, maxOffset: 120 });
+    expect(offset).toBe(30);
+  });
+
+  it("holds position when the scroll stops", () => {
+    const offset = computeTopOffset({ prevOffset: 55, delta: 0, scrollY: 300, maxOffset: 120 });
+    expect(offset).toBe(55);
+  });
+
+  it("clamps between fully visible and fully hidden", () => {
+    expect(computeTopOffset({ prevOffset: 115, delta: 30, scrollY: 400, maxOffset: 120 })).toBe(120);
+    expect(computeTopOffset({ prevOffset: 5, delta: -30, scrollY: 80, maxOffset: 120 })).toBe(0);
+  });
+
+  it("fully reveals at the very top", () => {
+    expect(computeTopOffset({ prevOffset: 90, delta: 10, scrollY: 0, maxOffset: 120 })).toBe(0);
   });
 });
