@@ -1,7 +1,7 @@
 import { ZodError } from "zod";
 import { NextResponse } from "next/server";
 import { ApiError, fail, ok } from "@/lib/server/http";
-import { confirmEmailAndSignIn, findAuthUserIdByEmail, logAuthFlow } from "@/lib/server/authBootstrap";
+import { confirmEmailAndSignIn, findAuthUserIdByEmail, logAuthError, logAuthFlow } from "@/lib/server/authBootstrap";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
 import { createPublicClient } from "@/lib/server/supabase";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
@@ -13,6 +13,7 @@ const GENERIC_LOGIN_ERROR = "Invalid email or password.";
 type SafeLoginFailure = {
   status: number;
   message: string;
+  code: string;
 };
 
 function classifyLoginFailure(error: unknown): SafeLoginFailure {
@@ -34,6 +35,7 @@ function classifyLoginFailure(error: unknown): SafeLoginFailure {
     return {
       status: 503,
       message: "Unable to connect. Please try again.",
+      code: "AUTH_SERVICE_UNAVAILABLE",
     };
   }
 
@@ -41,22 +43,31 @@ function classifyLoginFailure(error: unknown): SafeLoginFailure {
     return {
       status: 401,
       message: "Please confirm your email before signing in.",
+      code: "EMAIL_NOT_CONFIRMED",
     };
   }
 
   return {
     status: 401,
     message: GENERIC_LOGIN_ERROR,
+    code: "INVALID_CREDENTIALS",
   };
 }
 
 function loginFail(failure: SafeLoginFailure, debug?: Record<string, unknown>) {
-  logAuthFlow("login", "failed", {
+  // Server-side faults (missing env, Supabase outage) must always be visible for
+  // triage; credential failures stay on the dev-only channel to avoid log noise.
+  const logFailure = failure.status >= 500 ? logAuthError : logAuthFlow;
+  logFailure("login", "failed", {
     status: failure.status,
+    code: failure.code,
     message: failure.message,
     ...debug,
   });
-  return NextResponse.json({ error: failure.message }, { status: failure.status });
+  return NextResponse.json(
+    { error: { message: failure.message, code: failure.code } },
+    { status: failure.status },
+  );
 }
 
 export async function POST(request: Request) {

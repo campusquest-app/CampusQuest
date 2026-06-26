@@ -17,68 +17,36 @@ import { AuthPasswordRequirementsAlert } from "@/components/auth/AuthPasswordReq
 import { AuthPasswordRequirementsHints } from "@/components/auth/AuthPasswordRequirementsHints";
 import { PasswordInput } from "@/components/auth/PasswordInput";
 import { CampusQuestLogo } from "@/components/CampusQuestLogo";
+import { passwordMeetsRequirements } from "@/lib/passwordRequirements";
 import {
-  isPasswordRequirementFailure,
-  passwordMeetsRequirements,
-} from "@/lib/passwordRequirements";
+  HttpRequestError,
+  mapGenericError,
+  mapSigninError,
+  mapSignupError,
+} from "@/lib/client/authErrorMessages";
 
 type Mode = "signin" | "signup";
 type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } | string };
 const REMEMBER_EMAIL_KEY = "cq_auth_remember_email";
 
-class HttpRequestError extends Error {
-  constructor(
-    message: string,
-    public readonly path: string,
-    public readonly status: number,
-    public readonly statusText: string,
-    public readonly code?: string,
-  ) {
-    super(message);
-  }
-}
+const IS_DEV =
+  typeof process !== "undefined" && process.env.NODE_ENV !== "production";
 
-function mapSignupError(error: unknown): { passwordRequirements: true } | { message: string } {
+/** Surface the real Supabase/API error in development without exposing it to users. */
+function logAuthClientError(context: string, error: unknown): void {
+  if (!IS_DEV) return;
   if (error instanceof HttpRequestError) {
-    if (error.code === "PASSWORD_REQUIREMENTS" || isPasswordRequirementFailure(error.message, error.code)) {
-      return { passwordRequirements: true };
-    }
-    if (error.message.trim()) {
-      return { message: error.message };
-    }
-    return { message: "Unable to create your account. Please try again." };
+    console.error(
+      `[auth:${context}] ${error.status} ${error.statusText} ${error.path}`,
+      { message: error.message, code: error.code ?? null },
+    );
+  } else if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
+    console.error(`[auth:${context}] network error reaching`, error.message.slice("NETWORK_ERROR:".length));
+  } else if (error instanceof Error) {
+    console.error(`[auth:${context}]`, error.message);
+  } else {
+    console.error(`[auth:${context}]`, error);
   }
-  if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
-    return { message: "Unable to connect. Please try again." };
-  }
-  return { message: "Unable to create your account. Please try again." };
-}
-
-function mapSigninError(error: unknown): string {
-  if (error instanceof HttpRequestError) {
-    const raw = error.message ?? "";
-    if (error.status === 401 || raw.toLowerCase().includes("invalid email or password")) {
-      return "Incorrect email or password.";
-    }
-    if (raw.toLowerCase().includes("confirm your email")) {
-      return "Please confirm your email before signing in.";
-    }
-    return "Unable to connect. Please try again.";
-  }
-  if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
-    return "Unable to connect. Please try again.";
-  }
-  return "Unable to connect. Please try again.";
-}
-
-function mapGenericError(error: unknown, fallback = "Unable to connect. Please try again."): string {
-  if (error instanceof HttpRequestError) {
-    return fallback;
-  }
-  if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
-    return "Unable to connect. Please try again.";
-  }
-  return fallback;
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
@@ -282,7 +250,10 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       });
       const accessToken = payload?.data?.session?.access_token;
       if (!accessToken) {
-        setError("Unable to connect. Please try again.");
+        if (IS_DEV) {
+          console.error("[auth:login] succeeded (2xx) but no session/access_token in response", payload);
+        }
+        setError("We couldn't start your session. Please try again.");
         return;
       }
       if (rememberMe && typeof window !== "undefined") {
@@ -293,6 +264,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setAccessToken(accessToken);
       await completeAuthenticatedSession({ isSignup: false });
     } catch (signInError) {
+      logAuthClientError("login", signInError);
       if (signInError instanceof SchoolVerificationHttpError) {
         if (signInError.status === 401) clearAccessToken();
         setError(signInError.message);
@@ -359,6 +331,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setSuccessBanner("Account Created!");
       await completeAuthenticatedSession({ isSignup: true });
     } catch (signUpError) {
+      logAuthClientError("signup", signUpError);
       if (signUpError instanceof SchoolVerificationHttpError) {
         if (signUpError.status === 401) clearAccessToken();
         setError(signUpError.message);
