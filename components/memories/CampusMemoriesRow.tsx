@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   Cpu,
@@ -50,6 +50,26 @@ export function CampusMemoriesRow({
 }) {
   const [groups, setGroups] = useState<CampusMemoryGroup[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Convert vertical wheel/trackpad movement into horizontal scroll (Instagram
+  // Stories feel). A callback ref is used so the non-passive listener re-attaches
+  // cleanly across the loading → loaded transition and is torn down on unmount.
+  const wheelCleanupRef = useRef<(() => void) | null>(null);
+  const attachScroller = useCallback((node: HTMLDivElement | null) => {
+    if (wheelCleanupRef.current) {
+      wheelCleanupRef.current();
+      wheelCleanupRef.current = null;
+    }
+    if (!node) return;
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+        node.scrollLeft += event.deltaY;
+        event.preventDefault();
+      }
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    wheelCleanupRef.current = () => node.removeEventListener("wheel", onWheel);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -120,7 +140,7 @@ export function CampusMemoriesRow({
     <section className="cq-memories-row" aria-label="Campus Memories">
       {header}
 
-      <div className="cq-memories-scroll">
+      <div className="cq-memories-scroll" ref={attachScroller}>
         {tiles.map((tile) => {
           const { group, active, Icon } = tile;
           const recent = Boolean(group?.hasRecent);
