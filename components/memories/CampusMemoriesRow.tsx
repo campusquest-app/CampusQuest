@@ -127,10 +127,12 @@ export function CampusMemoriesRow({
     return (
       <section className="cq-memories-row" aria-label="Campus Memories" aria-busy="true">
         {header}
-        <div className="cq-memories-scroll cq-memories-scroll--loading" aria-hidden>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="cq-memories-tile cq-memories-tile--skeleton" />
-          ))}
+        <div className="cq-memories-scroll cq-memories-scroll--loading" aria-hidden data-cq-horizontal-scroll="true">
+          <div className="cq-memories-track">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="cq-memories-tile cq-memories-tile--skeleton" />
+            ))}
+          </div>
         </div>
       </section>
     );
@@ -140,36 +142,38 @@ export function CampusMemoriesRow({
     <section className="cq-memories-row" aria-label="Campus Memories">
       {header}
 
-      <div className="cq-memories-scroll" ref={attachScroller}>
-        {tiles.map((tile) => {
-          const { group, active, Icon } = tile;
-          const recent = Boolean(group?.hasRecent);
-          const ariaLabel =
-            active && group ? `${tile.label}, ${countLabel(group)}` : `${tile.label}, add a Memory`;
+      <div className="cq-memories-scroll" ref={attachScroller} data-cq-horizontal-scroll="true">
+        <div className="cq-memories-track">
+          {tiles.map((tile) => {
+            const { group, active, Icon } = tile;
+            const recent = Boolean(group?.hasRecent);
+            const ariaLabel =
+              active && group ? `${tile.label}, ${countLabel(group)}` : `${tile.label}, add a Memory`;
 
-          return (
-            <button
-              key={tile.locationId}
-              type="button"
-              className={`cq-memories-tile${active ? " cq-memories-tile--active" : ""}${recent ? " cq-memories-tile--recent" : ""}`}
-              onClick={() => (active && group ? onOpenGroup(group) : onAddMemory(tile.locationId))}
-              aria-label={ariaLabel}
-            >
-              <span className="cq-memories-tile-ring" aria-hidden>
-                <span className="cq-memories-tile-icon-wrap">
-                  <Icon className="cq-memories-tile-icon" strokeWidth={2} aria-hidden />
+            return (
+              <button
+                key={tile.locationId}
+                type="button"
+                className={`cq-memories-tile${active ? " cq-memories-tile--active" : ""}${recent ? " cq-memories-tile--recent" : ""}`}
+                onClick={() => (active && group ? onOpenGroup(group) : onAddMemory(tile.locationId))}
+                aria-label={ariaLabel}
+              >
+                <span className="cq-memories-tile-ring" aria-hidden>
+                  <span className="cq-memories-tile-icon-wrap">
+                    <Icon className="cq-memories-tile-icon" strokeWidth={2} aria-hidden />
+                  </span>
+                  {recent ? <span className="cq-memories-live-dot" aria-hidden /> : null}
                 </span>
-                {recent ? <span className="cq-memories-live-dot" aria-hidden /> : null}
-              </span>
-              <span className="cq-memories-tile-label">{tile.label}</span>
-              {active && group ? (
-                <span className="cq-memories-tile-count">{countLabel(group)}</span>
-              ) : (
-                <span className="cq-memories-tile-count cq-memories-tile-count--muted">–</span>
-              )}
-            </button>
-          );
-        })}
+                <span className="cq-memories-tile-label">{tile.label}</span>
+                {active && group ? (
+                  <span className="cq-memories-tile-count">{countLabel(group)}</span>
+                ) : (
+                  <span className="cq-memories-tile-count cq-memories-tile-count--muted">–</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
