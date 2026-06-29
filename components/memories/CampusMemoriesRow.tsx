@@ -1,87 +1,63 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
-  Building2,
-  Compass,
+  Cpu,
   Dumbbell,
-  GraduationCap,
-  Home,
+  Landmark,
   MapPin,
-  Navigation,
   Plus,
-  Trophy,
+  Trees,
   UtensilsCrossed,
+  type LucideIcon,
 } from "lucide-react";
 import type { CampusMemoryGroup } from "@/lib/types";
-import type { CampusLocationKey } from "@/lib/campusLocations";
-import { CAMPUS_LOCATION_PRESETS } from "@/lib/campusLocations";
+import { CAMPUS_MEMORY_LOCATION_OPTIONS, getCampusLocation } from "@/lib/locations/registry";
+import type { CampusLocationId } from "@/lib/locations/registry";
 import { fetchCampusMemoryGroups } from "@/lib/client/campusMemoriesClient";
+import { subscribeCampusMemoriesChanged } from "@/lib/client/campusMemoriesSync";
 
-const FEATURED_KEYS: CampusLocationKey[] = [
-  "quad",
-  "memorial_union",
-  "library",
-  "mackal_rec_center",
-  "dining_hall",
-  "other",
-];
-
-function locationIcon(key: string) {
-  switch (key) {
-    case "quad":
-      return Compass;
-    case "library":
-      return BookOpen;
-    case "memorial_union":
-      return Building2;
-    case "mackal_rec_center":
-      return Dumbbell;
-    case "dining_hall":
-      return UtensilsCrossed;
-    case "ryan_center":
-      return Trophy;
-    case "dorm_residence":
-      return Home;
-    case "academic_building":
-      return GraduationCap;
-    case "other":
-      return Navigation;
-    default:
-      return MapPin;
-  }
-}
-
-function displayLabel(key: string, fallback: string): string {
-  if (key === "other") return "Nearby";
-  if (key === "mackal_rec_center") return "Rec Center";
-  return fallback;
-}
+/** Clean white line icon per campus location (MapPin fallback for any future id). */
+const LOCATION_ICONS: Partial<Record<CampusLocationId, LucideIcon>> = {
+  "memorial-union": Landmark,
+  library: BookOpen,
+  "rec-center": Dumbbell,
+  "engineering-hall": Cpu,
+  "the-quad": Trees,
+  "rams-den": UtensilsCrossed,
+};
 
 function countLabel(group: CampusMemoryGroup): string {
   if (group.hasRecent) return `${group.count} live`;
   return `${group.count} today`;
 }
 
+type RowTile = {
+  locationId: CampusLocationId;
+  label: string;
+  Icon: LucideIcon;
+  group: CampusMemoryGroup | null;
+  active: boolean;
+};
+
 export function CampusMemoriesRow({
   onOpenGroup,
   onAddMemory,
 }: {
   onOpenGroup: (group: CampusMemoryGroup) => void;
-  onAddMemory: () => void;
+  onAddMemory: (locationId?: CampusLocationId) => void;
 }) {
   const [groups, setGroups] = useState<CampusMemoryGroup[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setError(null);
       const data = await fetchCampusMemoryGroups();
-      setGroups(data);
+      setGroups(Array.isArray(data) ? data.filter((g) => g && g.count > 0) : []);
     } catch {
-      setError("Memories unavailable");
+      // Stay silent — the row simply renders every location as inactive (no error copy).
+      setGroups([]);
     } finally {
       setLoading(false);
     }
@@ -91,80 +67,90 @@ export function CampusMemoriesRow({
     void load();
   }, [load]);
 
-  const presetByKey = new Map(CAMPUS_LOCATION_PRESETS.map((p) => [p.key, p]));
-  const groupByKey = new Map(groups.map((g) => [g.locationKey, g]));
+  useEffect(() => subscribeCampusMemoriesChanged(() => void load()), [load]);
 
-  const tiles: CampusMemoryGroup[] = FEATURED_KEYS.map((key) => {
-    const existing = groupByKey.get(key);
-    if (existing) return existing;
-    const preset = presetByKey.get(key);
-    return {
-      locationKey: key,
-      locationName: preset?.label ?? key,
-      count: 0,
-      latestCreatedAt: "",
-      latestPreview: null,
-      latestMediaType: null,
-      hasRecent: false,
-    };
-  });
+  // Build one tile per canonical campus location from the real memory counts,
+  // then order Instagram-style: locations with live memories first (keeping the
+  // original campus order within each group), inactive locations after.
+  const tiles = useMemo<RowTile[]>(() => {
+    const byLocation = new Map<string, CampusMemoryGroup>();
+    for (const group of groups) byLocation.set(group.locationId, group);
 
-  return (
-    <section className="cq-memories-row" aria-label="Campus Memories">
-      <div className="cq-memories-row-head">
-        <h3 className="cq-memories-row-title">Memories</h3>
-        <button type="button" className="cq-memories-add-btn" onClick={onAddMemory}>
-          <Plus className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden />
-          <span>Add</span>
-        </button>
-      </div>
+    const base: RowTile[] = CAMPUS_MEMORY_LOCATION_OPTIONS.map((opt) => {
+      const loc = getCampusLocation(opt.id);
+      const group = byLocation.get(opt.id) ?? null;
+      return {
+        locationId: opt.id,
+        label: loc.shortLabel || opt.name,
+        Icon: LOCATION_ICONS[opt.id] ?? MapPin,
+        group,
+        active: Boolean(group && group.count > 0),
+      };
+    });
 
-      {loading ? (
+    const active = base.filter((tile) => tile.active);
+    const inactive = base.filter((tile) => !tile.active);
+    return [...active, ...inactive];
+  }, [groups]);
+
+  const header = (
+    <div className="cq-memories-row-head">
+      <h3 className="cq-memories-row-title">Memories</h3>
+      <button type="button" className="cq-memories-add-btn" onClick={() => onAddMemory()}>
+        <Plus className="h-3.5 w-3.5" strokeWidth={2.6} aria-hidden />
+        <span>Add</span>
+      </button>
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <section className="cq-memories-row" aria-label="Campus Memories" aria-busy="true">
+        {header}
         <div className="cq-memories-scroll cq-memories-scroll--loading" aria-hidden>
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="cq-memories-tile cq-memories-tile--skeleton" />
           ))}
         </div>
-      ) : error ? (
-        <p className="cq-memories-empty cq-memories-empty--error">{error}</p>
-      ) : (
-        <div className="cq-memories-scroll">
-          {tiles.map((group) => {
-            const Icon = locationIcon(group.locationKey);
-            const label = displayLabel(group.locationKey, group.locationName);
-            const active = group.count > 0;
-            const recent = group.hasRecent;
-            return (
-              <button
-                key={group.locationKey}
-                type="button"
-                className={`cq-memories-tile${active ? " cq-memories-tile--active" : ""}${recent ? " cq-memories-tile--recent" : ""}`}
-                onClick={() => (active ? onOpenGroup(group) : onAddMemory())}
-                aria-label={`${label}${active ? `, ${countLabel(group)}` : ", no live memories"}`}
-              >
-                <span className="cq-memories-tile-ring" aria-hidden>
-                  <span className="cq-memories-tile-icon-wrap">
-                    <Icon className="cq-memories-tile-icon" strokeWidth={2} aria-hidden />
-                  </span>
-                  {recent ? <span className="cq-memories-live-dot" aria-hidden /> : null}
-                </span>
-                <span className="cq-memories-tile-label">{label}</span>
-                {active ? (
-                  <span className="cq-memories-tile-count">{countLabel(group)}</span>
-                ) : (
-                  <span className="cq-memories-tile-count cq-memories-tile-count--muted">—</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      </section>
+    );
+  }
 
-      {!loading && !error && groups.length === 0 ? (
-        <p className="cq-memories-empty">
-          No live Memories yet. <button type="button" onClick={onAddMemory}>Add the first campus Memory</button>
-        </p>
-      ) : null}
+  return (
+    <section className="cq-memories-row" aria-label="Campus Memories">
+      {header}
+
+      <div className="cq-memories-scroll">
+        {tiles.map((tile) => {
+          const { group, active, Icon } = tile;
+          const recent = Boolean(group?.hasRecent);
+          const ariaLabel =
+            active && group ? `${tile.label}, ${countLabel(group)}` : `${tile.label}, add a Memory`;
+
+          return (
+            <button
+              key={tile.locationId}
+              type="button"
+              className={`cq-memories-tile${active ? " cq-memories-tile--active" : ""}${recent ? " cq-memories-tile--recent" : ""}`}
+              onClick={() => (active && group ? onOpenGroup(group) : onAddMemory(tile.locationId))}
+              aria-label={ariaLabel}
+            >
+              <span className="cq-memories-tile-ring" aria-hidden>
+                <span className="cq-memories-tile-icon-wrap">
+                  <Icon className="cq-memories-tile-icon" strokeWidth={2} aria-hidden />
+                </span>
+                {recent ? <span className="cq-memories-live-dot" aria-hidden /> : null}
+              </span>
+              <span className="cq-memories-tile-label">{tile.label}</span>
+              {active && group ? (
+                <span className="cq-memories-tile-count">{countLabel(group)}</span>
+              ) : (
+                <span className="cq-memories-tile-count cq-memories-tile-count--muted">–</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </section>
   );
 }

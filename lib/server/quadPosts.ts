@@ -104,6 +104,51 @@ export async function normalizeQuadPostProofUrl(
   return publicUrlData.publicUrl;
 }
 
+const MAX_UPLOAD_IMAGE_BYTES = 8 * 1024 * 1024;
+const ALLOWED_UPLOAD_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+
+/**
+ * Upload an already-decoded image Buffer (from a multipart/form-data Blob) to
+ * storage and return its public URL. Used by the Memory media route so clients
+ * send a compressed Blob instead of a large Base64 data URL.
+ */
+export async function uploadImageBufferToStorage(args: {
+  buffer: Buffer;
+  mime: string;
+  userId: string;
+  folder?: string;
+}): Promise<string> {
+  const normalizedMime = args.mime.toLowerCase().replace("image/jpg", "image/jpeg");
+  if (!ALLOWED_UPLOAD_MIME.has(args.mime.toLowerCase()) && !ALLOWED_UPLOAD_MIME.has(normalizedMime)) {
+    throw new ApiError(400, "Unsupported image format.", "IMAGE_FORMAT_UNSUPPORTED");
+  }
+  if (args.buffer.length === 0) {
+    throw new ApiError(400, "Image is empty.", "IMAGE_EMPTY");
+  }
+  if (args.buffer.length > MAX_UPLOAD_IMAGE_BYTES) {
+    throw new ApiError(413, "Image is too large.", "IMAGE_TOO_LARGE");
+  }
+
+  const admin = createAdminClient();
+  const ext = extensionForMime(normalizedMime);
+  const folder = args.folder ?? "campus-memories";
+  const storagePath = `${args.userId}/${folder}/${crypto.randomUUID()}.${ext}`;
+
+  const { error: uploadError } = await admin.storage
+    .from(QUAD_POST_IMAGES_BUCKET)
+    .upload(storagePath, args.buffer, {
+      contentType: normalizedMime,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    throw new ApiError(400, uploadError.message ?? "Image upload failed.", "IMAGE_UPLOAD_FAILED");
+  }
+
+  const { data: publicUrlData } = admin.storage.from(QUAD_POST_IMAGES_BUCKET).getPublicUrl(storagePath);
+  return publicUrlData.publicUrl;
+}
+
 export function logQuadPostError(stage: string, error: unknown, extra?: Record<string, unknown>) {
   const message = error instanceof Error ? error.message : String(error);
   const code = error instanceof ApiError ? error.code : undefined;

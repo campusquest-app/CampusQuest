@@ -6134,7 +6134,7 @@ html[data-cq-quad-chrome] .cq-nav-level-track {
 
 .cq-quad-feed-tab {
   position: relative;
-  padding: 0.3rem 0.35rem 0.4rem;
+  padding: 0.22rem 0.35rem 0.28rem;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -6297,6 +6297,158 @@ html[data-cq-scrolling] .cq-quad-create-fab {
     width: 1.45rem;
     height: 1.45rem;
   }
+}
+
+/* —— Create action sheet (premium chooser from the floating +) —— */
+.cq-create-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(4, 8, 14, 0.62);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: cq-create-sheet-fade 0.18s ease-out;
+}
+
+@keyframes cq-create-sheet-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.cq-create-sheet {
+  width: 100%;
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 0.6rem 1rem calc(1.1rem + env(safe-area-inset-bottom, 0px));
+  border-top-left-radius: 1.5rem;
+  border-top-right-radius: 1.5rem;
+  background: linear-gradient(180deg, #131c2b 0%, #0a111c 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+  box-shadow: 0 -16px 48px -12px rgba(0, 0, 0, 0.7);
+  animation: cq-create-sheet-rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes cq-create-sheet-rise {
+  from {
+    transform: translateY(18px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.cq-create-sheet-grip {
+  width: 2.4rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  margin: 0 auto 0.7rem;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.cq-create-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.7rem;
+}
+
+.cq-create-sheet-title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.cq-create-sheet-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cq-create-sheet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.cq-create-action {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  padding: 0.85rem 0.9rem;
+  border-radius: 1rem;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease;
+}
+
+.cq-create-action:active {
+  transform: scale(0.985);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.cq-create-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.85rem;
+  height: 2.85rem;
+  border-radius: 0.85rem;
+  color: #fff;
+}
+
+.cq-create-action--memory .cq-create-action-icon {
+  background: linear-gradient(145deg, #5cd4ff 0%, #0a9fe0 100%);
+  box-shadow: 0 6px 16px -6px rgba(41, 182, 246, 0.75);
+  color: #04141f;
+}
+
+.cq-create-action--post .cq-create-action-icon {
+  background: linear-gradient(145deg, #8b7bff 0%, #5b3fe0 100%);
+  box-shadow: 0 6px 16px -6px rgba(99, 80, 255, 0.7);
+}
+
+.cq-create-action--quest .cq-create-action-icon {
+  background: linear-gradient(145deg, #ffce6b 0%, #f59e0b 100%);
+  box-shadow: 0 6px 16px -6px rgba(245, 158, 11, 0.7);
+  color: #2a1c02;
+}
+
+.cq-create-action-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.cq-create-action-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.cq-create-action-subtitle {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 /* —— Create Post modal + composer (dark CampusQuest surfaces) —— */
@@ -9670,7 +9822,23 @@ html[data-realm-map-panning] {
 }
 
 .cq-achievement-unlock-card {
+  /* Dark navy base keeps every piece of text high-contrast (WCAG AA) regardless of rarity tint. */
+  background: linear-gradient(180deg, #0f2350 0%, #081330 60%, #050d22 100%);
   animation: cq-achievement-pop 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+/* Rarity-colored wash sits behind the content layer at low opacity so it never washes out text. */
+.cq-achievement-unlock-aura {
+  position: absolute;
+  inset: 0;
+  opacity: 0.45;
+  pointer-events: none;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 62%);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 62%);
+}
+
+.cq-achievement-unlock-title {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 @keyframes cq-achievement-pop {
@@ -9715,6 +9883,7 @@ html[data-realm-map-panning] {
 @media (prefers-reduced-motion: reduce) {
   .cq-hall-of-legends-particles,
   .cq-hall-trophy-shine,
+  .cq-achievement-unlock-card,
   .cq-achievement-unlock-badge,
   .cq-achievement-confetti-piece {
     animation: none !important;
@@ -11105,15 +11274,19 @@ html[data-realm-map-panning] {
 
 /* —— Campus Memories row —— */
 .cq-memories-row {
-  padding: 0.35rem 0.75rem 0.5rem;
+  padding: 0.25rem 0.75rem 0.4rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cq-memories-row--empty {
+  padding: 0.5rem 0.75rem 0.6rem;
 }
 
 .cq-memories-row-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.45rem;
+  margin-bottom: 0.35rem;
 }
 
 .cq-memories-row-title {
@@ -11127,14 +11300,21 @@ html[data-realm-map-panning] {
 .cq-memories-add-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.2rem 0.5rem;
+  gap: 0.3rem;
+  padding: 0.32rem 0.72rem;
   border-radius: 999px;
   font-size: 0.6875rem;
-  font-weight: 600;
-  color: #8fdcff;
-  background: rgba(76, 201, 255, 0.1);
-  border: 1px solid rgba(76, 201, 255, 0.22);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #04141f;
+  background: linear-gradient(140deg, #5cd4ff 0%, #29b6f6 55%, #0a9fe0 100%);
+  border: 1px solid rgba(122, 224, 255, 0.55);
+  box-shadow: 0 4px 14px -4px rgba(41, 182, 246, 0.65);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cq-memories-add-btn:active {
+  transform: scale(0.95);
 }
 
 .cq-memories-scroll {
@@ -11155,8 +11335,8 @@ html[data-realm-map-panning] {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.2rem;
-  width: 4.25rem;
+  gap: 0.28rem;
+  width: 4.6rem;
   background: transparent;
   border: none;
   padding: 0;
@@ -11168,36 +11348,56 @@ html[data-realm-map-panning] {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3.25rem;
-  height: 3.25rem;
+  width: 3.5rem;
+  height: 3.5rem;
   border-radius: 999px;
-  border: 2px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.04);
+  padding: 2.5px;
+  /* Inactive: muted gray story ring. */
+  background: rgba(255, 255, 255, 0.16);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
 }
 
+/* Active: premium CampusQuest/Keeney blue story ring with a subtle glow. */
 .cq-memories-tile--active .cq-memories-tile-ring {
-  border-color: rgba(76, 201, 255, 0.55);
-  box-shadow: 0 0 14px -2px rgba(76, 201, 255, 0.45);
+  background: #46b8ff;
+  box-shadow: 0 0 18px rgba(70, 184, 255, 0.45);
 }
 
 .cq-memories-tile--recent .cq-memories-tile-ring {
-  border-color: rgba(76, 201, 255, 0.85);
+  box-shadow: 0 0 20px rgba(70, 184, 255, 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-memories-tile-ring {
+    transition: none;
+  }
 }
 
 .cq-memories-tile-icon-wrap {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 100%;
+  height: 100%;
   border-radius: 999px;
-  background: rgba(8, 12, 20, 0.55);
+  background: #0b1320;
+  border: 2px solid #0b1320;
+  overflow: hidden;
 }
 
+.cq-memories-tile-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 999px;
+}
+
+/* Clean white location glyph centered on the dark inner circle. */
 .cq-memories-tile-icon {
-  width: 1.125rem;
-  height: 1.125rem;
-  color: rgba(255, 255, 255, 0.9);
+  width: 1.45rem;
+  height: 1.45rem;
+  color: #ffffff;
 }
 
 .cq-memories-live-dot {
@@ -11216,15 +11416,18 @@ html[data-realm-map-panning] {
   font-weight: 600;
   line-height: 1.15;
   text-align: center;
-  max-width: 4.25rem;
+  width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
 }
 
 .cq-memories-tile-count {
   font-size: 0.5625rem;
   font-weight: 500;
+  min-height: 0.7rem;
   color: rgba(143, 220, 255, 0.85);
 }
 
@@ -11253,6 +11456,64 @@ html[data-realm-map-panning] {
 
 .cq-memories-empty--error {
   color: #fca5a5;
+}
+
+/* —— Premium centered empty state —— */
+.cq-memories-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.3rem;
+  padding: 0.55rem 1rem 0.3rem;
+}
+
+.cq-memories-empty-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  margin-bottom: 0.1rem;
+  color: #9fe7ff;
+  background: radial-gradient(circle at 50% 35%, rgba(76, 201, 255, 0.28), rgba(76, 201, 255, 0.06));
+  border: 1px solid rgba(76, 201, 255, 0.3);
+  box-shadow: 0 0 18px -6px rgba(76, 201, 255, 0.6);
+}
+
+.cq-memories-empty-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.cq-memories-empty-subtitle {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cq-memories-share-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 1.1rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #04141f;
+  background: linear-gradient(140deg, #5cd4ff 0%, #29b6f6 55%, #0a9fe0 100%);
+  border: 1px solid rgba(122, 224, 255, 0.55);
+  box-shadow: 0 6px 18px -5px rgba(41, 182, 246, 0.7);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cq-memories-share-cta:active {
+  transform: scale(0.96);
 }
 
 /* —— Campus Memory viewer —— */
@@ -11505,8 +11766,293 @@ html[data-realm-map-panning] {
   color: rgba(255, 255, 255, 0.4);
 }
 
+.cq-memory-add-progress {
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  backdrop-filter: blur(2px);
+}
+
+.cq-memory-add-progress-bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1c6fd1, #2f8ae6);
+  transition: width 0.18s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-memory-add-progress-bar {
+    transition: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cq-memories-tile--skeleton {
     animation: none;
   }
+}
+
+.cq-memories-tile-emoji {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.cq-realm-memories-empty,
+.cq-realm-memories-empty-state {
+  margin: 0;
+  padding: 0.75rem 0;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+}
+
+.cq-realm-memories-cta {
+  margin-top: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 215, 120, 0.35);
+  background: rgba(255, 215, 120, 0.08);
+  color: #ffe6a8;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.cq-realm-memories-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cq-realm-memories-section {
+  margin-bottom: 1rem;
+}
+
+.cq-realm-memories-section-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cq-realm-memories-scroll {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scrollbar-width: none;
+}
+
+.cq-realm-memories-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-realm-memories-thumb {
+  flex: 0 0 auto;
+  width: 4.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.cq-realm-memories-thumb-img {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 2px solid rgba(255, 215, 120, 0.45);
+}
+
+.cq-realm-memories-thumb-text {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  font-size: 0.625rem;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 215, 120, 0.35);
+}
+
+.cq-realm-memories-thumb-meta {
+  font-size: 0.625rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cq-realm-memories-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.cq-realm-memories-view-all,
+.cq-realm-memories-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.65rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.cq-realm-memories-view-all {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.cq-realm-memories-add {
+  border: 1px solid rgba(255, 215, 120, 0.35);
+  color: #ffe6a8;
+  background: rgba(255, 215, 120, 0.08);
+}
+
+.cq-realm-archive-section-label--spaced {
+  margin-top: 1.25rem;
+}
+
+.cq-memory-archive-empty {
+  margin: 0;
+  padding: 0.5rem 0;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cq-memory-archive-section + .cq-memory-archive-section {
+  margin-top: 1rem;
+}
+
+.cq-memory-archive-location {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cq-memory-archive-date {
+  margin: 0 0 0.35rem;
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cq-memory-archive-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.cq-memory-archive-item {
+  width: 4.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cq-memory-archive-thumb {
+  width: 4.75rem;
+  height: 4.75rem;
+  border-radius: 0.65rem;
+  object-fit: cover;
+}
+
+.cq-memory-archive-text {
+  width: 4.75rem;
+  height: 4.75rem;
+  border-radius: 0.65rem;
+  padding: 0.35rem;
+  font-size: 0.625rem;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.cq-memory-archive-item-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.625rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cq-profile-saved-memories {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.75rem 0.75rem 1rem;
+}
+
+.cq-profile-saved-memories-head {
+  margin-bottom: 0.5rem;
+}
+
+.cq-profile-saved-memories-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cq-profile-saved-memories-sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cq-profile-saved-memories-scroll {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.cq-profile-saved-memories-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-profile-saved-memories-item {
+  flex: 0 0 auto;
+  width: 5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cq-profile-saved-memories-thumb {
+  width: 5rem;
+  height: 5rem;
+  border-radius: 0.65rem;
+  object-fit: cover;
+}
+
+.cq-profile-saved-memories-text {
+  width: 5rem;
+  height: 5rem;
+  border-radius: 0.65rem;
+  padding: 0.35rem;
+  font-size: 0.625rem;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cq-profile-saved-memories-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.625rem;
+  color: rgba(255, 255, 255, 0.45);
 }

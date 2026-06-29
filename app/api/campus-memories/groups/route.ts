@@ -1,5 +1,5 @@
 import { fail, ok } from "@/lib/server/http";
-import { fetchCampusMemoryGroups } from "@/lib/server/campusMemories";
+import { fetchCampusMemoryGroups, fetchCampusMemoryLocationStats } from "@/lib/server/campusMemories";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
 
@@ -14,8 +14,13 @@ export async function GET(request: Request) {
       windowMs: 60_000,
     });
 
-    const groups = await fetchCampusMemoryGroups(auth.userClient);
-    return ok({ groups });
+    const { searchParams } = new URL(request.url);
+    const includeStats = searchParams.get("stats") === "true";
+    const [groups, stats] = await Promise.all([
+      fetchCampusMemoryGroups(auth.userClient),
+      includeStats ? fetchCampusMemoryLocationStats(auth.userClient) : Promise.resolve(undefined),
+    ]);
+    return ok({ groups, stats });
   } catch (error) {
     return fail(error);
   }

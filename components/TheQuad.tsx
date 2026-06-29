@@ -23,6 +23,7 @@ import { FieldNoteCard } from "@/components/FieldNoteCard";
 import { CampusMemoriesRow } from "@/components/memories/CampusMemoriesRow";
 import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
 import { AddCampusMemorySheet } from "@/components/memories/AddCampusMemorySheet";
+import type { CampusLocationId } from "@/lib/locations/registry";
 import { QuadFeedSkeleton } from "@/components/QuadFeedSkeleton";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
 import { PullToRefresh } from "@/components/PullToRefresh";
@@ -73,6 +74,7 @@ export function TheQuad({
   chromeSuppressed = false,
   canModeratePosts = false,
   onPostXpReward,
+  onLogQuest,
 }: {
   character: Character;
   onRefresh?: () => void;
@@ -91,6 +93,7 @@ export function TheQuad({
   chromeSuppressed?: boolean;
   canModeratePosts?: boolean;
   onPostXpReward?: (reward: QuadPostXpReward) => void;
+  onLogQuest?: () => void;
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
@@ -99,8 +102,10 @@ export function TheQuad({
   const [postActionMessage, setPostActionMessage] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
   const [memoryGroup, setMemoryGroup] = useState<CampusMemoryGroup | null>(null);
+  const [memoryViewerInitialId, setMemoryViewerInitialId] = useState<string | undefined>();
+  const [memoryViewerIncludeExpired, setMemoryViewerIncludeExpired] = useState(false);
   const [showAddMemory, setShowAddMemory] = useState(false);
-  const [memoriesRefreshKey, setMemoriesRefreshKey] = useState(0);
+  const [addMemoryLocationId, setAddMemoryLocationId] = useState<CampusLocationId>("the-quad");
   const quadHeaderRef = useRef<HTMLDivElement | null>(null);
   const showQuadChrome = !chromeSuppressed;
 
@@ -454,7 +459,7 @@ export function TheQuad({
       ref={quadHeaderRef}
       className="cq-quad-header cq-nav-shell-quad relative w-full"
     >
-      <div className="w-full px-[2.5vw] pb-1 pt-0.5 sm:px-[3vw] sm:pb-1.5">
+      <div className="w-full px-[2.5vw] pb-0.5 pt-0.5 sm:px-[3vw] sm:pb-1">
         <div className="cq-quad-header-row tabs" data-no-drawer-swipe="true">
           <button
             type="button"
@@ -542,9 +547,11 @@ export function TheQuad({
             <div className="cq-quad-feed-stream">
               {feedTab === "public" ? (
                 <CampusMemoriesRow
-                  key={memoriesRefreshKey}
                   onOpenGroup={setMemoryGroup}
-                  onAddMemory={() => setShowAddMemory(true)}
+                  onAddMemory={(locationId) => {
+                    setAddMemoryLocationId(locationId ?? "the-quad");
+                    setShowAddMemory(true);
+                  }}
                 />
               ) : null}
               {reactionNotice ? (
@@ -591,20 +598,29 @@ export function TheQuad({
         character={character}
         onPosted={() => refresh({ silent: true })}
         onXpReward={onPostXpReward}
+        onCreateMemory={() => setShowAddMemory(true)}
+        onLogQuest={onLogQuest}
       />
 
       {memoryGroup ? (
         <CampusMemoryViewer
           group={memoryGroup}
           currentUserId={character.id}
-          onClose={() => setMemoryGroup(null)}
+          initialMemoryId={memoryViewerInitialId}
+          includeExpired={memoryViewerIncludeExpired}
+          onClose={() => {
+            setMemoryGroup(null);
+            setMemoryViewerInitialId(undefined);
+            setMemoryViewerIncludeExpired(false);
+          }}
         />
       ) : null}
 
       {showAddMemory ? (
         <AddCampusMemorySheet
+          defaultLocationId={addMemoryLocationId}
           onClose={() => setShowAddMemory(false)}
-          onCreated={() => setMemoriesRefreshKey((k) => k + 1)}
+          onCreated={() => {}}
         />
       ) : null}
     </>

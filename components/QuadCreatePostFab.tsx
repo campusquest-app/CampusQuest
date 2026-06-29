@@ -15,9 +15,11 @@ import type { Character } from "@/lib/types";
 import type { QuadPostXpReward } from "@/lib/quadPostXp";
 import { FieldNoteComposer } from "@/components/FieldNoteComposer";
 import { PostMediaPicker } from "@/components/posts/PostMediaPicker";
+import { QuadCreateActionSheet } from "@/components/QuadCreateActionSheet";
 
 type QuadFeedTab = "public" | "friends" | "trending";
 type Step = "media" | "compose";
+type View = "actions" | "post";
 
 function baseFeedType(feedTab: QuadFeedTab): "public" | "friends" {
   return feedTab === "friends" ? "friends" : "public";
@@ -28,13 +30,18 @@ export function QuadCreatePostFab({
   character,
   onPosted,
   onXpReward,
+  onCreateMemory,
+  onLogQuest,
 }: {
   feedTab: QuadFeedTab;
   character: Character;
   onPosted: () => void;
   onXpReward?: (reward: QuadPostXpReward) => void;
+  onCreateMemory?: () => void;
+  onLogQuest?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<View>("actions");
   const [step, setStep] = useState<Step>("media");
   const [pendingImage, setPendingImage] = useState("");
   const [tapBurst, setTapBurst] = useState(false);
@@ -48,26 +55,45 @@ export function QuadCreatePostFab({
     dirtyRef.current = false;
     setPendingImage("");
     setStep("media");
+    setView("actions");
     setOpen(true);
   }
 
   const handleClose = useCallback(() => {
     dirtyRef.current = false;
     setOpen(false);
+    setView("actions");
     setStep("media");
     setPendingImage("");
     releaseModalViewportState();
     resetScrollChrome();
   }, []);
 
-  // Outside click / backdrop / Escape: confirm only when there is unsaved content.
+  // Outside click / backdrop / Escape: confirm only when composing with unsaved content.
   const requestClose = useCallback(() => {
-    if (dirtyRef.current || pendingImage) {
+    if (view === "post" && (dirtyRef.current || pendingImage)) {
       const confirmed = window.confirm("Discard this post? Your draft will be lost.");
       if (!confirmed) return;
     }
     handleClose();
-  }, [handleClose, pendingImage]);
+  }, [handleClose, pendingImage, view]);
+
+  const startPostFlow = useCallback(() => {
+    dirtyRef.current = false;
+    setPendingImage("");
+    setStep("media");
+    setView("post");
+  }, []);
+
+  const handleCaptureMemory = useCallback(() => {
+    handleClose();
+    onCreateMemory?.();
+  }, [handleClose, onCreateMemory]);
+
+  const handleLogQuest = useCallback(() => {
+    handleClose();
+    onLogQuest?.();
+  }, [handleClose, onLogQuest]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -99,46 +125,55 @@ export function QuadCreatePostFab({
 
   const modal =
     open && typeof document !== "undefined" ? (
-      <div
-        className="cq-composer-overlay"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Create a new post"
-        onClick={requestClose}
-      >
+      view === "actions" ? (
+        <QuadCreateActionSheet
+          onClose={handleClose}
+          onCaptureMemory={handleCaptureMemory}
+          onCreatePost={startPostFlow}
+          onLogQuest={onLogQuest ? handleLogQuest : undefined}
+        />
+      ) : (
         <div
-          className={`cq-composer-shell cq-composer-shell--${step}`}
-          onClick={(e) => e.stopPropagation()}
+          className="cq-composer-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Create a new post"
+          onClick={requestClose}
         >
-          {step === "media" ? (
-            <PostMediaPicker
-              initialImage={pendingImage}
-              onClose={requestClose}
-              onNext={(image) => {
-                setPendingImage(image);
-                setStep("compose");
-              }}
-            />
-          ) : (
-            <FieldNoteComposer
-              key={`${feedTab}-${open}-compose`}
-              character={character}
-              defaultVisibility={baseFeedType(feedTab)}
-              initialImage={pendingImage}
-              onBack={() => setStep("media")}
-              onCancel={requestClose}
-              onDirtyChange={(d) => {
-                dirtyRef.current = d;
-              }}
-              onPosted={() => {
-                onPosted();
-                handleClose();
-              }}
-              onXpReward={onXpReward}
-            />
-          )}
+          <div
+            className={`cq-composer-shell cq-composer-shell--${step}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {step === "media" ? (
+              <PostMediaPicker
+                initialImage={pendingImage}
+                onClose={requestClose}
+                onNext={(image) => {
+                  setPendingImage(image);
+                  setStep("compose");
+                }}
+              />
+            ) : (
+              <FieldNoteComposer
+                key={`${feedTab}-${open}-compose`}
+                character={character}
+                defaultVisibility={baseFeedType(feedTab)}
+                initialImage={pendingImage}
+                onBack={() => setStep("media")}
+                onCancel={requestClose}
+                onDirtyChange={(d) => {
+                  dirtyRef.current = d;
+                }}
+                onPosted={() => {
+                  onPosted();
+                  handleClose();
+                }}
+                onXpReward={onXpReward}
+              />
+            )}
+          </div>
         </div>
-      </div>
+      )
     ) : null;
 
   if (typeof document === "undefined") return null;

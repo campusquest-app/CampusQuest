@@ -3,17 +3,26 @@ import { fail, ok, ApiError } from "@/lib/server/http";
 import {
   createCampusMemory,
   fetchCampusMemoriesByLocation,
+  fetchCampusMemoryArchive,
   fetchSavedCampusMemoriesForUser,
 } from "@/lib/server/campusMemories";
+import { isCampusLocationId, campusLocationIdFromLegacyKey } from "@/lib/locations/registry";
 import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { createCampusMemorySchema, readJson, uuidSchema } from "@/lib/server/validation";
 import { formatZodError } from "@/lib/server/zodErrors";
-import { isCampusLocationKey } from "@/lib/campusLocations";
 
-/** GET — active Memories for a location, or saved Memories for profile. */
+function resolveLocationIdParam(locationId: string, locationKey: string): string | null {
+  const id = locationId.trim();
+  if (id && isCampusLocationId(id)) return id;
+  const key = locationKey.trim();
+  if (key) return campusLocationIdFromLegacyKey(key);
+  return null;
+}
+
+/** GET — active Memories for a location, saved, or archive grouped by location. */
 export async function GET(request: Request) {
   try {
     const auth = await requireAuthUser(request);
@@ -25,8 +34,17 @@ export async function GET(request: Request) {
     });
 
     const { searchParams } = new URL(request.url);
+    const archive = searchParams.get("archive") === "true";
     const saved = searchParams.get("saved") === "true";
     const userId = searchParams.get("userId")?.trim();
+
+    if (archive) {
+      const sections = await fetchCampusMemoryArchive({
+        userClient: auth.userClient,
+        userId: userId && uuidSchema.safeParse(userId).success ? userId : undefined,
+      });
+      return ok({ sections });
+    }
 
     if (saved) {
       const targetId = userId && uuidSchema.safeParse(userId).success ? userId : auth.user.id;
@@ -37,14 +55,19 @@ export async function GET(request: Request) {
       return ok({ memories });
     }
 
-    const locationKey = searchParams.get("locationKey")?.trim() ?? "";
-    if (!locationKey || !isCampusLocationKey(locationKey)) {
+    const locationId = resolveLocationIdParam(
+      searchParams.get("locationId") ?? "",
+      searchParams.get("locationKey") ?? "",
+    );
+    if (!locationId) {
       return ok({ memories: [] });
     }
 
+    const includeExpired = searchParams.get("includeExpired") === "true";
     const memories = await fetchCampusMemoriesByLocation({
       userClient: auth.userClient,
-      locationKey,
+      locationId,
+      includeExpired,
     });
     return ok({ memories });
   } catch (error) {
@@ -68,7 +91,8 @@ export async function POST(request: Request) {
     const memory = await createCampusMemory({
       userClient: auth.userClient,
       userId: auth.user.id,
-      locationKey: input.locationKey,
+      locationId: input.locationId ?? null,
+      locationKey: input.locationKey ?? null,
       locationName: input.locationName,
       eventId: input.eventId ?? null,
       mediaUrl: input.mediaUrl ?? null,

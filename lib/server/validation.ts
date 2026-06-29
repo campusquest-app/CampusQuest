@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CAMPUS_LOCATION_KEYS } from "@/lib/campusLocations";
+import { CAMPUS_LOCATION_IDS } from "@/lib/locations/registry";
 import { REALM_LOCATION_IDS } from "@/lib/realm/locationGeo";
 import { ORGANIZATION_REQUEST_CATEGORIES } from "@/lib/organizationRequestCategories";
 import { passwordMeetsRequirements } from "@/lib/passwordRequirements";
@@ -751,22 +752,37 @@ const campusMemoryMediaUrlSchema = z.preprocess(
 );
 
 export const campusMemoryMediaUploadSchema = z.object({
+  // Legacy small data-URL path. The client now compresses + uploads a Blob via
+  // multipart, so this cap only guards the rare fallback; keep it generous and
+  // never surface a scary "too large" error to users.
   mediaDataUrl: z
     .string()
     .min(30, "mediaDataUrl is required.")
-    .max(6_000_000, "Media payload is too large.")
+    .max(12_000_000, "Couldn't upload your photo. Please try again.")
     .refine((s) => s.trim().startsWith("data:image/"), "mediaDataUrl must be a data:image/ URL."),
 });
 
 export const createCampusMemorySchema = z
   .object({
-    locationKey: z.enum(CAMPUS_LOCATION_KEYS),
+    locationId: z.enum(CAMPUS_LOCATION_IDS).optional(),
+    locationKey: z.enum(CAMPUS_LOCATION_KEYS).optional(),
     locationName: z.string().trim().max(200).optional(),
     eventId: uuidSchema.nullable().optional(),
     mediaUrl: campusMemoryMediaUrlSchema,
     mediaType: z.enum(["text", "image", "video"]).default("text"),
-    body: z.string().trim().max(500).optional(),
+    body: z.preprocess(
+      (val) => {
+        if (val === null || val === undefined) return undefined;
+        if (typeof val === "string" && val.trim() === "") return undefined;
+        return val;
+      },
+      z.string().trim().max(500).optional(),
+    ),
     visibility: z.enum(["public", "friends", "campus"]).optional(),
+  })
+  .refine((data) => Boolean(data.locationId || data.locationKey), {
+    message: "Pick a campus location.",
+    path: ["locationId"],
   })
   .refine(
     (data) =>

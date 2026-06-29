@@ -331,6 +331,9 @@ export type CampusMemoryVisibility = "public" | "friends" | "campus";
 export interface CampusMemory {
   id: string;
   userId: string;
+  /** Canonical Realm location id (the-quad, library, …). */
+  locationId: string;
+  /** @deprecated Use locationId. Legacy snake_case key for admin/QR compat. */
   locationKey: string;
   locationName: string;
   eventId: string | null;
@@ -349,13 +352,31 @@ export interface CampusMemory {
 }
 
 export interface CampusMemoryGroup {
+  locationId: string;
+  /** @deprecated Use locationId. */
   locationKey: string;
   locationName: string;
   count: number;
   latestCreatedAt: string;
   latestPreview: string | null;
   latestMediaType: CampusMemoryMediaType | null;
+  latestAuthorAvatar: string | null;
   hasRecent: boolean;
+}
+
+/** Per-location memory counts for Realm map pins. */
+export interface CampusMemoryLocationStats {
+  locationId: string;
+  locationName: string;
+  activeCount: number;
+  archivedCount: number;
+  totalCount: number;
+}
+
+export interface CampusMemoryArchiveSection {
+  locationId: string;
+  locationName: string;
+  memories: CampusMemory[];
 }
 
 // —— Daily quests ——

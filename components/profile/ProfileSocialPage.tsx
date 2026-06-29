@@ -12,6 +12,9 @@ import { ProfileCollectiblesTab } from "./ProfileCollectiblesTab";
 import { ProfileActivityTab } from "./ProfileActivityTab";
 import { ProfileOwnerMenu } from "./ProfileOwnerMenu";
 import { ProfileLockedPanel } from "./ProfileLockedPanel";
+import { ProfileSavedMemoriesSection } from "@/components/memories/ProfileSavedMemoriesSection";
+import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
+import type { CampusMemoryGroup } from "@/lib/types";
 import { ConnectionActionButton } from "@/components/ConnectionActionButton";
 import type { ProfileRelationshipStatus } from "@/lib/client/userProfileViewClient";
 
@@ -92,6 +95,8 @@ export function ProfileSocialPage({
 }) {
   const [tab, setTab] = useState<ProfileTab>(activeProfileTab ?? "posts");
   const [selectedPost, setSelectedPost] = useState<FieldNote | null>(null);
+  const [memoryViewerGroup, setMemoryViewerGroup] = useState<CampusMemoryGroup | null>(null);
+  const [memoryViewerInitialId, setMemoryViewerInitialId] = useState<string | undefined>();
   const [menuOpen, setMenuOpen] = useState(false);
   const [connectionToast, setConnectionToast] = useState<string | null>(null);
 
@@ -203,13 +208,24 @@ export function ProfileSocialPage({
             ) : null}
 
             {tab === "posts" ? (
-              <ProfilePostsGrid
-                posts={posts}
-                loading={postsLoading}
-                error={postsError}
-                onRetry={onRetryPosts}
-                onSelectPost={setSelectedPost}
-              />
+              <>
+                {isOwner ? (
+                  <ProfileSavedMemoriesSection
+                    userId={character.id}
+                    onOpenMemory={(group, memoryId) => {
+                      setMemoryViewerGroup(group);
+                      setMemoryViewerInitialId(memoryId);
+                    }}
+                  />
+                ) : null}
+                <ProfilePostsGrid
+                  posts={posts}
+                  loading={postsLoading}
+                  error={postsError}
+                  onRetry={onRetryPosts}
+                  onSelectPost={setSelectedPost}
+                />
+              </>
             ) : null}
             {tab === "collectibles" ? <ProfileCollectiblesTab character={character} /> : null}
             {tab === "activity" ? <ProfileActivityTab character={character} /> : null}
@@ -236,6 +252,19 @@ export function ProfileSocialPage({
           }}
           onSharePost={onSharePost}
           canModeratePosts={canModeratePosts}
+        />
+      ) : null}
+
+      {memoryViewerGroup ? (
+        <CampusMemoryViewer
+          group={memoryViewerGroup}
+          currentUserId={viewer.id}
+          initialMemoryId={memoryViewerInitialId}
+          includeExpired
+          onClose={() => {
+            setMemoryViewerGroup(null);
+            setMemoryViewerInitialId(undefined);
+          }}
         />
       ) : null}
 

@@ -2103,6 +2103,7 @@ export function Dashboard() {
             chromeSuppressed={quadChromeSuppressed}
             canModeratePosts={moderationAdminNavVisible(pilotCampusState)}
             onPostXpReward={handleQuadPostXpReward}
+            onLogQuest={() => setTab("manual-log")}
           />
         )}
 

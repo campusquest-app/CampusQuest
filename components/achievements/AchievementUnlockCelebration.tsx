@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { BadgeCheck } from "lucide-react";
 import { RARITY_LABELS } from "@/lib/achievementsCatalog";
 import {
   dismissAchievementCelebration,
@@ -37,10 +38,15 @@ export function AchievementUnlockCelebration() {
   const isTorchBearer = def.id === TORCH_BEARER_BADGE_ID;
   const displayName =
     isTorchBearer && founderNumber != null ? getTorchBearerDisplayName(founderNumber) : def.name;
-  const eyebrow = isTorchBearer ? "🔥 Mythic Achievement Unlocked" : "Achievement Unlocked";
+  const eyebrow = isTorchBearer ? "Mythic Achievement Unlocked" : "Achievement Unlocked";
   const description = isTorchBearer
-    ? "Awarded to one of the first 30 CampusQuest beta testers who helped ignite the journey."
+    ? "Awarded to one of the original 30 CampusQuest pioneers who helped ignite the journey."
     : def.description;
+
+  function handleDismiss() {
+    dismissAchievementCelebration();
+    setActive(null);
+  }
 
   return createPortal(
     <div
@@ -61,35 +67,61 @@ export function AchievementUnlockCelebration() {
       </div>
 
       <div
-        className={`cq-achievement-unlock-card relative z-10 w-full max-w-sm rounded-3xl border bg-gradient-to-b p-8 text-center ring-2 ${style.ring} ${style.glow} ${style.bg}`}
+        className={`cq-achievement-unlock-card relative z-10 w-full max-w-sm overflow-hidden rounded-3xl border border-white/10 p-6 text-center ring-1 sm:p-8 ${style.ring} ${style.glow}`}
       >
-        <p className="cq-achievement-unlock-eyebrow mb-3 font-display text-[11px] font-bold uppercase tracking-[0.35em] text-uri-gold">
-          {eyebrow}
-        </p>
-        <div className="cq-achievement-unlock-badge mx-auto mb-5 flex h-28 w-28 items-center justify-center rounded-2xl border border-white/15 bg-black/30 shadow-inner overflow-hidden">
-          <AchievementBadgeArt def={def} size="hero" />
-        </div>
-        <h2 className="font-display text-2xl font-black uppercase tracking-wide text-white">{displayName}</h2>
-        <p className={`mt-2 text-sm font-semibold uppercase tracking-[0.2em] ${style.text}`}>
-          {RARITY_LABELS[def.rarity]}
-          {isTorchBearer ? " Founder" : ""}
-        </p>
-        <p className="mt-3 text-sm leading-relaxed text-white/60">{description}</p>
-        {def.titleUnlock ? (
-          <p className="mt-4 rounded-xl border border-uri-gold/30 bg-uri-gold/10 px-3 py-2 text-xs font-semibold text-uri-gold">
-            Title unlocked: {def.titleUnlock}
+        {/* Rarity-tinted accent glow sits BEHIND content so all text stays on the dark navy surface. */}
+        <div className={`cq-achievement-unlock-aura bg-gradient-to-b ${style.bg}`} aria-hidden />
+
+        <div className="relative">
+          <p className="cq-achievement-unlock-eyebrow mb-4 font-display text-[11px] font-bold uppercase tracking-[0.32em] text-amber-300">
+            {eyebrow}
           </p>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => {
-            dismissAchievementCelebration();
-            setActive(null);
-          }}
-          className="mt-7 w-full rounded-xl bg-uri-keaney py-3 text-sm font-bold text-white shadow-lg transition hover:bg-uri-keaney/90"
-        >
-          {isTorchBearer ? "View Badge" : "Continue"}
-        </button>
+
+          <div className="cq-achievement-unlock-badge mx-auto mb-5 flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-black/40 shadow-inner">
+            <AchievementBadgeArt def={def} size="hero" />
+          </div>
+
+          <h2 className="cq-achievement-unlock-title font-display text-[1.6rem] font-black uppercase leading-[1.05] tracking-tight text-white sm:text-3xl">
+            {displayName}
+          </h2>
+
+          <p className="mt-3">
+            <span
+              className={`cq-achievement-unlock-rarity inline-flex items-center rounded-full border border-white/12 bg-black/35 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] ${style.text}`}
+            >
+              {RARITY_LABELS[def.rarity]}
+              {isTorchBearer ? " Founder" : ""}
+            </span>
+          </p>
+
+          <p className="cq-achievement-unlock-desc mx-auto mt-4 max-w-[19rem] text-[0.9375rem] font-medium leading-7 text-white/85">
+            {description}
+          </p>
+
+          {def.titleUnlock ? (
+            <div className="cq-achievement-reward-card mt-5 flex items-center gap-3 rounded-2xl border border-white/12 bg-[#0a1733]/85 p-3.5 text-left backdrop-blur-sm">
+              <span className="cq-achievement-reward-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-amber-300/30 bg-amber-300/10 text-amber-300">
+                <BadgeCheck className="h-6 w-6" strokeWidth={2.2} aria-hidden />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[10px] font-bold uppercase tracking-[0.28em] text-white/70">
+                  Unlocked Title
+                </span>
+                <span className="cq-achievement-reward-title block truncate text-lg font-extrabold uppercase tracking-tight text-amber-200">
+                  {def.titleUnlock}
+                </span>
+              </span>
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={handleDismiss}
+            className="cq-achievement-unlock-primary mt-6 w-full rounded-xl bg-gradient-to-r from-[#1c6fd1] to-[#2f8ae6] py-3.5 text-sm font-bold tracking-wide text-white shadow-[0_8px_24px_-8px_rgba(47,138,230,0.7)] transition hover:from-[#2a7ee0] hover:to-[#3f9bf2] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a1733]"
+          >
+            {isTorchBearer ? "View Badge" : "Continue"}
+          </button>
+        </div>
       </div>
     </div>,
     document.body,

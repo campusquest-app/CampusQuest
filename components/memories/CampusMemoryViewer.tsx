@@ -9,16 +9,21 @@ import {
   fetchCampusMemoriesByLocation,
   saveCampusMemoryToProfile,
 } from "@/lib/client/campusMemoriesClient";
+import { subscribeCampusMemoriesChanged } from "@/lib/client/campusMemoriesSync";
 
 const STORY_MS = 6000;
 
 export function CampusMemoryViewer({
   group,
   currentUserId,
+  initialMemoryId,
+  includeExpired = false,
   onClose,
 }: {
   group: CampusMemoryGroup;
   currentUserId: string;
+  initialMemoryId?: string;
+  includeExpired?: boolean;
   onClose: () => void;
 }) {
   const [memories, setMemories] = useState<CampusMemory[]>([]);
@@ -36,29 +41,30 @@ export function CampusMemoryViewer({
     reducedMotion.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoading(true);
-        const rows = await fetchCampusMemoriesByLocation(group.locationKey);
-        if (!cancelled) {
-          setMemories(rows);
-          setIndex(0);
-          setError(rows.length === 0 ? "No active Memories at this location." : null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not load Memories.");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+  const loadMemories = useCallback(async () => {
+    try {
+      setLoading(true);
+      const rows = await fetchCampusMemoriesByLocation(group.locationId, { includeExpired });
+      setMemories(rows);
+      if (initialMemoryId) {
+        const start = rows.findIndex((m) => m.id === initialMemoryId);
+        setIndex(start >= 0 ? start : 0);
+      } else {
+        setIndex(0);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [group.locationKey]);
+      setError(rows.length === 0 ? "No active Memories at this location." : null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load Memories.");
+    } finally {
+      setLoading(false);
+    }
+  }, [group.locationId, initialMemoryId, includeExpired]);
+
+  useEffect(() => {
+    void loadMemories();
+  }, [loadMemories]);
+
+  useEffect(() => subscribeCampusMemoriesChanged(() => void loadMemories()), [loadMemories]);
 
   const goNext = useCallback(() => {
     setProgress(0);
@@ -185,7 +191,7 @@ export function CampusMemoryViewer({
             <div className="cq-memory-viewer-actions">
               {current.userId === currentUserId ? (
                 <button type="button" className="cq-memory-viewer-action" onClick={() => void handleSave()}>
-                  Save
+                  Save to Archive
                 </button>
               ) : null}
               <button type="button" className="cq-memory-viewer-action" aria-label="Comment">

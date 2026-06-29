@@ -22,7 +22,12 @@ import {
   fetchRealmMarkerPositions,
   saveRealmMarkerPositionsToServer,
 } from "@/lib/client/realmMarkerPositionsClient";
-import { fetchRealmMoments, mapApiMomentToRealmMoment } from "@/lib/client/realmMomentsClient";
+import { fetchCampusMemoryGroupsAndStats } from "@/lib/client/campusMemoriesClient";
+import { subscribeCampusMemoriesChanged } from "@/lib/client/campusMemoriesSync";
+import type { CampusMemoryGroup, CampusMemoryLocationStats } from "@/lib/types";
+import type { CampusLocationId } from "@/lib/locations/registry";
+import { AddCampusMemorySheet } from "@/components/memories/AddCampusMemorySheet";
+import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
 import { useGroupedMapLocations } from "@/lib/client/mapLocationGroupsClient";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
@@ -100,9 +105,14 @@ export function RealmMap({
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [savePending, setSavePending] = useState(false);
   const [sheetInitialView, setSheetInitialView] = useState<"archive" | "overview">("archive");
-  const [momentsLoaded, setMomentsLoaded] = useState(false);
-  const [momentsLoadError, setMomentsLoadError] = useState<string | null>(null);
-  const [momentsByLocation, setMomentsByLocation] = useState<Record<string, ReturnType<typeof mapApiMomentToRealmMoment>[]>>({});
+  const [memoriesLoaded, setMemoriesLoaded] = useState(false);
+  const [memoriesLoadError, setMemoriesLoadError] = useState<string | null>(null);
+  const [memoryStatsByLocation, setMemoryStatsByLocation] = useState<Record<string, CampusMemoryLocationStats>>({});
+  const [memoryViewerGroup, setMemoryViewerGroup] = useState<CampusMemoryGroup | null>(null);
+  const [memoryViewerInitialId, setMemoryViewerInitialId] = useState<string | undefined>();
+  const [memoryViewerIncludeExpired, setMemoryViewerIncludeExpired] = useState(false);
+  const [showAddMemory, setShowAddMemory] = useState(false);
+  const [addMemoryLocationId, setAddMemoryLocationId] = useState<CampusLocationId>("the-quad");
   const { groups: mapGroups, loaded: mapGroupsLoaded } = useGroupedMapLocations();
   const [selectedMapContent, setSelectedMapContent] = useState<GroupedMapLocation | null>(null);
   const [mapScale, setMapScale] = useState(1);
@@ -127,14 +137,15 @@ export function RealmMap({
   const locations = useMemo((): HydratedRealmLocation[] => {
     const base = applyMarkerPositionsToLocations(REALM_LOCATIONS, draftPositions);
     return base.map((location) => {
-      const moments = momentsByLocation[location.id] ?? [];
+      const stats = memoryStatsByLocation[location.id];
+      const activeMomentCount = stats?.activeCount ?? 0;
       const mapContent = groupsByRealmId.get(location.id) ?? null;
       const activeQuests = (mapContent?.quests.length ?? 0) + (mapContent?.qrCodes.length ?? 0);
       const upcomingEvents = mapContent?.events.length ?? 0;
       return {
         ...location,
-        moments,
-        activeMomentCount: moments.length,
+        moments: [],
+        activeMomentCount,
         activeQuests,
         upcomingEvents,
         quests: [],
@@ -152,7 +163,7 @@ export function RealmMap({
         mapContent,
       };
     });
-  }, [draftPositions, momentsByLocation, groupsByRealmId]);
+  }, [draftPositions, memoryStatsByLocation, groupsByRealmId]);
 
   const questGlowCount = useMemo(() => locations.filter((l) => l.activeQuests > 0).length, [locations]);
   const momentGlowCount = useMemo(
@@ -169,29 +180,26 @@ export function RealmMap({
     isAdmin,
   });
 
-  const loadRealmMoments = useCallback(async () => {
-    setMomentsLoadError(null);
+  const loadCampusMemories = useCallback(async () => {
+    setMemoriesLoadError(null);
     try {
-      const rows = await fetchRealmMoments();
-      const grouped: Record<string, ReturnType<typeof mapApiMomentToRealmMoment>[]> = {};
-      for (const row of rows) {
-        const moment = mapApiMomentToRealmMoment(row);
-        const list = grouped[row.locationId] ?? [];
-        list.push(moment);
-        grouped[row.locationId] = list;
-      }
-      setMomentsByLocation(grouped);
+      const { stats } = await fetchCampusMemoryGroupsAndStats();
+      const statsMap: Record<string, CampusMemoryLocationStats> = {};
+      for (const row of stats) statsMap[row.locationId] = row;
+      setMemoryStatsByLocation(statsMap);
     } catch {
-      setMomentsByLocation({});
-      setMomentsLoadError("Could not load campus moments for The Realm.");
+      setMemoryStatsByLocation({});
+      setMemoriesLoadError("Could not load campus memories for The Realm.");
     } finally {
-      setMomentsLoaded(true);
+      setMemoriesLoaded(true);
     }
   }, []);
 
   useEffect(() => {
-    void loadRealmMoments();
-  }, [loadRealmMoments]);
+    void loadCampusMemories();
+  }, [loadCampusMemories]);
+
+  useEffect(() => subscribeCampusMemoriesChanged(() => void loadCampusMemories()), [loadCampusMemories]);
 
   useEffect(() => {
     document.documentElement.toggleAttribute("data-realm-map-panning", panning);
@@ -274,6 +282,17 @@ export function RealmMap({
     onCreatePost?.();
   }, [closeSheet, onCreatePost]);
 
+  const handleAddMemory = useCallback((locationId: CampusLocationId) => {
+    setAddMemoryLocationId(locationId);
+    setShowAddMemory(true);
+  }, []);
+
+  const handleOpenMemoryViewer = useCallback((group: CampusMemoryGroup, initialMemoryId?: string, includeExpired = false) => {
+    setMemoryViewerGroup(group);
+    setMemoryViewerInitialId(initialMemoryId);
+    setMemoryViewerIncludeExpired(includeExpired);
+  }, []);
+
   const handleReset = useCallback(() => {
     transformRef.current?.centerView(1, 420);
   }, []);
@@ -354,18 +373,18 @@ export function RealmMap({
 
   return (
     <>
-      {!momentsLoaded ? (
+      {!memoriesLoaded ? (
         <ScreenDataState variant="loading" message="Loading The Realm…" compact className="mb-3" />
       ) : null}
-      {momentsLoadError ? (
+      {memoriesLoadError ? (
         <div className="mb-3">
           <ScreenDataState
             variant="error"
-            message={momentsLoadError}
-            detail="The map is still available. Retry to load landmark moments."
+            message={memoriesLoadError}
+            detail="The map is still available. Retry to load campus memories."
             onRetry={() => {
-              setMomentsLoaded(false);
-              void loadRealmMoments();
+              setMemoriesLoaded(false);
+              void loadCampusMemories();
             }}
             compact
           />
@@ -492,16 +511,42 @@ export function RealmMap({
         mapContent={selectedMapContent}
         open={sheetOpen}
         initialView={sheetInitialView}
-        momentsLoaded={momentsLoaded}
+        memoriesLoaded={memoriesLoaded}
+        memoryStats={selectedLocation ? memoryStatsByLocation[selectedLocation.id] ?? null : null}
         mapContentLoaded={mapGroupsLoaded}
         viewer={viewer}
+        currentUserId={userId}
         onClose={closeSheet}
         onViewQuests={onViewQuests}
         onCreatePost={handleCreatePost}
-        onRefreshMoments={loadRealmMoments}
+        onRefreshMemories={loadCampusMemories}
         onViewProfile={onViewProfile}
         onSharePost={onSharePost}
+        onAddMemory={handleAddMemory}
+        onOpenMemoryViewer={handleOpenMemoryViewer}
       />
+
+      {memoryViewerGroup && userId ? (
+        <CampusMemoryViewer
+          group={memoryViewerGroup}
+          currentUserId={userId}
+          initialMemoryId={memoryViewerInitialId}
+          includeExpired={memoryViewerIncludeExpired}
+          onClose={() => {
+            setMemoryViewerGroup(null);
+            setMemoryViewerInitialId(undefined);
+            setMemoryViewerIncludeExpired(false);
+          }}
+        />
+      ) : null}
+
+      {showAddMemory ? (
+        <AddCampusMemorySheet
+          defaultLocationId={addMemoryLocationId}
+          onClose={() => setShowAddMemory(false)}
+          onCreated={() => void loadCampusMemories()}
+        />
+      ) : null}
     </>
   );
 }
@@ -567,7 +612,7 @@ function LocationPin({
   onPositionChange: (x: number, y: number) => void;
 }) {
   const hasActiveQuest = location.activeQuests > 0;
-  const hasActiveMoments = (location.activeMomentCount ?? location.moments.length) > 0;
+  const hasActiveMoments = (location.activeMomentCount ?? 0) > 0;
   const dragRef = useRef({ active: false, pointerId: -1, moved: false });
   const { onPointerDown: onTapPointerDown, onPointerUp: onTapPointerUp, onClick: onTapClick } = useMapMarkerTap(
     onTap,
