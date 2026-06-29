@@ -54,6 +54,23 @@ describe("buildUserStatePatchBodies", () => {
     expect(gs.finalBossesDefeatedCount).toBe(3);
   });
 
+  it("persists achievementEarnedAt and achievementCelebratedAt so the unlock modal never replays", () => {
+    const c = minimalCharacter({
+      achievementEarnedAt: { torch_bearer_badge: "2026-06-01T00:00:00.000Z" },
+      achievementCelebratedAt: { torch_bearer_badge: "2026-06-01T00:05:00.000Z" },
+    });
+    const { profile } = buildUserStatePatchBodies(c);
+    const gs = profile.gameStateJson as Record<string, unknown>;
+    expect(gs.achievementEarnedAt).toEqual({ torch_bearer_badge: "2026-06-01T00:00:00.000Z" });
+    expect(gs.achievementCelebratedAt).toEqual({ torch_bearer_badge: "2026-06-01T00:05:00.000Z" });
+  });
+
+  it("defaults achievementCelebratedAt to an empty object when unset", () => {
+    const { profile } = buildUserStatePatchBodies(minimalCharacter());
+    const gs = profile.gameStateJson as Record<string, unknown>;
+    expect(gs.achievementCelebratedAt).toEqual({});
+  });
+
   it("maps undecided scholar guild to null", () => {
     const c = minimalCharacter({ scholarGuildId: "undecided" });
     const { profile } = buildUserStatePatchBodies(c);

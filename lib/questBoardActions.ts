@@ -22,8 +22,11 @@ function ensureAchievementOnClaim(c: Character): void {
     const unlocked = syncCatalogAchievements(c);
     if (unlocked.length === 0) return;
     replaceLocalCharacter(c);
+    const celebrated = c.achievementCelebratedAt ?? {};
+    const toCelebrate = unlocked.filter((def) => !celebrated[def.id]);
+    if (toCelebrate.length === 0) return;
     void import("@/lib/achievementCelebration").then(({ queueAchievementCelebration }) => {
-      for (const def of unlocked) queueAchievementCelebration(def);
+      for (const def of toCelebrate) queueAchievementCelebration(def);
     });
   });
 }

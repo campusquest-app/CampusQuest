@@ -16,6 +16,7 @@ import {
   type AchievementView,
 } from "@/lib/achievementEngine";
 import { replaceLocalCharacter } from "@/lib/store";
+import { consumeFocusedAchievement, subscribeAchievementFocus } from "@/lib/client/achievementFocus";
 import { setEquippedTitle, toggleFeaturedAchievement } from "@/lib/achievementShowcase";
 import { RARITY_CSS } from "@/lib/achievementRarityStyles";
 import { buildCodexStates, type CodexItemState } from "@/lib/codexState";
@@ -23,6 +24,7 @@ import { CodexCard } from "@/components/codex/CodexCard";
 import { CodexDetailSheet } from "@/components/codex/CodexDetailSheet";
 import { achievementLabel, AchievementBadgeArt } from "@/components/achievements/AchievementBadgeArt";
 import { TorchBearerFounderRank } from "@/components/achievements/TorchBearerFounderRank";
+import { TORCH_BEARER_BADGE_ID } from "@/lib/torchBearerBadge";
 
 const RARE_COLLECTIBLE_RARITIES = new Set(["rare", "epic", "legendary", "mythic"]);
 
@@ -208,12 +210,39 @@ export function TrophyRoom({ character, onRefresh }: { character: Character; onR
     if (unlocked.length > 0) {
       replaceLocalCharacter(c);
       setLocalCharacter(c);
-      void import("@/lib/achievementCelebration").then(({ queueAchievementCelebration }) => {
-        for (const def of unlocked) queueAchievementCelebration(def);
-      });
+      const celebrated = c.achievementCelebratedAt ?? {};
+      const toCelebrate = unlocked.filter((def) => !celebrated[def.id]);
+      if (toCelebrate.length > 0) {
+        void import("@/lib/achievementCelebration").then(({ queueAchievementCelebration }) => {
+          for (const def of toCelebrate) {
+            queueAchievementCelebration(def, {
+              founderNumber:
+                def.id === TORCH_BEARER_BADGE_ID ? c.torchBearerFounderNumber : undefined,
+            });
+          }
+        });
+      }
       onRefresh?.();
     }
   }, [character.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openAchievementById = useCallback(
+    (achievementId: string) => {
+      const view = getAchievementViews(localCharacter).find((v) => v.def.id === achievementId);
+      if (view) setSelectedAchievement(view);
+    },
+    [localCharacter],
+  );
+
+  // "View Badge" (and any deep-link) latches a focused achievement id; open its
+  // detail sheet on mount (after the tab switch) and while already mounted.
+  useEffect(() => {
+    const pending = consumeFocusedAchievement();
+    if (pending) openAchievementById(pending);
+    return subscribeAchievementFocus((achievementId) => {
+      if (achievementId) openAchievementById(achievementId);
+    });
+  }, [openAchievementById]);
 
   const views = useMemo(() => getAchievementViews(localCharacter), [localCharacter]);
   const earned = useMemo(() => getEarnedAchievements(localCharacter), [localCharacter]);

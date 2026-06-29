@@ -367,8 +367,11 @@ function ensureAchievement(c: Character, id: string): void {
       const unlocked = syncCatalogAchievements(c);
       if (unlocked.length === 0) return;
       saveCharacter(c);
+      const celebrated = c.achievementCelebratedAt ?? {};
+      const toCelebrate = unlocked.filter((def) => !celebrated[def.id]);
+      if (toCelebrate.length === 0) return;
       void import("@/lib/achievementCelebration").then(({ queueAchievementCelebration }) => {
-        for (const def of unlocked) queueAchievementCelebration(def);
+        for (const def of toCelebrate) queueAchievementCelebration(def);
       });
     });
   }
@@ -460,6 +463,20 @@ export function syncCharacterProgressFromBackend(
 
   saveCharacter(c);
   return c;
+}
+
+/**
+ * Mark an achievement unlock celebration as seen so it never replays. Idempotent:
+ * once `celebratedAt` is set we keep the first timestamp and persist to the server
+ * (via the normal game_state_json sync) so reopening the app never re-queues the modal.
+ */
+export function markAchievementCelebrated(achievementId: string): void {
+  const c = loadCharacter();
+  if (!c) return;
+  if (!c.achievementCelebratedAt) c.achievementCelebratedAt = {};
+  if (c.achievementCelebratedAt[achievementId]) return;
+  c.achievementCelebratedAt[achievementId] = new Date().toISOString();
+  saveCharacter(c);
 }
 
 /** Persist full character snapshot (used after Supabase profile+stats hydration). */

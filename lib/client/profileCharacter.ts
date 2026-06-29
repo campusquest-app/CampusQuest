@@ -166,6 +166,10 @@ export function buildLocalCharacterFromServer(profile: MeProfileRow, stats: MeSt
       gs && typeof (gs as { achievementEarnedAt?: unknown }).achievementEarnedAt === "object"
         ? ((gs as { achievementEarnedAt: Character["achievementEarnedAt"] }).achievementEarnedAt)
         : undefined,
+    achievementCelebratedAt:
+      gs && typeof (gs as { achievementCelebratedAt?: unknown }).achievementCelebratedAt === "object"
+        ? ((gs as { achievementCelebratedAt: Character["achievementCelebratedAt"] }).achievementCelebratedAt)
+        : undefined,
     qrMilestones:
       gs && typeof (gs as { qrMilestones?: unknown }).qrMilestones === "object"
         ? ((gs as { qrMilestones: Character["qrMilestones"] }).qrMilestones)

@@ -12,6 +12,8 @@ import {
 import { RARITY_CSS } from "@/lib/achievementRarityStyles";
 import { playAchievementUnlock } from "@/lib/playGameSound";
 import { getTorchBearerDisplayName, TORCH_BEARER_BADGE_ID } from "@/lib/torchBearerBadge";
+import { markAchievementCelebrated } from "@/lib/store";
+import { focusAchievement } from "@/lib/client/achievementFocus";
 import { AchievementBadgeArt } from "./AchievementBadgeArt";
 
 const CONFETTI = Array.from({ length: 36 }, (_, i) => ({
@@ -44,6 +46,14 @@ export function AchievementUnlockCelebration() {
     : def.description;
 
   function handleDismiss() {
+    markAchievementCelebrated(def.id);
+    dismissAchievementCelebration();
+    setActive(null);
+  }
+
+  function handleViewBadge() {
+    markAchievementCelebrated(def.id);
+    focusAchievement(def.id);
     dismissAchievementCelebration();
     setActive(null);
   }
@@ -116,7 +126,7 @@ export function AchievementUnlockCelebration() {
 
           <button
             type="button"
-            onClick={handleDismiss}
+            onClick={isTorchBearer ? handleViewBadge : handleDismiss}
             className="cq-achievement-unlock-primary mt-6 w-full rounded-xl bg-gradient-to-r from-[#1c6fd1] to-[#2f8ae6] py-3.5 text-sm font-bold tracking-wide text-white shadow-[0_8px_24px_-8px_rgba(47,138,230,0.7)] transition hover:from-[#2a7ee0] hover:to-[#3f9bf2] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a1733]"
           >
             {isTorchBearer ? "View Badge" : "Continue"}

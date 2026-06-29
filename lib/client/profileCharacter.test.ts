@@ -44,6 +44,31 @@ describe("buildLocalCharacterFromServer", () => {
     expect(c.classId).toBe("rogue");
   });
 
+  it("hydrates achievementEarnedAt and achievementCelebratedAt from game_state_json", () => {
+    const uuid = "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44";
+    const c = buildLocalCharacterFromServer(
+      {
+        id: uuid,
+        username: "founder_one",
+        display_name: "Founder One",
+        streak_days: 0,
+        last_activity_date: null,
+        game_state_json: {
+          achievements: ["torch_bearer_badge"],
+          torchBearerBadge: true,
+          torchBearerFounderNumber: 7,
+          achievementEarnedAt: { torch_bearer_badge: "2026-06-01T00:00:00.000Z" },
+          achievementCelebratedAt: { torch_bearer_badge: "2026-06-01T00:05:00.000Z" },
+        },
+      },
+      { user_id: uuid, level: 1, total_xp: 0, strength: 0, stamina: 0, knowledge: 0, social: 0, focus: 0 },
+    );
+
+    expect(c.torchBearerFounderNumber).toBe(7);
+    expect(c.achievementEarnedAt?.torch_bearer_badge).toBe("2026-06-01T00:00:00.000Z");
+    expect(c.achievementCelebratedAt?.torch_bearer_badge).toBe("2026-06-01T00:05:00.000Z");
+  });
+
   it("uses Supabase id and avatar_custom_json when present", () => {
     const uuid = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
     const c = buildLocalCharacterFromServer(

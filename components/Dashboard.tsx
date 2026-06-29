@@ -98,6 +98,7 @@ import { mergeRemoteQuadPostsForMutations } from "@/lib/feedStore";
 import type { FieldNote } from "@/lib/types";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { syncAchievementsAfterHydrate } from "@/lib/client/achievementHydration";
+import { subscribeAchievementFocus } from "@/lib/client/achievementFocus";
 import { clearSchoolVerificationSnapshot, peekSchoolVerificationSnapshot } from "@/lib/client/schoolVerificationCache";
 import { SchoolVerificationScreen } from "@/components/SchoolVerificationScreen";
 import { dismissOnboardingTutorialOnServer } from "@/lib/client/dismissOnboardingTutorial";
@@ -473,6 +474,12 @@ export function Dashboard() {
           // Keep local streak as fallback when backend profile cannot be loaded.
         });
     }, delayMs);
+  }, []);
+
+  useEffect(() => {
+    return subscribeAchievementFocus((achievementId) => {
+      if (achievementId) setTab("achievements");
+    });
   }, []);
 
   const refreshAuthoritativeProfileInBackground = useCallback(() => {

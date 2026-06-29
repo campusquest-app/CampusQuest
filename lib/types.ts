@@ -103,6 +103,8 @@ export interface Character {
   equippedTitleId?: string | null;
   /** ISO timestamps when catalog achievements were earned. */
   achievementEarnedAt?: Record<string, string>;
+  /** ISO timestamps when an achievement unlock celebration was shown/dismissed (so it only plays once). */
+  achievementCelebratedAt?: Record<string, string>;
   /** QR milestone unlock metadata from server. */
   qrMilestones?: Record<string, { unlockedAt: string; title: string }>;
   /** Campus events attended (future server sync). */
