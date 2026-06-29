@@ -11860,6 +11860,12 @@ html[data-realm-map-panning] {
   width: min(92vw, 380px);
   height: min(68vh, 520px);
   max-height: calc(100dvh - 220px);
+  touch-action: none;
+  cursor: grab;
+}
+
+.cq-memories-deck-stack:active {
+  cursor: grabbing;
 }
 
 .cq-memories-deck-card {
@@ -11868,6 +11874,9 @@ html[data-realm-map-panning] {
   border-radius: 1.5rem;
   overflow: hidden;
   will-change: transform;
+  /* Drag is handled on the stack; cards never intercept pointer events so the
+     gesture is continuous and the owner control above them stays tappable. */
+  pointer-events: none;
   box-shadow:
     0 24px 60px -20px rgba(0, 0, 0, 0.75),
     0 0 0 1px rgba(255, 255, 255, 0.08);
@@ -11875,6 +11884,63 @@ html[data-realm-map-panning] {
 
 .cq-memories-deck-card--stacked {
   pointer-events: none;
+}
+
+/* Owner controls sit above the image wheel (high z) and stay tappable. */
+.cq-memories-deck-owner {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.cq-memories-deck-owner-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  color: #fff;
+  background: rgba(10, 16, 32, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  transition: transform 0.16s ease, background 0.16s ease;
+}
+
+.cq-memories-deck-owner-btn:active {
+  transform: scale(0.94);
+}
+
+.cq-memories-deck-owner-menu {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  min-width: 10rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 16, 32, 0.97);
+  padding: 0.35rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.cq-memories-deck-owner-menu button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  color: #fca5a5;
+}
+
+.cq-memories-deck-owner-menu button:active {
+  background: rgba(248, 113, 113, 0.12);
 }
 
 .cq-memories-deck-card-inner {
