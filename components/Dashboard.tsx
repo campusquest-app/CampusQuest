@@ -123,6 +123,7 @@ import { MobileGestureLayerProvider } from "@/components/mobile/MobileGestureLay
 import { DashboardTabSwipeShell } from "@/components/mobile/DashboardTabSwipeShell";
 import { type SwipeNavDirection } from "@/lib/client/mobileGestures";
 import { useDrawerSwipeGestures } from "@/lib/client/useDrawerSwipeGestures";
+import { useIsDrawerOpen } from "@/lib/client/appDrawerStore";
 import { useScrollChrome } from "@/lib/client/useScrollChrome";
 import { shouldShowBottomNav } from "@/lib/client/shouldShowBottomNav";
 import { useImmersiveScreenDepth } from "@/lib/client/nestedImmersiveScreen";
@@ -237,6 +238,8 @@ export function Dashboard() {
   const [friendViewError, setFriendViewError] = useState<string | null>(null);
   const friendViewReturnTabRef = useRef<Tab>("quad");
   const tabRef = useRef<Tab>(tab);
+  /** Lightweight tab back-stack so screens like Events/Organizations can return to wherever they were opened from. */
+  const tabHistoryRef = useRef<Tab[]>([]);
   const friendViewUserIdRef = useRef<string | null>(null);
   const [screenShake, setScreenShake] = useState(false);
   const [levelUpModal, setLevelUpModal] = useState<number | null>(null);
@@ -544,6 +547,24 @@ export function Dashboard() {
     setQrScannerOpen(true);
   }, []);
 
+  /** Switch tabs while recording the previous tab on a back-stack (deduped, no duplicate routes). */
+  const navigateToTab = useCallback((next: Tab) => {
+    const current = tabRef.current;
+    if (current === next) return;
+    const history = tabHistoryRef.current;
+    if (history[history.length - 1] !== current) {
+      history.push(current);
+      if (history.length > 20) history.shift();
+    }
+    setTab(next);
+  }, []);
+
+  /** Return to the previous tab on the back-stack, falling back to the Quad when empty (deep links). */
+  const goBackTab = useCallback(() => {
+    const previous = tabHistoryRef.current.pop();
+    setTab(previous ?? "quad");
+  }, []);
+
   const handleDrawerNavigate = useCallback(
     (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings" | "manual-log" | "progress-hub" | "skills-lore" | "collectibles" | "scan") => {
       switch (dest) {
@@ -562,13 +583,13 @@ export function Dashboard() {
           setTab("leaderboards");
           break;
         case "events":
-          setTab("events");
+          navigateToTab("events");
           break;
         case "realm":
           setTab("realm");
           break;
         case "organizations":
-          setTab("organizations");
+          navigateToTab("organizations");
           break;
         case "guilds":
           setTab("friends");
@@ -626,7 +647,7 @@ export function Dashboard() {
           break;
       }
     },
-    [openQrScanner],
+    [openQrScanner, navigateToTab],
   );
 
   const bottomNavActive: AppBottomNavTab | "other" =
@@ -637,6 +658,7 @@ export function Dashboard() {
   const bottomNavSwipeActive: AppBottomNavTab | null = bottomNavActive === "other" ? null : bottomNavActive;
 
   const immersiveScreenDepth = useImmersiveScreenDepth();
+  const drawerBlocksNavigation = useIsDrawerOpen();
   const showBottomNav = shouldShowBottomNav({
     tab,
     friendProfileOpen: friendView != null,
@@ -661,10 +683,12 @@ export function Dashboard() {
 
   const tabSwipeGestureDisabled =
     quadChromeSuppressed ||
-    friendView != null;
+    friendView != null ||
+    drawerBlocksNavigation;
 
   const handleBottomNavSwipe = useCallback(
     (nextTab: AppBottomNavTab, direction: SwipeNavDirection) => {
+      if (drawerBlocksNavigation) return;
       setTabEnterDirection(direction);
       setTab(nextTab);
       if (nextTab === "quad") setQuadFeedTab("public");
@@ -673,7 +697,7 @@ export function Dashboard() {
         setProfileTab("posts");
       }
     },
-    [],
+    [drawerBlocksNavigation],
   );
 
   const openSideMenu = useCallback(() => {
@@ -2129,6 +2153,7 @@ export function Dashboard() {
             <EventsFeed
               personalization={onboardingPreferences}
               showAdminSyncLink={moderationAdminNavVisible(pilotCampusState)}
+              onBack={goBackTab}
             />,
           )}
 
@@ -2155,7 +2180,7 @@ export function Dashboard() {
             />,
           )}
 
-        {tab === "organizations" && renderPilotCampusGate(<OrganizationsHub personalization={onboardingPreferences} />)}
+        {tab === "organizations" && renderPilotCampusGate(<OrganizationsHub personalization={onboardingPreferences} onBack={goBackTab} />)}
 
         {tab === "leaderboards" && (
           <Leaderboards
@@ -2272,8 +2297,12 @@ export function Dashboard() {
             userAvatar={character?.avatar}
             avatarLoading={!character}
             unreadBadgeCount={unreadNotificationCount}
-            onOpenScanner={openQrScanner}
+            onOpenScanner={() => {
+              if (drawerBlocksNavigation) return;
+              openQrScanner();
+            }}
             onSelectTab={(t) => {
+              if (drawerBlocksNavigation) return;
               setTab(t);
               if (t === "quad") setQuadFeedTab("public");
               if (t === "character") {

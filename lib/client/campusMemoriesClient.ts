@@ -40,6 +40,39 @@ export async function fetchCampusMemoriesByLocation(
   return data.memories ?? [];
 }
 
+/** Global or location-filtered active memories (newest first), with reaction counts. */
+export async function fetchCampusMemoriesFeed(options?: {
+  locationId?: string;
+  includeExpired?: boolean;
+}): Promise<CampusMemory[]> {
+  const qs = new URLSearchParams();
+  if (options?.locationId) qs.set("locationId", options.locationId);
+  if (options?.includeExpired) qs.set("includeExpired", "true");
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const data = await fetchAuthed<{ memories: CampusMemory[] }>(`/api/campus-memories${suffix}`);
+  return data.memories ?? [];
+}
+
+export async function starCampusMemory(memoryId: string): Promise<{
+  likeCount: number;
+  likedByMe: boolean;
+  starCount: number;
+  starredByMe: boolean;
+  xpAwarded: boolean;
+  xpAmount: number;
+}> {
+  return postAuthed(`/api/campus-memories/${memoryId}/star`, {});
+}
+
+export async function toggleCampusMemoryLike(memoryId: string): Promise<{
+  likeCount: number;
+  likedByMe: boolean;
+  starCount: number;
+  starredByMe: boolean;
+}> {
+  return postAuthed(`/api/campus-memories/${memoryId}/like`, {});
+}
+
 export async function fetchSavedCampusMemories(userId?: string): Promise<CampusMemory[]> {
   const qs = userId ? `?saved=true&userId=${encodeURIComponent(userId)}` : "?saved=true";
   const data = await fetchAuthed<{ memories: CampusMemory[] }>(`/api/campus-memories${qs}`);

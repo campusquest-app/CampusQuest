@@ -2,7 +2,7 @@ import { ZodError } from "zod";
 import { fail, ok, ApiError } from "@/lib/server/http";
 import {
   createCampusMemory,
-  fetchCampusMemoriesByLocation,
+  fetchCampusMemoriesFeed,
   fetchCampusMemoryArchive,
   fetchSavedCampusMemoriesForUser,
 } from "@/lib/server/campusMemories";
@@ -59,14 +59,12 @@ export async function GET(request: Request) {
       searchParams.get("locationId") ?? "",
       searchParams.get("locationKey") ?? "",
     );
-    if (!locationId) {
-      return ok({ memories: [] });
-    }
-
     const includeExpired = searchParams.get("includeExpired") === "true";
-    const memories = await fetchCampusMemoriesByLocation({
+
+    const memories = await fetchCampusMemoriesFeed({
       userClient: auth.userClient,
-      locationId,
+      userId: auth.user.id,
+      locationId: locationId ?? undefined,
       includeExpired,
     });
     return ok({ memories });

@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Home, Map, QrCode, Trophy } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { getCharacter, subscribeCharacterAvatar } from "@/lib/store";
+import { useIsDrawerOpen } from "@/lib/client/appDrawerStore";
 import { DEFAULT_DISPLAY_AVATAR, normalizeAvatarInput } from "@/lib/resolveAvatarForDisplay";
 
 /** Synced by ResizeObserver on the dock element. */
@@ -79,6 +80,7 @@ export function AppBottomNav({
   const characterName = useLiveCharacterName();
   const showBadge = unreadBadgeCount > 0;
   const reduceMotion = useReducedMotion();
+  const drawerOpen = useIsDrawerOpen();
   const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
 
   const resolvedActive: AppBottomNavTab | null =
@@ -143,11 +145,18 @@ export function AppBottomNav({
     };
   }, [resolvedActive]);
 
+  const guardNav = (action: () => void) => {
+    if (drawerOpen) return;
+    action();
+  };
+
   return (
     <motion.nav
       ref={navRef}
-      className="cq-dock-nav"
+      className={`cq-dock-nav${drawerOpen ? " cq-dock-nav--drawer-open" : ""}`}
       aria-label="Main navigation"
+      aria-hidden={drawerOpen ? true : undefined}
+      inert={drawerOpen ? true : undefined}
       initial={reduceMotion ? false : { opacity: 0 }}
       animate={reduceMotion ? undefined : { opacity: 1 }}
       exit={reduceMotion ? undefined : { opacity: 0 }}
@@ -171,7 +180,7 @@ export function AppBottomNav({
           }}
           label="Home"
           active={resolvedActive === "quad"}
-          onClick={() => onSelectTab("quad")}
+          onClick={() => guardNav(() => onSelectTab("quad"))}
           icon={
             <Home
               className="h-[24px] w-[24px]"
@@ -187,14 +196,14 @@ export function AppBottomNav({
           }}
           label="Map"
           active={resolvedActive === "realm"}
-          onClick={() => onSelectTab("realm")}
+          onClick={() => guardNav(() => onSelectTab("realm"))}
           icon={<Map className="h-[24px] w-[24px]" strokeWidth={resolvedActive === "realm" ? 2.5 : 2} />}
         />
 
         <div className="cq-dock-nav__scan-slot">
           <button
             type="button"
-            onClick={onOpenScanner}
+            onClick={() => guardNav(onOpenScanner)}
             aria-label="Open CQ Scanner"
             className="cq-dock-nav__scan-btn cq-scanner-fab touch-manipulation"
           >
@@ -209,7 +218,7 @@ export function AppBottomNav({
           }}
           label="Ranks"
           active={resolvedActive === "leaderboards"}
-          onClick={() => onSelectTab("leaderboards")}
+          onClick={() => guardNav(() => onSelectTab("leaderboards"))}
           icon={
             <Trophy
               className="h-[24px] w-[24px]"
@@ -225,7 +234,7 @@ export function AppBottomNav({
           }}
           label="Profile"
           active={resolvedActive === "character"}
-          onClick={() => onSelectTab("character")}
+          onClick={() => guardNav(() => onSelectTab("character"))}
           avatar={liveAvatar}
           initials={profileInitials(characterName)}
           useInitials={shouldShowInitialsAvatar(liveAvatar)}

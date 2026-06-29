@@ -19,7 +19,7 @@ type AddXpArgs = {
   userClient: SupabaseClientLike;
   userId: string;
   amount: number;
-  sourceType: "activity" | "quest" | "boss" | "guild" | "manual" | "streak_bonus" | "quad_spark" | "quad_post";
+  sourceType: "activity" | "quest" | "boss" | "guild" | "manual" | "streak_bonus" | "quad_spark" | "quad_post" | "campus_memory_star";
   sourceId?: string;
   questCompletionId?: string;
   activityId?: string;

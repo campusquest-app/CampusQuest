@@ -8,6 +8,7 @@ import {
 } from "@/components/ExternalEventLocationDisplay";
 import { ExternalEventDetailScreen } from "@/components/ExternalEventDetailScreen";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
+import { ScreenBackHeader } from "@/components/ui/BackButton";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
 import {
   type EventsFeedTimeframe,
@@ -91,9 +92,11 @@ const TIMEFRAME_OPTIONS: Array<{ value: EventsFeedTimeframe; label: string }> = 
 export function EventsFeed({
   personalization,
   showAdminSyncLink = false,
+  onBack,
 }: {
   personalization?: { schoolName?: string; interests?: string[]; discoveryFocus?: string[] } | null;
   showAdminSyncLink?: boolean;
+  onBack?: () => void;
 }) {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [externalEvents, setExternalEvents] = useState<ExternalEventItem[]>([]);
@@ -279,6 +282,7 @@ export function EventsFeed({
 
   return (
     <section className="space-y-4">
+      {onBack ? <ScreenBackHeader title="Events" onBack={onBack} /> : null}
       <div className="card p-4 space-y-3">
         <h3 className="font-display font-semibold text-white">Event Discovery</h3>
         <p className="text-xs text-white/55">

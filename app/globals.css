@@ -1164,6 +1164,16 @@ html[data-cq-share-sheet-open] .cq-dock-nav {
   transition: opacity 160ms ease;
 }
 
+/* Disable bottom nav while the hamburger drawer is open or animating closed. */
+html[data-cq-drawer-open] .cq-dock-nav,
+html[data-cq-drawer-open] .cq-dock-nav__rail {
+  pointer-events: none;
+}
+
+html[data-cq-drawer-open] .cq-dock-nav__rail {
+  cursor: default;
+}
+
 /* When bottom nav is unmounted, zero out feed clearance (synced via useAppChromeLayout). */
 html[data-cq-bottom-nav-hidden] {
   --cq-bottom-nav-h: 0px;
@@ -1359,6 +1369,70 @@ html[data-cq-bottom-nav-hidden] {
 .cq-tab-shell {
   background: transparent;
   min-height: 50vh;
+}
+
+/* Shared back button + sticky screen header (Events, Organizations, etc.) */
+.cq-back-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem; /* 44pt touch target */
+  height: 2.75rem;
+  flex: 0 0 auto;
+  border-radius: 9999px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.cq-back-button:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.cq-back-button:focus-visible {
+  outline: 2px solid var(--cq-keaney, #68abe8);
+  outline-offset: 2px;
+}
+
+.cq-screen-back-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: 2.75rem 1fr 2.75rem;
+  align-items: center;
+  gap: 0.5rem;
+  /* Full-bleed across the tab shell's horizontal padding (px-4 = 1rem). */
+  margin: 0 -1rem;
+  padding: 0.5rem 1rem;
+  padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+  background: color-mix(in srgb, var(--cq-bg-app, #041e42) 78%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cq-screen-back-header-title {
+  min-width: 0;
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cq-screen-back-header-trailing {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .cq-section-band {
@@ -4842,7 +4916,7 @@ html[data-cq-bottom-nav-hidden] {
   top: 0;
   left: 0;
   bottom: 0;
-  z-index: 1001;
+  z-index: 10051;
   overflow: hidden;
   width: min(22rem, 86vw);
   border-right: 1px solid rgba(255, 255, 255, 0.08);
@@ -5235,6 +5309,11 @@ html[data-cq-quad-hidden="true"] .cq-quad-header-shell {
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
   box-sizing: border-box;
+}
+
+.cq-dock-nav--drawer-open,
+.cq-dock-nav--drawer-open .cq-dock-nav__rail {
+  pointer-events: none;
 }
 
 .cq-dock-nav__rail {
@@ -11686,6 +11765,317 @@ html[data-realm-map-panning] {
   font-weight: 600;
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
+}
+
+/* —— Memories Deck (swipeable card stack) —— */
+.cq-memories-deck {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(ellipse 120% 80% at 50% 0%, #12203d 0%, #070b14 55%, #05070c 100%);
+  color: #fff;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  touch-action: pan-y;
+}
+
+.cq-memories-deck-head {
+  display: grid;
+  grid-template-columns: 2.75rem 1fr 2.75rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem 0.35rem;
+}
+
+.cq-memories-deck-back,
+.cq-memories-deck-head-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cq-memories-deck-back {
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cq-memories-deck-head-text {
+  text-align: center;
+  min-width: 0;
+}
+
+.cq-memories-deck-title {
+  font-family: var(--font-display, inherit);
+  font-size: 1.125rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.cq-memories-deck-subtitle {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.cq-memories-deck-progress {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem 0.25rem;
+}
+
+.cq-memories-deck-progress-seg {
+  flex: 1;
+  height: 3px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.cq-memories-deck-progress-seg--done {
+  background: rgba(104, 171, 232, 0.65);
+}
+
+.cq-memories-deck-progress-seg--active {
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 8px rgba(104, 171, 232, 0.35);
+}
+
+.cq-memories-deck-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1rem 0.5rem;
+  min-height: 0;
+}
+
+.cq-memories-deck-stack {
+  position: relative;
+  width: min(92vw, 380px);
+  height: min(68vh, 520px);
+  max-height: calc(100dvh - 220px);
+}
+
+.cq-memories-deck-card {
+  position: absolute;
+  inset: 0;
+  border-radius: 1.5rem;
+  overflow: hidden;
+  will-change: transform;
+  box-shadow:
+    0 24px 60px -20px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.cq-memories-deck-card--stacked {
+  pointer-events: none;
+}
+
+.cq-memories-deck-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #0d1528;
+}
+
+.cq-memories-deck-card-img {
+  object-fit: cover;
+}
+
+.cq-memories-deck-card-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2rem;
+  background: linear-gradient(160deg, #152a52 0%, #0a1224 100%);
+  font-size: 1.125rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.cq-memories-deck-card-gradient {
+  position: absolute;
+  inset: auto 0 0;
+  height: 55%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.35) 55%, transparent 100%);
+  pointer-events: none;
+}
+
+.cq-memories-deck-card-meta {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 1rem 1rem 1.1rem;
+  z-index: 2;
+}
+
+.cq-memories-deck-card-author {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.55rem;
+}
+
+.cq-memories-deck-location-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(104, 171, 232, 0.35);
+  background: rgba(28, 111, 209, 0.22);
+  padding: 0.2rem 0.65rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9fd0ff;
+}
+
+.cq-memories-deck-caption {
+  margin-top: 0.55rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.92);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cq-memories-deck-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 0.75rem 1rem calc(env(safe-area-inset-bottom, 0px) + 0.85rem);
+}
+
+.cq-memories-deck-action {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.cq-memories-deck-action:active {
+  transform: scale(0.94);
+}
+
+.cq-memories-deck-action--star.cq-memories-deck-action--active {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.14);
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.25);
+}
+
+.cq-memories-deck-action--heart.cq-memories-deck-action--active {
+  color: #f472b6;
+  border-color: rgba(244, 114, 182, 0.45);
+  background: rgba(244, 114, 182, 0.12);
+}
+
+.cq-memories-deck-action-count {
+  position: absolute;
+  top: -0.25rem;
+  right: -0.25rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.25rem;
+  border-radius: 9999px;
+  background: rgba(10, 18, 36, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.1rem;
+  text-align: center;
+}
+
+.cq-memories-deck-menu-wrap {
+  position: relative;
+}
+
+.cq-memories-deck-menu {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 9rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 16, 32, 0.96);
+  padding: 0.35rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.cq-memories-deck-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  color: #fca5a5;
+}
+
+.cq-memories-deck-empty,
+.cq-memories-deck-empty-state {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  max-width: 18rem;
+}
+
+.cq-memories-deck-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.cq-memories-deck-xp-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 6.5rem);
+  transform: translateX(-50%);
+  padding: 0.45rem 0.9rem;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, rgba(28, 111, 209, 0.95), rgba(47, 138, 230, 0.95));
+  font-size: 0.8125rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  box-shadow: 0 8px 28px rgba(47, 138, 230, 0.45);
+  animation: cq-memories-xp-pop 2.2s ease forwards;
+  z-index: 5;
+}
+
+@keyframes cq-memories-xp-pop {
+  0% { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.92); }
+  12% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.98); }
+}
+
+.cq-memories-row-title-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+.cq-memories-row-title-btn .cq-memories-row-title {
+  cursor: pointer;
 }
 
 /* —— Add Memory sheet —— */

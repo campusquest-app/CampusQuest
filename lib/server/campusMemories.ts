@@ -11,6 +11,7 @@ import {
 import { formatPostedAgo } from "@/lib/realm/momentTime";
 import { ApiError } from "@/lib/server/http";
 import { normalizeQuadPostProofUrl } from "@/lib/server/quadPosts";
+import { loadCampusMemoryReactionMeta, type CampusMemoryReactionMeta } from "@/lib/server/campusMemoryReactions";
 import type { CampusMemoryArchiveSection, CampusMemoryLocationStats } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -106,6 +107,10 @@ export type CampusMemoryApiRow = {
   displayName: string;
   authorAvatar: string;
   postedAgoLabel: string;
+  likeCount: number;
+  likedByMe: boolean;
+  starCount: number;
+  starredByMe: boolean;
 };
 
 export type CampusMemoryGroupApiRow = {
@@ -184,7 +189,11 @@ function resolveLocationId(row: Pick<CampusMemoryDbRow, "location_id" | "locatio
   return campusLocationIdFromLegacyKey(row.location_key);
 }
 
-export function mapCampusMemoryRow(row: CampusMemoryDbRow, nowMs = Date.now()): CampusMemoryApiRow | null {
+export function mapCampusMemoryRow(
+  row: CampusMemoryDbRow,
+  nowMs = Date.now(),
+  reactions?: CampusMemoryReactionMeta,
+): CampusMemoryApiRow | null {
   const locationId = resolveLocationId(row);
   if (!locationId) return null;
   const prof = profileFromRow(row);
@@ -208,6 +217,10 @@ export function mapCampusMemoryRow(row: CampusMemoryDbRow, nowMs = Date.now()): 
     displayName: (prof?.display_name ?? "Student").trim() || "Student",
     authorAvatar: resolveProfileAvatar(prof ?? undefined),
     postedAgoLabel: formatPostedAgo(row.created_at, nowMs),
+    likeCount: reactions?.likeCount ?? 0,
+    likedByMe: reactions?.likedByMe ?? false,
+    starCount: reactions?.starCount ?? 0,
+    starredByMe: reactions?.starredByMe ?? false,
   };
 }
 
@@ -373,6 +386,74 @@ export async function fetchCampusMemoriesByLocation(args: {
   return (data as CampusMemoryDbRow[])
     .map((row) => mapCampusMemoryRow(row))
     .filter((row): row is CampusMemoryApiRow => row !== null);
+}
+
+async function enrichMappedMemories(
+  userClient: SupabaseClient,
+  userId: string,
+  rows: CampusMemoryDbRow[],
+): Promise<CampusMemoryApiRow[]> {
+  const mapped = rows
+    .map((row) => mapCampusMemoryRow(row))
+    .filter((row): row is CampusMemoryApiRow => row !== null);
+  if (mapped.length === 0) return [];
+
+  const reactionMeta = await loadCampusMemoryReactionMeta({
+    userClient,
+    userId,
+    memoryIds: mapped.map((m) => m.id),
+  });
+
+  return mapped.map((memory) => {
+    const reactions = reactionMeta.get(memory.id);
+    if (!reactions) return memory;
+    return {
+      ...memory,
+      likeCount: reactions.likeCount,
+      likedByMe: reactions.likedByMe,
+      starCount: reactions.starCount,
+      starredByMe: reactions.starredByMe,
+    };
+  });
+}
+
+/** Active memories across campus or filtered to one location (newest first). */
+export async function fetchCampusMemoriesFeed(args: {
+  userClient: SupabaseClient;
+  userId: string;
+  locationId?: string | null;
+  includeExpired?: boolean;
+  limit?: number;
+}): Promise<CampusMemoryApiRow[]> {
+  const limit = Math.min(80, Math.max(1, args.limit ?? 40));
+
+  let query = args.userClient
+    .from("campus_memories")
+    .select(MEMORY_SELECT)
+    .in("visibility", ["public", "campus"]);
+
+  if (!args.includeExpired) {
+    query = query.gt("expires_at", new Date().toISOString());
+  }
+
+  const locationId = args.locationId?.trim();
+  if (locationId && isCampusLocationId(locationId)) {
+    const legacyKey = legacyCampusKeyFromLocationId(locationId);
+    if (legacyKey) {
+      query = query.or(`location_id.eq.${locationId},location_key.eq.${legacyKey}`);
+    } else {
+      query = query.eq("location_id", locationId);
+    }
+  }
+
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
+
+  if (error) {
+    if (isMissingCampusMemoriesTableError(error)) return [];
+    throw new ApiError(500, "Could not load campus memories.", "CAMPUS_MEMORIES_FEED_FAILED");
+  }
+
+  return enrichMappedMemories(args.userClient, args.userId, (data ?? []) as CampusMemoryDbRow[]);
 }
 
 export async function fetchSavedCampusMemoriesForUser(args: {

@@ -1,4 +1,5 @@
 import type { AppBottomNavTab } from "@/components/AppBottomNav";
+import { getIsDrawerOpen } from "@/lib/client/appDrawerStore";
 
 export const SWIPE_BACK_EDGE_PX = 28;
 export const SWIPE_BACK_COMMIT_PX = 72;
@@ -69,6 +70,7 @@ export function isGlobalTabSwipeBlocked(): boolean {
   if (typeof document === "undefined") return false;
   const root = document.documentElement;
   return (
+    getIsDrawerOpen() ||
     root.hasAttribute("data-realm-map-panning") ||
     root.hasAttribute("data-cq-scanner-active") ||
     root.hasAttribute("data-cq-tab-swipe-disabled")

@@ -11,6 +11,7 @@ import {
 import { isUpcomingEvent } from "@/lib/client/eventsFeedFilters";
 import { OrganizationAdminPortal } from "@/components/OrganizationAdminPortal";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
+import { ScreenBackHeader } from "@/components/ui/BackButton";
 import {
   ORGANIZATION_REQUEST_CATEGORIES,
   ORGANIZATION_REQUEST_CATEGORY_LABELS,
@@ -225,8 +226,10 @@ function ChevronDownIcon() {
 
 export function OrganizationsHub({
   personalization,
+  onBack,
 }: {
   personalization?: { schoolName?: string; interests?: string[]; discoveryFocus?: string[] } | null;
+  onBack?: () => void;
 }) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [externalOrganizations, setExternalOrganizations] = useState<ExternalOrganization[]>([]);
@@ -533,6 +536,7 @@ export function OrganizationsHub({
 
   return (
     <section className="space-y-4">
+      {onBack ? <ScreenBackHeader title="Organizations" onBack={onBack} /> : null}
       <div className="card p-4 space-y-3">
         <h3 className="font-display font-semibold text-white">Student Organizations</h3>
         <p className="text-xs text-white/55">

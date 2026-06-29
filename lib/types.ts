@@ -351,6 +351,10 @@ export interface CampusMemory {
   displayName: string;
   authorAvatar: string;
   postedAgoLabel: string;
+  likeCount: number;
+  likedByMe: boolean;
+  starCount: number;
+  starredByMe: boolean;
 }
 
 export interface CampusMemoryGroup {

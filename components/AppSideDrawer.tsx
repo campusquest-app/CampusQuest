@@ -30,6 +30,7 @@ import { CampusQuestLogo } from "@/components/CampusQuestLogo";
 import { AppSettingsPanel, type SettingsActionId } from "@/components/AppSettingsPanel";
 import { AppHelpSupportPanel } from "@/components/AppHelpSupportPanel";
 import { DRAWER_SNAP_MS } from "@/lib/client/drawerGeometry";
+import { setIsDrawerOpen } from "@/lib/client/appDrawerStore";
 
 export type AppDrawerDestination =
   | "friends"
@@ -258,6 +259,14 @@ export function AppSideDrawer({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
 
+  // Block bottom nav + tab swipes while the drawer is visible (including open/close animations).
+  useEffect(() => {
+    const blocksNav = open || isDraggingDrawer || (mounted && closing);
+    setIsDrawerOpen(blocksNav);
+  }, [open, isDraggingDrawer, mounted, closing]);
+
+  useEffect(() => () => setIsDrawerOpen(false), []);
+
   useEffect(() => {
     if (!open) return;
     const tab = activeContext?.tab ?? "";
@@ -294,7 +303,7 @@ export function AppSideDrawer({
     <>
       <button
         type="button"
-        className="cq-drawer-backdrop fixed inset-0 z-[1000]"
+        className="cq-drawer-backdrop fixed inset-0 z-[10050]"
         style={{
           opacity: drawerOpenProgress,
           pointerEvents: backdropInteractive ? "auto" : "none",

@@ -43,9 +43,11 @@ type RowTile = {
 
 export function CampusMemoriesRow({
   onOpenGroup,
+  onOpenGlobalDeck,
   onAddMemory,
 }: {
   onOpenGroup: (group: CampusMemoryGroup) => void;
+  onOpenGlobalDeck?: () => void;
   onAddMemory: (locationId?: CampusLocationId) => void;
 }) {
   const [groups, setGroups] = useState<CampusMemoryGroup[]>([]);
@@ -115,7 +117,14 @@ export function CampusMemoriesRow({
 
   const header = (
     <div className="cq-memories-row-head">
-      <h3 className="cq-memories-row-title">Memories</h3>
+      <button
+        type="button"
+        className="cq-memories-row-title-btn"
+        onClick={() => onOpenGlobalDeck?.()}
+        aria-label="Open campus memories deck"
+      >
+        <h3 className="cq-memories-row-title">Memories</h3>
+      </button>
       <button type="button" className="cq-memories-add-btn" onClick={() => onAddMemory()}>
         <Plus className="h-3.5 w-3.5" strokeWidth={2.6} aria-hidden />
         <span>Add</span>

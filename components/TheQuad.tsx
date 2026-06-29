@@ -22,6 +22,7 @@ import type { QuadPostXpReward } from "@/lib/quadPostXp";
 import { FieldNoteCard } from "@/components/FieldNoteCard";
 import { CampusMemoriesRow } from "@/components/memories/CampusMemoriesRow";
 import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
+import { MemoriesDeck } from "@/components/memories/MemoriesDeck";
 import { AddCampusMemorySheet } from "@/components/memories/AddCampusMemorySheet";
 import type { CampusLocationId } from "@/lib/locations/registry";
 import { QuadFeedSkeleton } from "@/components/QuadFeedSkeleton";
@@ -102,6 +103,7 @@ export function TheQuad({
   const [postActionMessage, setPostActionMessage] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
   const [memoryGroup, setMemoryGroup] = useState<CampusMemoryGroup | null>(null);
+  const [showGlobalMemoriesDeck, setShowGlobalMemoriesDeck] = useState(false);
   const [memoryViewerInitialId, setMemoryViewerInitialId] = useState<string | undefined>();
   const [memoryViewerIncludeExpired, setMemoryViewerIncludeExpired] = useState(false);
   const [showAddMemory, setShowAddMemory] = useState(false);
@@ -548,6 +550,7 @@ export function TheQuad({
               {feedTab === "public" ? (
                 <CampusMemoriesRow
                   onOpenGroup={setMemoryGroup}
+                  onOpenGlobalDeck={() => setShowGlobalMemoriesDeck(true)}
                   onAddMemory={(locationId) => {
                     setAddMemoryLocationId(locationId ?? "the-quad");
                     setShowAddMemory(true);
@@ -601,6 +604,14 @@ export function TheQuad({
         onCreateMemory={() => setShowAddMemory(true)}
         onLogQuest={onLogQuest}
       />
+
+      {showGlobalMemoriesDeck ? (
+        <MemoriesDeck
+          mode="global"
+          currentUserId={character.id}
+          onClose={() => setShowGlobalMemoriesDeck(false)}
+        />
+      ) : null}
 
       {memoryGroup ? (
         <CampusMemoryViewer
