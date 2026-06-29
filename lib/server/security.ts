@@ -8,6 +8,7 @@ const XP_CAPS: Record<string, number> = {
   manual: 10000,
   streak_bonus: 500,
   quad_spark: 1,
+  quad_post: 10,
 };
 
 type Bucket = { count: number; resetAt: number };

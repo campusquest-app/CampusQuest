@@ -31,6 +31,8 @@ import { ProfilePostDetail } from "@/components/profile/ProfilePostDetail";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 import { fetchFriendCharacter } from "@/lib/client/friendProfileClient";
+import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
+import { useDmKeyboardInsets } from "@/lib/client/useDmKeyboardInsets";
 
 const SAFETY_NOTICE =
   "Keep conversations respectful. Harassment, threats, scams, or unsafe conduct may lead to removal from CampusQuest and referral to university conduct offices.";
@@ -68,7 +70,11 @@ export function DirectMessageThread({
   const [otherProfile, setOtherProfile] = useState<Character | null>(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useRegisterImmersiveScreen();
+  useDmKeyboardInsets(threadRef);
 
   const displayAvatar = otherProfile?.avatar ?? otherUser.avatar;
   const displayLevel = otherProfile?.level ?? 1;
@@ -505,9 +511,13 @@ export function DirectMessageThread({
   }
 
   const content = (
+    <div
+      ref={threadRef}
+      className="fixed inset-0 z-[200] h-[100dvh] max-h-[100dvh] cq-dm-thread cq-dm-thread--enter"
+    >
     <MobileSwipeBackSurface
       onBack={onClose}
-      className="cq-dm-thread fixed inset-0 z-[100] flex flex-col bg-black"
+      className="cq-dm-thread flex h-full max-h-full flex-col bg-black"
       role="dialog"
       aria-modal="true"
       aria-label={`Direct message with ${otherUser.name}`}
@@ -659,6 +669,7 @@ export function DirectMessageThread({
         </p>
       )}
     </MobileSwipeBackSurface>
+    </div>
   );
 
   if (typeof document === "undefined") return null;

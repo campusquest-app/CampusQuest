@@ -17,8 +17,12 @@ import { fetchQuadHomePosts, fetchQuadFriendsPosts } from "@/lib/client/quadPost
 import { subscribeSocialSync } from "@/lib/client/socialSync";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { getCharacterById } from "@/lib/friendsStore";
-import type { FieldNote, Character } from "@/lib/types";
+import type { CampusMemoryGroup, FieldNote, Character } from "@/lib/types";
+import type { QuadPostXpReward } from "@/lib/quadPostXp";
 import { FieldNoteCard } from "@/components/FieldNoteCard";
+import { CampusMemoriesRow } from "@/components/memories/CampusMemoriesRow";
+import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
+import { AddCampusMemorySheet } from "@/components/memories/AddCampusMemorySheet";
 import { QuadFeedSkeleton } from "@/components/QuadFeedSkeleton";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
 import { PullToRefresh } from "@/components/PullToRefresh";
@@ -68,6 +72,7 @@ export function TheQuad({
   unreadNotificationCount,
   chromeSuppressed = false,
   canModeratePosts = false,
+  onPostXpReward,
 }: {
   character: Character;
   onRefresh?: () => void;
@@ -85,6 +90,7 @@ export function TheQuad({
   /** Hide Quad chrome instantly (drawer, modals, overlays). */
   chromeSuppressed?: boolean;
   canModeratePosts?: boolean;
+  onPostXpReward?: (reward: QuadPostXpReward) => void;
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
@@ -92,6 +98,9 @@ export function TheQuad({
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
   const [postActionMessage, setPostActionMessage] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
+  const [memoryGroup, setMemoryGroup] = useState<CampusMemoryGroup | null>(null);
+  const [showAddMemory, setShowAddMemory] = useState(false);
+  const [memoriesRefreshKey, setMemoriesRefreshKey] = useState(0);
   const quadHeaderRef = useRef<HTMLDivElement | null>(null);
   const showQuadChrome = !chromeSuppressed;
 
@@ -264,7 +273,7 @@ export function TheQuad({
 
     const sync = (): void => {
       const raw = Math.ceil(el.getBoundingClientRect().height);
-      document.documentElement.style.setProperty(QUAD_HEADER_CSS_VAR, `${Math.max(52, raw)}px`);
+      document.documentElement.style.setProperty(QUAD_HEADER_CSS_VAR, `${Math.max(44, raw)}px`);
     };
 
     sync();
@@ -445,7 +454,7 @@ export function TheQuad({
       ref={quadHeaderRef}
       className="cq-quad-header cq-nav-shell-quad relative w-full"
     >
-      <div className="w-full px-[2.5vw] pb-2 pt-2 sm:px-[3vw] sm:pb-2.5">
+      <div className="w-full px-[2.5vw] pb-1 pt-0.5 sm:px-[3vw] sm:pb-1.5">
         <div className="cq-quad-header-row tabs" data-no-drawer-swipe="true">
           <button
             type="button"
@@ -460,9 +469,6 @@ export function TheQuad({
 
           <div className="cq-quad-destination-center">
             <h2 className="cq-quad-destination-title font-display">The Quad</h2>
-            <p className="cq-quad-destination-subtitle font-display">
-              {feedTab === "trending" ? "Trending" : "On campus"}
-            </p>
           </div>
 
           <button
@@ -534,6 +540,13 @@ export function TheQuad({
             </div>
           ) : (
             <div className="cq-quad-feed-stream">
+              {feedTab === "public" ? (
+                <CampusMemoriesRow
+                  key={memoriesRefreshKey}
+                  onOpenGroup={setMemoryGroup}
+                  onAddMemory={() => setShowAddMemory(true)}
+                />
+              ) : null}
               {reactionNotice ? (
                 <p className="cq-quad-reaction-notice mx-3 mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                   {reactionNotice}
@@ -577,7 +590,23 @@ export function TheQuad({
         feedTab={feedTab}
         character={character}
         onPosted={() => refresh({ silent: true })}
+        onXpReward={onPostXpReward}
       />
+
+      {memoryGroup ? (
+        <CampusMemoryViewer
+          group={memoryGroup}
+          currentUserId={character.id}
+          onClose={() => setMemoryGroup(null)}
+        />
+      ) : null}
+
+      {showAddMemory ? (
+        <AddCampusMemorySheet
+          onClose={() => setShowAddMemory(false)}
+          onCreated={() => setMemoriesRefreshKey((k) => k + 1)}
+        />
+      ) : null}
     </>
   );
 }

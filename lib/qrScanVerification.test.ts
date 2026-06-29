@@ -18,6 +18,7 @@ const gymRow = {
   type: "permanent_location",
   event_id: null,
   quest_id: null,
+  admin_quest_id: null,
   location_name: "URI Gym",
   activity_name: "Hitting the Gym",
   xp_reward: 80,

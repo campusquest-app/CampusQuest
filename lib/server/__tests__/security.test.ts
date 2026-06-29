@@ -5,10 +5,12 @@ import { assertSafeMinutes, assertSafeXpGrant, enforceRateLimit } from "../secur
 describe("security helpers", () => {
   it("allows safe xp grants", () => {
     expect(() => assertSafeXpGrant("activity", 120)).not.toThrow();
+    expect(() => assertSafeXpGrant("quad_post", 10)).not.toThrow();
   });
 
   it("rejects unsafe xp grants", () => {
     expect(() => assertSafeXpGrant("activity", 9999)).toThrow(ApiError);
+    expect(() => assertSafeXpGrant("quad_post", 11)).toThrow(ApiError);
   });
 
   it("validates activity minutes", () => {

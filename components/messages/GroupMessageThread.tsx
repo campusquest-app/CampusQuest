@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft } from "lucide-react";
+import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
+import { useDmKeyboardInsets } from "@/lib/client/useDmKeyboardInsets";
 import type { Character } from "@/lib/types";
 import { fetchAuthed } from "@/lib/client/dashboardApi";
 import { sendRichDirectMessage, type DirectMessageDto } from "@/lib/client/dmMessagesClient";
@@ -31,6 +33,10 @@ export function GroupMessageThread({
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
+
+  useRegisterImmersiveScreen();
+  useDmKeyboardInsets(threadRef);
 
   const loadThread = useCallback(async () => {
     setLoading(true);
@@ -95,7 +101,14 @@ export function GroupMessageThread({
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <MobileSwipeBackSurface onBack={onClose} className="cq-dm-thread fixed inset-0 z-[135] flex h-[100dvh] flex-col bg-black">
+    <div
+      ref={threadRef}
+      className="fixed inset-0 z-[200] h-[100dvh] max-h-[100dvh] cq-dm-thread cq-dm-thread--enter"
+    >
+    <MobileSwipeBackSurface
+      onBack={onClose}
+      className="cq-dm-thread flex h-full max-h-full flex-col bg-black"
+    >
       <header className="cq-dm-thread-header flex shrink-0 items-center gap-3 border-b border-white/[0.08] px-3 py-2.5 pt-[max(0.5rem,env(safe-area-inset-top))]">
         <button type="button" onClick={onClose} className="cq-inbox-icon-btn" aria-label="Back">
           <ArrowLeft className="h-6 w-6" strokeWidth={1.75} />
@@ -143,7 +156,8 @@ export function GroupMessageThread({
         onImageSendError={setError}
         uploadProgress={0}
       />
-    </MobileSwipeBackSurface>,
+    </MobileSwipeBackSurface>
+    </div>,
     document.body,
   );
 }

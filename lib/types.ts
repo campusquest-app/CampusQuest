@@ -324,6 +324,40 @@ export interface QuadComment {
   viewerHasLiked: boolean;
 }
 
+/** Temporary campus moment tied to a location (24h default). */
+export type CampusMemoryMediaType = "text" | "image" | "video";
+export type CampusMemoryVisibility = "public" | "friends" | "campus";
+
+export interface CampusMemory {
+  id: string;
+  userId: string;
+  locationKey: string;
+  locationName: string;
+  eventId: string | null;
+  mediaUrl: string | null;
+  mediaType: CampusMemoryMediaType;
+  body: string | null;
+  visibility: CampusMemoryVisibility;
+  expiresAt: string;
+  savedToProfile: boolean;
+  createdAt: string;
+  updatedAt: string;
+  username: string;
+  displayName: string;
+  authorAvatar: string;
+  postedAgoLabel: string;
+}
+
+export interface CampusMemoryGroup {
+  locationKey: string;
+  locationName: string;
+  count: number;
+  latestCreatedAt: string;
+  latestPreview: string | null;
+  latestMediaType: CampusMemoryMediaType | null;
+  hasRecent: boolean;
+}
+
 // —— Daily quests ——
 export interface DailyQuest {
   id: string;

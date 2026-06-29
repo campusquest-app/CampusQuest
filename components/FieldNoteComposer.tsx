@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { normalizeRamMarkTag, prependRemoteQuadPost } from "@/lib/feedStore";
 import { createQuadPostRequest } from "@/lib/client/quadPostsClient";
+import type { QuadPostXpReward } from "@/lib/quadPostXp";
 import { readImageFileAsDataUrl } from "@/lib/client/readImageFile";
 import { ApiRequestError } from "@/lib/client/dashboardApi";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
@@ -35,6 +36,7 @@ const CAPTION_PREFIX: Record<CaptionStarter, string> = {
 export function FieldNoteComposer({
   character,
   onPosted,
+  onXpReward,
   onCancel,
   onBack,
   onDirtyChange,
@@ -45,6 +47,8 @@ export function FieldNoteComposer({
 }: {
   character: Character;
   onPosted: () => void;
+  /** Called when the server awards XP for a new post (may be capped or zero). */
+  onXpReward?: (reward: QuadPostXpReward) => void;
   /** Hard-close the composer (Cancel / after posting). */
   onCancel?: () => void;
   /** Go back to the previous step (media picker). Renders a Back button. */
@@ -168,7 +172,7 @@ export function FieldNoteComposer({
     setIsSubmitting(true);
     try {
       const selectedLocation = REALM_LOCATION_OPTIONS.find((l) => l.id === locationId);
-      const { note, realmMoment } = await createQuadPostRequest(
+      const { note, realmMoment, xpReward } = await createQuadPostRequest(
         {
           body: trimmed,
           proofUrl: proofUrl.trim() || undefined,
@@ -182,6 +186,9 @@ export function FieldNoteComposer({
         character.id,
       );
       prependRemoteQuadPost(note);
+      if (xpReward.awarded && xpReward.xpAmount > 0) {
+        onXpReward?.(xpReward);
+      }
       setBody("");
       setRamMarks([]);
       setProofUrl("");

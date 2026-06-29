@@ -17,6 +17,7 @@ import {
   QUAD_POSTS_WITH_PROFILE_SELECT,
 } from "@/lib/server/quadPosts";
 import { createRealmMomentForPost } from "@/lib/server/realmMoments";
+import { maybeAwardQuadPostCreationXp } from "@/lib/server/quadPostXp";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 
 function normalizeRamMarks(input: { id?: string; tag: string }[] | undefined): { id: string; tag: string }[] {
@@ -177,7 +178,12 @@ export async function POST(request: Request) {
       });
     }
 
-    return ok({ post: enriched[0] ?? post, realmMoment });
+    const xpReward = await maybeAwardQuadPostCreationXp({
+      userId: auth.user.id,
+      postId: post.id,
+    });
+
+    return ok({ post: enriched[0] ?? post, realmMoment, xpReward });
   } catch (error) {
     if (error instanceof ZodError) {
       const message = formatZodError(error);

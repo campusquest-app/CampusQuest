@@ -10,6 +10,7 @@ import { emptyMapLocationContent, mapLocationActivityCount } from "@/lib/mapLoca
 import { RealmArchiveExperience } from "./RealmArchiveExperience";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
+import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 
 type SheetView = "archive" | "overview" | "quests" | "events";
 
@@ -46,6 +47,8 @@ export function RealmLocationSheet({
 }) {
   const [view, setView] = useState<SheetView>("archive");
   const [mounted, setMounted] = useState(false);
+
+  useRegisterImmersiveScreen(open);
 
   useEffect(() => {
     setMounted(true);

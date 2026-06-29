@@ -8,6 +8,7 @@ import { avatarFromConnectionProfile } from "@/lib/client/socialConnectionsClien
 import { searchUsers, avatarFromUserSearchResult } from "@/lib/client/userSearchClient";
 import { createGroupConversation } from "@/lib/client/groupChatClient";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
+import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 
 type SelectableUser = {
   userId: string;
@@ -38,6 +39,8 @@ export function CreateGroupChatSheet({
   const [groupName, setGroupName] = useState("");
   const [step, setStep] = useState<"members" | "name">("members");
   const [submitting, setSubmitting] = useState(false);
+
+  useRegisterImmersiveScreen();
   const [error, setError] = useState<string | null>(null);
 
   const selectedIds = useMemo(() => new Set(selected.map((u) => u.userId)), [selected]);

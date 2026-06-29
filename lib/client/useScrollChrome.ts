@@ -16,8 +16,17 @@ export const QUAD_SCROLL_ROOT_SELECTOR = "[data-cq-quad-scroll-root]";
 /** Mark vertically scrolling feed surfaces (inbox lists, modals, etc.). */
 export const SCROLL_ROOT_SELECTOR = "[data-cq-scroll-root]";
 
-/** The single fixed header unit (top nav + Quad tabs) translated as one piece. */
-const QUAD_HEADER_SHELL_SELECTOR = "[data-cq-quad-header-shell]";
+/** Always keep the header fully visible within this many px of the very top. */
+const HEADER_REVEAL_ABOVE_Y = 8;
+/** Scroll distance (px) to travel from fully visible → fully hidden. Longer =
+ *  slower, more controlled Instagram-style fade. */
+const HEADER_HIDE_RANGE = 140;
+/** Progress (0–1) past which the header is "mostly hidden" → pointer-events off. */
+const HEADER_HIDDEN_THRESHOLD = 0.6;
+/** On scroll stop, snap toward hidden only when this close to fully hidden. */
+const HEADER_SNAP_HIDE_AT = 0.6;
+/** On scroll stop, snap toward visible only when this close to fully visible. */
+const HEADER_SNAP_SHOW_AT = 0.4;
 
 type ScrollRoot = Window | HTMLElement;
 
@@ -38,15 +47,10 @@ function readScrollY(root: ScrollRoot): number {
   return window.scrollY || document.documentElement.scrollTop || 0;
 }
 
-function readHeaderHeight(): number {
-  if (typeof document === "undefined") return 0;
-  const el = document.querySelector(QUAD_HEADER_SHELL_SELECTOR) as HTMLElement | null;
-  return el ? el.getBoundingClientRect().height : 0;
-}
-
 let lastAppliedBottomProgress = -1;
 let lastAppliedBottomState: "expanded" | "concealing" | "minimized" | null = null;
-let lastAppliedTopOffset = -1;
+let lastAppliedHideProgress = -1;
+let lastAppliedHiddenState: boolean | null = null;
 
 function applyBottomConceal(concealPx: number): void {
   const progress = clamp(concealPx / BOTTOM_CONCEAL_MAX, 0, 1);
@@ -78,25 +82,34 @@ function applyBottomConceal(concealPx: number): void {
   document.documentElement.style.setProperty("--cq-dock-bottom-offset", `${dockBottom}px`);
 }
 
-function applyTopOffset(offsetPx: number): void {
-  const rounded = Math.round(offsetPx);
-  if (rounded === lastAppliedTopOffset) return;
-  lastAppliedTopOffset = rounded;
-  document.documentElement.style.setProperty("--cq-quad-chrome-offset", `${rounded}px`);
+function applyHeaderHideOffset(offsetPx: number, range: number): void {
+  const progress = clamp(offsetPx / range, 0, 1);
+  const rounded = Math.round(progress * 1000) / 1000;
+  if (rounded !== lastAppliedHideProgress) {
+    lastAppliedHideProgress = rounded;
+    document.documentElement.style.setProperty("--cq-quad-hide-progress", String(rounded));
+  }
+  const hidden = rounded >= HEADER_HIDDEN_THRESHOLD;
+  if (hidden !== lastAppliedHiddenState) {
+    lastAppliedHiddenState = hidden;
+    document.documentElement.setAttribute("data-cq-quad-hidden", hidden ? "true" : "false");
+  }
 }
 
 function resetScrollChrome(): void {
   document.documentElement.removeAttribute("data-cq-quad-chrome");
+  document.documentElement.removeAttribute("data-cq-quad-hidden");
   document.documentElement.removeAttribute("data-cq-bottom-chrome");
   document.documentElement.removeAttribute("data-cq-scrolling");
-  document.documentElement.style.removeProperty("--cq-quad-chrome-offset");
   document.documentElement.style.removeProperty("--cq-bottom-chrome-conceal");
+  document.documentElement.style.removeProperty("--cq-quad-hide-progress");
   document.documentElement.style.removeProperty("--cq-dock-scale");
   document.documentElement.style.removeProperty("--cq-dock-opacity");
   document.documentElement.style.removeProperty("--cq-dock-bottom-offset");
   lastAppliedBottomProgress = -1;
   lastAppliedBottomState = null;
-  lastAppliedTopOffset = -1;
+  lastAppliedHideProgress = -1;
+  lastAppliedHiddenState = null;
 }
 
 export { resetScrollChrome };
@@ -121,27 +134,40 @@ export function computeBottomConcealPx(args: {
 }
 
 /**
- * Scroll-linked header offset. The whole header unit (CQ nav + Quad tabs)
- * translates up 1:1 with downward scroll and returns 1:1 on upward scroll,
- * clamped between fully visible (0) and fully hidden (maxOffset). At the very
- * top of the feed the header is always fully revealed.
+ * Progressive scroll-linked hide offset for the Quad header (Instagram-style).
+ * The whole header unit (CQ nav + XP row + Quad tabs) translates up + fades out
+ * gradually in proportion to how far the user has scrolled down, accumulating
+ * over `range` px (≈140) so it never disappears after a tiny scroll. Scrolling
+ * up unwinds the same offset so the header smoothly returns. Near the very top
+ * it is pinned fully visible; micro jitter is ignored so it holds still.
+ *
+ * Returns the current hide offset in px, clamped to [0, range]. progress =
+ * offset / range drives translateY (-progress × 100%) and opacity (1 − progress).
  */
-export function computeTopOffset(args: {
-  prevOffset: number;
+export function computeHeaderHideOffset(args: {
+  prevOffsetPx: number;
   delta: number;
   scrollY: number;
-  maxOffset: number;
+  range?: number;
+  revealAboveY?: number;
+  deltaMin?: number;
 }): number {
-  if (args.scrollY <= 0) return 0;
-  return clamp(args.prevOffset + args.delta, 0, args.maxOffset);
+  const range = args.range ?? HEADER_HIDE_RANGE;
+  const revealAboveY = args.revealAboveY ?? HEADER_REVEAL_ABOVE_Y;
+  const deltaMin = args.deltaMin ?? SCROLL_DELTA_MIN;
+
+  if (args.scrollY <= revealAboveY) return 0;
+  if (Math.abs(args.delta) < deltaMin) return clamp(args.prevOffsetPx, 0, range);
+  return clamp(args.prevOffsetPx + args.delta, 0, range);
 }
 
 /**
  * Feed scroll chrome (Instagram-style):
- * - Scroll down → bottom nav conceals progressively; the top header unit slides
- *   up 1:1 with the scroll. Both hold position when scrolling stops.
- * - Scroll up → bottom nav reveals and the header slides back down 1:1.
- * - No timers, no idle restore, no auto-expand on momentum end.
+ * - Scroll down → bottom nav conceals progressively; the Quad header translates
+ *   up + fades out gradually over ~140px. Both track scroll 1:1.
+ * - Scroll up → bottom nav reveals and the header smoothly returns.
+ * - On scroll stop, the header gently snaps to fully hidden/visible only when it
+ *   is already near one of those ends (no snapping from the middle).
  */
 export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOptions): void {
   useEffect(() => {
@@ -153,9 +179,22 @@ export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOpti
     const activeRoot: ScrollRoot = window;
     let lastScrollY = readScrollY(activeRoot);
     let bottomConcealPx = 0;
-    let topOffset = 0;
+    let headerHideOffset = 0;
     let rafId: number | null = null;
     let scrollIdleTimer: number | null = null;
+
+    const settleHeaderOnIdle = (): void => {
+      if (!topChrome) return;
+      const progress = headerHideOffset / HEADER_HIDE_RANGE;
+      // Only snap when already near an end — never from the middle.
+      if (progress >= HEADER_SNAP_HIDE_AT && progress < 1) {
+        headerHideOffset = HEADER_HIDE_RANGE;
+        applyHeaderHideOffset(headerHideOffset, HEADER_HIDE_RANGE);
+      } else if (progress > 0 && progress <= HEADER_SNAP_SHOW_AT) {
+        headerHideOffset = 0;
+        applyHeaderHideOffset(headerHideOffset, HEADER_HIDE_RANGE);
+      }
+    };
 
     const markScrolling = (): void => {
       document.documentElement.setAttribute("data-cq-scrolling", "true");
@@ -165,6 +204,7 @@ export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOpti
       scrollIdleTimer = window.setTimeout(() => {
         document.documentElement.removeAttribute("data-cq-scrolling");
         scrollIdleTimer = null;
+        settleHeaderOnIdle();
       }, SCROLL_IDLE_MS);
     };
 
@@ -180,13 +220,12 @@ export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOpti
       applyBottomConceal(bottomConcealPx);
 
       if (topChrome) {
-        topOffset = computeTopOffset({
-          prevOffset: topOffset,
+        headerHideOffset = computeHeaderHideOffset({
+          prevOffsetPx: headerHideOffset,
           delta,
           scrollY: currentY,
-          maxOffset: readHeaderHeight(),
         });
-        applyTopOffset(topOffset);
+        applyHeaderHideOffset(headerHideOffset, HEADER_HIDE_RANGE);
       }
 
       lastScrollY = currentY;
@@ -203,10 +242,10 @@ export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOpti
     };
 
     bottomConcealPx = 0;
-    topOffset = 0;
+    headerHideOffset = 0;
     if (topChrome) {
       document.documentElement.setAttribute("data-cq-quad-chrome", "visible");
-      applyTopOffset(0);
+      applyHeaderHideOffset(0, HEADER_HIDE_RANGE);
     }
     applyBottomConceal(0);
     document.documentElement.style.setProperty("--cq-dock-scale", "1");

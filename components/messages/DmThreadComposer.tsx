@@ -115,7 +115,7 @@ export function DmThreadComposer({
 
       <form
         onSubmit={onSubmit}
-        className="cq-dm-composer shrink-0 border-t border-white/[0.06] px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        className="cq-dm-composer shrink-0 border-t border-white/[0.06] bg-black px-3 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))]"
       >
         {imageDraft ? (
           <DmImageSendPreview
@@ -129,7 +129,7 @@ export function DmThreadComposer({
           />
         ) : null}
 
-        <div className="cq-dm-composer-pill flex items-center gap-1 rounded-full bg-[#262626] px-2 py-1">
+        <div className="cq-dm-composer-pill flex items-center gap-1 rounded-full bg-[#262626] px-2 py-1.5">
           <button
             type="button"
             onClick={() => setCameraSheetOpen(true)}

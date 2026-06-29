@@ -7,10 +7,12 @@ import {
   restoreBodyScrollLock,
 } from "@/lib/client/modalViewportCleanup";
 import { resetScrollChrome } from "@/lib/client/useScrollChrome";
+import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Plus } from "lucide-react";
 import type { Character } from "@/lib/types";
+import type { QuadPostXpReward } from "@/lib/quadPostXp";
 import { FieldNoteComposer } from "@/components/FieldNoteComposer";
 import { PostMediaPicker } from "@/components/posts/PostMediaPicker";
 
@@ -25,16 +27,20 @@ export function QuadCreatePostFab({
   feedTab,
   character,
   onPosted,
+  onXpReward,
 }: {
   feedTab: QuadFeedTab;
   character: Character;
   onPosted: () => void;
+  onXpReward?: (reward: QuadPostXpReward) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("media");
   const [pendingImage, setPendingImage] = useState("");
   const [tapBurst, setTapBurst] = useState(false);
   const dirtyRef = useRef(false);
+
+  useRegisterImmersiveScreen(open);
 
   function handleFabTap() {
     setTapBurst(true);
@@ -128,6 +134,7 @@ export function QuadCreatePostFab({
                 onPosted();
                 handleClose();
               }}
+              onXpReward={onXpReward}
             />
           )}
         </div>

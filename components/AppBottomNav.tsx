@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef, useLayoutEffect, useRef, useState, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { Home, Map, QrCode, Trophy } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { getCharacter, subscribeCharacterAvatar } from "@/lib/store";
@@ -77,6 +78,7 @@ export function AppBottomNav({
   const liveAvatar = useLiveUserAvatar(userAvatar);
   const characterName = useLiveCharacterName();
   const showBadge = unreadBadgeCount > 0;
+  const reduceMotion = useReducedMotion();
   const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
 
   const resolvedActive: AppBottomNavTab | null =
@@ -142,7 +144,15 @@ export function AppBottomNav({
   }, [resolvedActive]);
 
   return (
-    <nav ref={navRef} className="cq-dock-nav" aria-label="Main navigation">
+    <motion.nav
+      ref={navRef}
+      className="cq-dock-nav"
+      aria-label="Main navigation"
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={reduceMotion ? undefined : { opacity: 1 }}
+      exit={reduceMotion ? undefined : { opacity: 0 }}
+      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+    >
       <div ref={railRef} className="cq-dock-nav__rail">
         {indicator ? (
           <span
@@ -164,7 +174,7 @@ export function AppBottomNav({
           onClick={() => onSelectTab("quad")}
           icon={
             <Home
-              className="h-[22px] w-[22px]"
+              className="h-[24px] w-[24px]"
               strokeWidth={resolvedActive === "quad" ? 2.5 : 2}
               fill={resolvedActive === "quad" ? "currentColor" : "none"}
             />
@@ -178,7 +188,7 @@ export function AppBottomNav({
           label="Map"
           active={resolvedActive === "realm"}
           onClick={() => onSelectTab("realm")}
-          icon={<Map className="h-[22px] w-[22px]" strokeWidth={resolvedActive === "realm" ? 2.5 : 2} />}
+          icon={<Map className="h-[24px] w-[24px]" strokeWidth={resolvedActive === "realm" ? 2.5 : 2} />}
         />
 
         <div className="cq-dock-nav__scan-slot">
@@ -189,7 +199,7 @@ export function AppBottomNav({
             className="cq-dock-nav__scan-btn cq-scanner-fab touch-manipulation"
           >
             <span className="cq-dock-nav__scan-ring" aria-hidden />
-            <QrCode className="relative z-[1] h-[22px] w-[22px]" strokeWidth={2.2} />
+            <QrCode className="relative z-[1] h-[24px] w-[24px]" strokeWidth={2.2} />
           </button>
         </div>
 
@@ -202,7 +212,7 @@ export function AppBottomNav({
           onClick={() => onSelectTab("leaderboards")}
           icon={
             <Trophy
-              className="h-[22px] w-[22px]"
+              className="h-[24px] w-[24px]"
               strokeWidth={resolvedActive === "leaderboards" ? 2.5 : 2}
               fill={resolvedActive === "leaderboards" ? "currentColor" : "none"}
             />
@@ -223,7 +233,7 @@ export function AppBottomNav({
           showBadge={showBadge}
         />
       </div>
-    </nav>
+    </motion.nav>
   );
 }
 

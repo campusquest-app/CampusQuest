@@ -34,6 +34,7 @@ import {
   unpinDmUser,
   type PinnedDmUserRow,
 } from "@/lib/client/pinnedDmUsersClient";
+import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 
 export type InboxSubTab = "messages" | "notifications";
 
@@ -834,6 +835,8 @@ function InboxNewChatSheet({
   onSubmit: (e: React.FormEvent) => void;
   onSelectFriend: (friend: InboxFriendRow) => void;
 }) {
+  useRegisterImmersiveScreen();
+
   if (typeof document === "undefined") return null;
 
   return createPortal(

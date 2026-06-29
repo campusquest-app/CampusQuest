@@ -44,7 +44,7 @@
 
   /* App chrome — synced at runtime by TopNav (Quad only) / AppBottomNav / TheQuad */
   --cq-topnav-h: 0px;
-  --cq-quad-header-h: 2.75rem;
+  --cq-quad-header-h: 2.35rem;
   --cq-bottom-nav-h: 3.75rem;
   --cq-dock-bottom-offset: 14px;
   --cq-dock-scale: 1;
@@ -1156,6 +1156,101 @@
   overscroll-behavior: contain;
 }
 
+/* —— Share post sheet (Instagram-style native share) —— */
+/* Hide the floating dock nav while the share sheet is open so it never overlaps. */
+html[data-cq-share-sheet-open] .cq-dock-nav {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+/* When bottom nav is unmounted, zero out feed clearance (synced via useAppChromeLayout). */
+html[data-cq-bottom-nav-hidden] {
+  --cq-bottom-nav-h: 0px;
+  --cq-dock-bottom-offset: 0px;
+}
+
+@keyframes cq-share-sheet-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cq-share-sheet-up-centered {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes cq-share-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cq-share-check-pop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.cq-share-backdrop {
+  animation: cq-share-backdrop-in 220ms ease-out;
+}
+
+.cq-share-sheet {
+  animation: cq-share-sheet-up 340ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+@media (min-width: 640px) {
+  .cq-share-sheet {
+    animation: cq-share-sheet-up-centered 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+.cq-share-check {
+  animation: cq-share-check-pop 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cq-share-row {
+  transition: background-color 160ms ease, box-shadow 200ms ease, transform 120ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-share-sheet,
+  .cq-share-backdrop,
+  .cq-share-check {
+    animation: none !important;
+  }
+  .cq-share-sheet {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
 .cq-user-search-message {
   padding: 0.85rem 1rem;
   font-size: 0.8125rem;
@@ -1599,15 +1694,17 @@
   display: block;
   width: 100%;
   max-width: 100%;
-  height: auto;
+  min-height: min(52vw, 22rem);
+  max-height: min(72vh, 34rem);
   margin: 0;
   padding: 0;
   border: none;
   border-radius: 0;
   box-shadow: none;
-  object-fit: contain;
+  object-fit: cover;
   object-position: center;
   vertical-align: top;
+  background: rgba(0, 0, 0, 0.35);
 }
 
 /* Comment threads expand naturally — page scroll only (no nested scroll in feed cards) */
@@ -5060,6 +5157,12 @@
 /* The CQ nav + Quad tab bar live inside ONE fixed shell and move together.
    The shell translates 1:1 with the user's scroll (offset set in JS via rAF);
    no CSS transition on the transform so the movement feels physically attached. */
+/* —— Progressive disappearing Quad header (Instagram-style) ——
+   The whole header unit (CQ nav + XP row + Quad tabs) is one fixed glass panel.
+   It translates up + fades out gradually in proportion to scroll distance
+   (--cq-quad-hide-progress, 0→1 over ~140px) and unwinds on scroll up. The feed
+   spacer stays a constant height, so the header simply uncovers posts as it
+   leaves — no reflow, no scroll jump. Tabs return with the header. */
 .cq-quad-header-shell {
   position: fixed;
   top: 0;
@@ -5067,14 +5170,54 @@
   right: 0;
   z-index: 50;
   width: 100%;
-  transform: translate3d(0, calc(-1 * var(--cq-quad-chrome-offset, 0px)), 0);
-  will-change: transform;
+  --cq-hide: var(--cq-quad-hide-progress, 0);
+  transform: translate3d(0, calc(var(--cq-hide) * -100%), 0);
+  opacity: max(0, calc(1 - var(--cq-hide) * 1.15));
+  will-change: transform, opacity;
+  background: linear-gradient(180deg, rgba(8, 12, 22, 0.92) 0%, rgba(6, 10, 18, 0.88) 100%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 8px 32px -16px rgba(0, 0, 0, 0.65);
+}
+
+.cq-quad-header-shell .cq-nav-shell-top,
+.cq-quad-header-shell .cq-nav-shell-quad {
+  background: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.cq-quad-header-shell .cq-quad-header::after {
+  display: none;
+}
+
+/* While actively scrolling, track scroll 1:1 (no transition lag). When the
+   user stops, a transition smooths the gentle snap toward an end state. */
+html:not([data-cq-scrolling]) .cq-quad-header-shell {
+  transition:
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 240ms ease;
+}
+
+/* Pointer events only drop once the header is mostly/fully hidden. */
+html[data-cq-quad-hidden="true"] .cq-quad-header-shell {
+  pointer-events: none;
 }
 
 .cq-top-nav,
 .cq-quad-header {
   position: relative;
   opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-cq-scrolling]) .cq-quad-header-shell {
+    transition: opacity 140ms ease;
+  }
 }
 
 /* —— Floating dock nav (Instagram-style) —— */
@@ -5101,16 +5244,16 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 0.125rem;
-  min-height: 3.25rem;
-  padding: 0.5rem 0.5rem 0.375rem;
+  min-height: 3rem;
+  padding: 0.4rem 0.45rem 0.3rem;
   border-radius: 999px;
-  background: rgba(10, 14, 18, 0.72);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(8, 10, 14, 0.78);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow:
-    0 16px 48px -12px rgba(0, 0, 0, 0.72),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 16px 48px -12px rgba(0, 0, 0, 0.78),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   overflow: visible;
 }
 
@@ -5148,6 +5291,10 @@
 
 .cq-dock-nav__item--active {
   color: #ffffff;
+}
+
+.cq-dock-nav__item--active svg {
+  filter: drop-shadow(0 0 10px rgba(76, 201, 255, 0.55));
 }
 
 .cq-dock-nav__icon-wrap {
@@ -5403,7 +5550,11 @@ html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-scan-btn svg {
 }
 
 .cq-quad-feed-body {
-  transition: padding-top 300ms ease-in-out;
+  /* Stable spacer equal to the full header height (measured via ResizeObserver).
+     The disappearing header slides over this spacer without changing its size,
+     so content never reflows or jumps — the header just uncovers posts as it
+     leaves. A tiny transition smooths any frames the observer batches. */
+  transition: padding-top 90ms linear;
   box-sizing: border-box;
   min-height: 0;
   overflow: visible;
@@ -5486,37 +5637,41 @@ html[data-cq-on-quad] {
 .cq-nav-icon-btn {
   color: rgba(255, 255, 255, 0.96);
   filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.45));
+  transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 160ms ease, background-color 160ms ease;
+}
+
+/* Press feedback: soft cyan energy glow + scale */
+.cq-nav-icon-btn:active:not(:disabled) {
+  box-shadow:
+    0 0 0 1px rgba(96, 165, 250, 0.4),
+    0 0 16px -2px rgba(76, 201, 255, 0.55);
+  background-color: rgba(76, 201, 255, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-nav-icon-btn {
+    transition: box-shadow 160ms ease, background-color 160ms ease;
+  }
 }
 
 .cq-top-nav-inner {
-  padding-bottom: 0.375rem;
+  padding-bottom: 0.2rem;
 }
 
 html[data-cq-quad-chrome] .cq-top-nav-inner {
-  padding-bottom: 0.2rem;
+  padding-bottom: 0.1rem;
 }
 
 .cq-top-nav-primary {
   display: grid;
-  grid-template-columns: 2.5rem 1fr 2.5rem;
+  grid-template-columns: 52px 1fr 52px;
   align-items: center;
   column-gap: 0.5rem;
-  min-height: 2.75rem;
+  min-height: 52px;
 }
 
 html[data-cq-quad-chrome] .cq-top-nav-primary {
-  min-height: 2.5rem;
   column-gap: 0.375rem;
-}
-
-html[data-cq-quad-chrome] .cq-top-nav-side {
-  width: 2.25rem;
-  height: 2.25rem;
-}
-
-html[data-cq-quad-chrome] .cq-top-nav-side svg {
-  width: 1.125rem;
-  height: 1.125rem;
 }
 
 html[data-cq-quad-chrome] .cq-brand-title-text {
@@ -5602,11 +5757,16 @@ html[data-cq-quad-chrome] .cq-top-nav-meta {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  filter: drop-shadow(0 0 16px rgba(96, 165, 250, 0.5)) drop-shadow(0 1px 0 rgba(4, 30, 66, 0.55));
+  /* Softer premium glow — drop the harsh hard-edged shadow */
+  filter: drop-shadow(0 0 18px rgba(96, 165, 250, 0.4)) drop-shadow(0 1px 2px rgba(4, 30, 66, 0.32));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cq-nav-streak-label--at-risk {
+  .cq-nav-streak-label--at-risk,
+  .cq-nav-level-fill::after,
+  .cq-nav-level-glint,
+  .cq-brand-title-glimmer,
+  .cq-brand-title-glow {
     animation: none !important;
   }
 
@@ -5690,8 +5850,8 @@ html[data-cq-quad-chrome] .cq-top-nav-meta {
 .cq-nav-status-pill {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.32rem 0.7rem;
+  gap: 0.45rem;
+  padding: 0.22rem 0.55rem;
   border-radius: 999px;
   background: linear-gradient(180deg, rgba(16, 46, 92, 0.7) 0%, rgba(6, 24, 52, 0.82) 100%);
   border: 1px solid rgba(96, 165, 250, 0.22);
@@ -5706,11 +5866,11 @@ html[data-cq-quad-chrome] .cq-top-nav-meta {
   display: inline-flex;
   align-items: center;
   gap: 0.28rem;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 900;
   letter-spacing: -0.01em;
-  color: #d7ecff;
-  text-shadow: 0 0 10px rgba(96, 165, 250, 0.35);
+  color: #eaf6ff;
+  text-shadow: 0 0 10px rgba(96, 165, 250, 0.45);
 }
 
 .cq-nav-level-icon {
@@ -5783,7 +5943,7 @@ html[data-cq-quad-chrome] .cq-top-nav-meta {
   animation: cq-nav-bar-shimmer 2.8s ease-in-out infinite;
 }
 
-/* sparkle glint riding the end of the filled bar */
+/* sparkle glint + spark twinkle riding the leading edge of the filled bar */
 .cq-nav-level-glint {
   position: absolute;
   top: 50%;
@@ -5799,6 +5959,21 @@ html[data-cq-quad-chrome] .cq-top-nav-meta {
     transparent 72%
   );
   filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.85));
+  animation: cq-nav-glint-twinkle 1.9s ease-in-out infinite;
+}
+
+@keyframes cq-nav-glint-twinkle {
+  0%,
+  100% {
+    opacity: 0.8;
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.7));
+    transform: translate(50%, -50%) scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 8px rgba(186, 230, 253, 0.95));
+    transform: translate(50%, -50%) scale(1.35);
+  }
 }
 
 .cq-nav-reward-text {
@@ -5813,29 +5988,29 @@ html[data-cq-quad-chrome] .cq-top-nav-meta {
 }
 
 .cq-nav-xp-label {
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 9px;
+  font-weight: 500;
   letter-spacing: 0;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.45);
   white-space: nowrap;
 }
 
 .cq-nav-streak-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.15rem;
-  padding: 0.14rem 0.48rem;
+  gap: 0.08rem;
+  padding: 0.08rem 0.3rem;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(180, 83, 9, 0.45) 0%, rgba(120, 53, 15, 0.55) 100%);
-  border: 1px solid rgba(251, 146, 60, 0.4);
-  font-size: 9.5px;
-  font-weight: 800;
+  background: linear-gradient(180deg, rgba(180, 83, 9, 0.35) 0%, rgba(120, 53, 15, 0.45) 100%);
+  border: 1px solid rgba(251, 146, 60, 0.28);
+  font-size: 7px;
+  font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 1.1;
   color: #fde9c8;
   white-space: nowrap;
-  text-shadow: 0 0 8px rgba(251, 146, 60, 0.35);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 10px -2px rgba(251, 146, 60, 0.3);
+  text-shadow: 0 0 8px rgba(251, 146, 60, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 8px -2px rgba(251, 146, 60, 0.25);
 }
 
 .cq-nav-streak-label--secured {
@@ -9946,12 +10121,22 @@ html[data-realm-map-panning] {
 }
 
 .cq-ptr-spinner {
-  width: 1.125rem;
-  height: 1.125rem;
-  border: 2px solid rgba(104, 171, 232, 0.28);
-  border-top-color: rgba(104, 171, 232, 0.95);
+  position: relative;
+  width: 1.25rem;
+  height: 1.25rem;
   border-radius: 50%;
   flex-shrink: 0;
+  /* CampusQuest energy ring — glowing cyan compass sweep */
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(76, 201, 255, 0.12) 90deg,
+    rgba(76, 201, 255, 0.85) 300deg,
+    #bae6fd 360deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  box-shadow: 0 0 12px rgba(76, 201, 255, 0.55);
 }
 
 .cq-ptr-indicator.is-refreshing .cq-ptr-spinner {
@@ -10795,6 +10980,29 @@ html[data-realm-map-panning] {
 .cq-dm-thread {
   color: #ffffff;
   background: #000000;
+  box-sizing: border-box;
+  padding-bottom: var(--cq-dm-keyboard-offset, 0px);
+}
+
+.cq-dm-thread--enter {
+  animation: cq-dm-thread-enter 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes cq-dm-thread-enter {
+  from {
+    transform: translateX(100%);
+    opacity: 0.92;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-dm-thread--enter {
+    animation: none;
+  }
 }
 
 .cq-dm-header {
@@ -10849,8 +11057,14 @@ html[data-realm-map-panning] {
   border-bottom-left-radius: 0.25rem;
 }
 
+.cq-dm-composer {
+  flex-shrink: 0;
+  background: #000000;
+}
+
 .cq-dm-composer-pill {
   min-height: 2.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .cq-dm-composer-icon {
@@ -10887,4 +11101,412 @@ html[data-realm-map-panning] {
 
 .cq-org-hub-modal-close:active {
   transform: scale(0.94);
+}
+
+/* —— Campus Memories row —— */
+.cq-memories-row {
+  padding: 0.35rem 0.75rem 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cq-memories-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.45rem;
+}
+
+.cq-memories-row-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.cq-memories-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #8fdcff;
+  background: rgba(76, 201, 255, 0.1);
+  border: 1px solid rgba(76, 201, 255, 0.22);
+}
+
+.cq-memories-scroll {
+  display: flex;
+  gap: 0.65rem;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.cq-memories-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-memories-tile {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  width: 4.25rem;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.cq-memories-tile-ring {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cq-memories-tile--active .cq-memories-tile-ring {
+  border-color: rgba(76, 201, 255, 0.55);
+  box-shadow: 0 0 14px -2px rgba(76, 201, 255, 0.45);
+}
+
+.cq-memories-tile--recent .cq-memories-tile-ring {
+  border-color: rgba(76, 201, 255, 0.85);
+}
+
+.cq-memories-tile-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  background: rgba(8, 12, 20, 0.55);
+}
+
+.cq-memories-tile-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cq-memories-live-dot {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.15rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: #4cc9ff;
+  box-shadow: 0 0 8px rgba(76, 201, 255, 0.8);
+}
+
+.cq-memories-tile-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+  max-width: 4.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cq-memories-tile-count {
+  font-size: 0.5625rem;
+  font-weight: 500;
+  color: rgba(143, 220, 255, 0.85);
+}
+
+.cq-memories-tile-count--muted {
+  color: rgba(255, 255, 255, 0.28);
+}
+
+.cq-memories-tile--skeleton {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  animation: cq-pulse 1.2s ease-in-out infinite;
+}
+
+.cq-memories-empty {
+  margin: 0.35rem 0 0;
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cq-memories-empty button {
+  color: #8fdcff;
+  font-weight: 600;
+}
+
+.cq-memories-empty--error {
+  color: #fca5a5;
+}
+
+/* —— Campus Memory viewer —— */
+.cq-memory-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  color: #fff;
+}
+
+.cq-memory-viewer-head {
+  padding: calc(env(safe-area-inset-top, 0px) + 0.5rem) 0.75rem 0.5rem;
+}
+
+.cq-memory-viewer-progress {
+  display: flex;
+  gap: 0.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.cq-memory-viewer-seg {
+  flex: 1;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+.cq-memory-viewer-seg--done {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.cq-memory-viewer-seg-fill {
+  display: block;
+  height: 100%;
+  background: #fff;
+}
+
+.cq-memory-viewer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cq-memory-viewer-location {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cq-memory-viewer-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cq-memory-viewer-body {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 0 0.5rem;
+}
+
+.cq-memory-viewer-body--loading,
+.cq-memory-viewer-body--empty {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.875rem;
+}
+
+.cq-memory-viewer-media {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.cq-memory-viewer-text {
+  max-width: 28rem;
+  padding: 1.5rem;
+  font-size: 1.125rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.cq-memory-viewer-tap {
+  position: absolute;
+  top: 5rem;
+  bottom: 5rem;
+  width: 35%;
+  z-index: 2;
+}
+
+.cq-memory-viewer-tap--left {
+  left: 0;
+}
+
+.cq-memory-viewer-tap--right {
+  right: 0;
+}
+
+.cq-memory-viewer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.85) 0%, transparent 100%);
+}
+
+.cq-memory-viewer-author {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.cq-memory-viewer-author-name {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.cq-memory-viewer-author-meta {
+  margin: 0.1rem 0 0;
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.cq-memory-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cq-memory-viewer-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* —— Add Memory sheet —— */
+.cq-memory-add {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  flex-direction: column;
+  background: var(--cq-bg-app, #0a0c10);
+  color: #fff;
+}
+
+.cq-memory-add-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1rem calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cq-memory-add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cq-memory-add-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.cq-memory-add-select,
+.cq-memory-add-textarea {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.cq-memory-add-preview {
+  position: relative;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  max-height: 16rem;
+}
+
+.cq-memory-add-preview img {
+  display: block;
+  width: 100%;
+  max-height: 16rem;
+  object-fit: cover;
+}
+
+.cq-memory-add-media-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cq-memory-add-media-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cq-memory-add-error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #fca5a5;
+}
+
+.cq-memory-add-hint {
+  margin: 0;
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-memories-tile--skeleton {
+    animation: none;
+  }
 }

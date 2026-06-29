@@ -34,6 +34,7 @@ import {
   SCAN_XP_HANDOFF_MS,
   type ScanRewardState,
 } from "@/lib/client/scanRewardFlow";
+import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 
 export type { SigilScannerReward, QrScannerValidationResult };
 
@@ -153,6 +154,8 @@ export function QRScannerModal({
   const scanHintTimerRef = useRef<number | null>(null);
   const processingTimeoutRef = useRef<number | null>(null);
   const handleDecodedRef = useRef<(text: string) => void>(() => {});
+
+  useRegisterImmersiveScreen(open);
 
   const [mounted, setMounted] = useState(false);
   const [camState, setCamState] = useState<CamState>("idle");

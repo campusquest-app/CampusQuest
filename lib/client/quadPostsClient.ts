@@ -7,6 +7,7 @@ import {
   type QuadReactionType,
 } from "@/lib/quadFieldNote";
 import type { FieldNote } from "@/lib/types";
+import type { QuadPostXpReward } from "@/lib/quadPostXp";
 import {
   ApiRequestError,
   fetchAuthed,
@@ -39,6 +40,7 @@ export type RealmMomentCreatedMeta = {
 export type CreateQuadPostResult = {
   note: FieldNote;
   realmMoment: RealmMomentCreatedMeta | null;
+  xpReward: QuadPostXpReward;
 };
 
 export async function fetchQuadHomePosts(viewerId: string, limit = 80): Promise<FieldNote[]> {
@@ -99,10 +101,10 @@ export async function createQuadPostRequest(
     proofUrl: proofUrl && proofUrl.length > 0 ? proofUrl : undefined,
   } as Record<string, unknown>;
 
-  let data: { post: QuadPostApiRow; realmMoment: RealmMomentCreatedMeta | null };
+  let data: { post: QuadPostApiRow; realmMoment: RealmMomentCreatedMeta | null; xpReward?: QuadPostXpReward };
   try {
     data = await postAuthed<
-      { post: QuadPostApiRow; realmMoment: RealmMomentCreatedMeta | null },
+      { post: QuadPostApiRow; realmMoment: RealmMomentCreatedMeta | null; xpReward?: QuadPostXpReward },
       Record<string, unknown>
     >("/api/quad/posts", body);
   } catch (error) {
@@ -115,7 +117,11 @@ export async function createQuadPostRequest(
     throw error;
   }
   const note = quadPostRowToFieldNote(data.post, viewerId);
-  return { note, realmMoment: data.realmMoment ?? null };
+  return {
+    note,
+    realmMoment: data.realmMoment ?? null,
+    xpReward: data.xpReward ?? { awarded: false, xpAmount: 0 },
+  };
 }
 
 export type UpdateQuadPostPayload = {

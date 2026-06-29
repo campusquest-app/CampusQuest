@@ -33,6 +33,7 @@ export const USER_DATA_DELETION_STEPS: DeletionStep[] = [
   { table: "quad_post_comments", columns: ["user_id"], description: "quad comments" },
   { table: "quad_post_reactions", columns: ["user_id"], description: "quad reactions" },
   { table: "quad_spark_xp_grants", columns: ["sparker_user_id"], description: "quad spark XP grants" },
+  { table: "quad_post_xp_grants", columns: ["user_id"], description: "quad post XP grants" },
   { table: "post_likes", columns: ["user_id"], description: "post likes" },
   { table: "posts", columns: ["user_id"], description: "legacy posts" },
   { table: "comments", columns: ["user_id"], description: "legacy comments" },
@@ -66,6 +67,7 @@ export const USER_DATA_DELETION_STEPS: DeletionStep[] = [
   { table: "user_school_verifications", columns: ["user_id"], description: "school verifications" },
   { table: "unlocked_milestones", columns: ["user_id"], description: "unlocked milestones" },
   { table: "realm_moments", columns: ["user_id"], description: "realm moments" },
+  { table: "campus_memories", columns: ["user_id"], description: "campus memories" },
   { table: "qr_scans", columns: ["user_id"], description: "QR scans" },
   { table: "qr_suspicious_events", columns: ["user_id"], description: "QR suspicious events" },
 ];

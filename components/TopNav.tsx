@@ -71,10 +71,10 @@ export function TopNav({
             type="button"
             onClick={onOpenMenu}
             disabled={!character || !onOpenMenu}
-            className="cq-nav-icon-btn cq-top-nav-side flex h-10 w-10 items-center justify-center rounded-xl transition hover:bg-white/[0.08] hover:text-white active:scale-95 disabled:opacity-40 touch-manipulation"
+            className="cq-nav-icon-btn cq-top-nav-side flex h-[52px] w-[52px] items-center justify-center rounded-2xl transition hover:bg-white/[0.08] hover:text-white active:scale-90 disabled:opacity-40 touch-manipulation"
             aria-label="Open menu"
           >
-            <Menu className="h-[22px] w-[22px]" strokeWidth={2} />
+            <Menu className="h-[26px] w-[26px]" strokeWidth={2.1} />
           </button>
 
           <div className="cq-top-nav-brand">
@@ -89,22 +89,22 @@ export function TopNav({
             <button
               type="button"
               onClick={onOpenInbox}
-              className="cq-nav-icon-btn cq-top-nav-side relative flex h-10 w-10 items-center justify-center rounded-xl transition hover:bg-white/[0.08] hover:text-white active:scale-95 touch-manipulation"
+              className="cq-nav-icon-btn cq-top-nav-side relative flex h-[52px] w-[52px] items-center justify-center rounded-2xl transition hover:bg-white/[0.08] hover:text-white active:scale-90 touch-manipulation"
               aria-label={
                 (unreadNotificationCount ?? 0) > 0
                   ? `Inbox, ${Math.min(99, unreadNotificationCount ?? 0)} unread`
                   : "Inbox"
               }
             >
-              <MessageCircle className="h-[21px] w-[21px]" strokeWidth={2} />
+              <MessageCircle className="h-[25px] w-[25px]" strokeWidth={2.1} />
               {(unreadNotificationCount ?? 0) > 0 ? (
-                <span className="absolute right-1 top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
+                <span className="absolute right-1.5 top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
                   {Math.min(99, unreadNotificationCount ?? 0)}
                 </span>
               ) : null}
             </button>
           ) : (
-            <div className="cq-top-nav-side h-10 w-10 shrink-0" aria-hidden />
+            <div className="cq-top-nav-side h-[52px] w-[52px] shrink-0" aria-hidden />
           )}
         </div>
 

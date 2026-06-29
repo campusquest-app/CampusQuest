@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeBottomConcealPx,
-  computeTopOffset,
+  computeHeaderHideOffset,
 } from "@/lib/client/useScrollChrome";
 
 describe("useScrollChrome", () => {
@@ -29,30 +29,45 @@ describe("useScrollChrome", () => {
     expect(conceal).toBe(30);
   });
 
-  it("moves the header 1:1 with scroll delta", () => {
-    let offset = 0;
-    offset = computeTopOffset({ prevOffset: offset, delta: 10, scrollY: 100, maxOffset: 120 });
-    expect(offset).toBe(10);
-    offset = computeTopOffset({ prevOffset: offset, delta: 10, scrollY: 110, maxOffset: 120 });
-    expect(offset).toBe(20);
+  it("accumulates the hide offset gradually on downward scroll", () => {
+    expect(
+      computeHeaderHideOffset({ prevOffsetPx: 0, delta: 40, scrollY: 100, range: 140 }),
+    ).toBe(40);
   });
 
-  it("returns the header immediately on upward scroll", () => {
-    const offset = computeTopOffset({ prevOffset: 40, delta: -10, scrollY: 200, maxOffset: 120 });
-    expect(offset).toBe(30);
+  it("does not fully hide after only a tiny scroll", () => {
+    const offset = computeHeaderHideOffset({ prevOffsetPx: 0, delta: 12, scrollY: 30, range: 140 });
+    expect(offset).toBe(12);
+    expect(offset / 140).toBeLessThan(0.6);
   });
 
-  it("holds position when the scroll stops", () => {
-    const offset = computeTopOffset({ prevOffset: 55, delta: 0, scrollY: 300, maxOffset: 120 });
-    expect(offset).toBe(55);
+  it("caps the offset at the full range (fully hidden)", () => {
+    expect(
+      computeHeaderHideOffset({ prevOffsetPx: 130, delta: 40, scrollY: 400, range: 140 }),
+    ).toBe(140);
   });
 
-  it("clamps between fully visible and fully hidden", () => {
-    expect(computeTopOffset({ prevOffset: 115, delta: 30, scrollY: 400, maxOffset: 120 })).toBe(120);
-    expect(computeTopOffset({ prevOffset: 5, delta: -30, scrollY: 80, maxOffset: 120 })).toBe(0);
+  it("unwinds the offset on upward scroll", () => {
+    expect(
+      computeHeaderHideOffset({ prevOffsetPx: 100, delta: -30, scrollY: 300, range: 140 }),
+    ).toBe(70);
   });
 
-  it("fully reveals at the very top", () => {
-    expect(computeTopOffset({ prevOffset: 90, delta: 10, scrollY: 0, maxOffset: 120 })).toBe(0);
+  it("floors the offset at 0 when scrolling all the way up", () => {
+    expect(
+      computeHeaderHideOffset({ prevOffsetPx: 20, delta: -50, scrollY: 200, range: 140 }),
+    ).toBe(0);
+  });
+
+  it("holds the offset on scroll jitter", () => {
+    expect(
+      computeHeaderHideOffset({ prevOffsetPx: 80, delta: 1, scrollY: 300, range: 140 }),
+    ).toBe(80);
+  });
+
+  it("pins fully visible near the very top", () => {
+    expect(
+      computeHeaderHideOffset({ prevOffsetPx: 100, delta: 30, scrollY: 4, range: 140 }),
+    ).toBe(0);
   });
 });

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { AnimatePresence } from "framer-motion";
 import {
   getCharacter,
   logActivity,
@@ -18,6 +19,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 
 import type { Character } from "@/lib/types";
+import type { QuadPostXpReward } from "@/lib/quadPostXp";
 import { CharacterCard } from "./CharacterCard";
 import { CharacterGate } from "./CharacterGate";
 import { AuthScreen } from "./AuthScreen";
@@ -121,6 +123,9 @@ import { DashboardTabSwipeShell } from "@/components/mobile/DashboardTabSwipeShe
 import { type SwipeNavDirection } from "@/lib/client/mobileGestures";
 import { useDrawerSwipeGestures } from "@/lib/client/useDrawerSwipeGestures";
 import { useScrollChrome } from "@/lib/client/useScrollChrome";
+import { shouldShowBottomNav } from "@/lib/client/shouldShowBottomNav";
+import { useImmersiveScreenDepth } from "@/lib/client/nestedImmersiveScreen";
+import { useAppChromeLayout } from "@/lib/client/useAppChromeLayout";
 import { LogoutConfirmModal } from "@/components/LogoutConfirmModal";
 
 /** Load camera + CQ Scanner bundle only after the player taps CQ Scan (avoid mount/worker on cold start). */
@@ -482,6 +487,23 @@ export function Dashboard() {
     });
   }, []);
 
+  const handleQuadPostXpReward = useCallback(
+    (reward: QuadPostXpReward) => {
+      if (reward.awarded && reward.xpAmount > 0) {
+        playXpDing();
+        setGainToast({
+          xp: reward.xpAmount,
+          stats: {},
+          title: "Posted to The Quad",
+        });
+        window.setTimeout(() => setGainToast(null), 3800);
+      }
+      refreshAuthoritativeProfileInBackground();
+      scheduleStreakHydrationFromBackend();
+    },
+    [refreshAuthoritativeProfileInBackground, scheduleStreakHydrationFromBackend],
+  );
+
   const handleClientSessionMissing = useCallback(() => {
     clearStaleAuthClientState();
     clearSchoolVerificationSnapshot();
@@ -606,6 +628,15 @@ export function Dashboard() {
       : "other";
 
   const bottomNavSwipeActive: AppBottomNavTab | null = bottomNavActive === "other" ? null : bottomNavActive;
+
+  const immersiveScreenDepth = useImmersiveScreenDepth();
+  const showBottomNav = shouldShowBottomNav({
+    tab,
+    friendProfileOpen: friendView != null,
+    settingsDrawerOpen: sideMenuOpen && drawerSubPanel === "settings",
+    immersiveScreenDepth,
+  });
+  useAppChromeLayout(showBottomNav);
 
   const quadChromeSuppressed =
     qrScannerOpen ||
@@ -2071,6 +2102,7 @@ export function Dashboard() {
             unreadNotificationCount={unreadNotificationCount}
             chromeSuppressed={quadChromeSuppressed}
             canModeratePosts={moderationAdminNavVisible(pilotCampusState)}
+            onPostXpReward={handleQuadPostXpReward}
           />
         )}
 
@@ -2207,7 +2239,7 @@ export function Dashboard() {
       </DashboardTabSwipeShell>
       </div>
 
-      {character ? (
+      {character && showBottomNav ? (
         <button
           type="button"
           onClick={() => {
@@ -2224,21 +2256,26 @@ export function Dashboard() {
         </button>
       ) : null}
 
-      <AppBottomNav
-        activeTab={bottomNavActive}
-        userAvatar={character?.avatar}
-        avatarLoading={!character}
-        unreadBadgeCount={unreadNotificationCount}
-        onOpenScanner={openQrScanner}
-        onSelectTab={(t) => {
-          setTab(t);
-          if (t === "quad") setQuadFeedTab("public");
-          if (t === "character") {
-            setCharacterPane("profile");
-            setProfileTab("posts");
-          }
-        }}
-      />
+      <AnimatePresence>
+        {showBottomNav ? (
+          <AppBottomNav
+            key="cq-bottom-nav"
+            activeTab={bottomNavActive}
+            userAvatar={character?.avatar}
+            avatarLoading={!character}
+            unreadBadgeCount={unreadNotificationCount}
+            onOpenScanner={openQrScanner}
+            onSelectTab={(t) => {
+              setTab(t);
+              if (t === "quad") setQuadFeedTab("public");
+              if (t === "character") {
+                setCharacterPane("profile");
+                setProfileTab("posts");
+              }
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
 
       {dmWithOther && character && (
         <DirectMessageThread

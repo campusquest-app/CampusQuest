@@ -8,6 +8,7 @@ import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurfa
 import { getCommentsByNoteId } from "@/lib/feedStore";
 import { hydrateQuadPostCommentsSafe } from "@/lib/client/quadCommentsHydration";
 import { isPersistedQuadPostId } from "@/lib/quadFieldNote";
+import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 
 export function ProfilePostDetail({
   note,
@@ -45,6 +46,8 @@ export function ProfilePostDetail({
   const [commentsTick, setCommentsTick] = useState(0);
   void commentsTick;
   const loadedComments = getCommentsByNoteId(note.id);
+
+  useRegisterImmersiveScreen();
 
   useEffect(() => {
     const prev = document.body.style.overflow;

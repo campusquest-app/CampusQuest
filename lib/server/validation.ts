@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CAMPUS_LOCATION_KEYS } from "@/lib/campusLocations";
 import { REALM_LOCATION_IDS } from "@/lib/realm/locationGeo";
 import { ORGANIZATION_REQUEST_CATEGORIES } from "@/lib/organizationRequestCategories";
 import { passwordMeetsRequirements } from "@/lib/passwordRequirements";
@@ -734,6 +735,53 @@ export const realmMarkerPositionSchema = z.object({
 export const realmMarkerPositionsPatchSchema = z.object({
   positions: z.record(z.string(), realmMarkerPositionSchema),
 });
+
+const campusMemoryMediaUrlSchema = z.preprocess(
+  (val) => {
+    if (val === null || val === undefined) return undefined;
+    if (typeof val === "string" && val.trim() === "") return undefined;
+    return typeof val === "string" ? val.trim() : val;
+  },
+  z
+    .string()
+    .max(2048)
+    .refine((s) => !s.startsWith("data:"), "Upload media before creating a Memory.")
+    .refine((s) => /^https?:\/\//i.test(s), "mediaUrl must be an http(s) URL.")
+    .optional(),
+);
+
+export const campusMemoryMediaUploadSchema = z.object({
+  mediaDataUrl: z
+    .string()
+    .min(30, "mediaDataUrl is required.")
+    .max(6_000_000, "Media payload is too large.")
+    .refine((s) => s.trim().startsWith("data:image/"), "mediaDataUrl must be a data:image/ URL."),
+});
+
+export const createCampusMemorySchema = z
+  .object({
+    locationKey: z.enum(CAMPUS_LOCATION_KEYS),
+    locationName: z.string().trim().max(200).optional(),
+    eventId: uuidSchema.nullable().optional(),
+    mediaUrl: campusMemoryMediaUrlSchema,
+    mediaType: z.enum(["text", "image", "video"]).default("text"),
+    body: z.string().trim().max(500).optional(),
+    visibility: z.enum(["public", "friends", "campus"]).optional(),
+  })
+  .refine(
+    (data) =>
+      (data.mediaType === "text" && (data.body?.length ?? 0) > 0)
+      || ((data.mediaType === "image" || data.mediaType === "video") && typeof data.mediaUrl === "string"),
+    { message: "Add text or upload media for this Memory.", path: ["body"] },
+  );
+
+export const patchCampusMemorySchema = z
+  .object({
+    savedToProfile: z.boolean().optional(),
+  })
+  .refine((data) => data.savedToProfile !== undefined, {
+    message: "At least one field is required.",
+  });
 
 export async function readJson<T>(request: Request, schema: z.ZodSchema<T>): Promise<T> {
   const json = await request.json();
