@@ -11,6 +11,21 @@ import { createCampusMemory, uploadCampusMemoryImage } from "@/lib/client/campus
 const IS_DEV = process.env.NODE_ENV !== "production";
 const ACCEPT_ATTR = "image/jpeg,image/png,image/webp";
 
+/**
+ * Surface the real failure reason. The server now returns descriptive,
+ * client-safe messages (unsupported format, too large, bucket missing, RLS
+ * denied, etc.) and the upload/create clients preserve them, so we show the
+ * actual message instead of a blanket "upload failed".
+ */
+function resolveMemoryError(err: unknown): string {
+  if (err instanceof ImageCompressionError) return err.message;
+  if (err instanceof Error) {
+    const message = err.message.trim();
+    if (message) return message;
+  }
+  return "Could not post Memory. Please try again.";
+}
+
 export function AddCampusMemorySheet({
   defaultLocationId = "the-quad",
   onClose,
@@ -85,14 +100,18 @@ export function AddCampusMemorySheet({
       onCreated();
       onClose();
     } catch (err) {
-      if (IS_DEV) console.error("[cq][memory-create]", err);
-      if (err instanceof ImageCompressionError) {
-        setError(err.message);
-      } else if (imageFile) {
-        setError("Couldn't upload your photo. Please try again.");
-      } else {
-        setError(err instanceof Error ? err.message : "Could not post Memory.");
-      }
+      console.error("[cq][memory-create] failed", {
+        stage: imageFile ? "upload-or-create" : "create",
+        message: err instanceof Error ? err.message : String(err),
+        ...(err && typeof err === "object" && "status" in err
+          ? { status: (err as { status?: unknown }).status }
+          : {}),
+        ...(err && typeof err === "object" && "code" in err
+          ? { code: (err as { code?: unknown }).code }
+          : {}),
+        ...(IS_DEV && err instanceof Error && err.stack ? { stack: err.stack } : {}),
+      });
+      setError(resolveMemoryError(err));
     } finally {
       setSubmitting(false);
       setUploadProgress(null);

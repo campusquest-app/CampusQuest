@@ -54,17 +54,19 @@ export function uploadImageBlob<T = unknown>(args: {
         resolve(payload.data as T);
         return;
       }
-      if (IS_DEV) {
-        console.error("[cq][image-upload] failed", {
-          path: args.path,
-          status: xhr.status,
-          code: payload.error?.code,
-          message: payload.error?.message,
-        });
-      }
+      // Always log failures (no secrets in these fields); stack stays dev-only via the thrown error.
+      console.error("[cq][image-upload] failed", {
+        path: args.path,
+        status: xhr.status,
+        code: payload.error?.code,
+        message: payload.error?.message,
+      });
+      // Surface the server's descriptive, client-safe message so the UI shows the
+      // real reason (bucket missing, unsupported format, too large, etc.).
+      const serverMessage = payload.error?.message?.trim();
       reject(
         new ApiRequestError(
-          IS_DEV ? payload.error?.message ?? `Upload failed (${xhr.status}).` : friendly,
+          serverMessage || (IS_DEV ? `Upload failed (${xhr.status}).` : friendly),
           xhr.status || 500,
           payload.error?.code,
         ),

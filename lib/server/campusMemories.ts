@@ -26,11 +26,62 @@ function isMissingCampusMemoriesTableError(error: SupabaseErrorLike): boolean {
 }
 
 function logCampusMemoriesError(code: string, error: unknown) {
-  const err = error as SupabaseErrorLike;
+  const err = error as (SupabaseErrorLike & { details?: string | null; hint?: string | null }) | undefined;
+  const IS_DEV = process.env.NODE_ENV !== "production";
   console.error(
     `[campus-memories] ${code}`,
-    JSON.stringify({ code: err?.code ?? null, message: err?.message ?? String(error) }),
+    JSON.stringify({
+      code: err?.code ?? null,
+      message: err?.message ?? String(error),
+      details: err?.details ?? null,
+      hint: err?.hint ?? null,
+    }),
   );
+  if (IS_DEV && error instanceof Error && error.stack) {
+    console.error(`[campus-memories] ${code} stack`, error.stack);
+  }
+}
+
+/** Map a Postgres/PostgREST insert error to a descriptive, client-safe ApiError shape. */
+function classifyCampusMemoryInsertError(error: SupabaseErrorLike): {
+  status: number;
+  message: string;
+  code: string;
+} {
+  if (isMissingCampusMemoriesTableError(error)) {
+    return {
+      status: 503,
+      message: "Campus Memories aren't available yet. Please try again shortly.",
+      code: "CAMPUS_MEMORIES_TABLE_NOT_READY",
+    };
+  }
+  const pgCode = error?.code ?? "";
+  if (pgCode === "42501") {
+    return {
+      status: 403,
+      message: "You don't have permission to post this Memory.",
+      code: "CAMPUS_MEMORY_RLS_DENIED",
+    };
+  }
+  if (pgCode === "23503") {
+    return {
+      status: 400,
+      message: "That location or event is no longer available.",
+      code: "CAMPUS_MEMORY_FK_INVALID",
+    };
+  }
+  if (pgCode === "23502" || pgCode === "23514") {
+    return {
+      status: 400,
+      message: "Your Memory is missing a required field.",
+      code: "CAMPUS_MEMORY_CONSTRAINT",
+    };
+  }
+  return {
+    status: 500,
+    message: "Could not create campus Memory.",
+    code: "CAMPUS_MEMORY_CREATE_FAILED",
+  };
 }
 
 export type CampusMemoryMediaType = "text" | "image" | "video";
@@ -438,11 +489,14 @@ export async function createCampusMemory(args: {
     .single();
 
   if (error || !data) {
-    throw new ApiError(500, "Could not create campus Memory.", "CAMPUS_MEMORY_CREATE_FAILED");
+    logCampusMemoriesError("CAMPUS_MEMORY_CREATE_FAILED", error);
+    const { status, message, code } = classifyCampusMemoryInsertError(error);
+    throw new ApiError(status, message, code);
   }
 
   const mapped = mapCampusMemoryRow(data as CampusMemoryDbRow);
   if (!mapped) {
+    logCampusMemoriesError("CAMPUS_MEMORY_MAP_FAILED", error);
     throw new ApiError(500, "Could not map created Memory.", "CAMPUS_MEMORY_CREATE_FAILED");
   }
   return mapped;

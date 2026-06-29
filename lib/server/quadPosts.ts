@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/server/http";
 import { createAdminClient } from "@/lib/server/supabase";
+import { logPipelineFailure, logPipelineStep, readErrorCode } from "@/lib/server/pipelineLog";
 
 /**
  * Disambiguate quad_posts → profiles embed (post_likes also links both tables).
@@ -117,19 +118,47 @@ export async function uploadImageBufferToStorage(args: {
   mime: string;
   userId: string;
   folder?: string;
+  /** Pipeline label for structured logging (defaults to the bucket folder). */
+  pipeline?: string;
 }): Promise<string> {
+  const pipeline = args.pipeline ?? "memory-upload";
   const normalizedMime = args.mime.toLowerCase().replace("image/jpg", "image/jpeg");
+
   if (!ALLOWED_UPLOAD_MIME.has(args.mime.toLowerCase()) && !ALLOWED_UPLOAD_MIME.has(normalizedMime)) {
+    logPipelineFailure({
+      pipeline,
+      step: "validate-mime",
+      status: 400,
+      code: "IMAGE_FORMAT_UNSUPPORTED",
+      detail: { mime: args.mime },
+    });
     throw new ApiError(400, "Unsupported image format.", "IMAGE_FORMAT_UNSUPPORTED");
   }
   if (args.buffer.length === 0) {
+    logPipelineFailure({ pipeline, step: "validate-size", status: 400, code: "IMAGE_EMPTY" });
     throw new ApiError(400, "Image is empty.", "IMAGE_EMPTY");
   }
   if (args.buffer.length > MAX_UPLOAD_IMAGE_BYTES) {
-    throw new ApiError(413, "Image is too large.", "IMAGE_TOO_LARGE");
+    logPipelineFailure({
+      pipeline,
+      step: "validate-size",
+      status: 413,
+      code: "IMAGE_TOO_LARGE",
+      detail: { bytes: args.buffer.length, maxBytes: MAX_UPLOAD_IMAGE_BYTES },
+    });
+    throw new ApiError(413, "Image is too large (max 8 MB).", "IMAGE_TOO_LARGE");
+  }
+  logPipelineStep(pipeline, "validate-image", { bytes: args.buffer.length, mime: normalizedMime });
+
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch (error) {
+    // Missing service-role key etc. — server misconfiguration, surface clearly.
+    logPipelineFailure({ pipeline, step: "init-storage-client", status: 500, error });
+    throw error;
   }
 
-  const admin = createAdminClient();
   const ext = extensionForMime(normalizedMime);
   const folder = args.folder ?? "campus-memories";
   const storagePath = `${args.userId}/${folder}/${crypto.randomUUID()}.${ext}`;
@@ -142,11 +171,42 @@ export async function uploadImageBufferToStorage(args: {
     });
 
   if (uploadError) {
-    throw new ApiError(400, uploadError.message ?? "Image upload failed.", "IMAGE_UPLOAD_FAILED");
+    const msg = uploadError.message ?? "Image upload failed.";
+    const bucketMissing = /bucket not found|does not exist|no such bucket/i.test(msg);
+    const status = bucketMissing ? 500 : 502;
+    const code = bucketMissing ? "STORAGE_BUCKET_MISSING" : "IMAGE_UPLOAD_FAILED";
+    logPipelineFailure({
+      pipeline,
+      step: "storage-upload",
+      status,
+      code: readErrorCode(uploadError) ?? code,
+      error: uploadError,
+      detail: { bucket: QUAD_POST_IMAGES_BUCKET, storagePath },
+    });
+    throw new ApiError(
+      status,
+      bucketMissing
+        ? `Storage bucket "${QUAD_POST_IMAGES_BUCKET}" is not configured.`
+        : `Image upload failed: ${msg}`,
+      code,
+    );
   }
+  logPipelineStep(pipeline, "storage-upload", { bucket: QUAD_POST_IMAGES_BUCKET, storagePath });
 
   const { data: publicUrlData } = admin.storage.from(QUAD_POST_IMAGES_BUCKET).getPublicUrl(storagePath);
-  return publicUrlData.publicUrl;
+  const publicUrl = publicUrlData?.publicUrl?.trim();
+  if (!publicUrl) {
+    logPipelineFailure({
+      pipeline,
+      step: "public-url",
+      status: 500,
+      code: "IMAGE_PUBLIC_URL_FAILED",
+      detail: { storagePath },
+    });
+    throw new ApiError(500, "Uploaded image but could not resolve its public URL.", "IMAGE_PUBLIC_URL_FAILED");
+  }
+  logPipelineStep(pipeline, "public-url", { publicUrl });
+  return publicUrl;
 }
 
 export function logQuadPostError(stage: string, error: unknown, extra?: Record<string, unknown>) {
