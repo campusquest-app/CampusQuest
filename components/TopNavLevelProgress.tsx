@@ -10,6 +10,7 @@ import {
   formatTopNavStreakLine,
   resolveTopNavStreakStatus,
 } from "@/lib/streakMessaging";
+import { ScaledProgressBar } from "@/components/ui/ScaledProgressBar";
 
 export function TopNavLevelProgress({ character }: { character: Character }) {
   const prevXpRef = useRef(character.totalXP);
@@ -48,26 +49,24 @@ export function TopNavLevelProgress({ character }: { character: Character }) {
       aria-label={`Level ${level}, ${current} of ${needed} experience points toward next level. ${streakLine}`}
     >
       <div className="cq-nav-status-pill">
-        <span className="cq-nav-level-label font-display shrink-0">
+        <span className="cq-nav-level-label font-display shrink-0 cq-soft-breathe">
           <Sparkles className="cq-nav-level-icon h-[14px] w-[14px]" strokeWidth={2.4} aria-hidden />
           <span className="hidden sm:inline">Level {level}</span>
           <span className="sm:hidden">Lvl {level}</span>
         </span>
 
         <div className="cq-nav-bar-wrap">
-          <div className="cq-nav-level-track cq-nav-progress-bar">
-            <div
-              className={`cq-nav-level-fill ${xpPulse ? "cq-nav-level-fill--pulse" : ""}`}
-              style={{ width: `${pct}%` }}
-              role="progressbar"
-              aria-valuenow={current}
-              aria-valuemin={0}
-              aria-valuemax={needed}
-              aria-label={`${pct}% to next level`}
-            >
-              <span className="cq-nav-level-glint" aria-hidden />
-            </div>
-          </div>
+          <ScaledProgressBar
+            percent={pct}
+            trackClassName="cq-nav-level-track cq-nav-progress-bar"
+            fillClassName={`cq-nav-level-fill cq-nav-level-fill--live ${xpPulse ? "cq-nav-level-fill--pulse" : ""}`}
+            animationKey={`nav-xp:${character.id}:${totalXP}`}
+            durationMs={520}
+            shimmerAfterEnter={false}
+            sparkle
+          >
+            <span className="cq-nav-level-glint" aria-hidden />
+          </ScaledProgressBar>
           <span className="cq-nav-reward-text" aria-hidden>
             {remaining.toLocaleString()} XP to Level {level + 1}
           </span>

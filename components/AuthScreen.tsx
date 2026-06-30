@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { DEFAULT_POLICY_VERSION } from "@/lib/legal/policy";
 import { fetchMeSchoolVerification, SchoolVerificationHttpError } from "@/lib/client/dashboardApi";
+import { canAccessCampusFromSnapshot } from "@/lib/client/campusAccess";
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/client/apiSession";
 import { persistSupabaseSession } from "@/lib/client/supabaseSession";
 import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/agreementAccess";
@@ -17,6 +19,7 @@ import { resetMobileViewportScale } from "@/lib/client/modalViewportCleanup";
 import { AuthPasswordRequirementsAlert } from "@/components/auth/AuthPasswordRequirementsAlert";
 import { AuthPasswordRequirementsHints } from "@/components/auth/AuthPasswordRequirementsHints";
 import { PasswordInput } from "@/components/auth/PasswordInput";
+import { AuthModeSegment } from "@/components/auth/AuthModeSegment";
 import { CampusQuestLogo } from "@/components/CampusQuestLogo";
 import { passwordMeetsRequirements } from "@/lib/passwordRequirements";
 import {
@@ -70,22 +73,44 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<ApiRespon
   return payload;
 }
 
-function AuthHeader({ title, subtitle }: { title: string; subtitle: string }) {
+function AuthHeader() {
   return (
-    <div className="mb-8 flex flex-col items-center text-center">
-      <CampusQuestLogo variant="auth" priority className="mb-4" />
-      <h1 className="cq-auth-brand-title font-display">{title}</h1>
-      <p className="cq-auth-subtitle mt-2 max-w-[18rem]">{subtitle}</p>
+    <div className="cq-auth-header flex flex-col items-center text-center">
+      <CampusQuestLogo variant="auth" priority className="mb-3" />
+      <h1 className="cq-auth-brand-title font-display">CampusQuest</h1>
+      <p className="cq-auth-subtitle mt-2 max-w-[18rem]">Discover campus. Earn XP. Get involved.</p>
     </div>
   );
 }
 
+const AUTH_PANEL_VARIANTS = {
+  enter: (m: Mode) => ({ opacity: 0, x: m === "signup" ? 28 : -28 }),
+  center: { opacity: 1, x: 0 },
+  exit: (m: Mode) => ({ opacity: 0, x: m === "signup" ? -28 : 28 }),
+};
+
+function GoogleSignInButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="cq-auth-btn-secondary flex w-full items-center justify-center gap-2">
+      <svg aria-hidden viewBox="0 0 24 24" className="h-[18px] w-[18px]">
+        <path
+          fill="#EA4335"
+          d="M12 10.2v3.6h5.1c-.2 1.2-1.6 3.6-5.1 3.6-3.1 0-5.6-2.5-5.6-5.6s2.5-5.6 5.6-5.6c1.8 0 3 .8 3.7 1.4l2.5-2.4C16.9 3.6 14.7 2.6 12 2.6 6.9 2.6 2.6 6.9 2.6 12s4.3 9.4 9.4 9.4c5.4 0 9-3.8 9-9.2 0-.6-.1-1.1-.2-1.6H12z"
+        />
+      </svg>
+      Continue with Google
+    </button>
+  );
+}
+
 export function AuthScreen({ onComplete }: { onComplete: () => void }) {
-  const [mode, setMode] = useState<Mode>("signin");
+  const reduceMotion = useReducedMotion();
+  const [mode, setMode] = useState<Mode>("signup");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPasswordRequirementsError, setShowPasswordRequirementsError] = useState(false);
@@ -157,11 +182,9 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   }, []);
 
   async function checkSchoolVerification(accessToken: string) {
-    const { verification, moderationAdminAccess } = await fetchMeSchoolVerification(accessToken);
-    const campusOk =
-      moderationAdminAccess ||
-      (verification.status === "verified" && Boolean(verification.schoolDomain) && Boolean(verification.schoolName));
-    if (!campusOk) {
+    const snapshot = await fetchMeSchoolVerification(accessToken);
+    if (!canAccessCampusFromSnapshot(snapshot)) {
+      const { verification } = snapshot;
       setSchoolVerificationBlock({
         requiredSchoolName: verification.requiredPilotSchoolName ?? "your school",
         requiredSchoolDomain: verification.requiredPilotDomain ?? null,
@@ -316,6 +339,10 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setError("Passwords do not match.");
       return;
     }
+    if (!acceptedTerms) {
+      setError("Please accept the Terms of Service and Privacy Policy to continue.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -409,6 +436,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   }
 
   function switchMode(next: Mode) {
+    if (next === mode) return;
     setMode(next);
     setError(null);
     setShowPasswordRequirementsError(false);
@@ -416,6 +444,10 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     setSuccessBanner(null);
     setPassword("");
     setConfirmPassword("");
+  }
+
+  function handleGooglePlaceholder() {
+    setNotice("Google sign-in is coming soon.");
   }
 
   if (needsConsent) {
@@ -460,190 +492,213 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   }
 
   return (
-    <div className="cq-auth-shell min-h-screen flex flex-col items-center justify-center px-5 py-10">
-      <div className="cq-auth-inner cq-auth-enter">
-        {mode === "signin" ? (
-          <>
-            <AuthHeader
-              title="CampusQuest"
-              subtitle="Discover campus. Earn XP. Get involved."
-            />
-            <form onSubmit={handleSignIn} className="space-y-4">
-              <div>
-                <label htmlFor="auth-email-signin" className="cq-auth-label">
-                  Email Address
-                </label>
-                <input
-                  id="auth-email-signin"
-                  type="email"
-                  autoComplete="username email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@uri.edu"
-                  className="cq-auth-input"
-                />
-              </div>
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <label htmlFor="auth-password-signin" className="cq-auth-label mb-0">
-                    Password
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => void handleResetPassword()}
-                    disabled={isResettingPassword}
-                    className="cq-auth-link text-[11px]"
-                  >
-                    {isResettingPassword ? "Sending..." : "Forgot Password?"}
-                  </button>
-                </div>
-                <PasswordInput
-                  id="auth-password-signin"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </div>
-              <label className="flex items-center gap-2.5 text-sm text-white/55">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-4 w-4 rounded border-white/25 bg-white/10 accent-sky-400"
-                />
-                Remember Me
-              </label>
-              {error ? <p className="cq-auth-error">{error}</p> : null}
-              {successBanner ? <p className="cq-auth-success">{successBanner}</p> : null}
-              {notice ? <p className="cq-auth-notice">{notice}</p> : null}
-              <button type="submit" disabled={isSubmitting} className="cq-auth-btn-primary w-full">
-                {isSubmitting ? "Signing In..." : "Sign In"}
-              </button>
-              <div className="cq-auth-divider py-1">OR</div>
-              <button
-                type="button"
-                onClick={() => setNotice("Google sign-in is coming soon.")}
-                className="cq-auth-btn-secondary flex w-full items-center justify-center gap-2"
+    <div className="cq-auth-shell min-h-[100dvh] flex flex-col items-center px-5 py-6">
+      <div className="cq-auth-inner cq-auth-enter w-full">
+        <AuthHeader />
+        <AuthModeSegment mode={mode} onChange={switchMode} />
+
+        <div className="cq-auth-form-stage">
+          <AnimatePresence mode="wait" initial={false} custom={mode}>
+            {mode === "signin" ? (
+              <motion.div
+                key="signin"
+                custom="signin"
+                role="tabpanel"
+                id="auth-panel-signin"
+                aria-labelledby="auth-tab-signin"
+                className="cq-auth-form-panel"
+                variants={AUTH_PANEL_VARIANTS}
+                initial={reduceMotion ? false : "enter"}
+                animate="center"
+                exit={reduceMotion ? undefined : "exit"}
+                transition={{ type: "spring", stiffness: 380, damping: 34 }}
               >
-                <svg aria-hidden viewBox="0 0 24 24" className="h-[18px] w-[18px]">
-                  <path
-                    fill="#EA4335"
-                    d="M12 10.2v3.6h5.1c-.2 1.2-1.6 3.6-5.1 3.6-3.1 0-5.6-2.5-5.6-5.6s2.5-5.6 5.6-5.6c1.8 0 3 .8 3.7 1.4l2.5-2.4C16.9 3.6 14.7 2.6 12 2.6 6.9 2.6 2.6 6.9 2.6 12s4.3 9.4 9.4 9.4c5.4 0 9-3.8 9-9.2 0-.6-.1-1.1-.2-1.6H12z"
-                  />
-                </svg>
-                Continue with Google
-              </button>
-              <p className="cq-auth-trust pt-1">Secure sign-in · Email verification supported</p>
-              {error?.includes("confirm") || notice?.includes("Confirmation") ? (
-                <button
-                  type="button"
-                  onClick={() => void handleResendConfirmation()}
-                  disabled={isResendingConfirmation}
-                  className="cq-auth-link w-full text-center"
-                >
-                  {isResendingConfirmation ? "Sending..." : "Resend verification email"}
-                </button>
-              ) : null}
-            </form>
-            <p className="mt-8 text-center text-sm text-white/50">
-              Don&apos;t have an account?{" "}
-              <button type="button" onClick={() => switchMode("signup")} className="cq-auth-link">
-                Sign Up
-              </button>
-            </p>
-          </>
-        ) : (
-          <>
-            <AuthHeader title="Join CampusQuest" subtitle="Start your journey and level up your college experience." />
-            <form onSubmit={handleSignUp} className="space-y-4">
-              <div>
-                <label htmlFor="auth-email-signup" className="cq-auth-label">
-                  URI Email
-                </label>
-                <input
-                  id="auth-email-signup"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@uri.edu"
-                  className="cq-auth-input"
-                />
-              </div>
-              <div>
-                <label htmlFor="auth-username-signup" className="cq-auth-label">
-                  Username
-                </label>
-                <input
-                  id="auth-username-signup"
-                  type="text"
-                  autoComplete="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                  placeholder="your_username"
-                  className="cq-auth-input"
-                />
-              </div>
-              <div>
-                <label htmlFor="auth-password-signup" className="cq-auth-label">
-                  Password
-                </label>
-                <PasswordInput
-                  id="auth-password-signup"
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (showPasswordRequirementsError) setShowPasswordRequirementsError(false);
-                  }}
-                  placeholder="••••••••"
-                  aria-invalid={showPasswordRequirementsError}
-                  aria-describedby="auth-password-requirements"
-                />
-                <div id="auth-password-requirements">
-                  <AuthPasswordRequirementsHints password={password} />
-                </div>
-              </div>
-              <div>
-                <label htmlFor="auth-confirm-password" className="cq-auth-label">
-                  Confirm Password
-                </label>
-                <PasswordInput
-                  id="auth-confirm-password"
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </div>
-              {showPasswordRequirementsError ? <AuthPasswordRequirementsAlert /> : null}
-              {error ? <p className="cq-auth-error">{error}</p> : null}
-              {successBanner ? <p className="cq-auth-success">{successBanner}</p> : null}
-              {notice ? <p className="cq-auth-notice">{notice}</p> : null}
-              <button type="submit" disabled={isSubmitting} className="cq-auth-btn-primary w-full">
-                {isSubmitting ? "Creating Account..." : "Create Account"}
-              </button>
-              <p className="cq-auth-legal">
-                By creating an account, you agree to our{" "}
-                <Link href="/legal/terms" className="cq-auth-link">
-                  Terms of Service
-                </Link>{" "}
-                and{" "}
-                <Link href="/legal/privacy" className="cq-auth-link">
-                  Privacy Policy
-                </Link>
-                .
-              </p>
-            </form>
-            <p className="mt-8 text-center text-sm text-white/50">
-              Already have an account?{" "}
-              <button type="button" onClick={() => switchMode("signin")} className="cq-auth-link">
-                Sign In
-              </button>
-            </p>
-          </>
-        )}
+                <form onSubmit={handleSignIn} className="space-y-4">
+                  <div>
+                    <label htmlFor="auth-email-signin" className="cq-auth-label">
+                      Email Address
+                    </label>
+                    <input
+                      id="auth-email-signin"
+                      type="email"
+                      autoComplete="username email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@uri.edu"
+                      className="cq-auth-input"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <label htmlFor="auth-password-signin" className="cq-auth-label mb-0">
+                        Password
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void handleResetPassword()}
+                        disabled={isResettingPassword}
+                        className="cq-auth-link text-[11px]"
+                      >
+                        {isResettingPassword ? "Sending..." : "Forgot Password?"}
+                      </button>
+                    </div>
+                    <PasswordInput
+                      id="auth-password-signin"
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2.5 text-sm text-white/55">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="h-4 w-4 rounded border-white/25 bg-white/10 accent-sky-400"
+                    />
+                    Remember Me
+                  </label>
+                  {error ? <p className="cq-auth-error">{error}</p> : null}
+                  {successBanner ? <p className="cq-auth-success">{successBanner}</p> : null}
+                  {notice ? <p className="cq-auth-notice">{notice}</p> : null}
+                  <button type="submit" disabled={isSubmitting} className="cq-auth-btn-primary w-full">
+                    {isSubmitting ? "Signing In..." : "Sign In"}
+                  </button>
+                  <div className="cq-auth-divider py-1">OR</div>
+                  <GoogleSignInButton onClick={handleGooglePlaceholder} />
+                  <p className="cq-auth-trust pt-1">Secure sign-in · Email verification supported</p>
+                  {error?.includes("confirm") || notice?.includes("Confirmation") ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleResendConfirmation()}
+                      disabled={isResendingConfirmation}
+                      className="cq-auth-link w-full text-center"
+                    >
+                      {isResendingConfirmation ? "Sending..." : "Resend verification email"}
+                    </button>
+                  ) : null}
+                </form>
+                <p className="cq-auth-switch-row">
+                  Don&apos;t have an account?{" "}
+                  <button type="button" onClick={() => switchMode("signup")} className="cq-auth-link">
+                    Sign Up
+                  </button>
+                </p>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="signup"
+                custom="signup"
+                role="tabpanel"
+                id="auth-panel-signup"
+                aria-labelledby="auth-tab-signup"
+                className="cq-auth-form-panel"
+                variants={AUTH_PANEL_VARIANTS}
+                initial={reduceMotion ? false : "enter"}
+                animate="center"
+                exit={reduceMotion ? undefined : "exit"}
+                transition={{ type: "spring", stiffness: 380, damping: 34 }}
+              >
+                <form onSubmit={handleSignUp} className="space-y-4">
+                  <div>
+                    <label htmlFor="auth-email-signup" className="cq-auth-label">
+                      Email Address
+                    </label>
+                    <input
+                      id="auth-email-signup"
+                      type="email"
+                      autoComplete="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@uri.edu"
+                      className="cq-auth-input"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="auth-password-signup" className="cq-auth-label">
+                      Password
+                    </label>
+                    <PasswordInput
+                      id="auth-password-signup"
+                      autoComplete="new-password"
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (showPasswordRequirementsError) setShowPasswordRequirementsError(false);
+                      }}
+                      placeholder="••••••••"
+                      aria-invalid={showPasswordRequirementsError}
+                      aria-describedby="auth-password-requirements"
+                    />
+                    <div id="auth-password-requirements">
+                      <AuthPasswordRequirementsHints password={password} />
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="auth-confirm-password" className="cq-auth-label">
+                      Confirm Password
+                    </label>
+                    <PasswordInput
+                      id="auth-confirm-password"
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="auth-username-signup" className="cq-auth-label">
+                      Username
+                    </label>
+                    <input
+                      id="auth-username-signup"
+                      type="text"
+                      autoComplete="username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                      placeholder="your_username"
+                      className="cq-auth-input"
+                    />
+                  </div>
+                  <label className="cq-auth-terms">
+                    <input
+                      type="checkbox"
+                      checked={acceptedTerms}
+                      onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    />
+                    <span>
+                      I agree to the{" "}
+                      <Link href="/legal/terms" className="cq-auth-link">
+                        Terms of Service
+                      </Link>{" "}
+                      and{" "}
+                      <Link href="/legal/privacy" className="cq-auth-link">
+                        Privacy Policy
+                      </Link>
+                      .
+                    </span>
+                  </label>
+                  {showPasswordRequirementsError ? <AuthPasswordRequirementsAlert /> : null}
+                  {error ? <p className="cq-auth-error">{error}</p> : null}
+                  {successBanner ? <p className="cq-auth-success">{successBanner}</p> : null}
+                  {notice ? <p className="cq-auth-notice">{notice}</p> : null}
+                  <button type="submit" disabled={isSubmitting} className="cq-auth-btn-primary w-full">
+                    {isSubmitting ? "Creating Account..." : "Create Account"}
+                  </button>
+                  <div className="cq-auth-divider py-1">OR</div>
+                  <GoogleSignInButton onClick={handleGooglePlaceholder} />
+                </form>
+                <p className="cq-auth-switch-row">
+                  Already have an account?{" "}
+                  <button type="button" onClick={() => switchMode("signin")} className="cq-auth-link">
+                    Sign In
+                  </button>
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );

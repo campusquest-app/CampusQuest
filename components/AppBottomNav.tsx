@@ -205,9 +205,10 @@ export function AppBottomNav({
             type="button"
             onClick={() => guardNav(onOpenScanner)}
             aria-label="Open CQ Scanner"
-            className="cq-dock-nav__scan-btn cq-scanner-fab touch-manipulation"
+            className="cq-dock-nav__scan-btn cq-scanner-fab cq-tap-press touch-manipulation"
           >
-            <span className="cq-dock-nav__scan-ring" aria-hidden />
+            <span className="cq-dock-nav__scan-ring cq-pulse-glow" aria-hidden />
+            <span className="cq-dock-nav__scan-ring cq-dock-nav__scan-ring--outer cq-pulse-glow" aria-hidden />
             <QrCode className="relative z-[1] h-[24px] w-[24px]" strokeWidth={2.2} />
           </button>
         </div>
@@ -267,9 +268,9 @@ const DockItem = forwardRef(function DockItem(
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       aria-label={label}
-      className={`cq-dock-nav__item touch-manipulation ${active ? "cq-dock-nav__item--active" : ""}`}
+      className={`cq-dock-nav__item touch-manipulation cq-tap-press ${active ? "cq-dock-nav__item--active" : ""}`}
     >
-      <span className="cq-dock-nav__icon-wrap">{icon}</span>
+      <span className={`cq-dock-nav__icon-wrap ${active ? "cq-nav-glow" : ""}`}>{icon}</span>
     </button>
   );
 });
@@ -303,9 +304,9 @@ const DockProfileItem = forwardRef(function DockProfileItem(
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       aria-label={active ? "Profile, current page" : "Profile"}
-      className={`cq-dock-nav__item cq-dock-nav__item--profile touch-manipulation ${active ? "cq-dock-nav__item--active" : ""}`}
+      className={`cq-dock-nav__item cq-dock-nav__item--profile touch-manipulation cq-tap-press ${active ? "cq-dock-nav__item--active" : ""}`}
     >
-      <span className={`cq-dock-nav__avatar ${active ? "cq-dock-nav__avatar--active" : ""}`}>
+      <span className={`cq-dock-nav__avatar ${active ? "cq-dock-nav__avatar--active cq-nav-glow" : ""}`}>
         {loading ? (
           <span className="cq-dock-nav__avatar-placeholder" aria-hidden />
         ) : useInitials ? (

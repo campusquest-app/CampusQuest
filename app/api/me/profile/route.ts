@@ -1,5 +1,5 @@
 import { ZodError } from "zod";
-import { userHasModerationAdminAccess } from "@/lib/server/adminAuth";
+import { resolveIsPlatformAdmin } from "@/lib/server/campusAccess";
 import { fail, ok, ApiError } from "@/lib/server/http";
 import {
   formatNextChangeDateLabel,
@@ -93,13 +93,9 @@ export async function PATCH(request: Request) {
     );
 
     const postCharacterOnboarding = Boolean(existing.onboarding_character_completed);
+    const isPlatformAdminUser = await resolveIsPlatformAdmin(auth.userClient, auth.user);
     const preserveIdentityTimestamps =
-      input.preserveIdentityCooldownTimestamps === true &&
-      userHasModerationAdminAccess({
-        email: auth.user.email,
-        email_confirmed_at: (auth.user as { email_confirmed_at?: string | null }).email_confirmed_at ?? null,
-        confirmed_at: (auth.user as { confirmed_at?: string | null }).confirmed_at ?? null,
-      });
+      input.preserveIdentityCooldownTimestamps === true && isPlatformAdminUser;
 
     const currentDisplayName = typeof existing.display_name === "string" ? existing.display_name : "";
     const currentUsername = typeof existing.username === "string" ? existing.username : "";

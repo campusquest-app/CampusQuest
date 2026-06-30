@@ -44,7 +44,7 @@ export function AchievementShowcaseModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl p-2 text-white/70 hover:bg-white/10 hover:text-white"
+            className="cq-tap-press rounded-xl p-2 text-white/70 hover:bg-white/10 hover:text-white"
             aria-label="Close"
           >
             ✕
@@ -84,7 +84,7 @@ export function AchievementShowcaseModal({
                   return (
                     <div
                       key={def.id}
-                      className={`rounded-xl border bg-gradient-to-b p-3 text-center ring-1 ${style.ring} ${style.bg} ${style.glow}`}
+                      className={`cq-soft-breathe rounded-xl border bg-gradient-to-b p-3 text-center ring-1 ${style.ring} ${style.bg} ${style.glow}`}
                     >
                       <AchievementBadgeArt def={def} character={character} size="lg" className="mx-auto" />
                       <p className={`mt-1 text-xs font-bold leading-tight ${style.text}`}>

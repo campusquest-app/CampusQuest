@@ -9,7 +9,9 @@ export type SchoolVerificationClientSnapshot = {
     requiredPilotDomain: string | null;
     requiredPilotSchoolName: string;
   };
-  moderationAdminAccess: boolean;
+  platformAdminAccess: boolean;
+  /** @deprecated Use platformAdminAccess */
+  moderationAdminAccess?: boolean;
 };
 
 const STORAGE_KEY = "cq_school_verification_v2";

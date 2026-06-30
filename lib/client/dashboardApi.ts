@@ -85,6 +85,7 @@ export class SchoolVerificationHttpError extends Error {
 
 type ApiSchoolPayload = {
   verification?: SchoolVerificationClientSnapshot["verification"];
+  platformAdminAccess?: boolean;
   moderationAdminAccess?: boolean;
   verified?: boolean;
   schoolName?: string | null;
@@ -93,7 +94,12 @@ type ApiSchoolPayload = {
   requiredSchoolName?: string;
 };
 
+function platformAdminFromPayload(data: ApiSchoolPayload): boolean {
+  return Boolean(data.platformAdminAccess ?? data.moderationAdminAccess);
+}
+
 function buildSnapshotFromApiPayload(data: ApiSchoolPayload): MeSchoolVerificationResponse | null {
+  const platformAdminAccess = platformAdminFromPayload(data);
   if (data.verification && typeof data.verification === "object") {
     const v = data.verification;
     if (v.status !== "pending" && v.status !== "verified") return null;
@@ -106,7 +112,8 @@ function buildSnapshotFromApiPayload(data: ApiSchoolPayload): MeSchoolVerificati
         requiredPilotDomain: v.requiredPilotDomain ?? null,
         requiredPilotSchoolName: v.requiredPilotSchoolName ?? "your school",
       },
-      moderationAdminAccess: Boolean(data.moderationAdminAccess),
+      platformAdminAccess,
+      moderationAdminAccess: platformAdminAccess,
     };
   }
 
@@ -122,7 +129,8 @@ function buildSnapshotFromApiPayload(data: ApiSchoolPayload): MeSchoolVerificati
         requiredPilotDomain: data.requiredDomain ?? null,
         requiredPilotSchoolName: requiredSchoolName,
       },
-      moderationAdminAccess: Boolean(data.moderationAdminAccess),
+      platformAdminAccess,
+      moderationAdminAccess: platformAdminAccess,
     };
   }
 
@@ -133,7 +141,7 @@ function logSchoolVerificationDev(payload: {
   statusCode: number;
   ok: boolean;
   parsed: boolean;
-  moderationAdminAccess: boolean;
+  platformAdminAccess: boolean;
   verified: boolean;
   error?: string;
 }) {
@@ -143,7 +151,7 @@ function logSchoolVerificationDev(payload: {
     statusCode: payload.statusCode,
     ok: payload.ok,
     responseParsed: payload.parsed,
-    moderationAdminAccess: payload.moderationAdminAccess,
+    platformAdminAccess: payload.platformAdminAccess,
     verified: payload.verified,
     ...(payload.error ? { error: payload.error } : {}),
   });
@@ -188,7 +196,7 @@ export async function fetchMeSchoolVerification(
       statusCode: response.status,
       ok: false,
       parsed: false,
-      moderationAdminAccess: false,
+      platformAdminAccess: false,
       verified: false,
       error: "json_parse_failed",
     });
@@ -202,7 +210,7 @@ export async function fetchMeSchoolVerification(
   }
 
   const data = payload.data;
-  const moderationAdminAccess = Boolean(data?.moderationAdminAccess);
+  const platformAdminAccess = platformAdminFromPayload(data ?? {});
   const verified = Boolean(data?.verified);
   const snapshot = data ? buildSnapshotFromApiPayload(data) : null;
 
@@ -210,7 +218,7 @@ export async function fetchMeSchoolVerification(
     statusCode: response.status,
     ok: response.ok && Boolean(snapshot),
     parsed: Boolean(data),
-    moderationAdminAccess,
+    platformAdminAccess,
     verified,
     ...(!response.ok || !snapshot ? { error: snapshot ? undefined : "missing_or_invalid_payload" } : {}),
   });

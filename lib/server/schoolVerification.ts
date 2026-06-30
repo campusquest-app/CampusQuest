@@ -1,5 +1,5 @@
-import { userHasModerationAdminAccess } from "@/lib/server/adminAuth";
 import { ApiError } from "@/lib/server/http";
+import { userIdHasPlatformAdminAccess, resolveIsPlatformAdmin } from "@/lib/server/campusAccess";
 import { extractEmailDomain, getPilotSchoolConfig } from "@/lib/server/pilotMode";
 import { createAdminClient } from "@/lib/server/supabase";
 
@@ -26,8 +26,8 @@ function isVerifiedEmailUser(user: { email_confirmed_at?: string | null; confirm
   return Boolean(user.email_confirmed_at ?? user.confirmed_at);
 }
 
-/** Pilot-aligned scope for moderation admins (eligible for campus APIs without `@uri.edu`). */
-export function syntheticPilotVerificationForModerationAdmin(): SchoolVerificationState {
+/** Pilot-aligned scope for platform admins (eligible for campus APIs without `@uri.edu`). */
+export function syntheticPilotVerificationForPlatformAdmin(): SchoolVerificationState {
   const pilot = getPilotSchoolConfig();
   return {
     status: "verified",
@@ -39,17 +39,8 @@ export function syntheticPilotVerificationForModerationAdmin(): SchoolVerificati
   };
 }
 
-async function userIdHasModerationAdminAccess(userId: string): Promise<boolean> {
-  const admin = createAdminClient();
-  const { data, error } = await admin.auth.admin.getUserById(userId);
-  if (error || !data.user) return false;
-  const u = data.user;
-  return userHasModerationAdminAccess({
-    email: u.email,
-    email_confirmed_at: u.email_confirmed_at,
-    confirmed_at: (u as { confirmed_at?: string | null }).confirmed_at,
-  });
-}
+/** @deprecated Use syntheticPilotVerificationForPlatformAdmin */
+export const syntheticPilotVerificationForModerationAdmin = syntheticPilotVerificationForPlatformAdmin;
 
 function mapRowToState(row: VerificationRow | null): SchoolVerificationState {
   const pilot = getPilotSchoolConfig();
@@ -112,8 +103,8 @@ export async function requireVerifiedSchoolForCoreAccess(args: {
   };
 }) {
   const { userClient, user } = args;
-  if (userHasModerationAdminAccess(user)) {
-    return syntheticPilotVerificationForModerationAdmin();
+  if (await resolveIsPlatformAdmin(userClient, user)) {
+    return syntheticPilotVerificationForPlatformAdmin();
   }
   const existing = await userClient
     .from("user_school_verifications")
@@ -144,8 +135,8 @@ export async function requireMatchingVerifiedSchool(args: {
 }) {
   const { userId, otherUserId } = args;
   const [initiatorIsAdmin, otherIsAdmin] = await Promise.all([
-    userIdHasModerationAdminAccess(userId),
-    userIdHasModerationAdminAccess(otherUserId),
+    userIdHasPlatformAdminAccess(userId),
+    userIdHasPlatformAdminAccess(otherUserId),
   ]);
   if (initiatorIsAdmin || otherIsAdmin) {
     return;

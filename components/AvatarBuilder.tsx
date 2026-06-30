@@ -215,8 +215,6 @@ export function AvatarBuilder({
         data={data}
         patchOptions={patchOptions}
         applyBg={applyBg}
-        onSeedChange={(seed) => commit({ ...cloneDice(data), seed })}
-        compact={compact}
         hideBackground
       />
     </div>
@@ -308,7 +306,7 @@ export function AvatarBuilder({
               style={{ width: `${xpPct}%` }}
             />
           </div>
-          <p className="text-[10px] text-white/40">Portrait powered by DiceBear · stored as style + seed + options.</p>
+          <p className="text-[10px] text-white/40">Portrait powered by DiceBear · stored as style + options.</p>
         </div>
       </div>
     </div>

@@ -115,15 +115,11 @@ export function DiceBearForgeControls({
   data,
   patchOptions,
   applyBg,
-  onSeedChange,
-  compact,
   hideBackground = false,
 }: {
   data: DiceBearAvatarV2;
   patchOptions: (partial: Record<string, unknown>) => void;
   applyBg: (backgroundColor: string[]) => void;
-  onSeedChange: (seed: string) => void;
-  compact: boolean;
   hideBackground?: boolean;
 }) {
   const st = data.style;
@@ -708,21 +704,6 @@ export function DiceBearForgeControls({
       {skinSection}
       {hairColorSection}
       {styleBlock}
-      {!compact ? (
-        <ForgeSection icon="🔮" title="Arcane seed" subtitle="Tweak the fate-string — tiny edits reshuffle the portrait">
-          <input
-            type="text"
-            value={data.seed}
-            onChange={(e) => onSeedChange(e.target.value || "campusquest")}
-            className="w-full rounded-lg border border-white/10 bg-uri-navy/80 px-3 py-2 text-xs text-white font-mono"
-            spellCheck={false}
-            autoComplete="off"
-          />
-          <p className="text-[10px] text-white/38 mt-1.5">
-            Randomize rolls a new seed and remixes features. Reset restores CampusQuest defaults.
-          </p>
-        </ForgeSection>
-      ) : null}
     </div>
   );
 }

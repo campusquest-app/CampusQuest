@@ -65,6 +65,11 @@ export function userHasPlatformAdminAccess(user: User, profileRole: ProfileRole)
   return userHasModerationAdminAccess(user);
 }
 
+/** Alias for campus-access and feature gates. */
+export function isPlatformAdmin(user: User, profileRole: ProfileRole): boolean {
+  return userHasPlatformAdminAccess(user, profileRole);
+}
+
 export function canManageQrCodes(profileRole: ProfileRole, user: User): boolean {
   return roleAtLeast(profileRole, "admin") || userHasModerationAdminAccess(user);
 }

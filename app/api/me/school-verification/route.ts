@@ -1,16 +1,17 @@
-import { userHasModerationAdminAccess } from "@/lib/server/adminAuth";
+import { canUserAccessCampusFeatures, resolveIsPlatformAdmin } from "@/lib/server/campusAccess";
 import { fail, ok } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
 import {
   ensureSchoolVerificationForUser,
-  syntheticPilotVerificationForModerationAdmin,
+  syntheticPilotVerificationForPlatformAdmin,
 } from "@/lib/server/schoolVerification";
 import type { SchoolVerificationState } from "@/lib/server/schoolVerification";
 import { requireAuthUser } from "@/lib/server/supabase";
 
 type MeSchoolVerificationPayload = {
-  /** Row-shaped verification (synthetic for moderation admins). */
   verification: SchoolVerificationState;
+  platformAdminAccess: boolean;
+  /** @deprecated Use platformAdminAccess — kept for older clients */
   moderationAdminAccess: boolean;
   verified: boolean;
   schoolName: string | null;
@@ -24,22 +25,25 @@ export async function GET(request: Request) {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:school-verification:get", limit: 30, windowMs: 60_000 });
 
-    const moderationAdminAccess = userHasModerationAdminAccess(auth.user);
+    const platformAdminAccess = await resolveIsPlatformAdmin(auth.userClient, auth.user);
 
-    const verification: SchoolVerificationState = moderationAdminAccess
-      ? syntheticPilotVerificationForModerationAdmin()
+    const verification: SchoolVerificationState = platformAdminAccess
+      ? syntheticPilotVerificationForPlatformAdmin()
       : await ensureSchoolVerificationForUser({
           userClient: auth.userClient as any,
           user: auth.user,
         });
 
-    const verified =
-      moderationAdminAccess ||
-      (verification.status === "verified" && Boolean(verification.schoolName) && Boolean(verification.schoolDomain));
+    const verified = canUserAccessCampusFeatures({
+      user: auth.user,
+      isPlatformAdmin: platformAdminAccess,
+      verification,
+    });
 
     const body: MeSchoolVerificationPayload = {
       verification,
-      moderationAdminAccess,
+      platformAdminAccess,
+      moderationAdminAccess: platformAdminAccess,
       verified,
       schoolName: verification.schoolName,
       schoolDomain: verification.schoolDomain,

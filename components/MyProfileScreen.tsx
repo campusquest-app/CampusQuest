@@ -57,6 +57,7 @@ export function MyProfileScreen({
   onRefresh,
   omitCharacterStatPanel = false,
   moderationAdminAccess = false,
+  platformAdminAccess,
   onViewFriend,
   onSharePost,
   activeProfileTab,
@@ -67,11 +68,14 @@ export function MyProfileScreen({
   onRefresh?: () => void;
   omitCharacterStatPanel?: boolean;
   moderationAdminAccess?: boolean;
+  /** Platform admin (DB role or moderation allow-list). */
+  platformAdminAccess?: boolean;
   onViewFriend?: (userId: string) => void;
   onSharePost?: (note: FieldNote) => void;
   activeProfileTab?: ProfileTab;
   onProfileTabChange?: (tab: ProfileTab) => void;
 }) {
+  const isPlatformAdminUser = platformAdminAccess ?? moderationAdminAccess;
   const [posts, setPosts] = useState<FieldNote[]>([]);
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
@@ -278,7 +282,7 @@ export function MyProfileScreen({
       setIdentityError("Both display name and username are on cooldown. Try again later.");
       return;
     }
-    if (repairPreserveCooldown && moderationAdminAccess) {
+    if (repairPreserveCooldown && isPlatformAdminUser) {
       body.preserveIdentityCooldownTimestamps = true;
     }
 
@@ -336,7 +340,7 @@ export function MyProfileScreen({
     character,
     identityNameDraft,
     identityUsernameDraft,
-    moderationAdminAccess,
+    isPlatformAdminUser,
     displayNameLocked,
     usernameFieldLocked,
     repairPreserveCooldown,
@@ -558,7 +562,7 @@ export function MyProfileScreen({
               Edit name & username
             </h2>
             <p className="text-xs text-cq-muted mb-3">
-              {moderationAdminAccess
+              {isPlatformAdminUser
                 ? "Admin: updates this profile using the same rules as student signup."
                 : "This is how your name and handle appear across campus."}
             </p>
@@ -636,7 +640,7 @@ export function MyProfileScreen({
             <p className="text-xs text-cq-muted mt-1.5">
               You’ll appear as @{identityUsernameNormalized || "username"} · 3–{USERNAME_MAX} chars, a–z, 0–9, _
             </p>
-            {moderationAdminAccess ? (
+            {isPlatformAdminUser ? (
               <label className="flex items-start gap-2 mt-4 text-xs text-cq-muted cursor-pointer">
                 <input
                   type="checkbox"

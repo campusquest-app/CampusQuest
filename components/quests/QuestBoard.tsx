@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
-import { Clock, Map, QrCode } from "lucide-react";
+import { Clock, ChevronLeft, Map, QrCode } from "lucide-react";
 import type { Character } from "@/lib/types";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { xpProgressInLevel } from "@/lib/level";
@@ -15,6 +15,7 @@ import { getAdventurerLabel } from "@/lib/questBoardEngine";
 import { queueQuestCelebration } from "@/lib/questBoardCelebration";
 import { DIFFICULTY_CSS } from "@/lib/questBoardStyles";
 import type { QuestDifficulty } from "@/lib/questBoardCatalog";
+import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 import { ApiRequestError } from "@/lib/client/dashboardApi";
 
 function QuestFilterNav({
@@ -230,7 +231,15 @@ function QuestCard({
   );
 }
 
-export function QuestBoard({ character, onRefresh }: { character: Character; onRefresh?: () => void }) {
+export function QuestBoard({
+  character,
+  onRefresh,
+  onBack,
+}: {
+  character: Character;
+  onRefresh?: () => void;
+  onBack?: () => void;
+}) {
   const [filter, setFilter] = useState<AdminQuestFilter>("all");
   const [localCharacter, setLocalCharacter] = useState(character);
   const [adminItems, setAdminItems] = useState<UserQuestBoardItem[]>([]);
@@ -329,14 +338,25 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
 
   const filterLabel = ADMIN_QUEST_FILTER_OPTIONS.find((f) => f.id === filter)?.label ?? "Quests";
 
-  return (
-    <PullToRefresh onRefresh={handlePullRefresh}>
-      <div className="cq-quest-board cq-tab-shell relative min-h-[60vh] overflow-hidden rounded-2xl">
-        <div className="cq-quest-board-bg pointer-events-none absolute inset-0" aria-hidden />
-        <div className="cq-quest-board-particles pointer-events-none absolute inset-0" aria-hidden />
+  const boardContent = (
+    <div className="cq-quest-board cq-tab-shell relative min-h-[60vh] overflow-hidden rounded-2xl">
+      <div className="cq-quest-board-bg pointer-events-none absolute inset-0" aria-hidden />
+      <div className="cq-quest-board-particles pointer-events-none absolute inset-0" aria-hidden />
 
-        <div className="relative z-[1] space-y-3 px-4 py-5 sm:px-6 sm:py-6">
-          <header className="cq-quest-board-header">
+      <div className="relative z-[1] space-y-3 px-4 py-5 sm:px-6 sm:py-6">
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="cq-quest-board-back touch-manipulation"
+            aria-label="Go back"
+          >
+            <ChevronLeft className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+            Back
+          </button>
+        ) : null}
+
+        <header className="cq-quest-board-header">
             <p className="cq-quest-eyebrow mb-2 font-display text-[11px] font-semibold uppercase tracking-[0.32em] text-uri-keaney/90">
               Guild Hall · Bounty Board
             </p>
@@ -394,6 +414,17 @@ export function QuestBoard({ character, onRefresh }: { character: Character; onR
           </p>
         </div>
       </div>
+  );
+
+  return (
+    <PullToRefresh onRefresh={handlePullRefresh}>
+      {onBack ? (
+        <MobileSwipeBackSurface onBack={onBack} className="block">
+          {boardContent}
+        </MobileSwipeBackSurface>
+      ) : (
+        boardContent
+      )}
     </PullToRefresh>
   );
 }

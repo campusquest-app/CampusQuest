@@ -105,6 +105,7 @@ import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } fro
 import { syncAchievementsAfterHydrate } from "@/lib/client/achievementHydration";
 import { subscribeAchievementFocus } from "@/lib/client/achievementFocus";
 import { clearSchoolVerificationSnapshot, peekSchoolVerificationSnapshot } from "@/lib/client/schoolVerificationCache";
+import { canAccessCampusFromSnapshot, snapshotPlatformAdminAccess } from "@/lib/client/campusAccess";
 import { SchoolVerificationScreen } from "@/components/SchoolVerificationScreen";
 import { dismissOnboardingTutorialOnServer } from "@/lib/client/dismissOnboardingTutorial";
 import { resetMobileViewportScale } from "@/lib/client/modalViewportCleanup";
@@ -155,13 +156,17 @@ type PilotCampusState =
   | { status: "ready"; snapshot: MeSchoolVerificationResponse };
 
 /** Whether to show internal admin links (moderation allow-list accounts). Uses live snapshot or cached school verification. */
-function moderationAdminNavVisible(pilotCampusState: PilotCampusState): boolean {
+function platformAdminNavVisible(pilotCampusState: PilotCampusState): boolean {
   if (pilotCampusState.status === "ready") {
-    return pilotCampusState.snapshot.moderationAdminAccess;
+    return snapshotPlatformAdminAccess(pilotCampusState.snapshot);
   }
   const token = getAccessToken();
-  return Boolean(token && peekSchoolVerificationSnapshot(token)?.moderationAdminAccess);
+  const peek = token ? peekSchoolVerificationSnapshot(token) : null;
+  return Boolean(peek && snapshotPlatformAdminAccess(peek));
 }
+
+/** @deprecated Use platformAdminNavVisible */
+const moderationAdminNavVisible = platformAdminNavVisible;
 
 type BootstrapStatus = "bootstrapping" | "unauthenticated" | "authenticated";
 
@@ -305,9 +310,7 @@ export function Dashboard() {
   }, [showMilestonePopupIfNeeded]);
 
   const pilotCampusFeaturesUnlocked = useCallback((snapshot: MeSchoolVerificationResponse) => {
-    if (snapshot.moderationAdminAccess) return true;
-    const v = snapshot.verification;
-    return v.status === "verified" && Boolean(v.schoolDomain) && Boolean(v.schoolName);
+    return canAccessCampusFromSnapshot(snapshot);
   }, []);
 
   const renderPilotCampusGate = useCallback(
@@ -356,21 +359,6 @@ export function Dashboard() {
             requiredSchoolName={snap.verification.requiredPilotSchoolName ?? "your school"}
             requiredSchoolDomain={snap.verification.requiredPilotDomain ?? null}
             currentDomain={snap.verification.schoolDomain ?? null}
-            supplementalContent={
-              snap.moderationAdminAccess ? (
-                <p>
-                  Verified staff accounts are campus-eligible automatically. Tools:{" "}
-                  <Link href="/internal/admin" className="font-semibold text-uri-keaney underline-offset-2 hover:underline">
-                    Internal Admin
-                  </Link>
-                  ,{" "}
-                  <Link href="/internal/moderation" className="font-semibold text-uri-keaney underline-offset-2 hover:underline">
-                    Moderation
-                  </Link>
-                  .
-                </p>
-              ) : undefined
-            }
           />
         );
       }
@@ -1480,12 +1468,12 @@ export function Dashboard() {
       ...(pilotCampusState.status === "ready"
         ? {
             verified: pilotCampusState.snapshot.verification.status === "verified",
-            moderationAdminAccess: pilotCampusState.snapshot.moderationAdminAccess,
+            platformAdminAccess: snapshotPlatformAdminAccess(pilotCampusState.snapshot),
           }
         : peekSnap
           ? {
               peekVerified: peekSnap.verification.status === "verified",
-              peekModerationAdminAccess: peekSnap.moderationAdminAccess,
+              peekPlatformAdminAccess: peekSnap ? snapshotPlatformAdminAccess(peekSnap) : false,
               peekUnlocksPilotTabs: pilotCampusFeaturesUnlocked(peekSnap),
             }
           : { peekPresent: false }),
@@ -2218,7 +2206,11 @@ export function Dashboard() {
         )}
 
         {tab === "quest-board" && (
-          <QuestBoard character={character} onRefresh={refreshAuthoritativeProfileInBackground} />
+          <QuestBoard
+            character={character}
+            onRefresh={refreshAuthoritativeProfileInBackground}
+            onBack={() => setTab("quad")}
+          />
         )}
 
         {tab === "manual-log" && character && (
@@ -2273,7 +2265,7 @@ export function Dashboard() {
                 onRefresh={refresh}
                 onViewFriend={openFriendView}
                 onSharePost={(note) => openSharePostFromNote(note, "quad")}
-                moderationAdminAccess={moderationAdminNavVisible(pilotCampusState)}
+                platformAdminAccess={platformAdminNavVisible(pilotCampusState)}
                 activeProfileTab={profileTab}
                 onProfileTabChange={setProfileTab}
               />

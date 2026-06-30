@@ -1,30 +1,22 @@
 import type { CharacterStats, StatKey } from "@/lib/types";
 import { STAT_KEYS } from "@/lib/types";
 
-/** Minimum bar width (%) for any non-zero stat so fills never look empty. */
-export const STAT_BAR_MIN_VISIBLE_PCT = 9;
+/** Fixed ceiling for Character-screen stat bar visualization (display only). */
+export const CHARACTER_STAT_BAR_MAX = 350;
 
 /**
  * Character-screen stat bar fill (visualization only).
- * Normalizes against the highest current stat so bars are comparable at a glance.
+ * Normalized against a fixed max so no stat appears full unless it reaches that ceiling.
  */
-export function getCharacterStatBarFillPercent(
-  value: number,
-  peerValues: readonly number[],
-): number {
+export function getCharacterStatBarFillPercent(value: number): number {
   if (value <= 0) return 0;
-  const positivePeers = peerValues.filter((peer) => peer > 0);
-  const peerMax = Math.max(1, ...positivePeers);
-  const relative = (value / peerMax) * 100;
-  return Math.min(100, Math.max(STAT_BAR_MIN_VISIBLE_PCT, relative));
+  return Math.min(100, (value / CHARACTER_STAT_BAR_MAX) * 100);
 }
 
 export function getCharacterStatBarFills(stats: CharacterStats): Record<StatKey, number> {
-  const values = STAT_KEYS.map((key) => stats[key] ?? 0);
   const fills = {} as Record<StatKey, number>;
-  for (let i = 0; i < STAT_KEYS.length; i += 1) {
-    const key = STAT_KEYS[i]!;
-    fills[key] = getCharacterStatBarFillPercent(values[i]!, values);
+  for (const key of STAT_KEYS) {
+    fills[key] = getCharacterStatBarFillPercent(stats[key] ?? 0);
   }
   return fills;
 }

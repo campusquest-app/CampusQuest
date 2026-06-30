@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { Character } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, MAX_STAT } from "@/lib/types";
-import { STAT_FILL_COLORS } from "@/lib/statAssets";
-import { getCharacterStatBarFills } from "@/lib/statBarDisplay";
+import { getCharacterStatBarFills, CHARACTER_STAT_BAR_MAX } from "@/lib/statBarDisplay";
 import { StatIcon } from "@/components/stats/StatIcon";
+import { CharacterStatBar } from "@/components/stats/CharacterStatBar";
+import { ScaledProgressBar } from "@/components/ui/ScaledProgressBar";
 import { xpProgressInLevel } from "@/lib/level";
 import { updateCharacter, prestigeStat } from "@/lib/store";
 import { registerLogoutPrepare } from "@/lib/client/logoutPrepare";
@@ -29,19 +30,12 @@ export function CharacterCard({
   readOnly?: boolean;
 }) {
   const [editingAvatar, setEditingAvatar] = useState(false);
-  const [statBarsReady, setStatBarsReady] = useState(false);
   const [editingAvatarValue, setEditingAvatarValue] = useState(character.avatar);
   const [showAchievementShowcase, setShowAchievementShowcase] = useState(false);
   const equippedTitle = getEquippedTitleLabel(character);
   const { current, needed } = xpProgressInLevel(character.totalXP);
   const xpPct = Math.min(100, (current / needed) * 100);
   const statBarFills = getCharacterStatBarFills(character.stats);
-
-  useEffect(() => {
-    setStatBarsReady(false);
-    const frame = window.requestAnimationFrame(() => setStatBarsReady(true));
-    return () => window.cancelAnimationFrame(frame);
-  }, [character.id, character.stats]);
 
   useEffect(() => {
     return registerLogoutPrepare(() => {
@@ -75,7 +69,7 @@ export function CharacterCard({
         <div className="flex items-start gap-4">
           <div className="relative flex-shrink-0">
             <div
-              className="character-avatar-frame cq-profile-avatar-shell flex h-[5.5rem] w-[5.5rem] shrink-0 items-center justify-center rounded-full p-[3px]"
+              className="character-avatar-frame cq-profile-avatar-shell cq-soft-breathe flex h-[5.5rem] w-[5.5rem] shrink-0 items-center justify-center rounded-full p-[3px]"
               aria-hidden
             >
               <div className="cq-profile-avatar-inner cq-profile-avatar-inner--header">
@@ -90,7 +84,7 @@ export function CharacterCard({
               </div>
             </div>
             <span
-              className="cq-profile-level-pip absolute -bottom-0.5 -right-0.5 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney px-1 text-[11px] font-bold leading-none text-white"
+              className="cq-profile-level-pip cq-soft-breathe absolute -bottom-0.5 -right-0.5 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney px-1 text-[11px] font-bold leading-none text-white"
               aria-hidden
             >
               {character.level}
@@ -215,12 +209,18 @@ export function CharacterCard({
             <span>{character.totalXP.toLocaleString()} XP</span>
             <span>Next level: {(needed - current).toLocaleString()} XP</span>
           </div>
-          <div className="xp-bar-track h-2 overflow-hidden rounded-full">
-            <div
-              className="xp-bar-fill xp-bar-fill-animated h-full rounded-full transition-all duration-700"
-              style={{ width: `${xpPct}%` }}
-            />
-          </div>
+          <ScaledProgressBar
+            percent={xpPct}
+            trackClassName="cq-character-xp-track"
+            fillClassName="cq-character-xp-fill"
+            animationKey={`${character.id}:${character.totalXP}`}
+            sparkle
+            role="progressbar"
+            aria-valuenow={current}
+            aria-valuemin={0}
+            aria-valuemax={needed}
+            aria-label={`${current} of ${needed} XP this level`}
+          />
           <p className="mt-1 text-[10px] tabular-nums text-white/45">
             {current.toLocaleString()} / {needed.toLocaleString()} XP this level
           </p>
@@ -232,7 +232,7 @@ export function CharacterCard({
           <button
             type="button"
             onClick={() => setShowAchievementShowcase(true)}
-            className="w-full rounded-xl border border-uri-gold/35 bg-uri-gold/10 px-4 py-2.5 text-sm font-semibold text-uri-gold transition hover:bg-uri-gold/15"
+            className="cq-achievement-cta cq-pulse-glow cq-tap-press w-full rounded-xl border border-uri-gold/35 bg-uri-gold/10 px-4 py-2.5 text-sm font-semibold text-uri-gold transition-colors hover:bg-uri-gold/15"
           >
             Achievement Showcase
           </button>
@@ -251,7 +251,7 @@ export function CharacterCard({
           <h2 className="text-xs font-semibold uppercase tracking-wider text-uri-keaney/90">Stats</h2>
         </div>
         <div className="grid gap-2.5">
-          {STAT_KEYS.map((key) => {
+          {STAT_KEYS.map((key, index) => {
             const value = character.stats[key] ?? 0;
             const pct = value >= MAX_STAT ? 100 : statBarFills[key];
             const atMax = value >= MAX_STAT;
@@ -273,8 +273,10 @@ export function CharacterCard({
                       )}
                     </span>
                     <span className="flex items-center gap-2">
-                      <span className={`font-mono font-semibold ${atMax ? "text-uri-gold" : "text-white"}`}>
-                        {value}{atMax && " ★"}
+                      <span className={`font-mono font-semibold tabular-nums ${atMax ? "text-uri-gold" : "text-white"}`}>
+                        {value}
+                        <span className="text-white/40"> / {CHARACTER_STAT_BAR_MAX}</span>
+                        {atMax && " ★"}
                       </span>
                       {atMax && onRefresh && !readOnly && (
                         <button
@@ -289,12 +291,13 @@ export function CharacterCard({
                       )}
                     </span>
                   </div>
-                  <div className="stat-bar-game h-3.5 overflow-hidden rounded-full">
-                    <div
-                      className={`stat-fill-game stat-fill-game--enter rounded-full ${atMax ? "bg-gradient-to-r from-uri-gold via-amber-400 to-uri-gold stat-fill-game--prestige" : STAT_FILL_COLORS[key]}`}
-                      style={{ width: statBarsReady ? `${pct}%` : "0%" }}
-                    />
-                  </div>
+                  <CharacterStatBar
+                    stat={key}
+                    fillPercent={pct}
+                    index={index}
+                    prestigeMax={atMax}
+                    animationKey={`${character.id}:${value}`}
+                  />
                 </div>
               </div>
             );
