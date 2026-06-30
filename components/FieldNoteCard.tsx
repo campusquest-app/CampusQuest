@@ -63,18 +63,18 @@ function ReactionButton({
         aria-pressed={active}
         aria-busy={pending}
         disabled={disabled || pending}
-        className={`cq-feed-reaction group inline-flex min-w-[2.25rem] items-center justify-center gap-1 rounded-lg px-1 py-1 transition-colors duration-150 active:scale-95 touch-manipulation disabled:cursor-not-allowed disabled:opacity-50 ${
-          active ? (fillWhenActive ? "text-violet-300" : "text-cyan-400") : "text-white/50 hover:text-white/70"
+        className={`cq-feed-reaction group inline-flex min-h-[44px] min-w-[2.5rem] items-center justify-center gap-0.5 rounded-lg px-1.5 py-2 transition-colors duration-150 active:scale-95 touch-manipulation disabled:cursor-not-allowed disabled:opacity-50 ${
+          active ? (fillWhenActive ? "text-violet-300" : "text-cyan-400") : "text-white/55 hover:text-white/80"
         } ${pulseClass ?? ""}`}
       >
         <Icon
-          className={`h-[19px] w-[19px] transition-colors duration-150 ${
+          className={`h-[22px] w-[22px] transition-colors duration-150 ${
             active && fillWhenActive ? "fill-violet-300/90" : ""
           }`}
-          strokeWidth={active ? 2.35 : 2}
+          strokeWidth={active ? 2.45 : 2.1}
         />
         {count != null && count > 0 ? (
-          <span className="min-w-[0.65rem] text-[11px] font-semibold tabular-nums leading-none text-white/60">
+          <span className="min-w-[0.65rem] text-[12px] font-semibold tabular-nums leading-none text-white/65">
             {count}
           </span>
         ) : null}

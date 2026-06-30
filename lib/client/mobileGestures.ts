@@ -77,6 +77,16 @@ export function isGlobalTabSwipeBlocked(): boolean {
   );
 }
 
+/** Root attribute set by full-screen overlays that must own all horizontal swipes
+ *  (e.g. the Memories viewer). While present, the global drawer/hamburger swipe is
+ *  suppressed so it can never open from underneath the overlay. */
+export const DRAWER_SWIPE_SUPPRESS_ATTR = "data-cq-drawer-swipe-suppressed";
+
+export function isDrawerSwipeSuppressed(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.documentElement.hasAttribute(DRAWER_SWIPE_SUPPRESS_ATTR);
+}
+
 export function shouldIgnoreDrawerSwipe(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
   return Boolean(target.closest(DRAWER_SWIPE_IGNORE_SELECTOR));

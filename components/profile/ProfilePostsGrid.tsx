@@ -82,7 +82,7 @@ export function ProfilePostsGrid({
             key={note.id}
             type="button"
             onClick={() => onSelectPost(note)}
-            className="cq-profile-post-tile group relative aspect-square overflow-hidden bg-cq-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-uri-keaney focus-visible:ring-offset-2"
+            className="cq-profile-post-tile cq-profile-press group relative aspect-square overflow-hidden bg-cq-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-uri-keaney focus-visible:ring-offset-2"
             aria-label={`View post from ${note.authorName}`}
           >
             {thumb ? (

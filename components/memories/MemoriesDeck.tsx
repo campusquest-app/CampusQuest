@@ -106,6 +106,7 @@ export function MemoriesDeck({
 
   const reduceMotion = useReducedMotion() ?? false;
   const dragX = useMotionValue(0);
+  const dragY = useMotionValue(0);
 
   const [memories, setMemories] = useState<CampusMemory[]>([]);
   const [index, setIndex] = useState(0);
@@ -117,18 +118,31 @@ export function MemoriesDeck({
   const stackRef = useRef<HTMLDivElement | null>(null);
   const widthRef = useRef(DEFAULT_CARD_W);
   const animRef = useRef<AnimationPlaybackControls | null>(null);
+  const dismissAnimRef = useRef<AnimationPlaybackControls | null>(null);
   const animatingRef = useRef(false);
+  const dismissingRef = useRef(false);
   const draggingRef = useRef(false);
   const pointerIdRef = useRef<number | null>(null);
+  const axisRef = useRef<"none" | "x" | "y">("none");
   const startXRef = useRef(0);
+  const startYRef = useRef(0);
   const lastXRef = useRef(0);
+  const lastYRef = useRef(0);
   const lastTRef = useRef(0);
   const velocityRef = useRef(0);
+  const velocityYRef = useRef(0);
+  const atFirstRef = useRef(true);
+  const viewportHRef = useRef(typeof window !== "undefined" ? window.innerHeight : 800);
 
   const len = memories.length;
   const safeIndex = len > 0 ? wrapIndex(index, len) : 0;
   const current = len > 0 ? memories[safeIndex] : null;
   const canSwipe = len > 1;
+  const atFirst = safeIndex === 0;
+
+  useEffect(() => {
+    atFirstRef.current = atFirst;
+  }, [atFirst]);
 
   const subtitle =
     mode === "location" && locationName
@@ -166,8 +180,12 @@ export function MemoriesDeck({
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    // Take exclusive control of horizontal swipes: suppress the global drawer/
+    // hamburger swipe so it can never open from underneath the viewer.
+    document.documentElement.setAttribute("data-cq-drawer-swipe-suppressed", "true");
     return () => {
       document.body.style.overflow = prev;
+      document.documentElement.removeAttribute("data-cq-drawer-swipe-suppressed");
     };
   }, []);
 
@@ -194,10 +212,23 @@ export function MemoriesDeck({
     return () => ro.disconnect();
   }, [loading, len]);
 
+  // ── Pull-to-dismiss transforms (vertical drag → scale + fade the viewer) ──
+  const dismissScale = useTransform(dragY, (v) => {
+    const f = clamp(v / viewportHRef.current, 0, 1);
+    return 1 - f * 0.06;
+  });
+  const dismissRadius = useTransform(dragY, (v) => {
+    if (reduceMotion) return 0;
+    const f = clamp(v / viewportHRef.current, 0, 1);
+    return 28 * f;
+  });
+  const dimOpacity = useTransform(dragY, (v) => clamp(1 - (v / viewportHRef.current) * 1.3, 0, 1));
+
   // ── Motion transforms (stable hooks, read live width via widthRef) ────────
-  // Active card only ever slides LEFT (forward). On backward swipes it stays put
-  // as the "floor" so the centre is always covered — no blank space appears.
-  const activeX = useTransform(dragX, (v) => Math.min(v, 0));
+  // Active card normally only slides LEFT (forward); on backward swipes it stays
+  // put as the "floor" so the centre is always covered. At the first memory we
+  // let it follow the finger RIGHT so swiping right reads as "exit the viewer".
+  const activeX = useTransform(dragX, (v) => (atFirstRef.current ? v : Math.min(v, 0)));
   const activeRotate = useTransform(dragX, (v) =>
     reduceMotion ? 0 : clamp((Math.min(v, 0) / widthRef.current) * 10, -10, 0),
   );
@@ -268,35 +299,124 @@ export function MemoriesDeck({
     [dragX, reduceMotion],
   );
 
-  // ── Pointer drag (manual so we can keep a covering "floor" card both ways) ──
+  // ── Dismiss (vertical pull-down, or swipe-right on the first memory) ───────
+  const dismissDown = useCallback(
+    (velocity = 0) => {
+      if (dismissingRef.current) return;
+      dismissingRef.current = true;
+      if (reduceMotion) {
+        onClose();
+        return;
+      }
+      dismissAnimRef.current = animate(dragY, viewportHRef.current, {
+        type: "spring",
+        velocity,
+        stiffness: 320,
+        damping: 40,
+        restDelta: 1,
+      });
+      dismissAnimRef.current.then(onClose);
+    },
+    [dragY, onClose, reduceMotion],
+  );
+
+  const springYBack = useCallback(
+    (velocity = 0) => {
+      if (reduceMotion) {
+        dragY.set(0);
+        return;
+      }
+      dismissAnimRef.current = animate(dragY, 0, {
+        type: "spring",
+        velocity,
+        stiffness: 420,
+        damping: 38,
+      });
+    },
+    [dragY, reduceMotion],
+  );
+
+  const dismissRight = useCallback(
+    (velocity = 0) => {
+      if (dismissingRef.current) return;
+      dismissingRef.current = true;
+      if (reduceMotion) {
+        onClose();
+        return;
+      }
+      animRef.current = animate(dragX, widthRef.current, {
+        type: "spring",
+        velocity,
+        stiffness: 320,
+        damping: 40,
+        restDelta: 1,
+      });
+      animRef.current.then(onClose);
+    },
+    [dragX, onClose, reduceMotion],
+  );
+
+  // ── Pointer drag (manual: axis-locked so horizontal navigates & vertical
+  //    dismisses, and so a covering "floor" card stays put in both directions) ──
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!canSwipe || animatingRef.current) return;
+      if (animatingRef.current || dismissingRef.current) return;
       const target = event.target as HTMLElement;
       if (target.closest("[data-cq-owner]")) return;
       animRef.current?.stop();
+      dismissAnimRef.current?.stop();
       draggingRef.current = true;
       pointerIdRef.current = event.pointerId;
+      axisRef.current = "none";
       stackRef.current?.setPointerCapture?.(event.pointerId);
       startXRef.current = event.clientX;
+      startYRef.current = event.clientY;
       lastXRef.current = event.clientX;
+      lastYRef.current = event.clientY;
       lastTRef.current = performance.now();
       velocityRef.current = 0;
+      velocityYRef.current = 0;
+      viewportHRef.current = window.innerHeight || viewportHRef.current;
     },
-    [canSwipe],
+    [],
   );
 
   const onPointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!draggingRef.current || event.pointerId !== pointerIdRef.current) return;
       const now = performance.now();
-      dragX.set(event.clientX - startXRef.current);
+      const dx = event.clientX - startXRef.current;
+      const dy = event.clientY - startYRef.current;
+
+      // Intent detection: ignore tiny jitters, then lock to a single axis so a
+      // memory change can never be mistaken for a dismiss (and vice-versa).
+      if (axisRef.current === "none") {
+        const adx = Math.abs(dx);
+        const ady = Math.abs(dy);
+        if (adx < 12 && ady < 12) return;
+        axisRef.current = ady > adx ? "y" : "x";
+      }
+
+      if (axisRef.current === "y") {
+        const dt = now - lastTRef.current;
+        if (dt > 0) velocityYRef.current = ((event.clientY - lastYRef.current) / dt) * 1000;
+        lastYRef.current = event.clientY;
+        lastTRef.current = now;
+        dragY.set(Math.max(0, dy)); // only downward dismisses
+        return;
+      }
+
+      // Horizontal: forward (left) only when there are more cards; backward
+      // (right) is always allowed so the first card can be swiped out to exit.
+      let nx = dx;
+      if (!canSwipe && nx < 0) nx = 0;
       const dt = now - lastTRef.current;
       if (dt > 0) velocityRef.current = ((event.clientX - lastXRef.current) / dt) * 1000;
       lastXRef.current = event.clientX;
       lastTRef.current = now;
+      dragX.set(nx);
     },
-    [dragX],
+    [canSwipe, dragX, dragY],
   );
 
   const onPointerUp = useCallback(
@@ -307,6 +427,22 @@ export function MemoriesDeck({
         stackRef.current?.releasePointerCapture?.(pointerIdRef.current);
       }
       pointerIdRef.current = null;
+      const axis = axisRef.current;
+      axisRef.current = "none";
+
+      if (axis === "y") {
+        const offsetY = dragY.get();
+        const velocityY = velocityYRef.current;
+        const threshold = viewportHRef.current * 0.22;
+        if (offsetY >= threshold || velocityY >= 900) dismissDown(velocityY);
+        else springYBack(velocityY);
+        return;
+      }
+
+      if (axis !== "x") {
+        cancelDrag();
+        return;
+      }
 
       const offset = dragX.get();
       const velocity = velocityRef.current;
@@ -316,10 +452,18 @@ export function MemoriesDeck({
       if (Math.abs(velocity) >= COMMIT_VELOCITY) direction = velocity < 0 ? "forward" : "backward";
       else if (Math.abs(offset) >= threshold) direction = offset < 0 ? "forward" : "backward";
 
+      if (direction === "backward" && atFirstRef.current) {
+        dismissRight(velocity); // swipe-right on first memory → exit viewer
+        return;
+      }
+      if (direction === "forward" && !canSwipe) {
+        cancelDrag(velocity);
+        return;
+      }
       if (direction) commit(direction, velocity);
       else cancelDrag(velocity);
     },
-    [cancelDrag, commit, dragX],
+    [canSwipe, cancelDrag, commit, dismissDown, dismissRight, dragX, dragY, springYBack],
   );
 
   // ── Reactions ───────────────────────────────────────────────────────────
@@ -404,6 +548,11 @@ export function MemoriesDeck({
       aria-label="Memories deck"
       data-cq-gesture-block="all"
     >
+      <motion.div className="cq-memories-deck-dim" style={{ opacity: dimOpacity }} aria-hidden />
+      <motion.div
+        className="cq-memories-deck-sheet"
+        style={{ y: dragY, scale: dismissScale, borderRadius: dismissRadius }}
+      >
       <header className="cq-memories-deck-head">
         <button type="button" className="cq-memories-deck-back" onClick={onClose} aria-label="Back">
           <ChevronLeft className="h-6 w-6" strokeWidth={2.2} />
@@ -498,7 +647,7 @@ export function MemoriesDeck({
               </motion.div>
             ) : null}
 
-            {len > 1 ? (
+            {len > 1 && !atFirst ? (
               <motion.div
                 className="cq-memories-deck-card"
                 style={{ x: prevX, rotate: prevRotate, opacity: prevOpacity, zIndex: 4 }}
@@ -549,6 +698,7 @@ export function MemoriesDeck({
           </button>
         </footer>
       ) : null}
+      </motion.div>
 
       {xpToast ? (
         <div className="cq-memories-deck-xp-toast" role="status" aria-live="polite">

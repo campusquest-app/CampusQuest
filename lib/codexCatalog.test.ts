@@ -43,13 +43,11 @@ describe("codexCatalog", () => {
     expect(mapLootRarityToCodex("legendary")).toBe("legendary");
   });
 
-  it("filters by rarity and source", () => {
+  it("filters by rarity", () => {
     const legendary = getCodexCatalog().find((e) => e.rarity === "legendary")!;
     expect(matchesCodexFilter(legendary, "legendary")).toBe(true);
     expect(matchesCodexFilter(legendary, "common")).toBe(false);
-
-    const location = getCodexCatalog().find((e) => e.source === "locations")!;
-    expect(matchesCodexFilter(location, "location")).toBe(true);
+    expect(matchesCodexFilter(legendary, null)).toBe(true);
   });
 });
 

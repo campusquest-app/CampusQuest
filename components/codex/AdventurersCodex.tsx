@@ -16,7 +16,7 @@ import { CodexCard } from "@/components/codex/CodexCard";
 import { CodexDetailSheet } from "@/components/codex/CodexDetailSheet";
 
 export function AdventurersCodex({ character }: { character: Character }) {
-  const [filter, setFilter] = useState<CodexFilter>("all");
+  const [filter, setFilter] = useState<CodexFilter | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const states = useMemo(() => buildCodexStates(character), [character]);
@@ -87,20 +87,16 @@ export function AdventurersCodex({ character }: { character: Character }) {
         </div>
       </header>
 
-      <div className="cq-codex-filters sticky top-0 z-10 border-y border-white/8 bg-uri-navy/95 px-3 py-2 backdrop-blur-md">
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="cq-codex-filters sticky top-0 z-10 border-y border-white/8 bg-uri-navy/95 px-4 py-2.5 backdrop-blur-md">
+        <div className="cq-codex-filters-track">
           {CODEX_FILTER_CHIPS.map((chip) => {
             const active = filter === chip.id;
             return (
               <button
                 key={chip.id}
                 type="button"
-                onClick={() => setFilter(chip.id)}
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition ${
-                  active
-                    ? "border-cyan-400/50 bg-cyan-500/20 text-cyan-100"
-                    : "border-white/12 bg-white/5 text-white/55 hover:text-white/80"
-                }`}
+                onClick={() => setFilter(active ? null : chip.id)}
+                className={`cq-codex-filter-chip ${active ? "cq-codex-filter-chip--active" : ""}`}
                 aria-pressed={active}
               >
                 {chip.label}

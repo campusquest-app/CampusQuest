@@ -90,7 +90,7 @@ export function TopNav({
             type="button"
             onClick={onOpenMenu}
             disabled={!character || !onOpenMenu}
-            className="cq-nav-icon-btn cq-top-nav-side flex h-[46px] w-[46px] items-center justify-center rounded-2xl transition hover:bg-white/[0.08] hover:text-white active:scale-90 disabled:opacity-40 touch-manipulation"
+            className="cq-nav-icon-btn cq-top-nav-side flex h-[44px] w-[44px] items-center justify-center rounded-2xl transition hover:bg-white/[0.08] hover:text-white active:scale-90 disabled:opacity-40 touch-manipulation"
             aria-label="Open menu"
           >
             <Menu className="h-[25px] w-[25px]" strokeWidth={2.1} />
@@ -132,7 +132,7 @@ export function TopNav({
             <button
               type="button"
               onClick={onOpenInbox}
-              className="cq-nav-icon-btn cq-top-nav-side relative flex h-[46px] w-[46px] items-center justify-center rounded-2xl transition hover:bg-white/[0.08] hover:text-white active:scale-90 touch-manipulation"
+              className="cq-nav-icon-btn cq-top-nav-side relative flex h-[44px] w-[44px] items-center justify-center rounded-2xl transition hover:bg-white/[0.08] hover:text-white active:scale-90 touch-manipulation"
               aria-label={
                 (unreadNotificationCount ?? 0) > 0
                   ? `Inbox, ${Math.min(99, unreadNotificationCount ?? 0)} unread`
@@ -147,7 +147,7 @@ export function TopNav({
               ) : null}
             </button>
           ) : (
-            <div className="cq-top-nav-side h-[46px] w-[46px] shrink-0" aria-hidden />
+            <div className="cq-top-nav-side h-[44px] w-[44px] shrink-0" aria-hidden />
           )}
         </div>
 

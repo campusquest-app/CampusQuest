@@ -47,26 +47,15 @@ export const CODEX_SOURCE_META: Record<CodexSource, { label: string; icon: strin
   seasonal: { label: "Seasonal", icon: "✨" },
 };
 
-export type CodexFilter =
-  | "all"
-  | CodexRarity
-  | "event"
-  | "location"
-  | "quest"
-  | "seasonal";
+/** Active Codex filter chip — rarity tiers only (no source/category filters). */
+export type CodexFilter = CodexRarity;
 
-export const CODEX_FILTER_CHIPS: { id: CodexFilter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "common", label: "Common" },
-  { id: "rare", label: "Rare" },
-  { id: "epic", label: "Epic" },
-  { id: "legendary", label: "Legendary" },
-  { id: "mythic", label: "Mythic" },
-  { id: "event", label: "Event" },
-  { id: "location", label: "Location" },
-  { id: "quest", label: "Quest" },
-  { id: "seasonal", label: "Seasonal" },
-];
+export const CODEX_FILTER_CHIPS: { id: CodexFilter; label: string }[] = CODEX_RARITY_ORDER.map(
+  (rarity) => ({
+    id: rarity,
+    label: CODEX_RARITY_LABELS[rarity],
+  }),
+);
 
 export type CodexEntry = {
   id: string;
@@ -249,11 +238,7 @@ export function getCodexEntryById(id: string): CodexEntry | undefined {
   return getCodexCatalog().find((e) => e.id === id);
 }
 
-export function matchesCodexFilter(entry: CodexEntry, filter: CodexFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "event") return entry.source === "events";
-  if (filter === "location") return entry.source === "locations";
-  if (filter === "quest") return entry.source === "quests" || entry.source === "boss_battles";
-  if (filter === "seasonal") return entry.source === "seasonal";
+export function matchesCodexFilter(entry: CodexEntry, filter: CodexFilter | null): boolean {
+  if (filter === null) return true;
   return entry.rarity === filter;
 }

@@ -10,7 +10,7 @@ import {
   DRAWER_VELOCITY_OPEN_PX_MS,
   getDrawerWidth,
 } from "@/lib/client/drawerGeometry";
-import { isInputFocused, readTouchMobileDevice, shouldIgnoreDrawerCloseSwipe, shouldIgnoreDrawerSwipe } from "@/lib/client/mobileGestures";
+import { isDrawerSwipeSuppressed, isInputFocused, readTouchMobileDevice, shouldIgnoreDrawerCloseSwipe, shouldIgnoreDrawerSwipe } from "@/lib/client/mobileGestures";
 
 export function useDrawerSwipeGestures({
   open,
@@ -122,6 +122,10 @@ export function useDrawerSwipeGestures({
       const touch = event.touches[0];
       const target = event.target;
       const drawerOpen = openRef.current;
+
+      // A full-screen overlay (e.g. the Memories viewer) owns all horizontal
+      // swipes while mounted — never let the drawer open from underneath it.
+      if (!drawerOpen && isDrawerSwipeSuppressed()) return;
 
       if (drawerOpen) {
         if (shouldIgnoreDrawerCloseSwipe(target)) return;

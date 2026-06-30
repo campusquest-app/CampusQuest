@@ -5,6 +5,8 @@ import type { Character, FieldNote } from "@/lib/types";
 import { getActivityLogs } from "@/lib/store";
 import { ProfileSocialHeader } from "./ProfileSocialHeader";
 import { ProfileStatsRow } from "./ProfileStatsRow";
+import { ProfileXpCard } from "./ProfileXpCard";
+import { ProfileActionButtons } from "./ProfileActionButtons";
 import { ProfileTabNav, type ProfileTab } from "./ProfileTabNav";
 import { ProfilePostsGrid } from "./ProfilePostsGrid";
 import { ProfilePostDetail } from "./ProfilePostDetail";
@@ -145,24 +147,6 @@ export function ProfileSocialPage({
         onOpenMenu={isOwner && (onEditIdentity || onEditBio || onLogout) ? () => setMenuOpen(true) : undefined}
       />
 
-      {!isOwner ? (
-        <div className="border-b border-white/10 px-3 py-2.5">
-          <ConnectionActionButton
-            otherUserId={character.id}
-            otherUsername={character.username}
-            onMessage={onOpenMessage}
-            onToast={(message) => {
-              setConnectionToast(message);
-              onConnectionChange?.();
-            }}
-            onStateChange={onConnectionChange}
-          />
-          {connectionToast ? (
-            <p className="mt-2 text-xs text-cyan-100/85">{connectionToast}</p>
-          ) : null}
-        </div>
-      ) : null}
-
       <ProfileStatsRow
         items={[
           { label: "Posts", value: displayPostCount },
@@ -187,9 +171,39 @@ export function ProfileSocialPage({
         ]}
       />
 
+      <ProfileXpCard character={character} />
+
+      {isOwner ? (
+        <ProfileActionButtons
+          character={character}
+          onEditProfile={onEditIdentity}
+          onOpenMenu={
+            onEditIdentity || onEditBio || onLogout ? () => setMenuOpen(true) : undefined
+          }
+        />
+      ) : (
+        <div className="cq-profile-connect px-4 py-3">
+          <ConnectionActionButton
+            otherUserId={character.id}
+            otherUsername={character.username}
+            onMessage={onOpenMessage}
+            onToast={(message) => {
+              setConnectionToast(message);
+              onConnectionChange?.();
+            }}
+            onStateChange={onConnectionChange}
+          />
+          {connectionToast ? (
+            <p className="mt-2 text-xs text-cyan-100/85">{connectionToast}</p>
+          ) : null}
+        </div>
+      )}
+
       {canViewPrivateContent ? (
-        <p className="border-b border-white/10 px-3 py-2 text-center text-[11px] tabular-nums text-cq-subtle">
-          {activitiesCount.toLocaleString()} {activitiesCount === 1 ? "Activity" : "Activities"} Completed
+        <p className="cq-profile-adventures">
+          <span aria-hidden>🏆</span>
+          <span className="tabular-nums">{activitiesCount.toLocaleString()}</span>{" "}
+          {activitiesCount === 1 ? "Adventure" : "Adventures"} Completed
         </p>
       ) : null}
 
