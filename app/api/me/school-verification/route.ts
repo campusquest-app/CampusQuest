@@ -1,4 +1,5 @@
-import { canUserAccessCampusFeatures, resolveIsPlatformAdmin } from "@/lib/server/campusAccess";
+import { canUserAccessCampusFeatures, logCampusAccessServerDev, resolveIsPlatformAdmin } from "@/lib/server/campusAccess";
+import { extractCampusEmailDomain } from "@/lib/campusAccess";
 import { fail, ok } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
 import {
@@ -38,6 +39,15 @@ export async function GET(request: Request) {
       user: auth.user,
       isPlatformAdmin: platformAdminAccess,
       verification,
+    });
+
+    logCampusAccessServerDev({
+      userId: auth.user.id,
+      emailDomain: extractCampusEmailDomain(auth.user.email),
+      isAdmin: platformAdminAccess,
+      isConfirmed: Boolean(auth.user.email_confirmed_at ?? (auth.user as { confirmed_at?: string | null }).confirmed_at),
+      verificationStatus: verification.status,
+      decision: verified ? "allow" : "campus_verification_required",
     });
 
     const body: MeSchoolVerificationPayload = {

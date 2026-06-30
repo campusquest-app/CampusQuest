@@ -3,6 +3,8 @@
  * Platform admins always bypass pilot school domain requirements.
  */
 
+import { normalizeEmail } from "@/lib/platformAdmin";
+
 export type CampusVerificationSnapshot = {
   status: "pending" | "verified";
   schoolName: string | null;
@@ -18,11 +20,10 @@ export function isEmailVerifiedForCampus(user: {
 }
 
 export function extractCampusEmailDomain(email: string | null | undefined): string | null {
-  if (!email) return null;
-  const atIndex = email.lastIndexOf("@");
-  if (atIndex <= 0 || atIndex >= email.length - 1) return null;
-  const domain = email.slice(atIndex + 1).trim().toLowerCase().replace(/^@+/, "");
-  return domain || null;
+  const normalized = normalizeEmail(email);
+  const atIndex = normalized.lastIndexOf("@");
+  if (atIndex <= 0 || atIndex >= normalized.length - 1) return null;
+  return normalized.slice(atIndex + 1);
 }
 
 export function emailMatchesPilotDomain(
@@ -38,7 +39,7 @@ export function emailMatchesPilotDomain(
 
 /**
  * Single gate for campus pilot features (Quad, orgs, events, map, etc.).
- * Platform admins bypass domain checks; students need verified pilot-school email.
+ * Admin check runs first; only non-admins are evaluated against campus email rules.
  */
 export function canAccessCampusFeatures(args: {
   isPlatformAdmin: boolean;
@@ -50,16 +51,17 @@ export function canAccessCampusFeatures(args: {
   if (args.isPlatformAdmin) return true;
 
   const verification = args.verification;
-  if (verification) {
-    return (
-      verification.status === "verified" &&
-      Boolean(verification.schoolDomain) &&
-      Boolean(verification.schoolName)
-    );
+  if (
+    verification?.status === "verified" &&
+    Boolean(verification.schoolDomain) &&
+    Boolean(verification.schoolName)
+  ) {
+    return true;
   }
 
-  return (
-    args.emailVerified &&
-    emailMatchesPilotDomain(args.email, args.pilotDomain ?? null)
-  );
+  const email = normalizeEmail(args.email);
+  const isConfirmed = args.emailVerified;
+  const isUriStudent = emailMatchesPilotDomain(email, args.pilotDomain ?? null);
+
+  return isConfirmed && isUriStudent;
 }

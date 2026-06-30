@@ -1,6 +1,7 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import {
   canAccessCampusFeatures,
+  extractCampusEmailDomain,
   isEmailVerifiedForCampus,
   type CampusVerificationSnapshot,
 } from "@/lib/campusAccess";
@@ -10,7 +11,12 @@ import { createAdminClient } from "@/lib/server/supabase";
 
 export { canAccessCampusFeatures, isEmailVerifiedForCampus } from "@/lib/campusAccess";
 
-/** Platform admin: profiles.role admin+ with confirmed email, or legacy moderation allow-list email. */
+export function logCampusAccessServerDev(payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production") return;
+  console.info("[cq] school-verification", payload);
+}
+
+/** Platform admin: profiles.role admin+ with confirmed email, moderation allow-list, or dev fallback emails. */
 export async function resolveIsPlatformAdmin(
   userClient: SupabaseClient,
   user: {
@@ -21,7 +27,14 @@ export async function resolveIsPlatformAdmin(
   },
 ): Promise<boolean> {
   const profileRole = await fetchProfileRole(userClient, user.id, { email: user.email });
-  return isPlatformAdmin(user as User, profileRole);
+  const isAdmin = isPlatformAdmin(user as User, profileRole);
+  logCampusAccessServerDev({
+    emailDomain: extractCampusEmailDomain(user.email),
+    profileRole,
+    isAdmin,
+    isConfirmed: isEmailVerifiedForCampus(user),
+  });
+  return isAdmin;
 }
 
 export async function userIdHasPlatformAdminAccess(userId: string): Promise<boolean> {

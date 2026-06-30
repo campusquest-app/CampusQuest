@@ -183,7 +183,8 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
 
   async function checkSchoolVerification(accessToken: string) {
     const snapshot = await fetchMeSchoolVerification(accessToken);
-    if (!canAccessCampusFromSnapshot(snapshot)) {
+    const allowed = canAccessCampusFromSnapshot(snapshot);
+    if (!allowed) {
       const { verification } = snapshot;
       setSchoolVerificationBlock({
         requiredSchoolName: verification.requiredPilotSchoolName ?? "your school",

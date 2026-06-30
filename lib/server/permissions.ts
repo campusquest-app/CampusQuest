@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { User } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/server/http";
-import { isAdminEmail, userHasModerationAdminAccess } from "@/lib/server/adminEmails";
+import { isAdminEmailFallback } from "@/lib/platformAdmin";
+import { isAdminEmail, isAuthEmailConfirmed, userHasModerationAdminAccess } from "@/lib/server/adminEmails";
 
 export type ProfileRole = "student" | "admin" | "super_admin";
 
@@ -28,6 +29,11 @@ function isMissingProfileRoleColumn(error: { message?: string; code?: string } |
 
 type ProfileRoleRow = { role?: string | null };
 
+function emailImpliesAdminRole(email?: string | null): boolean {
+  if (!email) return false;
+  return isAdminEmail(email) || isAdminEmailFallback(email);
+}
+
 /**
  * Reads profiles.role with safe fallbacks:
  * - null/unknown role → student
@@ -46,23 +52,25 @@ export async function fetchProfileRole(
 
   if (error) {
     if (isMissingProfileRoleColumn(error)) {
-      if (options?.email && isAdminEmail(options.email)) return "super_admin";
+      if (options?.email && emailImpliesAdminRole(options.email)) return "super_admin";
       return "student";
     }
     throw new ApiError(400, error.message, "PROFILE_ROLE_FETCH_FAILED");
   }
 
   const role = normalizeProfileRole((data as ProfileRoleRow | null)?.role);
-  if (role === "student" && options?.email && isAdminEmail(options.email)) {
+  if (role === "student" && options?.email && emailImpliesAdminRole(options.email)) {
     return "super_admin";
   }
   return role;
 }
 
-/** Platform admin: DB role or legacy moderation email allow-list. */
+/** Platform admin: DB role, moderation allow-list, or dev email fallback (confirmed email required for email paths). */
 export function userHasPlatformAdminAccess(user: User, profileRole: ProfileRole): boolean {
   if (roleAtLeast(profileRole, "admin")) return true;
-  return userHasModerationAdminAccess(user);
+  if (!isAuthEmailConfirmed(user)) return false;
+  if (userHasModerationAdminAccess(user)) return true;
+  return isAdminEmailFallback(user.email);
 }
 
 /** Alias for campus-access and feature gates. */
