@@ -10388,18 +10388,20 @@ html[data-realm-map-panning] {
   background: transparent;
 }
 
-.cq-profile-posts-grid {
+.cq-profile-posts-grid,
+.cq-profile-memories-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 3px;
+  gap: 2px;
   width: 100%;
-  padding: 3px;
+  padding: 0;
 }
 
-.cq-profile-post-tile {
+.cq-profile-post-tile,
+.cq-profile-memory-tile {
   aspect-ratio: 1 / 1;
   width: 100%;
-  border-radius: 6px;
+  border-radius: 2px;
   overflow: hidden;
 }
 
@@ -11708,6 +11710,41 @@ html[data-realm-map-panning] {
 
 .cq-dm-composer-icon:active {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.cq-dm-composer-mic--active {
+  animation: cq-dm-mic-pulse 1.1s ease-in-out infinite;
+}
+
+.cq-dm-voice-recording-pulse {
+  animation: cq-dm-mic-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes cq-dm-mic-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.85;
+  }
+}
+
+.cq-dm-audio-bubble {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cq-dm-audio-play:active {
+  transform: scale(0.94);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-dm-composer-mic--active,
+  .cq-dm-voice-recording-pulse {
+    animation: none;
+  }
 }
 
 .cq-dm-composer-send {
@@ -13283,13 +13320,21 @@ html[data-realm-map-panning] {
   align-items: center;
   justify-content: center;
   gap: 0.25rem;
-  padding: 0.85rem 0.25rem;
-  font-size: 0.6875rem;
+  padding: 0.85rem 0.125rem;
+  font-size: 0.625rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.45);
   transition: color 220ms ease, font-weight 220ms ease;
+}
+
+@media (min-width: 390px) {
+  .cq-profile-tab {
+    padding: 0.85rem 0.25rem;
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+  }
 }
 
 .cq-profile-tab:hover {

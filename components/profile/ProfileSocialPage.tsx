@@ -9,12 +9,12 @@ import { ProfileXpCard } from "./ProfileXpCard";
 import { ProfileActionButtons } from "./ProfileActionButtons";
 import { ProfileTabNav, type ProfileTab } from "./ProfileTabNav";
 import { ProfilePostsGrid } from "./ProfilePostsGrid";
+import { ProfileMemoriesGrid } from "./ProfileMemoriesGrid";
 import { ProfilePostDetail } from "./ProfilePostDetail";
 import { ProfileCollectiblesTab } from "./ProfileCollectiblesTab";
 import { ProfileActivityTab } from "./ProfileActivityTab";
 import { ProfileOwnerMenu } from "./ProfileOwnerMenu";
 import { ProfileLockedPanel } from "./ProfileLockedPanel";
-import { ProfileSavedMemoriesSection } from "@/components/memories/ProfileSavedMemoriesSection";
 import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
 import type { CampusMemoryGroup } from "@/lib/types";
 import { ConnectionActionButton } from "@/components/ConnectionActionButton";
@@ -222,24 +222,22 @@ export function ProfileSocialPage({
             ) : null}
 
             {tab === "posts" ? (
-              <>
-                {isOwner ? (
-                  <ProfileSavedMemoriesSection
-                    userId={character.id}
-                    onOpenMemory={(group, memoryId) => {
-                      setMemoryViewerGroup(group);
-                      setMemoryViewerInitialId(memoryId);
-                    }}
-                  />
-                ) : null}
-                <ProfilePostsGrid
-                  posts={posts}
-                  loading={postsLoading}
-                  error={postsError}
-                  onRetry={onRetryPosts}
-                  onSelectPost={setSelectedPost}
-                />
-              </>
+              <ProfilePostsGrid
+                posts={posts}
+                loading={postsLoading}
+                error={postsError}
+                onRetry={onRetryPosts}
+                onSelectPost={setSelectedPost}
+              />
+            ) : null}
+            {tab === "memories" ? (
+              <ProfileMemoriesGrid
+                userId={character.id}
+                onOpenMemory={(group, memoryId) => {
+                  setMemoryViewerGroup(group);
+                  setMemoryViewerInitialId(memoryId);
+                }}
+              />
             ) : null}
             {tab === "collectibles" ? <ProfileCollectiblesTab character={character} /> : null}
             {tab === "activity" ? <ProfileActivityTab character={character} /> : null}

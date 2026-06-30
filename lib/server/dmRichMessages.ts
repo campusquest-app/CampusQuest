@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/server/supabase";
 
 type SupabaseClientLike = ReturnType<typeof createAdminClient>;
 
-export type DirectMessageType = "text" | "image" | "shared_post";
+export type DirectMessageType = "text" | "image" | "shared_post" | "audio";
 export type SharedPostType = "quad" | "memory";
 
 export type SharedPostPreview = {
@@ -48,8 +48,11 @@ export type DirectMessageDto = {
 };
 
 const DM_IMAGES_BUCKET = "dm-images";
+const DM_AUDIO_BUCKET = "dm-audio";
 const DATA_IMAGE_RE = /^data:(image\/(?:jpeg|jpg|png|webp|gif));base64,(.+)$/i;
+const DATA_AUDIO_RE = /^data:(audio\/(?:webm|mp4|mpeg|ogg|wav)(?:;[^;]*)*);base64,(.+)$/i;
 const MAX_DM_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_DM_AUDIO_BYTES = 8 * 1024 * 1024;
 
 const MESSAGE_SELECT =
   "id, conversation_id, sender_id, recipient_id, content, type, image_url, shared_post_id, shared_post_type, metadata, created_at, read_at";
@@ -78,6 +81,9 @@ export function buildDirectMessagePreviewText(args: {
   const trimmed = args.content.trim();
   if (args.type === "image") {
     return trimmed && trimmed !== "📷 Photo" ? trimmed : "📷 Photo";
+  }
+  if (args.type === "audio") {
+    return trimmed && trimmed !== "🎤 Voice message" ? trimmed : "🎤 Voice message";
   }
   if (args.type === "shared_post") {
     return trimmed && trimmed !== "Shared a post" ? trimmed : "Shared a post";
@@ -193,6 +199,90 @@ export async function uploadDmImage(args: {
   const publicUrl = publicUrlData.publicUrl?.trim();
   if (!publicUrl) {
     throw new ApiError(500, "Could not resolve image URL.", "DM_IMAGE_URL_FAILED");
+  }
+  return publicUrl;
+}
+
+function extensionForAudioMime(mime: string): string {
+  const base = mime.toLowerCase().split(";")[0]!.trim();
+  switch (base) {
+    case "audio/webm":
+      return "webm";
+    case "audio/mp4":
+    case "audio/m4a":
+      return "m4a";
+    case "audio/mpeg":
+      return "mp3";
+    case "audio/ogg":
+      return "ogg";
+    case "audio/wav":
+      return "wav";
+    default:
+      return "webm";
+  }
+}
+
+export async function uploadDmAudio(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  conversationId: string;
+  audioDataUrl: string;
+}): Promise<string> {
+  const { userClient, userId, conversationId, audioDataUrl } = args;
+  const trimmed = audioDataUrl.trim();
+  if (!trimmed.startsWith("data:audio/")) {
+    throw new ApiError(400, "audioDataUrl must be a data:audio/ URL.", "DM_AUDIO_INVALID");
+  }
+
+  const match = DATA_AUDIO_RE.exec(trimmed);
+  if (!match) {
+    throw new ApiError(400, "Invalid audio format.", "DM_AUDIO_INVALID");
+  }
+
+  const mime = match[1].toLowerCase();
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(match[2], "base64");
+  } catch {
+    throw new ApiError(400, "Could not decode audio.", "DM_AUDIO_DECODE_FAILED");
+  }
+
+  if (buffer.length === 0) {
+    throw new ApiError(400, "Audio is empty.", "DM_AUDIO_EMPTY");
+  }
+  if (buffer.length > MAX_DM_AUDIO_BYTES) {
+    throw new ApiError(400, "Audio is too large (max 8 MB).", "DM_AUDIO_TOO_LARGE");
+  }
+
+  const { data: participant, error: participantError } = await userClient
+    .from("direct_conversation_participants")
+    .select("conversation_id")
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (participantError) {
+    throw new ApiError(400, participantError.message, "CONVERSATION_PARTICIPANT_CHECK_FAILED");
+  }
+  if (!participant) {
+    throw new ApiError(403, "Conversation access denied.", "CONVERSATION_FORBIDDEN");
+  }
+
+  const admin = createAdminClient();
+  const ext = extensionForAudioMime(mime);
+  const storagePath = `${conversationId}/${userId}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+
+  const { error: uploadError } = await admin.storage.from(DM_AUDIO_BUCKET).upload(storagePath, buffer, {
+    contentType: mime.split(";")[0],
+    upsert: false,
+  });
+  if (uploadError) {
+    throw new ApiError(400, uploadError.message, "DM_AUDIO_UPLOAD_FAILED");
+  }
+
+  const { data: publicUrlData } = admin.storage.from(DM_AUDIO_BUCKET).getPublicUrl(storagePath);
+  const publicUrl = publicUrlData.publicUrl?.trim();
+  if (!publicUrl) {
+    throw new ApiError(500, "Could not resolve audio URL.", "DM_AUDIO_URL_FAILED");
   }
   return publicUrl;
 }

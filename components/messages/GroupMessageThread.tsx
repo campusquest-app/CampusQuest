@@ -153,7 +153,8 @@ export function GroupMessageThread({
         imageDraft={null}
         onImageDraftChange={() => {}}
         onImageSend={() => {}}
-        onImageSendError={setError}
+        onAudioSend={() => {}}
+        onMediaError={setError}
         uploadProgress={0}
       />
     </MobileSwipeBackSurface>

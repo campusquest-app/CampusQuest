@@ -19,14 +19,20 @@ import {
 import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 import {
   sendRichDirectMessage,
+  uploadDmAudio,
   uploadDmImage,
+  readBlobAsDataUrl,
+  getDmAudioDurationSeconds,
   type DirectMessageDto,
+  type DmFailedRetryPayload,
 } from "@/lib/client/dmMessagesClient";
 import type { DmPendingImageDraft } from "@/lib/client/dmMediaComposer";
+import type { DmVoiceRecordingResult } from "@/lib/client/useDmVoiceRecorder";
 import { DmThreadComposer } from "@/components/messages/DmThreadComposer";
 import { DmMessageActionSheet, type DmMessageAction } from "@/components/messages/DmMessageActionSheet";
 import { fetchQuadPostById } from "@/lib/client/quadPostsClient";
 import { DmImageMessage } from "@/components/messages/DmImageMessage";
+import { DmAudioMessage } from "@/components/messages/DmAudioMessage";
 import { DmSharedPostCard } from "@/components/messages/DmSharedPostCard";
 import { ProfilePostDetail } from "@/components/profile/ProfilePostDetail";
 import { AvatarDisplay } from "./AvatarDisplay";
@@ -69,6 +75,7 @@ function DmMessageBubbleRow({
   onReveal,
   onOpenActions,
   onOpenSharedPost,
+  onRetryFailed,
 }: {
   m: DirectMessageDto;
   isMe: boolean;
@@ -78,6 +85,7 @@ function DmMessageBubbleRow({
   onReveal: (id: string) => void;
   onOpenActions: (id: string) => void;
   onOpenSharedPost: (preview: NonNullable<DirectMessageDto["sharedPostPreview"]>) => void;
+  onRetryFailed: (message: DirectMessageDto) => void;
 }) {
   const favorited = Boolean(m.isFavorited);
   const showCaption =
@@ -86,6 +94,7 @@ function DmMessageBubbleRow({
     (m.type === "shared_post" && m.content.trim() && m.content.trim() !== "Shared a post");
   const isSharedPost = m.type === "shared_post" && m.sharedPostPreview;
   const isImageOnly = m.type === "image" && m.imageUrl && !showCaption;
+  const isAudioOnly = m.type === "audio" && m.imageUrl;
 
   const bubbleClass = isMe ? "cq-dm-bubble cq-dm-bubble--sent" : "cq-dm-bubble cq-dm-bubble--received";
 
@@ -140,7 +149,7 @@ function DmMessageBubbleRow({
   const metaText = m.pending
     ? "Sending…"
     : m.failed
-      ? "Failed to send"
+      ? "Failed to send · Tap to retry"
       : isMe && isLatestOutgoing && m.readAt
         ? "Seen"
         : isMe && isLatestOutgoing
@@ -173,6 +182,16 @@ function DmMessageBubbleRow({
           <div className="cq-dm-bubble-enter overflow-hidden rounded-[1.25rem]">
             <DmImageMessage imageUrl={m.imageUrl!} pending={m.pending} uploadProgress={m.uploadProgress} />
           </div>
+        ) : isAudioOnly ? (
+          <div className="cq-dm-bubble-enter">
+            <DmAudioMessage
+              audioUrl={m.imageUrl!}
+              durationSeconds={getDmAudioDurationSeconds(m)}
+              pending={m.pending}
+              uploadProgress={m.uploadProgress}
+              isSent={isMe}
+            />
+          </div>
         ) : isSharedPost ? (
           <div className={`cq-dm-bubble-enter ${bubbleClass} p-1.5`}>
             <DmSharedPostCard preview={m.sharedPostPreview!} onOpen={() => onOpenSharedPost(m.sharedPostPreview!)} />
@@ -185,6 +204,17 @@ function DmMessageBubbleRow({
             {m.type === "image" && m.imageUrl ? (
               <div className="mb-2 -mx-1.5 overflow-hidden rounded-xl">
                 <DmImageMessage imageUrl={m.imageUrl} pending={m.pending} uploadProgress={m.uploadProgress} />
+              </div>
+            ) : null}
+            {m.type === "audio" && m.imageUrl ? (
+              <div className="mb-1">
+                <DmAudioMessage
+                  audioUrl={m.imageUrl}
+                  durationSeconds={getDmAudioDurationSeconds(m)}
+                  pending={m.pending}
+                  uploadProgress={m.uploadProgress}
+                  isSent={isMe}
+                />
               </div>
             ) : null}
             {showCaption ? (
@@ -200,7 +230,18 @@ function DmMessageBubbleRow({
         <p
           className={`cq-dm-meta basis-full text-[10px] ${
             isMe ? "text-right text-white/45" : "text-left text-white/40"
-          } ${m.failed ? "text-rose-300/80" : ""}`}
+          } ${m.failed ? "cursor-pointer text-rose-300/80" : ""}`}
+          onClick={() => {
+            if (m.failed) onRetryFailed(m);
+          }}
+          onKeyDown={(e) => {
+            if (m.failed && (e.key === "Enter" || e.key === " ")) {
+              e.preventDefault();
+              onRetryFailed(m);
+            }
+          }}
+          role={m.failed ? "button" : undefined}
+          tabIndex={m.failed ? 0 : undefined}
         >
           {metaText}
         </p>
@@ -499,7 +540,15 @@ export function DirectMessageThread({
       } catch (sendError) {
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === optimisticId ? { ...m, pending: false, failed: true, uploadProgress: 0 } : m,
+            m.id === optimisticId
+              ? {
+                  ...m,
+                  pending: false,
+                  failed: true,
+                  uploadProgress: 0,
+                  failedRetry: { kind: "image", draft, caption },
+                }
+              : m,
           ),
         );
         const message = sendError instanceof Error ? sendError.message : "Could not send photo.";
@@ -511,6 +560,138 @@ export function DirectMessageThread({
       }
     },
     [canMessage, conversationId, sending, currentUser.id, otherUser.userId, onMessageSent],
+  );
+
+  const handleAudioSend = useCallback(
+    async (recording: DmVoiceRecordingResult) => {
+      if (!canMessage || !conversationId || sending) return;
+
+      setMessages((prev) => prev.filter((m) => !m.failed));
+      setSending(true);
+      stickToBottomRef.current = true;
+      setUploadProgress(12);
+
+      const optimisticId = `pending-audio-${Date.now()}`;
+      const durationSeconds = Math.max(1, Math.round(recording.durationMs / 1000));
+      const displayContent = "🎤 Voice message";
+      const failedRetry: DmFailedRetryPayload = {
+        kind: "audio",
+        blob: recording.blob,
+        mimeType: recording.mimeType,
+        durationMs: recording.durationMs,
+        previewUrl: recording.previewUrl,
+      };
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: optimisticId,
+          conversationId,
+          senderId: currentUser.id,
+          recipientId: otherUser.userId,
+          type: "audio",
+          content: displayContent,
+          imageUrl: recording.previewUrl,
+          sharedPostId: null,
+          sharedPostType: null,
+          metadata: {
+            mimeType: recording.mimeType,
+            durationSeconds,
+            mediaUrl: recording.previewUrl,
+          },
+          sharedPostPreview: null,
+          previewText: displayContent,
+          createdAt: new Date().toISOString(),
+          readAt: null,
+          isFavorited: false,
+          pending: true,
+          uploadProgress: 12,
+        },
+      ]);
+
+      const progressTimer = window.setInterval(() => {
+        setUploadProgress((prev) => {
+          const next = prev >= 88 ? prev : prev + 6;
+          setMessages((messages) =>
+            messages.map((m) => (m.id === optimisticId ? { ...m, uploadProgress: next } : m)),
+          );
+          return next;
+        });
+      }, 220);
+
+      try {
+        const audioDataUrl = await readBlobAsDataUrl(recording.blob);
+        setUploadProgress(35);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimisticId ? { ...m, uploadProgress: 35 } : m)),
+        );
+
+        const audioUrl = await uploadDmAudio({ conversationId, audioDataUrl });
+
+        setUploadProgress(82);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimisticId ? { ...m, uploadProgress: 82 } : m)),
+        );
+
+        const message = await sendRichDirectMessage({
+          conversationId,
+          type: "audio",
+          imageUrl: audioUrl,
+          content: displayContent,
+          metadata: {
+            mimeType: recording.mimeType,
+            durationSeconds,
+            mediaUrl: audioUrl,
+          },
+        });
+
+        setUploadProgress(100);
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticId).concat(message));
+        setError(null);
+        onMessageSent?.();
+        emitSocialSync({ source: "inbox" });
+      } catch (sendError) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === optimisticId
+              ? {
+                  ...m,
+                  pending: false,
+                  failed: true,
+                  uploadProgress: 0,
+                  failedRetry,
+                }
+              : m,
+          ),
+        );
+        const message = sendError instanceof Error ? sendError.message : "Could not send voice message.";
+        setError(message);
+      } finally {
+        window.clearInterval(progressTimer);
+        setSending(false);
+        setUploadProgress(0);
+      }
+    },
+    [canMessage, conversationId, sending, currentUser.id, otherUser.userId, onMessageSent],
+  );
+
+  const handleRetryFailed = useCallback(
+    (message: DirectMessageDto) => {
+      if (!message.failed || !message.failedRetry || sending) return;
+      setMessages((prev) => prev.filter((m) => m.id !== message.id));
+      const retry = message.failedRetry;
+      if (retry.kind === "image") {
+        void handleImageSend({ draft: retry.draft, caption: retry.caption });
+        return;
+      }
+      void handleAudioSend({
+        blob: retry.blob,
+        mimeType: retry.mimeType,
+        durationMs: retry.durationMs,
+        previewUrl: retry.previewUrl,
+      });
+    },
+    [handleAudioSend, handleImageSend, sending],
   );
 
   async function openSharedPost(preview: NonNullable<DirectMessageDto["sharedPostPreview"]>) {
@@ -840,6 +1021,7 @@ export function DirectMessageThread({
               onReveal={(id) => setRevealedTimestampId((prev) => (prev === id ? null : id))}
               onOpenActions={(id) => setActionMessageId(id)}
               onOpenSharedPost={(preview) => void openSharedPost(preview)}
+              onRetryFailed={handleRetryFailed}
             />
           </div>
         ))}
@@ -855,7 +1037,8 @@ export function DirectMessageThread({
           imageDraft={imageDraft}
           onImageDraftChange={setImageDraft}
           onImageSend={(args) => void handleImageSend(args)}
-          onImageSendError={setError}
+          onAudioSend={(result) => void handleAudioSend(result)}
+          onMediaError={setError}
           uploadProgress={uploadProgress}
         />
       ) : (

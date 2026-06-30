@@ -1,4 +1,4 @@
-/** Supported DM attachment kinds — only `image` is implemented today. */
+/** Supported DM attachment kinds — image + voice are implemented. */
 export type DmMediaAttachmentKind = "image" | "video" | "voice" | "disappearing_media";
 
 export type DmImagePickSource = "camera" | "library";
@@ -24,7 +24,7 @@ export type DmAttachMenuItem = {
 export const DM_ATTACH_MENU_ITEMS: DmAttachMenuItem[] = [
   { id: "library", label: "Choose from library", kind: "image", enabled: true },
   { id: "video", label: "Video message", kind: "video", enabled: false },
-  { id: "voice", label: "Voice message", kind: "voice", enabled: false },
+  { id: "voice", label: "Voice message", kind: "voice", enabled: true },
   { id: "disappearing", label: "Disappearing photo", kind: "disappearing_media", enabled: false },
 ];
 

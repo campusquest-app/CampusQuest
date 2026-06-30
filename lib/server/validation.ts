@@ -119,7 +119,7 @@ export const directConversationSchema = z.object({
 
 export const sendDirectMessageSchema = z.object({
   content: z.string().trim().max(2000).optional(),
-  type: z.enum(["text", "image", "shared_post"]).optional(),
+  type: z.enum(["text", "image", "shared_post", "audio"]).optional(),
   imageUrl: z.string().trim().url().max(2048).optional(),
   sharedPostId: uuidSchema.optional(),
   sharedPostType: z.enum(["quad", "memory"]).optional(),
@@ -129,6 +129,11 @@ export const sendDirectMessageSchema = z.object({
 export const dmImageUploadSchema = z.object({
   conversationId: uuidSchema,
   imageDataUrl: z.string().trim().min(32).max(8_000_000),
+});
+
+export const dmAudioUploadSchema = z.object({
+  conversationId: uuidSchema,
+  audioDataUrl: z.string().trim().min(32).max(12_000_000),
 });
 
 export const sharePostToDmSchema = z.object({

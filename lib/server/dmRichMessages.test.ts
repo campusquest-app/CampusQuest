@@ -21,4 +21,8 @@ describe("buildDirectMessagePreviewText", () => {
   it("returns plain text for text messages", () => {
     expect(buildDirectMessagePreviewText({ type: "text", content: "Hey!" })).toBe("Hey!");
   });
+
+  it("returns voice label for audio messages", () => {
+    expect(buildDirectMessagePreviewText({ type: "audio", content: "🎤 Voice message" })).toBe("🎤 Voice message");
+  });
 });

@@ -1212,6 +1212,13 @@ export async function sendConversationMessage(args: {
       throw new ApiError(400, "Invalid image URL.", "VALIDATION_ERROR");
     }
     if (!trimmed) trimmed = "📷 Photo";
+  } else if (type === "audio") {
+    const url = imageUrl?.trim();
+    if (!url) throw new ApiError(400, "Audio URL is required.", "VALIDATION_ERROR");
+    if (!/^https?:\/\//i.test(url)) {
+      throw new ApiError(400, "Invalid audio URL.", "VALIDATION_ERROR");
+    }
+    if (!trimmed) trimmed = "🎤 Voice message";
   } else if (type === "shared_post") {
     if (!sharedPostId) throw new ApiError(400, "sharedPostId is required.", "VALIDATION_ERROR");
     if (!sharedPostType) throw new ApiError(400, "sharedPostType is required.", "VALIDATION_ERROR");
@@ -1301,7 +1308,7 @@ export async function sendConversationMessage(args: {
       recipient_id: recipientId,
       content: trimmed,
       type,
-      image_url: type === "image" ? imageUrl?.trim() ?? null : null,
+      image_url: type === "image" || type === "audio" ? imageUrl?.trim() ?? null : null,
       shared_post_id: type === "shared_post" ? sharedPostId : null,
       shared_post_type: type === "shared_post" ? sharedPostType : null,
       metadata: messageMetadata,
@@ -1329,6 +1336,8 @@ export async function sendConversationMessage(args: {
         ? trimmed !== "📷 Photo"
           ? `📷 ${trimmed.slice(0, 100)}`
           : "📷 Photo"
+        : type === "audio"
+          ? "🎤 Voice message"
         : type === "shared_post"
           ? trimmed !== "Shared a post"
             ? trimmed.slice(0, 120)

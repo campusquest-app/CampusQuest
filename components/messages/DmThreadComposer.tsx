@@ -12,6 +12,8 @@ import {
 import { readImageFileAsDataUrl } from "@/lib/client/dmMessagesClient";
 import { DmMediaActionSheet, type DmCameraAction } from "@/components/messages/DmMediaActionSheet";
 import { DmImageSendPreview } from "@/components/messages/DmImageSendPreview";
+import { DmVoiceRecordingOverlay } from "@/components/messages/DmVoiceRecordingOverlay";
+import { useDmVoiceRecorder, type DmVoiceRecordingResult } from "@/lib/client/useDmVoiceRecorder";
 
 export function DmThreadComposer({
   input,
@@ -22,7 +24,8 @@ export function DmThreadComposer({
   imageDraft,
   onImageDraftChange,
   onImageSend,
-  onImageSendError,
+  onAudioSend,
+  onMediaError,
   uploadProgress,
 }: {
   input: string;
@@ -33,7 +36,8 @@ export function DmThreadComposer({
   imageDraft: DmPendingImageDraft | null;
   onImageDraftChange: (draft: DmPendingImageDraft | null) => void;
   onImageSend: (args: { draft: DmPendingImageDraft; caption: string }) => void;
-  onImageSendError: (message: string) => void;
+  onAudioSend: (result: DmVoiceRecordingResult) => void;
+  onMediaError: (message: string) => void;
   uploadProgress: number;
 }) {
   const [cameraSheetOpen, setCameraSheetOpen] = useState(false);
@@ -42,11 +46,17 @@ export function DmThreadComposer({
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const accept = imageAcceptAttribute();
 
+  const voice = useDmVoiceRecorder({
+    disabled: disabled || sending || Boolean(imageDraft),
+    onRecorded: onAudioSend,
+    onError: onMediaError,
+  });
+
   async function consumeFile(file: File | null | undefined, source: DmImagePickSource) {
     if (!file) return;
     const validationError = validateDmImageFile(file);
     if (validationError) {
-      onImageSendError(validationError);
+      onMediaError(validationError);
       return;
     }
     try {
@@ -54,11 +64,12 @@ export function DmThreadComposer({
       setPreviewCaption("");
       onImageDraftChange({ dataUrl, source, fileName: file.name });
     } catch {
-      onImageSendError("Could not read that image.");
+      onMediaError("Could not read that image.");
     }
   }
 
   function openPicker(source: DmImagePickSource) {
+    if (disabled || sending || imageDraft) return;
     if (source === "camera") {
       resetFileInput(cameraInputRef.current);
       cameraInputRef.current?.click();
@@ -80,7 +91,8 @@ export function DmThreadComposer({
     resetFileInput(libraryInputRef.current);
   }
 
-  const canSendText = Boolean(input.trim()) && !imageDraft;
+  const mediaLocked = disabled || sending || Boolean(imageDraft) || voice.isRecording;
+  const canSendText = Boolean(input.trim()) && !imageDraft && !voice.isRecording;
   const canSendImage = Boolean(imageDraft) && !sending;
 
   return (
@@ -115,8 +127,10 @@ export function DmThreadComposer({
 
       <form
         onSubmit={onSubmit}
-        className="cq-dm-composer shrink-0 border-t border-white/[0.06] bg-black px-3 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))]"
+        className="cq-dm-composer relative shrink-0 border-t border-white/[0.06] bg-black px-3 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))]"
       >
+        <DmVoiceRecordingOverlay state={voice.state} timerLabel={voice.timerLabel} />
+
         {imageDraft ? (
           <DmImageSendPreview
             imageUrl={imageDraft.dataUrl}
@@ -132,8 +146,8 @@ export function DmThreadComposer({
         <div className="cq-dm-composer-pill flex items-center gap-1 rounded-full px-2 py-1.5">
           <button
             type="button"
-            onClick={() => setCameraSheetOpen(true)}
-            disabled={disabled || sending || Boolean(imageDraft)}
+            onClick={() => !mediaLocked && setCameraSheetOpen(true)}
+            disabled={mediaLocked}
             className="cq-dm-composer-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/85 disabled:opacity-40"
             aria-label="Camera"
           >
@@ -144,9 +158,9 @@ export function DmThreadComposer({
             type="text"
             value={input}
             onChange={(e) => onInputChange(e.target.value.slice(0, 2000))}
-            placeholder="Message..."
+            placeholder={voice.isRecording ? "Recording voice message…" : "Message..."}
             maxLength={2000}
-            disabled={disabled || Boolean(imageDraft)}
+            disabled={disabled || Boolean(imageDraft) || voice.isRecording}
             className="min-w-0 flex-1 border-0 bg-transparent px-2 py-2 text-[15px] text-white placeholder:text-white/40 focus:outline-none disabled:opacity-60"
           />
 
@@ -173,16 +187,42 @@ export function DmThreadComposer({
             <>
               <button
                 type="button"
-                disabled={disabled || sending}
-                className="cq-dm-composer-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/55 disabled:opacity-40"
-                aria-label="Voice message"
+                disabled={mediaLocked}
+                className={`cq-dm-composer-icon cq-dm-composer-mic flex h-8 w-8 shrink-0 touch-none select-none items-center justify-center rounded-full disabled:opacity-40 ${
+                  voice.isRecording
+                    ? voice.state === "cancel_armed"
+                      ? "bg-rose-500/20 text-rose-300"
+                      : "cq-dm-composer-mic--active bg-uri-keaney/20 text-uri-keaney"
+                    : "text-white/55"
+                }`}
+                aria-label="Hold to record voice message"
+                onPointerDown={(e) => {
+                  if (mediaLocked) return;
+                  e.preventDefault();
+                  (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+                  void voice.startRecording(e.clientX, e.clientY);
+                }}
+                onPointerMove={(e) => {
+                  if (!voice.isRecording) return;
+                  voice.updatePointer(e.clientX);
+                }}
+                onPointerUp={(e) => {
+                  if (!voice.isRecording) return;
+                  e.preventDefault();
+                  voice.releaseRecording();
+                }}
+                onPointerCancel={() => {
+                  if (!voice.isRecording) return;
+                  voice.cancelRecording();
+                }}
+                onContextMenu={(e) => e.preventDefault()}
               >
                 <Mic className="h-[18px] w-[18px]" strokeWidth={1.75} />
               </button>
               <button
                 type="button"
                 onClick={() => openPicker("library")}
-                disabled={disabled || sending}
+                disabled={mediaLocked}
                 className="cq-dm-composer-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/55 disabled:opacity-40"
                 aria-label="Photo library"
               >

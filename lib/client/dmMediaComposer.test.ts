@@ -14,9 +14,10 @@ describe("dmMediaComposer", () => {
     expect(validateDmImageFile(file)).toMatch(/image/i);
   });
 
-  it("only enables image in attach menu for now", () => {
+  it("only enables image and voice in attach menu", () => {
     expect(DM_ATTACH_MENU_ITEMS.filter((item) => item.enabled)).toEqual([
       expect.objectContaining({ kind: "image" }),
+      expect.objectContaining({ kind: "voice" }),
     ]);
   });
 });
