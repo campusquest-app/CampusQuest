@@ -13,8 +13,7 @@ export function ProfileXpCard({ character }: { character: Character }) {
   const { current, needed } = xpProgressInLevel(character.totalXP);
   const targetPct = needed > 0 ? Math.min(100, (current / needed) * 100) : 0;
 
-  // Animate the fill from 0 → target on mount so it feels earned, not static.
-  const [pct, setPct] = useState(0);
+  const [pct, setPct] = useState(targetPct);
   useEffect(() => {
     const id = requestAnimationFrame(() => setPct(targetPct));
     return () => cancelAnimationFrame(id);

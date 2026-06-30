@@ -23,15 +23,15 @@ export function ProfileSocialHeader({
   const realm = getClassRealm(character.classId);
 
   return (
-    <header className="cq-profile-header cq-profile-fade-in px-4 pb-3 pt-4">
-      <div className="flex items-center gap-4">
+    <header className="cq-profile-header cq-profile-fade-in">
+      <div className="cq-profile-header-row">
         <div className="relative flex-shrink-0">
-          <div className="character-avatar-frame cq-profile-avatar-shell flex h-[5.25rem] w-[5.25rem] shrink-0 items-center justify-center rounded-full p-[3px]">
+          <div className="character-avatar-frame cq-profile-avatar-shell cq-profile-avatar-shell--header flex shrink-0 items-center justify-center rounded-full">
             <div className="cq-profile-avatar-inner cq-profile-avatar-inner--header">
               <AvatarDisplay
                 avatar={character.avatar}
                 fitParent
-                size={82}
+                size={66}
                 className="rounded-full"
                 classId={character.classId}
                 starterWeapon={character.starterWeapon}
@@ -39,7 +39,7 @@ export function ProfileSocialHeader({
             </div>
           </div>
           <span
-            className="cq-profile-level-pip absolute -bottom-0.5 -left-0.5 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney px-1 text-[11px] font-bold leading-none text-white"
+            className="cq-profile-level-pip absolute -bottom-0.5 -left-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney px-1 text-[10px] font-bold leading-none text-white"
             aria-label={`Level ${character.level}`}
           >
             {character.level}
@@ -77,7 +77,7 @@ export function ProfileSocialHeader({
           </div>
 
           {guildLabel || character.streakDays >= 3 ? (
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
               {guildLabel ? <span className="cq-profile-meta-chip">{guildLabel}</span> : null}
               {character.streakDays >= 3 ? (
                 <span className="cq-profile-meta-chip cq-profile-meta-chip--streak">
@@ -90,12 +90,12 @@ export function ProfileSocialHeader({
       </div>
 
       {character.bio ? (
-        <p className="cq-profile-bio mt-3 break-words">{character.bio}</p>
+        <p className="cq-profile-bio break-words">{character.bio}</p>
       ) : isOwner ? (
         <button
           type="button"
           onClick={onEditBio}
-          className="cq-profile-press mt-3 text-sm font-medium text-uri-keaney hover:text-uri-keaney/80"
+          className="cq-profile-press cq-profile-bio-add text-sm font-medium text-uri-keaney hover:text-uri-keaney/80"
         >
           + Add bio
         </button>

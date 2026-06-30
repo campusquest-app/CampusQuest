@@ -37,7 +37,9 @@ export function ProfileTabNav({
             aria-current={selected ? "page" : undefined}
             aria-disabled={isLockedTab || locked ? true : undefined}
           >
-            <span>{tab.label}</span>
+            <span className={`cq-profile-tab-label${selected ? " cq-profile-tab-label--active" : ""}`}>
+              {tab.label}
+            </span>
             {isLockedTab ? <span aria-hidden>🔒</span> : null}
           </button>
         );

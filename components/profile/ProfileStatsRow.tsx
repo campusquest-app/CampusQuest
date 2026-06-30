@@ -33,7 +33,7 @@ function StatSegment({ item }: { item: StatItem }) {
       <button
         type="button"
         onClick={item.onClick}
-        className="cq-profile-stat cq-profile-press min-w-0 flex-1"
+        className="cq-profile-stat cq-profile-stat--interactive cq-profile-press min-w-0 flex-1"
       >
         {content}
       </button>

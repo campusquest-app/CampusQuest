@@ -182,7 +182,7 @@ export function ProfileSocialPage({
           }
         />
       ) : (
-        <div className="cq-profile-connect px-4 py-3">
+        <div className="cq-profile-connect">
           <ConnectionActionButton
             otherUserId={character.id}
             otherUsername={character.username}
@@ -216,7 +216,7 @@ export function ProfileSocialPage({
         <>
           <ProfileTabNav active={tab} onChange={handleProfileTabChange} />
 
-          <div className="cq-profile-tab-panel pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]">
+          <div className="cq-profile-tab-panel">
             {reactionNotice && tab === "posts" ? (
               <p className="border-b border-amber-400/30 bg-amber-500/15 px-4 py-2 text-sm text-amber-200">{reactionNotice}</p>
             ) : null}
