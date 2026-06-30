@@ -1,15 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { MapPin, Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Camera, MapPin, Sparkles } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import type { CampusMemory, CampusMemoryGroup } from "@/lib/types";
 import type { CampusLocationId } from "@/lib/locations/registry";
 import { getCampusLocation } from "@/lib/locations/registry";
-import {
-  fetchCampusMemoriesByLocation,
-} from "@/lib/client/campusMemoriesClient";
+import { fetchCampusMemoriesByLocation } from "@/lib/client/campusMemoriesClient";
 import { subscribeCampusMemoriesChanged } from "@/lib/client/campusMemoriesSync";
+
+const VIEWED_STORAGE_KEY = "cq:realm-location-memory-viewed";
+const STORY_VIEW_ALL_THRESHOLD = 5;
 
 function isImageUrl(value: string | null | undefined): boolean {
   return typeof value === "string" && /^https?:\/\//i.test(value);
@@ -20,8 +21,28 @@ function memoryPreview(memory: CampusMemory): string | null {
   return memory.authorAvatar || null;
 }
 
+function readViewedMap(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(VIEWED_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeViewedMap(map: Record<string, string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(VIEWED_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    /* non-blocking */
+  }
+}
+
 function toMemoryGroup(locationId: CampusLocationId, memories: CampusMemory[]): CampusMemoryGroup {
-  const latest = memories[memories.length - 1];
+  const latest = memories[0];
   const recentCutoff = Date.now() - 2 * 60 * 60 * 1000;
   const hasRecent = memories.some((m) => Date.parse(m.createdAt) >= recentCutoff);
   const loc = getCampusLocation(locationId);
@@ -44,8 +65,6 @@ function toMemoryGroup(locationId: CampusLocationId, memories: CampusMemory[]): 
 export function LocationMemoriesSection({
   locationId,
   locationName,
-  activeCount = 0,
-  archivedCount = 0,
   onOpenViewer,
   onAddMemory,
 }: {
@@ -58,6 +77,24 @@ export function LocationMemoriesSection({
 }) {
   const [memories, setMemories] = useState<CampusMemory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewedMap, setViewedMap] = useState<Record<string, string>>({});
+
+  const wheelCleanupRef = useRef<(() => void) | null>(null);
+  const attachScroller = useCallback((node: HTMLDivElement | null) => {
+    if (wheelCleanupRef.current) {
+      wheelCleanupRef.current();
+      wheelCleanupRef.current = null;
+    }
+    if (!node) return;
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+        node.scrollLeft += event.deltaY;
+        event.preventDefault();
+      }
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    wheelCleanupRef.current = () => node.removeEventListener("wheel", onWheel);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -71,123 +108,145 @@ export function LocationMemoriesSection({
   }, [locationId]);
 
   useEffect(() => {
+    setViewedMap(readViewedMap());
+  }, []);
+
+  useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => subscribeCampusMemoriesChanged(() => void load()), [load]);
 
-  const todayMemories = useMemo(() => {
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    return memories.filter((m) => Date.parse(m.createdAt) >= dayStart.getTime());
-  }, [memories]);
+  const sortedMemories = useMemo(
+    () => [...memories].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+    [memories],
+  );
 
-  const recentMemories = useMemo(() => {
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    return memories.filter((m) => Date.parse(m.createdAt) < dayStart.getTime());
-  }, [memories]);
+  const group = useMemo(() => toMemoryGroup(locationId, sortedMemories), [locationId, sortedMemories]);
 
-  const group = useMemo(() => toMemoryGroup(locationId, memories), [locationId, memories]);
+  const markViewed = useCallback((memory: CampusMemory) => {
+    setViewedMap((prev) => {
+      if (prev[memory.id] === memory.createdAt) return prev;
+      const next = { ...prev, [memory.id]: memory.createdAt };
+      writeViewedMap(next);
+      return next;
+    });
+  }, []);
+
+  const openMemory = useCallback(
+    (memory: CampusMemory) => {
+      markViewed(memory);
+      onOpenViewer(group, memory.id);
+    },
+    [group, markViewed, onOpenViewer],
+  );
+
+  const openAll = useCallback(() => {
+    onOpenViewer(group);
+  }, [group, onOpenViewer]);
 
   if (loading) {
-    return <p className="cq-realm-memories-empty">Loading Memories…</p>;
+    return (
+      <section className="cq-realm-memories-hero cq-realm-memories-hero--loading" aria-busy="true">
+        <div className="cq-realm-memory-stories-scroll" aria-hidden>
+          <div className="cq-realm-memory-stories-track">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="cq-realm-memory-story cq-realm-memory-story--skeleton" />
+            ))}
+          </div>
+        </div>
+      </section>
+    );
   }
 
-  if (memories.length === 0) {
+  if (sortedMemories.length === 0) {
     return (
-      <div className="cq-realm-memories-empty-state">
-        <p>No memories have been captured here yet.</p>
-        <button type="button" className="cq-realm-memories-cta" onClick={() => onAddMemory(locationId)}>
-          Capture the First Memory
-        </button>
-      </div>
+      <section className="cq-realm-memories-hero cq-realm-memories-hero--empty cq-realm-fade-in">
+        <div className="cq-realm-memories-empty-card">
+          <Sparkles className="cq-realm-memories-empty-icon" strokeWidth={1.75} aria-hidden />
+          <p className="cq-realm-memories-empty-title">No memories here yet</p>
+          <p className="cq-realm-memories-empty-copy">Be the first to create a memory at this location.</p>
+          <button type="button" className="cq-realm-memories-add-primary" onClick={() => onAddMemory(locationId)}>
+            <Camera className="h-4 w-4" strokeWidth={2.2} aria-hidden />
+            Add Memory
+          </button>
+        </div>
+      </section>
     );
   }
 
   return (
-    <div className="cq-realm-memories">
-      <div className="cq-realm-memories-stats" aria-label="Memory counts">
-        <span>{activeCount || memories.length} live</span>
-        {archivedCount > 0 ? <span>{archivedCount} archived</span> : null}
-        <span>{(activeCount || memories.length) + archivedCount} total</span>
+    <section className="cq-realm-memories-hero cq-realm-fade-in" aria-label="Campus Memories">
+      <div className="cq-realm-memories-hero-head">
+        <h3 className="cq-realm-memories-hero-title">Campus Memories</h3>
+        {sortedMemories.length > STORY_VIEW_ALL_THRESHOLD ? (
+          <button type="button" className="cq-realm-memories-hero-link" onClick={openAll}>
+            View All
+          </button>
+        ) : null}
       </div>
 
-      {todayMemories.length > 0 ? (
-        <section className="cq-realm-memories-section">
-          <h3 className="cq-realm-memories-section-title">Today&apos;s Memories</h3>
-          <MemoryThumbRow
-            memories={todayMemories}
-            onSelect={(memory) => onOpenViewer(group, memory.id)}
-          />
-        </section>
-      ) : null}
+      <div
+        className="cq-realm-memory-stories-scroll"
+        ref={attachScroller}
+        data-cq-horizontal-scroll="true"
+      >
+        <div className="cq-realm-memory-stories-track">
+          {sortedMemories.map((memory) => {
+            const preview = memoryPreview(memory);
+            const showImage = memory.mediaType === "image" && isImageUrl(memory.mediaUrl);
+            const viewed = viewedMap[memory.id] === memory.createdAt;
+            const recentCutoff = Date.now() - 2 * 60 * 60 * 1000;
+            const isLive = Date.parse(memory.createdAt) >= recentCutoff && !viewed;
 
-      {recentMemories.length > 0 ? (
-        <section className="cq-realm-memories-section">
-          <h3 className="cq-realm-memories-section-title">Recent Memories</h3>
-          <MemoryThumbRow
-            memories={recentMemories}
-            onSelect={(memory) => onOpenViewer(group, memory.id)}
-          />
-        </section>
-      ) : todayMemories.length === 0 ? (
-        <section className="cq-realm-memories-section">
-          <h3 className="cq-realm-memories-section-title">Recent Memories</h3>
-          <MemoryThumbRow memories={memories} onSelect={(memory) => onOpenViewer(group, memory.id)} />
-        </section>
-      ) : null}
+            return (
+              <button
+                key={memory.id}
+                type="button"
+                className={`cq-realm-memory-story${viewed ? " cq-realm-memory-story--viewed" : ""}${
+                  isLive ? " cq-realm-memory-story--live" : ""
+                }`}
+                onClick={() => openMemory(memory)}
+                aria-label={`Memory by ${memory.displayName}, ${memory.postedAgoLabel}`}
+              >
+                <span className="cq-realm-memory-story-ring" aria-hidden>
+                  <span className="cq-realm-memory-story-thumb-wrap">
+                    {showImage ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={memory.mediaUrl!}
+                        alt=""
+                        className="cq-realm-memory-story-thumb"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    ) : preview ? (
+                      <AvatarDisplay avatar={preview} fitParent size={64} />
+                    ) : (
+                      <span className="cq-realm-memory-story-fallback">
+                        {memory.body?.slice(0, 24) ?? "…"}
+                      </span>
+                    )}
+                  </span>
+                </span>
+                <span className="cq-realm-memory-story-time">{memory.postedAgoLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-      <div className="cq-realm-memories-actions">
-        <button
-          type="button"
-          className="cq-realm-memories-view-all"
-          onClick={() => onOpenViewer(group)}
-        >
-          <MapPin className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
-          View all at {locationName}
-        </button>
-        <button type="button" className="cq-realm-memories-add" onClick={() => onAddMemory(locationId)}>
-          <Plus className="h-4 w-4" strokeWidth={2.4} aria-hidden />
+      <div className="cq-realm-memories-hero-actions">
+        <button type="button" className="cq-realm-memories-add-primary" onClick={() => onAddMemory(locationId)}>
+          <Camera className="h-4 w-4" strokeWidth={2.2} aria-hidden />
           Add Memory
         </button>
+        <button type="button" className="cq-realm-memories-view-secondary" onClick={openAll}>
+          <MapPin className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
+          View All
+        </button>
       </div>
-    </div>
-  );
-}
-
-function MemoryThumbRow({
-  memories,
-  onSelect,
-}: {
-  memories: CampusMemory[];
-  onSelect: (memory: CampusMemory) => void;
-}) {
-  return (
-    <div className="cq-realm-memories-scroll" data-cq-horizontal-scroll="true">
-      {memories.map((memory) => {
-        const preview = memoryPreview(memory);
-        const showImage = memory.mediaType === "image" && isImageUrl(memory.mediaUrl);
-        return (
-          <button
-            key={memory.id}
-            type="button"
-            className="cq-realm-memories-thumb"
-            onClick={() => onSelect(memory)}
-            aria-label={`Memory by ${memory.displayName}`}
-          >
-            {showImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={memory.mediaUrl!} alt="" className="cq-realm-memories-thumb-img" loading="lazy" />
-            ) : preview ? (
-              <AvatarDisplay avatar={preview} size={52} className="rounded-full" />
-            ) : (
-              <span className="cq-realm-memories-thumb-text">{memory.body?.slice(0, 40) ?? "…"}</span>
-            )}
-            <span className="cq-realm-memories-thumb-meta">{memory.postedAgoLabel}</span>
-          </button>
-        );
-      })}
-    </div>
+      <p className="sr-only">Memories at {locationName}</p>
+    </section>
   );
 }

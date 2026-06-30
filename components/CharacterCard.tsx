@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { Character } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, MAX_STAT } from "@/lib/types";
 import { STAT_FILL_COLORS } from "@/lib/statAssets";
+import { getCharacterStatBarFills } from "@/lib/statBarDisplay";
 import { StatIcon } from "@/components/stats/StatIcon";
 import { xpProgressInLevel } from "@/lib/level";
 import { updateCharacter, prestigeStat } from "@/lib/store";
@@ -28,11 +29,19 @@ export function CharacterCard({
   readOnly?: boolean;
 }) {
   const [editingAvatar, setEditingAvatar] = useState(false);
+  const [statBarsReady, setStatBarsReady] = useState(false);
   const [editingAvatarValue, setEditingAvatarValue] = useState(character.avatar);
   const [showAchievementShowcase, setShowAchievementShowcase] = useState(false);
   const equippedTitle = getEquippedTitleLabel(character);
   const { current, needed } = xpProgressInLevel(character.totalXP);
   const xpPct = Math.min(100, (current / needed) * 100);
+  const statBarFills = getCharacterStatBarFills(character.stats);
+
+  useEffect(() => {
+    setStatBarsReady(false);
+    const frame = window.requestAnimationFrame(() => setStatBarsReady(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [character.id, character.stats]);
 
   useEffect(() => {
     return registerLogoutPrepare(() => {
@@ -244,7 +253,7 @@ export function CharacterCard({
         <div className="grid gap-2.5">
           {STAT_KEYS.map((key) => {
             const value = character.stats[key] ?? 0;
-            const pct = Math.min(100, (value / MAX_STAT) * 100);
+            const pct = value >= MAX_STAT ? 100 : statBarFills[key];
             const atMax = value >= MAX_STAT;
             const prestigeCount = character.statPrestige?.[key] ?? 0;
             return (
@@ -280,10 +289,10 @@ export function CharacterCard({
                       )}
                     </span>
                   </div>
-                  <div className="stat-bar-game h-2.5 overflow-hidden rounded-full">
+                  <div className="stat-bar-game h-3.5 overflow-hidden rounded-full">
                     <div
-                      className={`stat-fill-game stat-fill-animated rounded-full ${atMax ? "bg-gradient-to-r from-uri-gold via-amber-400 to-uri-gold shadow-[0_0_6px_rgba(197,165,40,0.4)]" : STAT_FILL_COLORS[key]}`}
-                      style={{ width: `${pct}%` }}
+                      className={`stat-fill-game stat-fill-game--enter rounded-full ${atMax ? "bg-gradient-to-r from-uri-gold via-amber-400 to-uri-gold stat-fill-game--prestige" : STAT_FILL_COLORS[key]}`}
+                      style={{ width: statBarsReady ? `${pct}%` : "0%" }}
                     />
                   </div>
                 </div>

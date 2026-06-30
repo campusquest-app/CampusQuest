@@ -2698,7 +2698,7 @@ html[data-cq-bottom-nav-hidden] {
 }
 
 .character-hero-panel .stat-bar-game {
-  background: rgba(0, 0, 0, 0.28);
+  background: rgba(255, 255, 255, 0.07);
 }
 .character-avatar-frame {
   border: 3px solid transparent;
@@ -2879,17 +2879,58 @@ html[data-cq-bottom-nav-hidden] {
 .stat-bar-game {
   display: flex;
   align-items: stretch;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.25) 0%, rgba(0, 0, 0, 0.15) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+  border-radius: 9999px;
 }
 .stat-fill-game {
   display: block;
   height: 100%;
   min-height: 100%;
   flex-shrink: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
-  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 9999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.stat-fill-game--enter {
+  will-change: width;
+}
+.stat-fill-game--strength {
+  box-shadow:
+    0 0 10px rgba(251, 191, 36, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.stat-fill-game--stamina {
+  box-shadow:
+    0 0 10px rgba(45, 212, 191, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.stat-fill-game--knowledge {
+  box-shadow:
+    0 0 10px rgba(104, 171, 232, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.stat-fill-game--social {
+  box-shadow:
+    0 0 10px rgba(74, 222, 128, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.stat-fill-game--focus {
+  box-shadow:
+    0 0 10px rgba(167, 139, 250, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.stat-fill-game--prestige {
+  box-shadow:
+    0 0 12px rgba(197, 165, 40, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stat-fill-game {
+    transition: none;
+  }
 }
 .game-stat-pill {
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
@@ -8307,7 +8348,206 @@ html[data-realm-map-panning] {
   background: linear-gradient(180deg, rgba(3, 21, 46, 0.92) 0%, rgba(4, 30, 66, 0.55) 100%);
 }
 
+/* —— Realm location hero (map sheet) —— */
+.cq-realm-location-hero {
+  position: relative;
+  z-index: 40;
+  flex-shrink: 0;
+  overflow: hidden;
+  min-height: 13.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cq-realm-hero-enter {
+  animation: cq-realm-hero-fade-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cq-realm-hero-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.cq-realm-fade-in {
+  animation: cq-realm-content-fade-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cq-realm-content-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.cq-realm-location-hero-media {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.cq-realm-location-hero-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 35%;
+}
+
+.cq-realm-location-hero-fallback {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #0a1628 0%, #041e42 55%, #0a1628 100%);
+}
+
+.cq-realm-location-hero-gradient {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.1) 28%, rgba(0, 0, 0, 0.72) 72%, rgba(5, 6, 8, 0.98) 100%),
+    linear-gradient(90deg, rgba(4, 30, 66, 0.35) 0%, transparent 50%, rgba(4, 30, 66, 0.25) 100%);
+}
+
+.cq-realm-location-hero-top {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.75rem 0;
+}
+
+.cq-realm-location-back {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+}
+
+.cq-realm-location-grabber {
+  margin: 0;
+}
+
+.cq-realm-location-hero-content {
+  position: relative;
+  z-index: 2;
+  padding: 0.35rem 0.875rem 0.5rem;
+}
+
+.cq-realm-location-hero-badge {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 214, 110, 0.35);
+  background: rgba(0, 0, 0, 0.42);
+  padding: 0.22rem 0.55rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #f5d78e;
+  backdrop-filter: blur(8px);
+}
+
+.cq-realm-location-hero-title {
+  margin: 0.35rem 0 0;
+  font-family: var(--font-display, inherit);
+  font-size: 1.375rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.cq-realm-location-hero-flavor {
+  margin: 0.3rem 0 0;
+  max-width: 36ch;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.cq-realm-location-stat-grid {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.375rem;
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+.cq-realm-location-stat {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.38);
+  padding: 0.35rem 0.25rem;
+  backdrop-filter: blur(8px);
+}
+
+.cq-realm-location-stat-value {
+  font-size: 0.875rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.cq-realm-location-stat-value--accent {
+  color: #6fd0ff;
+}
+
+.cq-realm-location-stat-label {
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cq-realm-pressable {
+  transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease;
+}
+
+.cq-realm-pressable:active {
+  transform: scale(0.97);
+}
+
+.cq-realm-archive-body .cq-realm-archive-activity {
+  margin: 0.75rem 0 0.5rem;
+  border-radius: 0.75rem;
+}
+
 /* Pull-to-dismiss affordance (vertical drag from top of sheet). */
+@media (prefers-reduced-motion: reduce) {
+  .cq-realm-hero-enter,
+  .cq-realm-fade-in,
+  .cq-realm-memory-story--live .cq-realm-memory-story-ring {
+    animation: none;
+  }
+
+  .cq-realm-pressable,
+  .cq-realm-memories-add-primary,
+  .cq-realm-memories-view-secondary {
+    transition: none;
+  }
+}
+
 .cq-realm-archive-grabber {
   width: 2.25rem;
   height: 0.3125rem;
@@ -12892,6 +13132,256 @@ html[data-realm-map-panning] {
   text-align: center;
 }
 
+.cq-realm-memories-hero {
+  margin-bottom: 0.75rem;
+}
+
+.cq-realm-memories-hero-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.625rem;
+}
+
+.cq-realm-memories-hero-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.cq-realm-memories-hero-link {
+  border: 0;
+  background: transparent;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #6fd0ff;
+}
+
+.cq-realm-memory-stories-scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  margin: 0 -0.25rem;
+  padding: 0.125rem 0.25rem 0.25rem;
+}
+
+.cq-realm-memory-stories-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-realm-memory-stories-track {
+  display: flex;
+  gap: 0.875rem;
+  width: max-content;
+  padding: 0.125rem 0.125rem 0.25rem;
+}
+
+.cq-realm-memory-story {
+  flex: 0 0 auto;
+  display: flex;
+  width: 4.75rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.cq-realm-memory-story-ring {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.35rem;
+  height: 4.35rem;
+  border-radius: 999px;
+  padding: 3px;
+  background: linear-gradient(150deg, #6fd0ff 0%, #46b8ff 55%, #2aa3f5 100%);
+  box-shadow: 0 0 16px rgba(70, 184, 255, 0.42);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.cq-realm-memory-story--viewed .cq-realm-memory-story-ring {
+  background: rgba(148, 163, 184, 0.38);
+  box-shadow: none;
+}
+
+.cq-realm-memory-story--live .cq-realm-memory-story-ring {
+  animation: cq-memories-ring-pulse 2.2s ease-in-out infinite;
+}
+
+.cq-realm-memory-story-thumb-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 2.5px solid #0b1320;
+  background: #0b1320;
+}
+
+.cq-realm-memory-story-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cq-realm-memory-story-fallback {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  text-align: center;
+  font-size: 0.625rem;
+  line-height: 1.25;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.cq-realm-memory-story-time {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.cq-realm-memory-story--skeleton {
+  width: 4.35rem;
+  height: 4.35rem;
+  border-radius: 999px;
+}
+
+.cq-realm-memories-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.cq-realm-memories-add-primary,
+.cq-realm-memories-view-secondary {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 0.75rem;
+  padding: 0.55rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease;
+}
+
+.cq-realm-memories-add-primary {
+  flex: 1 1 auto;
+  border: 1px solid rgba(70, 184, 255, 0.55);
+  background: linear-gradient(180deg, #3eb8ff 0%, #1d9be8 100%);
+  color: #fff;
+  box-shadow: 0 0 18px rgba(70, 184, 255, 0.28);
+}
+
+.cq-realm-memories-add-primary:active,
+.cq-realm-memories-view-secondary:active {
+  transform: scale(0.97);
+}
+
+.cq-realm-memories-view-secondary {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.cq-realm-memories-empty-card,
+.cq-memory-archive-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  padding: 1.25rem 1rem;
+  text-align: center;
+}
+
+.cq-realm-memories-empty-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: rgba(111, 208, 255, 0.85);
+}
+
+.cq-realm-memories-empty-title,
+.cq-memory-archive-empty-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cq-realm-memories-empty-copy,
+.cq-memory-archive-empty-copy {
+  margin: 0;
+  max-width: 24ch;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.cq-realm-location-quiet {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.cq-realm-location-quiet-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.015) 100%);
+  padding: 1rem 0.875rem;
+  text-align: center;
+}
+
+.cq-realm-location-quiet-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: rgba(111, 208, 255, 0.75);
+}
+
+.cq-realm-location-quiet-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.cq-realm-location-quiet-copy {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cq-realm-archive-body .cq-realm-archive-secondary {
+  margin: 0.75rem 0 0;
+}
+
 .cq-realm-memories-cta {
   margin-top: 0.75rem;
   display: inline-flex;
@@ -13024,22 +13514,90 @@ html[data-realm-map-panning] {
 
 .cq-memory-archive-location {
   margin: 0 0 0.5rem;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.82);
 }
 
+.cq-memory-archive-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.cq-memory-archive-grid--loading {
+  margin-top: 0.25rem;
+}
+
+.cq-memory-archive-tile {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cq-memory-archive-tile--skeleton {
+  background: rgba(255, 255, 255, 0.06);
+  animation: cq-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.cq-memory-archive-tile-media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cq-memory-archive-tile-text {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  text-align: center;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.cq-memory-archive-tile-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.2rem;
+  background: linear-gradient(180deg, transparent 35%, rgba(0, 0, 0, 0.72) 100%);
+  padding: 0.5rem;
+  pointer-events: none;
+}
+
+.cq-memory-archive-tile-badge {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.cq-memory-archive-tile-date {
+  font-size: 0.5625rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Legacy archive item classes (kept for compatibility) */
 .cq-memory-archive-date {
   margin: 0 0 0.35rem;
   font-size: 0.6875rem;
   color: rgba(255, 255, 255, 0.45);
-}
-
-.cq-memory-archive-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
 }
 
 .cq-memory-archive-item {

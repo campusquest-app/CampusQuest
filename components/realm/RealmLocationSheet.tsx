@@ -17,6 +17,7 @@ import { useSwipeBack } from "@/lib/client/useSwipeBack";
 import { useSwipeDownDismiss } from "@/lib/client/useSwipeDownDismiss";
 import { SWIPE_TRANSITION_MS } from "@/lib/client/mobileGestures";
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
+import { getRealmLocationHeroImage } from "@/lib/realm/locationHeroImages";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 
 type SheetView = "archive" | "overview" | "quests" | "events";
@@ -198,12 +199,6 @@ export function RealmLocationSheet({
               />
 
               <div className="cq-realm-archive-body">
-                <p className="cq-realm-archive-section-label">
-                  <span className="cq-realm-archive-section-label-icon" aria-hidden>
-                    ✦
-                  </span>
-                  Campus Memories
-                </p>
                 {onAddMemory && onOpenMemoryViewer ? (
                   <LocationMemoriesSection
                     locationId={location.id}
@@ -233,6 +228,7 @@ export function RealmLocationSheet({
                 </p>
                 <CampusMemoryArchivePanel
                   userId={currentUserId ?? undefined}
+                  priorityLocationId={location.id}
                   onOpenMemory={(memory) => {
                     if (!onOpenMemoryViewer) return;
                     onOpenMemoryViewer(
@@ -252,22 +248,23 @@ export function RealmLocationSheet({
                     );
                   }}
                 />
+
+                <MapActivityPreview
+                  content={content}
+                  loaded={mapContentLoaded}
+                  urgency={urgency}
+                  eventLabel={eventLabel}
+                  onViewOverview={() => setView("overview")}
+                  onViewQuests={() => setView("quests")}
+                  onViewEvents={() => setView("events")}
+                  onAddMemory={onAddMemory ? () => onAddMemory(location.id) : undefined}
+                />
+
+                <footer className="cq-realm-archive-activity">
+                  <TrendingUp className="cq-realm-archive-activity-icon" aria-hidden />
+                  <p>{activityLine}</p>
+                </footer>
               </div>
-
-              <MapActivityPreview
-                content={content}
-                loaded={mapContentLoaded}
-                urgency={urgency}
-                eventLabel={eventLabel}
-                onViewOverview={() => setView("overview")}
-                onViewQuests={() => setView("quests")}
-                onViewEvents={() => setView("events")}
-              />
-
-              <footer className="cq-realm-archive-activity">
-                <TrendingUp className="cq-realm-archive-activity-icon" aria-hidden />
-                <p>{activityLine}</p>
-              </footer>
             </>
           ) : view !== "archive" ? (
             <RealmDetailView
@@ -321,41 +318,72 @@ function RealmArchiveHeader({
   memoriesLoaded: boolean;
   onBack: () => void;
 }) {
+  const heroImage = getRealmLocationHeroImage(location.id);
+
   return (
-    <header className="cq-realm-archive-location-header">
-      <div className="cq-realm-archive-toolbar-row">
+    <header className="cq-realm-location-hero cq-realm-hero-enter">
+      <div className="cq-realm-location-hero-media" aria-hidden>
+        {heroImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={heroImage} alt="" className="cq-realm-location-hero-image" />
+        ) : (
+          <div className="cq-realm-location-hero-fallback">
+            <span className="text-4xl">{location.markerEmoji}</span>
+          </div>
+        )}
+        <div className="cq-realm-location-hero-gradient" />
+      </div>
+
+      <div className="cq-realm-location-hero-top">
         <button
           type="button"
           onClick={onBack}
-          className="cq-realm-archive-back-btn touch-manipulation"
+          className="cq-realm-archive-back-btn cq-realm-location-back touch-manipulation"
           aria-label="Back to map"
         >
           <ChevronLeft className="h-4 w-4 shrink-0" strokeWidth={2.4} />
           Back
         </button>
+        <div className="cq-realm-archive-grabber cq-realm-location-grabber" aria-hidden />
       </div>
 
-      <div className="cq-realm-archive-grabber" aria-hidden />
-
-      <div className="cq-realm-archive-identity">
-        <p className="cq-realm-archive-fantasy-banner">
+      <div className="cq-realm-location-hero-content">
+        <p className="cq-realm-location-hero-badge">
           <span aria-hidden>{location.markerEmoji}</span>
           <span>{location.fantasyName}</span>
         </p>
-        <h2 id="realm-sheet-title" className="cq-realm-archive-location-name">
+        <h2 id="realm-sheet-title" className="cq-realm-location-hero-title">
           {location.name}
         </h2>
-        <p className="cq-realm-archive-flavor">{location.flavorText}</p>
+        <p className="cq-realm-location-hero-flavor">{location.flavorText}</p>
       </div>
 
-      <div className="cq-realm-archive-stat-chips" role="list" aria-label="Location stats">
-        <StatChip emoji="📸" label={`${momentCount} live`} />
-        {archivedCount > 0 ? <StatChip emoji="🗂️" label={`${archivedCount} archived`} /> : null}
-        <StatChip emoji="⚔️" label={`${activeQuestCount} ${activeQuestCount === 1 ? "Activity" : "Activities"}`} />
-        <StatChip emoji="📅" label={`${activeEventCount} ${activeEventCount === 1 ? "Event" : "Events"}`} />
-        {!memoriesLoaded ? <span className="cq-realm-archive-stat-loading">loading…</span> : null}
+      <div className="cq-realm-location-stat-grid" role="list" aria-label="Location stats">
+        <LocationStatCell label="Live" count={momentCount} memoriesLoaded={memoriesLoaded} />
+        <LocationStatCell label="Archived" count={archivedCount} memoriesLoaded={memoriesLoaded} />
+        <LocationStatCell label="Activities" count={activeQuestCount} memoriesLoaded={memoriesLoaded} />
+        <LocationStatCell label="Events" count={activeEventCount} memoriesLoaded={memoriesLoaded} />
       </div>
     </header>
+  );
+}
+
+function LocationStatCell({
+  label,
+  count,
+  memoriesLoaded,
+}: {
+  label: string;
+  count: number;
+  memoriesLoaded: boolean;
+}) {
+  return (
+    <div className="cq-realm-location-stat" role="listitem">
+      <span className={`cq-realm-location-stat-value${count > 0 ? " cq-realm-location-stat-value--accent" : ""}`}>
+        {!memoriesLoaded && label === "Live" ? "…" : count}
+      </span>
+      <span className="cq-realm-location-stat-label">{label}</span>
+    </div>
   );
 }
 
@@ -376,6 +404,7 @@ function MapActivityPreview({
   onViewOverview,
   onViewQuests,
   onViewEvents,
+  onAddMemory,
 }: {
   content: Pick<GroupedMapLocation, "qrCodes" | "quests" | "events">;
   loaded: boolean;
@@ -384,6 +413,7 @@ function MapActivityPreview({
   onViewOverview: () => void;
   onViewQuests: () => void;
   onViewEvents: () => void;
+  onAddMemory?: () => void;
 }) {
   const hasActivity = mapLocationActivityCount(content) > 0;
   const previewQuest = content.quests[0];
@@ -392,7 +422,7 @@ function MapActivityPreview({
 
   if (!loaded) {
     return (
-      <section className="cq-realm-archive-secondary" aria-label="Quests and events">
+      <section className="cq-realm-archive-secondary cq-realm-fade-in" aria-label="Quests and events">
         <p className="cq-realm-archive-secondary-empty">Loading campus activities…</p>
       </section>
     );
@@ -400,8 +430,14 @@ function MapActivityPreview({
 
   if (!hasActivity) {
     return (
-      <section className="cq-realm-archive-secondary" aria-label="Quests and events">
-        <p className="cq-realm-archive-secondary-empty">No active QR codes, quests, or events here right now.</p>
+      <section className="cq-realm-archive-secondary cq-realm-location-quiet cq-realm-fade-in" aria-label="Quests and events">
+        <div className="cq-realm-location-quiet-card">
+          <Calendar className="cq-realm-location-quiet-icon" strokeWidth={1.75} aria-hidden />
+          <p className="cq-realm-location-quiet-title">No quests or events happening here right now.</p>
+          {onAddMemory ? (
+            <p className="cq-realm-location-quiet-copy">Be the first to create a memory at this location.</p>
+          ) : null}
+        </div>
       </section>
     );
   }

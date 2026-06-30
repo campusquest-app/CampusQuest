@@ -19,11 +19,11 @@ export const STAT_GLYPH: Record<StatKey, LucideIcon> = {
 
 /** Progress bar fill classes (Character screen). */
 export const STAT_FILL_COLORS: Record<StatKey, string> = {
-  strength: "bg-amber-400",
-  stamina: "bg-uri-teal",
-  knowledge: "bg-uri-keaney",
-  social: "bg-uri-green",
-  focus: "bg-uri-purple",
+  strength: "bg-amber-400 stat-fill-game--strength",
+  stamina: "bg-uri-teal stat-fill-game--stamina",
+  knowledge: "bg-uri-keaney stat-fill-game--knowledge",
+  social: "bg-uri-green stat-fill-game--social",
+  focus: "bg-uri-purple stat-fill-game--focus",
 };
 
 /** Accent text classes for stat labels and highlights. */
