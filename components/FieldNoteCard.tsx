@@ -809,7 +809,7 @@ function FieldNoteCardInner({
       ) : null}
       {isFeed ? (
         <>
-          <header className="cq-feed-post-header flex items-center gap-2 px-3 pb-1 pt-2">
+          <header className="cq-feed-post-header flex items-center gap-2 px-3 pb-0.5 pt-1.5">
             {avatarFrame}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
@@ -866,7 +866,7 @@ function FieldNoteCardInner({
             )}
           </div>
           <div className="cq-feed-post-actions post-actions px-3" data-no-drawer-swipe="true">{actionsRow}</div>
-          <div className="cq-feed-post-comments px-3 pb-2 pt-0">
+          <div className="cq-feed-post-comments px-3 pb-1.5 pt-0">
             {feedCommentsSection}
           </div>
         </>

@@ -129,7 +129,7 @@ export function DmThreadComposer({
           />
         ) : null}
 
-        <div className="cq-dm-composer-pill flex items-center gap-1 rounded-full bg-[#262626] px-2 py-1.5">
+        <div className="cq-dm-composer-pill flex items-center gap-1 rounded-full px-2 py-1.5">
           <button
             type="button"
             onClick={() => setCameraSheetOpen(true)}

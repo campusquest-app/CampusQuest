@@ -164,7 +164,7 @@ function MemoryThumbRow({
   onSelect: (memory: CampusMemory) => void;
 }) {
   return (
-    <div className="cq-realm-memories-scroll">
+    <div className="cq-realm-memories-scroll" data-cq-horizontal-scroll="true">
       {memories.map((memory) => {
         const preview = memoryPreview(memory);
         const showImage = memory.mediaType === "image" && isImageUrl(memory.mediaUrl);

@@ -71,6 +71,11 @@ import { QuestCompleteCelebration } from "./quests/QuestCompleteCelebration";
 import type { StatKey } from "@/lib/types";
 import { clearAccessToken, getAccessToken } from "@/lib/client/apiSession";
 import { clearStaleAuthClientState } from "@/lib/client/authSessionClient";
+import {
+  attachSupabaseAuthSync,
+  restoreSupabaseSession,
+  signOutSupabaseSession,
+} from "@/lib/client/supabaseSession";
 import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/agreementAccess";
 import {
   ApiRequestError,
@@ -919,6 +924,8 @@ export function Dashboard() {
         throw new Error(LOGOUT_BLOCKED_SAVE_MESSAGE);
       }
     }
+    // Explicit logout is the only place we tear down the persisted session.
+    await signOutSupabaseSession();
     clearAccessToken();
     invalidateMeSessionCache();
     resetMeSessionInflight();
@@ -1147,6 +1154,12 @@ export function Dashboard() {
     async function bootstrap() {
       setBootstrapStatus("bootstrapping");
       setCharacter(null);
+
+      // Restore a persisted Supabase session (refreshing an expired access
+      // token from the stored refresh token) BEFORE deciding auth state, so
+      // reopening the app never flashes the login screen for a valid user.
+      attachSupabaseAuthSync();
+      await restoreSupabaseSession();
 
       const tokenAtStart = getAccessToken();
 
@@ -2320,6 +2333,7 @@ export function Dashboard() {
           otherUser={dmWithOther}
           onClose={closeDirectMessage}
           onMessageSent={refresh}
+          onViewProfile={(userId) => void openFriendView(userId)}
         />
       )}
 

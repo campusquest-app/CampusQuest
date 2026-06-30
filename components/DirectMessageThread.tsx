@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, Ban, EyeOff, MoreHorizontal, Sparkles, UserRound } from "lucide-react";
 import type { Character, FieldNote } from "@/lib/types";
 import type { Friend } from "@/lib/types";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
@@ -24,6 +24,7 @@ import {
 } from "@/lib/client/dmMessagesClient";
 import type { DmPendingImageDraft } from "@/lib/client/dmMediaComposer";
 import { DmThreadComposer } from "@/components/messages/DmThreadComposer";
+import { DmMessageActionSheet, type DmMessageAction } from "@/components/messages/DmMessageActionSheet";
 import { fetchQuadPostById } from "@/lib/client/quadPostsClient";
 import { DmImageMessage } from "@/components/messages/DmImageMessage";
 import { DmSharedPostCard } from "@/components/messages/DmSharedPostCard";
@@ -37,16 +38,189 @@ import { useDmKeyboardInsets } from "@/lib/client/useDmKeyboardInsets";
 const SAFETY_NOTICE =
   "Keep conversations respectful. Harassment, threats, scams, or unsafe conduct may lead to removal from CampusQuest and referral to university conduct offices.";
 
+function formatTimeDivider(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (sameDay) return time;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+  const dateLabel = date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  });
+  return `${dateLabel} · ${time}`;
+}
+
+/**
+ * A single DM message row. Defined at module scope (not inline) so it isn't
+ * remounted on every parent render (e.g. while typing), which would otherwise
+ * replay the bubble enter animation and cause scroll jitter.
+ */
+function DmMessageBubbleRow({
+  m,
+  isMe,
+  isGroupStart,
+  isLatestOutgoing,
+  isRevealed,
+  onReveal,
+  onOpenActions,
+  onOpenSharedPost,
+}: {
+  m: DirectMessageDto;
+  isMe: boolean;
+  isGroupStart: boolean;
+  isLatestOutgoing: boolean;
+  isRevealed: boolean;
+  onReveal: (id: string) => void;
+  onOpenActions: (id: string) => void;
+  onOpenSharedPost: (preview: NonNullable<DirectMessageDto["sharedPostPreview"]>) => void;
+}) {
+  const favorited = Boolean(m.isFavorited);
+  const showCaption =
+    m.type === "text" ||
+    (m.type === "image" && m.content.trim() && m.content.trim() !== "📷 Photo") ||
+    (m.type === "shared_post" && m.content.trim() && m.content.trim() !== "Shared a post");
+  const isSharedPost = m.type === "shared_post" && m.sharedPostPreview;
+  const isImageOnly = m.type === "image" && m.imageUrl && !showCaption;
+
+  const bubbleClass = isMe ? "cq-dm-bubble cq-dm-bubble--sent" : "cq-dm-bubble cq-dm-bubble--received";
+
+  const showMeta = isLatestOutgoing || isRevealed || Boolean(m.pending) || Boolean(m.failed);
+
+  const longPressTimer = useRef<number | null>(null);
+  const pressStart = useRef<{ x: number; y: number } | null>(null);
+
+  const clearLongPress = () => {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const openActions = () => {
+    if (m.pending || m.failed) return;
+    onOpenActions(m.id);
+    try {
+      navigator.vibrate?.(8);
+    } catch {
+      /* haptics optional */
+    }
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (m.pending || m.failed) return;
+    pressStart.current = { x: e.clientX, y: e.clientY };
+    clearLongPress();
+    longPressTimer.current = window.setTimeout(() => {
+      longPressTimer.current = null;
+      openActions();
+    }, 430);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!pressStart.current) return;
+    const dx = Math.abs(e.clientX - pressStart.current.x);
+    const dy = Math.abs(e.clientY - pressStart.current.y);
+    if (dx > 10 || dy > 10) clearLongPress();
+  };
+
+  const onPointerUp = () => {
+    const wasShortPress = longPressTimer.current !== null;
+    clearLongPress();
+    pressStart.current = null;
+    if (wasShortPress && !m.pending && !m.failed) {
+      onReveal(m.id);
+    }
+  };
+
+  const metaText = m.pending
+    ? "Sending…"
+    : m.failed
+      ? "Failed to send"
+      : isMe && isLatestOutgoing && m.readAt
+        ? "Seen"
+        : isMe && isLatestOutgoing
+          ? "Sent"
+          : new Date(m.createdAt).toLocaleString(undefined, { hour: "numeric", minute: "2-digit" });
+
+  return (
+    <div
+      className={`flex flex-wrap items-end gap-1.5 ${isMe ? "justify-end" : "justify-start"} ${
+        isGroupStart ? "mt-3" : "mt-0.5"
+      }`}
+    >
+      {isMe && favorited ? (
+        <Sparkles className="mb-1 h-3.5 w-3.5 shrink-0 text-uri-gold/80" strokeWidth={2} aria-label="Saved" />
+      ) : null}
+      <div
+        className={`cq-dm-bubble-wrap relative max-w-[74%] select-none ${m.pending ? "opacity-70" : ""} ${
+          m.failed ? "ring-1 ring-rose-400/40 rounded-2xl" : ""
+        }`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={clearLongPress}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openActions();
+        }}
+      >
+        {isImageOnly ? (
+          <div className="cq-dm-bubble-enter overflow-hidden rounded-[1.25rem]">
+            <DmImageMessage imageUrl={m.imageUrl!} pending={m.pending} uploadProgress={m.uploadProgress} />
+          </div>
+        ) : isSharedPost ? (
+          <div className={`cq-dm-bubble-enter ${bubbleClass} p-1.5`}>
+            <DmSharedPostCard preview={m.sharedPostPreview!} onOpen={() => onOpenSharedPost(m.sharedPostPreview!)} />
+            {showCaption ? (
+              <p className="mt-1.5 px-1 text-sm whitespace-pre-wrap break-words text-white">{m.content}</p>
+            ) : null}
+          </div>
+        ) : (
+          <div className={`cq-dm-bubble-enter ${bubbleClass} px-4 py-2`}>
+            {m.type === "image" && m.imageUrl ? (
+              <div className="mb-2 -mx-1.5 overflow-hidden rounded-xl">
+                <DmImageMessage imageUrl={m.imageUrl} pending={m.pending} uploadProgress={m.uploadProgress} />
+              </div>
+            ) : null}
+            {showCaption ? (
+              <p className="text-[15px] leading-snug whitespace-pre-wrap break-words">{m.content}</p>
+            ) : null}
+          </div>
+        )}
+      </div>
+      {!isMe && favorited ? (
+        <Sparkles className="mb-1 h-3.5 w-3.5 shrink-0 text-uri-gold/80" strokeWidth={2} aria-label="Saved" />
+      ) : null}
+      {showMeta ? (
+        <p
+          className={`cq-dm-meta basis-full text-[10px] ${
+            isMe ? "text-right text-white/45" : "text-left text-white/40"
+          } ${m.failed ? "text-rose-300/80" : ""}`}
+        >
+          {metaText}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function DirectMessageThread({
   currentUser,
   otherUser,
   onClose,
   onMessageSent,
+  onViewProfile,
 }: {
   currentUser: Character;
   otherUser: Pick<Friend, "userId" | "username" | "name" | "avatar">;
   onClose: () => void;
   onMessageSent?: () => void;
+  onViewProfile?: (userId: string) => void;
 }) {
   const [messages, setMessages] = useState<DirectMessageDto[]>([]);
   const [input, setInput] = useState("");
@@ -66,12 +240,15 @@ export function DirectMessageThread({
   const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendingConnectionRequest, setSendingConnectionRequest] = useState(false);
-  const [favBusy, setFavBusy] = useState<string | null>(null);
   const [otherProfile, setOtherProfile] = useState<Character | null>(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [revealedTimestampId, setRevealedTimestampId] = useState<string | null>(null);
+  const [actionMessageId, setActionMessageId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const lastMessageCountRef = useRef(0);
 
   useRegisterImmersiveScreen();
   useDmKeyboardInsets(threadRef);
@@ -79,12 +256,40 @@ export function DirectMessageThread({
   const displayAvatar = otherProfile?.avatar ?? otherUser.avatar;
   const displayLevel = otherProfile?.level ?? 1;
 
-  const pinnedMessages = useMemo(() => {
-    const fav = messages.filter((m) => m.isFavorited);
-    return [...fav].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [messages]);
+  // Show a timestamp divider only when there's a meaningful gap between messages.
+  const TIME_GAP_MS = 10 * 60 * 1000;
+  // Break a visual sender "group" on sender change or after a quiet stretch.
+  const GROUP_GAP_MS = 5 * 60 * 1000;
 
-  const threadMessages = useMemo(() => messages.filter((m) => !m.isFavorited), [messages]);
+  const orderedMessages = useMemo(
+    () => [...messages].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+    [messages],
+  );
+
+  const lastOutgoingId = useMemo(() => {
+    for (let i = orderedMessages.length - 1; i >= 0; i -= 1) {
+      const m = orderedMessages[i];
+      if (m.senderId !== otherUser.userId && !m.pending && !m.failed) return m.id;
+    }
+    return null;
+  }, [orderedMessages, otherUser.userId]);
+
+  const renderRows = useMemo(() => {
+    return orderedMessages.map((m, index) => {
+      const prev = index > 0 ? orderedMessages[index - 1] : null;
+      const isMe = m.senderId !== otherUser.userId;
+      const prevIsMe = prev ? prev.senderId !== otherUser.userId : null;
+      const gapFromPrev = prev ? new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() : Infinity;
+      const isGroupStart = !prev || prevIsMe !== isMe || gapFromPrev > GROUP_GAP_MS;
+      const showTimeDivider = gapFromPrev > TIME_GAP_MS;
+      return { m, isMe, isGroupStart, showTimeDivider };
+    });
+  }, [orderedMessages, otherUser.userId, GROUP_GAP_MS, TIME_GAP_MS]);
+
+  const activeActionMessage = useMemo(
+    () => orderedMessages.find((m) => m.id === actionMessageId) ?? null,
+    [orderedMessages, actionMessageId],
+  );
 
   async function applyRelationshipSnapshot(otherUserId: string) {
     const relationship = await fetchRelationship(otherUserId);
@@ -174,8 +379,23 @@ export function DirectMessageThread({
     };
   }, [otherUser.userId]);
 
+  const handleListScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 120;
+  }, []);
+
   useEffect(() => {
-    listRef.current?.scrollTo(0, listRef.current.scrollHeight);
+    const el = listRef.current;
+    if (!el) return;
+    const grew = messages.length > lastMessageCountRef.current;
+    const isInitialLoad = lastMessageCountRef.current === 0;
+    lastMessageCountRef.current = messages.length;
+    // Auto-scroll on first load, or for new messages only when the user is already near the bottom.
+    if (isInitialLoad || (grew && stickToBottomRef.current)) {
+      el.scrollTo({ top: el.scrollHeight, behavior: isInitialLoad ? "auto" : "smooth" });
+    }
   }, [messages]);
 
   async function handleSend(e: React.FormEvent) {
@@ -184,6 +404,7 @@ export function DirectMessageThread({
     if (!canMessage || !conversationId || sending || !trimmed || imageDraft) return;
 
     setSending(true);
+    stickToBottomRef.current = true;
     try {
       const message = await sendRichDirectMessage({
         conversationId,
@@ -209,6 +430,7 @@ export function DirectMessageThread({
 
       setMessages((prev) => prev.filter((m) => !m.failed));
       setSending(true);
+      stickToBottomRef.current = true;
       setUploadProgress(12);
 
       const optimisticId = `pending-${Date.now()}`;
@@ -404,110 +626,50 @@ export function DirectMessageThread({
   }
 
   function toggleMessageFavorite(messageId: string, nextFavorited: boolean) {
-    setFavBusy(messageId);
+    // Optimistic update so the sparkle indicator responds immediately.
+    setMessages((prev) => prev.map((x) => (x.id === messageId ? { ...x, isFavorited: nextFavorited } : x)));
     void (async () => {
       try {
         await postAuthed(`/api/social/messages/${messageId}/favorite`, { favorited: nextFavorited });
-        setMessages((prev) => prev.map((x) => (x.id === messageId ? { ...x, isFavorited: nextFavorited } : x)));
         setError(null);
       } catch (favoriteErr) {
+        setMessages((prev) => prev.map((x) => (x.id === messageId ? { ...x, isFavorited: !nextFavorited } : x)));
         setError(favoriteErr instanceof Error ? favoriteErr.message : "Could not update favorite.");
-      } finally {
-        setFavBusy(null);
       }
     })();
   }
 
-  function MessageBubbleRow({ m }: { m: DirectMessageDto }) {
-    const isMe = m.senderId !== otherUser.userId;
-    const favorited = Boolean(m.isFavorited);
-    const busy = favBusy === m.id;
-    const showCaption =
-      m.type === "text" ||
-      (m.type === "image" && m.content.trim() && m.content.trim() !== "📷 Photo") ||
-      (m.type === "shared_post" && m.content.trim() && m.content.trim() !== "Shared a post");
-    const isSharedPost = m.type === "shared_post" && m.sharedPostPreview;
-    const isImageOnly = m.type === "image" && m.imageUrl && !showCaption;
+  async function copyMessageText(text: string) {
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      }
+    } catch {
+      /* Clipboard access can be blocked; fail silently. */
+    }
+  }
 
-    const bubbleClass = isMe ? "cq-dm-bubble cq-dm-bubble--sent" : "cq-dm-bubble cq-dm-bubble--received";
-    const timestampClass = isMe ? "text-white/55" : "text-white/40";
-
-    return (
-      <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-        <div
-          className={`max-w-[78%] ${favorited ? "ring-1 ring-uri-gold/45 rounded-2xl" : ""} ${
-            m.pending ? "opacity-70" : ""
-          } ${m.failed ? "ring-1 ring-rose-400/40 rounded-2xl" : ""}`}
-        >
-          {isImageOnly ? (
-            <div className="overflow-hidden rounded-2xl">
-              <DmImageMessage
-                imageUrl={m.imageUrl!}
-                pending={m.pending}
-                uploadProgress={m.uploadProgress}
-              />
-            </div>
-          ) : isSharedPost ? (
-            <div className={`${bubbleClass} p-1.5`}>
-              <DmSharedPostCard
-                preview={m.sharedPostPreview!}
-                onOpen={() => void openSharedPost(m.sharedPostPreview!)}
-              />
-              {showCaption ? (
-                <p className="mt-1.5 px-1 text-sm whitespace-pre-wrap break-words text-white">{m.content}</p>
-              ) : null}
-            </div>
-          ) : (
-            <div className={`${bubbleClass} px-3.5 py-2`}>
-              {m.type === "image" && m.imageUrl ? (
-                <div className="mb-2 -mx-1 overflow-hidden rounded-xl">
-                  <DmImageMessage
-                    imageUrl={m.imageUrl}
-                    pending={m.pending}
-                    uploadProgress={m.uploadProgress}
-                  />
-                </div>
-              ) : null}
-              {showCaption ? (
-                <p className="text-[15px] leading-snug whitespace-pre-wrap break-words">{m.content}</p>
-              ) : null}
-            </div>
-          )}
-
-          <div className={`mt-1 flex flex-wrap items-center gap-2 px-1 ${isMe ? "justify-end" : "justify-start"}`}>
-            <p className={`text-[10px] ${timestampClass}`}>
-              {m.pending ? "Sending…" : m.failed ? "Failed to send" : new Date(m.createdAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
-              {isMe && m.readAt ? " · Seen" : ""}
-            </p>
-            {!m.pending && !m.failed ? (
-              <>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => toggleMessageFavorite(m.id, !favorited)}
-                  className={`text-[10px] font-medium transition-colors disabled:opacity-50 ${
-                    favorited ? "text-uri-gold" : "text-white/30 hover:text-white/55"
-                  }`}
-                  aria-pressed={favorited}
-                  title={favorited ? "Unfavorite" : "Favorite"}
-                >
-                  {favorited ? "★" : "☆"}
-                </button>
-                {!isMe ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleReportMessage(m.id)}
-                    className="text-[10px] text-white/30 hover:text-rose-300/80"
-                  >
-                    Report
-                  </button>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    );
+  function handleMessageAction(action: DmMessageAction) {
+    const message = messages.find((m) => m.id === actionMessageId);
+    setActionMessageId(null);
+    if (!message) return;
+    switch (action) {
+      case "copy":
+        void copyMessageText(message.content?.trim() ? message.content : "");
+        break;
+      case "favorite":
+        toggleMessageFavorite(message.id, true);
+        break;
+      case "unfavorite":
+        toggleMessageFavorite(message.id, false);
+        break;
+      case "report":
+        void handleReportMessage(message.id);
+        break;
+      default:
+        break;
+    }
   }
 
   const content = (
@@ -523,21 +685,27 @@ export function DirectMessageThread({
       aria-label={`Direct message with ${otherUser.name}`}
     >
       <header className="cq-dm-header shrink-0 border-b border-white/[0.08] pt-[max(0.25rem,env(safe-area-inset-top))]">
-        <div className="flex items-center gap-2 px-2 py-2">
+        <div className="flex items-center gap-2.5 px-2 py-2">
           <button type="button" onClick={onClose} className="cq-dm-header-btn shrink-0" aria-label="Back">
             <ArrowLeft className="h-6 w-6" strokeWidth={1.75} />
           </button>
 
-          <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-[#262626]">
-            <AvatarDisplay avatar={displayAvatar} fitParent size={36} />
-          </div>
-
-          <div className="min-w-0 flex-1 pr-1">
-            <p className="truncate text-[15px] font-semibold leading-tight text-white">{otherUser.name}</p>
-            <p className="truncate text-xs text-white/45">
-              @{otherUser.username} · Level {displayLevel}
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={() => onViewProfile?.(otherUser.userId)}
+            disabled={!onViewProfile}
+            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl text-left disabled:cursor-default"
+          >
+            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[#262626]">
+              <AvatarDisplay avatar={displayAvatar} fitParent size={40} />
+            </div>
+            <div className="min-w-0 flex-1 pr-1">
+              <p className="truncate text-[16px] font-bold leading-tight text-white">{otherUser.name}</p>
+              <p className="truncate text-xs text-white/60">
+                @{otherUser.username} · Level {displayLevel}
+              </p>
+            </div>
+          </button>
 
           <div className="relative shrink-0" ref={menuRef}>
             <button
@@ -551,6 +719,19 @@ export function DirectMessageThread({
             </button>
             {headerMenuOpen ? (
               <div className="cq-dm-header-menu absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-xl border border-white/10 bg-[#121212] py-1 shadow-xl">
+                {onViewProfile ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHeaderMenuOpen(false);
+                      onViewProfile(otherUser.userId);
+                    }}
+                    className="cq-dm-header-menu-item flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-white"
+                  >
+                    <UserRound className="h-4 w-4 shrink-0 text-white/70" strokeWidth={1.9} />
+                    View profile
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {
@@ -558,8 +739,9 @@ export function DirectMessageThread({
                     void handleHideConversation();
                   }}
                   disabled={!conversationId}
-                  className="cq-dm-header-menu-item w-full px-4 py-2.5 text-left text-sm text-white disabled:opacity-40"
+                  className="cq-dm-header-menu-item flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-white disabled:opacity-40"
                 >
+                  <EyeOff className="h-4 w-4 shrink-0 text-white/70" strokeWidth={1.9} />
                   Hide conversation
                 </button>
                 <button
@@ -568,8 +750,9 @@ export function DirectMessageThread({
                     setHeaderMenuOpen(false);
                     void handleBlockUser();
                   }}
-                  className="cq-dm-header-menu-item w-full px-4 py-2.5 text-left text-sm text-rose-300"
+                  className="cq-dm-header-menu-item flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-rose-300"
                 >
+                  <Ban className="h-4 w-4 shrink-0" strokeWidth={1.9} />
                   Block user
                 </button>
                 <div className="border-t border-white/[0.08] px-4 py-2.5">
@@ -581,7 +764,11 @@ export function DirectMessageThread({
         </div>
       </header>
 
-      <div ref={listRef} className="cq-dm-messages flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-3 space-y-2">
+      <div
+        ref={listRef}
+        onScroll={handleListScroll}
+        className="cq-dm-messages flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-3"
+      >
         {loading && <p className="py-10 text-center text-sm text-white/40">Loading conversation…</p>}
         {!loading && error ? (
           <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90">{error}</p>
@@ -637,16 +824,24 @@ export function DirectMessageThread({
         {canMessage && messages.length === 0 && !loading ? (
           <p className="py-10 text-center text-sm text-white/40">No messages yet. Say hi!</p>
         ) : null}
-        {pinnedMessages.length > 0 && canMessage && !blockedByMe && !blockedByOther ? (
-          <div className="mb-3 space-y-2 border-b border-white/[0.08] pb-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-uri-gold/80">Pinned</p>
-            {pinnedMessages.map((m) => (
-              <MessageBubbleRow key={`pin-${m.id}`} m={m} />
-            ))}
+        {renderRows.map(({ m, isMe, isGroupStart, showTimeDivider }) => (
+          <div key={m.id}>
+            {showTimeDivider ? (
+              <p className="cq-dm-time-divider my-3 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-white/35">
+                {formatTimeDivider(m.createdAt)}
+              </p>
+            ) : null}
+            <DmMessageBubbleRow
+              m={m}
+              isMe={isMe}
+              isGroupStart={isGroupStart && !showTimeDivider}
+              isLatestOutgoing={m.id === lastOutgoingId}
+              isRevealed={revealedTimestampId === m.id}
+              onReveal={(id) => setRevealedTimestampId((prev) => (prev === id ? null : id))}
+              onOpenActions={(id) => setActionMessageId(id)}
+              onOpenSharedPost={(preview) => void openSharedPost(preview)}
+            />
           </div>
-        ) : null}
-        {threadMessages.map((m) => (
-          <MessageBubbleRow key={m.id} m={m} />
         ))}
       </div>
 
@@ -676,6 +871,14 @@ export function DirectMessageThread({
   return createPortal(
     <>
       {content}
+      <DmMessageActionSheet
+        open={Boolean(activeActionMessage)}
+        isMine={activeActionMessage ? activeActionMessage.senderId !== otherUser.userId : false}
+        isFavorited={Boolean(activeActionMessage?.isFavorited)}
+        canCopy={Boolean(activeActionMessage?.content?.trim())}
+        onAction={handleMessageAction}
+        onClose={() => setActionMessageId(null)}
+      />
       {sharedPostDetail ? (
         <ProfilePostDetail
           note={sharedPostDetail}

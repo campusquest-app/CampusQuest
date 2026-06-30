@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { DEFAULT_POLICY_VERSION } from "@/lib/legal/policy";
 import { fetchMeSchoolVerification, SchoolVerificationHttpError } from "@/lib/client/dashboardApi";
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/client/apiSession";
+import { persistSupabaseSession } from "@/lib/client/supabaseSession";
 import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/agreementAccess";
 import { LegalConsentScreen } from "@/components/LegalConsentScreen";
 import { AccountSafetyStatusScreen } from "@/components/AccountSafetyStatusScreen";
@@ -243,12 +244,16 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
 
     setIsSubmitting(true);
     try {
-      const payload = await fetchJson<{ session?: { access_token?: string } }>("/api/auth/login", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: eVal, password: p }),
-      });
-      const accessToken = payload?.data?.session?.access_token;
+      const payload = await fetchJson<{ session?: { access_token?: string; refresh_token?: string } }>(
+        "/api/auth/login",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: eVal, password: p }),
+        },
+      );
+      const session = payload?.data?.session;
+      const accessToken = session?.access_token;
       if (!accessToken) {
         if (IS_DEV) {
           console.error("[auth:login] succeeded (2xx) but no session/access_token in response", payload);
@@ -262,6 +267,11 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         localStorage.removeItem(REMEMBER_EMAIL_KEY);
       }
       setAccessToken(accessToken);
+      // Persist the full session so the user stays logged in across app
+      // restarts; Supabase auto-refreshes the access token from here on.
+      if (session?.refresh_token) {
+        await persistSupabaseSession({ access_token: accessToken, refresh_token: session.refresh_token });
+      }
       await completeAuthenticatedSession({ isSignup: false });
     } catch (signInError) {
       logAuthClientError("login", signInError);
@@ -309,15 +319,16 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
 
     setIsSubmitting(true);
     try {
-      const payload = await fetchJson<{ session?: { access_token?: string }; user?: { id?: string } }>(
-        "/api/auth/signup",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email: eVal, password: p, username: u }),
-        },
-      );
-      const accessToken = payload?.data?.session?.access_token;
+      const payload = await fetchJson<{
+        session?: { access_token?: string; refresh_token?: string };
+        user?: { id?: string };
+      }>("/api/auth/signup", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: eVal, password: p, username: u }),
+      });
+      const session = payload?.data?.session;
+      const accessToken = session?.access_token;
       if (!accessToken) {
         setMode("signin");
         setEmail(eVal);
@@ -328,6 +339,9 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         return;
       }
       setAccessToken(accessToken);
+      if (session?.refresh_token) {
+        await persistSupabaseSession({ access_token: accessToken, refresh_token: session.refresh_token });
+      }
       setSuccessBanner("Account Created!");
       await completeAuthenticatedSession({ isSignup: true });
     } catch (signUpError) {

@@ -21,7 +21,7 @@ export const CQ_FLOATING_ACTION_BOTTOM =
 
 export type AppBottomNavTab = "quad" | "realm" | "leaderboards" | "character";
 
-const BOTTOM_NAV_AVATAR_PX = 26;
+const BOTTOM_NAV_AVATAR_PX = 22;
 
 const DOCK_TABS: AppBottomNavTab[] = ["quad", "realm", "leaderboards", "character"];
 
@@ -94,7 +94,7 @@ export function AppBottomNav({
 
     const sync = (): void => {
       const raw = Math.ceil(el.getBoundingClientRect().height);
-      document.documentElement.style.setProperty(BOTTOM_NAV_CSS_VAR, `${Math.max(72, raw)}px`);
+      document.documentElement.style.setProperty(BOTTOM_NAV_CSS_VAR, `${Math.max(60, raw)}px`);
     };
 
     sync();
@@ -183,7 +183,7 @@ export function AppBottomNav({
           onClick={() => guardNav(() => onSelectTab("quad"))}
           icon={
             <Home
-              className="h-[24px] w-[24px]"
+              className="h-[21px] w-[21px]"
               strokeWidth={resolvedActive === "quad" ? 2.5 : 2}
               fill={resolvedActive === "quad" ? "currentColor" : "none"}
             />
@@ -197,7 +197,7 @@ export function AppBottomNav({
           label="Map"
           active={resolvedActive === "realm"}
           onClick={() => guardNav(() => onSelectTab("realm"))}
-          icon={<Map className="h-[24px] w-[24px]" strokeWidth={resolvedActive === "realm" ? 2.5 : 2} />}
+          icon={<Map className="h-[21px] w-[21px]" strokeWidth={resolvedActive === "realm" ? 2.5 : 2} />}
         />
 
         <div className="cq-dock-nav__scan-slot">
@@ -208,7 +208,7 @@ export function AppBottomNav({
             className="cq-dock-nav__scan-btn cq-scanner-fab touch-manipulation"
           >
             <span className="cq-dock-nav__scan-ring" aria-hidden />
-            <QrCode className="relative z-[1] h-[24px] w-[24px]" strokeWidth={2.2} />
+            <QrCode className="relative z-[1] h-[20px] w-[20px]" strokeWidth={2.2} />
           </button>
         </div>
 
@@ -221,7 +221,7 @@ export function AppBottomNav({
           onClick={() => guardNav(() => onSelectTab("leaderboards"))}
           icon={
             <Trophy
-              className="h-[24px] w-[24px]"
+              className="h-[21px] w-[21px]"
               strokeWidth={resolvedActive === "leaderboards" ? 2.5 : 2}
               fill={resolvedActive === "leaderboards" ? "currentColor" : "none"}
             />

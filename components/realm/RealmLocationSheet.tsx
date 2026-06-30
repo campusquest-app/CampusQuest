@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Calendar, ChevronLeft, Sparkles, TrendingUp, X, Zap } from "lucide-react";
 import type { RealmLocation } from "@/lib/realm/locations";
@@ -12,7 +12,10 @@ import { LocationMemoriesSection } from "@/components/memories/LocationMemoriesS
 import { CampusMemoryArchivePanel } from "@/components/memories/CampusMemoryArchivePanel";
 import type { CampusMemoryGroup, CampusMemoryLocationStats } from "@/lib/types";
 import type { CampusLocationId } from "@/lib/locations/registry";
-import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
+import { useRegisterMobileDetailLayer } from "@/components/mobile/MobileGestureLayerProvider";
+import { useSwipeBack } from "@/lib/client/useSwipeBack";
+import { useSwipeDownDismiss } from "@/lib/client/useSwipeDownDismiss";
+import { SWIPE_TRANSITION_MS } from "@/lib/client/mobileGestures";
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 
@@ -59,8 +62,11 @@ export function RealmLocationSheet({
 }) {
   const [view, setView] = useState<SheetView>("archive");
   const [mounted, setMounted] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useRegisterImmersiveScreen(open);
+  // Keep app tab-swipe navigation disabled while this sheet is up.
+  useRegisterMobileDetailLayer(open);
 
   useEffect(() => {
     setMounted(true);
@@ -99,6 +105,25 @@ export function RealmLocationSheet({
     }
     onClose();
   }
+
+  // Edge swipe-back (horizontal) navigates sub-views / closes; pull-down (vertical) dismisses.
+  // `open && mounted` ensures the gesture effects (re)attach only once the panel
+  // node is actually in the DOM (the component returns null until then).
+  const gesturesEnabled = open && mounted;
+  const swipeBack = useSwipeBack({ onBack: handleSwipeBack, enabled: gesturesEnabled, containerRef: panelRef });
+  const swipeDown = useSwipeDownDismiss({ onDismiss: onClose, enabled: gesturesEnabled, containerRef: panelRef });
+  const draggingGesture = swipeBack.dragging || swipeDown.dragging;
+  const offsetX = swipeBack.dragX > 0 ? swipeBack.dragX : 0;
+  const offsetY = swipeDown.dragY > 0 ? swipeDown.dragY : 0;
+  const panelStyle: CSSProperties = {
+    transform: offsetX > 0 || offsetY > 0 ? `translate3d(${offsetX}px, ${offsetY}px, 0)` : undefined,
+    transition: draggingGesture
+      ? "none"
+      : offsetX > 0 || offsetY > 0
+        ? `transform ${SWIPE_TRANSITION_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`
+        : undefined,
+  };
+  const backdropOpacity = 1 - 0.5 * swipeDown.progress;
 
   if (!mounted || !open || typeof document === "undefined") return null;
   if (!location && !mapContent) return null;
@@ -146,11 +171,14 @@ export function RealmLocationSheet({
         type="button"
         aria-label="Close location archive"
         className="realm-sheet-backdrop fixed inset-0 bg-black/60 backdrop-blur-[3px]"
+        style={{ opacity: backdropOpacity }}
         onClick={onClose}
       />
-      <MobileSwipeBackSurface
-        onBack={handleSwipeBack}
-        className="cq-realm-archive-panel cq-realm-archive-screen cq-realm-archive-sheet mx-auto max-w-lg animate-realm-sheet-up"
+      <div
+        ref={panelRef}
+        data-cq-swipe-back-root=""
+        className="cq-swipe-back-surface cq-realm-archive-panel cq-realm-archive-screen cq-realm-archive-sheet mx-auto max-w-lg animate-realm-sheet-up"
+        style={panelStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="realm-sheet-title"
@@ -270,7 +298,7 @@ export function RealmLocationSheet({
             />
           ) : null}
         </div>
-      </MobileSwipeBackSurface>
+      </div>
     </>,
     document.body,
   );
@@ -306,6 +334,8 @@ function RealmArchiveHeader({
           Back
         </button>
       </div>
+
+      <div className="cq-realm-archive-grabber" aria-hidden />
 
       <div className="cq-realm-archive-identity">
         <p className="cq-realm-archive-fantasy-banner">

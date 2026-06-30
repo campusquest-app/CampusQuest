@@ -43,11 +43,9 @@ type RowTile = {
 
 export function CampusMemoriesRow({
   onOpenGroup,
-  onOpenGlobalDeck,
   onAddMemory,
 }: {
   onOpenGroup: (group: CampusMemoryGroup) => void;
-  onOpenGlobalDeck?: () => void;
   onAddMemory: (locationId?: CampusLocationId) => void;
 }) {
   const [groups, setGroups] = useState<CampusMemoryGroup[]>([]);
@@ -115,27 +113,27 @@ export function CampusMemoriesRow({
     return [...active, ...inactive];
   }, [groups]);
 
-  const header = (
-    <div className="cq-memories-row-head">
-      <button
-        type="button"
-        className="cq-memories-row-title-btn"
-        onClick={() => onOpenGlobalDeck?.()}
-        aria-label="Open campus memories deck"
-      >
-        <h3 className="cq-memories-row-title">Memories</h3>
-      </button>
-      <button type="button" className="cq-memories-add-btn" onClick={() => onAddMemory()}>
-        <Plus className="h-3.5 w-3.5" strokeWidth={2.6} aria-hidden />
-        <span>Add</span>
-      </button>
-    </div>
+  // Instagram-style circular "add" item that lives inside the carousel itself.
+  const addTile = (
+    <button
+      type="button"
+      className="cq-memories-tile cq-memories-tile--add"
+      onClick={() => onAddMemory()}
+      aria-label="Add a Memory"
+    >
+      <span className="cq-memories-tile-ring cq-memories-tile-ring--add" aria-hidden>
+        <span className="cq-memories-tile-icon-wrap">
+          <Plus className="cq-memories-tile-icon" strokeWidth={2.6} aria-hidden />
+        </span>
+      </span>
+      <span className="cq-memories-tile-label">Add</span>
+      <span className="cq-memories-tile-count" aria-hidden />
+    </button>
   );
 
   if (loading) {
     return (
       <section className="cq-memories-row" aria-label="Campus Memories" aria-busy="true">
-        {header}
         <div className="cq-memories-scroll cq-memories-scroll--loading" aria-hidden data-cq-horizontal-scroll="true">
           <div className="cq-memories-track">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -149,10 +147,9 @@ export function CampusMemoriesRow({
 
   return (
     <section className="cq-memories-row" aria-label="Campus Memories">
-      {header}
-
       <div className="cq-memories-scroll" ref={attachScroller} data-cq-horizontal-scroll="true">
         <div className="cq-memories-track">
+          {addTile}
           {tiles.map((tile) => {
             const { group, active, Icon } = tile;
             const recent = Boolean(group?.hasRecent);

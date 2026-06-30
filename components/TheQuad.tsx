@@ -22,7 +22,6 @@ import type { QuadPostXpReward } from "@/lib/quadPostXp";
 import { FieldNoteCard } from "@/components/FieldNoteCard";
 import { CampusMemoriesRow } from "@/components/memories/CampusMemoriesRow";
 import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
-import { MemoriesDeck } from "@/components/memories/MemoriesDeck";
 import { AddCampusMemorySheet } from "@/components/memories/AddCampusMemorySheet";
 import type { CampusLocationId } from "@/lib/locations/registry";
 import { QuadFeedSkeleton } from "@/components/QuadFeedSkeleton";
@@ -103,12 +102,10 @@ export function TheQuad({
   const [postActionMessage, setPostActionMessage] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
   const [memoryGroup, setMemoryGroup] = useState<CampusMemoryGroup | null>(null);
-  const [showGlobalMemoriesDeck, setShowGlobalMemoriesDeck] = useState(false);
   const [memoryViewerInitialId, setMemoryViewerInitialId] = useState<string | undefined>();
   const [memoryViewerIncludeExpired, setMemoryViewerIncludeExpired] = useState(false);
   const [showAddMemory, setShowAddMemory] = useState(false);
   const [addMemoryLocationId, setAddMemoryLocationId] = useState<CampusLocationId>("the-quad");
-  const quadHeaderRef = useRef<HTMLDivElement | null>(null);
   const showQuadChrome = !chromeSuppressed;
 
   useEffect(() => {
@@ -267,38 +264,21 @@ export function TheQuad({
     return () => window.clearTimeout(tid);
   }, [postActionMessage]);
 
+  // The inline tab row was removed (replaced by the CampusQuest ▼ feed selector),
+  // so the quad header no longer contributes extra fixed height. Keep the legacy
+  // CSS var pinned to 0 so any remaining `calc(... + var(--cq-quad-header-h))`
+  // fallbacks collapse cleanly instead of reserving phantom space.
   useLayoutEffect(() => {
+    if (typeof document === "undefined") return undefined;
     if (!showQuadChrome) {
-      if (typeof document !== "undefined") {
-        document.documentElement.style.removeProperty(QUAD_HEADER_CSS_VAR);
-      }
+      document.documentElement.style.removeProperty(QUAD_HEADER_CSS_VAR);
       return undefined;
     }
-
-    const el = quadHeaderRef.current;
-    if (!el || typeof document === "undefined") return undefined;
-
-    const sync = (): void => {
-      const raw = Math.ceil(el.getBoundingClientRect().height);
-      document.documentElement.style.setProperty(QUAD_HEADER_CSS_VAR, `${Math.max(44, raw)}px`);
-    };
-
-    sync();
-    let ro: ResizeObserver | undefined;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(() => sync());
-      ro.observe(el);
-    }
-    window.addEventListener("resize", sync);
-    window.visualViewport?.addEventListener?.("resize", sync);
-
+    document.documentElement.style.setProperty(QUAD_HEADER_CSS_VAR, "0px");
     return () => {
-      ro?.disconnect();
-      window.removeEventListener("resize", sync);
-      window.visualViewport?.removeEventListener?.("resize", sync);
       document.documentElement.style.removeProperty(QUAD_HEADER_CSS_VAR);
     };
-  }, [feedTab, showQuadChrome]);
+  }, [showQuadChrome]);
 
   const emptyCopy = useMemo(() => {
     if (feedTab === "friends") {
@@ -453,45 +433,9 @@ export function TheQuad({
 
   // Stable spacer equal to the full fixed-header height so feed content never
   // jumps while the scroll-linked header translates up/down with the user.
-  const quadChromeStackPadding =
-    "calc(var(--cq-topnav-h, 0px) + var(--cq-quad-header-h, 52px))";
-
-  const quadHeader = showQuadChrome ? (
-    <div
-      ref={quadHeaderRef}
-      className="cq-quad-header cq-nav-shell-quad relative w-full"
-    >
-      <div className="w-full px-[2.5vw] pb-0.5 pt-0.5 sm:px-[3vw] sm:pb-1">
-        <div className="cq-quad-header-row tabs" data-no-drawer-swipe="true">
-          <button
-            type="button"
-            onClick={() => onFeedTabChange("public")}
-            className={`cq-quad-feed-tab justify-self-start touch-manipulation ${
-              feedTab === "public" ? "cq-quad-feed-tab--active" : ""
-            }`}
-            aria-current={feedTab === "public" ? "page" : undefined}
-          >
-            For You
-          </button>
-
-          <div className="cq-quad-destination-center">
-            <h2 className="cq-quad-destination-title font-display">The Quad</h2>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => onFeedTabChange("friends")}
-            className={`cq-quad-feed-tab justify-self-end touch-manipulation ${
-              feedTab === "friends" ? "cq-quad-feed-tab--active" : ""
-            }`}
-            aria-current={feedTab === "friends" ? "page" : undefined}
-          >
-            Following
-          </button>
-        </div>
-      </div>
-    </div>
-  ) : null;
+  // The header is now just the TopNav (the inline tab row was replaced by the
+  // CampusQuest ▼ feed selector), so the spacer tracks only --cq-topnav-h.
+  const quadChromeStackPadding = "var(--cq-topnav-h, 0px)";
 
   const quadTopChrome =
     showQuadChrome && typeof document !== "undefined"
@@ -503,8 +447,9 @@ export function TheQuad({
               onOpenMenu={onOpenMenu}
               onOpenInbox={onOpenInbox}
               unreadNotificationCount={unreadNotificationCount}
+              feedTab={feedTab}
+              onSelectFeedTab={onFeedTabChange}
             />
-            {quadHeader}
           </div>,
           document.body,
         )
@@ -550,7 +495,6 @@ export function TheQuad({
               {feedTab === "public" ? (
                 <CampusMemoriesRow
                   onOpenGroup={setMemoryGroup}
-                  onOpenGlobalDeck={() => setShowGlobalMemoriesDeck(true)}
                   onAddMemory={(locationId) => {
                     setAddMemoryLocationId(locationId ?? "the-quad");
                     setShowAddMemory(true);
@@ -604,14 +548,6 @@ export function TheQuad({
         onCreateMemory={() => setShowAddMemory(true)}
         onLogQuest={onLogQuest}
       />
-
-      {showGlobalMemoriesDeck ? (
-        <MemoriesDeck
-          mode="global"
-          currentUserId={character.id}
-          onClose={() => setShowGlobalMemoriesDeck(false)}
-        />
-      ) : null}
 
       {memoryGroup ? (
         <CampusMemoryViewer
