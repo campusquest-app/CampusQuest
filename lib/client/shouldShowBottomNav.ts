@@ -17,7 +17,7 @@ export type BottomNavVisibilityContext = {
   friendProfileOpen: boolean;
   /** Settings panel open in the side drawer. */
   settingsDrawerOpen: boolean;
-  /** Nested immersive overlays (DM, share sheet, scanner, create post, etc.). */
+  /** Nested immersive overlays (DM, share sheet, scanner, avatar customization, etc.). */
   immersiveScreenDepth: number;
 };
 

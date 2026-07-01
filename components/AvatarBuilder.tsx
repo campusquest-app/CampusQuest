@@ -14,6 +14,7 @@ import { AvatarDisplay } from "./AvatarDisplay";
 import { AvatarPresetPicker } from "./avatar/AvatarPresetPicker";
 import { DiceBearForgeControls, DiceBearBackgroundPicker } from "./DiceBearForgeControls";
 import { randomAppearanceOptions, randomBackgroundColors } from "@/lib/dicebearAdvancedOptions";
+import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 
 type UnlockContext = {
   achievements: string[];
@@ -63,6 +64,8 @@ export function AvatarBuilder({
   /** Hide inline preview (modal provides a pinned preview). */
   hidePreview?: boolean;
 }) {
+  useRegisterImmersiveScreen();
+
   const [data, setData] = useState<DiceBearAvatarV2>(() => parseDiceBearAvatar(value) ?? getDefaultDiceBearAvatar());
 
   useEffect(() => {

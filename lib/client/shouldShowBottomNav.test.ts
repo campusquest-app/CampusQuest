@@ -26,6 +26,7 @@ describe("shouldShowBottomNav", () => {
 
   it("hides when immersive overlays are open", () => {
     expect(shouldShowBottomNav({ ...base, immersiveScreenDepth: 1 })).toBe(false);
+    expect(shouldShowBottomNav({ ...base, immersiveScreenDepth: 2 })).toBe(false);
   });
 
   it("hides on friend profile and settings drawer", () => {
