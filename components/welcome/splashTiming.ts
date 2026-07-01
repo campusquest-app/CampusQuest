@@ -6,6 +6,17 @@ export const SPLASH_COMPLETE_DWELL_MS = 680;
 
 export const SPLASH_FADEOUT_MS = 800;
 
+/** App launch splash — brief on every cold open / refresh / PWA start. */
+export const SPLASH_LAUNCH_MIN_VISIBLE_MS = 1000;
+
+export const SPLASH_LAUNCH_PROGRESS_MS = 1100;
+
+export const SPLASH_LAUNCH_COMPLETE_DWELL_MS = 120;
+
+export const SPLASH_LAUNCH_FADEOUT_MS = 480;
+
+export const SPLASH_LAUNCH_STATUS = "Entering CampusQuest…";
+
 /** Ease-in-out cubic — smooth start and finish, no abrupt jumps. */
 export function splashProgressEase(t: number): number {
   const x = Math.max(0, Math.min(1, t));

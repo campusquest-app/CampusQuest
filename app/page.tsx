@@ -4,9 +4,13 @@ import { MeSessionProvider } from "@/components/MeSessionProvider";
 
 function DashboardFallback() {
   return (
-    <div className="min-h-[30vh] flex flex-col items-center justify-center gap-2 text-sm text-white/60" aria-busy="true">
-      <span className="inline-block h-6 w-6 rounded-full border-2 border-uri-keaney/40 border-t-uri-keaney animate-spin" />
-      Loading…
+    <div
+      className="fixed inset-0 z-[120] flex flex-col items-center justify-center gap-3 bg-uri-navy"
+      aria-busy="true"
+      aria-label="Loading CampusQuest"
+    >
+      <span className="inline-block h-8 w-8 rounded-full border-2 border-uri-keaney/35 border-t-uri-keaney animate-spin" />
+      <p className="text-sm font-medium text-white/70">Entering CampusQuest…</p>
     </div>
   );
 }

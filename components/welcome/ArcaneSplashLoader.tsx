@@ -37,9 +37,11 @@ const BAR_RISE_PARTICLES = [
 type ArcaneSplashLoaderProps = {
   progress: number;
   className?: string;
+  /** Override rotating lore line (e.g. app launch). */
+  statusMessage?: string;
 };
 
-export function ArcaneSplashLoader({ progress, className = "" }: ArcaneSplashLoaderProps) {
+export function ArcaneSplashLoader({ progress, className = "", statusMessage }: ArcaneSplashLoaderProps) {
   const reduceMotion = useReducedMotion();
   const [activeMessage] = useState(
     () => LORE_MESSAGES[Math.floor(Math.random() * LORE_MESSAGES.length)] ?? LORE_MESSAGES[0],
@@ -325,7 +327,7 @@ export function ArcaneSplashLoader({ progress, className = "" }: ArcaneSplashLoa
 
       <div className="relative min-h-[2.5rem] w-full text-center">
         <p className="cq-splash-lore-text mx-auto w-full text-balance font-medium leading-snug text-white/88">
-          {activeMessage}
+          {statusMessage ?? activeMessage}
         </p>
       </div>
     </div>

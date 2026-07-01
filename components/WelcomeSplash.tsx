@@ -8,48 +8,89 @@ import { CampusQuestLogo } from "@/components/CampusQuestLogo";
 import {
   SPLASH_COMPLETE_DWELL_MS,
   SPLASH_FADEOUT_MS,
+  SPLASH_LAUNCH_COMPLETE_DWELL_MS,
+  SPLASH_LAUNCH_FADEOUT_MS,
+  SPLASH_LAUNCH_PROGRESS_MS,
+  SPLASH_LAUNCH_STATUS,
   SPLASH_PROGRESS_MS,
   splashProgressEase,
 } from "@/components/welcome/splashTiming";
+import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 
-export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
+export type WelcomeSplashProps = {
+  onComplete: () => void;
+  /** `launch` = every app open (waits for bootstrap). `cinematic` = long first-run style. */
+  mode?: "launch" | "cinematic";
+  /** Launch mode only: bootstrap + min visible time satisfied. */
+  readyToDismiss?: boolean;
+};
+
+export function WelcomeSplash({
+  onComplete,
+  mode = "cinematic",
+  readyToDismiss = false,
+}: WelcomeSplashProps) {
+  const isLaunch = mode === "launch";
+  const progressMs = isLaunch ? SPLASH_LAUNCH_PROGRESS_MS : SPLASH_PROGRESS_MS;
+  const dwellMs = isLaunch ? SPLASH_LAUNCH_COMPLETE_DWELL_MS : SPLASH_COMPLETE_DWELL_MS;
+  const fadeMs = isLaunch ? SPLASH_LAUNCH_FADEOUT_MS : SPLASH_FADEOUT_MS;
+
+  useRegisterImmersiveScreen(isLaunch);
+
   const reduceMotion = useReducedMotion();
   const [phase, setPhase] = useState<"visible" | "fading">("visible");
   const [progress, setProgress] = useState(0);
   const startRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const fadeTimer = setTimeout(() => setPhase("fading"), SPLASH_PROGRESS_MS + SPLASH_COMPLETE_DWELL_MS);
+    if (isLaunch) return undefined;
+    const fadeTimer = setTimeout(() => setPhase("fading"), progressMs + dwellMs);
     return () => clearTimeout(fadeTimer);
-  }, []);
+  }, [isLaunch, progressMs, dwellMs]);
+
+  useEffect(() => {
+    if (!isLaunch || !readyToDismiss) return undefined;
+    setProgress(100);
+    const fadeTimer = setTimeout(() => setPhase("fading"), dwellMs);
+    return () => clearTimeout(fadeTimer);
+  }, [isLaunch, readyToDismiss, dwellMs]);
 
   useEffect(() => {
     if (phase !== "fading") return;
-    const doneTimer = setTimeout(onComplete, SPLASH_FADEOUT_MS);
+    const doneTimer = setTimeout(onComplete, fadeMs);
     return () => clearTimeout(doneTimer);
-  }, [phase, onComplete]);
+  }, [phase, onComplete, fadeMs]);
 
   useEffect(() => {
     startRef.current = performance.now();
     let rafId: number;
     function tick(now: number) {
       const elapsed = startRef.current != null ? now - startRef.current : 0;
-      const t = Math.min(1, elapsed / SPLASH_PROGRESS_MS);
-      const p = t >= 1 ? 100 : splashProgressEase(t) * 100;
+      const t = Math.min(1, elapsed / progressMs);
+      const eased = splashProgressEase(t);
+      if (isLaunch) {
+        setProgress(t >= 1 ? 92 : eased * 92);
+        if (t < 1) rafId = requestAnimationFrame(tick);
+        return;
+      }
+      const p = t >= 1 ? 100 : eased * 100;
       setProgress(p);
       if (t < 1) rafId = requestAnimationFrame(tick);
     }
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, []);
+  }, [isLaunch, progressMs]);
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex flex-col bg-uri-navy"
+      className="fixed inset-0 z-[120] flex flex-col bg-uri-navy"
       initial={false}
       animate={{ opacity: phase === "fading" ? 0 : 1 }}
-      transition={{ duration: SPLASH_FADEOUT_MS / 1000, ease: [0.4, 0, 0.2, 1] }}
-      aria-hidden="true"
+      transition={{ duration: fadeMs / 1000, ease: [0.4, 0, 0.2, 1] }}
+      role="status"
+      aria-live="polite"
+      aria-busy={phase === "visible"}
+      aria-label={isLaunch ? SPLASH_LAUNCH_STATUS : "Loading CampusQuest"}
     >
       <SplashMagicalBackdrop variant="full" />
 
@@ -118,7 +159,11 @@ export function WelcomeSplash({ onComplete }: { onComplete: () => void }) {
           <div className="cq-splash-loader-zone relative">
             <SplashMagicalBackdrop variant="loader" />
             <div className="relative z-10 mb-4 w-full overflow-visible">
-              <ArcaneSplashLoader progress={progress} className="mx-auto w-full" />
+              <ArcaneSplashLoader
+                progress={progress}
+                className="mx-auto w-full"
+                statusMessage={isLaunch ? SPLASH_LAUNCH_STATUS : undefined}
+              />
             </div>
             {progress >= 99.5 && !reduceMotion ? (
               <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center overflow-visible" aria-hidden>

@@ -112,7 +112,8 @@ import { resetMobileViewportScale } from "@/lib/client/modalViewportCleanup";
 import { LOGOUT_BLOCKED_SAVE_MESSAGE, isServerBackedUserId, resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
 import { hydrateUserPersistenceFromServer } from "@/lib/client/hydrateUserPersistence";
 import { communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
-import { DashboardBootstrapShellSkeleton } from "./DashboardBootstrapShellSkeleton";
+import { WelcomeSplash } from "./WelcomeSplash";
+import { SPLASH_LAUNCH_MIN_VISIBLE_MS } from "@/components/welcome/splashTiming";
 import { buildQrXpSession } from "@/lib/client/buildQrXpSession";
 import { normalizeQrScanInput } from "@/lib/client/normalizeQrScanInput";
 import { logQrScanDebug } from "@/lib/client/qrScanDebug";
@@ -193,6 +194,8 @@ export function Dashboard() {
   const router = useRouter();
   const [character, setCharacter] = useState<Character | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [showLaunchSplash, setShowLaunchSplash] = useState(true);
+  const [launchMinElapsed, setLaunchMinElapsed] = useState(false);
   const [tab, setTab] = useState<Tab>("quad");
   const [quadFeedTab, setQuadFeedTab] = useState<QuadFeedTab>("public");
   const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
@@ -1000,6 +1003,8 @@ export function Dashboard() {
   useEffect(() => {
     setMounted(true);
     setMusicMuted(isGameMusicMuted());
+    const minTimer = window.setTimeout(() => setLaunchMinElapsed(true), SPLASH_LAUNCH_MIN_VISIBLE_MS);
+    return () => window.clearTimeout(minTimer);
   }, []);
 
   useEffect(() => {
@@ -1564,46 +1569,15 @@ export function Dashboard() {
     };
   }, [bossDefeatPhase]);
 
-  if (!mounted) {
-    return (
-      <div className="space-y-4 cq-skeleton-wrap">
-        <div className="cq-skeleton h-12 rounded-xl w-3/4 max-w-xs" />
-        <div className="card p-5 space-y-4">
-          <div className="flex gap-4">
-            <div className="cq-skeleton w-20 h-20 rounded-2xl" />
-            <div className="flex-1 space-y-2">
-              <div className="cq-skeleton h-5 rounded w-32" />
-              <div className="cq-skeleton h-4 rounded w-24" />
-              <div className="cq-skeleton h-3 rounded w-full mt-3" />
-            </div>
-          </div>
-          <div className="cq-skeleton h-3 rounded w-full" />
-          <div className="cq-skeleton h-3 rounded w-5/6" />
-        </div>
-        <div className="card p-4 space-y-2">
-          <div className="cq-skeleton h-4 rounded w-40" />
-          <div className="cq-skeleton h-11 rounded-xl" />
-          <div className="cq-skeleton h-11 rounded-xl" />
-        </div>
-      </div>
-    );
-  }
+  const launchReadyToDismiss = mounted && bootstrapStatus !== "bootstrapping" && launchMinElapsed;
 
-  if (bootstrapStatus === "bootstrapping") {
-    if (typeof window !== "undefined" && getAccessToken()) {
-      return <DashboardBootstrapShellSkeleton />;
-    }
+  if (showLaunchSplash) {
     return (
-      <div className="min-h-[70vh] flex flex-col items-center justify-center px-6 text-center">
-        <div
-          className="w-14 h-14 rounded-2xl bg-uri-keaney/20 border border-uri-keaney/40 flex items-center justify-center text-3xl mb-4"
-          aria-hidden
-        >
-          🐏
-        </div>
-        <p className="text-base font-semibold text-white tracking-wide">Loading CampusQuest…</p>
-        <p className="mt-2 text-sm text-white/55">Checking your session</p>
-      </div>
+      <WelcomeSplash
+        mode="launch"
+        readyToDismiss={launchReadyToDismiss}
+        onComplete={() => setShowLaunchSplash(false)}
+      />
     );
   }
 
