@@ -85,8 +85,17 @@ export function ScaledProgressBar({
         }
       : {};
 
+  const trackClasses = [trackClassName, "cq-scaled-progress-track"].filter(Boolean).join(" ");
+  const fillClasses = [
+    "cq-scaled-progress-fill",
+    fillClassName,
+    shimmer ? "cq-bar-shimmer-once" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className={trackClassName} {...ariaProps}>
+    <div className={trackClasses} {...ariaProps}>
       <div
         className="cq-scaled-progress-fill-wrap"
         style={{
@@ -96,14 +105,7 @@ export function ScaledProgressBar({
           transitionTimingFunction: EASE_OUT_CUBIC,
         }}
       >
-        <div
-          className={[
-            fillClassName,
-            shimmer ? "cq-bar-shimmer-once" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-        >
+        <div className={fillClasses}>
           {sparkle ? <span className="cq-bar-sparkle" aria-hidden /> : null}
           {children}
         </div>
