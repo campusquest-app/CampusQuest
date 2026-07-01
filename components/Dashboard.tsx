@@ -2198,7 +2198,7 @@ export function Dashboard() {
         )}
 
         {tab === "mini-games" && (
-          <TrainingGrounds character={character} onRefresh={refresh} />
+          <TrainingGrounds character={character} onRefresh={refresh} onBack={() => setTab("quad")} />
         )}
 
         {tab === "achievements" && (

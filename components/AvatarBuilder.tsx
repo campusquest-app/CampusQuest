@@ -3,14 +3,13 @@
 import { useEffect, useState } from "react";
 import {
   type DiceBearAvatarV2,
-  type DiceBearStyleId,
   serializeDiceBearAvatar,
   parseDiceBearAvatar,
   getDefaultDiceBearAvatar,
   randomDiceBearSeed,
 } from "@/lib/dicebearAvatar";
-import { DICEBEAR_STYLE_MODULES } from "@/lib/dicebearSvg";
 import { buildDiceBearForClass, CHARACTER_CLASSES, STARTER_WEAPONS, type CharacterClassId } from "@/lib/characterClasses";
+import { AVATAR_LOOK_PRESETS, isAvatarLookPresetSelected } from "@/lib/avatarPresets";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { DiceBearForgeControls, DiceBearBackgroundPicker } from "./DiceBearForgeControls";
 import { randomAppearanceOptions, randomBackgroundColors } from "@/lib/dicebearAdvancedOptions";
@@ -20,17 +19,6 @@ type UnlockContext = {
   level: number;
   unlockedCosmetics?: string[] | null;
 } | null;
-
-const STYLE_CHOICES: { id: DiceBearStyleId; icon: string }[] = [
-  { id: "lorelei", icon: "✨" },
-  { id: "loreleiNeutral", icon: "🌿" },
-  { id: "pixelArt", icon: "🎮" },
-  { id: "pixelArtNeutral", icon: "👾" },
-  { id: "openPeeps", icon: "🧑‍🎓" },
-  { id: "adventurer", icon: "⚔️" },
-  { id: "adventurerNeutral", icon: "🛡️" },
-  { id: "micah", icon: "📘" },
-];
 
 function cloneDice(d: DiceBearAvatarV2): DiceBearAvatarV2 {
   return {
@@ -104,16 +92,8 @@ export function AvatarBuilder({
     commit(getDefaultDiceBearAvatar());
   };
 
-  const setStyle = (style: DiceBearStyleId) => {
-    if (!(style in DICEBEAR_STYLE_MODULES)) return;
-    const bg = (data.options.backgroundColor as string[] | undefined) ?? ["041e42"];
-    const bt = (data.options.backgroundType as string[] | undefined) ?? ["gradientLinear"];
-    commit({
-      v: 2,
-      style,
-      seed: data.seed,
-      options: { backgroundColor: bg, backgroundType: bt },
-    });
+  const applyPreset = (preset: DiceBearAvatarV2) => {
+    commit(cloneDice(preset));
   };
 
   const patchOptions = (partial: Record<string, unknown>) => {
@@ -173,18 +153,18 @@ export function AvatarBuilder({
       </div>
 
       <div>
-        <p className="text-sm font-semibold text-white">Choose a look</p>
-        <p className="mt-0.5 text-xs text-white/55">Tap a hairstyle style to try it on.</p>
+        <p className="text-sm font-semibold text-white">Choose a Preset</p>
+        <p className="mt-0.5 text-xs text-white/55">Tap a preset to instantly apply a complete avatar style.</p>
         <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-          {STYLE_CHOICES.map((s, index) => {
-            const selected = data.style === s.id;
-            const label = `Hairstyle ${index + 1}`;
+          {AVATAR_LOOK_PRESETS.map((preset) => {
+            const selected = isAvatarLookPresetSelected(data, preset);
+            const previewAvatar = serializeDiceBearAvatar(preset);
             return (
               <button
-                key={s.id}
+                key={preset.seed}
                 type="button"
-                onClick={() => setStyle(s.id)}
-                aria-label={label}
+                onClick={() => applyPreset(preset)}
+                aria-label={preset.label}
                 className={`relative rounded-2xl border px-3 py-3.5 text-left transition-all min-h-[4.75rem] min-w-0 flex flex-col items-start justify-center gap-1.5 ${
                   selected
                     ? "border-2 border-uri-keaney bg-uri-keaney/20 shadow-[0_0_22px_rgba(104,171,232,0.35)] ring-2 ring-uri-keaney/35"
@@ -199,10 +179,13 @@ export function AvatarBuilder({
                     ✓
                   </span>
                 ) : null}
-                <span className="text-xl shrink-0 leading-none" aria-hidden>
-                  {s.icon}
-                </span>
-                <p className="text-sm font-semibold text-white leading-tight whitespace-nowrap">{label}</p>
+                <div
+                  className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/20"
+                  aria-hidden
+                >
+                  <AvatarDisplay avatar={previewAvatar} size={40} fitParent />
+                </div>
+                <p className="text-sm font-semibold text-white leading-tight whitespace-nowrap">{preset.label}</p>
               </button>
             );
           })}

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Flame, Sparkles, Swords, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flame, Sparkles, Swords, X } from "lucide-react";
 import type { Character, StatKey } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS } from "@/lib/types";
 import { StatIcon } from "@/components/stats/StatIcon";
@@ -34,10 +34,19 @@ import {
 } from "@/lib/trainingGroundsFeedback";
 import { playXpDing } from "@/lib/playGameSound";
 import { defaultTrainingModifiers, TrainingGamePanel } from "@/components/training/TrainingGamePanels";
+import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 
 type DetailStat = StatKey | null;
 
-export function TrainingGrounds({ character, onRefresh }: { character: Character; onRefresh?: () => void }) {
+export function TrainingGrounds({
+  character,
+  onRefresh,
+  onBack,
+}: {
+  character: Character;
+  onRefresh?: () => void;
+  onBack?: () => void;
+}) {
   const [detailStat, setDetailStat] = useState<DetailStat>(null);
   const [activeStat, setActiveStat] = useState<StatKey | null>(null);
   const [completion, setCompletion] = useState<string | null>(null);
@@ -82,12 +91,24 @@ export function TrainingGrounds({ character, onRefresh }: { character: Character
 
   const weekCount = summary.weekStats.length;
 
-  return (
+  const groundsContent = (
     <div className="cq-training-grounds relative min-h-[60vh] overflow-hidden rounded-2xl border border-uri-keaney/25">
       <div className="cq-training-grounds-bg pointer-events-none absolute inset-0" aria-hidden />
       <div className="cq-training-grounds-particles pointer-events-none absolute inset-0" aria-hidden />
 
       <div className="relative z-[1] px-4 py-5 sm:px-6 sm:py-7">
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="cq-training-grounds-back touch-manipulation"
+            aria-label="Go back"
+          >
+            <ChevronLeft className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+            Back
+          </button>
+        ) : null}
+
         <header className="text-center">
           <p className="cq-training-grounds-eyebrow mb-2 font-display text-[11px] font-semibold uppercase tracking-[0.32em] text-uri-keaney/80">
             Mini Games
@@ -187,6 +208,14 @@ export function TrainingGrounds({ character, onRefresh }: { character: Character
           )
         : null}
     </div>
+  );
+
+  return onBack ? (
+    <MobileSwipeBackSurface onBack={onBack} className="block">
+      {groundsContent}
+    </MobileSwipeBackSurface>
+  ) : (
+    groundsContent
   );
 }
 
