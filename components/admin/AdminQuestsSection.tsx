@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiRequestError, deleteAuthed, fetchAuthed, patchAuthed, postAuthed } from "@/lib/client/dashboardApi";
-import type { AdminQuestRow, AdminQuestVisibility } from "@/lib/adminQuestTypes";
+import type { AdminQuestLinkedQr, AdminQuestRow, AdminQuestVisibility } from "@/lib/adminQuestTypes";
 import { DURATION_PRESETS } from "@/lib/adminQuestTypes";
 import { BUILTIN_QUEST_TEMPLATES, type QuestTemplateDef } from "@/lib/questTemplates";
 import { AdminSectionIntro } from "@/components/admin/AdminUi";
 import { CampusLocationFields } from "@/components/admin/CampusLocationFields";
+import { QuestQrImageField } from "@/components/admin/QuestQrImageField";
+import { uploadQrCodeImage } from "@/lib/client/qrCodeAdminClient";
 import {
   campusLocationFormFromRow,
   campusLocationFormToPayload,
@@ -17,6 +19,7 @@ import {
 
 type QuestWithAnalytics = {
   quest: AdminQuestRow;
+  linkedQr: AdminQuestLinkedQr | null;
   analytics: {
     totalCompletions: number;
     uniqueUsers: number;
@@ -99,7 +102,11 @@ function formFromTemplate(t: QuestTemplateDef): QuestFormState {
   };
 }
 
-function formToPayload(form: QuestFormState) {
+function formNeedsQr(form: QuestFormState): boolean {
+  return form.requiresQr || form.questType === "qr" || form.completionMethod === "qr_scan";
+}
+
+function formToPayload(form: QuestFormState, options?: { clearLocationWhenEmpty?: boolean }) {
   const preset = DURATION_PRESETS.find((p) => p.id === form.durationPreset);
   const activeDurationMinutes = preset?.minutes ?? undefined;
   const startsAt = form.startsAt ? new Date(form.startsAt).toISOString() : undefined;
@@ -113,7 +120,9 @@ function formToPayload(form: QuestFormState) {
     xpReward: form.xpReward,
     difficulty: form.difficulty,
     questType: form.questType,
-    ...campusLocationFormToPayload(form.campusLocation),
+    ...campusLocationFormToPayload(form.campusLocation, {
+      clearWhenEmpty: options?.clearLocationWhenEmpty,
+    }),
     requiresQr: form.requiresQr,
     completionMethod: form.completionMethod,
     visibilityStatus: form.visibilityStatus,
@@ -140,6 +149,8 @@ export function AdminQuestsSection() {
   const [form, setForm] = useState<QuestFormState>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<AdminQuestRow | null>(null);
   const [lastQrUrl, setLastQrUrl] = useState<string | null>(null);
+  const [linkedQr, setLinkedQr] = useState<AdminQuestLinkedQr | null>(null);
+  const [pendingQrFile, setPendingQrFile] = useState<File | null>(null);
 
   const loadQuests = useCallback(async () => {
     setLoading(true);
@@ -172,12 +183,16 @@ export function AdminQuestsSection() {
     setEditingId(null);
     setForm(EMPTY_FORM);
     setLastQrUrl(null);
+    setLinkedQr(null);
+    setPendingQrFile(null);
     setTemplatePickerOpen(false);
     setBuilderOpen(true);
   }
 
-  function openEdit(quest: AdminQuestRow) {
+  function openEdit(quest: AdminQuestRow, questLinkedQr: AdminQuestLinkedQr | null = null) {
     setEditingId(quest.id);
+    setLinkedQr(questLinkedQr);
+    setPendingQrFile(null);
     setForm({
       name: quest.name,
       description: quest.description,
@@ -205,20 +220,76 @@ export function AdminQuestsSection() {
     setBuilderOpen(true);
   }
 
-  async function saveQuest() {
+  function locationLabelFromForm(campusLocation: CampusLocationFormState): string | null {
+  if (!campusLocation.locationKey) return null;
+  const label = campusLocation.locationName.trim();
+  return label || null;
+}
+
+function linkedQrFromApiResult(result: {
+  linkedQr?: AdminQuestLinkedQr | null;
+  qr?: { qrCodeId: string; scanUrl: string; code?: string } | null;
+}): AdminQuestLinkedQr | null {
+  if (result.linkedQr) return result.linkedQr;
+  if (!result.qr) return null;
+  return {
+    id: result.qr.qrCodeId,
+    code: result.qr.code ?? "",
+    image_url: null,
+    qr_png_url: null,
+    metadata: { scan_url: result.qr.scanUrl },
+  };
+}
+
+async function saveQuest() {
     setSubmitting(true);
     setError(null);
     setSuccess(null);
     try {
-      const payload = formToPayload(form);
+      const payload = formToPayload(form, { clearLocationWhenEmpty: Boolean(editingId) });
       if (editingId) {
-        await patchAuthed(`/api/internal/admin/quests?questId=${editingId}`, payload);
-        setSuccess("Quest updated.");
+        const result = await patchAuthed<
+          {
+            quest: AdminQuestRow;
+            linkedQr?: AdminQuestLinkedQr | null;
+            qr: { qrCodeId: string; scanUrl: string; code?: string } | null;
+            qrError?: string | null;
+          },
+          Record<string, unknown>
+        >(`/api/internal/admin/quests?questId=${editingId}`, payload);
+        const qrId = result.qr?.qrCodeId ?? result.quest.qr_code_id;
+        if (pendingQrFile && qrId) {
+          const imageUrl = await uploadQrCodeImage(qrId, pendingQrFile);
+          const base = linkedQrFromApiResult(result);
+          setLinkedQr(
+            base && base.id === qrId
+              ? { ...base, image_url: imageUrl }
+              : { id: qrId, code: base?.code ?? linkedQr?.code ?? "", image_url: imageUrl, qr_png_url: base?.qr_png_url ?? null, metadata: base?.metadata ?? linkedQr?.metadata ?? null },
+          );
+          setPendingQrFile(null);
+        } else {
+          const nextLinked = linkedQrFromApiResult(result);
+          if (nextLinked) setLinkedQr(nextLinked);
+        }
+        if (result.qrError) {
+          setError(`Quest updated, but QR code failed: ${result.qrError}`);
+        } else {
+          setSuccess("Quest updated.");
+        }
       } else {
         const result = await postAuthed<
-          { quest: AdminQuestRow; qr: { scanUrl: string } | null; qrError?: string | null },
+          {
+            quest: AdminQuestRow;
+            qr: { qrCodeId: string; scanUrl: string; code?: string } | null;
+            qrError?: string | null;
+          },
           Record<string, unknown>
         >("/api/internal/admin/quests", payload);
+        const qrId = result.qr?.qrCodeId ?? result.quest.qr_code_id;
+        if (pendingQrFile && qrId) {
+          await uploadQrCodeImage(qrId, pendingQrFile);
+          setPendingQrFile(null);
+        }
         setLastQrUrl(result.qr?.scanUrl ?? null);
         if (result.qrError) {
           setError(`Quest created, but QR code failed: ${result.qrError}`);
@@ -230,6 +301,33 @@ export function AdminQuestsSection() {
       await loadQuests();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save quest.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function generateQuestQr() {
+    if (!editingId) throw new Error("Save the quest before generating a QR code.");
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await postAuthed<
+        {
+          quest: AdminQuestRow;
+          linkedQr?: AdminQuestLinkedQr | null;
+          qr: { qrCodeId: string; scanUrl: string; code?: string } | null;
+          qrError?: string | null;
+        },
+        Record<string, unknown>
+      >(`/api/internal/admin/quests?action=generate-qr&questId=${editingId}`, {});
+      const nextLinked = linkedQrFromApiResult(result);
+      if (nextLinked) setLinkedQr(nextLinked);
+      if (result.qrError) {
+        setError(`QR generation failed: ${result.qrError}`);
+      } else {
+        setSuccess("QR code generated.");
+      }
+      await loadQuests();
     } finally {
       setSubmitting(false);
     }
@@ -333,7 +431,7 @@ export function AdminQuestsSection() {
                   <td colSpan={8} className="px-3 py-8 text-center text-white/50">No quests yet. Create one to get started.</td>
                 </tr>
               ) : (
-                quests.map(({ quest, analytics }) => (
+                quests.map(({ quest, linkedQr: rowLinkedQr, analytics }) => (
                   <tr key={quest.id} className="border-b border-white/[0.06] text-white/85">
                     <td className="px-3 py-3">
                       <p className="font-semibold">{quest.icon} {quest.name}</p>
@@ -359,7 +457,7 @@ export function AdminQuestsSection() {
                         ) : (
                           <button type="button" disabled={submitting} onClick={() => void setVisibility(quest.id, "hidden")} className="rounded border border-white/20 px-2 py-1 text-[10px]">Deactivate</button>
                         )}
-                        <button type="button" onClick={() => openEdit(quest)} className="rounded border border-white/20 px-2 py-1 text-[10px]">Edit</button>
+                        <button type="button" onClick={() => openEdit(quest, rowLinkedQr)} className="rounded border border-white/20 px-2 py-1 text-[10px]">Edit</button>
                         <button type="button" disabled={submitting} onClick={() => void duplicateQuest(quest.id)} className="rounded border border-white/20 px-2 py-1 text-[10px]">Duplicate</button>
                         <button type="button" onClick={() => setDeleteTarget(quest)} className="rounded border border-rose-400/30 px-2 py-1 text-[10px] text-rose-200">Delete</button>
                       </div>
@@ -391,6 +489,8 @@ export function AdminQuestsSection() {
                   type="button"
                   onClick={() => {
                     setForm(formFromTemplate(t));
+                    setLinkedQr(null);
+                    setPendingQrFile(null);
                     setTemplatePickerOpen(false);
                     setBuilderOpen(true);
                   }}
@@ -442,7 +542,20 @@ export function AdminQuestsSection() {
               </label>
               <label className="text-xs text-white/50">
                 Quest type
-                <select value={form.questType} onChange={(e) => setForm((f) => ({ ...f, questType: e.target.value as QuestFormState["questType"] }))} className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-white">
+                <select
+                  value={form.questType}
+                  onChange={(e) => {
+                    const questType = e.target.value as QuestFormState["questType"];
+                    setForm((f) => ({
+                      ...f,
+                      questType,
+                      ...(questType === "qr"
+                        ? { requiresQr: true, completionMethod: "qr_scan" as const }
+                        : {}),
+                    }));
+                  }}
+                  className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
+                >
                   <option value="daily">Daily</option>
                   <option value="one_time">One-time</option>
                   <option value="event">Event</option>
@@ -452,7 +565,18 @@ export function AdminQuestsSection() {
               </label>
               <label className="text-xs text-white/50">
                 Completion method
-                <select value={form.completionMethod} onChange={(e) => setForm((f) => ({ ...f, completionMethod: e.target.value as QuestFormState["completionMethod"] }))} className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-white">
+                <select
+                  value={form.completionMethod}
+                  onChange={(e) => {
+                    const completionMethod = e.target.value as QuestFormState["completionMethod"];
+                    setForm((f) => ({
+                      ...f,
+                      completionMethod,
+                      ...(completionMethod === "qr_scan" ? { requiresQr: true } : {}),
+                    }));
+                  }}
+                  className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-white"
+                >
                   <option value="manual_log">Manual log</option>
                   <option value="qr_scan">QR scan</option>
                   <option value="location_checkin">Location check-in</option>
@@ -508,9 +632,35 @@ export function AdminQuestsSection() {
                 className="sm:col-span-2"
               />
               <label className="flex items-center gap-2 text-xs text-white/70 sm:col-span-2">
-                <input type="checkbox" checked={form.requiresQr} onChange={(e) => setForm((f) => ({ ...f, requiresQr: e.target.checked, completionMethod: e.target.checked ? "qr_scan" : f.completionMethod }))} />
+                <input
+                  type="checkbox"
+                  checked={form.requiresQr}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      requiresQr: e.target.checked,
+                      completionMethod: e.target.checked ? "qr_scan" : f.completionMethod,
+                      questType: e.target.checked && f.questType !== "qr" ? "qr" : f.questType,
+                    }))
+                  }
+                />
                 Requires QR code
               </label>
+              {formNeedsQr(form) ? (
+                <QuestQrImageField
+                  linkedQr={linkedQr}
+                  questName={form.name}
+                  xpReward={form.xpReward}
+                  locationName={locationLabelFromForm(form.campusLocation)}
+                  editingQuestId={editingId}
+                  pendingFile={pendingQrFile}
+                  onPendingFileChange={setPendingQrFile}
+                  onLinkedQrChange={setLinkedQr}
+                  onGenerateQr={generateQuestQr}
+                  onError={setError}
+                  disabled={submitting}
+                />
+              ) : null}
               <label className="flex items-center gap-2 text-xs text-white/70 sm:col-span-2">
                 <input type="checkbox" checked={form.isRepeatable} onChange={(e) => setForm((f) => ({ ...f, isRepeatable: e.target.checked }))} />
                 Repeatable

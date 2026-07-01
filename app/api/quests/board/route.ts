@@ -15,12 +15,14 @@ export async function GET(request: Request) {
       filter: url.searchParams.get("filter") ?? undefined,
       lat: url.searchParams.get("lat") ?? undefined,
       lng: url.searchParams.get("lng") ?? undefined,
+      locationId: url.searchParams.get("locationId") ?? undefined,
     });
 
     const adminItems = await safeBuildUserQuestBoardAdminItems(auth.user.id);
     const filtered = filterUserQuestBoardItems(adminItems, query.filter ?? "all", {
       userLat: query.lat,
       userLng: query.lng,
+      locationId: query.locationId,
     });
 
     return ok({ quests: filtered, fetchedAt: new Date().toISOString() });

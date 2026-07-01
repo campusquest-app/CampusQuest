@@ -14,6 +14,15 @@ function generateQrToken() {
   return `CQ_${randomBytes(8).toString("base64url").replace(/[^a-zA-Z0-9]/g, "").slice(0, 12).toUpperCase()}`;
 }
 
+async function generateUniqueQrToken(admin: SupabaseAdminClient): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = generateQrToken();
+    const { data } = await admin.from("qr_codes").select("id").eq("code", code).maybeSingle();
+    if (!data) return code;
+  }
+  throw new ApiError(500, "Could not generate a unique QR token.", "QR_TOKEN_GENERATE_FAILED");
+}
+
 function normalizeAdminCode(raw: string) {
   return raw.trim().toUpperCase();
 }
@@ -157,7 +166,7 @@ export async function listQrCodesAdmin() {
 
 export async function createQrCodeAdmin(args: { input: CreateInput; createdBy: string }) {
   const admin = createAdminClient();
-  const code = args.input.code ? normalizeAdminCode(args.input.code) : generateQrToken();
+  const code = args.input.code ? normalizeAdminCode(args.input.code) : await generateUniqueQrToken(admin);
   const questLinks = await resolveQuestLinks(admin, args.input);
 
   const insertRow: Record<string, unknown> = {
@@ -296,6 +305,62 @@ export async function regenerateQrCodePngAdmin(id: string, origin?: string) {
   if (error) throw new ApiError(400, error.message, "QR_CODE_LOOKUP_FAILED");
   if (!data?.code) throw new ApiError(404, "QR code not found.", "QR_CODE_NOT_FOUND");
   return regenerateAndStoreQrPng({ qrId: id, code: String(data.code), origin });
+}
+
+/** Issue a new secure scan token; the previous code stops working immediately. */
+export async function regenerateQrTokenAdmin(id: string, origin?: string) {
+  const admin = createAdminClient();
+  const { data: existing, error } = await admin.from("qr_codes").select("*").eq("id", id).maybeSingle();
+  if (error) throw new ApiError(400, error.message, "QR_CODE_LOOKUP_FAILED");
+  if (!existing?.code) throw new ApiError(404, "QR code not found.", "QR_CODE_NOT_FOUND");
+
+  const oldCode = String(existing.code);
+  const newCode = await generateUniqueQrToken(admin);
+  const scanUrl = buildCampusQuestScanUrl(newCode, origin);
+  const priorMetadata = (existing.metadata as Record<string, unknown> | null) ?? {};
+  const previousCodes = Array.isArray(priorMetadata.previous_codes)
+    ? (priorMetadata.previous_codes as string[])
+    : [];
+  const metadata = {
+    ...priorMetadata,
+    scan_url: scanUrl,
+    previous_codes: [...previousCodes, oldCode],
+    regenerated_at: new Date().toISOString(),
+    revoked_at: new Date().toISOString(),
+  };
+
+  const { data, error: updateError } = await admin
+    .from("qr_codes")
+    .update({
+      code: newCode,
+      image_url: null,
+      metadata,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (updateError || !data) {
+    throw new ApiError(400, updateError?.message ?? "QR token regeneration failed.", "QR_TOKEN_REGENERATE_FAILED");
+  }
+
+  let qrPngUrl: string | null = null;
+  try {
+    const png = await regenerateAndStoreQrPng({ qrId: id, code: newCode, origin });
+    qrPngUrl = png.qrPngUrl;
+  } catch (err) {
+    console.warn("[cq][qr-codes] PNG generation after token regenerate failed", err);
+  }
+
+  const { data: refreshed } = await admin.from("qr_codes").select("*").eq("id", id).maybeSingle();
+
+  return {
+    row: refreshed ?? { ...data, qr_png_url: qrPngUrl, metadata },
+    scanUrl,
+    oldCode,
+    newCode,
+    qrPngUrl,
+  };
 }
 
 export async function listQrScansAdmin(limit = 80) {

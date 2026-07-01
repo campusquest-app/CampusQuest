@@ -92,6 +92,7 @@ export function MemoriesDeck({
   locationId,
   locationName,
   initialMemoryId,
+  includeExpired = false,
   currentUserId,
   onClose,
 }: {
@@ -99,6 +100,7 @@ export function MemoriesDeck({
   locationId?: string;
   locationName?: string;
   initialMemoryId?: string;
+  includeExpired?: boolean;
   currentUserId: string;
   onClose: () => void;
 }) {
@@ -155,6 +157,7 @@ export function MemoriesDeck({
       setLoading(true);
       const rows = await fetchCampusMemoriesFeed({
         locationId: mode === "location" ? locationId : undefined,
+        includeExpired: mode === "location" ? includeExpired : undefined,
       });
       setMemories(rows);
       if (initialMemoryId) {
@@ -169,7 +172,7 @@ export function MemoriesDeck({
     } finally {
       setLoading(false);
     }
-  }, [initialMemoryId, locationId, mode]);
+  }, [includeExpired, initialMemoryId, locationId, mode]);
 
   useEffect(() => {
     void load();

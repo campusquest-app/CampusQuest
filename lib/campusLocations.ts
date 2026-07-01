@@ -211,14 +211,34 @@ function optionalTrim(value: unknown, maxLen: number): string | null {
   return trimmed.slice(0, maxLen);
 }
 
-export function campusLocationFormToPayload(form: CampusLocationFormState): Record<string, unknown> {
-  if (!form.locationKey) return {};
-  const payload: Record<string, unknown> = { location_key: form.locationKey };
+export type CampusLocationPayloadOptions = {
+  /** When true, emit explicit nulls so PATCH can clear an existing map link. */
+  clearWhenEmpty?: boolean;
+};
+
+export function campusLocationFormToPayload(
+  form: CampusLocationFormState,
+  options?: CampusLocationPayloadOptions,
+): Record<string, unknown> {
+  if (!form.locationKey) {
+    if (!options?.clearWhenEmpty) return {};
+    return {
+      locationKey: null,
+      locationName: null,
+      locationAddress: null,
+      locationLat: null,
+      locationLng: null,
+      mapPinX: null,
+      mapPinY: null,
+    };
+  }
+
+  const payload: Record<string, unknown> = { locationKey: form.locationKey };
   if (form.locationKey === "other") {
-    if (form.locationName.trim()) payload.location_name = form.locationName.trim();
-    if (form.locationAddress.trim()) payload.location_address = form.locationAddress.trim();
-    if (form.locationLat.trim()) payload.location_lat = Number(form.locationLat);
-    if (form.locationLng.trim()) payload.location_lng = Number(form.locationLng);
+    if (form.locationName.trim()) payload.locationName = form.locationName.trim();
+    if (form.locationAddress.trim()) payload.locationAddress = form.locationAddress.trim();
+    if (form.locationLat.trim()) payload.locationLat = Number(form.locationLat);
+    if (form.locationLng.trim()) payload.locationLng = Number(form.locationLng);
   }
   return payload;
 }

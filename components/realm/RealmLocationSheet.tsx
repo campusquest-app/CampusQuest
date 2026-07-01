@@ -6,7 +6,7 @@ import { Calendar, ChevronLeft, Sparkles, TrendingUp, X, Zap } from "lucide-reac
 import type { RealmLocation } from "@/lib/realm/locations";
 import { formatRealmEventLabel, getRealmEventUrgency } from "@/lib/realm/locations";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
-import { emptyMapLocationContent, mapLocationActivityCount } from "@/lib/mapLocationGroups";
+import { emptyMapLocationContent, mapLocationActivityCount, mapLocationQuestCount } from "@/lib/mapLocationGroups";
 import { RealmArchiveExperience } from "./RealmArchiveExperience";
 import { LocationMemoriesSection } from "@/components/memories/LocationMemoriesSection";
 import { CampusMemoryArchivePanel } from "@/components/memories/CampusMemoryArchivePanel";
@@ -17,6 +17,8 @@ import { useSwipeBack } from "@/lib/client/useSwipeBack";
 import { useSwipeDownDismiss } from "@/lib/client/useSwipeDownDismiss";
 import { SWIPE_TRANSITION_MS } from "@/lib/client/mobileGestures";
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
+import { PullToRefresh } from "@/components/PullToRefresh";
+import { LocationQuestSection } from "@/components/realm/LocationQuestSection";
 import { getRealmLocationHeroImage } from "@/lib/realm/locationHeroImages";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 
@@ -42,6 +44,9 @@ export function RealmLocationSheet({
   onSharePost,
   onAddMemory,
   onOpenMemoryViewer,
+  onOpenMemoryGallery,
+  questReloadToken = 0,
+  onRefreshAll,
 }: {
   location: RealmLocation | null;
   mapContent?: GroupedMapLocation | null;
@@ -60,6 +65,9 @@ export function RealmLocationSheet({
   onSharePost?: (target: SharePostTarget) => void;
   onAddMemory?: (locationId: CampusLocationId) => void;
   onOpenMemoryViewer?: (group: CampusMemoryGroup, initialMemoryId?: string, includeExpired?: boolean) => void;
+  onOpenMemoryGallery?: (locationId: CampusLocationId) => void;
+  questReloadToken?: number;
+  onRefreshAll?: () => void | Promise<void>;
 }) {
   const [view, setView] = useState<SheetView>("archive");
   const [mounted, setMounted] = useState(false);
@@ -84,7 +92,8 @@ export function RealmLocationSheet({
   useEffect(() => {
     if (!open) return;
     onRefreshMemories?.();
-  }, [open, onRefreshMemories]);
+    void onRefreshAll?.();
+  }, [open, onRefreshAll, onRefreshMemories]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -134,7 +143,7 @@ export function RealmLocationSheet({
   const displayAddress = mapContent?.locationAddress ?? null;
   const momentCount = memoryStats?.activeCount ?? location?.activeMomentCount ?? 0;
   const archivedCount = memoryStats?.archivedCount ?? 0;
-  const activeQuestCount = content.quests.length + content.qrCodes.length;
+  const activeQuestCount = mapLocationQuestCount(content);
   const activeEventCount = content.events.length;
   const urgency = getRealmEventUrgency(
     activeEventCount > 0 && content.events[0]
@@ -195,11 +204,18 @@ export function RealmLocationSheet({
                 activeQuestCount={activeQuestCount}
                 activeEventCount={activeEventCount}
                 memoriesLoaded={memoriesLoaded}
+                mapContentLoaded={mapContentLoaded}
                 onBack={onClose}
               />
 
-              <div className="cq-realm-archive-body">
-                {onAddMemory && onOpenMemoryViewer ? (
+              <PullToRefresh
+                className="cq-realm-archive-body cq-realm-archive-body--scroll min-h-0 flex-1"
+                onRefresh={async () => {
+                  onRefreshMemories?.();
+                  await onRefreshAll?.();
+                }}
+              >
+                {onAddMemory && onOpenMemoryViewer && onOpenMemoryGallery ? (
                   <LocationMemoriesSection
                     locationId={location.id}
                     locationName={location.name}
@@ -207,6 +223,7 @@ export function RealmLocationSheet({
                     archivedCount={archivedCount}
                     onAddMemory={onAddMemory}
                     onOpenViewer={onOpenMemoryViewer}
+                    onOpenGallery={onOpenMemoryGallery}
                   />
                 ) : (
                   <RealmArchiveExperience
@@ -220,6 +237,12 @@ export function RealmLocationSheet({
                   />
                 )}
 
+                <LocationQuestSection
+                  locationId={location.id}
+                  mapContent={content}
+                  reloadToken={questReloadToken}
+                />
+
                 <p className="cq-realm-archive-section-label cq-realm-archive-section-label--spaced">
                   <span className="cq-realm-archive-section-label-icon" aria-hidden>
                     ✦
@@ -229,6 +252,7 @@ export function RealmLocationSheet({
                 <CampusMemoryArchivePanel
                   userId={currentUserId ?? undefined}
                   priorityLocationId={location.id}
+                  locationOnly
                   onOpenMemory={(memory) => {
                     if (!onOpenMemoryViewer) return;
                     onOpenMemoryViewer(
@@ -264,7 +288,7 @@ export function RealmLocationSheet({
                   <TrendingUp className="cq-realm-archive-activity-icon" aria-hidden />
                   <p>{activityLine}</p>
                 </footer>
-              </div>
+              </PullToRefresh>
             </>
           ) : view !== "archive" ? (
             <RealmDetailView
@@ -308,6 +332,7 @@ function RealmArchiveHeader({
   activeQuestCount,
   activeEventCount,
   memoriesLoaded,
+  mapContentLoaded,
   onBack,
 }: {
   location: RealmLocation;
@@ -316,6 +341,7 @@ function RealmArchiveHeader({
   activeQuestCount: number;
   activeEventCount: number;
   memoriesLoaded: boolean;
+  mapContentLoaded: boolean;
   onBack: () => void;
 }) {
   const heroImage = getRealmLocationHeroImage(location.id);
@@ -359,10 +385,10 @@ function RealmArchiveHeader({
       </div>
 
       <div className="cq-realm-location-stat-grid" role="list" aria-label="Location stats">
-        <LocationStatCell label="Live" count={momentCount} memoriesLoaded={memoriesLoaded} />
-        <LocationStatCell label="Archived" count={archivedCount} memoriesLoaded={memoriesLoaded} />
-        <LocationStatCell label="Activities" count={activeQuestCount} memoriesLoaded={memoriesLoaded} />
-        <LocationStatCell label="Events" count={activeEventCount} memoriesLoaded={memoriesLoaded} />
+        <LocationStatCell label="Live" count={momentCount} loading={!memoriesLoaded} />
+        <LocationStatCell label="Archived" count={archivedCount} loading={!memoriesLoaded} />
+        <LocationStatCell label="Quests" count={activeQuestCount} loading={!mapContentLoaded} />
+        <LocationStatCell label="Events" count={activeEventCount} loading={!mapContentLoaded} />
       </div>
     </header>
   );
@@ -371,16 +397,16 @@ function RealmArchiveHeader({
 function LocationStatCell({
   label,
   count,
-  memoriesLoaded,
+  loading,
 }: {
   label: string;
   count: number;
-  memoriesLoaded: boolean;
+  loading: boolean;
 }) {
   return (
     <div className="cq-realm-location-stat" role="listitem">
       <span className={`cq-realm-location-stat-value${count > 0 ? " cq-realm-location-stat-value--accent" : ""}`}>
-        {!memoriesLoaded && label === "Live" ? "…" : count}
+        {loading ? "…" : count}
       </span>
       <span className="cq-realm-location-stat-label">{label}</span>
     </div>

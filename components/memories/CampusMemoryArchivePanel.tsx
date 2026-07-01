@@ -16,10 +16,12 @@ function formatArchiveDate(iso: string): string {
 export function CampusMemoryArchivePanel({
   userId,
   priorityLocationId,
+  locationOnly = false,
   onOpenMemory,
 }: {
   userId?: string;
   priorityLocationId?: CampusLocationId;
+  locationOnly?: boolean;
   onOpenMemory: (memory: CampusMemory) => void;
 }) {
   const [sections, setSections] = useState<CampusMemoryArchiveSection[]>([]);
@@ -46,11 +48,14 @@ export function CampusMemoryArchivePanel({
   useEffect(() => subscribeCampusMemoriesChanged(() => void load()), [load]);
 
   const orderedSections = useMemo(() => {
+    if (priorityLocationId && locationOnly) {
+      return sections.filter((section) => section.locationId === priorityLocationId);
+    }
     if (!priorityLocationId) return sections;
     const priority = sections.filter((section) => section.locationId === priorityLocationId);
     const rest = sections.filter((section) => section.locationId !== priorityLocationId);
     return [...priority, ...rest];
-  }, [priorityLocationId, sections]);
+  }, [locationOnly, priorityLocationId, sections]);
 
   if (loading) {
     return (
@@ -67,6 +72,13 @@ export function CampusMemoryArchivePanel({
   }
 
   if (orderedSections.length === 0) {
+    if (locationOnly && priorityLocationId) {
+      return (
+        <p className="cq-memory-archive-empty cq-realm-fade-in">
+          No archived memories saved at this location yet.
+        </p>
+      );
+    }
     return (
       <div className="cq-memory-archive-empty-card cq-realm-fade-in">
         <MapPin className="h-6 w-6 text-uri-keaney/70" strokeWidth={1.75} aria-hidden />
@@ -82,7 +94,7 @@ export function CampusMemoryArchivePanel({
     <div className="cq-memory-archive cq-realm-fade-in">
       {orderedSections.map((section) => (
         <section key={section.locationId} className="cq-memory-archive-section">
-          <h3 className="cq-memory-archive-location">{section.locationName}</h3>
+          {!locationOnly ? <h3 className="cq-memory-archive-location">{section.locationName}</h3> : null}
           <div className="cq-memory-archive-grid">
             {section.memories.map((memory) => (
               <button

@@ -47,6 +47,29 @@ describe("campusLocationFormToPayload", () => {
         locationLat: "",
         locationLng: "",
       }),
-    ).toEqual({ location_key: "quad" });
+    ).toEqual({ locationKey: "quad" });
+  });
+
+  it("emits explicit nulls when clearing location on edit", () => {
+    expect(
+      campusLocationFormToPayload(
+        {
+          locationKey: "",
+          locationName: "",
+          locationAddress: "",
+          locationLat: "",
+          locationLng: "",
+        },
+        { clearWhenEmpty: true },
+      ),
+    ).toEqual({
+      locationKey: null,
+      locationName: null,
+      locationAddress: null,
+      locationLat: null,
+      locationLng: null,
+      mapPinX: null,
+      mapPinY: null,
+    });
   });
 });

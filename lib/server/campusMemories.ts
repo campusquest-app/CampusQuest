@@ -377,7 +377,7 @@ export async function fetchCampusMemoriesByLocation(args: {
     query = query.eq("location_id", locationId);
   }
 
-  const { data, error } = await query.order("created_at", { ascending: true }).limit(limit);
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
 
   if (error) {
     throw new ApiError(500, "Could not load memories for this location.", "CAMPUS_MEMORIES_FETCH_FAILED");

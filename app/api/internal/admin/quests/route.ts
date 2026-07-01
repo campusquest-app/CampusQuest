@@ -4,6 +4,8 @@ import { ApiError, fail, ok } from "@/lib/server/http";
 import {
   createAdminQuest,
   duplicateAdminQuest,
+  enrichAdminQuestsWithLinkedQr,
+  generateQuestQrAdmin,
   getAdminQuestAnalytics,
   listAdminQuestsAdmin,
   setAdminQuestVisibility,
@@ -29,9 +31,11 @@ export async function GET(request: Request) {
       return ok({ analytics });
     }
     const quests = await listAdminQuestsAdmin(url.searchParams.get("includeDeleted") === "1");
+    const enriched = await enrichAdminQuestsWithLinkedQr(quests);
     const withAnalytics = await Promise.all(
-      quests.map(async (quest) => ({
+      enriched.map(async ({ quest, linkedQr }) => ({
         quest,
+        linkedQr,
         analytics: await getAdminQuestAnalytics(quest.id),
       })),
     );
@@ -57,6 +61,17 @@ export async function POST(request: Request) {
         adminEmail: auth.normalizedEmail,
       });
       return ok(result, 201);
+    }
+
+    if (action === "generate-qr") {
+      const questId = url.searchParams.get("questId");
+      if (!questId) throw new ApiError(400, "questId required.", "QUEST_ID_REQUIRED");
+      const result = await generateQuestQrAdmin({
+        questId,
+        createdBy: auth.user.id,
+        origin: new URL(request.url).origin,
+      });
+      return ok(result);
     }
 
     const input = await readJson(request, createAdminQuestSchema);
@@ -94,13 +109,13 @@ export async function PATCH(request: Request) {
     }
 
     const input = await readJson(request, updateAdminQuestSchema);
-    const quest = await updateAdminQuest({
+    const result = await updateAdminQuest({
       questId,
       patch: input,
       adminUserId: auth.user.id,
       adminEmail: auth.normalizedEmail,
     });
-    return ok({ quest });
+    return ok(result);
   } catch (error) {
     if (error instanceof ZodError) {
       return fail(new ApiError(400, error.issues[0]?.message ?? "Invalid payload.", "VALIDATION_ERROR"));

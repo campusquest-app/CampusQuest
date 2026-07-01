@@ -10,6 +10,26 @@
     max-width: 4.5in !important;
     height: auto !important;
   }
+
+  body:has(#cq-quest-qr-poster) {
+    background: #fff !important;
+  }
+  body:has(#cq-quest-qr-poster) * {
+    visibility: hidden;
+  }
+  body:has(#cq-quest-qr-poster) #cq-quest-qr-poster,
+  body:has(#cq-quest-qr-poster) #cq-quest-qr-poster * {
+    visibility: visible;
+  }
+  body:has(#cq-quest-qr-poster) #cq-quest-qr-poster {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0.5in;
+    box-shadow: none !important;
+  }
 }
 
 :root {
@@ -13205,7 +13225,7 @@ html[data-realm-map-panning] {
 .cq-memories-deck {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 520;
   color: #fff;
   overflow: hidden;
   touch-action: pan-y;
@@ -14616,4 +14636,192 @@ html[data-realm-map-panning] {
   .cq-profile-press {
     transition: none;
   }
+}
+
+/* —— Location memories gallery (View All) —— */
+.cq-location-memories-gallery {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  max-width: 32rem;
+  margin: 0 auto;
+  background: linear-gradient(165deg, #050608 0%, #0a0c10 38%, #0e1016 72%, #050608 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 60px -12px rgba(76, 201, 255, 0.22);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.cq-location-memories-gallery-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem 0.65rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cq-location-memories-gallery-kicker {
+  margin: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(111, 208, 255, 0.85);
+}
+
+.cq-location-memories-gallery-title {
+  margin: 0.15rem 0 0;
+  font-size: 1.125rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.cq-location-memories-gallery-sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.cq-location-memories-gallery-close {
+  display: flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cq-location-memories-gallery-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.75rem;
+}
+
+.cq-location-memories-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.cq-location-memories-gallery-tile {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cq-location-memories-gallery-tile-media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cq-location-memories-gallery-tile-text {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  font-size: 0.625rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.cq-location-memories-gallery-tile-overlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 0.35rem 0.4rem;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.72));
+}
+
+.cq-location-memories-gallery-tile-date {
+  font-size: 0.5625rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cq-location-memories-gallery-tile--skeleton {
+  animation: cq-skeleton-pulse 1.4s ease-in-out infinite;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cq-location-memories-gallery-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+}
+
+.cq-location-memories-gallery-empty-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.cq-location-memories-gallery-empty-copy {
+  margin: 0;
+  max-width: 24ch;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* —— Location quest section —— */
+.cq-realm-location-quests {
+  margin: 1rem 0 0.75rem;
+}
+
+.cq-realm-location-quests-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
+}
+
+.cq-realm-location-quests-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.cq-realm-location-quests-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.cq-realm-location-quests-empty {
+  margin: 0;
+  padding: 0.85rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+}
+
+.cq-realm-location-quest-skeleton {
+  height: 7.5rem;
+  border-radius: 1rem;
+  animation: cq-skeleton-pulse 1.4s ease-in-out infinite;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cq-realm-archive-body--scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }

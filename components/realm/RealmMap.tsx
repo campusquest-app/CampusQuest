@@ -26,8 +26,10 @@ import { fetchCampusMemoryGroupsAndStats } from "@/lib/client/campusMemoriesClie
 import { subscribeCampusMemoriesChanged } from "@/lib/client/campusMemoriesSync";
 import type { CampusMemoryGroup, CampusMemoryLocationStats } from "@/lib/types";
 import type { CampusLocationId } from "@/lib/locations/registry";
+import { getCampusLocation } from "@/lib/locations/registry";
 import { AddCampusMemorySheet } from "@/components/memories/AddCampusMemorySheet";
 import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
+import { LocationMemoriesGallery } from "@/components/memories/LocationMemoriesGallery";
 import { useGroupedMapLocations } from "@/lib/client/mapLocationGroupsClient";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
@@ -111,9 +113,11 @@ export function RealmMap({
   const [memoryViewerGroup, setMemoryViewerGroup] = useState<CampusMemoryGroup | null>(null);
   const [memoryViewerInitialId, setMemoryViewerInitialId] = useState<string | undefined>();
   const [memoryViewerIncludeExpired, setMemoryViewerIncludeExpired] = useState(false);
+  const [memoryGalleryLocationId, setMemoryGalleryLocationId] = useState<CampusLocationId | null>(null);
+  const [questReloadToken, setQuestReloadToken] = useState(0);
   const [showAddMemory, setShowAddMemory] = useState(false);
   const [addMemoryLocationId, setAddMemoryLocationId] = useState<CampusLocationId>("the-quad");
-  const { groups: mapGroups, loaded: mapGroupsLoaded } = useGroupedMapLocations();
+  const { groups: mapGroups, loaded: mapGroupsLoaded, reload: reloadMapGroups } = useGroupedMapLocations();
   const [selectedMapContent, setSelectedMapContent] = useState<GroupedMapLocation | null>(null);
   const [mapScale, setMapScale] = useState(1);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
@@ -292,6 +296,15 @@ export function RealmMap({
     setMemoryViewerInitialId(initialMemoryId);
     setMemoryViewerIncludeExpired(includeExpired);
   }, []);
+
+  const handleOpenMemoryGallery = useCallback((locationId: CampusLocationId) => {
+    setMemoryGalleryLocationId(locationId);
+  }, []);
+
+  const handleRefreshLocationData = useCallback(async () => {
+    await Promise.all([loadCampusMemories(), reloadMapGroups()]);
+    setQuestReloadToken((token) => token + 1);
+  }, [loadCampusMemories, reloadMapGroups]);
 
   const handleReset = useCallback(() => {
     transformRef.current?.centerView(1, 420);
@@ -520,11 +533,28 @@ export function RealmMap({
         onViewQuests={onViewQuests}
         onCreatePost={handleCreatePost}
         onRefreshMemories={loadCampusMemories}
+        onRefreshAll={handleRefreshLocationData}
+        questReloadToken={questReloadToken}
         onViewProfile={onViewProfile}
         onSharePost={onSharePost}
         onAddMemory={handleAddMemory}
         onOpenMemoryViewer={handleOpenMemoryViewer}
+        onOpenMemoryGallery={handleOpenMemoryGallery}
       />
+
+      {memoryGalleryLocationId ? (
+        <LocationMemoriesGallery
+          locationId={memoryGalleryLocationId}
+          locationName={getCampusLocation(memoryGalleryLocationId).name}
+          open
+          onClose={() => setMemoryGalleryLocationId(null)}
+          onAddMemory={handleAddMemory}
+          onOpenMemory={(group, memoryId) => {
+            setMemoryGalleryLocationId(null);
+            handleOpenMemoryViewer(group, memoryId, true);
+          }}
+        />
+      ) : null}
 
       {memoryViewerGroup && userId ? (
         <CampusMemoryViewer

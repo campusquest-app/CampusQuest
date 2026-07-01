@@ -4,11 +4,13 @@ import { addXpInternal } from "@/lib/server/services";
 import { createAdminClient } from "@/lib/server/supabase";
 import { buildQuestCompletionQrInput, createQrCodeAdmin } from "@/lib/server/qrCodeAdmin";
 import { isExpiredAt, locationFieldsFromInput, mapPercentForCoordinates, type CampusMapPin } from "@/lib/server/campusMapPins";
+import { resolveRealmLocationIdFromFields } from "@/lib/locations/resolveRealmLocationId";
 import { normalizeCreateQrCodeInput } from "@/lib/server/qrCodeInput";
 import type {
   AdminQuestAnalytics,
   AdminQuestCompletionMethod,
   AdminQuestFilter,
+  AdminQuestLinkedQr,
   AdminQuestRow,
   AdminQuestVisibility,
   UserQuestBoardItem,
@@ -137,6 +139,10 @@ export function mapAdminQuestToBoardItem(
     requiresQr: quest.requires_qr,
     completionMethod: quest.completion_method,
     locationName: quest.location_name,
+    locationId: resolveRealmLocationIdFromFields({
+      locationId: quest.location_id,
+      locationKey: quest.location_key,
+    }),
     locationLat: quest.location_lat,
     locationLng: quest.location_lng,
     status,
@@ -220,19 +226,23 @@ export async function safeBuildUserQuestBoardAdminItems(userId: string): Promise
 export function filterUserQuestBoardItems(
   items: UserQuestBoardItem[],
   filter: AdminQuestFilter,
-  opts?: { userLat?: number; userLng?: number },
+  opts?: { userLat?: number; userLng?: number; locationId?: string },
 ): UserQuestBoardItem[] {
-  if (filter === "all") return items;
-  if (filter === "daily") return items.filter((i) => i.source === "daily" || i.questType === "daily" || i.repeatType === "daily");
-  if (filter === "qr") return items.filter((i) => i.requiresQr || i.completionMethod === "qr_scan");
-  if (filter === "active") return items.filter((i) => i.status === "available" || i.status === "ready" || i.status === "active");
-  if (filter === "completed") return items.filter((i) => i.status === "completed");
+  let result = items;
+  if (opts?.locationId) {
+    result = result.filter((item) => item.locationId === opts.locationId);
+  }
+  if (filter === "all") return result;
+  if (filter === "daily") return result.filter((i) => i.source === "daily" || i.questType === "daily" || i.repeatType === "daily");
+  if (filter === "qr") return result.filter((i) => i.requiresQr || i.completionMethod === "qr_scan");
+  if (filter === "active") return result.filter((i) => i.status === "available" || i.status === "ready" || i.status === "active");
+  if (filter === "completed") return result.filter((i) => i.status === "completed");
   if (filter === "nearby") {
     const { userLat, userLng } = opts ?? {};
     if (userLat == null || userLng == null) {
-      return items.filter((i) => i.locationLat != null && i.locationLng != null);
+      return result.filter((i) => i.locationLat != null && i.locationLng != null);
     }
-    return items
+    return result
       .filter((i) => i.locationLat != null && i.locationLng != null)
       .sort((a, b) => {
         const da = haversineKm(userLat, userLng, a.locationLat!, a.locationLng!);
@@ -240,7 +250,7 @@ export function filterUserQuestBoardItems(
         return da - db;
       });
   }
-  return items;
+  return result;
 }
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -259,13 +269,13 @@ export type CreateAdminQuestInput = {
   xpReward: number;
   difficulty: AdminQuestRow["difficulty"];
   questType: AdminQuestRow["quest_type"];
-  locationName?: string;
-  locationKey?: string;
-  locationAddress?: string;
-  locationLat?: number;
-  locationLng?: number;
-  mapPinX?: number;
-  mapPinY?: number;
+  locationName?: string | null;
+  locationKey?: string | null;
+  locationAddress?: string | null;
+  locationLat?: number | null;
+  locationLng?: number | null;
+  mapPinX?: number | null;
+  mapPinY?: number | null;
   requiresQr?: boolean;
   completionMethod: AdminQuestCompletionMethod;
   visibilityStatus?: AdminQuestVisibility;
@@ -296,14 +306,22 @@ export async function createAdminQuest(args: {
   createdByEmail?: string;
 }) {
   const admin = createAdminClient();
-  const requiresQr = args.input.requiresQr ?? args.input.completionMethod === "qr_scan";
+  const requiresQr =
+    args.input.requiresQr != null
+      ? args.input.requiresQr
+      : args.input.completionMethod === "qr_scan" || args.input.questType === "qr";
   const location = locationFieldsFromInput(args.input as Record<string, unknown>);
+  const locationId = resolveRealmLocationIdFromFields({
+    locationKey: location.locationKey,
+    locationId: (args.input as { locationId?: string }).locationId,
+  });
   const row = {
     name: args.input.name.trim(),
     description: args.input.description.trim(),
     xp_reward: args.input.xpReward,
     difficulty: args.input.difficulty,
     quest_type: args.input.questType,
+    location_id: locationId,
     location_key: location.locationKey,
     location_name: location.locationName,
     location_address: location.locationAddress,
@@ -333,7 +351,7 @@ export async function createAdminQuest(args: {
   if (error || !data) throw new ApiError(400, error?.message ?? "Create failed.", "ADMIN_QUEST_CREATE_FAILED");
 
   let quest = data as AdminQuestRow;
-  let qrMeta: { qrCodeId: string; scanUrl: string } | null = null;
+  let qrMeta: { qrCodeId: string; scanUrl: string; code: string } | null = null;
   let qrError: string | null = null;
   if (requiresQr) {
     try {
@@ -344,6 +362,7 @@ export async function createAdminQuest(args: {
       qrMeta = {
         qrCodeId: String(qrResult.row.id),
         scanUrl: qrResult.scanUrl,
+        code: String(qrResult.row.code),
       };
       const { data: linkedQuest } = await admin
         .from("admin_quests")
@@ -384,12 +403,75 @@ export async function createAdminQuest(args: {
   return { quest, qr: qrMeta, qrError };
 }
 
+export type UpdateAdminQuestResult = {
+  quest: AdminQuestRow;
+  qr: { qrCodeId: string; scanUrl: string; code: string } | null;
+  qrError: string | null;
+  linkedQr: AdminQuestLinkedQr | null;
+};
+
+async function fetchLinkedQrRow(
+  admin: SupabaseClientLike,
+  qrCodeId: string | null,
+): Promise<AdminQuestLinkedQr | null> {
+  if (!qrCodeId) return null;
+  const { data } = await admin
+    .from("qr_codes")
+    .select("id, code, image_url, qr_png_url, metadata")
+    .eq("id", qrCodeId)
+    .maybeSingle();
+  return data ? (data as AdminQuestLinkedQr) : null;
+}
+
+async function ensureQuestLinkedQr(args: {
+  admin: SupabaseClientLike;
+  quest: AdminQuestRow;
+  createdBy: string;
+}): Promise<{ quest: AdminQuestRow; qr: { qrCodeId: string; scanUrl: string; code: string } | null; qrError: string | null }> {
+  const requiresQr =
+    args.quest.requires_qr || args.quest.completion_method === "qr_scan" || args.quest.quest_type === "qr";
+  if (!requiresQr || args.quest.qr_code_id) {
+    return { quest: args.quest, qr: null, qrError: null };
+  }
+
+  try {
+    const qrInput = normalizeCreateQrCodeInput(buildQuestCompletionQrInput({ quest: args.quest }));
+    const qrResult = await createQrCodeAdmin({ input: qrInput, createdBy: args.createdBy });
+    const { data: linkedQuest } = await args.admin
+      .from("admin_quests")
+      .select("*")
+      .eq("id", args.quest.id)
+      .maybeSingle();
+    return {
+      quest: (linkedQuest ?? args.quest) as AdminQuestRow,
+      qr: {
+        qrCodeId: String(qrResult.row.id),
+        scanUrl: qrResult.scanUrl,
+        code: String(qrResult.row.code),
+      },
+      qrError: null,
+    };
+  } catch (qrErr) {
+    const qrError =
+      qrErr instanceof ApiError
+        ? qrErr.message
+        : qrErr instanceof Error
+          ? qrErr.message
+          : "QR code could not be created.";
+    console.error("[cq][admin-quests] quest QR creation failed on update", {
+      questId: args.quest.id,
+      message: qrError,
+    });
+    return { quest: args.quest, qr: null, qrError };
+  }
+}
+
 export async function updateAdminQuest(args: {
   questId: string;
   patch: Partial<CreateAdminQuestInput>;
   adminUserId: string;
   adminEmail?: string;
-}) {
+}): Promise<UpdateAdminQuestResult> {
   const admin = createAdminClient();
   const patch: Record<string, unknown> = {};
   const p = args.patch;
@@ -418,6 +500,7 @@ export async function updateAdminQuest(args: {
     patch.location_lng = location.locationLng;
     patch.map_pin_x = location.mapPinX;
     patch.map_pin_y = location.mapPinY;
+    patch.location_id = resolveRealmLocationIdFromFields({ locationKey: location.locationKey });
   } else {
     if (p.mapPinX !== undefined) patch.map_pin_x = p.mapPinX ?? null;
     if (p.mapPinY !== undefined) patch.map_pin_y = p.mapPinY ?? null;
@@ -455,19 +538,67 @@ export async function updateAdminQuest(args: {
         xp_reward: data.xp_reward,
         is_active: data.visibility_status === "active",
         expires_at: data.ends_at,
+        location_key: data.location_key,
         location_name: data.location_name,
+        location_address: data.location_address,
+        location_lat: data.location_lat,
+        location_lng: data.location_lng,
       })
       .eq("id", data.qr_code_id);
   }
+
+  let quest = data as AdminQuestRow;
+  const ensured = await ensureQuestLinkedQr({ admin, quest, createdBy: args.adminUserId });
+  quest = ensured.quest;
 
   await logAdminAuditAction({
     actionType: "admin_quest_updated",
     adminUserId: args.adminUserId,
     adminEmail: args.adminEmail ?? null,
-    metadata: { questId: args.questId },
+    metadata: { questId: args.questId, qrError: ensured.qrError },
   });
 
-  return data as AdminQuestRow;
+  return { quest, qr: ensured.qr, qrError: ensured.qrError, linkedQr: await fetchLinkedQrRow(admin, quest.qr_code_id) };
+}
+
+export async function generateQuestQrAdmin(args: {
+  questId: string;
+  createdBy: string;
+  origin?: string;
+}): Promise<UpdateAdminQuestResult> {
+  const admin = createAdminClient();
+  const { data: questRow, error } = await admin
+    .from("admin_quests")
+    .select("*")
+    .eq("id", args.questId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error || !questRow) throw new ApiError(404, "Quest not found.", "ADMIN_QUEST_NOT_FOUND");
+
+  const quest = questRow as AdminQuestRow;
+  const requiresQr =
+    quest.requires_qr || quest.completion_method === "qr_scan" || quest.quest_type === "qr";
+  if (!requiresQr) {
+    throw new ApiError(400, "This quest does not require a QR code.", "QUEST_QR_NOT_REQUIRED");
+  }
+
+  const ensured = await ensureQuestLinkedQr({ admin, quest, createdBy: args.createdBy });
+  const linkedQuest = ensured.quest;
+  const linkedQr = await fetchLinkedQrRow(admin, linkedQuest.qr_code_id);
+
+  await logAdminAuditAction({
+    actionType: "admin_quest_qr_generated",
+    adminUserId: args.createdBy,
+    adminEmail: null,
+    metadata: { questId: args.questId, qrCodeId: linkedQuest.qr_code_id, qrError: ensured.qrError },
+  });
+
+  return {
+    quest: linkedQuest,
+    qr: ensured.qr,
+    qrError: ensured.qrError,
+    linkedQr,
+  };
 }
 
 export async function setAdminQuestVisibility(args: {
@@ -476,7 +607,7 @@ export async function setAdminQuestVisibility(args: {
   adminUserId: string;
   adminEmail?: string;
 }) {
-  const quest = await updateAdminQuest({
+  const { quest } = await updateAdminQuest({
     questId: args.questId,
     patch: { visibilityStatus: args.visibilityStatus },
     adminUserId: args.adminUserId,
@@ -538,7 +669,9 @@ export async function duplicateAdminQuest(args: {
       xpReward: source.xp_reward,
       difficulty: source.difficulty,
       questType: source.quest_type,
+      locationKey: source.location_key ?? undefined,
       locationName: source.location_name ?? undefined,
+      locationAddress: source.location_address ?? undefined,
       locationLat: source.location_lat ?? undefined,
       locationLng: source.location_lng ?? undefined,
       mapPinX: source.map_pin_x ?? undefined,
@@ -574,6 +707,31 @@ export async function listAdminQuestsAdmin(includeDeleted = false) {
     throw new ApiError(400, error.message, "ADMIN_QUESTS_LIST_FAILED");
   }
   return (data ?? []) as AdminQuestRow[];
+}
+
+export async function enrichAdminQuestsWithLinkedQr(
+  quests: AdminQuestRow[],
+): Promise<Array<{ quest: AdminQuestRow; linkedQr: AdminQuestLinkedQr | null }>> {
+  const admin = createAdminClient();
+  const qrIds = Array.from(new Set(quests.map((q) => q.qr_code_id).filter((id): id is string => Boolean(id))));
+  if (!qrIds.length) {
+    return quests.map((quest) => ({ quest, linkedQr: null }));
+  }
+
+  const { data: qrRows, error } = await admin
+    .from("qr_codes")
+    .select("id, code, image_url, qr_png_url, metadata")
+    .in("id", qrIds);
+  if (error) {
+    console.warn("[cq][admin-quests] linked QR lookup failed", error.message);
+    return quests.map((quest) => ({ quest, linkedQr: null }));
+  }
+
+  const byId = new Map((qrRows ?? []).map((row) => [String(row.id), row as AdminQuestLinkedQr]));
+  return quests.map((quest) => ({
+    quest,
+    linkedQr: quest.qr_code_id ? byId.get(quest.qr_code_id) ?? null : null,
+  }));
 }
 
 export async function getAdminQuestAnalytics(questId: string): Promise<AdminQuestAnalytics> {

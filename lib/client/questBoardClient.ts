@@ -7,11 +7,13 @@ export async function fetchQuestBoardAdminItems(opts?: {
   filter?: AdminQuestFilter;
   lat?: number;
   lng?: number;
+  locationId?: string;
 }): Promise<UserQuestBoardItem[]> {
   const params = new URLSearchParams();
   if (opts?.filter) params.set("filter", opts.filter);
   if (opts?.lat != null) params.set("lat", String(opts.lat));
   if (opts?.lng != null) params.set("lng", String(opts.lng));
+  if (opts?.locationId) params.set("locationId", opts.locationId);
   const qs = params.toString();
   const data = await fetchAuthed<{ quests: UserQuestBoardItem[] }>(`/api/quests/board${qs ? `?${qs}` : ""}`);
   return data.quests ?? [];

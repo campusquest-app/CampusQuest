@@ -66,13 +66,15 @@ export function LocationMemoriesSection({
   locationId,
   locationName,
   onOpenViewer,
+  onOpenGallery,
   onAddMemory,
 }: {
   locationId: CampusLocationId;
   locationName: string;
   activeCount?: number;
   archivedCount?: number;
-  onOpenViewer: (group: CampusMemoryGroup, initialMemoryId?: string) => void;
+  onOpenViewer: (group: CampusMemoryGroup, initialMemoryId?: string, includeExpired?: boolean) => void;
+  onOpenGallery: (locationId: CampusLocationId) => void;
   onAddMemory: (locationId: CampusLocationId) => void;
 }) {
   const [memories, setMemories] = useState<CampusMemory[]>([]);
@@ -136,14 +138,14 @@ export function LocationMemoriesSection({
   const openMemory = useCallback(
     (memory: CampusMemory) => {
       markViewed(memory);
-      onOpenViewer(group, memory.id);
+      onOpenViewer(group, memory.id, true);
     },
     [group, markViewed, onOpenViewer],
   );
 
   const openAll = useCallback(() => {
-    onOpenViewer(group);
-  }, [group, onOpenViewer]);
+    onOpenGallery(locationId);
+  }, [locationId, onOpenGallery]);
 
   if (loading) {
     return (
@@ -165,7 +167,7 @@ export function LocationMemoriesSection({
         <div className="cq-realm-memories-empty-card">
           <Sparkles className="cq-realm-memories-empty-icon" strokeWidth={1.75} aria-hidden />
           <p className="cq-realm-memories-empty-title">No memories here yet</p>
-          <p className="cq-realm-memories-empty-copy">Be the first to create a memory at this location.</p>
+          <p className="cq-realm-memories-empty-copy">Be the first to leave your mark.</p>
           <button type="button" className="cq-realm-memories-add-primary" onClick={() => onAddMemory(locationId)}>
             <Camera className="h-4 w-4" strokeWidth={2.2} aria-hidden />
             Add Memory

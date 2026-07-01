@@ -8,6 +8,7 @@ export function CampusMemoryViewer({
   group,
   currentUserId,
   initialMemoryId,
+  includeExpired = false,
   onClose,
 }: {
   group: CampusMemoryGroup;
@@ -22,6 +23,7 @@ export function CampusMemoryViewer({
       locationId={group.locationId}
       locationName={group.locationName}
       initialMemoryId={initialMemoryId}
+      includeExpired={includeExpired}
       currentUserId={currentUserId}
       onClose={onClose}
     />

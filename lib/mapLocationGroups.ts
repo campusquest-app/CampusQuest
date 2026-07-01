@@ -1,4 +1,5 @@
 import type { CampusLocationKey } from "@/lib/campusLocations";
+import { isCampusLocationId } from "@/lib/locations/registry";
 import type { RealmLocationId } from "@/lib/realm/locations";
 
 export type MapQuestPin = {
@@ -52,13 +53,14 @@ export const CAMPUS_KEY_TO_REALM: Partial<Record<CampusLocationKey, RealmLocatio
   memorial_union: "memorial-union",
   mackal_rec_center: "rec-center",
   academic_building: "engineering-hall",
-  dining_hall: "memorial-union",
+  dining_hall: "rams-den",
   ryan_center: "rams-den",
 };
 
-export function realmLocationIdForCampusKey(key: CampusLocationKey | null): RealmLocationId | null {
+export function realmLocationIdForCampusKey(key: CampusLocationKey | string | null): RealmLocationId | null {
   if (!key || key === "other") return null;
-  return CAMPUS_KEY_TO_REALM[key] ?? null;
+  if (isCampusLocationId(key)) return key;
+  return CAMPUS_KEY_TO_REALM[key as CampusLocationKey] ?? null;
 }
 
 export function campusKeyForRealmLocationId(id: RealmLocationId): CampusLocationKey | null {
@@ -78,4 +80,8 @@ export function emptyMapLocationContent(): Pick<GroupedMapLocation, "qrCodes" | 
 
 export function mapLocationActivityCount(group: Pick<GroupedMapLocation, "qrCodes" | "quests" | "events">): number {
   return group.qrCodes.length + group.quests.length + group.events.length;
+}
+
+export function mapLocationQuestCount(group: Pick<GroupedMapLocation, "qrCodes" | "quests">): number {
+  return group.qrCodes.length + group.quests.length;
 }

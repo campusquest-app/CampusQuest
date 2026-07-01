@@ -668,6 +668,18 @@ const adminQuestVisibilitySchema = z.enum(["active", "hidden", "draft", "deleted
 const adminQuestRepeatTypeSchema = z.enum(["one_time", "daily", "weekly", "monthly", "custom"]);
 const adminQuestRepeatLimitSchema = z.enum(["once_per_user", "once_per_day", "once_per_week", "unlimited"]);
 
+const adminQuestCampusLocationKeySchema = z.enum([
+  "quad",
+  "library",
+  "memorial_union",
+  "mackal_rec_center",
+  "ryan_center",
+  "dining_hall",
+  "dorm_residence",
+  "academic_building",
+  "other",
+]);
+
 export const createAdminQuestSchema = z.object({
   name: z.string().trim().min(2).max(120),
   description: z.string().trim().min(1).max(2000),
@@ -675,7 +687,7 @@ export const createAdminQuestSchema = z.object({
   difficulty: adminQuestDifficultySchema,
   questType: adminQuestTypeSchema,
   locationName: z.string().trim().max(200).optional(),
-  locationKey: z.enum(["quad", "library", "memorial_union", "mackal_rec_center", "ryan_center", "dining_hall", "dorm_residence", "academic_building", "other"]).optional(),
+  locationKey: adminQuestCampusLocationKeySchema.optional(),
   locationAddress: z.string().trim().max(300).optional(),
   locationLat: z.number().min(-90).max(90).optional(),
   locationLng: z.number().min(-180).max(180).optional(),
@@ -697,7 +709,15 @@ export const createAdminQuestSchema = z.object({
   eventId: uuidSchema.optional(),
 });
 
-export const updateAdminQuestSchema = createAdminQuestSchema.partial();
+export const updateAdminQuestSchema = createAdminQuestSchema.partial().extend({
+  locationKey: adminQuestCampusLocationKeySchema.nullable().optional(),
+  locationName: z.string().trim().max(200).nullable().optional(),
+  locationAddress: z.string().trim().max(300).nullable().optional(),
+  locationLat: z.number().min(-90).max(90).nullable().optional(),
+  locationLng: z.number().min(-180).max(180).nullable().optional(),
+  mapPinX: z.number().min(0).max(100).nullable().optional(),
+  mapPinY: z.number().min(0).max(100).nullable().optional(),
+});
 
 export const adminQuestVisibilitySchema2 = z.object({
   visibilityStatus: adminQuestVisibilitySchema,
@@ -715,6 +735,7 @@ export const questBoardQuerySchema = z.object({
   filter: z.enum(["all", "daily", "nearby", "qr", "active", "completed"]).optional(),
   lat: z.coerce.number().min(-90).max(90).optional(),
   lng: z.coerce.number().min(-180).max(180).optional(),
+  locationId: z.string().trim().min(1).max(80).optional(),
 });
 
 export const createQuestTemplateSchema = z.object({

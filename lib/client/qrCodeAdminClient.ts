@@ -1,5 +1,6 @@
 import { ApiRequestError } from "@/lib/client/dashboardApi";
 import { getAccessToken } from "@/lib/client/apiSession";
+import type { AdminQuestLinkedQr } from "@/lib/adminQuestTypes";
 import { campusLocationFormToPayload, EMPTY_CAMPUS_LOCATION_FORM, type CampusLocationFormState, type CampusLocationKey } from "@/lib/campusLocations";
 import type { AdminQrType } from "@/lib/server/qrCodeInput";
 
@@ -256,6 +257,50 @@ export async function regenerateQrCodePng(qrId: string): Promise<{ qrPngUrl: str
   };
   if (!res.ok) throw new Error(json.error ?? "Could not regenerate QR PNG.");
   return { qrPngUrl: json.qrPngUrl ?? "", scanUrl: json.scanUrl ?? "" };
+}
+
+export async function regenerateQrToken(qrId: string): Promise<{
+  row: QrCodeAdminRow;
+  scanUrl: string;
+  oldCode: string;
+  newCode: string;
+}> {
+  const token = getAccessToken();
+  const res = await fetch(`/api/internal/admin/qr-codes/${qrId}/regenerate-token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    row?: QrCodeAdminRow;
+    scanUrl?: string;
+    oldCode?: string;
+    newCode?: string;
+    error?: string;
+  };
+  if (!res.ok || !json.row || !json.scanUrl || !json.newCode) {
+    throw new Error(json.error ?? "Could not regenerate QR token.");
+  }
+  return {
+    row: json.row,
+    scanUrl: json.scanUrl,
+    oldCode: json.oldCode ?? "",
+    newCode: json.newCode,
+  };
+}
+
+export function resolveQuestQrScanUrl(linkedQr: Pick<AdminQuestLinkedQr, "code" | "metadata"> | null): string | null {
+  if (!linkedQr) return null;
+  const fromMeta = linkedQr.metadata?.scan_url?.trim();
+  if (fromMeta) return fromMeta;
+  if (linkedQr.code?.trim()) {
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}/scan?code=${encodeURIComponent(linkedQr.code.trim())}`;
+    }
+  }
+  return null;
 }
 
 // Back-compat for any legacy imports

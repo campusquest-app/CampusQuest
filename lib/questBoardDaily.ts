@@ -35,6 +35,7 @@ export function buildDailyQuestBoardItems(characterId: string): UserQuestBoardIt
       requiresQr: false,
       completionMethod: "manual_log" as const,
       locationName: null,
+      locationId: null,
       locationLat: null,
       locationLng: null,
       status: done ? "completed" : current > 0 ? "active" : "available",

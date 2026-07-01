@@ -1,4 +1,6 @@
 import { getCampusLocationPreset, isCampusLocationKey, isValidCampusCoordinate, resolveCampusLocation } from "@/lib/campusLocations";
+import { getCampusLocation } from "@/lib/locations/registry";
+import { resolveRealmLocationIdFromFields } from "@/lib/locations/resolveRealmLocationId";
 import {
   attachesToLandmark,
   campusKeyForRealmLocationId,
@@ -35,20 +37,48 @@ function otherGroupKey(lat: number, lng: number): string {
 }
 
 function resolveGroupMeta(args: {
-  locationKey: string | null;
-  locationName: string | null;
-  locationAddress: string | null;
-  locationLat: number | null;
-  locationLng: number | null;
+  locationId?: string | null;
+  locationKey?: string | null;
+  locationName?: string | null;
+  locationAddress?: string | null;
+  locationLat?: number | null;
+  locationLng?: number | null;
   mapPinX?: number | null;
   mapPinY?: number | null;
 }): Omit<GroupBucket, "qrCodes" | "quests" | "events"> | null {
+  const canonicalId = resolveRealmLocationIdFromFields({
+    locationId: args.locationId,
+    locationKey: args.locationKey,
+  });
+
+  if (canonicalId) {
+    const entry = getCampusLocation(canonicalId);
+    const coords = mapPercentForCoordinates({
+      lat: entry.latitude,
+      lng: entry.longitude,
+      mapPinX: args.mapPinX ?? entry.mapX,
+      mapPinY: args.mapPinY ?? entry.mapY,
+    });
+    if (!coords) return null;
+
+    return {
+      groupKey: canonicalId,
+      locationKey: entry.legacyCampusKey,
+      realmLocationId: canonicalId,
+      locationName: entry.name,
+      locationAddress: args.locationAddress ?? null,
+      x: coords.x,
+      y: coords.y,
+      attachToLandmark: true,
+    };
+  }
+
   const resolved = resolveCampusLocation({
-    location_key: args.locationKey,
-    location_name: args.locationName,
-    location_address: args.locationAddress,
-    location_lat: args.locationLat,
-    location_lng: args.locationLng,
+    location_key: args.locationKey ?? null,
+    location_name: args.locationName ?? null,
+    location_address: args.locationAddress ?? null,
+    location_lat: args.locationLat ?? null,
+    location_lng: args.locationLng ?? null,
   });
 
   if (!resolved.showOnMap) return null;
@@ -138,11 +168,11 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
     admin
       .from("admin_quests")
       .select(
-        "id, name, description, xp_reward, difficulty, completion_method, requires_qr, location_key, location_name, location_address, location_lat, location_lng, map_pin_x, map_pin_y, icon, starts_at, ends_at, visibility_status, deleted_at",
+        "id, name, description, xp_reward, difficulty, completion_method, requires_qr, location_id, location_key, location_name, location_address, location_lat, location_lng, map_pin_x, map_pin_y, icon, starts_at, ends_at, visibility_status, deleted_at",
       )
       .eq("visibility_status", "active")
       .is("deleted_at", null)
-      .not("location_key", "is", null),
+      .or("location_key.not.is.null,location_id.not.is.null"),
     admin
       .from("qr_codes")
       .select(
@@ -170,6 +200,7 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
     if (isExpiredAt(quest.ends_at, now)) continue;
 
     const meta = resolveGroupMeta({
+      locationId: (row.location_id as string | null) ?? null,
       locationKey: (row.location_key as string | null) ?? null,
       locationName: (row.location_name as string | null) ?? null,
       locationAddress: (row.location_address as string | null) ?? null,

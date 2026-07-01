@@ -21,6 +21,7 @@ export type AdminQuestRow = {
   quest_type: AdminQuestType;
   location_name: string | null;
   location_key: string | null;
+  location_id: string | null;
   location_address: string | null;
   location_lat: number | null;
   location_lng: number | null;
@@ -45,6 +46,15 @@ export type AdminQuestRow = {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+/** Linked QR code metadata returned with admin quest list/detail. */
+export type AdminQuestLinkedQr = {
+  id: string;
+  code: string;
+  image_url: string | null;
+  qr_png_url: string | null;
+  metadata?: { scan_url?: string } | null;
 };
 
 export type AdminQuestCompletionRow = {
@@ -94,6 +104,7 @@ export type UserQuestBoardItem = {
   requiresQr: boolean;
   completionMethod: AdminQuestCompletionMethod | "manual_log";
   locationName: string | null;
+  locationId: string | null;
   locationLat: number | null;
   locationLng: number | null;
   status: "available" | "active" | "ready" | "completed" | "pending";
