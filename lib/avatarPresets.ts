@@ -3,9 +3,105 @@
  * Each preset applies style, seed, and all DiceBear appearance options at once.
  */
 
-import type { DiceBearAvatarV2 } from "./dicebearAvatar";
+import type { DiceBearAvatarV2, DiceBearStyleId } from "./dicebearAvatar";
+import {
+  BG_FANTASY_PRESETS,
+  HAIR_COLOR_SWATCHES,
+  SKIN_TONE_SWATCHES,
+  dicebearAdvancedUi as U,
+} from "./dicebearAdvancedOptions";
 
 export type AvatarLookPreset = DiceBearAvatarV2 & { label: string };
+
+function styleAppearanceDefaults(style: DiceBearStyleId): Record<string, unknown> {
+  const skin = SKIN_TONE_SWATCHES[2]!;
+  const hairCol = HAIR_COLOR_SWATCHES[1]!;
+  const bg = BG_FANTASY_PRESETS[0]!.backgroundColor;
+
+  switch (style) {
+    case "lorelei":
+    case "loreleiNeutral":
+      return {
+        backgroundColor: bg,
+        backgroundType: ["gradientLinear"],
+        hair: [U.LORELEI_HAIR[0]!.v],
+        eyes: [U.LORELEI_EYES[0]!.v],
+        mouth: [U.LORELEI_MOUTH[0]!.v],
+        skinColor: skin.skinColor,
+        hairColor: hairCol.hairColor,
+        glassesProbability: 0,
+        hairAccessoriesProbability: 0,
+      };
+    case "pixelArt":
+    case "pixelArtNeutral":
+      return {
+        backgroundColor: ["e8e4e0"],
+        backgroundType: ["gradientLinear"],
+        hair: [U.PIXEL_HAIR[0]!.v],
+        eyes: [U.PIXEL_EYES[0]!.v],
+        mouth: [U.PIXEL_MOUTH[0]!.v],
+        skinColor: skin.skinColor,
+        hairColor: hairCol.hairColor,
+        glassesProbability: 0,
+        hatProbability: 0,
+        accessoriesProbability: 0,
+      };
+    case "openPeeps":
+      return {
+        backgroundColor: bg,
+        backgroundType: ["gradientLinear"],
+        head: [U.PEEPS_HEAD[0]!.v],
+        face: [U.PEEPS_FACE[0]!.v],
+        skinColor: skin.skinColor,
+        headContrastColor: hairCol.hairColor,
+        accessoriesProbability: 0,
+      };
+    case "adventurer":
+    case "adventurerNeutral":
+      return {
+        backgroundColor: bg,
+        backgroundType: ["gradientLinear"],
+        hair: [U.ADV_HAIR[0]!.v],
+        eyes: [U.ADV_EYES[0]!.v],
+        mouth: [U.ADV_MOUTH[0]!.v],
+        skinColor: skin.skinColor,
+        hairColor: hairCol.hairColor,
+        glassesProbability: 0,
+        featuresProbability: 0,
+      };
+    case "micah":
+      return {
+        backgroundColor: bg,
+        backgroundType: ["gradientLinear"],
+        hair: [U.MICAH_HAIR[0]!.v],
+        eyes: [U.MICAH_EYES[0]!.v],
+        mouth: [U.MICAH_MOUTH[0]!.v],
+        shirt: [U.MICAH_SHIRT[0]!.v],
+        baseColor: skin.skinColor,
+        hairColor: hairCol.hairColor,
+        glassesProbability: 0,
+      };
+    default:
+      return {
+        backgroundColor: bg,
+        backgroundType: ["gradientLinear"],
+      };
+  }
+}
+
+/** Merge curated preset data with style defaults so every field renders reliably. */
+export function resolveAvatarPreset(preset: AvatarLookPreset): DiceBearAvatarV2 {
+  const defaults = styleAppearanceDefaults(preset.style);
+  return {
+    v: 2,
+    style: preset.style,
+    seed: preset.seed,
+    options: {
+      ...defaults,
+      ...preset.options,
+    },
+  };
+}
 
 export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
   {
@@ -49,16 +145,15 @@ export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
     seed: "cq-avatar-preset-3",
     label: "Preset 3",
     options: {
-      backgroundColor: ["14532d", "052e16"],
+      backgroundColor: ["c5d4c0", "e8e4e0"],
       backgroundType: ["gradientLinear"],
       hair: ["short01"],
       eyes: ["variant04"],
       mouth: ["happy08"],
-      skinColor: ["c6866a"],
+      skinColor: ["f6d4c8"],
       hairColor: ["d4a84b"],
       glassesProbability: 0,
-      hat: ["variant01"],
-      hatProbability: 100,
+      hatProbability: 0,
       accessoriesProbability: 0,
     },
   },
@@ -68,7 +163,7 @@ export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
     seed: "cq-avatar-preset-4",
     label: "Preset 4",
     options: {
-      backgroundColor: ["0f172a"],
+      backgroundColor: ["d4c4b8", "f6d4c8"],
       backgroundType: ["gradientLinear"],
       hair: ["long01"],
       eyes: ["variant12"],
@@ -78,8 +173,7 @@ export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
       glasses: ["dark04"],
       glassesProbability: 100,
       hatProbability: 0,
-      accessories: ["variant02"],
-      accessoriesProbability: 100,
+      accessoriesProbability: 0,
     },
   },
   {
@@ -152,6 +246,6 @@ export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
   },
 ] as const;
 
-export function isAvatarLookPresetSelected(data: DiceBearAvatarV2, preset: DiceBearAvatarV2): boolean {
+export function isAvatarLookPresetSelected(data: DiceBearAvatarV2, preset: AvatarLookPreset): boolean {
   return data.style === preset.style && data.seed === preset.seed;
 }

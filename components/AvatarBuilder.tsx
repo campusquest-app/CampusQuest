@@ -9,8 +9,9 @@ import {
   randomDiceBearSeed,
 } from "@/lib/dicebearAvatar";
 import { buildDiceBearForClass, CHARACTER_CLASSES, STARTER_WEAPONS, type CharacterClassId } from "@/lib/characterClasses";
-import { AVATAR_LOOK_PRESETS, isAvatarLookPresetSelected } from "@/lib/avatarPresets";
+import { resolveAvatarPreset, type AvatarLookPreset } from "@/lib/avatarPresets";
 import { AvatarDisplay } from "./AvatarDisplay";
+import { AvatarPresetPicker } from "./avatar/AvatarPresetPicker";
 import { DiceBearForgeControls, DiceBearBackgroundPicker } from "./DiceBearForgeControls";
 import { randomAppearanceOptions, randomBackgroundColors } from "@/lib/dicebearAdvancedOptions";
 
@@ -92,8 +93,8 @@ export function AvatarBuilder({
     commit(getDefaultDiceBearAvatar());
   };
 
-  const applyPreset = (preset: DiceBearAvatarV2) => {
-    commit(cloneDice(preset));
+  const applyPreset = (preset: AvatarLookPreset) => {
+    commit(cloneDice(resolveAvatarPreset(preset)));
   };
 
   const patchOptions = (partial: Record<string, unknown>) => {
@@ -152,45 +153,7 @@ export function AvatarBuilder({
         </div>
       </div>
 
-      <div>
-        <p className="text-sm font-semibold text-white">Choose a Preset</p>
-        <p className="mt-0.5 text-xs text-white/55">Tap a preset to instantly apply a complete avatar style.</p>
-        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-          {AVATAR_LOOK_PRESETS.map((preset) => {
-            const selected = isAvatarLookPresetSelected(data, preset);
-            const previewAvatar = serializeDiceBearAvatar(preset);
-            return (
-              <button
-                key={preset.seed}
-                type="button"
-                onClick={() => applyPreset(preset)}
-                aria-label={preset.label}
-                className={`relative rounded-2xl border px-3 py-3.5 text-left transition-all min-h-[4.75rem] min-w-0 flex flex-col items-start justify-center gap-1.5 ${
-                  selected
-                    ? "border-2 border-uri-keaney bg-uri-keaney/20 shadow-[0_0_22px_rgba(104,171,232,0.35)] ring-2 ring-uri-keaney/35"
-                    : "border-white/12 bg-white/[0.06] hover:border-white/25 hover:bg-white/[0.09]"
-                }`}
-              >
-                {selected ? (
-                  <span
-                    className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-uri-keaney text-[11px] font-bold text-white shadow-md"
-                    aria-hidden
-                  >
-                    ✓
-                  </span>
-                ) : null}
-                <div
-                  className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/20"
-                  aria-hidden
-                >
-                  <AvatarDisplay avatar={previewAvatar} size={40} fitParent />
-                </div>
-                <p className="text-sm font-semibold text-white leading-tight whitespace-nowrap">{preset.label}</p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <AvatarPresetPicker data={data} onSelect={applyPreset} />
 
       <DiceBearBackgroundPicker data={data} applyBg={applyBg} />
 
