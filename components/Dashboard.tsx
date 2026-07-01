@@ -114,6 +114,11 @@ import { hydrateUserPersistenceFromServer } from "@/lib/client/hydrateUserPersis
 import { communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
 import { WelcomeSplash } from "./WelcomeSplash";
 import { SPLASH_LAUNCH_MIN_VISIBLE_MS } from "@/components/welcome/splashTiming";
+import {
+  resolveAppShellRoute,
+  resolveProfileRoute,
+  type ProfileRoute,
+} from "@/lib/client/appShellRoute";
 import { buildQrXpSession } from "@/lib/client/buildQrXpSession";
 import { normalizeQrScanInput } from "@/lib/client/normalizeQrScanInput";
 import { logQrScanDebug } from "@/lib/client/qrScanDebug";
@@ -196,6 +201,7 @@ export function Dashboard() {
   const [mounted, setMounted] = useState(false);
   const [showLaunchSplash, setShowLaunchSplash] = useState(true);
   const [launchMinElapsed, setLaunchMinElapsed] = useState(false);
+  const [profileRoute, setProfileRoute] = useState<ProfileRoute>("unknown");
   const [tab, setTab] = useState<Tab>("quad");
   const [quadFeedTab, setQuadFeedTab] = useState<QuadFeedTab>("public");
   const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
@@ -925,6 +931,7 @@ export function Dashboard() {
     setCharacter(null);
     setGatePrefillProfile(null);
     setOnboardingPreferences(null);
+    setProfileRoute("unknown");
     setXpGainSession(null);
     setQrScannerOpen(false);
     setQrScannerEverOpened(false);
@@ -1146,6 +1153,7 @@ export function Dashboard() {
 
     async function bootstrap() {
       setBootstrapStatus("bootstrapping");
+      setProfileRoute("unknown");
       setCharacter(null);
 
       // Restore a persisted Supabase session (refreshing an expired access
@@ -1257,8 +1265,8 @@ export function Dashboard() {
 
         if (cancelled) return;
 
-        const onboardingDone = Boolean(profileMerged.onboarding_completed);
-        const characterDone = Boolean(profileMerged.onboarding_character_completed);
+        const onboardingDone = profileMerged.onboarding_completed === true;
+        const characterDone = profileMerged.onboarding_character_completed === true;
 
         const commitSnap = () => {
           commitMeSessionSnapshot({
@@ -1312,9 +1320,9 @@ export function Dashboard() {
           });
         };
 
-        let routeDecision: "character_gate" | "app" = "character_gate";
+        const routeDecision = resolveProfileRoute(profileMerged);
 
-        if (onboardingDone) {
+        if (onboardingDone || characterDone) {
           clearLegacyLocalMismatch();
           commitSnap();
           const merged = syncAchievementsAfterHydrate(buildLocalCharacterFromServer(profileMerged, statsMerged));
@@ -1324,24 +1332,11 @@ export function Dashboard() {
           resetUserSaveSyncAfterHydrate();
           setGatePrefillProfile(null);
           setTab("quad");
-          routeDecision = "app";
-        } else if (characterDone) {
-          clearLegacyLocalMismatch();
-          commitSnap();
-          const merged = syncAchievementsAfterHydrate(buildLocalCharacterFromServer(profileMerged, statsMerged));
-          hydrateClientMirrorFromGameState(profileMerged.game_state_json ?? undefined, profileMerged.id);
-          replaceLocalCharacter(merged, { skipRemoteSync: true });
-          setCharacter(merged);
-          resetUserSaveSyncAfterHydrate();
-          setGatePrefillProfile(null);
-          setTab("quad");
-          routeDecision = "app";
         } else {
           clearLegacyLocalMismatch();
           commitSnap();
           setGatePrefillProfile(profileMerged);
           refresh();
-          routeDecision = "character_gate";
         }
 
         scheduleDeferredOnboardingPrefs();
@@ -1353,6 +1348,7 @@ export function Dashboard() {
           route: routeDecision === "character_gate" ? "character_gate" : "app",
         });
 
+        setProfileRoute(routeDecision);
         setBootstrapStatus("authenticated");
       } catch {
         if (!cancelled) {
@@ -1571,7 +1567,14 @@ export function Dashboard() {
 
   const launchReadyToDismiss = mounted && bootstrapStatus !== "bootstrapping" && launchMinElapsed;
 
-  if (showLaunchSplash) {
+  const appShellRoute = resolveAppShellRoute({
+    bootstrapStatus,
+    profileRoute,
+    showLaunchSplash,
+    hasCharacter: character != null,
+  });
+
+  if (appShellRoute === "loading") {
     return (
       <WelcomeSplash
         mode="launch"
@@ -1581,7 +1584,7 @@ export function Dashboard() {
     );
   }
 
-  if (bootstrapStatus === "unauthenticated") {
+  if (appShellRoute === "auth") {
     return (
       <AuthScreen
         onComplete={() => {
@@ -1591,7 +1594,7 @@ export function Dashboard() {
     );
   }
 
-  if (!character) {
+  if (appShellRoute === "onboarding") {
     return (
       <CharacterGate
         prefillProfile={gatePrefillProfile}
@@ -1600,6 +1603,16 @@ export function Dashboard() {
           setTab("quad");
           setBootstrapNonce((n) => n + 1);
         }}
+      />
+    );
+  }
+
+  if (!character) {
+    return (
+      <WelcomeSplash
+        mode="launch"
+        readyToDismiss={false}
+        onComplete={() => {}}
       />
     );
   }
