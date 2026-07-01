@@ -12753,7 +12753,7 @@ html[data-realm-map-panning] {
 
 /* —— Campus Memories row —— */
 .cq-memories-row {
-  padding: 0.1rem 0 0.25rem;
+  padding: 0 0 0.05rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -12797,8 +12797,8 @@ html[data-realm-map-panning] {
    edge spacing survives iOS WebKit (single-element flex scrollers drop it). */
 .cq-memories-track {
   display: flex;
-  gap: 18px;
-  padding: 4px 24px 2px 24px;
+  gap: 20px;
+  padding: 3px 24px 0 24px;
   width: max-content;
 }
 
@@ -12808,8 +12808,8 @@ html[data-realm-map-panning] {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.22rem;
-  width: 4.4rem;
+  gap: 0.16rem;
+  width: 5.3rem;
   background: transparent;
   border: none;
   padding: 0;
@@ -12821,19 +12821,19 @@ html[data-realm-map-panning] {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3.05rem;
-  height: 3.05rem;
+  width: 3.7rem;
+  height: 3.7rem;
   border-radius: 999px;
   padding: 2.5px;
   /* Inactive: faint blue-tinted story ring (no longer a dead gray). */
-  background: rgba(70, 184, 255, 0.3);
+  background: rgba(70, 184, 255, 0.36);
   transition: background 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease;
 }
 
-/* Inactive tiles read as available but quieter (~45% presence). Opacity keeps
-   them clearly tappable — pointer events are unaffected. */
+/* Inactive tiles read as available but quieter. Opacity keeps them clearly
+   tappable — pointer events are unaffected. */
 .cq-memories-tile:not(.cq-memories-tile--active):not(.cq-memories-tile--add) {
-  opacity: 0.46;
+  opacity: 0.58;
 }
 
 .cq-memories-tile:not(.cq-memories-tile--active):not(.cq-memories-tile--add):active {
@@ -12916,17 +12916,17 @@ html[data-realm-map-panning] {
 
 /* Clean white location glyph centered on the dark inner circle. */
 .cq-memories-tile-icon {
-  width: 1.3rem;
-  height: 1.3rem;
+  width: 1.58rem;
+  height: 1.58rem;
   color: #ffffff;
 }
 
 .cq-memories-live-dot {
   position: absolute;
-  top: 0.15rem;
-  right: 0.15rem;
-  width: 0.45rem;
-  height: 0.45rem;
+  top: 0.18rem;
+  right: 0.18rem;
+  width: 0.52rem;
+  height: 0.52rem;
   border-radius: 999px;
   background: #4cc9ff;
   box-shadow: 0 0 8px rgba(76, 201, 255, 0.8);
@@ -12935,7 +12935,7 @@ html[data-realm-map-panning] {
 .cq-memories-tile-label {
   font-size: 0.625rem;
   font-weight: 600;
-  line-height: 1.15;
+  line-height: 1.1;
   text-align: center;
   width: 100%;
   display: -webkit-box;
@@ -12949,7 +12949,13 @@ html[data-realm-map-panning] {
   font-size: 0.5625rem;
   font-weight: 500;
   min-height: 0.7rem;
+  line-height: 1.1;
   color: rgba(143, 220, 255, 0.85);
+}
+
+.cq-memories-tile-count:empty {
+  display: none;
+  min-height: 0;
 }
 
 .cq-memories-tile-count--muted {
@@ -12957,8 +12963,8 @@ html[data-realm-map-panning] {
 }
 
 .cq-memories-tile--skeleton {
-  width: 3.25rem;
-  height: 3.25rem;
+  width: 3.7rem;
+  height: 3.7rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
   animation: cq-pulse 1.2s ease-in-out infinite;

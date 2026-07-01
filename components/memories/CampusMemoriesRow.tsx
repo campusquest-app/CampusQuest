@@ -172,7 +172,7 @@ export function CampusMemoriesRow({
     >
       <span className="cq-memories-tile-ring cq-memories-tile-ring--add" aria-hidden>
         <span className="cq-memories-tile-icon-wrap">
-          <Plus className="cq-memories-tile-icon" strokeWidth={2.6} aria-hidden />
+          <Plus className="cq-memories-tile-icon" strokeWidth={2.75} aria-hidden />
         </span>
       </span>
       <span className="cq-memories-tile-label">Add</span>
@@ -223,7 +223,7 @@ export function CampusMemoriesRow({
               >
                 <span className="cq-memories-tile-ring" aria-hidden>
                   <span className="cq-memories-tile-icon-wrap">
-                    <Icon className="cq-memories-tile-icon" strokeWidth={2} aria-hidden />
+                    <Icon className="cq-memories-tile-icon" strokeWidth={2.25} aria-hidden />
                   </span>
                   {live ? <span className="cq-memories-live-dot" aria-hidden /> : null}
                 </span>
