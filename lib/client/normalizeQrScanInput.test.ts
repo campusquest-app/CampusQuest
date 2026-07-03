@@ -21,6 +21,13 @@ describe("normalizeQrScanInput", () => {
     ).toEqual({ code: "GYM", format: "legacy_activity_json" });
   });
 
+  it("normalizes admin CQ_* scan URL", () => {
+    expect(normalizeQrScanInput("https://campusquest.app/scan?code=CQ_ABC123XYZ")).toEqual({
+      code: "CQ_ABC123XYZ",
+      format: "url_query",
+    });
+  });
+
   it("normalizes campusquest:// deep link", () => {
     expect(normalizeQrScanInput("campusquest://scan?code=GYM")).toEqual({
       code: "GYM",

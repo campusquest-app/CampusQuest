@@ -14,8 +14,21 @@ describe("qrCodeExtract", () => {
     expect(extractCampusQuestQrCode("campusquest://scan?code=GYM")).toBe("GYM");
   });
 
+  it("preserves admin CQ_* token casing", () => {
+    expect(normalizeQrCode("CQ_ABC123XYZ")).toBe("CQ_ABC123XYZ");
+    expect(extractCampusQuestQrCode("https://campusquest.app/scan?code=CQ_ABC123XYZ")).toBe("CQ_ABC123XYZ");
+    expect(isCampusQuestQrCode("CQ_ABC123XYZ")).toBe(true);
+  });
+
   it("reads legacy cq_* tokens from scan URLs", () => {
     expect(extractCampusQuestQrCode("https://campusquest.app/scan?code=cq_perm_gym_v1")).toBe("cq_perm_gym_v1");
+  });
+
+  it("accepts UUID payloads", () => {
+    const uuid = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+    expect(isCampusQuestQrCode(uuid)).toBe(true);
+    expect(normalizeQrCode(uuid)).toBe(uuid);
+    expect(extractCampusQuestQrCode(`https://campusquest.app/scan?code=${uuid}`)).toBe(uuid);
   });
 
   it("accepts raw GYM token", () => {

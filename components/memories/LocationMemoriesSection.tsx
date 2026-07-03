@@ -71,8 +71,6 @@ export function LocationMemoriesSection({
 }: {
   locationId: CampusLocationId;
   locationName: string;
-  activeCount?: number;
-  archivedCount?: number;
   onOpenViewer: (group: CampusMemoryGroup, initialMemoryId?: string, includeExpired?: boolean) => void;
   onOpenGallery: (locationId: CampusLocationId) => void;
   onAddMemory: (locationId: CampusLocationId) => void;
@@ -114,6 +112,9 @@ export function LocationMemoriesSection({
   }, []);
 
   useEffect(() => {
+    // Show skeletons (not the previous location's memories) while switching locations.
+    setLoading(true);
+    setMemories([]);
     void load();
   }, [load]);
 

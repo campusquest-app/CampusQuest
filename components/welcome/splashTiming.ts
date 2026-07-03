@@ -6,7 +6,7 @@ export const SPLASH_COMPLETE_DWELL_MS = 680;
 
 export const SPLASH_FADEOUT_MS = 800;
 
-/** App launch splash — brief on every cold open / refresh / PWA start. */
+/** App launch splash — shown once after sign-in while session bootstraps. */
 export const SPLASH_LAUNCH_MIN_VISIBLE_MS = 1000;
 
 export const SPLASH_LAUNCH_PROGRESS_MS = 1100;

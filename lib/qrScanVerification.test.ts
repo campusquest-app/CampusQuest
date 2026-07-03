@@ -6,7 +6,7 @@ import {
   qrScanBannerFromApiError,
 } from "@/lib/client/qrScanUserMessages";
 import { resolveQrActivityLink } from "@/lib/server/qrActivityLink";
-import { evaluateScanEligibility } from "@/lib/server/qrCodeScan";
+import { evaluateScanEligibility, evaluateQrOperationalStatus } from "@/lib/server/qrCodeScan";
 import type { QrCodeRow } from "@/lib/server/qrCodeScan";
 import { campusQrScanSchema } from "@/lib/server/validation";
 
@@ -28,6 +28,8 @@ const gymRow = {
   max_scans_per_day: 1,
   requires_staff_approval: false,
   expires_at: null,
+  starts_at: null,
+  qr_type: null,
 } satisfies QrCodeRow;
 
 const GYM_JSON = JSON.stringify({ type: "campusquest_activity", activityId: "GYM" });
@@ -59,9 +61,24 @@ describe("QR reward verification — API request schema", () => {
 });
 
 describe("QR reward verification — user-facing errors", () => {
-  it("UNKNOWN / not found → activity not active", () => {
+  it("UNKNOWN / not found → qr not found", () => {
+    expect(qrScanBannerFromApiError(new ApiRequestError("x", 404, "QR_CODE_NOT_FOUND"))).toBe(
+      QR_SCAN_USER_MESSAGES.qrNotFound,
+    );
     expect(qrScanBannerFromApiError(new ApiRequestError("x", 404, "ACTIVITY_NOT_FOUND"))).toBe(
+      QR_SCAN_USER_MESSAGES.qrNotFound,
+    );
+  });
+
+  it("inactive quest → activity not active", () => {
+    expect(qrScanBannerFromApiError(new ApiRequestError("x", 409, "INACTIVE_QR_CODE"))).toBe(
       QR_SCAN_USER_MESSAGES.activityNotActive,
+    );
+  });
+
+  it("quest unavailable → dedicated message", () => {
+    expect(qrScanBannerFromApiError(new ApiRequestError("x", 409, "QUEST_UNAVAILABLE"))).toBe(
+      QR_SCAN_USER_MESSAGES.questUnavailable,
     );
   });
 
@@ -81,6 +98,34 @@ describe("QR reward verification — user-facing errors", () => {
     expect(qrScanBannerFromApiError(new ApiRequestError("x", 503, "QR_TABLES_NOT_READY"))).toBe(
       QR_SCAN_USER_MESSAGES.tablesNotReady,
     );
+  });
+});
+
+describe("QR reward verification — admin quest active status", () => {
+  const baseQr = { ...gymRow, qr_type: "quest_completion" as const, admin_quest_id: "quest-1" };
+  const activeAdminQuest = {
+    id: "quest-1",
+    visibility_status: "active",
+    deleted_at: null,
+    starts_at: null,
+    ends_at: null,
+  } as import("@/lib/adminQuestTypes").AdminQuestRow;
+
+  it("allows scan when admin quest is active but qr row is inactive", () => {
+    const result = evaluateQrOperationalStatus({
+      qr: { ...baseQr, is_active: false },
+      adminQuest: activeAdminQuest,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects when admin quest visibility is not active", () => {
+    const result = evaluateQrOperationalStatus({
+      qr: { ...baseQr, is_active: true },
+      adminQuest: { ...activeAdminQuest, visibility_status: "draft" },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("inactive");
   });
 });
 

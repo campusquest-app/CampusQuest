@@ -19,12 +19,32 @@ describe("appShellRoute", () => {
     expect(resolveProfileRoute({ onboarding_character_completed: null })).toBe("character_gate");
   });
 
-  it("keeps loading until bootstrap and profile route are known", () => {
+  it("hydrates quietly during bootstrap when not post-login", () => {
     expect(
       resolveAppShellRoute({
         bootstrapStatus: "bootstrapping",
         profileRoute: "unknown",
-        showLaunchSplash: false,
+        showPostLoginLoading: false,
+        hasCharacter: false,
+      }),
+    ).toBe("hydrating");
+
+    expect(
+      resolveAppShellRoute({
+        bootstrapStatus: "authenticated",
+        profileRoute: "unknown",
+        showPostLoginLoading: false,
+        hasCharacter: false,
+      }),
+    ).toBe("hydrating");
+  });
+
+  it("shows full-screen loading only during post-login boot", () => {
+    expect(
+      resolveAppShellRoute({
+        bootstrapStatus: "bootstrapping",
+        profileRoute: "unknown",
+        showPostLoginLoading: true,
         hasCharacter: false,
       }),
     ).toBe("loading");
@@ -32,9 +52,9 @@ describe("appShellRoute", () => {
     expect(
       resolveAppShellRoute({
         bootstrapStatus: "authenticated",
-        profileRoute: "unknown",
-        showLaunchSplash: false,
-        hasCharacter: false,
+        profileRoute: "app",
+        showPostLoginLoading: true,
+        hasCharacter: true,
       }),
     ).toBe("loading");
   });
@@ -44,7 +64,7 @@ describe("appShellRoute", () => {
       resolveAppShellRoute({
         bootstrapStatus: "authenticated",
         profileRoute: "app",
-        showLaunchSplash: false,
+        showPostLoginLoading: false,
         hasCharacter: true,
       }),
     ).toBe("app");
@@ -55,7 +75,7 @@ describe("appShellRoute", () => {
       resolveAppShellRoute({
         bootstrapStatus: "authenticated",
         profileRoute: "character_gate",
-        showLaunchSplash: false,
+        showPostLoginLoading: false,
         hasCharacter: false,
       }),
     ).toBe("onboarding");

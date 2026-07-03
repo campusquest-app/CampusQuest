@@ -113,6 +113,7 @@ export type UserQuestBoardItem = {
   endsAt: string | null;
   repeatType: AdminQuestRepeatType | "daily";
   canClaim: boolean;
+  qrCodeId?: string | null;
 };
 
 export type AdminQuestAnalytics = {

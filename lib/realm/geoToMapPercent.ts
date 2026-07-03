@@ -21,3 +21,17 @@ export function geoToRealmMapPercent(latitude: number, longitude: number): { x: 
 export function isValidCampusCoordinate(lat: number, lng: number): boolean {
   return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && !(lat === 0 && lng === 0);
 }
+
+/**
+ * Inverse of {@link geoToRealmMapPercent} — approximate campus lat/lng for a
+ * legacy percent-only map position. Lossy at the clamped edges; good enough to
+ * place legacy percent pins on the real-world (Google) map layer.
+ */
+export function realmMapPercentToGeo(x: number, y: number): { latitude: number; longitude: number } {
+  const lngSpan = MAX_LNG - MIN_LNG || 1;
+  const latSpan = MAX_LAT - MIN_LAT || 1;
+  return {
+    longitude: MIN_LNG + (x / 100) * lngSpan,
+    latitude: MAX_LAT - (y / 100) * latSpan,
+  };
+}

@@ -115,6 +115,11 @@ import { communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
 import { WelcomeSplash } from "./WelcomeSplash";
 import { SPLASH_LAUNCH_MIN_VISIBLE_MS } from "@/components/welcome/splashTiming";
 import {
+  clearPostLoginLoadingPending,
+  markPostLoginLoadingPending,
+  peekPostLoginLoadingPending,
+} from "@/lib/client/postLoginLoading";
+import {
   resolveAppShellRoute,
   resolveProfileRoute,
   type ProfileRoute,
@@ -199,7 +204,7 @@ export function Dashboard() {
   const router = useRouter();
   const [character, setCharacter] = useState<Character | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [showLaunchSplash, setShowLaunchSplash] = useState(true);
+  const [showPostLoginLoading, setShowPostLoginLoading] = useState(false);
   const [launchMinElapsed, setLaunchMinElapsed] = useState(false);
   const [profileRoute, setProfileRoute] = useState<ProfileRoute>("unknown");
   const [tab, setTab] = useState<Tab>("quad");
@@ -935,6 +940,8 @@ export function Dashboard() {
     setXpGainSession(null);
     setQrScannerOpen(false);
     setQrScannerEverOpened(false);
+    clearPostLoginLoadingPending();
+    setShowPostLoginLoading(false);
     setBootstrapStatus("bootstrapping");
     setCampusFetchNonce(0);
     setPilotCampusState({ status: "loading" });
@@ -1010,9 +1017,16 @@ export function Dashboard() {
   useEffect(() => {
     setMounted(true);
     setMusicMuted(isGameMusicMuted());
+    if (peekPostLoginLoadingPending()) {
+      setShowPostLoginLoading(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!showPostLoginLoading) return;
     const minTimer = window.setTimeout(() => setLaunchMinElapsed(true), SPLASH_LAUNCH_MIN_VISIBLE_MS);
     return () => window.clearTimeout(minTimer);
-  }, []);
+  }, [showPostLoginLoading]);
 
   useEffect(() => {
     if (qrScannerOpen) setQrScannerEverOpened(true);
@@ -1152,17 +1166,25 @@ export function Dashboard() {
     let cancelled = false;
 
     async function bootstrap() {
-      setBootstrapStatus("bootstrapping");
-      setProfileRoute("unknown");
-      setCharacter(null);
-
-      // Restore a persisted Supabase session (refreshing an expired access
-      // token from the stored refresh token) BEFORE deciding auth state, so
-      // reopening the app never flashes the login screen for a valid user.
       attachSupabaseAuthSync();
       await restoreSupabaseSession();
 
       const tokenAtStart = getAccessToken();
+      const postLoginBoot = peekPostLoginLoadingPending();
+
+      setBootstrapStatus("bootstrapping");
+      setProfileRoute("unknown");
+
+      if (!tokenAtStart || postLoginBoot) {
+        setCharacter(null);
+      } else {
+        const local = getCharacter();
+        if (local && !local.id.startsWith("char-")) {
+          setCharacter(local);
+        } else {
+          setCharacter(null);
+        }
+      }
 
       const failUnauthenticated = (opts?: { invalidateToken?: boolean }) => {
         if (opts?.invalidateToken) clearAccessToken();
@@ -1565,12 +1587,13 @@ export function Dashboard() {
     };
   }, [bossDefeatPhase]);
 
-  const launchReadyToDismiss = mounted && bootstrapStatus !== "bootstrapping" && launchMinElapsed;
+  const launchReadyToDismiss =
+    showPostLoginLoading && mounted && bootstrapStatus !== "bootstrapping" && launchMinElapsed;
 
   const appShellRoute = resolveAppShellRoute({
     bootstrapStatus,
     profileRoute,
-    showLaunchSplash,
+    showPostLoginLoading,
     hasCharacter: character != null,
   });
 
@@ -1579,15 +1602,25 @@ export function Dashboard() {
       <WelcomeSplash
         mode="launch"
         readyToDismiss={launchReadyToDismiss}
-        onComplete={() => setShowLaunchSplash(false)}
+        onComplete={() => {
+          clearPostLoginLoadingPending();
+          setShowPostLoginLoading(false);
+        }}
       />
     );
+  }
+
+  if (appShellRoute === "hydrating") {
+    return null;
   }
 
   if (appShellRoute === "auth") {
     return (
       <AuthScreen
         onComplete={() => {
+          markPostLoginLoadingPending();
+          setShowPostLoginLoading(true);
+          setLaunchMinElapsed(false);
           setBootstrapNonce((n) => n + 1);
         }}
       />
@@ -1608,13 +1641,7 @@ export function Dashboard() {
   }
 
   if (!character) {
-    return (
-      <WelcomeSplash
-        mode="launch"
-        readyToDismiss={false}
-        onComplete={() => {}}
-      />
-    );
+    return null;
   }
 
   function presentLogResult(

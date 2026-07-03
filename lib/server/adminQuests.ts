@@ -15,6 +15,10 @@ import type {
   AdminQuestVisibility,
   UserQuestBoardItem,
 } from "@/lib/adminQuestTypes";
+import {
+  adminQuestRequiresQrScan,
+  verifiedQuestCompletions,
+} from "@/lib/adminQuestQr";
 
 type SupabaseClientLike = ReturnType<typeof createAdminClient>;
 
@@ -83,40 +87,53 @@ export function isAdminQuestCurrentlyActive(quest: AdminQuestRow, now = new Date
 
 export function deriveAdminQuestStatus(
   quest: AdminQuestRow,
-  completions: { status: string; completion_day: string | null }[],
+  completions: { status: string; completion_day: string | null; completion_method?: string | null }[],
 ): UserQuestBoardItem["status"] {
   const now = new Date();
+  const qrRequired = adminQuestRequiresQrScan(quest);
+  const verified = verifiedQuestCompletions(quest, completions);
+  const defaultOpenStatus: UserQuestBoardItem["status"] = qrRequired ? "available" : "ready";
+
   if (!isAdminQuestCurrentlyActive(quest, now)) {
-    if (completions.some((c) => c.status === "completed")) return "completed";
+    if (verified.some((c) => c.status === "completed")) return "completed";
     return "available";
   }
-  const latest = completions[0];
-  if (latest?.status === "pending") return "pending";
-  if (quest.repeat_limit === "unlimited") return "ready";
-  if (quest.repeat_limit === "once_per_user" && completions.some((c) => c.status === "completed")) return "completed";
+
+  const latestPending = completions.find((c) => c.status === "pending");
+  if (latestPending) return "pending";
+
+  if (quest.repeat_limit === "unlimited") return defaultOpenStatus;
+
+  if (quest.repeat_limit === "once_per_user") {
+    if (verified.some((c) => c.status === "completed")) return "completed";
+    return defaultOpenStatus;
+  }
+
   if (quest.repeat_limit === "once_per_day") {
     const today = utcDayString(now);
-    if (completions.some((c) => c.status === "completed" && c.completion_day === today)) return "completed";
-    return "ready";
+    if (verified.some((c) => c.status === "completed" && c.completion_day === today)) return "completed";
+    return defaultOpenStatus;
   }
+
   if (quest.repeat_limit === "once_per_week") {
     const weekStart = weekStartDayString(now);
     if (
-      completions.some(
+      verified.some(
         (c) => c.status === "completed" && c.completion_day && c.completion_day >= weekStart,
       )
     ) {
       return "completed";
     }
-    return "ready";
+    return defaultOpenStatus;
   }
-  return completions.some((c) => c.status === "completed") ? "completed" : "ready";
+
+  return verified.some((c) => c.status === "completed") ? "completed" : defaultOpenStatus;
 }
 
 function canClaimAdminQuest(quest: AdminQuestRow, status: UserQuestBoardItem["status"]): boolean {
   if (!isAdminQuestCurrentlyActive(quest)) return false;
   if (status === "completed" || status === "pending") return false;
-  if (quest.completion_method === "qr_scan") return false;
+  if (adminQuestRequiresQrScan(quest)) return false;
   if (quest.completion_method === "admin_approval") return true;
   return status === "ready" || status === "available";
 }
@@ -155,6 +172,7 @@ export function mapAdminQuestToBoardItem(
     endsAt: quest.ends_at,
     repeatType: quest.repeat_type,
     canClaim: canClaimAdminQuest(quest, status),
+    qrCodeId: quest.qr_code_id,
   };
 }
 
@@ -178,11 +196,13 @@ export async function listActiveAdminQuestsForUser(userId: string): Promise<Admi
 }
 
 export async function fetchUserAdminQuestCompletions(userId: string, questIds: string[]) {
-  if (questIds.length === 0) return new Map<string, { status: string; completion_day: string | null }[]>();
+  if (questIds.length === 0) {
+    return new Map<string, { status: string; completion_day: string | null; completion_method: string | null }[]>();
+  }
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("admin_quest_completions")
-    .select("quest_id, status, completion_day, completed_at")
+    .select("quest_id, status, completion_day, completion_method, completed_at")
     .eq("user_id", userId)
     .in("quest_id", questIds)
     .order("completed_at", { ascending: false });
@@ -193,10 +213,14 @@ export async function fetchUserAdminQuestCompletions(userId: string, questIds: s
     }
     throw new ApiError(400, error.message, "ADMIN_QUEST_COMPLETIONS_FETCH_FAILED");
   }
-  const map = new Map<string, { status: string; completion_day: string | null }[]>();
+  const map = new Map<string, { status: string; completion_day: string | null; completion_method: string | null }[]>();
   for (const row of data ?? []) {
     const list = map.get(row.quest_id) ?? [];
-    list.push({ status: row.status, completion_day: row.completion_day });
+    list.push({
+      status: row.status,
+      completion_day: row.completion_day,
+      completion_method: row.completion_method ?? null,
+    });
     map.set(row.quest_id, list);
   }
   return map;
@@ -770,6 +794,7 @@ export async function completeAdminQuestForUser(args: {
   questId: string;
   completionMethod?: AdminQuestCompletionMethod;
   proofUrl?: string;
+  qrCodeId?: string;
 }) {
   const admin = createAdminClient();
   const { data: quest, error: questError } = await admin
@@ -788,11 +813,20 @@ export async function completeAdminQuestForUser(args: {
   if (status === "completed") {
     throw new ApiError(409, "You already completed this quest.", "ADMIN_QUEST_ALREADY_COMPLETED");
   }
-  if (q.completion_method === "qr_scan" && args.completionMethod !== "qr_scan") {
-    throw new ApiError(400, "This quest requires a QR scan to complete.", "ADMIN_QUEST_QR_REQUIRED");
-  }
 
   const method = args.completionMethod ?? q.completion_method;
+  if (adminQuestRequiresQrScan(q) && method !== "qr_scan") {
+    throw new ApiError(400, "This quest requires a QR scan to complete.", "ADMIN_QUEST_QR_REQUIRED");
+  }
+  if (method === "qr_scan") {
+    if (!args.qrCodeId) {
+      throw new ApiError(400, "A linked QR scan is required to complete this quest.", "ADMIN_QUEST_QR_REQUIRED");
+    }
+    if (q.qr_code_id && q.qr_code_id !== args.qrCodeId) {
+      throw new ApiError(409, "This QR code is not linked to this quest.", "QR_QUEST_MISMATCH");
+    }
+  }
+
   const completionStatus = method === "admin_approval" ? "pending" : "completed";
   const completionDay = utcDayString();
 
@@ -836,12 +870,14 @@ export async function completeAdminQuestFromQr(args: {
   userClient: SupabaseClientLike;
   userId: string;
   adminQuestId: string;
+  qrCodeId: string;
 }) {
   return completeAdminQuestForUser({
     userClient: args.userClient,
     userId: args.userId,
     questId: args.adminQuestId,
     completionMethod: "qr_scan",
+    qrCodeId: args.qrCodeId,
   });
 }
 

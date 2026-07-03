@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AdminRouteSessionGate } from "@/components/AdminRouteSessionGate";
@@ -15,6 +15,15 @@ type QuestListItem = {
 };
 
 export default function QuestQrPrintPage() {
+  // useSearchParams requires a Suspense boundary for static prerendering.
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-uri-navy" />}>
+      <QuestQrPrintContent />
+    </Suspense>
+  );
+}
+
+function QuestQrPrintContent() {
   const searchParams = useSearchParams();
   const questId = searchParams.get("questId") ?? "";
   const [item, setItem] = useState<QuestListItem | null>(null);

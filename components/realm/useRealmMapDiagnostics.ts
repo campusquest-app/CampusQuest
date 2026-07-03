@@ -23,7 +23,7 @@ function useRealmDebugMode(isAdmin: boolean): boolean {
       return;
     }
     const params = new URLSearchParams(window.location.search);
-    setDebug(process.env.NODE_ENV === "development" || params.get("realm_debug") === "1");
+    setDebug(params.get("realm_debug") === "1");
   }, [isAdmin]);
   return debug;
 }

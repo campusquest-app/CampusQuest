@@ -1,6 +1,7 @@
 import type { CampusLocationKey } from "@/lib/campusLocations";
 import { isCampusLocationId } from "@/lib/locations/registry";
 import type { RealmLocationId } from "@/lib/realm/locations";
+import { countUniqueLocationQuests } from "@/lib/realm/locationQuestDedupe";
 
 export type MapQuestPin = {
   id: string;
@@ -12,6 +13,7 @@ export type MapQuestPin = {
   requiresQr: boolean;
   expiresAt: string | null;
   icon: string;
+  qrCodeId?: string | null;
 };
 
 export type MapQrPin = {
@@ -22,6 +24,7 @@ export type MapQrPin = {
   expiresAt: string | null;
   scanPath: string;
   qrCode: string;
+  adminQuestId?: string | null;
 };
 
 export type MapEventPin = {
@@ -41,6 +44,9 @@ export type GroupedMapLocation = {
   locationAddress: string | null;
   x: number;
   y: number;
+  /** Real-world coordinates for the Google map layer (derived when only percent pins exist). */
+  lat: number | null;
+  lng: number | null;
   attachToLandmark: boolean;
   qrCodes: MapQrPin[];
   quests: MapQuestPin[];
@@ -82,6 +88,9 @@ export function mapLocationActivityCount(group: Pick<GroupedMapLocation, "qrCode
   return group.qrCodes.length + group.quests.length + group.events.length;
 }
 
-export function mapLocationQuestCount(group: Pick<GroupedMapLocation, "qrCodes" | "quests">): number {
-  return group.qrCodes.length + group.quests.length;
+export function mapLocationQuestCount(
+  group: Pick<GroupedMapLocation, "qrCodes" | "quests">,
+  locationId?: string | null,
+): number {
+  return countUniqueLocationQuests(group, locationId);
 }

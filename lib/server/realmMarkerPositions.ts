@@ -11,7 +11,7 @@ const VALID_LOCATION_IDS = new Set<string>(REALM_LOCATION_OPTIONS.map((l) => l.i
 
 export type RealmConfigRow = {
   config_key: string;
-  config_value: Record<string, { x: number; y: number }>;
+  config_value: Record<string, { x: number; y: number; lat?: number; lng?: number }>;
   updated_at: string;
   updated_by: string | null;
 };
@@ -23,17 +23,30 @@ export function isMissingRealmConfigTableError(error: { message?: string; code?:
   return /Could not find the table|schema cache/i.test(msg) && /campus_realm_config/i.test(msg);
 }
 
-function sanitizePositions(input: Record<string, { x: number; y: number }>): MarkerPositionMap {
+function sanitizePositions(input: Record<string, { x: number; y: number; lat?: number; lng?: number }>): MarkerPositionMap {
   const out: MarkerPositionMap = {};
   for (const [id, pos] of Object.entries(input)) {
     if (!VALID_LOCATION_IDS.has(id)) continue;
     if (typeof pos?.x !== "number" || typeof pos?.y !== "number") continue;
     const x = Math.min(100, Math.max(0, pos.x));
     const y = Math.min(100, Math.max(0, pos.y));
-    out[id as RealmLocationId] = {
+    const sanitized: MarkerPositionMap[RealmLocationId] = {
       x: Math.round(x * 100) / 100,
       y: Math.round(y * 100) / 100,
     };
+    // Optional real-world coordinates from the Google map layer.
+    if (
+      typeof pos.lat === "number" &&
+      typeof pos.lng === "number" &&
+      pos.lat >= -90 &&
+      pos.lat <= 90 &&
+      pos.lng >= -180 &&
+      pos.lng <= 180
+    ) {
+      sanitized.lat = Math.round(pos.lat * 1_000_000) / 1_000_000;
+      sanitized.lng = Math.round(pos.lng * 1_000_000) / 1_000_000;
+    }
+    out[id as RealmLocationId] = sanitized;
   }
   return out;
 }
@@ -69,7 +82,7 @@ export async function saveRealmMarkerPositions(args: {
   configKey?: string;
 }): Promise<{ positions: MarkerPositionMap; updatedAt: string; updatedBy: string }> {
   const configKey = args.configKey ?? MARKER_POSITIONS_CONFIG_KEY;
-  const sanitized = sanitizePositions(args.positions as Record<string, { x: number; y: number }>);
+  const sanitized = sanitizePositions(args.positions as Record<string, { x: number; y: number; lat?: number; lng?: number }>);
   const admin = createAdminClient();
 
   const { data, error } = await admin

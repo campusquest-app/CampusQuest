@@ -131,7 +131,3 @@ export function CampusMemoryArchivePanel({
     </div>
   );
 }
-
-export function memoryToViewerLocationId(memory: CampusMemory): CampusLocationId {
-  return memory.locationId as CampusLocationId;
-}

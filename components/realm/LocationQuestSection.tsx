@@ -1,16 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import type { CampusLocationId } from "@/lib/locations/registry";
-import type { GroupedMapLocation, MapQrPin } from "@/lib/mapLocationGroups";
+import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import type { UserQuestBoardItem } from "@/lib/adminQuestTypes";
 import { fetchQuestBoardAdminItems, completeAdminQuestRequest } from "@/lib/client/questBoardClient";
 import { QuestCard } from "@/components/quests/QuestCard";
 import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
+import { mergeLocationQuestCards } from "@/lib/realm/locationQuestDedupe";
 
-function QrQuestCard({ qr }: { qr: MapQrPin }) {
+function QrQuestCard({ qr }: { qr: GroupedMapLocation["qrCodes"][number] }) {
   return (
     <article className="cq-quest-card group relative flex flex-col overflow-hidden rounded-2xl border border-cq-border bg-cq-card p-4 shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-2">
@@ -70,6 +71,12 @@ export function LocationQuestSection({
     void load();
   }, [load, reloadToken]);
 
+  useEffect(() => {
+    const onFocus = () => void load();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [load]);
+
   const handleClaim = useCallback(
     async (item: UserQuestBoardItem) => {
       setClaimingId(item.id);
@@ -84,8 +91,18 @@ export function LocationQuestSection({
     [load],
   );
 
-  const qrCodes = mapContent?.qrCodes ?? [];
-  const hasContent = quests.length > 0 || qrCodes.length > 0;
+  const questCards = useMemo(
+    () =>
+      mergeLocationQuestCards({
+        qrCodes: mapContent?.qrCodes ?? [],
+        mapQuests: mapContent?.quests ?? [],
+        boardQuests: quests,
+        locationId,
+      }),
+    [locationId, mapContent?.qrCodes, mapContent?.quests, quests],
+  );
+
+  const hasContent = loading || questCards.length > 0;
 
   return (
     <section className="cq-realm-location-quests cq-realm-fade-in" aria-label="Active quests">
@@ -104,18 +121,20 @@ export function LocationQuestSection({
         <p className="cq-realm-location-quests-empty">No active quests here right now.</p>
       ) : (
         <div className="cq-realm-location-quests-list">
-          {qrCodes.map((qr) => (
-            <QrQuestCard key={qr.id} qr={qr} />
-          ))}
-          {quests.map((quest) => (
-            <QuestCard
-              key={quest.id}
-              item={quest}
-              onClaim={handleClaim}
-              claiming={claimingId === quest.id}
-              compact
-            />
-          ))}
+          {questCards.map((card) =>
+            card.kind === "qr" ? (
+              <QrQuestCard key={`qr-${card.qr.id}`} qr={card.qr} />
+            ) : (
+              <QuestCard
+                key={`quest-${card.item.id}`}
+                item={card.item}
+                onClaim={handleClaim}
+                claiming={claimingId === card.item.id}
+                compact
+                scanPath={card.scanPath}
+              />
+            ),
+          )}
         </div>
       )}
     </section>

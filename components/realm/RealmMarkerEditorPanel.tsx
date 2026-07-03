@@ -1,6 +1,9 @@
 "use client";
 
-import { MapPin, Save, X } from "lucide-react";
+import { ChevronDown, MapPin, Save, X } from "lucide-react";
+import { useState } from "react";
+import { RealmMapDebugContent } from "./RealmMapDebugPanel";
+import type { RealmMapLayerReport } from "./useRealmMapDiagnostics";
 
 export type RealmMarkerEditorDebug = {
   userId: string | null;
@@ -13,6 +16,7 @@ export type RealmMarkerEditorDebug = {
 
 export function RealmMarkerEditorPanel({
   debug,
+  report,
   onEnterEdit,
   onExitEdit,
   onSave,
@@ -20,54 +24,69 @@ export function RealmMarkerEditorPanel({
   saveMessage,
 }: {
   debug: RealmMarkerEditorDebug;
+  report: RealmMapLayerReport | null;
   onEnterEdit: () => void;
   onExitEdit: () => void;
   onSave: () => void;
   savePending?: boolean;
   saveMessage?: string | null;
 }) {
+  const [debugExpanded, setDebugExpanded] = useState(false);
+
   if (!debug.isAdmin) return null;
 
-  return (
-    <div className="realm-marker-editor-panel absolute left-3 top-3 z-[6] flex max-w-[min(18rem,88vw)] flex-col gap-2 rounded-xl border border-amber-400/35 bg-black/75 p-3 text-[11px] text-white/85 shadow-lg backdrop-blur-sm">
-      <p className="font-display text-[10px] font-bold uppercase tracking-[0.2em] text-amber-200/90">Marker editor (debug)</p>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 font-mono text-[10px] text-white/70">
-        <dt className="text-white/40">user id</dt>
-        <dd className="truncate">{debug.userId ?? "—"}</dd>
-        <dt className="text-white/40">role</dt>
-        <dd>{debug.role}</dd>
-        <dt className="text-white/40">isAdmin</dt>
-        <dd className={debug.isAdmin ? "text-emerald-300" : "text-red-300"}>{String(debug.isAdmin)}</dd>
-        <dt className="text-white/40">edit mode</dt>
-        <dd className={debug.editMode ? "text-amber-200" : "text-white/55"}>{String(debug.editMode)}</dd>
-        {debug.selectedMarkerId ? (
-          <>
-            <dt className="text-white/40">selected</dt>
-            <dd className="truncate">{debug.selectedMarkerId}</dd>
-            {debug.selectedCoords ? (
-              <>
-                <dt className="text-white/40">x / y</dt>
-                <dd>
-                  {debug.selectedCoords.x.toFixed(2)}% · {debug.selectedCoords.y.toFixed(2)}%
-                </dd>
-              </>
-            ) : null}
-          </>
-        ) : null}
-      </dl>
+  if (!debug.editMode) {
+    return (
+      <button
+        type="button"
+        onClick={onEnterEdit}
+        data-no-drawer-swipe="true"
+        className="realm-map-edit-toggle absolute bottom-[4.75rem] left-3 z-[6] flex items-center gap-1.5 rounded-xl border border-uri-keaney/45 bg-[#041E42]/88 px-3 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur-sm transition hover:border-uri-keaney/70 hover:bg-[#041E42]/95 active:scale-[0.98] sm:bottom-4"
+        aria-label="Edit map marker positions"
+      >
+        <MapPin className="h-3.5 w-3.5 text-uri-keaney" aria-hidden />
+        Edit Map
+      </button>
+    );
+  }
 
-      {!debug.editMode ? (
+  return (
+    <div
+      data-no-drawer-swipe="true"
+      className="realm-map-editor-panel absolute inset-x-3 bottom-[4.75rem] z-[6] flex max-h-[min(42vh,20rem)] flex-col overflow-hidden rounded-xl border border-uri-keaney/35 bg-[#041E42]/92 shadow-xl backdrop-blur-md transition-all duration-200 sm:inset-x-auto sm:bottom-auto sm:left-3 sm:top-3 sm:max-h-[min(70vh,28rem)] sm:w-[min(18rem,88vw)]"
+    >
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 py-2.5">
+        <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-uri-keaney">Map Editor</p>
         <button
           type="button"
-          onClick={onEnterEdit}
-          className="mt-1 flex items-center justify-center gap-2 rounded-lg border border-amber-400/50 bg-amber-500/20 px-3 py-2 text-xs font-bold text-amber-100 transition hover:bg-amber-500/30"
+          onClick={onExitEdit}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/15 text-white/70 transition hover:bg-white/10 hover:text-white"
+          aria-label="Close map editor"
         >
-          <MapPin className="h-3.5 w-3.5" aria-hidden />
-          Edit Map
+          <X className="h-3.5 w-3.5" aria-hidden />
         </button>
-      ) : (
-        <div className="mt-1 flex flex-col gap-1.5">
-          <p className="text-[10px] leading-snug text-amber-100/80">Drag pins to reposition. Map pan is paused while editing.</p>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2.5">
+        <p className="text-[11px] leading-snug text-white/65">
+          Drag pins to reposition, or select a pin then tap the map to place it. Save when finished.
+        </p>
+
+        {debug.selectedMarkerId ? (
+          <div className="mt-2 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 text-[11px] text-white/80">
+            <p className="font-semibold text-white/90">Selected marker</p>
+            <p className="mt-0.5 truncate capitalize">{debug.selectedMarkerId.replace(/-/g, " ")}</p>
+            {debug.selectedCoords ? (
+              <p className="mt-1 font-mono text-[10px] text-white/55">
+                {debug.selectedCoords.x.toFixed(2)}% · {debug.selectedCoords.y.toFixed(2)}%
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mt-2 text-[10px] text-white/45">Tap a marker to select it for editing.</p>
+        )}
+
+        <div className="mt-3 flex flex-col gap-1.5">
           <button
             type="button"
             onClick={onSave}
@@ -82,13 +101,30 @@ export function RealmMarkerEditorPanel({
             onClick={onExitEdit}
             className="flex items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-xs font-semibold text-white/75 transition hover:bg-white/10"
           >
-            <X className="h-3.5 w-3.5" aria-hidden />
-            Exit Edit Mode
+            Cancel
           </button>
         </div>
-      )}
 
-      {saveMessage ? <p className="text-[10px] text-emerald-300">{saveMessage}</p> : null}
+        {saveMessage ? <p className="mt-2 text-[10px] text-emerald-300">{saveMessage}</p> : null}
+
+        <div className="mt-3 border-t border-white/10 pt-2">
+          <button
+            type="button"
+            onClick={() => setDebugExpanded((open) => !open)}
+            className="flex w-full items-center justify-between gap-2 rounded-lg px-1 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-amber-200/80 transition hover:text-amber-100"
+            aria-expanded={debugExpanded}
+          >
+            Debug Info
+            <ChevronDown
+              className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${debugExpanded ? "rotate-180" : ""}`}
+              aria-hidden
+            />
+          </button>
+          {debugExpanded && report ? (
+            <RealmMapDebugContent report={report} userId={debug.userId} role={debug.role} />
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

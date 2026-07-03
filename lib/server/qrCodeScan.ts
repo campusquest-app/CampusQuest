@@ -2,10 +2,14 @@ import { ApiError } from "@/lib/server/http";
 import { canBypassQrScanLimits, fetchProfileRole, type ProfileRole } from "@/lib/server/permissions";
 import { applyQrActivityStatBoost, resolveQrActivityLink } from "@/lib/server/qrActivityLink";
 import { applyQrLocationMilestones } from "@/lib/server/qrMilestones";
-import { normalizeQrCode } from "@/lib/qrCodeExtract";
+import { normalizeQrCode, isUuidLike } from "@/lib/qrCodeExtract";
 import { logQrScanServer } from "@/lib/server/qrScanServerLog";
 import { auditQrScanPatterns } from "@/lib/server/qrSuspiciousActivity";
-import { completeAdminQuestFromQr } from "@/lib/server/adminQuests";
+import {
+  completeAdminQuestFromQr,
+  isAdminQuestCurrentlyActive,
+} from "@/lib/server/adminQuests";
+import type { AdminQuestRow } from "@/lib/adminQuestTypes";
 import { addXpInternal, completeQuest, getOrCreateActiveUserQuest, getPlayerProgressSnapshot } from "@/lib/server/services";
 import { createAdminClient } from "@/lib/server/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -30,6 +34,8 @@ export type QrCodeRow = {
   max_scans_per_day: number;
   requires_staff_approval: boolean;
   expires_at: string | null;
+  starts_at: string | null;
+  qr_type: string | null;
 };
 
 type ScanFailReason =
@@ -184,16 +190,23 @@ function alreadyClaimedMessage(qr: QrCodeRow): string {
 async function tryCompleteAdminLinkedQuest(args: {
   userClient: SupabaseClientLike;
   userId: string;
-  adminQuestId: string | null;
+  qr: QrCodeRow;
 }) {
-  if (!args.adminQuestId) return null;
+  if (!args.qr.admin_quest_id) return null;
   try {
     return await completeAdminQuestFromQr({
       userClient: args.userClient,
       userId: args.userId,
-      adminQuestId: args.adminQuestId,
+      adminQuestId: args.qr.admin_quest_id,
+      qrCodeId: args.qr.id,
     });
-  } catch {
+  } catch (error) {
+    logQrScanServer("admin_quest_complete_failed", {
+      qrCodeId: args.qr.id,
+      adminQuestId: args.qr.admin_quest_id,
+      message: error instanceof Error ? error.message : String(error),
+      code: error instanceof ApiError ? error.code : null,
+    });
     return null;
   }
 }
@@ -245,7 +258,211 @@ function scanFailureMessage(reason: ScanFailReason, qr: QrCodeRow): string {
 }
 
 const QR_CODE_LOOKUP_SELECT =
-  "id, code, title, description, type, location_name, activity_name, xp_reward, is_active, is_permanent, cooldown_hours, max_scans_per_day, expires_at, quest_id, admin_quest_id";
+  "id, code, title, description, type, qr_type, location_name, activity_name, xp_reward, is_active, is_permanent, cooldown_hours, max_scans_per_day, expires_at, starts_at, quest_id, admin_quest_id";
+
+function codeLookupCandidates(code: string): string[] {
+  const normalized = normalizeQrCode(code);
+  const candidates = new Set<string>([normalized, code.trim()]);
+  if (/^CQ_/i.test(normalized)) candidates.add(normalized.toUpperCase());
+  if (/^cq_/i.test(normalized)) candidates.add(normalized.toLowerCase());
+  return Array.from(candidates);
+}
+
+type QrLookupContext = {
+  qr: QrCodeRow;
+  lookupPath: string;
+  adminQuest: AdminQuestRow | null;
+};
+
+async function fetchAdminQuestById(
+  admin: SupabaseClientLike,
+  adminQuestId: string,
+): Promise<AdminQuestRow | null> {
+  const { data, error } = await admin
+    .from("admin_quests")
+    .select("*")
+    .eq("id", adminQuestId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) return null;
+  return data ? (data as AdminQuestRow) : null;
+}
+
+async function lookupQrCodeRow(
+  admin: SupabaseClientLike,
+  rawCode: string,
+): Promise<QrLookupContext | null> {
+  const throwOnLookupError = (error: { message?: string; code?: string }) => {
+    if (isMissingQrTablesError(error)) {
+      throw new ApiError(
+        503,
+        "CampusQuest QR check-in is not set up on this database yet. Apply the latest Supabase migration (qr_tables_bootstrap), then try again.",
+        "QR_TABLES_NOT_READY",
+      );
+    }
+    if (/column\s+.+\s+does not exist/i.test(error.message ?? "")) {
+      throw new ApiError(
+        500,
+        "CampusQuest QR check-in schema is out of date. Apply the latest Supabase migrations, then try again.",
+        "QR_SCHEMA_OUT_OF_DATE",
+      );
+    }
+    throw new ApiError(400, error.message ?? "QR lookup failed.", "QR_LOOKUP_FAILED");
+  };
+
+  for (const candidate of codeLookupCandidates(rawCode)) {
+    const { data, error } = await admin
+      .from("qr_codes")
+      .select(QR_CODE_LOOKUP_SELECT)
+      .eq("code", candidate)
+      .maybeSingle();
+    if (error) throwOnLookupError(error);
+    if (data) {
+      return {
+        qr: mapQrCodeRow(data as Record<string, unknown>),
+        lookupPath: `qr_codes.code:${candidate}`,
+        adminQuest: null,
+      };
+    }
+  }
+
+  const idCandidate = normalizeQrCode(rawCode);
+  if (!isUuidLike(idCandidate)) return null;
+  const uuid = idCandidate.toLowerCase();
+
+  const { data: byId, error: byIdError } = await admin
+    .from("qr_codes")
+    .select(QR_CODE_LOOKUP_SELECT)
+    .eq("id", uuid)
+    .maybeSingle();
+  if (byIdError) throwOnLookupError(byIdError);
+  if (byId) {
+    return {
+      qr: mapQrCodeRow(byId as Record<string, unknown>),
+      lookupPath: "qr_codes.id",
+      adminQuest: null,
+    };
+  }
+
+  const adminQuest = await fetchAdminQuestById(admin, uuid);
+  if (adminQuest?.qr_code_id) {
+    const { data: linkedQr, error: linkedError } = await admin
+      .from("qr_codes")
+      .select(QR_CODE_LOOKUP_SELECT)
+      .eq("id", adminQuest.qr_code_id)
+      .maybeSingle();
+    if (linkedError) throwOnLookupError(linkedError);
+    if (linkedQr) {
+      return {
+        qr: mapQrCodeRow(linkedQr as Record<string, unknown>),
+        lookupPath: "admin_quests.id->qr_codes",
+        adminQuest,
+      };
+    }
+  }
+
+  const { data: byAdminQuestId, error: byAdminQuestError } = await admin
+    .from("qr_codes")
+    .select(QR_CODE_LOOKUP_SELECT)
+    .eq("admin_quest_id", uuid)
+    .maybeSingle();
+  if (byAdminQuestError) throwOnLookupError(byAdminQuestError);
+  if (byAdminQuestId) {
+    return {
+      qr: mapQrCodeRow(byAdminQuestId as Record<string, unknown>),
+      lookupPath: "qr_codes.admin_quest_id",
+      adminQuest: adminQuest ?? (await fetchAdminQuestById(admin, uuid)),
+    };
+  }
+
+  const { data: byQuestId, error: byQuestError } = await admin
+    .from("qr_codes")
+    .select(QR_CODE_LOOKUP_SELECT)
+    .eq("quest_id", uuid)
+    .maybeSingle();
+  if (byQuestError) throwOnLookupError(byQuestError);
+  if (byQuestId) {
+    return {
+      qr: mapQrCodeRow(byQuestId as Record<string, unknown>),
+      lookupPath: "qr_codes.quest_id",
+      adminQuest: null,
+    };
+  }
+
+  return null;
+}
+
+type QrOperationalRejectReason = "inactive" | "not_started" | "unavailable" | "not_linked";
+
+export function evaluateQrOperationalStatus(args: {
+  qr: QrCodeRow;
+  adminQuest: AdminQuestRow | null;
+  now?: Date;
+}): { ok: true } | { ok: false; reason: QrOperationalRejectReason } {
+  const now = args.now ?? new Date();
+
+  if (args.qr.qr_type === "quest_completion" && !args.qr.admin_quest_id && !args.qr.quest_id) {
+    return { ok: false, reason: "not_linked" };
+  }
+
+  if (args.adminQuest) {
+    if (args.adminQuest.visibility_status !== "active" || args.adminQuest.deleted_at) {
+      return { ok: false, reason: "inactive" };
+    }
+    if (args.adminQuest.starts_at && new Date(args.adminQuest.starts_at) > now) {
+      return { ok: false, reason: "not_started" };
+    }
+    if (args.adminQuest.ends_at && new Date(args.adminQuest.ends_at) <= now) {
+      return { ok: false, reason: "unavailable" };
+    }
+    return { ok: true };
+  }
+
+  if (!args.qr.is_active) return { ok: false, reason: "inactive" };
+  if (args.qr.starts_at && new Date(args.qr.starts_at) > now) {
+    return { ok: false, reason: "not_started" };
+  }
+  if (args.qr.expires_at && new Date(args.qr.expires_at) <= now) {
+    return { ok: false, reason: "unavailable" };
+  }
+  return { ok: true };
+}
+
+function effectiveQrRowForEligibility(qr: QrCodeRow, adminQuest: AdminQuestRow | null): QrCodeRow {
+  if (!adminQuest || !isAdminQuestCurrentlyActive(adminQuest)) return qr;
+  return {
+    ...qr,
+    is_active: true,
+    starts_at: adminQuest.starts_at ?? qr.starts_at,
+    expires_at: adminQuest.ends_at ?? qr.expires_at,
+  };
+}
+
+function operationalRejectMessage(reason: QrOperationalRejectReason): string {
+  switch (reason) {
+    case "not_linked":
+      return "This QR is not linked to a quest yet.";
+    case "not_started":
+    case "unavailable":
+      return "Quest is not currently available.";
+    case "inactive":
+    default:
+      return FAIL_MESSAGES.inactive;
+  }
+}
+
+function operationalRejectCode(reason: QrOperationalRejectReason): string {
+  switch (reason) {
+    case "not_linked":
+      return "QR_NOT_LINKED";
+    case "not_started":
+    case "unavailable":
+      return "QUEST_UNAVAILABLE";
+    case "inactive":
+    default:
+      return "INACTIVE_QR_CODE";
+  }
+}
 
 function mapQrCodeRow(row: Record<string, unknown>): QrCodeRow {
   return {
@@ -266,6 +483,8 @@ function mapQrCodeRow(row: Record<string, unknown>): QrCodeRow {
     max_scans_per_day: Number(row.max_scans_per_day ?? 0),
     requires_staff_approval: Boolean(row.requires_staff_approval ?? false),
     expires_at: (row.expires_at as string | null) ?? null,
+    starts_at: (row.starts_at as string | null) ?? null,
+    qr_type: (row.qr_type as string | null) ?? null,
   };
 }
 
@@ -342,41 +561,70 @@ export async function scanCampusQuestQrCode(args: {
   const admin = createAdminClient();
   const role = await fetchProfileRole(userClient, userId, { email: args.userEmail });
 
-  const { data: row, error: lookupError } = await admin
-    .from("qr_codes")
-    .select(QR_CODE_LOOKUP_SELECT)
-    .eq("code", code)
-    .maybeSingle();
+  let lookupCtx = await lookupQrCodeRow(admin, code);
 
   logQrScanServer("supabase_lookup", {
     code,
-    found: Boolean(row),
-    lookupError: lookupError?.message ?? null,
-    lookupCode: lookupError?.code ?? null,
+    found: Boolean(lookupCtx),
+    lookupPath: lookupCtx?.lookupPath ?? null,
   });
 
-  if (lookupError) {
-    if (isMissingQrTablesError(lookupError)) {
-      throw new ApiError(
-        503,
-        "CampusQuest QR check-in is not set up on this database yet. Apply the latest Supabase migration (qr_tables_bootstrap), then try again.",
-        "QR_TABLES_NOT_READY",
-      );
-    }
-    if (/column\s+.+\s+does not exist/i.test(lookupError.message ?? "")) {
-      throw new ApiError(
-        500,
-        "CampusQuest QR check-in schema is out of date. Apply the latest Supabase migrations, then try again.",
-        "QR_SCHEMA_OUT_OF_DATE",
-      );
-    }
-    throw new ApiError(400, lookupError.message, "QR_LOOKUP_FAILED");
-  }
-  if (!row) {
-    throw new ApiError(404, "This QR code is not part of CampusQuest.", "ACTIVITY_NOT_FOUND");
+  if (!lookupCtx) {
+    logQrScanServer("validation_rejected", {
+      code,
+      reason: "not_found",
+    });
+    throw new ApiError(404, "QR code not found.", "QR_CODE_NOT_FOUND");
   }
 
-  const qr = mapQrCodeRow(row as Record<string, unknown>);
+  const qr = lookupCtx.qr;
+  let adminQuest = lookupCtx.adminQuest;
+  if (!adminQuest && qr.admin_quest_id) {
+    adminQuest = await fetchAdminQuestById(admin, qr.admin_quest_id);
+  }
+
+  logQrScanServer("validation_match", {
+    code,
+    lookupPath: lookupCtx.lookupPath,
+    qrCodeId: qr.id,
+    qrCode: qr.code,
+    qrIsActive: qr.is_active,
+    adminQuestId: qr.admin_quest_id,
+    questId: qr.quest_id,
+    adminQuestVisibility: adminQuest?.visibility_status ?? null,
+    adminQuestActive: adminQuest ? isAdminQuestCurrentlyActive(adminQuest) : null,
+  });
+
+  const operational = evaluateQrOperationalStatus({ qr, adminQuest });
+  if (!operational.ok && !canBypassQrScanLimits(role)) {
+    const message = operationalRejectMessage(operational.reason);
+    logQrScanServer("validation_rejected", {
+      code: qr.code,
+      reason: operational.reason,
+      qrIsActive: qr.is_active,
+      adminQuestVisibility: adminQuest?.visibility_status ?? null,
+    });
+    await insertScanLog({
+      client: userClient,
+      userId,
+      qrCodeId: qr.id,
+      xpAwarded: 0,
+      status: "failed",
+      failureReason: message,
+      deviceHint: args.deviceHint,
+    });
+    void auditQrScanPatterns({
+      adminClient: admin,
+      userId,
+      qrCodeId: qr.id,
+      status: "failed",
+      deviceHint: args.deviceHint,
+      locationName: qr.location_name,
+    });
+    throw new ApiError(409, message, operationalRejectCode(operational.reason));
+  }
+
+  const eligibilityQr = effectiveQrRowForEligibility(qr, adminQuest);
 
   const dayStart = utcDayStartIso();
   const { data: priorScans } = await admin
@@ -392,29 +640,8 @@ export async function scanCampusQuestQrCode(args: {
   const successToday = successes.filter((s) => s.scanned_at >= dayStart).length;
   const priorEventSuccess = qr.type === "event" && successes.length > 0;
 
-  if (!qr.is_active && !canBypassQrScanLimits(role)) {
-    await insertScanLog({
-      client: userClient,
-      userId,
-      qrCodeId: qr.id,
-      xpAwarded: 0,
-      status: "failed",
-      failureReason: FAIL_MESSAGES.inactive,
-      deviceHint: args.deviceHint,
-    });
-    void auditQrScanPatterns({
-      adminClient: admin,
-      userId,
-      qrCodeId: qr.id,
-      status: "failed",
-      deviceHint: args.deviceHint,
-      locationName: qr.location_name,
-    });
-    throw new ApiError(409, FAIL_MESSAGES.inactive, "INACTIVE_QR_CODE");
-  }
-
   const eligibility = evaluateScanEligibility({
-    row: qr,
+    row: eligibilityQr,
     role,
     lastSuccessAt,
     successToday,
@@ -523,7 +750,7 @@ export async function scanCampusQuestQrCode(args: {
   const adminQuestCompletion = await tryCompleteAdminLinkedQuest({
     userClient,
     userId,
-    adminQuestId: qr.admin_quest_id,
+    qr,
   });
 
   const questCompletion = adminQuestCompletion

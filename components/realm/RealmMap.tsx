@@ -32,13 +32,15 @@ import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
 import { LocationMemoriesGallery } from "@/components/memories/LocationMemoriesGallery";
 import { useGroupedMapLocations } from "@/lib/client/mapLocationGroupsClient";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
-import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
+import { mapLocationActivityCount, mapLocationQuestCount } from "@/lib/mapLocationGroups";
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
+import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
+import { geoToRealmMapPercent } from "@/lib/realm/geoToMapPercent";
+import { GoogleRealmMap } from "./GoogleRealmMap";
 import { RealmCampusMapLayer } from "./RealmCampusMapLayer";
 import { RealmDecorLayer } from "./RealmDecorLayer";
 import { RealmFootprintsLayer } from "./RealmFootprintsLayer";
 import { RealmLocationSheet } from "./RealmLocationSheet";
-import { RealmMapDebugPanel } from "./RealmMapDebugPanel";
 import { RealmMarkerEditorPanel, type RealmMarkerEditorDebug } from "./RealmMarkerEditorPanel";
 import { RealmPathsLayer } from "./RealmPathsLayer";
 import { useRealmMapDiagnostics } from "./useRealmMapDiagnostics";
@@ -47,6 +49,8 @@ import { ScreenDataState } from "@/components/ui/ScreenDataState";
 
 const MAP_ASPECT = REALM_MAP_VIEW_WIDTH / REALM_MAP_VIEW_HEIGHT;
 const MAP_BASE_WIDTH = 920;
+
+const GOOGLE_MAPS_API_KEY = (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "").trim();
 
 type HydratedRealmLocation = RealmLocation & {
   mapContent: GroupedMapLocation | null;
@@ -144,7 +148,7 @@ export function RealmMap({
       const stats = memoryStatsByLocation[location.id];
       const activeMomentCount = stats?.activeCount ?? 0;
       const mapContent = groupsByRealmId.get(location.id) ?? null;
-      const activeQuests = (mapContent?.quests.length ?? 0) + (mapContent?.qrCodes.length ?? 0);
+      const activeQuests = mapContent ? mapLocationQuestCount(mapContent, location.id) : 0;
       const upcomingEvents = mapContent?.events.length ?? 0;
       return {
         ...location,
@@ -175,7 +179,7 @@ export function RealmMap({
     [locations],
   );
 
-  const { debugMode, report } = useRealmMapDiagnostics({
+  const { report } = useRealmMapDiagnostics({
     uriMapLoaded,
     calibrateMode,
     pinCount: locations.length,
@@ -360,9 +364,47 @@ export function RealmMap({
   const updateMarkerPosition = useCallback((id: RealmLocationId, x: number, y: number) => {
     setDraftPositions((prev) => ({
       ...prev,
-      [id]: { x: round2(x), y: round2(y) },
+      [id]: { ...prev[id], x: round2(x), y: round2(y) },
     }));
   }, []);
+
+  /** Google map layer: admin placed a marker at real-world coordinates. */
+  const updateMarkerGeoPosition = useCallback((id: RealmLocationId, lat: number, lng: number) => {
+    const percent = geoToRealmMapPercent(lat, lng);
+    setDraftPositions((prev) => ({
+      ...prev,
+      [id]: {
+        x: round2(percent.x),
+        y: round2(percent.y),
+        lat: round6(lat),
+        lng: round6(lng),
+      },
+    }));
+  }, []);
+
+  /** Landmark geo positions — admin overrides first, then canonical campus coordinates. */
+  const geoPositions = useMemo(() => {
+    const out = {} as Record<RealmLocationId, { lat: number; lng: number }>;
+    for (const location of REALM_LOCATIONS) {
+      const draft = draftPositions[location.id];
+      out[location.id] =
+        draft && typeof draft.lat === "number" && typeof draft.lng === "number"
+          ? { lat: draft.lat, lng: draft.lng }
+          : {
+              lat: REALM_LOCATION_GEO[location.id].latitude,
+              lng: REALM_LOCATION_GEO[location.id].longitude,
+            };
+    }
+    return out;
+  }, [draftPositions]);
+
+  const handleTapLandmark = useCallback(
+    (id: RealmLocationId) => {
+      const location = locations.find((l) => l.id === id);
+      if (location) openLocation(location);
+    },
+    [locations, openLocation],
+  );
 
   const editorDebug: RealmMarkerEditorDebug = useMemo(() => {
     const selectedCoords = editorSelectedId && draftPositions[editorSelectedId]
@@ -379,6 +421,7 @@ export function RealmMap({
   }, [userId, userRole, isAdmin, editMode, editorSelectedId, draftPositions]);
 
   const mapPanningDisabled = editMode;
+  const useGoogleMap = GOOGLE_MAPS_API_KEY.length > 0;
 
   const syncMapScale = useCallback((ref: ReactZoomPanPinchRef) => {
     setMapScale(ref.state.scale);
@@ -411,88 +454,116 @@ export function RealmMap({
           panning ? "realm-map-shell--panning" : ""
         } ${calibrateMode ? "realm-map-shell--calibrate" : ""} ${editMode ? "realm-map-shell--edit" : ""}`}
       >
-        <TransformWrapper
-          ref={transformRef}
-          initialScale={1}
-          minScale={0.72}
-          maxScale={3.6}
-          centerOnInit
-          limitToBounds
-          smooth
-          wheel={{ step: 0.09, smoothStep: 0.004 }}
-          pinch={{ step: 6 }}
-          panning={{
-            disabled: mapPanningDisabled,
-            velocityDisabled: false,
-            wheelPanning: false,
-            excluded: ["realm-pin", "realm-map-markers", "map-pin", "realm-external-event-pin", "realm-marker", "location-marker"],
-          }}
-          doubleClick={{ disabled: true }}
-          alignmentAnimation={{ animationTime: 280, velocityAlignmentTime: 320 }}
-          onPanningStart={() => {
-            if (!mapPanningDisabled) setPanning(true);
-          }}
-          onPanningStop={() => setPanning(false)}
-          onInit={syncMapScale}
-          onTransformed={syncMapScale}
-        >
-          <TransformComponent
-            wrapperClass="realm-map-viewport !w-full !h-full"
-            contentClass="realm-map-transform-content"
+        {useGoogleMap ? (
+          <GoogleRealmMap
+            apiKey={GOOGLE_MAPS_API_KEY}
+            landmarks={locations.map((location) => ({
+              id: location.id,
+              name: location.name,
+              shortLabel: location.shortLabel,
+              markerEmoji: location.markerEmoji,
+              activeQuests: location.activeQuests,
+              activeMomentCount: location.activeMomentCount ?? 0,
+              upcomingEvents: location.upcomingEvents,
+              mapContent: location.mapContent,
+            }))}
+            geoPositions={geoPositions}
+            supplementaryPins={supplementaryPins}
+            markersLoaded={mapGroupsLoaded}
+            activeMarkerId={editMode ? editorSelectedId : activeMarkerId}
+            editMode={editMode}
+            editorSelectedId={editorSelectedId}
+            onTapLandmark={handleTapLandmark}
+            onTapSupplementary={openSupplementaryPin}
+            onSelectEditorMarker={setEditorSelectedId}
+            onMarkerGeoChange={updateMarkerGeoPosition}
+            onMapReady={() => setUriMapLoaded(true)}
+          />
+        ) : (
+          <TransformWrapper
+            ref={transformRef}
+            initialScale={1}
+            minScale={0.72}
+            maxScale={3.6}
+            centerOnInit
+            limitToBounds
+            smooth
+            wheel={{ step: 0.09, smoothStep: 0.004 }}
+            pinch={{ step: 6 }}
+            panning={{
+              disabled: mapPanningDisabled,
+              velocityDisabled: false,
+              wheelPanning: false,
+              excluded: ["realm-pin", "realm-map-markers", "map-pin", "realm-external-event-pin", "realm-marker", "location-marker"],
+            }}
+            doubleClick={{ disabled: true }}
+            alignmentAnimation={{ animationTime: 280, velocityAlignmentTime: 320 }}
+            onPanningStart={() => {
+              if (!mapPanningDisabled) setPanning(true);
+            }}
+            onPanningStop={() => setPanning(false)}
+            onInit={syncMapScale}
+            onTransformed={syncMapScale}
           >
-            <div
-              className="realm-map-scene"
-              style={{
-                width: MAP_BASE_WIDTH,
-                aspectRatio: String(MAP_ASPECT),
-              }}
+            <TransformComponent
+              wrapperClass="realm-map-viewport !w-full !h-full"
+              contentClass="realm-map-transform-content"
             >
-              <div ref={mapStageRef} className="realm-map-stage relative h-full w-full">
-                <div className="realm-map-surface relative h-full w-full overflow-hidden rounded-md">
-                  <RealmCampusMapLayer calibrateMode={calibrateMode} onLoadStateChange={setUriMapLoaded} />
-                  <RealmFootprintsLayer />
-                  <RealmPathsLayer />
-                  {!calibrateMode ? <RealmDecorLayer /> : null}
-                </div>
+              <div
+                className="realm-map-scene"
+                style={{
+                  width: MAP_BASE_WIDTH,
+                  aspectRatio: String(MAP_ASPECT),
+                }}
+              >
+                <div ref={mapStageRef} className="realm-map-stage relative h-full w-full">
+                  <div className="realm-map-surface relative h-full w-full overflow-hidden rounded-md">
+                    <RealmCampusMapLayer calibrateMode={calibrateMode} onLoadStateChange={setUriMapLoaded} />
+                    <RealmFootprintsLayer />
+                    <RealmPathsLayer />
+                    {!calibrateMode ? <RealmDecorLayer /> : null}
+                  </div>
 
-                <div
-                  data-no-drawer-swipe="true"
-                  className={`realm-map-markers absolute inset-0 z-[10] ${editMode ? "realm-map-markers--edit" : ""}`}
-                  style={{ "--realm-map-scale": mapScale } as React.CSSProperties}
-                >
-                  {locations.map((location) => (
-                    <LocationPin
-                      key={location.id}
-                      location={location}
-                      active={editMode ? editorSelectedId === location.id : activeMarkerId === location.id}
-                      editMode={editMode}
-                      dragging={draggingId === location.id}
-                      mapStageRef={mapStageRef}
-                      onTap={() => openLocation(location)}
-                      onSelect={() => setEditorSelectedId(location.id)}
-                      onDragStart={() => setDraggingId(location.id)}
-                      onDragEnd={() => setDraggingId(null)}
-                      onPositionChange={(x, y) => updateMarkerPosition(location.id, x, y)}
-                    />
-                  ))}
-                  {!editMode
-                    ? supplementaryPins.map((group) => (
-                        <SupplementaryLocationPin
-                          key={group.groupKey}
-                          group={group}
-                          active={activeMarkerId === group.groupKey}
-                          onTap={() => openSupplementaryPin(group)}
-                        />
-                      ))
-                    : null}
+                  <div
+                    data-no-drawer-swipe="true"
+                    className={`realm-map-markers absolute inset-0 z-[10] ${editMode ? "realm-map-markers--edit" : ""}`}
+                    style={{ "--realm-map-scale": mapScale } as React.CSSProperties}
+                  >
+                    {locations.map((location) => (
+                      <LocationPin
+                        key={location.id}
+                        location={location}
+                        active={editMode ? editorSelectedId === location.id : activeMarkerId === location.id}
+                        editMode={editMode}
+                        dragging={draggingId === location.id}
+                        mapStageRef={mapStageRef}
+                        onTap={() => openLocation(location)}
+                        onSelect={() => setEditorSelectedId(location.id)}
+                        onDragStart={() => setDraggingId(location.id)}
+                        onDragEnd={() => setDraggingId(null)}
+                        onPositionChange={(x, y) => updateMarkerPosition(location.id, x, y)}
+                      />
+                    ))}
+                    {!editMode
+                      ? supplementaryPins.map((group) => (
+                          <SupplementaryLocationPin
+                            key={group.groupKey}
+                            group={group}
+                            active={activeMarkerId === group.groupKey}
+                            onTap={() => openSupplementaryPin(group)}
+                          />
+                        ))
+                      : null}
+                  </div>
                 </div>
               </div>
-            </div>
-          </TransformComponent>
-        </TransformWrapper>
+            </TransformComponent>
+          </TransformWrapper>
+        )}
 
         <RealmMarkerEditorPanel
           debug={editorDebug}
+          report={report}
           onEnterEdit={handleEnterEdit}
           onExitEdit={handleExitEdit}
           onSave={() => void handleSave()}
@@ -500,15 +571,17 @@ export function RealmMap({
           saveMessage={saveMessage}
         />
 
-        <button
-          type="button"
-          onClick={handleReset}
-          className="realm-map-reset-btn absolute bottom-3 right-3 z-[5] flex h-10 w-10 items-center justify-center rounded-xl touch-manipulation"
-          aria-label="Reset and center map"
-          title="Center map"
-        >
-          <Compass className="h-[18px] w-[18px]" strokeWidth={2.2} />
-        </button>
+        {!useGoogleMap ? (
+          <button
+            type="button"
+            onClick={handleReset}
+            className="realm-map-reset-btn absolute bottom-3 right-3 z-[5] flex h-10 w-10 items-center justify-center rounded-xl touch-manipulation"
+            aria-label="Reset and center map"
+            title="Center map"
+          >
+            <Compass className="h-[18px] w-[18px]" strokeWidth={2.2} />
+          </button>
+        ) : null}
 
         {calibrateMode ? (
           <p className="absolute right-3 top-3 z-[5] rounded-lg border border-amber-400/40 bg-black/60 px-2 py-1 text-[10px] text-amber-200">
@@ -516,7 +589,11 @@ export function RealmMap({
           </p>
         ) : null}
 
-        {debugMode ? <RealmMapDebugPanel report={report} /> : null}
+        {!useGoogleMap && isAdmin ? (
+          <p className="absolute right-3 top-3 z-[5] rounded-lg border border-amber-400/40 bg-black/60 px-2 py-1 text-[10px] text-amber-200">
+            Google Maps key missing — showing classic Realm map
+          </p>
+        ) : null}
       </div>
 
       <RealmLocationSheet
@@ -616,6 +693,10 @@ function SupplementaryLocationPin({
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function round6(n: number): number {
+  return Math.round(n * 1_000_000) / 1_000_000;
 }
 
 function LocationPin({

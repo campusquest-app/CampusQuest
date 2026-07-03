@@ -1,6 +1,7 @@
 "use client";
 
 import { Clock, QrCode } from "lucide-react";
+import Link from "next/link";
 import type { UserQuestBoardItem } from "@/lib/adminQuestTypes";
 import { DIFFICULTY_CSS } from "@/lib/questBoardStyles";
 import type { QuestDifficulty } from "@/lib/questBoardCatalog";
@@ -18,16 +19,20 @@ export function QuestCard({
   onClaim,
   claiming,
   compact = false,
+  scanPath = null,
 }: {
   item: UserQuestBoardItem;
   onClaim: (item: UserQuestBoardItem) => void;
   claiming: boolean;
   compact?: boolean;
+  scanPath?: string | null;
 }) {
   const style = DIFFICULTY_CSS[item.difficulty as QuestDifficulty] ?? DIFFICULTY_CSS.easy;
   const statusLabel = questStatusLabel(item.status);
   const legendary = item.difficulty === "legendary";
-  const showProgress = item.source === "daily" || item.progress.max > 1 || item.progress.current > 0;
+  const showProgress =
+    !item.requiresQr &&
+    (item.source === "daily" || item.progress.max > 1 || item.progress.current > 0);
 
   return (
     <article
@@ -122,7 +127,16 @@ export function QuestCard({
             </button>
           ) : null}
           {item.requiresQr && item.status !== "completed" ? (
-            <p className="text-center text-[11px] text-cq-subtle">Scan the quest QR code to complete</p>
+            scanPath ? (
+              <Link
+                href={scanPath}
+                className="cq-quest-claim block w-full rounded-xl bg-gradient-to-b from-uri-gold to-amber-600 py-2.5 text-center text-sm font-bold text-uri-navy shadow-lg transition hover:brightness-110"
+              >
+                Scan QR
+              </Link>
+            ) : (
+              <p className="text-center text-[11px] text-cq-subtle">Scan the quest QR code to complete</p>
+            )
           ) : null}
         </div>
       </div>

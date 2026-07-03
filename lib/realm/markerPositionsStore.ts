@@ -4,7 +4,13 @@ import { REALM_LOCATIONS } from "./locations";
 const STORAGE_KEY = "cq_realm_marker_positions_v1";
 const SERVER_CACHE_KEY = "cq_realm_marker_positions_server_v1";
 
-export type MarkerPosition = { x: number; y: number };
+export type MarkerPosition = {
+  x: number;
+  y: number;
+  /** Real-world coordinates — set when the marker was placed on the Google map layer. */
+  lat?: number;
+  lng?: number;
+};
 
 export type MarkerPositionMap = Partial<Record<RealmLocationId, MarkerPosition>>;
 

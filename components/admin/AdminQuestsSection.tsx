@@ -242,6 +242,10 @@ function linkedQrFromApiResult(result: {
 }
 
 async function saveQuest() {
+    if (formNeedsQr(form) && form.visibilityStatus === "active" && !linkedQr && !pendingQrFile) {
+      setError("Active QR-required quests need a linked QR code. Generate or upload one before activating.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     setSuccess(null);
@@ -647,7 +651,13 @@ async function saveQuest() {
                 Requires QR code
               </label>
               {formNeedsQr(form) ? (
-                <QuestQrImageField
+                <>
+                  {!linkedQr ? (
+                    <p className="sm:col-span-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                      This quest requires a linked QR code. Save the quest, then generate or upload a QR before marking it active.
+                    </p>
+                  ) : null}
+                  <QuestQrImageField
                   linkedQr={linkedQr}
                   questName={form.name}
                   xpReward={form.xpReward}
@@ -660,6 +670,7 @@ async function saveQuest() {
                   onError={setError}
                   disabled={submitting}
                 />
+                </>
               ) : null}
               <label className="flex items-center gap-2 text-xs text-white/70 sm:col-span-2">
                 <input type="checkbox" checked={form.isRepeatable} onChange={(e) => setForm((f) => ({ ...f, isRepeatable: e.target.checked }))} />

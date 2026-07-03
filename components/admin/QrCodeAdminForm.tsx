@@ -150,8 +150,18 @@ export function QrCodeAdminForm({
 
   const questOptions = useMemo(() => {
     const filtered = showInactiveQuests ? quests.filter((q) => !q.deleted_at) : quests.filter(questIsActive);
-    return filtered.sort((a, b) => a.name.localeCompare(b.name));
+    return filtered.sort((a, b) => {
+      const aActive = questIsActive(a) ? 0 : 1;
+      const bActive = questIsActive(b) ? 0 : 1;
+      if (aActive !== bActive) return aActive - bActive;
+      return a.name.localeCompare(b.name);
+    });
   }, [quests, showInactiveQuests]);
+
+  function formatQuestOptionLabel(quest: AdminQuestRow): string {
+    const location = quest.location_name?.trim() || "Campus";
+    return `${quest.name} · ${location} · +${quest.xp_reward} XP · ${questStatusLabel(quest)}`;
+  }
 
   const selectedQuest = useMemo(
     () => quests.find((q) => q.id === form.adminQuestId) ?? null,
@@ -198,6 +208,10 @@ export function QrCodeAdminForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (form.qrType === "quest_completion" && !form.adminQuestId) {
+      onError("Select a quest to link this QR code to.");
+      return;
+    }
     onBusyChange(true);
     onError(null);
     try {
@@ -324,11 +338,12 @@ export function QrCodeAdminForm({
           className={inputClass}
           value={form.adminQuestId}
           onChange={(e) => handleQuestChange(e.target.value)}
+          required={form.qrType === "quest_completion"}
         >
-          <option value="">No linked quest</option>
+          <option value="">{form.qrType === "quest_completion" ? "Select a quest…" : "No linked quest"}</option>
           {questOptions.map((quest) => (
             <option key={quest.id} value={quest.id}>
-              {quest.name} ({questStatusLabel(quest)})
+              {formatQuestOptionLabel(quest)}
             </option>
           ))}
         </select>

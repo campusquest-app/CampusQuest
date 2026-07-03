@@ -10,7 +10,7 @@ import {
   type MapQrPin,
   realmLocationIdForCampusKey,
 } from "@/lib/mapLocationGroups";
-import { geoToRealmMapPercent } from "@/lib/realm/geoToMapPercent";
+import { geoToRealmMapPercent, realmMapPercentToGeo } from "@/lib/realm/geoToMapPercent";
 import { ApiError } from "@/lib/server/http";
 import { isAdminQuestCurrentlyActive, isAdminQuestsSchemaError } from "@/lib/server/adminQuests";
 import type { AdminQuestRow } from "@/lib/adminQuestTypes";
@@ -26,11 +26,31 @@ type GroupBucket = {
   locationAddress: string | null;
   x: number;
   y: number;
+  lat: number | null;
+  lng: number | null;
   attachToLandmark: boolean;
   qrCodes: MapQrPin[];
   quests: MapQuestPin[];
   events: MapEventPin[];
 };
+
+/** Best real-world coordinates for a group: explicit lat/lng, else derived from percent pins. */
+function groupGeo(args: {
+  lat: number | null | undefined;
+  lng: number | null | undefined;
+  x: number;
+  y: number;
+}): { lat: number; lng: number } {
+  if (
+    typeof args.lat === "number" &&
+    typeof args.lng === "number" &&
+    isValidCampusCoordinate(args.lat, args.lng)
+  ) {
+    return { lat: args.lat, lng: args.lng };
+  }
+  const geo = realmMapPercentToGeo(args.x, args.y);
+  return { lat: geo.latitude, lng: geo.longitude };
+}
 
 function otherGroupKey(lat: number, lng: number): string {
   return `other:${lat.toFixed(4)}:${lng.toFixed(4)}`;
@@ -69,6 +89,8 @@ function resolveGroupMeta(args: {
       locationAddress: args.locationAddress ?? null,
       x: coords.x,
       y: coords.y,
+      lat: entry.latitude,
+      lng: entry.longitude,
       attachToLandmark: true,
     };
   }
@@ -101,6 +123,8 @@ function resolveGroupMeta(args: {
         ? key
         : otherGroupKey(resolved.locationLat as number, resolved.locationLng as number);
 
+  const geo = groupGeo({ lat: resolved.locationLat, lng: resolved.locationLng, x: coords.x, y: coords.y });
+
   return {
     groupKey,
     locationKey: key,
@@ -109,6 +133,8 @@ function resolveGroupMeta(args: {
     locationAddress: resolved.locationAddress,
     x: coords.x,
     y: coords.y,
+    lat: geo.lat,
+    lng: geo.lng,
     attachToLandmark,
   };
 }
@@ -154,6 +180,8 @@ function eventGroupMeta(locationKey: GroupedMapLocation["locationKey"], location
     locationAddress: preset.address,
     x: map.x,
     y: map.y,
+    lat: preset.latitude,
+    lng: preset.longitude,
     attachToLandmark,
   };
 }
@@ -168,7 +196,7 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
     admin
       .from("admin_quests")
       .select(
-        "id, name, description, xp_reward, difficulty, completion_method, requires_qr, location_id, location_key, location_name, location_address, location_lat, location_lng, map_pin_x, map_pin_y, icon, starts_at, ends_at, visibility_status, deleted_at",
+        "id, name, description, xp_reward, difficulty, completion_method, requires_qr, qr_code_id, location_id, location_key, location_name, location_address, location_lat, location_lng, map_pin_x, map_pin_y, icon, starts_at, ends_at, visibility_status, deleted_at",
       )
       .eq("visibility_status", "active")
       .is("deleted_at", null)
@@ -176,7 +204,7 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
     admin
       .from("qr_codes")
       .select(
-        "id, code, title, description, xp_reward, is_active, starts_at, expires_at, location_key, location_name, location_address, location_lat, location_lng",
+        "id, code, title, description, xp_reward, is_active, starts_at, expires_at, admin_quest_id, location_key, location_name, location_address, location_lat, location_lng",
       )
       .eq("is_active", true)
       .not("location_key", "is", null),
@@ -222,6 +250,7 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
       requiresQr: Boolean(row.requires_qr),
       expiresAt: (row.ends_at as string | null) ?? null,
       icon: (row.icon as string | null) ?? "🎯",
+      qrCodeId: (row.qr_code_id as string | null) ?? null,
     });
   }
 
@@ -249,6 +278,7 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
       expiresAt: (row.expires_at as string | null) ?? null,
       scanPath: `/scan?code=${encodeURIComponent(code)}`,
       qrCode: code,
+      adminQuestId: (row.admin_quest_id as string | null) ?? null,
     });
   }
 
@@ -283,6 +313,8 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
       locationAddress: bucket.locationAddress,
       x: bucket.x,
       y: bucket.y,
+      lat: bucket.lat,
+      lng: bucket.lng,
       attachToLandmark: bucket.attachToLandmark,
       qrCodes: bucket.qrCodes,
       quests: bucket.quests,

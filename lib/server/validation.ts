@@ -757,6 +757,8 @@ export const createQuestTemplateSchema = z.object({
 export const realmMarkerPositionSchema = z.object({
   x: z.number().min(0).max(100),
   y: z.number().min(0).max(100),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
 });
 
 export const realmMarkerPositionsPatchSchema = z.object({

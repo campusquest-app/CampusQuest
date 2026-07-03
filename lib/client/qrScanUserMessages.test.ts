@@ -16,9 +16,15 @@ describe("qrScanBannerFromApiError", () => {
     );
   });
 
-  it("maps invalid QR to activity not active", () => {
-    expect(qrScanBannerFromApiError(new ApiRequestError("x", 404, "INVALID_QR_CODE"))).toBe(
-      QR_SCAN_USER_MESSAGES.activityNotActive,
+  it("maps invalid QR to invalid format", () => {
+    expect(qrScanBannerFromApiError(new ApiRequestError("x", 400, "INVALID_QR_CODE"))).toBe(
+      QR_SCAN_USER_MESSAGES.invalidFormat,
+    );
+  });
+
+  it("maps not found to qr not found", () => {
+    expect(qrScanBannerFromApiError(new ApiRequestError("x", 404, "QR_CODE_NOT_FOUND"))).toBe(
+      QR_SCAN_USER_MESSAGES.qrNotFound,
     );
   });
 });

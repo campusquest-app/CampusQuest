@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Calendar, ChevronLeft, Sparkles, TrendingUp, X, Zap } from "lucide-react";
+import { Calendar, ChevronLeft, Sparkles, TrendingUp, X } from "lucide-react";
 import type { RealmLocation } from "@/lib/realm/locations";
 import { formatRealmEventLabel, getRealmEventUrgency } from "@/lib/realm/locations";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
@@ -89,11 +89,14 @@ export function RealmLocationSheet({
     setView(initialView);
   }, [open, initialView]);
 
+  const locationRefreshKey = location?.id ?? mapContent?.groupKey ?? null;
+
   useEffect(() => {
     if (!open) return;
     onRefreshMemories?.();
     void onRefreshAll?.();
-  }, [open, onRefreshAll, onRefreshMemories]);
+    // Re-run when the sheet switches to a different location while staying open.
+  }, [open, locationRefreshKey, onRefreshAll, onRefreshMemories]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -143,7 +146,7 @@ export function RealmLocationSheet({
   const displayAddress = mapContent?.locationAddress ?? null;
   const momentCount = memoryStats?.activeCount ?? location?.activeMomentCount ?? 0;
   const archivedCount = memoryStats?.archivedCount ?? 0;
-  const activeQuestCount = mapLocationQuestCount(content);
+  const activeQuestCount = mapLocationQuestCount(content, location?.id ?? mapContent?.realmLocationId ?? null);
   const activeEventCount = content.events.length;
   const urgency = getRealmEventUrgency(
     activeEventCount > 0 && content.events[0]
@@ -219,8 +222,6 @@ export function RealmLocationSheet({
                   <LocationMemoriesSection
                     locationId={location.id}
                     locationName={location.name}
-                    activeCount={momentCount}
-                    archivedCount={archivedCount}
                     onAddMemory={onAddMemory}
                     onOpenViewer={onOpenMemoryViewer}
                     onOpenGallery={onOpenMemoryGallery}
