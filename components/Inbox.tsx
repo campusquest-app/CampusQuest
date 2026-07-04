@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ChevronDown, Pin, Search, SquarePen, Users, X } from "lucide-react";
 import type { Character } from "@/lib/types";
@@ -14,6 +14,14 @@ import {
   type ConnectionItem,
 } from "@/lib/client/socialConnectionsClient";
 import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
+import {
+  applyConversationReadOptimistic,
+  clampUnreadCount,
+  isConversationUnread,
+  reconcileUnreadBadgeAfterConfirm,
+  subscribeConversationRead,
+  type InboxConversationShape,
+} from "@/lib/client/inboxReadSync";
 import {
   buildInboxMessageSearchResults,
   type InboxFriendRow,
@@ -148,7 +156,7 @@ export function Inbox({
   personalization?: { schoolName?: string; discoveryFocus?: string[] } | null;
   subTab: InboxSubTab;
   onSubTabChange: (tab: InboxSubTab) => void;
-  onUnreadCountChange?: (count: number) => void;
+  onUnreadCountChange?: Dispatch<SetStateAction<number>>;
 }) {
   const [messageSearch, setMessageSearch] = useState("");
   const [dmWith, setDmWith] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
@@ -166,6 +174,8 @@ export function Inbox({
   const [requestsExpanded, setRequestsExpanded] = useState(false);
   const [pinnedUsers, setPinnedUsers] = useState<PinnedDmUserRow[]>([]);
   const [pinBusyUserId, setPinBusyUserId] = useState<string | null>(null);
+  const conversationReadSnapshotRef = useRef<ConversationItem[] | null>(null);
+  const pendingReadOptimisticRef = useRef<{ conversationId: string; badgeDelta: number } | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedMessageSearch(messageSearch), 200);
@@ -341,6 +351,61 @@ export function Inbox({
     const unsubscribe = subscribeSocialSync(() => void loadMessageCenter());
     return unsubscribe;
   }, [subTab, loadMessageCenter]);
+
+  useEffect(() => {
+    if (subTab !== "messages") return undefined;
+    return subscribeConversationRead((event) => {
+      if (event.type === "optimistic") {
+        let shouldDecrementBadge = false;
+        setConversations((prev) => {
+          conversationReadSnapshotRef.current = prev;
+          const row = prev.find((c) => c.conversationId === event.conversationId);
+          shouldDecrementBadge = Boolean(
+            row && isConversationUnread(row as InboxConversationShape, character.id),
+          );
+          return applyConversationReadOptimistic(
+            prev as InboxConversationShape[],
+            event.conversationId,
+            character.id,
+            event.readAt,
+          ) as ConversationItem[];
+        });
+        if (shouldDecrementBadge) {
+          pendingReadOptimisticRef.current = { conversationId: event.conversationId, badgeDelta: 1 };
+          onUnreadCountChange?.((current) => clampUnreadCount(current - 1));
+        }
+        return;
+      }
+
+      if (event.type === "confirmed") {
+        const pending = pendingReadOptimisticRef.current;
+        pendingReadOptimisticRef.current = null;
+        conversationReadSnapshotRef.current = null;
+        onUnreadCountChange?.((current) =>
+          reconcileUnreadBadgeAfterConfirm(
+            current,
+            event.readSync.notificationsMarkedRead,
+            pending?.badgeDelta ?? 0,
+          ),
+        );
+        void loadMessageCenter();
+        return;
+      }
+
+      if (event.type === "rollback") {
+        if (conversationReadSnapshotRef.current) {
+          setConversations(conversationReadSnapshotRef.current);
+          conversationReadSnapshotRef.current = null;
+        }
+        const pending = pendingReadOptimisticRef.current;
+        pendingReadOptimisticRef.current = null;
+        if (pending?.badgeDelta) {
+          onUnreadCountChange?.((current) => clampUnreadCount(current + pending.badgeDelta));
+        }
+        setMessageError(event.error);
+      }
+    });
+  }, [subTab, character.id, loadMessageCenter, onUnreadCountChange]);
 
   function handleOpenDm(userId: string, username: string, name: string, avatar: string) {
     if (onOpenDm) {

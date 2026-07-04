@@ -1,5 +1,5 @@
-import type { RealmLocation, RealmLocationId } from "./locations";
-import { REALM_LOCATIONS } from "./locations";
+import type { RealmLocation } from "./locations";
+import { realmLocationsFromCatalog } from "@/lib/locations/campusLocationCatalog";
 
 const STORAGE_KEY = "cq_realm_marker_positions_v1";
 const SERVER_CACHE_KEY = "cq_realm_marker_positions_server_v1";
@@ -12,7 +12,7 @@ export type MarkerPosition = {
   lng?: number;
 };
 
-export type MarkerPositionMap = Partial<Record<RealmLocationId, MarkerPosition>>;
+export type MarkerPositionMap = Record<string, MarkerPosition>;
 
 export type MarkerPositionsCacheMeta = {
   updatedAt: string | null;
@@ -66,17 +66,18 @@ export function saveServerMarkerPositionsCache(positions: MarkerPositionMap, met
   }
 }
 
-export function getDefaultMarkerPositions(): MarkerPositionMap {
+export function getDefaultMarkerPositions(catalogLocations?: RealmLocation[]): MarkerPositionMap {
   const out: MarkerPositionMap = {};
-  for (const loc of REALM_LOCATIONS) {
+  const locations = catalogLocations ?? realmLocationsFromCatalog();
+  for (const loc of locations) {
     out[loc.id] = { x: loc.x, y: loc.y };
   }
   return out;
 }
 
 /** Merge catalog defaults with saved overrides (local or server). */
-export function resolveMarkerPositions(overrides?: MarkerPositionMap): MarkerPositionMap {
-  const base = getDefaultMarkerPositions();
+export function resolveMarkerPositions(overrides?: MarkerPositionMap, catalogLocations?: RealmLocation[]): MarkerPositionMap {
+  const base = getDefaultMarkerPositions(catalogLocations);
   const saved = overrides ?? loadMarkerPositionOverrides();
   return { ...base, ...saved };
 }

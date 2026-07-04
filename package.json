@@ -18,6 +18,7 @@
     "db:apply-dm": "node scripts/apply-dm-rich-messages.mjs",
     "db:apply-pinned-dm": "node scripts/apply-pinned-dm-users.mjs",
     "db:apply-campus-memories": "node scripts/apply-campus-memories.mjs",
+    "db:apply-campus-locations": "node scripts/apply-campus-locations.mjs",
     "verify:qr": "tsx scripts/verify-qr-reward.ts",
     "generate:gym-qr": "node scripts/generate-gym-qr.mjs"
   },

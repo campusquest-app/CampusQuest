@@ -487,6 +487,62 @@ export async function setNotificationFavorite(args: {
   };
 }
 
+/** Mark unread direct-message notifications tied to a conversation (inbox badge source). */
+export async function markConversationNotificationsRead(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  conversationId: string;
+  readAt?: string;
+}): Promise<{ markedCount: number }> {
+  const { userClient, userId, conversationId } = args;
+  const nowIso = args.readAt ?? new Date().toISOString();
+
+  let countQuery = userClient
+    .from("notifications")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("type", "direct_message")
+    .eq("related_entity_id", conversationId)
+    .is("read_at", null);
+
+  let { count, error: countError } = await countQuery;
+  if (isMissingColumnError(countError, "read_at")) {
+    ({ count, error: countError } = await userClient
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("type", "direct_message")
+      .eq("related_entity_id", conversationId)
+      .eq("is_read", false));
+  }
+  if (countError) throw new ApiError(400, countError.message, "NOTIFICATIONS_COUNT_FAILED");
+
+  const markedCount = count ?? 0;
+  if (markedCount === 0) return { markedCount: 0 };
+
+  let updateQuery = userClient
+    .from("notifications")
+    .update({ read_at: nowIso })
+    .eq("user_id", userId)
+    .eq("type", "direct_message")
+    .eq("related_entity_id", conversationId)
+    .is("read_at", null);
+
+  let { error: updateError } = await updateQuery;
+  if (isMissingColumnError(updateError, "read_at")) {
+    ({ error: updateError } = await userClient
+      .from("notifications")
+      .update({ is_read: true, read_at: nowIso })
+      .eq("user_id", userId)
+      .eq("type", "direct_message")
+      .eq("related_entity_id", conversationId)
+      .eq("is_read", false));
+  }
+  if (updateError) throw new ApiError(400, updateError.message, "NOTIFICATIONS_READ_FAILED");
+
+  return { markedCount };
+}
+
 export async function markAllNotificationsRead(args: {
   userClient: SupabaseClientLike;
   userId: string;

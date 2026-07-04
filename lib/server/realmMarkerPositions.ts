@@ -1,13 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { REALM_LOCATION_OPTIONS, type RealmLocationId } from "@/lib/realm/locations";
 import type { MarkerPositionMap } from "@/lib/realm/markerPositionsStore";
 import { ApiError } from "@/lib/server/http";
 import { createAdminClient } from "@/lib/server/supabase";
 
 /** config_key row for Realm map marker coordinates (% of map view). */
 export const MARKER_POSITIONS_CONFIG_KEY = "marker_positions";
-
-const VALID_LOCATION_IDS = new Set<string>(REALM_LOCATION_OPTIONS.map((l) => l.id));
 
 export type RealmConfigRow = {
   config_key: string;
@@ -26,15 +23,14 @@ export function isMissingRealmConfigTableError(error: { message?: string; code?:
 function sanitizePositions(input: Record<string, { x: number; y: number; lat?: number; lng?: number }>): MarkerPositionMap {
   const out: MarkerPositionMap = {};
   for (const [id, pos] of Object.entries(input)) {
-    if (!VALID_LOCATION_IDS.has(id)) continue;
+    if (!/^[a-z0-9-]{2,64}$/.test(id)) continue;
     if (typeof pos?.x !== "number" || typeof pos?.y !== "number") continue;
     const x = Math.min(100, Math.max(0, pos.x));
     const y = Math.min(100, Math.max(0, pos.y));
-    const sanitized: MarkerPositionMap[RealmLocationId] = {
+    const sanitized: MarkerPositionMap[string] = {
       x: Math.round(x * 100) / 100,
       y: Math.round(y * 100) / 100,
     };
-    // Optional real-world coordinates from the Google map layer.
     if (
       typeof pos.lat === "number" &&
       typeof pos.lng === "number" &&
@@ -46,7 +42,7 @@ function sanitizePositions(input: Record<string, { x: number; y: number; lat?: n
       sanitized.lat = Math.round(pos.lat * 1_000_000) / 1_000_000;
       sanitized.lng = Math.round(pos.lng * 1_000_000) / 1_000_000;
     }
-    out[id as RealmLocationId] = sanitized;
+    out[id] = sanitized;
   }
   return out;
 }

@@ -1,11 +1,4 @@
-export type RealmLocationId =
-  | "memorial-union"
-  | "library"
-  | "rec-center"
-  | "engineering-hall"
-  | "business-building"
-  | "the-quad"
-  | "rams-den";
+export type RealmLocationId = string;
 
 export type RealmQuestStatus = "active" | "upcoming";
 

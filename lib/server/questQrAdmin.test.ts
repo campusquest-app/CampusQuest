@@ -20,6 +20,10 @@ describe("campusLocationFormToPayload", () => {
         locationLat: "",
         locationLng: "",
       }),
-    ).toEqual({ locationKey: "library" });
+    ).toEqual({
+      locationKey: "library",
+      locationId: "library",
+      locationName: "Library",
+    });
   });
 });

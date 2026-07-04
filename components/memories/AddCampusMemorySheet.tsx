@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Camera, ChevronLeft, ImagePlus, MapPin, X } from "lucide-react";
-import { CAMPUS_MEMORY_LOCATION_OPTIONS } from "@/lib/locations/registry";
+import { useCampusLocations } from "@/lib/client/campusLocationsClient";
 import type { CampusLocationId } from "@/lib/locations/registry";
 import { isAcceptedImageType, ImageCompressionError } from "@/lib/client/imageCompression";
 import { createCampusMemory, uploadCampusMemoryImage } from "@/lib/client/campusMemoriesClient";
@@ -44,6 +44,7 @@ export function AddCampusMemorySheet({
   const [error, setError] = useState<string | null>(null);
   const photoRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+  const { locations: campusLocations } = useCampusLocations();
 
   useEffect(() => {
     return () => {
@@ -163,8 +164,8 @@ export function AddCampusMemorySheet({
             disabled={submitting}
             className="cq-memory-add-select"
           >
-            {CAMPUS_MEMORY_LOCATION_OPTIONS.map((opt) => (
-              <option key={opt.id} value={opt.id}>
+            {campusLocations.map((opt) => (
+              <option key={opt.slug} value={opt.slug}>
                 {opt.name}
               </option>
             ))}

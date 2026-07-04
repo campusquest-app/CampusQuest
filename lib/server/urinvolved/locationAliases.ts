@@ -1,5 +1,6 @@
 import type { RealmLocationId } from "@/lib/realm/locations";
-import { REALM_LOCATION_GEO, REALM_LOCATION_IDS } from "@/lib/realm/locationGeo";
+import { isCampusLocationId } from "@/lib/locations/campusLocationCatalog";
+import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 
 export type LocationMatchSource = "venue" | "location_name" | "address" | "description";
 
@@ -124,7 +125,7 @@ const GLUED_CITY_PATTERN =
 
 export function hasCampusMapPin(realmLocationId: RealmLocationId | undefined): boolean {
   if (!realmLocationId) return false;
-  return (REALM_LOCATION_IDS as readonly string[]).includes(realmLocationId);
+  return isCampusLocationId(realmLocationId);
 }
 
 export function normalizeLocationName(value: string): string {

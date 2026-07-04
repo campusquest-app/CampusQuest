@@ -1,3 +1,4 @@
+import { getCampusLocations } from "@/lib/server/campusLocationsDb";
 import { getCampusLocationPreset, isCampusLocationKey, isValidCampusCoordinate, resolveCampusLocation } from "@/lib/campusLocations";
 import { getCampusLocation } from "@/lib/locations/registry";
 import { resolveRealmLocationIdFromFields } from "@/lib/locations/resolveRealmLocationId";
@@ -187,6 +188,7 @@ function eventGroupMeta(locationKey: GroupedMapLocation["locationKey"], location
 }
 
 export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
+  await getCampusLocations({ refreshCache: true });
   const admin = createAdminClient();
   const now = new Date();
   const nowIso = now.toISOString();

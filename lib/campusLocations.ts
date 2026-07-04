@@ -1,3 +1,4 @@
+import { isCampusLocationId, getCampusLocation } from "@/lib/locations/campusLocationCatalog";
 import { geoToRealmMapPercent } from "@/lib/realm/geoToMapPercent";
 
 /** Preset campus map location keys for admin QR + quest creation. */
@@ -105,7 +106,8 @@ export function getCampusLocationPreset(key: CampusLocationKey): CampusLocationP
 }
 
 export type CampusLocationFormState = {
-  locationKey: CampusLocationKey | "";
+  /** Legacy preset key, catalog slug, or "other". */
+  locationKey: string;
   locationName: string;
   locationAddress: string;
   locationLat: string;
@@ -155,6 +157,34 @@ export function resolveCampusLocation(input: {
   location_lng?: unknown;
 }): ResolvedCampusLocation {
   const rawKey = (input.locationKey ?? input.location_key ?? "").trim();
+
+  if (rawKey && isCampusLocationId(rawKey)) {
+    try {
+      const entry = getCampusLocation(rawKey);
+      const lat = entry.latitude;
+      const lng = entry.longitude;
+      const hasCoords = lat != null && lng != null && isValidCampusCoordinate(lat, lng);
+      const map =
+        entry.mapX != null && entry.mapY != null
+          ? { x: entry.mapX, y: entry.mapY }
+          : hasCoords
+            ? geoToRealmMapPercent(lat, lng)
+            : null;
+      return {
+        locationKey: (entry.legacyCampusKey ?? rawKey) as CampusLocationKey,
+        locationName: entry.name,
+        locationAddress: optionalTrim(input.locationAddress ?? input.location_address, 300),
+        locationLat: lat,
+        locationLng: lng,
+        mapPinX: map?.x ?? null,
+        mapPinY: map?.y ?? null,
+        showOnMap: map != null || hasCoords,
+      };
+    } catch {
+      /* fall through to legacy resolution */
+    }
+  }
+
   const locationKey = isCampusLocationKey(rawKey) ? rawKey : null;
 
   if (!locationKey) {
@@ -234,6 +264,13 @@ export function campusLocationFormToPayload(
   }
 
   const payload: Record<string, unknown> = { locationKey: form.locationKey };
+  if (isCampusLocationId(form.locationKey)) {
+    payload.locationId = form.locationKey;
+    if (form.locationName.trim()) payload.locationName = form.locationName.trim();
+    if (form.locationLat.trim()) payload.locationLat = Number(form.locationLat);
+    if (form.locationLng.trim()) payload.locationLng = Number(form.locationLng);
+    return payload;
+  }
   if (form.locationKey === "other") {
     if (form.locationName.trim()) payload.locationName = form.locationName.trim();
     if (form.locationAddress.trim()) payload.locationAddress = form.locationAddress.trim();
@@ -244,12 +281,23 @@ export function campusLocationFormToPayload(
 }
 
 export function campusLocationFormFromRow(row: {
+  location_id?: string | null;
   location_key?: string | null;
   location_name?: string | null;
   location_address?: string | null;
   location_lat?: number | null;
   location_lng?: number | null;
 }): CampusLocationFormState {
+  const locationId = row.location_id?.trim();
+  if (locationId && isCampusLocationId(locationId)) {
+    return {
+      locationKey: locationId,
+      locationName: row.location_name ?? "",
+      locationAddress: row.location_address ?? "",
+      locationLat: row.location_lat != null ? String(row.location_lat) : "",
+      locationLng: row.location_lng != null ? String(row.location_lng) : "",
+    };
+  }
   const key = row.location_key && isCampusLocationKey(row.location_key) ? row.location_key : "";
   if (key && key !== "other") {
     const preset = getCampusLocationPreset(key);

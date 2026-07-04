@@ -7,6 +7,15 @@ import type { RealmLocation } from "@/lib/realm/locations";
 import { formatRealmEventLabel, getRealmEventUrgency } from "@/lib/realm/locations";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { emptyMapLocationContent, mapLocationActivityCount, mapLocationQuestCount } from "@/lib/mapLocationGroups";
+import {
+  getQuestCardKey,
+  getQuestCardScanPath,
+  getQuestCardTitle,
+  getQuestCardXp,
+  hasQrQuestCard,
+  mergeLocationQuestCards,
+  type LocationQuestCard,
+} from "@/lib/realm/locationQuestDedupe";
 import { RealmArchiveExperience } from "./RealmArchiveExperience";
 import { LocationMemoriesSection } from "@/components/memories/LocationMemoriesSection";
 import { CampusMemoryArchivePanel } from "@/components/memories/CampusMemoryArchivePanel";
@@ -144,9 +153,10 @@ export function RealmLocationSheet({
   const content = mapContent ?? emptyMapLocationContent();
   const displayName = location?.name ?? mapContent?.locationName ?? "Campus location";
   const displayAddress = mapContent?.locationAddress ?? null;
+  const locationId = location?.id ?? mapContent?.realmLocationId ?? null;
   const momentCount = memoryStats?.activeCount ?? location?.activeMomentCount ?? 0;
   const archivedCount = memoryStats?.archivedCount ?? 0;
-  const activeQuestCount = mapLocationQuestCount(content, location?.id ?? mapContent?.realmLocationId ?? null);
+  const activeQuestCount = mapLocationQuestCount(content, locationId);
   const activeEventCount = content.events.length;
   const urgency = getRealmEventUrgency(
     activeEventCount > 0 && content.events[0]
@@ -276,6 +286,7 @@ export function RealmLocationSheet({
 
                 <MapActivityPreview
                   content={content}
+                  locationId={locationId}
                   loaded={mapContentLoaded}
                   urgency={urgency}
                   eventLabel={eventLabel}
@@ -298,6 +309,7 @@ export function RealmLocationSheet({
               displayName={displayName}
               displayAddress={displayAddress}
               content={content}
+              locationId={locationId}
               loaded={mapContentLoaded}
               urgency={urgency}
               eventLabel={eventLabel}
@@ -425,6 +437,7 @@ function StatChip({ emoji, label }: { emoji: string; label: string }) {
 
 function MapActivityPreview({
   content,
+  locationId,
   loaded,
   urgency,
   eventLabel,
@@ -434,6 +447,7 @@ function MapActivityPreview({
   onAddMemory,
 }: {
   content: Pick<GroupedMapLocation, "qrCodes" | "quests" | "events">;
+  locationId?: string | null;
   loaded: boolean;
   urgency: ReturnType<typeof getRealmEventUrgency>;
   eventLabel: string;
@@ -442,9 +456,14 @@ function MapActivityPreview({
   onViewEvents: () => void;
   onAddMemory?: () => void;
 }) {
-  const hasActivity = mapLocationActivityCount(content) > 0;
-  const previewQuest = content.quests[0];
-  const previewQr = content.qrCodes[0];
+  const questCards = mergeLocationQuestCards({
+    qrCodes: content.qrCodes,
+    mapQuests: content.quests,
+    boardQuests: [],
+    locationId,
+  });
+  const hasActivity = mapLocationActivityCount(content, locationId) > 0;
+  const previewQuest = questCards[0];
   const previewEvent = content.events[0];
 
   if (!loaded) {
@@ -480,23 +499,22 @@ function MapActivityPreview({
 
       <div className="cq-realm-archive-secondary-grid">
         <div className="cq-realm-archive-secondary-col space-y-2">
-          {previewQr ? (
-            <button type="button" className="cq-realm-archive-quest-row w-full" onClick={onViewOverview}>
-              <span className="cq-realm-archive-quest-row-icon">📷</span>
-              <span className="cq-realm-archive-quest-row-body">
-                <span className="cq-realm-archive-quest-row-name">{previewQr.name}</span>
-                <span className="cq-realm-archive-quest-row-meta">QR · +{previewQr.xpReward} XP</span>
-              </span>
-            </button>
-          ) : null}
           {previewQuest ? (
             <button type="button" className="cq-realm-archive-quest-row w-full" onClick={onViewQuests}>
               <span className="cq-realm-archive-quest-row-icon">
-                <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                {hasQrQuestCard(previewQuest) ? (
+                  <span>📷</span>
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                )}
               </span>
               <span className="cq-realm-archive-quest-row-body">
-                <span className="cq-realm-archive-quest-row-name">{previewQuest.name}</span>
-                <span className="cq-realm-archive-quest-row-meta capitalize">+{previewQuest.xpReward} XP</span>
+                <span className="cq-realm-archive-quest-row-name">{getQuestCardTitle(previewQuest)}</span>
+                <span className="cq-realm-archive-quest-row-meta">
+                  {hasQrQuestCard(previewQuest)
+                    ? `QR · +${getQuestCardXp(previewQuest)} XP`
+                    : `+${getQuestCardXp(previewQuest)} XP`}
+                </span>
               </span>
             </button>
           ) : null}
@@ -524,6 +542,7 @@ function RealmDetailView({
   displayName,
   displayAddress,
   content,
+  locationId,
   loaded,
   urgency,
   eventLabel,
@@ -540,6 +559,7 @@ function RealmDetailView({
   displayName: string;
   displayAddress: string | null;
   content: Pick<GroupedMapLocation, "qrCodes" | "quests" | "events">;
+  locationId?: string | null;
   loaded: boolean;
   urgency: ReturnType<typeof getRealmEventUrgency>;
   eventLabel: string;
@@ -551,6 +571,13 @@ function RealmDetailView({
   onViewQuests: () => void;
   onOpenArchive: () => void;
 }) {
+  const questCards = mergeLocationQuestCards({
+    qrCodes: content.qrCodes,
+    mapQuests: content.quests,
+    boardQuests: [],
+    locationId,
+  });
+
   return (
     <div className="cq-realm-detail-scroll">
       <header className="cq-realm-detail-header">
@@ -587,67 +614,17 @@ function RealmDetailView({
       {view === "overview" ? (
         <div className="cq-realm-detail-body space-y-4">
           {!loaded ? <EmptyPanel message="Loading campus activities…" /> : null}
-          {loaded && mapLocationActivityCount(content) === 0 ? (
+          {loaded && mapLocationActivityCount(content, locationId) === 0 ? (
             <EmptyPanel message="No active QR codes, quests, or events at this location." />
           ) : null}
           {loaded ? (
             <>
-              {content.qrCodes.length > 0 ? (
-                <section className="space-y-2">
-                  <h3 className="cq-realm-detail-title">Active QR Codes</h3>
-                  <ul className="cq-realm-detail-list">
-                    {content.qrCodes.map((qr) => (
-                      <li key={qr.id} className="cq-realm-detail-quest-card">
-                        <span className="cq-realm-archive-quest-row-icon">📷</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="cq-realm-detail-quest-name">{qr.name}</span>
-                          <span className="cq-realm-archive-quest-row-meta">+{qr.xpReward} XP</span>
-                          {qr.expiresAt ? (
-                            <span className="block text-[11px] text-white/45">
-                              Expires {new Date(qr.expiresAt).toLocaleString()}
-                            </span>
-                          ) : null}
-                        </span>
-                        <a
-                          href={qr.scanPath}
-                          className="inline-flex px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-uri-gold/35 text-uri-gold hover:bg-uri-gold/10"
-                        >
-                          Scan
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
-
-              {content.quests.length > 0 ? (
+              {questCards.length > 0 ? (
                 <section className="space-y-2">
                   <h3 className="cq-realm-detail-title">Active Quests</h3>
                   <ul className="cq-realm-detail-list">
-                    {content.quests.map((quest) => (
-                      <li key={quest.id} className="cq-realm-detail-quest-card">
-                        <span className="cq-realm-archive-quest-row-icon">
-                          {quest.icon ? <span>{quest.icon}</span> : <Sparkles className="h-4 w-4" aria-hidden />}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="cq-realm-detail-quest-name">{quest.name}</span>
-                          <span className="cq-realm-archive-quest-row-meta capitalize">
-                            {quest.difficulty ?? "quest"} · +{quest.xpReward} XP
-                          </span>
-                          {quest.completionMethod ? (
-                            <span className="block text-[11px] text-white/45 capitalize">
-                              {quest.completionMethod.replace(/_/g, " ")}
-                            </span>
-                          ) : null}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={onViewQuests}
-                          className="inline-flex px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-uri-keaney/35 text-uri-keaney hover:bg-uri-keaney/10"
-                        >
-                          View
-                        </button>
-                      </li>
+                    {questCards.map((card) => (
+                      <MergedQuestDetailRow key={getQuestCardKey(card)} card={card} onViewQuests={onViewQuests} />
                     ))}
                   </ul>
                 </section>
@@ -691,32 +668,12 @@ function RealmDetailView({
         <div className="cq-realm-detail-body">
           <h3 className="cq-realm-detail-title">Active Quests &amp; QR</h3>
           <p className="cq-realm-detail-subtitle">{displayName}</p>
-          {content.qrCodes.length === 0 && content.quests.length === 0 ? (
+          {questCards.length === 0 ? (
             <EmptyPanel message="No active quests or QR codes here right now." />
           ) : (
             <ul className="cq-realm-detail-list">
-              {content.qrCodes.map((qr) => (
-                <li key={qr.id} className="cq-realm-detail-quest-card">
-                  <span className="cq-realm-archive-quest-row-icon">📷</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="cq-realm-detail-quest-name">{qr.name}</span>
-                    <span className="cq-realm-archive-quest-row-meta">QR · +{qr.xpReward} XP</span>
-                  </span>
-                  <a href={qr.scanPath} className="cq-realm-archive-quest-row-xp text-uri-gold">
-                    Scan
-                  </a>
-                </li>
-              ))}
-              {content.quests.map((quest) => (
-                <li key={quest.id} className="cq-realm-detail-quest-card">
-                  <span className="cq-realm-archive-quest-row-icon">
-                    <Sparkles className="h-4 w-4" aria-hidden />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="cq-realm-detail-quest-name">{quest.name}</span>
-                    <span className="cq-realm-archive-quest-row-meta capitalize">+{quest.xpReward} XP</span>
-                  </span>
-                </li>
+              {questCards.map((card) => (
+                <MergedQuestDetailRow key={getQuestCardKey(card)} card={card} onViewQuests={onViewQuests} compact />
               ))}
             </ul>
           )}
@@ -747,6 +704,74 @@ function RealmDetailView({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function MergedQuestDetailRow({
+  card,
+  onViewQuests,
+  compact = false,
+}: {
+  card: LocationQuestCard;
+  onViewQuests: () => void;
+  compact?: boolean;
+}) {
+  const scanPath = getQuestCardScanPath(card);
+  const showQr = hasQrQuestCard(card);
+  const title = getQuestCardTitle(card);
+  const xp = getQuestCardXp(card);
+  const expiresAt =
+    card.kind === "qr" ? card.qr.expiresAt : card.kind === "board" ? card.item.endsAt : null;
+  const difficulty = card.kind === "board" ? card.item.difficulty : null;
+  const completionMethod = card.kind === "board" ? card.item.completionMethod : null;
+  const icon = card.kind === "board" ? card.item.icon : null;
+
+  return (
+    <li className="cq-realm-detail-quest-card">
+      <span className="cq-realm-archive-quest-row-icon">
+        {showQr ? (
+          <span>📷</span>
+        ) : icon ? (
+          <span>{icon}</span>
+        ) : (
+          <Sparkles className="h-4 w-4" aria-hidden />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="cq-realm-detail-quest-name">{title}</span>
+        <span className="cq-realm-archive-quest-row-meta capitalize">
+          {showQr ? `QR · +${xp} XP` : difficulty ? `${difficulty} · +${xp} XP` : `+${xp} XP`}
+        </span>
+        {!compact && completionMethod && !showQr ? (
+          <span className="block text-[11px] text-white/45 capitalize">
+            {completionMethod.replace(/_/g, " ")}
+          </span>
+        ) : null}
+        {!compact && expiresAt ? (
+          <span className="block text-[11px] text-white/45">Expires {new Date(expiresAt).toLocaleString()}</span>
+        ) : null}
+      </span>
+      {scanPath ? (
+        <a
+          href={scanPath}
+          className={
+            compact
+              ? "cq-realm-archive-quest-row-xp text-uri-gold"
+              : "inline-flex px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-uri-gold/35 text-uri-gold hover:bg-uri-gold/10"
+          }
+        >
+          Scan
+        </a>
+      ) : (
+        <button
+          type="button"
+          onClick={onViewQuests}
+          className="inline-flex px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-uri-keaney/35 text-uri-keaney hover:bg-uri-keaney/10"
+        >
+          View
+        </button>
+      )}
+    </li>
   );
 }
 

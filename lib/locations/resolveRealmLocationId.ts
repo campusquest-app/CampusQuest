@@ -17,5 +17,6 @@ export function resolveRealmLocationIdFromFields(input: {
   if (!rawKey) return null;
   if (isCampusLocationId(rawKey)) return rawKey;
   if (isCampusLocationKey(rawKey)) return campusLocationIdFromLegacyKey(rawKey);
-  return campusLocationIdFromLegacyKey(rawKey.toLowerCase());
+  if (/^[a-z0-9-]{2,64}$/.test(rawKey)) return rawKey;
+  return campusLocationIdFromLegacyKey(rawKey);
 }

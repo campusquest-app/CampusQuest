@@ -18,6 +18,12 @@ import {
 } from "@/lib/client/connectionRequestActions";
 import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 import {
+  emitConversationReadConfirmed,
+  emitConversationReadOptimistic,
+  emitConversationReadRollback,
+  type ConversationReadSync,
+} from "@/lib/client/inboxReadSync";
+import {
   sendRichDirectMessage,
   uploadDmAudio,
   uploadDmImage,
@@ -376,9 +382,12 @@ export function DirectMessageThread({
   useEffect(() => {
     let cancelled = false;
 
-    async function loadThread() {
-      setLoading(true);
+    async function loadThread(options?: { silent?: boolean }) {
+      if (!options?.silent) {
+        setLoading(true);
+      }
       setError(null);
+      let activeConversationId: string | null = null;
       try {
         const relationship = await applyRelationshipSnapshot(otherUser.userId);
 
@@ -395,30 +404,95 @@ export function DirectMessageThread({
           { otherUserId: otherUser.userId },
         );
         if (cancelled) return;
-        const nextConversationId = conversationPayload.conversation.id;
-        setConversationId(nextConversationId);
+        activeConversationId = conversationPayload.conversation.id;
+        setConversationId(activeConversationId);
 
-        const messagesPayload = await fetchAuthed<{ messages: DirectMessageDto[] }>(
-          `/api/social/conversations/${nextConversationId}/messages?limit=100`,
-        );
+        if (!options?.silent) {
+          emitConversationReadOptimistic({
+            conversationId: activeConversationId,
+            otherUserId: otherUser.userId,
+          });
+        }
+
+        const messagesPayload = await fetchAuthed<{
+          messages: DirectMessageDto[];
+          readSync: ConversationReadSync;
+        }>(`/api/social/conversations/${activeConversationId}/messages?limit=100`);
         if (cancelled) return;
         setMessages(messagesPayload.messages);
+
+        if (messagesPayload.readSync) {
+          const hasNewReads =
+            messagesPayload.readSync.notificationsMarkedRead > 0 ||
+            messagesPayload.readSync.messagesMarkedRead > 0;
+          if (!options?.silent || hasNewReads) {
+            emitConversationReadConfirmed({
+              conversationId: activeConversationId,
+              otherUserId: otherUser.userId,
+              readSync: messagesPayload.readSync,
+            });
+          }
+        }
+        emitSocialSync({ source: "inbox" });
       } catch (loadError) {
         if (cancelled) return;
         const message = loadError instanceof Error ? loadError.message : "Could not load this conversation.";
         setError(message);
+        if (activeConversationId && !options?.silent) {
+          emitConversationReadRollback({
+            conversationId: activeConversationId,
+            otherUserId: otherUser.userId,
+            error: message,
+          });
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !options?.silent) setLoading(false);
       }
     }
 
     void loadThread();
-    const unsubscribe = subscribeSocialSync(() => void loadThread());
+    const unsubscribe = subscribeSocialSync(() => void loadThread({ silent: true }));
     return () => {
       cancelled = true;
       unsubscribe();
     };
   }, [otherUser.userId]);
+
+  // Poll while the thread is open so incoming messages are fetched (and marked read) without
+  // incrementing the inbox badge while the user is actively viewing the conversation.
+  useEffect(() => {
+    if (!conversationId || !canMessage) return undefined;
+    const activeConversationId = conversationId;
+    let cancelled = false;
+
+    async function pollMessages() {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      try {
+        const payload = await fetchAuthed<{
+          messages: DirectMessageDto[];
+          readSync: ConversationReadSync;
+        }>(`/api/social/conversations/${activeConversationId}/messages?limit=100`);
+        if (cancelled) return;
+        setMessages(payload.messages);
+        if (payload.readSync && (payload.readSync.notificationsMarkedRead > 0 || payload.readSync.messagesMarkedRead > 0)) {
+          emitConversationReadConfirmed({
+            conversationId: activeConversationId,
+            otherUserId: otherUser.userId,
+            readSync: payload.readSync,
+          });
+          emitSocialSync({ source: "inbox" });
+        }
+      } catch {
+        // Silent background poll — ignore transient errors.
+      }
+    }
+
+    const intervalId = window.setInterval(() => void pollMessages(), 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [conversationId, canMessage, otherUser.userId]);
 
   const handleListScroll = useCallback(() => {
     const el = listRef.current;

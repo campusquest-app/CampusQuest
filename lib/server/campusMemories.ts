@@ -1,13 +1,13 @@
 import { resolveProfileAvatar } from "@/lib/avatarSource";
+import { getCampusLocations } from "@/lib/server/campusLocationsDb";
 import {
-  CAMPUS_LOCATION_IDS,
   campusLocationIdFromLegacyKey,
   getCampusLocationName,
   isCampusLocationId,
   legacyCampusKeyFromLocationId,
   sortMemoryGroups,
   type CampusLocationId,
-} from "@/lib/locations/registry";
+} from "@/lib/locations/campusLocationCatalog";
 import { formatPostedAgo } from "@/lib/realm/momentTime";
 import { ApiError } from "@/lib/server/http";
 import { normalizeQuadPostProofUrl } from "@/lib/server/quadPosts";
@@ -224,11 +224,12 @@ export function mapCampusMemoryRow(
   };
 }
 
-export function assertCampusMemoryLocation(args: {
+export async function assertCampusMemoryLocation(args: {
   locationId?: string | null;
   locationKey?: string | null;
   locationName?: string;
-}): { locationId: CampusLocationId; locationKey: string; locationName: string } {
+}): Promise<{ locationId: CampusLocationId; locationKey: string; locationName: string }> {
+  await getCampusLocations({ refreshCache: true });
   const locationId =
     (args.locationId && isCampusLocationId(args.locationId) ? args.locationId : null)
     ?? campusLocationIdFromLegacyKey(args.locationKey);
@@ -304,6 +305,38 @@ export async function fetchCampusMemoryGroups(
   );
 }
 
+async function mergeEmptyLocationGroups(groups: CampusMemoryGroupApiRow[]): Promise<CampusMemoryGroupApiRow[]> {
+  const catalog = await getCampusLocations({ refreshCache: true });
+  const byId = new Map(groups.map((g) => [g.locationId, g]));
+  for (const row of catalog) {
+    if (byId.has(row.slug)) continue;
+    byId.set(row.slug, {
+      locationId: row.slug,
+      locationKey: row.legacyCampusKey ?? row.slug,
+      locationName: row.name,
+      count: 0,
+      latestCreatedAt: "",
+      latestPreview: null,
+      latestMediaType: null,
+      latestAuthorAvatar: "",
+      hasRecent: false,
+    });
+  }
+  return sortMemoryGroups(Array.from(byId.values()).map((g) => ({ ...g, locationId: g.locationId as CampusLocationId })));
+}
+
+export async function fetchCampusMemoryGroupsWithEmptyLocations(
+  userClient: SupabaseClient,
+): Promise<CampusMemoryGroupApiRow[]> {
+  const groups = await fetchCampusMemoryGroups(userClient);
+  try {
+    return await mergeEmptyLocationGroups(groups);
+  } catch (err) {
+    logCampusMemoriesError("CAMPUS_MEMORIES_EMPTY_GROUPS_FAILED", err);
+    return groups;
+  }
+}
+
 export async function fetchCampusMemoryLocationStats(
   userClient: SupabaseClient,
 ): Promise<CampusMemoryLocationStats[]> {
@@ -320,10 +353,11 @@ export async function fetchCampusMemoryLocationStats(
   }
 
   const nowIso = new Date().toISOString();
+  const catalog = await getCampusLocations({ refreshCache: true });
   const tallies = new Map<CampusLocationId, { active: number; archived: number; total: number }>();
 
-  for (const id of CAMPUS_LOCATION_IDS) {
-    tallies.set(id, { active: 0, archived: 0, total: 0 });
+  for (const row of catalog) {
+    tallies.set(row.slug, { active: 0, archived: 0, total: 0 });
   }
 
   for (const row of data ?? []) {
@@ -336,11 +370,11 @@ export async function fetchCampusMemoryLocationStats(
     tallies.set(locationId, bucket);
   }
 
-  return CAMPUS_LOCATION_IDS.map((locationId) => {
-    const bucket = tallies.get(locationId) ?? { active: 0, archived: 0, total: 0 };
+  return catalog.map((row) => {
+    const bucket = tallies.get(row.slug) ?? { active: 0, archived: 0, total: 0 };
     return {
-      locationId,
-      locationName: getCampusLocationName(locationId),
+      locationId: row.slug,
+      locationName: row.name,
       activeCount: bucket.active,
       archivedCount: bucket.archived,
       totalCount: bucket.total,
@@ -357,6 +391,7 @@ export async function fetchCampusMemoriesByLocation(args: {
 }): Promise<CampusMemoryApiRow[]> {
   const limit = Math.min(60, Math.max(1, args.limit ?? 30));
   const locationId = args.locationId.trim();
+  await getCampusLocations({ refreshCache: true });
   if (!isCampusLocationId(locationId)) return [];
 
   let query = args.userClient
@@ -538,7 +573,7 @@ export async function createCampusMemory(args: {
   body?: string | null;
   visibility?: CampusMemoryVisibility;
 }): Promise<CampusMemoryApiRow> {
-  const { locationId, locationKey, locationName } = assertCampusMemoryLocation(args);
+  const { locationId, locationKey, locationName } = await assertCampusMemoryLocation(args);
   const body = args.body?.trim().slice(0, 500) ?? null;
   const mediaUrl = args.mediaUrl?.trim().slice(0, 2048) ?? null;
   const mediaType = args.mediaType;

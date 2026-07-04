@@ -10,6 +10,12 @@ import { fetchAuthed } from "@/lib/client/dashboardApi";
 import { sendRichDirectMessage, type DirectMessageDto } from "@/lib/client/dmMessagesClient";
 import { fetchGroupConversation, type GroupConversationDetails } from "@/lib/client/groupChatClient";
 import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
+import {
+  emitConversationReadConfirmed,
+  emitConversationReadOptimistic,
+  emitConversationReadRollback,
+  type ConversationReadSync,
+} from "@/lib/client/inboxReadSync";
 import { DmThreadComposer } from "@/components/messages/DmThreadComposer";
 import { GroupAvatarStack } from "@/components/messages/GroupAvatarStack";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
@@ -38,31 +44,85 @@ export function GroupMessageThread({
   useRegisterImmersiveScreen();
   useDmKeyboardInsets(threadRef);
 
-  const loadThread = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [groupDetails, messagesPayload] = await Promise.all([
-        fetchGroupConversation(conversationId),
-        fetchAuthed<{ messages: DirectMessageDto[] }>(
-          `/api/social/conversations/${conversationId}/messages?limit=100`,
-        ),
-      ]);
-      setGroup(groupDetails);
-      setMessages(messagesPayload.messages);
-    } catch (loadError) {
-      const message = loadError instanceof Error ? loadError.message : "Could not load group chat.";
-      setError(message.replace(/^Backend request failed:[^.]*\.\s*/i, ""));
-    } finally {
-      setLoading(false);
-    }
-  }, [conversationId]);
+  const loadThread = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        setLoading(true);
+      }
+      setError(null);
+      try {
+        if (!options?.silent) {
+          emitConversationReadOptimistic({ conversationId });
+        }
+
+        const [groupDetails, messagesPayload] = await Promise.all([
+          fetchGroupConversation(conversationId),
+          fetchAuthed<{ messages: DirectMessageDto[]; readSync: ConversationReadSync }>(
+            `/api/social/conversations/${conversationId}/messages?limit=100`,
+          ),
+        ]);
+        setGroup(groupDetails);
+        setMessages(messagesPayload.messages);
+
+        if (messagesPayload.readSync) {
+          const hasNewReads =
+            messagesPayload.readSync.notificationsMarkedRead > 0 ||
+            messagesPayload.readSync.messagesMarkedRead > 0;
+          if (!options?.silent || hasNewReads) {
+            emitConversationReadConfirmed({
+              conversationId,
+              readSync: messagesPayload.readSync,
+            });
+          }
+        }
+        emitSocialSync({ source: "inbox" });
+      } catch (loadError) {
+        const message = loadError instanceof Error ? loadError.message : "Could not load group chat.";
+        const cleaned = message.replace(/^Backend request failed:[^.]*\.\s*/i, "");
+        setError(cleaned);
+        if (!options?.silent) {
+          emitConversationReadRollback({ conversationId, error: cleaned });
+        }
+      } finally {
+        if (!options?.silent) setLoading(false);
+      }
+    },
+    [conversationId],
+  );
 
   useEffect(() => {
     void loadThread();
-    const unsubscribe = subscribeSocialSync(() => void loadThread());
+    const unsubscribe = subscribeSocialSync(() => void loadThread({ silent: true }));
     return unsubscribe;
   }, [loadThread]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function pollMessages() {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      try {
+        const payload = await fetchAuthed<{
+          messages: DirectMessageDto[];
+          readSync: ConversationReadSync;
+        }>(`/api/social/conversations/${conversationId}/messages?limit=100`);
+        if (cancelled) return;
+        setMessages(payload.messages);
+        if (payload.readSync && (payload.readSync.notificationsMarkedRead > 0 || payload.readSync.messagesMarkedRead > 0)) {
+          emitConversationReadConfirmed({ conversationId, readSync: payload.readSync });
+          emitSocialSync({ source: "inbox" });
+        }
+      } catch {
+        // Silent background poll.
+      }
+    }
+
+    const intervalId = window.setInterval(() => void pollMessages(), 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [conversationId]);
 
   useEffect(() => {
     listRef.current?.scrollTo(0, listRef.current.scrollHeight);

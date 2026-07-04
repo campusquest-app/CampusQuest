@@ -24,7 +24,7 @@ import type { QuadPostVisibility } from "@/lib/types";
 import { FIELD_NOTE_MAX_CHARS, RAMMARK_MAX_LENGTH, RAMMARK_MAX_PER_POST } from "@/lib/types";
 import type { RamMark } from "@/lib/types";
 import type { RealmLocationId } from "@/lib/realm/locations";
-import { REALM_LOCATION_OPTIONS } from "@/lib/realm/locations";
+import { useCampusLocations } from "@/lib/client/campusLocationsClient";
 
 type CaptionStarter = "event" | "achievement";
 
@@ -77,6 +77,7 @@ export function FieldNoteComposer({
   const cameraFileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const locationSelectRef = useRef<HTMLSelectElement>(null);
+  const { locations: campusLocations } = useCampusLocations();
 
   const openLocationOptions = useCallback(() => {
     setMoreOpen(true);
@@ -171,7 +172,7 @@ export function FieldNoteComposer({
     setSuccessMessage(null);
     setIsSubmitting(true);
     try {
-      const selectedLocation = REALM_LOCATION_OPTIONS.find((l) => l.id === locationId);
+      const selectedLocation = campusLocations.find((l) => l.slug === locationId);
       const { note, realmMoment, xpReward } = await createQuadPostRequest(
         {
           body: trimmed,
@@ -180,7 +181,7 @@ export function FieldNoteComposer({
           ramMarks,
           authorStreakDays: character.streakDays ?? 0,
           ...(selectedLocation
-            ? { locationId: selectedLocation.id, locationName: selectedLocation.name }
+            ? { locationId: selectedLocation.slug, locationName: selectedLocation.name }
             : {}),
         },
         character.id,
@@ -409,8 +410,8 @@ export function FieldNoteComposer({
               className="cq-composer-select"
             >
               <option value="">No location</option>
-              {REALM_LOCATION_OPTIONS.map((loc) => (
-                <option key={loc.id} value={loc.id}>
+              {campusLocations.map((loc) => (
+                <option key={loc.slug} value={loc.slug}>
                   {loc.name}
                 </option>
               ))}

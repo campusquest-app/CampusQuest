@@ -12,6 +12,7 @@ import { logNotificationError, logNotificationInfo } from "@/lib/server/notifica
 import {
   createFriendRequestNotification,
   createNotification,
+  markConversationNotificationsRead,
   removeFriendRequestNotifications,
 } from "@/lib/server/notifications";
 import { assertAccountCanSocialize, setAccountSafetyStatus } from "@/lib/server/accountSafety";
@@ -867,7 +868,7 @@ export async function leaveGroupConversation(args: {
 async function assertConversationParticipant(userClient: SupabaseClientLike, userId: string, conversationId: string) {
   const { data, error } = await userClient
     .from("direct_conversation_participants")
-    .select("conversation_id, user_id, hidden_at")
+    .select("conversation_id, user_id, hidden_at, last_read_at")
     .eq("conversation_id", conversationId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -1013,6 +1014,12 @@ export async function listConversations(args: { userClient: SupabaseClientLike; 
   });
 }
 
+export type ConversationReadSyncResult = {
+  messagesMarkedRead: number;
+  notificationsMarkedRead: number;
+  readAt: string;
+};
+
 export async function listConversationMessages(args: {
   userClient: SupabaseClientLike;
   userId: string;
@@ -1042,13 +1049,42 @@ export async function listConversationMessages(args: {
       .eq("user_id", userId);
   }
 
+  let messagesMarkedRead = 0;
   if (convoType === "group") {
+    const lastReadAt = participant.last_read_at;
+    if (lastReadAt) {
+      const { count, error: unreadErr } = await userClient
+        .from("direct_messages")
+        .select("*", { count: "exact", head: true })
+        .eq("conversation_id", conversationId)
+        .neq("sender_id", userId)
+        .gt("created_at", lastReadAt);
+      if (unreadErr) throw new ApiError(400, unreadErr.message, "MESSAGES_UNREAD_COUNT_FAILED");
+      messagesMarkedRead = count ?? 0;
+    } else {
+      const { count, error: unreadErr } = await userClient
+        .from("direct_messages")
+        .select("*", { count: "exact", head: true })
+        .eq("conversation_id", conversationId)
+        .neq("sender_id", userId);
+      if (unreadErr) throw new ApiError(400, unreadErr.message, "MESSAGES_UNREAD_COUNT_FAILED");
+      messagesMarkedRead = count ?? 0;
+    }
     await userClient
       .from("direct_conversation_participants")
       .update({ last_read_at: nowIso })
       .eq("conversation_id", conversationId)
       .eq("user_id", userId);
   } else {
+    const { count, error: unreadErr } = await userClient
+      .from("direct_messages")
+      .select("*", { count: "exact", head: true })
+      .eq("conversation_id", conversationId)
+      .eq("recipient_id", userId)
+      .is("read_at", null);
+    if (unreadErr) throw new ApiError(400, unreadErr.message, "MESSAGES_UNREAD_COUNT_FAILED");
+    messagesMarkedRead = count ?? 0;
+
     await Promise.all([
       userClient
         .from("direct_messages")
@@ -1063,6 +1099,19 @@ export async function listConversationMessages(args: {
         .eq("user_id", userId),
     ]);
   }
+
+  const { markedCount: notificationsMarkedRead } = await markConversationNotificationsRead({
+    userClient,
+    userId,
+    conversationId,
+    readAt: nowIso,
+  });
+
+  const readSync: ConversationReadSyncResult = {
+    messagesMarkedRead,
+    notificationsMarkedRead,
+    readAt: nowIso,
+  };
 
   const msgRows = data ?? [];
   const messageIds = msgRows.map((m) => m.id);
@@ -1095,11 +1144,13 @@ export async function listConversationMessages(args: {
     }
   }
 
-  return msgRows.reverse().map((message) => {
+  const mappedMessages = msgRows.reverse().map((message) => {
     const dto = mapDirectMessageRow(message, favSet.has(message.id));
     const sender = senderMap.get(message.sender_id);
     return sender ? { ...dto, sender } : dto;
   });
+
+  return { messages: mappedMessages, readSync };
 }
 
 export async function setDirectMessageFavorite(args: {

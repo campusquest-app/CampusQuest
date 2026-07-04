@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   countUniqueLocationQuests,
   getQuestDedupKey,
+  hasQrQuestCard,
   mergeLocationQuestCards,
   normalizeQuestTitle,
 } from "./locationQuestDedupe";
@@ -154,6 +155,48 @@ describe("locationQuestDedupe", () => {
     );
 
     expect(count).toBe(1);
+  });
+
+  it("merges map quest and linked QR pin into one card with scan path", () => {
+    const cards = mergeLocationQuestCards({
+      locationId: "library",
+      qrCodes: [
+        {
+          id: "qr-1",
+          name: "Visit the AI Lab",
+          description: "",
+          xpReward: 40,
+          expiresAt: null,
+          scanPath: "/scan?code=abc",
+          qrCode: "abc",
+          adminQuestId: "quest-1",
+        },
+      ],
+      mapQuests: [
+        {
+          id: "quest-1",
+          name: "Visit the AI Lab",
+          description: "Explore the lab",
+          xpReward: 40,
+          difficulty: "easy",
+          completionMethod: "qr_scan",
+          requiresQr: true,
+          expiresAt: null,
+          icon: "🎯",
+          qrCodeId: "qr-1",
+        },
+      ],
+      boardQuests: [],
+    });
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.kind).toBe("board");
+    if (cards[0]?.kind === "board") {
+      expect(cards[0].item.name).toBe("Visit the AI Lab");
+      expect(cards[0].item.requiresQr).toBe(true);
+      expect(cards[0].scanPath).toBe("/scan?code=abc");
+    }
+    expect(hasQrQuestCard(cards[0]!)).toBe(true);
   });
 
   it("logs deduped duplicates in development", () => {

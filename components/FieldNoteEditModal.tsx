@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { FieldNote, QuadPostVisibility } from "@/lib/types";
 import { FIELD_NOTE_MAX_CHARS } from "@/lib/types";
 import type { RealmLocationId } from "@/lib/realm/locations";
-import { REALM_LOCATION_OPTIONS } from "@/lib/realm/locations";
+import { useCampusLocations } from "@/lib/client/campusLocationsClient";
 
 export function FieldNoteEditModal({
   note,
@@ -30,10 +30,11 @@ export function FieldNoteEditModal({
   const [body, setBody] = useState(note.body);
   const [visibility, setVisibility] = useState<QuadPostVisibility>(note.visibility ?? "public");
   const [locationId, setLocationId] = useState<RealmLocationId | "">((note.locationId as RealmLocationId) ?? "");
+  const { locations: campusLocations } = useCampusLocations();
 
   if (!open || typeof document === "undefined") return null;
 
-  const selectedLocation = REALM_LOCATION_OPTIONS.find((l) => l.id === locationId);
+  const selectedLocation = campusLocations.find((l) => l.slug === locationId);
 
   return createPortal(
     <div
@@ -55,7 +56,7 @@ export function FieldNoteEditModal({
           void onSave({
             body: trimmed,
             visibility,
-            locationId: selectedLocation?.id ?? null,
+            locationId: selectedLocation?.slug ?? null,
             locationName: selectedLocation?.name ?? null,
           });
         }}
@@ -105,8 +106,8 @@ export function FieldNoteEditModal({
               className="w-full rounded-xl border border-white/15 bg-white/[0.08] px-3 py-2.5 text-sm text-white focus:border-uri-keaney/40 focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
             >
               <option value="">No location</option>
-              {REALM_LOCATION_OPTIONS.map((loc) => (
-                <option key={loc.id} value={loc.id}>
+              {campusLocations.map((loc) => (
+                <option key={loc.slug} value={loc.slug}>
                   {loc.name}
                 </option>
               ))}

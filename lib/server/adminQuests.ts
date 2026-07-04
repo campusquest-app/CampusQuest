@@ -3,6 +3,7 @@ import { logAdminAuditAction } from "@/lib/server/audit";
 import { addXpInternal } from "@/lib/server/services";
 import { createAdminClient } from "@/lib/server/supabase";
 import { buildQuestCompletionQrInput, createQrCodeAdmin } from "@/lib/server/qrCodeAdmin";
+import { getCampusLocations } from "@/lib/server/campusLocationsDb";
 import { isExpiredAt, locationFieldsFromInput, mapPercentForCoordinates, type CampusMapPin } from "@/lib/server/campusMapPins";
 import { resolveRealmLocationIdFromFields } from "@/lib/locations/resolveRealmLocationId";
 import { normalizeCreateQrCodeInput } from "@/lib/server/qrCodeInput";
@@ -330,6 +331,7 @@ export async function createAdminQuest(args: {
   createdByEmail?: string;
 }) {
   const admin = createAdminClient();
+  await getCampusLocations({ client: admin, refreshCache: true });
   const requiresQr =
     args.input.requiresQr != null
       ? args.input.requiresQr
@@ -497,6 +499,7 @@ export async function updateAdminQuest(args: {
   adminEmail?: string;
 }): Promise<UpdateAdminQuestResult> {
   const admin = createAdminClient();
+  await getCampusLocations({ client: admin, refreshCache: true });
   const patch: Record<string, unknown> = {};
   const p = args.patch;
   if (p.name != null) patch.name = p.name.trim();
@@ -524,7 +527,10 @@ export async function updateAdminQuest(args: {
     patch.location_lng = location.locationLng;
     patch.map_pin_x = location.mapPinX;
     patch.map_pin_y = location.mapPinY;
-    patch.location_id = resolveRealmLocationIdFromFields({ locationKey: location.locationKey });
+    patch.location_id = resolveRealmLocationIdFromFields({
+      locationKey: location.locationKey,
+      locationId: (p as { locationId?: string }).locationId,
+    });
   } else {
     if (p.mapPinX !== undefined) patch.map_pin_x = p.mapPinX ?? null;
     if (p.mapPinY !== undefined) patch.map_pin_y = p.mapPinY ?? null;

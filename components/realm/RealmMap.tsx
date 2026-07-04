@@ -8,6 +8,8 @@ import {
   type ReactZoomPanPinchRef,
 } from "react-zoom-pan-pinch";
 import { REALM_LOCATIONS, type RealmLocation, type RealmLocationId } from "@/lib/realm/locations";
+import { realmLocationsFromCatalog, type CampusLocationRecord } from "@/lib/locations/campusLocationCatalog";
+import { createCampusLocationFromMarker, useCampusLocations } from "@/lib/client/campusLocationsClient";
 import { REALM_MAP_VIEW_HEIGHT, REALM_MAP_VIEW_WIDTH } from "@/lib/realm/mapGeometry";
 import {
   applyMarkerPositionsToLocations,
@@ -47,8 +49,27 @@ import { useRealmMapDiagnostics } from "./useRealmMapDiagnostics";
 import { useMapMarkerTap } from "@/lib/client/mapMarkerTap";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
 
-const MAP_ASPECT = REALM_MAP_VIEW_WIDTH / REALM_MAP_VIEW_HEIGHT;
+function catalogRowsToRealmLocations(rows: CampusLocationRecord[]): RealmLocation[] {
+  return rows.map((row) => ({
+    id: row.slug,
+    name: row.name,
+    fantasyName: row.fantasyName || row.name,
+    flavorText: row.flavorText || row.description,
+    markerEmoji: row.markerEmoji,
+    shortLabel: row.shortLabel || row.name,
+    major: row.major,
+    x: row.mapX ?? 50,
+    y: row.mapY ?? 50,
+    activeQuests: 0,
+    upcomingEvents: 0,
+    studentPhotos: 0,
+    quests: [],
+    eventTimer: { status: "countdown" as const, minutesUntilStart: 999, label: "No scheduled events" },
+    moments: [],
+  }));
+}
 const MAP_BASE_WIDTH = 920;
+const MAP_ASPECT = REALM_MAP_VIEW_WIDTH / REALM_MAP_VIEW_HEIGHT;
 
 const GOOGLE_MAPS_API_KEY = (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "").trim();
 
@@ -127,6 +148,15 @@ export function RealmMap({
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const mapRootRef = useRef<HTMLDivElement>(null);
   const mapStageRef = useRef<HTMLDivElement>(null);
+  const { locations: catalogRows, reload: reloadCatalog } = useCampusLocations();
+  const [placingNewLocation, setPlacingNewLocation] = useState(false);
+  const [newLocationName, setNewLocationName] = useState("");
+  const [createLocationPending, setCreateLocationPending] = useState(false);
+
+  const catalogRealmLocations = useMemo(
+    () => (catalogRows.length > 0 ? catalogRowsToRealmLocations(catalogRows) : realmLocationsFromCatalog()),
+    [catalogRows],
+  );
   const calibrateMode = useRealmCalibrationMode();
 
   const groupsByRealmId = useMemo(() => {
@@ -143,7 +173,7 @@ export function RealmMap({
   );
 
   const locations = useMemo((): HydratedRealmLocation[] => {
-    const base = applyMarkerPositionsToLocations(REALM_LOCATIONS, draftPositions);
+    const base = applyMarkerPositionsToLocations(catalogRealmLocations, draftPositions);
     return base.map((location) => {
       const stats = memoryStatsByLocation[location.id];
       const activeMomentCount = stats?.activeCount ?? 0;
@@ -171,7 +201,7 @@ export function RealmMap({
         mapContent,
       };
     });
-  }, [draftPositions, memoryStatsByLocation, groupsByRealmId]);
+  }, [catalogRealmLocations, draftPositions, memoryStatsByLocation, groupsByRealmId]);
 
   const questGlowCount = useMemo(() => locations.filter((l) => l.activeQuests > 0).length, [locations]);
   const momentGlowCount = useMemo(
@@ -314,6 +344,50 @@ export function RealmMap({
     transformRef.current?.centerView(1, 420);
   }, []);
 
+  const handleCreateLocationAt = useCallback(
+    async (coords: { x: number; y: number; lat?: number; lng?: number }) => {
+      const name = newLocationName.trim();
+      if (!name) {
+        setSaveMessage("Enter a location name first.");
+        return;
+      }
+      setCreateLocationPending(true);
+      try {
+        const row = await createCampusLocationFromMarker({
+          name,
+          mapX: coords.x,
+          mapY: coords.y,
+          latitude: coords.lat ?? null,
+          longitude: coords.lng ?? null,
+        });
+        setDraftPositions((prev) => ({
+          ...prev,
+          [row.slug]: { x: coords.x, y: coords.y, lat: coords.lat, lng: coords.lng },
+        }));
+        setEditorSelectedId(row.slug);
+        setPlacingNewLocation(false);
+        setNewLocationName("");
+        setSaveMessage(`Created ${row.name}. Save positions to persist the map layout.`);
+        await reloadCatalog();
+      } catch (err) {
+        setSaveMessage(err instanceof Error ? err.message : "Could not create location.");
+      } finally {
+        setCreateLocationPending(false);
+      }
+    },
+    [newLocationName, reloadCatalog],
+  );
+
+  const handleMapStageClickForNewLocation = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!editMode || !placingNewLocation || !mapStageRef.current) return;
+      if ((e.target as HTMLElement).closest(".realm-pin")) return;
+      const { x, y } = pointerToPercent(mapStageRef.current, e.clientX, e.clientY);
+      void handleCreateLocationAt({ x, y });
+    },
+    [editMode, placingNewLocation, handleCreateLocationAt],
+  );
+
   const handleEnterEdit = useCallback(() => {
     if (!isAdmin) return;
     setEditMode(true);
@@ -384,19 +458,20 @@ export function RealmMap({
 
   /** Landmark geo positions — admin overrides first, then canonical campus coordinates. */
   const geoPositions = useMemo(() => {
-    const out = {} as Record<RealmLocationId, { lat: number; lng: number }>;
-    for (const location of REALM_LOCATIONS) {
+    const out: Record<string, { lat: number; lng: number }> = {};
+    for (const location of catalogRealmLocations) {
       const draft = draftPositions[location.id];
+      const catalogRow = catalogRows.find((row) => row.slug === location.id);
       out[location.id] =
         draft && typeof draft.lat === "number" && typeof draft.lng === "number"
           ? { lat: draft.lat, lng: draft.lng }
           : {
-              lat: REALM_LOCATION_GEO[location.id].latitude,
-              lng: REALM_LOCATION_GEO[location.id].longitude,
+              lat: catalogRow?.latitude ?? REALM_LOCATION_GEO[location.id as keyof typeof REALM_LOCATION_GEO]?.latitude ?? 41.4871,
+              lng: catalogRow?.longitude ?? REALM_LOCATION_GEO[location.id as keyof typeof REALM_LOCATION_GEO]?.longitude ?? -71.5305,
             };
     }
     return out;
-  }, [draftPositions]);
+  }, [catalogRealmLocations, catalogRows, draftPositions]);
 
   const handleTapLandmark = useCallback(
     (id: RealmLocationId) => {
@@ -427,6 +502,21 @@ export function RealmMap({
     setMapScale(ref.state.scale);
   }, []);
 
+  const trackedPathDestination = useMemo((): { lat: number; lng: number } | null => {
+    if (editMode || !sheetOpen || !activeMarkerId) return null;
+    const landmark = locations.find((l) => l.id === activeMarkerId);
+    if (landmark) {
+      const hasQuest =
+        landmark.activeQuests > 0 || (landmark.mapContent?.quests.length ?? 0) > 0;
+      if (hasQuest) return geoPositions[landmark.id] ?? null;
+    }
+    const group = supplementaryPins.find((g) => g.groupKey === activeMarkerId);
+    if (group && group.quests.length > 0 && group.lat != null && group.lng != null) {
+      return { lat: group.lat, lng: group.lng };
+    }
+    return null;
+  }, [editMode, sheetOpen, activeMarkerId, locations, geoPositions, supplementaryPins]);
+
   return (
     <>
       {!memoriesLoaded ? (
@@ -451,8 +541,10 @@ export function RealmMap({
         data-cq-gesture-block="all"
         data-no-drawer-swipe="true"
         className={`realm-map-shell relative overflow-hidden rounded-2xl ${
-          panning ? "realm-map-shell--panning" : ""
-        } ${calibrateMode ? "realm-map-shell--calibrate" : ""} ${editMode ? "realm-map-shell--edit" : ""}`}
+          useGoogleMap ? "realm-map-shell--google" : ""
+        } ${panning ? "realm-map-shell--panning" : ""} ${
+          calibrateMode ? "realm-map-shell--calibrate" : ""
+        } ${editMode ? "realm-map-shell--edit" : ""}`}
       >
         {useGoogleMap ? (
           <GoogleRealmMap
@@ -461,7 +553,7 @@ export function RealmMap({
               id: location.id,
               name: location.name,
               shortLabel: location.shortLabel,
-              markerEmoji: location.markerEmoji,
+              major: location.major,
               activeQuests: location.activeQuests,
               activeMomentCount: location.activeMomentCount ?? 0,
               upcomingEvents: location.upcomingEvents,
@@ -471,6 +563,7 @@ export function RealmMap({
             supplementaryPins={supplementaryPins}
             markersLoaded={mapGroupsLoaded}
             activeMarkerId={editMode ? editorSelectedId : activeMarkerId}
+            trackedPathDestination={trackedPathDestination}
             editMode={editMode}
             editorSelectedId={editorSelectedId}
             onTapLandmark={handleTapLandmark}
@@ -516,7 +609,11 @@ export function RealmMap({
                   aspectRatio: String(MAP_ASPECT),
                 }}
               >
-                <div ref={mapStageRef} className="realm-map-stage relative h-full w-full">
+                <div
+                  ref={mapStageRef}
+                  className="realm-map-stage relative h-full w-full"
+                  onClick={placingNewLocation ? handleMapStageClickForNewLocation : undefined}
+                >
                   <div className="realm-map-surface relative h-full w-full overflow-hidden rounded-md">
                     <RealmCampusMapLayer calibrateMode={calibrateMode} onLoadStateChange={setUriMapLoaded} />
                     <RealmFootprintsLayer />
@@ -569,6 +666,12 @@ export function RealmMap({
           onSave={() => void handleSave()}
           savePending={savePending}
           saveMessage={saveMessage}
+          newLocationName={newLocationName}
+          onNewLocationNameChange={setNewLocationName}
+          placingNewLocation={placingNewLocation}
+          onStartPlacingNewLocation={() => setPlacingNewLocation(true)}
+          onCancelPlacingNewLocation={() => setPlacingNewLocation(false)}
+          createLocationPending={createLocationPending}
         />
 
         {!useGoogleMap ? (

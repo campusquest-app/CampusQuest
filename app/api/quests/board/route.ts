@@ -1,15 +1,14 @@
 import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
-import {
-  filterUserQuestBoardItems,
-  safeBuildUserQuestBoardAdminItems,
-} from "@/lib/server/adminQuests";
+import { filterUserQuestBoardItems, safeBuildUserQuestBoardAdminItems } from "@/lib/server/adminQuests";
+import { getCampusLocations } from "@/lib/server/campusLocationsDb";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { questBoardQuerySchema } from "@/lib/server/validation";
 
 export async function GET(request: Request) {
   try {
     const auth = await requireAuthUser(request);
+    await getCampusLocations({ refreshCache: true });
     const url = new URL(request.url);
     const query = questBoardQuerySchema.parse({
       filter: url.searchParams.get("filter") ?? undefined,

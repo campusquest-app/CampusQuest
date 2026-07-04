@@ -7,10 +7,8 @@ import { useMap } from "@vis.gl/react-google-maps";
 /**
  * HTML marker rendered through a google.maps.OverlayView.
  *
- * Used instead of AdvancedMarkerElement so the map can apply the inline
- * CampusQuest style array (Google ignores MapOptions.styles when a mapId is
- * set, and AdvancedMarker requires a mapId). Supports tap, z-index, and
- * admin drag (pointer capture + projection math), anchored bottom-center.
+ * Works with vector Map IDs (satellite + tilt) where AdvancedMarkerElement
+ * would require cloud styling. Supports tap, z-index, and admin drag.
  */
 export function CampusQuestMapMarker({
   position,

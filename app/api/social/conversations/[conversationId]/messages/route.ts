@@ -12,13 +12,13 @@ export async function GET(request: Request, context: { params: { conversationId:
     const url = new URL(request.url);
     const limitParam = Number(url.searchParams.get("limit") ?? 50);
     enforceRateLimit({ userId: auth.user.id, routeKey: "social:messages:get", limit: 80, windowMs: 60_000 });
-    const messages = await listConversationMessages({
+    const { messages, readSync } = await listConversationMessages({
       userClient: auth.userClient,
       userId: auth.user.id,
       conversationId: context.params.conversationId,
       limit: Number.isFinite(limitParam) ? limitParam : 50,
     });
-    return ok({ messages });
+    return ok({ messages, readSync });
   } catch (error) {
     return fail(error);
   }

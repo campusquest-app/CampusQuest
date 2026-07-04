@@ -13,8 +13,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { CampusMemoryGroup } from "@/lib/types";
-import { CAMPUS_MEMORY_LOCATION_OPTIONS, getCampusLocation } from "@/lib/locations/registry";
 import type { CampusLocationId } from "@/lib/locations/registry";
+import { useCampusLocations } from "@/lib/client/campusLocationsClient";
 import { fetchCampusMemoryGroups } from "@/lib/client/campusMemoriesClient";
 import { subscribeCampusMemoriesChanged } from "@/lib/client/campusMemoriesSync";
 
@@ -78,6 +78,7 @@ export function CampusMemoriesRow({
   const [groups, setGroups] = useState<CampusMemoryGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewedMap, setViewedMap] = useState<Record<string, string>>({});
+  const { locations: campusLocations } = useCampusLocations();
 
   useEffect(() => {
     setViewedMap(readViewedMap());
@@ -123,7 +124,7 @@ export function CampusMemoriesRow({
   const load = useCallback(async () => {
     try {
       const data = await fetchCampusMemoryGroups();
-      setGroups(Array.isArray(data) ? data.filter((g) => g && g.count > 0) : []);
+      setGroups(Array.isArray(data) ? data : []);
     } catch {
       // Stay silent — the row simply renders every location as inactive (no error copy).
       setGroups([]);
@@ -145,13 +146,12 @@ export function CampusMemoriesRow({
     const byLocation = new Map<string, CampusMemoryGroup>();
     for (const group of groups) byLocation.set(group.locationId, group);
 
-    const base: RowTile[] = CAMPUS_MEMORY_LOCATION_OPTIONS.map((opt) => {
-      const loc = getCampusLocation(opt.id);
-      const group = byLocation.get(opt.id) ?? null;
+    const base: RowTile[] = campusLocations.map((loc) => {
+      const group = byLocation.get(loc.slug) ?? null;
       return {
-        locationId: opt.id,
-        label: loc.shortLabel || opt.name,
-        Icon: LOCATION_ICONS[opt.id] ?? MapPin,
+        locationId: loc.slug as CampusLocationId,
+        label: loc.shortLabel || loc.name,
+        Icon: LOCATION_ICONS[loc.slug as CampusLocationId] ?? MapPin,
         group,
         active: Boolean(group && group.count > 0),
       };
@@ -160,7 +160,7 @@ export function CampusMemoriesRow({
     const active = base.filter((tile) => tile.active);
     const inactive = base.filter((tile) => !tile.active);
     return [...active, ...inactive];
-  }, [groups]);
+  }, [groups, campusLocations]);
 
   // Instagram-style circular "add" item that lives inside the carousel itself.
   const addTile = (

@@ -7,6 +7,8 @@ import { passwordMeetsRequirements } from "@/lib/passwordRequirements";
 
 export const uuidSchema = z.string().uuid();
 
+export const campusLocationSlugSchema = z.string().trim().regex(/^[a-z0-9-]{2,64}$/);
+
 const passwordFieldSchema = z
   .string()
   .min(8, "PASSWORD_REQUIREMENTS")
@@ -613,7 +615,7 @@ export const postQuadPostSchema = z
     relatedActivityId: z.string().trim().max(120).nullable().optional(),
     relatedQuestSlug: z.string().trim().max(120).nullable().optional(),
     authorStreakDays: z.number().int().min(0).max(10_000).optional(),
-    locationId: z.enum(REALM_LOCATION_IDS).optional(),
+    locationId: campusLocationSlugSchema.optional(),
     locationName: z.string().trim().max(80).optional(),
   })
   .refine((data) => data.body.length > 0 || (typeof data.proofUrl === "string" && data.proofUrl.length > 0), {
@@ -625,7 +627,7 @@ export const patchQuadPostSchema = z
   .object({
     body: z.string().trim().min(1).max(300).optional(),
     visibility: z.enum(["public", "friends"]).optional(),
-    locationId: z.enum(REALM_LOCATION_IDS).nullable().optional(),
+    locationId: campusLocationSlugSchema.nullable().optional(),
     locationName: z.string().trim().max(80).nullable().optional(),
   })
   .refine(
@@ -762,7 +764,46 @@ export const realmMarkerPositionSchema = z.object({
 });
 
 export const realmMarkerPositionsPatchSchema = z.object({
-  positions: z.record(z.string(), realmMarkerPositionSchema),
+  positions: z.record(z.string().regex(/^[a-z0-9-]{2,64}$/), realmMarkerPositionSchema),
+});
+
+export const createCampusLocationSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(500).optional(),
+  category: z.enum(["building", "landmark", "dining", "recreation", "academic", "other"]).optional(),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
+  mapX: z.number().min(0).max(100).nullable().optional(),
+  mapY: z.number().min(0).max(100).nullable().optional(),
+  markerEmoji: z.string().trim().max(8).optional(),
+  shortLabel: z.string().trim().max(40).optional(),
+  fantasyName: z.string().trim().max(120).optional(),
+  flavorText: z.string().trim().max(500).optional(),
+  major: z.boolean().optional(),
+  slug: campusLocationSlugSchema.optional(),
+  fromMarker: z
+    .object({
+      mapX: z.number().min(0).max(100),
+      mapY: z.number().min(0).max(100),
+      latitude: z.number().min(-90).max(90).nullable().optional(),
+      longitude: z.number().min(-180).max(180).nullable().optional(),
+    })
+    .optional(),
+});
+
+export const updateCampusLocationSchema = z.object({
+  slug: campusLocationSlugSchema,
+  patch: z.object({
+    name: z.string().trim().min(2).max(120).optional(),
+    description: z.string().trim().max(500).optional(),
+    latitude: z.number().min(-90).max(90).nullable().optional(),
+    longitude: z.number().min(-180).max(180).nullable().optional(),
+    mapX: z.number().min(0).max(100).nullable().optional(),
+    mapY: z.number().min(0).max(100).nullable().optional(),
+    markerEmoji: z.string().trim().max(8).optional(),
+    shortLabel: z.string().trim().max(40).optional(),
+    isActive: z.boolean().optional(),
+  }),
 });
 
 const campusMemoryMediaUrlSchema = z.preprocess(
@@ -792,7 +833,7 @@ export const campusMemoryMediaUploadSchema = z.object({
 
 export const createCampusMemorySchema = z
   .object({
-    locationId: z.enum(CAMPUS_LOCATION_IDS).optional(),
+    locationId: campusLocationSlugSchema.optional(),
     locationKey: z.enum(CAMPUS_LOCATION_KEYS).optional(),
     locationName: z.string().trim().max(200).optional(),
     eventId: uuidSchema.nullable().optional(),

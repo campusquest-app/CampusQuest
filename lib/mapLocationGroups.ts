@@ -84,8 +84,11 @@ export function emptyMapLocationContent(): Pick<GroupedMapLocation, "qrCodes" | 
   return { qrCodes: [], quests: [], events: [] };
 }
 
-export function mapLocationActivityCount(group: Pick<GroupedMapLocation, "qrCodes" | "quests" | "events">): number {
-  return group.qrCodes.length + group.quests.length + group.events.length;
+export function mapLocationActivityCount(
+  group: Pick<GroupedMapLocation, "qrCodes" | "quests" | "events">,
+  locationId?: string | null,
+): number {
+  return mapLocationQuestCount(group, locationId) + group.events.length;
 }
 
 export function mapLocationQuestCount(

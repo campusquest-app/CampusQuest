@@ -66,10 +66,10 @@ export function TheRealm({
         userRole={userRole}
       />
 
-      <p className="mt-3 px-1 text-center text-[10px] uppercase tracking-[0.18em] text-uri-gold/70">
+      <p className="mt-3 px-1 text-center text-[10px] uppercase tracking-[0.18em] text-cyan-300/70">
         ✦ The Kingdom of Rhody · URI Kingston campus ✦
       </p>
-      <p className="mt-1 px-1 text-center text-[11px] text-white/40">
+      <p className="mt-1 px-1 text-center text-[11px] text-cyan-200/45">
         Pinch or drag to explore · Tap a landmark for details
       </p>
     </div>
