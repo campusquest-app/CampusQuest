@@ -47,7 +47,6 @@ import { RealmMarkerEditorPanel, type RealmMarkerEditorDebug } from "./RealmMark
 import { RealmPathsLayer } from "./RealmPathsLayer";
 import { useRealmMapDiagnostics } from "./useRealmMapDiagnostics";
 import { useMapMarkerTap } from "@/lib/client/mapMarkerTap";
-import { ScreenDataState } from "@/components/ui/ScreenDataState";
 
 function catalogRowsToRealmLocations(rows: CampusLocationRecord[]): RealmLocation[] {
   return rows.map((row) => ({
@@ -110,6 +109,7 @@ export function RealmMap({
   userId = null,
   isAdmin = false,
   userRole = "student",
+  immersive = false,
 }: {
   onViewQuests?: (location: RealmLocation) => void;
   onCreatePost?: () => void;
@@ -119,6 +119,7 @@ export function RealmMap({
   userId?: string | null;
   isAdmin?: boolean;
   userRole?: string;
+  immersive?: boolean;
 }) {
   const [selectedLocation, setSelectedLocation] = useState<HydratedRealmLocation | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -519,36 +520,40 @@ export function RealmMap({
 
   return (
     <>
-      {!memoriesLoaded ? (
-        <ScreenDataState variant="loading" message="Loading The Realm…" compact className="mb-3" />
-      ) : null}
-      {memoriesLoadError ? (
-        <div className="mb-3">
-          <ScreenDataState
-            variant="error"
-            message={memoriesLoadError}
-            detail="The map is still available. Retry to load campus memories."
-            onRetry={() => {
-              setMemoriesLoaded(false);
-              void loadCampusMemories();
-            }}
-            compact
-          />
-        </div>
-      ) : null}
       <div
         ref={mapRootRef}
         data-cq-gesture-block="all"
         data-no-drawer-swipe="true"
-        className={`realm-map-shell relative overflow-hidden rounded-2xl ${
-          useGoogleMap ? "realm-map-shell--google" : ""
-        } ${panning ? "realm-map-shell--panning" : ""} ${
+        className={`realm-map-shell relative overflow-hidden ${
+          immersive ? "realm-map-shell--immersive" : "rounded-2xl"
+        } ${useGoogleMap ? "realm-map-shell--google" : ""} ${panning ? "realm-map-shell--panning" : ""} ${
           calibrateMode ? "realm-map-shell--calibrate" : ""
         } ${editMode ? "realm-map-shell--edit" : ""}`}
       >
+        {!memoriesLoaded ? (
+          <div className="cq-realm-map-banner cq-realm-map-banner--loading" role="status">
+            Loading The Realm…
+          </div>
+        ) : null}
+        {memoriesLoadError ? (
+          <div className="cq-realm-map-banner cq-realm-map-banner--error">
+            <span>{memoriesLoadError}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setMemoriesLoaded(false);
+                void loadCampusMemories();
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
+
         {useGoogleMap ? (
           <GoogleRealmMap
             apiKey={GOOGLE_MAPS_API_KEY}
+            immersive={immersive}
             landmarks={locations.map((location) => ({
               id: location.id,
               name: location.name,
@@ -678,7 +683,9 @@ export function RealmMap({
           <button
             type="button"
             onClick={handleReset}
-            className="realm-map-reset-btn absolute bottom-3 right-3 z-[5] flex h-10 w-10 items-center justify-center rounded-xl touch-manipulation"
+            className={`absolute z-[5] flex h-11 w-11 items-center justify-center touch-manipulation ${
+              immersive ? "cq-realm-float-btn cq-realm-map-controls--classic-reset" : "realm-map-reset-btn bottom-3 right-3"
+            }`}
             aria-label="Reset and center map"
             title="Center map"
           >

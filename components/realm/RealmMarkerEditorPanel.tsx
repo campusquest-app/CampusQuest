@@ -53,7 +53,7 @@ export function RealmMarkerEditorPanel({
         type="button"
         onClick={onEnterEdit}
         data-no-drawer-swipe="true"
-        className="realm-map-edit-toggle absolute bottom-[4.75rem] left-3 z-[6] flex items-center gap-1.5 rounded-xl border border-uri-keaney/45 bg-[#041E42]/88 px-3 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur-sm transition hover:border-uri-keaney/70 hover:bg-[#041E42]/95 active:scale-[0.98] sm:bottom-4"
+        className="cq-realm-float-btn cq-realm-float-btn--edit absolute left-[max(0.75rem,env(safe-area-inset-left))] z-[6] flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-white touch-manipulation"
         aria-label="Edit map marker positions"
       >
         <MapPin className="h-3.5 w-3.5 text-uri-keaney" aria-hidden />

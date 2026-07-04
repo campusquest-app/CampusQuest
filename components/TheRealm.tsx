@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ChevronLeft, Map } from "lucide-react";
 import { RealmMap } from "@/components/realm/RealmMap";
 import type { RealmLocation } from "@/lib/realm/locations";
@@ -24,54 +25,66 @@ export function TheRealm({
   isAdmin?: boolean;
   userRole?: string;
 }) {
+  const [entered, setEntered] = useState(false);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setEntered(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   function handleViewQuests(_location: RealmLocation) {
     // Quest flow connects later — keep mock-only for now.
   }
 
   return (
-    <div className="cq-realm-page mx-auto w-full max-w-3xl pb-8">
-      <header className="mb-4 flex items-start gap-2">
-        {onBack ? (
-          <button
-            type="button"
-            onClick={onBack}
-            className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/20 text-white/80 transition hover:bg-white/10 hover:text-white active:scale-95 touch-manipulation"
-            aria-label="Back to home"
-          >
-            <ChevronLeft className="h-5 w-5" strokeWidth={2.2} />
-          </button>
-        ) : null}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <Map className="h-5 w-5 text-uri-keaney" strokeWidth={2} />
-            <p className="font-display text-[11px] font-bold uppercase tracking-[0.28em] text-white/60">
-              Campus Map
+    <div className={`cq-realm-immersive${entered ? " cq-realm-immersive--entered" : ""}`}>
+      <header className="cq-realm-immersive-header">
+        <div className="cq-realm-immersive-header-row">
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="cq-realm-immersive-back touch-manipulation"
+              aria-label="Back to home"
+            >
+              <ChevronLeft className="h-5 w-5" strokeWidth={2.2} />
+            </button>
+          ) : null}
+          <div className="cq-realm-immersive-header-copy min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <Map className="h-4 w-4 text-uri-keaney" strokeWidth={2} aria-hidden />
+              <p className="font-display text-[10px] font-bold uppercase tracking-[0.32em] text-cyan-200/70">
+                Campus Map
+              </p>
+            </div>
+            <h1 className="font-display text-[1.65rem] font-bold leading-tight tracking-tight text-white sm:text-[1.85rem]">
+              THE REALM
+            </h1>
+            <p className="mt-0.5 text-[13px] leading-snug text-white/60">
+              URI as a living fantasy kingdom — tap a landmark for quests and events.
             </p>
           </div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">THE REALM</h1>
-          <p className="mt-1 text-sm text-white/65">
-            URI as a living fantasy kingdom — tap a landmark for quests and events.
-          </p>
         </div>
       </header>
 
-      <RealmMap
-        onViewQuests={handleViewQuests}
-        onCreatePost={onCreatePost}
-        onViewProfile={onViewProfile}
-        onSharePost={onSharePost}
-        viewer={viewer}
-        userId={userId}
-        isAdmin={isAdmin}
-        userRole={userRole}
-      />
+      <div className="cq-realm-immersive-stage">
+        <RealmMap
+          onViewQuests={handleViewQuests}
+          onCreatePost={onCreatePost}
+          onViewProfile={onViewProfile}
+          onSharePost={onSharePost}
+          viewer={viewer}
+          userId={userId}
+          isAdmin={isAdmin}
+          userRole={userRole}
+          immersive
+        />
 
-      <p className="mt-3 px-1 text-center text-[10px] uppercase tracking-[0.18em] text-cyan-300/70">
-        ✦ The Kingdom of Rhody · URI Kingston campus ✦
-      </p>
-      <p className="mt-1 px-1 text-center text-[11px] text-cyan-200/45">
-        Pinch or drag to explore · Tap a landmark for details
-      </p>
+        <footer className="cq-realm-immersive-footer" aria-hidden>
+          <p className="cq-realm-immersive-footer-title">✦ The Kingdom of Rhody ✦</p>
+          <p className="cq-realm-immersive-footer-copy">Pinch or drag to explore · Tap a landmark for details</p>
+        </footer>
+      </div>
     </div>
   );
 }

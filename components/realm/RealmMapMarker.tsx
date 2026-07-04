@@ -29,6 +29,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   revealOpacity = 1,
   editMode = false,
   editorSelected = false,
+  revealIndex,
 }: {
   variant: RealmMarkerVariant;
   label: string;
@@ -39,6 +40,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   revealOpacity?: number;
   editMode?: boolean;
   editorSelected?: boolean;
+  revealIndex?: number;
 }) {
   const landmarkIcon = landmarkIconForId(landmarkId);
   const tone = useMemo(() => resolveMarkerTone(variant, editMode), [variant, editMode]);
@@ -65,10 +67,12 @@ export const RealmMapMarker = memo(function RealmMapMarker({
         editorSelected,
         revealOpacity,
         showQrWiggle,
+        revealIndex,
       })}
       style={{
         opacity: revealOpacity,
         transition: "opacity 280ms ease",
+        ...(revealIndex != null ? { ["--marker-enter-index" as string]: revealIndex } : {}),
       }}
       data-map-marker="true"
       data-no-drawer-swipe="true"
@@ -110,6 +114,7 @@ function buildMarkerClassName(input: {
   editorSelected: boolean;
   revealOpacity: number;
   showQrWiggle: boolean;
+  revealIndex?: number;
 }): string {
   return [
     "cq-realm-marker",
@@ -121,6 +126,7 @@ function buildMarkerClassName(input: {
     input.editMode ? "cq-realm-marker--editable" : "",
     input.editorSelected ? "cq-realm-marker--editor-selected" : "",
     input.showQrWiggle ? "cq-realm-marker--qr-wiggle" : "",
+    input.revealIndex != null ? "cq-realm-marker--enter" : "",
   ]
     .filter(Boolean)
     .join(" ");

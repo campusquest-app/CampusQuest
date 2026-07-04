@@ -8,7 +8,7 @@ import {
   MapControl,
   useMap,
 } from "@vis.gl/react-google-maps";
-import { AlertTriangle, Compass, Landmark, LocateFixed, MapPinOff } from "lucide-react";
+import { AlertTriangle, Compass, Layers, LocateFixed, MapPinOff } from "lucide-react";
 import type { RealmLocationId } from "@/lib/realm/locations";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
@@ -96,10 +96,16 @@ function MapActionButtons({
   onDenied,
   onUserLocation,
   userPos,
+  mapLayer,
+  onToggleMapLayer,
+  immersive = false,
 }: {
   onDenied: (message: string) => void;
   onUserLocation: (pos: { lat: number; lng: number } | null) => void;
   userPos: { lat: number; lng: number } | null;
+  mapLayer: "campus" | "satellite";
+  onToggleMapLayer: () => void;
+  immersive?: boolean;
 }) {
   const map = useMap();
   const [locating, setLocating] = useState(false);
@@ -126,27 +132,32 @@ function MapActionButtons({
     );
   }, [map, onDenied, onUserLocation]);
 
-  const recenter = useCallback(() => {
-    if (!map) return;
-    map.panTo(URI_MAP_CENTER);
-    map.setZoom(URI_MAP_DEFAULT_ZOOM);
-    resetFlatMapOrientation(map);
-  }, [map]);
-
   const resetNorth = useCallback(() => {
     if (!map) return;
     resetFlatMapOrientation(map);
   }, [map]);
 
+  const toggleLayer = useCallback(() => {
+    const goingCampus = mapLayer === "satellite";
+    onToggleMapLayer();
+    if (goingCampus && map) {
+      map.panTo(URI_MAP_CENTER);
+      map.setZoom(URI_MAP_DEFAULT_ZOOM);
+      resetFlatMapOrientation(map);
+    }
+  }, [map, mapLayer, onToggleMapLayer]);
+
   return (
     <>
       <MapControl position={ControlPosition.RIGHT_BOTTOM}>
-        <div className="mb-3 mr-3 flex flex-col gap-2">
+        <div
+          className={`cq-realm-map-controls flex flex-col gap-2${immersive ? " cq-realm-map-controls--immersive" : ""}`}
+        >
           <button
             type="button"
             onClick={locate}
             disabled={locating}
-            className="cq-realm-map-btn flex h-10 w-10 items-center justify-center rounded-xl touch-manipulation disabled:opacity-60"
+            className="cq-realm-float-btn flex h-11 w-11 items-center justify-center touch-manipulation disabled:opacity-60"
             aria-label="Center map on my location"
             title="My location"
           >
@@ -155,7 +166,7 @@ function MapActionButtons({
           <button
             type="button"
             onClick={resetNorth}
-            className="cq-realm-map-btn flex h-10 w-10 items-center justify-center rounded-xl touch-manipulation"
+            className="cq-realm-float-btn flex h-11 w-11 items-center justify-center touch-manipulation"
             aria-label="Reset map to north-up"
             title="Reset to north-up"
           >
@@ -163,12 +174,15 @@ function MapActionButtons({
           </button>
           <button
             type="button"
-            onClick={recenter}
-            className="cq-realm-map-btn flex h-10 w-10 items-center justify-center rounded-xl touch-manipulation"
-            aria-label="Recenter on campus"
-            title="Recenter on campus"
+            onClick={toggleLayer}
+            className={`cq-realm-float-btn flex h-11 w-11 items-center justify-center touch-manipulation${
+              mapLayer === "satellite" ? " cq-realm-float-btn--active" : ""
+            }`}
+            aria-label={mapLayer === "campus" ? "Switch to satellite view" : "Switch to campus view"}
+            aria-pressed={mapLayer === "satellite"}
+            title={mapLayer === "campus" ? "Satellite view" : "Campus view"}
           >
-            <Landmark className="h-[18px] w-[18px]" strokeWidth={2.2} aria-hidden />
+            <Layers className="h-[18px] w-[18px]" strokeWidth={2.2} />
           </button>
         </div>
       </MapControl>
@@ -193,6 +207,7 @@ function RealmMapMarkers({
   editorSelectedId,
   filter,
   userPos,
+  markersReveal = false,
   onTapLandmark,
   onTapSupplementary,
   onSelectEditorMarker,
@@ -207,6 +222,7 @@ function RealmMapMarkers({
   editorSelectedId: RealmLocationId | null;
   filter: MapMarkerFilter;
   userPos: { lat: number; lng: number } | null;
+  markersReveal?: boolean;
   onTapLandmark: (id: RealmLocationId) => void;
   onTapSupplementary: (group: GroupedMapLocation) => void;
   onSelectEditorMarker: (id: RealmLocationId) => void;
@@ -250,7 +266,7 @@ function RealmMapMarkers({
 
   return (
     <>
-      {visibleLandmarks.map((landmark) => {
+      {visibleLandmarks.map((landmark, index) => {
         const pos = geoPositions[landmark.id];
         if (!pos) return null;
         const reveal = markerRevealOpacity(mapZoom, landmark.major);
@@ -287,12 +303,13 @@ function RealmMapMarkers({
               revealOpacity={reveal}
               editMode={editMode}
               editorSelected={editorSelectedId === landmark.id}
+              revealIndex={markersReveal ? index : undefined}
             />
           </CampusQuestMapMarker>
         );
       })}
 
-      {visibleGroups.map((group) => {
+      {visibleGroups.map((group, index) => {
         if (group.lat == null || group.lng == null) return null;
         const isSelected = !editMode && activeMarkerId === group.groupKey;
         const counts = groupActivityCounts(group);
@@ -312,6 +329,7 @@ function RealmMapMarkers({
               activityState={activityState}
               activityCount={activityCount}
               revealOpacity={markerRevealOpacity(mapZoom, false)}
+              revealIndex={markersReveal ? visibleLandmarks.length + index : undefined}
             />
           </CampusQuestMapMarker>
         );
@@ -341,6 +359,7 @@ export function GoogleRealmMap({
   onSelectEditorMarker,
   onMarkerGeoChange,
   onMapReady,
+  immersive = false,
 }: {
   apiKey: string;
   landmarks: GoogleRealmMapLandmark[];
@@ -356,12 +375,18 @@ export function GoogleRealmMap({
   onSelectEditorMarker: (id: RealmLocationId) => void;
   onMarkerGeoChange: (id: RealmLocationId, lat: number, lng: number) => void;
   onMapReady?: () => void;
+  immersive?: boolean;
 }) {
   const [apiError, setApiError] = useState(false);
   const [filter, setFilter] = useState<MapMarkerFilter>("all");
+  const [mapLayer, setMapLayer] = useState<"campus" | "satellite">("campus");
   const [tilesLoaded, setTilesLoaded] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
+
+  const toggleMapLayer = useCallback(() => {
+    setMapLayer((prev) => (prev === "campus" ? "satellite" : "campus"));
+  }, []);
 
   useEffect(() => () => document.documentElement.removeAttribute("data-realm-map-panning"), []);
 
@@ -407,11 +432,11 @@ export function GoogleRealmMap({
 
   return (
     <APIProvider apiKey={apiKey} onError={() => setApiError(true)}>
-      <div className="absolute inset-0">
+      <div className={`absolute inset-0 cq-realm-map-surface${tilesLoaded ? " cq-realm-map-surface--ready" : ""}`}>
         <Map
           className="h-full w-full cq-realm-map-canvas"
-          styles={CQ_REALM_MAP_STYLE}
-          mapTypeId={URI_MAP_TYPE_ID}
+          styles={mapLayer === "campus" ? CQ_REALM_MAP_STYLE : undefined}
+          mapTypeId={mapLayer === "campus" ? URI_MAP_TYPE_ID : "satellite"}
           defaultCenter={URI_MAP_CENTER}
           defaultZoom={URI_MAP_DEFAULT_ZOOM}
           defaultTilt={0}
@@ -443,17 +468,29 @@ export function GoogleRealmMap({
             editorSelectedId={editorSelectedId}
             filter={filter}
             userPos={userPos}
+            markersReveal={tilesLoaded && markersLoaded}
             onTapLandmark={onTapLandmark}
             onTapSupplementary={onTapSupplementary}
             onSelectEditorMarker={onSelectEditorMarker}
             onMarkerGeoChange={onMarkerGeoChange}
           />
 
-          <MapActionButtons onDenied={showNotice} onUserLocation={setUserPos} userPos={userPos} />
+          <MapActionButtons
+            onDenied={showNotice}
+            onUserLocation={setUserPos}
+            userPos={userPos}
+            mapLayer={mapLayer}
+            onToggleMapLayer={toggleMapLayer}
+            immersive={immersive}
+          />
 
           {!editMode ? (
             <MapControl position={ControlPosition.TOP_CENTER}>
-              <div className="cq-realm-map-filter mt-3" role="group" aria-label="Map marker filters">
+              <div
+                className={`cq-realm-map-filter${immersive && tilesLoaded ? " cq-realm-map-filter--entered" : ""}`}
+                role="group"
+                aria-label="Map marker filters"
+              >
                 {FILTER_OPTIONS.map((opt) => (
                   <button
                     key={opt.id}
@@ -502,10 +539,6 @@ export function GoogleRealmMap({
             </MapControl>
           ) : null}
         </Map>
-
-        <div className="cq-realm-map-chrome pointer-events-none absolute inset-0 z-[1]" aria-hidden>
-          <div className="cq-realm-map-chrome-top" />
-        </div>
 
         {!tilesLoaded ? (
           <div className="cq-realm-map-loading absolute inset-0 z-[4]" aria-busy="true">

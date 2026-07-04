@@ -674,6 +674,17 @@ export function Dashboard() {
   });
   useAppChromeLayout(showBottomNav);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const root = document.documentElement;
+    if (tab === "realm") {
+      root.setAttribute("data-cq-realm-immersive", "true");
+    } else {
+      root.removeAttribute("data-cq-realm-immersive");
+    }
+    return () => root.removeAttribute("data-cq-realm-immersive");
+  }, [tab]);
+
   const quadChromeSuppressed =
     qrScannerOpen ||
     sideMenuOpen ||
@@ -1824,7 +1835,7 @@ export function Dashboard() {
     };
   }
 
-  const tabFullBleed = tab === "quad" || tab === "character" || tab === "inbox";
+  const tabFullBleed = tab === "quad" || tab === "character" || tab === "inbox" || tab === "realm";
 
   return (
     <MobileGestureLayerProvider>
@@ -1853,7 +1864,7 @@ export function Dashboard() {
         onCancel={cancelLogoutConfirm}
         onConfirm={() => void confirmLogout()}
       />
-      <div className={screenShake ? "cq-screen-shake cq-dashboard-scroll-pad" : "cq-dashboard-scroll-pad"}>
+      <div className={`${screenShake ? "cq-screen-shake " : ""}cq-dashboard-scroll-pad${tab === "realm" ? " cq-dashboard-scroll-pad--realm" : ""}`}>
         {xpGainSession && (
           <LevelUpOverlay
             session={xpGainSession}
@@ -2119,7 +2130,7 @@ export function Dashboard() {
         onTabEnterDirectionDone={() => setTabEnterDirection(null)}
         onTabChange={handleBottomNavSwipe}
         disabled={tabSwipeGestureDisabled}
-        className={`tab-content-enter cq-tab-shell ${tabFullBleed ? "w-full pb-0" : "space-y-6 sm:space-y-7 px-4 pb-8"}`}
+        className={`tab-content-enter cq-tab-shell${tab === "realm" ? " cq-tab-shell--realm" : ""} ${tabFullBleed ? "w-full pb-0" : "space-y-6 sm:space-y-7 px-4 pb-8"}`}
       >
         {tab === "inbox" && character && renderPilotCampusGate(
           <Inbox
