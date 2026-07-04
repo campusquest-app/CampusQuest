@@ -5873,6 +5873,10 @@ html[data-cq-quad-hidden="true"] .cq-quad-header-shell {
   overflow: visible;
 }
 
+html[data-cq-realm-immersive] .cq-dock-nav {
+  animation: cq-realm-dock-in 560ms cubic-bezier(0.22, 1, 0.36, 1) 300ms both;
+}
+
 html[data-cq-realm-immersive] .cq-dock-nav__rail {
   background: rgba(5, 18, 40, 0.68);
   border-color: rgba(75, 174, 255, 0.16);
@@ -5880,6 +5884,17 @@ html[data-cq-realm-immersive] .cq-dock-nav__rail {
     0 20px 56px -14px rgba(0, 0, 0, 0.72),
     0 0 28px rgba(0, 119, 255, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+@keyframes cq-realm-dock-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(var(--cq-dock-scale, 1)) translateY(14px);
+  }
+  to {
+    opacity: var(--cq-dock-opacity, 1);
+    transform: translateX(-50%) scale(var(--cq-dock-scale, 1)) translateY(0);
+  }
 }
 
 .cq-dock-nav__indicator {
@@ -6160,7 +6175,9 @@ html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-scan-btn svg {
 .cq-tab-shell--realm {
   display: flex;
   flex-direction: column;
+  height: calc(100dvh - env(safe-area-inset-top, 0px));
   min-height: calc(100dvh - env(safe-area-inset-top, 0px));
+  overflow: hidden;
 }
 
 .cq-bottom-chrome-follower {
@@ -10955,7 +10972,9 @@ html[data-realm-map-panning] {
   display: flex;
   flex-direction: column;
   width: 100%;
+  height: 100%;
   min-height: calc(100dvh - env(safe-area-inset-top, 0px));
+  overflow: hidden;
   background: #010814;
 }
 
@@ -11014,6 +11033,25 @@ html[data-realm-map-panning] {
   flex: 1;
   min-height: 0;
   width: 100%;
+}
+
+.cq-realm-immersive-stage::before {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: calc(
+    var(--cq-bottom-nav-h, 4rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 3.5rem
+  );
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    rgba(1, 8, 20, 0.92) 0%,
+    rgba(1, 8, 20, 0.55) 42%,
+    transparent 100%
+  );
 }
 
 .cq-realm-immersive-footer {
@@ -16404,6 +16442,11 @@ html[data-realm-map-panning] {
   transition: opacity 380ms ease, transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.cq-realm-map-filter--immersive {
+  margin-top: 0.4rem;
+  max-width: min(100%, calc(100vw - max(1rem, env(safe-area-inset-left, 0px)) - max(1rem, env(safe-area-inset-right, 0px))));
+}
+
 .cq-realm-map-filter--entered {
   opacity: 1;
   transform: translateY(0);
@@ -16524,11 +16567,16 @@ html[data-realm-map-panning] {
   .cq-realm-map-filter,
   .cq-realm-float-btn,
   .cq-realm-marker,
-  .cq-realm-marker * {
+  .cq-realm-marker *,
+  html[data-cq-realm-immersive] .cq-dock-nav {
     animation: none !important;
     transition: none !important;
     opacity: 1 !important;
     transform: none !important;
+  }
+
+  html[data-cq-realm-immersive] .cq-dock-nav {
+    transform: translateX(-50%) scale(var(--cq-dock-scale, 1)) !important;
   }
 
   .cq-realm-marker,

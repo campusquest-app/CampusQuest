@@ -487,7 +487,9 @@ export function GoogleRealmMap({
           {!editMode ? (
             <MapControl position={ControlPosition.TOP_CENTER}>
               <div
-                className={`cq-realm-map-filter${immersive && tilesLoaded ? " cq-realm-map-filter--entered" : ""}`}
+                className={`cq-realm-map-filter${immersive ? " cq-realm-map-filter--immersive" : ""}${
+                  tilesLoaded ? " cq-realm-map-filter--entered" : ""
+                }`}
                 role="group"
                 aria-label="Map marker filters"
               >

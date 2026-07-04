@@ -81,7 +81,7 @@ export function TheRealm({
         />
 
         <footer className="cq-realm-immersive-footer" aria-hidden>
-          <p className="cq-realm-immersive-footer-title">✦ The Kingdom of Rhody ✦</p>
+          <p className="cq-realm-immersive-footer-title">The Kingdom of Rhody · URI Kingston Campus</p>
           <p className="cq-realm-immersive-footer-copy">Pinch or drag to explore · Tap a landmark for details</p>
         </footer>
       </div>
