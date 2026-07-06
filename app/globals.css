@@ -15935,6 +15935,7 @@ html[data-realm-map-panning] {
   position: relative;
   z-index: 10;
   min-width: 3rem;
+  overflow: visible;
   will-change: transform, opacity;
   transition: transform 0.18s ease;
   -webkit-tap-highlight-color: transparent;
@@ -15945,7 +15946,19 @@ html[data-realm-map-panning] {
   display: flex;
   flex-direction: column;
   align-items: center;
+  overflow: visible;
   transition: transform 0.18s ease;
+}
+
+.cq-marker-pin-anchor {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  overflow: visible;
+  --cq-marker-orbit-r: 20px;
 }
 
 .cq-realm-marker-pin {
@@ -15961,8 +15974,8 @@ html[data-realm-map-panning] {
   border: 2px solid rgba(255, 255, 255, 0.75);
   background: linear-gradient(180deg, var(--cq-marker-grad-top), var(--cq-marker-grad-bot));
   box-shadow:
-    0 0 22px var(--cq-marker-glow),
-    0 12px 30px rgba(0, 0, 0, 0.45);
+    0 0 16px color-mix(in srgb, var(--cq-marker-glow) 65%, transparent),
+    0 10px 24px rgba(0, 0, 0, 0.42);
   transition:
     transform 0.18s ease,
     box-shadow 0.18s ease;
@@ -16023,52 +16036,9 @@ html[data-realm-map-panning] {
   z-index: 100;
 }
 
-.cq-realm-marker--state-idle .cq-realm-marker-stack {
-  animation: cq-marker-breathe 3.5s ease-in-out infinite;
-}
-
-.cq-realm-marker--state-active .cq-realm-marker-stack {
-  animation: cq-marker-breathe-active 2.8s ease-in-out infinite;
-}
-
-.cq-realm-marker--state-hot .cq-realm-marker-stack {
-  animation: cq-marker-breathe-hot 2.4s ease-in-out infinite;
-}
-
 .cq-realm-marker--state-active .cq-realm-marker-pin,
 .cq-realm-marker--state-hot .cq-realm-marker-pin {
-  box-shadow:
-    0 0 28px var(--cq-marker-glow),
-    0 0 40px color-mix(in srgb, var(--cq-marker-glow) 55%, transparent),
-    0 12px 30px rgba(0, 0, 0, 0.45);
-}
-
-.cq-realm-marker--state-hot .cq-realm-marker-pin {
-  box-shadow:
-    0 0 34px var(--cq-marker-glow),
-    0 0 52px color-mix(in srgb, var(--cq-marker-glow) 70%, transparent),
-    0 14px 34px rgba(0, 0, 0, 0.5);
-}
-
-.cq-realm-marker--state-active .cq-realm-marker-label,
-.cq-realm-marker--state-hot .cq-realm-marker-label {
-  box-shadow:
-    0 0 14px color-mix(in srgb, var(--cq-marker-glow) 45%, transparent),
-    0 4px 16px rgba(0, 40, 100, 0.4);
-}
-
-.cq-realm-marker--state-active .cq-realm-marker-label::after,
-.cq-realm-marker--state-hot .cq-realm-marker-label::after {
-  content: "";
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  bottom: 4px;
-  height: 2px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, transparent, var(--cq-marker-glow), transparent);
-  animation: cq-marker-label-shimmer 2.6s ease-in-out infinite;
-  pointer-events: none;
+  transform: rotate(-45deg) scale(1.05);
 }
 
 .cq-realm-marker--state-selected .cq-realm-marker-stack {
@@ -16091,147 +16061,99 @@ html[data-realm-map-panning] {
   color: #fff;
 }
 
-/* Magical effect layers */
-.cq-marker-pulse-ring {
+/* Tiered activity effects — anchored to pin center */
+.cq-marker-quest-pulse {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  inset: -3px;
   z-index: 0;
-  width: 46px;
-  height: 46px;
-  transform: translate(-50%, -58%);
-  border-radius: 50%;
-  border: 2px solid var(--cq-marker-glow);
+  border-radius: 50% 50% 50% 12%;
+  transform: rotate(-45deg);
+  box-shadow: 0 0 14px rgba(197, 160, 40, 0.45);
   pointer-events: none;
-  animation: cq-marker-pulse-ring 2.4s ease-out infinite;
+  animation: cq-marker-glow-breathe 3.2s ease-in-out infinite;
 }
 
-.cq-marker-hot-aura {
+.cq-marker-event-aura {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  inset: -5px;
   z-index: 0;
-  width: 58px;
-  height: 58px;
-  transform: translate(-50%, -58%);
   border-radius: 50%;
-  opacity: 0.65;
+  background: radial-gradient(circle, var(--cq-marker-glow) 0%, transparent 72%);
+  pointer-events: none;
+  animation: cq-marker-glow-breathe 3.6s ease-in-out infinite;
+}
+
+.cq-marker-legendary-runes {
+  position: absolute;
+  inset: -7px;
+  z-index: 0;
+  border-radius: 50%;
+  opacity: 0.55;
   background: conic-gradient(
     from 0deg,
-    transparent,
-    var(--cq-marker-glow),
-    transparent 55%,
-    var(--cq-marker-glow),
-    transparent
+    transparent 0deg,
+    rgba(197, 160, 40, 0.55) 48deg,
+    transparent 96deg,
+    rgba(255, 216, 106, 0.4) 168deg,
+    transparent 240deg,
+    rgba(197, 160, 40, 0.45) 300deg,
+    transparent 360deg
   );
-  filter: blur(1px);
+  filter: blur(0.5px);
   pointer-events: none;
-  animation: cq-marker-hot-aura 6s linear infinite;
+  animation: cq-marker-legendary-spin 11s linear infinite;
 }
 
 .cq-marker-selected-pop {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  inset: -2px;
   z-index: 0;
-  width: 50px;
-  height: 50px;
-  transform: translate(-50%, -58%);
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.75);
+  border: 1.5px solid rgba(255, 255, 255, 0.65);
   pointer-events: none;
-  animation: cq-marker-selected-pop 0.65s ease-out forwards;
+  animation: cq-marker-selected-pop 0.55s ease-out forwards;
 }
 
-.cq-marker-sparkles {
+.cq-marker-orbit {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 4;
-  width: 64px;
-  height: 64px;
-  transform: translate(-50%, -58%);
+  inset: 0;
+  z-index: 1;
   pointer-events: none;
 }
 
 .cq-marker-sparkle {
   position: absolute;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 6px var(--cq-marker-glow);
-  opacity: 0;
-  animation: cq-marker-sparkle 2.8s ease-in-out infinite;
-}
-
-.cq-marker-sparkle:nth-child(1) {
-  top: 8%;
+  top: 50%;
   left: 50%;
-  animation-delay: 0s;
-}
-
-.cq-marker-sparkle:nth-child(2) {
-  top: 22%;
-  right: 8%;
-  animation-delay: 0.35s;
-}
-
-.cq-marker-sparkle:nth-child(3) {
-  bottom: 18%;
-  right: 14%;
-  animation-delay: 0.7s;
-}
-
-.cq-marker-sparkle:nth-child(4) {
-  bottom: 8%;
-  left: 42%;
-  animation-delay: 1.05s;
-}
-
-.cq-marker-sparkle:nth-child(5) {
-  top: 30%;
-  left: 6%;
-  animation-delay: 0.5s;
-}
-
-.cq-marker-sparkle:nth-child(6) {
-  bottom: 28%;
-  left: 10%;
-  animation-delay: 0.85s;
-}
-
-.cq-marker-sparkle:nth-child(7) {
-  top: 12%;
-  right: 22%;
-  animation-delay: 1.2s;
-}
-
-.cq-marker-sparkle:nth-child(8) {
-  bottom: 12%;
-  right: 28%;
-  animation-delay: 1.55s;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 5px var(--cq-marker-glow);
+  animation: cq-marker-sparkle-orbit 9s linear infinite;
+  animation-delay: calc(var(--sparkle-i, 0) * -9s / var(--sparkle-count, 4));
 }
 
 .cq-marker-count-badge {
   position: absolute;
-  top: -2px;
-  right: calc(50% - 30px);
+  right: -5px;
+  bottom: 4px;
   z-index: 6;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
   border-radius: 999px;
   border: 2px solid #06152b;
   background: var(--cq-marker-grad-top);
   color: #fff;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 800;
   line-height: 1;
-  box-shadow: 0 0 12px var(--cq-marker-glow);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }
 
@@ -16246,9 +16168,9 @@ html[data-realm-map-panning] {
 .cq-realm-marker--tone-quest,
 .cq-realm-marker--tone-legendary {
   --cq-marker-grad-top: #ffd86a;
-  --cq-marker-grad-bot: #d9a400;
-  --cq-marker-glow: rgba(255, 200, 61, 0.7);
-  --cq-marker-label-border: rgba(255, 200, 61, 0.55);
+  --cq-marker-grad-bot: var(--uri-gold, #c5a028);
+  --cq-marker-glow: rgba(197, 160, 40, 0.52);
+  --cq-marker-label-border: rgba(197, 160, 40, 0.42);
 }
 
 .cq-realm-marker--tone-event {
@@ -16277,6 +16199,12 @@ html[data-realm-map-panning] {
   --cq-marker-grad-bot: #d93636;
   --cq-marker-glow: rgba(255, 90, 90, 0.65);
   --cq-marker-label-border: rgba(255, 90, 90, 0.55);
+}
+
+.cq-realm-marker--major .cq-marker-pin-anchor {
+  width: 48px;
+  height: 48px;
+  --cq-marker-orbit-r: 21px;
 }
 
 .cq-realm-marker--major .cq-realm-marker-pin {
@@ -16330,84 +16258,43 @@ html[data-realm-map-panning] {
   pointer-events: none;
 }
 
-@keyframes cq-marker-breathe {
+@keyframes cq-marker-glow-breathe {
   0%,
   100% {
-    transform: translateY(0) scale(1);
+    opacity: 0.3;
   }
   50% {
-    transform: translateY(-2px) scale(1.035);
+    opacity: 0.6;
   }
 }
 
-@keyframes cq-marker-breathe-active {
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
-  }
-  50% {
-    transform: translateY(-3px) scale(1.06);
-  }
-}
-
-@keyframes cq-marker-breathe-hot {
-  0%,
-  100% {
-    transform: translateY(0) scale(1);
-  }
-  50% {
-    transform: translateY(-4px) scale(1.08);
-  }
-}
-
-@keyframes cq-marker-pulse-ring {
-  0% {
-    opacity: 0.65;
-    transform: translate(-50%, -58%) scale(0.8);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -58%) scale(2.1);
-  }
-}
-
-@keyframes cq-marker-hot-aura {
+@keyframes cq-marker-legendary-spin {
   to {
-    transform: translate(-50%, -58%) rotate(360deg);
+    transform: rotate(360deg);
   }
 }
 
-@keyframes cq-marker-sparkle {
-  0%,
-  100% {
-    opacity: 0;
-    transform: translateY(0) scale(0.6);
+@keyframes cq-marker-sparkle-orbit {
+  from {
+    transform: rotate(calc(var(--sparkle-i, 0) * 360deg / var(--sparkle-count, 4)))
+      translateY(calc(-1 * var(--cq-marker-orbit-r, 20px)))
+      rotate(calc(var(--sparkle-i, 0) * -360deg / var(--sparkle-count, 4)));
   }
-  40%,
-  60% {
-    opacity: 0.95;
-    transform: translateY(-6px) scale(1);
+  to {
+    transform: rotate(calc(var(--sparkle-i, 0) * 360deg / var(--sparkle-count, 4) + 360deg))
+      translateY(calc(-1 * var(--cq-marker-orbit-r, 20px)))
+      rotate(calc(var(--sparkle-i, 0) * -360deg / var(--sparkle-count, 4) - 360deg));
   }
 }
 
 @keyframes cq-marker-selected-pop {
   0% {
-    opacity: 0.8;
-    transform: translate(-50%, -58%) scale(0.85);
+    opacity: 0.7;
+    transform: scale(0.92);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -58%) scale(2.2);
-  }
-}
-
-@keyframes cq-marker-label-shimmer {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
-  50% {
-    opacity: 0.95;
+    transform: scale(1.45);
   }
 }
 

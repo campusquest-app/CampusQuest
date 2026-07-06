@@ -46,6 +46,7 @@ export function CampusQuestMapMarker({
     div.style.transform = "translate(-50%, -100%)";
     div.style.cursor = "pointer";
     div.style.touchAction = "none";
+    div.style.overflow = "visible";
     div.setAttribute("data-map-marker", "true");
     div.setAttribute("data-no-drawer-swipe", "true");
 

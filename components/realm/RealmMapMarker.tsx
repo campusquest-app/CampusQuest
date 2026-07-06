@@ -11,14 +11,19 @@ import {
 import type { RealmMarkerVariant } from "@/lib/realm/realmMapMarkerUtils";
 import { RealmMarkerIcon } from "./RealmMarkerIcon";
 
-const SPARKLE_COUNT: Record<MarkerActivityState, number> = {
-  idle: 0,
-  active: 4,
-  hot: 8,
-  selected: 4,
-};
+function sparkleCountForMarker(
+  variant: RealmMarkerVariant,
+  activityState: MarkerActivityState,
+  editMode: boolean,
+): number {
+  if (editMode || activityState === "idle" || activityState === "selected") return 0;
+  if (variant === "legendary") return 5;
+  if (activityState === "hot") return 4;
+  if (activityState === "active") return 3;
+  return 0;
+}
 
-/** Premium game-style map pin with magical activity animations. */
+/** Premium game-style map pin with tiered activity animations. */
 export const RealmMapMarker = memo(function RealmMapMarker({
   variant,
   label,
@@ -49,11 +54,13 @@ export const RealmMapMarker = memo(function RealmMapMarker({
     [variant, landmarkIcon, editMode],
   );
 
-  const sparkleCount = editMode ? 0 : SPARKLE_COUNT[activityState];
-  const showPulseRing = !editMode && (activityState === "active" || activityState === "hot");
+  const hasActivity = !editMode && activityState !== "idle";
+  const isLegendary = !editMode && variant === "legendary" && hasActivity;
+  const isQuestPulse = !editMode && variant === "quest" && activityState === "active";
+  const isEventAura = !editMode && variant === "event" && hasActivity && !isLegendary;
+  const sparkleCount = sparkleCountForMarker(variant, activityState, editMode);
   const showSelectedPop = !editMode && activityState === "selected";
-  const showHotAura = !editMode && activityState === "hot";
-  const showBadge = !editMode && activityState === "hot" && activityCount > 0;
+  const showBadge = !editMode && activityState === "hot" && activityCount >= 2;
   const showQrWiggle = !editMode && tone === "qr" && activityState !== "idle";
 
   return (
@@ -73,6 +80,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
         opacity: revealOpacity,
         transition: "opacity 280ms ease",
         ...(revealIndex != null ? { ["--marker-enter-index" as string]: revealIndex } : {}),
+        ...(sparkleCount > 0 ? { ["--sparkle-count" as string]: sparkleCount } : {}),
       }}
       data-map-marker="true"
       data-no-drawer-swipe="true"
@@ -80,24 +88,27 @@ export const RealmMapMarker = memo(function RealmMapMarker({
       aria-label={label}
     >
       <div className="cq-realm-marker-stack">
-        {showHotAura ? <span className="cq-marker-hot-aura" aria-hidden /> : null}
-        {showPulseRing ? <span className="cq-marker-pulse-ring" aria-hidden /> : null}
-        {showSelectedPop ? <span className="cq-marker-selected-pop" aria-hidden /> : null}
-        {sparkleCount > 0 ? (
-          <span className="cq-marker-sparkles" aria-hidden>
-            {Array.from({ length: sparkleCount }, (_, i) => (
-              <span key={i} className="cq-marker-sparkle" />
-            ))}
-          </span>
-        ) : null}
-        <div className="cq-realm-marker-pin">
-          <RealmMarkerIcon kind={iconKind} />
+        <div className="cq-marker-pin-anchor">
+          {isLegendary ? <span className="cq-marker-legendary-runes" aria-hidden /> : null}
+          {isEventAura ? <span className="cq-marker-event-aura" aria-hidden /> : null}
+          {isQuestPulse ? <span className="cq-marker-quest-pulse" aria-hidden /> : null}
+          {showSelectedPop ? <span className="cq-marker-selected-pop" aria-hidden /> : null}
+          {sparkleCount > 0 ? (
+            <span className="cq-marker-orbit" aria-hidden>
+              {Array.from({ length: sparkleCount }, (_, i) => (
+                <span key={i} className="cq-marker-sparkle" style={{ ["--sparkle-i" as string]: i }} />
+              ))}
+            </span>
+          ) : null}
+          <div className="cq-realm-marker-pin">
+            <RealmMarkerIcon kind={iconKind} />
+          </div>
+          {showBadge ? (
+            <span className="cq-marker-count-badge" aria-label={`${activityCount} activities`}>
+              {activityCount > 9 ? "9+" : activityCount}
+            </span>
+          ) : null}
         </div>
-        {showBadge ? (
-          <span className="cq-marker-count-badge" aria-label={`${activityCount} activities`}>
-            {activityCount > 9 ? "9+" : activityCount}
-          </span>
-        ) : null}
         <span className="cq-realm-marker-connector" aria-hidden />
       </div>
       <span className="cq-realm-marker-label">{label}</span>
