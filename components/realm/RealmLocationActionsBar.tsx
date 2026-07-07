@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Camera, Footprints, Sparkles } from "lucide-react";
+import { Calendar, Camera, Footprints } from "lucide-react";
 import type { RealmDirectionsDestination, RealmDirectionsStatus } from "@/lib/realm/realmDirectionsTypes";
 import {
   locationSheetTypeLabel,
@@ -18,7 +18,6 @@ export function RealmLocationActionsBar({
   directionsStatus,
   onRequestWalking,
   onViewMemories,
-  onStartQuest,
   onViewEvents,
 }: {
   locationName: string;
@@ -31,7 +30,6 @@ export function RealmLocationActionsBar({
   directionsStatus: RealmDirectionsStatus;
   onRequestWalking?: () => void;
   onViewMemories?: () => void;
-  onStartQuest?: () => void;
   onViewEvents?: () => void;
 }) {
   const walkReady = directionsStatus.status === "ready" ? directionsStatus : null;
@@ -79,17 +77,6 @@ export function RealmLocationActionsBar({
           >
             <Camera className="h-4 w-4 shrink-0" aria-hidden />
             View memories
-          </button>
-        ) : null}
-
-        {activeQuestCount > 0 && onStartQuest ? (
-          <button
-            type="button"
-            className="cq-realm-sheet-action touch-manipulation"
-            onClick={onStartQuest}
-          >
-            <Sparkles className="h-4 w-4 shrink-0" aria-hidden />
-            Start quest
           </button>
         ) : null}
 

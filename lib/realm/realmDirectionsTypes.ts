@@ -17,6 +17,8 @@ export type RealmDirectionsSummary = {
   distanceText: string;
   distanceMeters: number;
   durationSeconds: number;
+  stepsCount?: number;
+  approximate?: boolean;
 };
 
 export type RealmDirectionsOrigin = {
@@ -48,6 +50,7 @@ export function parseDirectionsSummary(
       legs?: Array<{
         duration?: { text: string; value: number };
         distance?: { text: string; value: number };
+        steps?: unknown[];
       }>;
     }>;
   },
@@ -59,6 +62,8 @@ export function parseDirectionsSummary(
     distanceText: leg.distance.text,
     distanceMeters: leg.distance.value,
     durationSeconds: leg.duration.value,
+    stepsCount: leg.steps?.length,
+    approximate: false,
   };
 }
 

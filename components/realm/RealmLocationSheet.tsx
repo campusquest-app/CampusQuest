@@ -67,6 +67,7 @@ export function RealmLocationSheet({
   onRequestWalking,
   onRequestDriving,
   onClearDirections,
+  onOpenInRealmMap,
 }: {
   location: RealmLocation | null;
   mapContent?: GroupedMapLocation | null;
@@ -95,6 +96,7 @@ export function RealmLocationSheet({
   onRequestWalking?: () => void;
   onRequestDriving?: () => void;
   onClearDirections?: () => void;
+  onOpenInRealmMap?: () => void;
 }) {
   const [view, setView] = useState<SheetView>("archive");
   const [mounted, setMounted] = useState(false);
@@ -280,7 +282,6 @@ export function RealmLocationSheet({
                           }
                         : undefined
                   }
-                  onStartQuest={activeQuestCount > 0 ? () => setView("quests") : undefined}
                   onViewEvents={eventsToday > 0 ? () => setView("events") : undefined}
                 />
                 <RealmDirectionsPanel
@@ -292,6 +293,7 @@ export function RealmLocationSheet({
                   onRequestWalking={() => onRequestWalking?.()}
                   onRequestDriving={() => onRequestDriving?.()}
                   onClearDirections={() => onClearDirections?.()}
+                  onOpenInRealmMap={() => onOpenInRealmMap?.()}
                 />
               </div>
 
@@ -397,6 +399,7 @@ export function RealmLocationSheet({
               onRequestWalking={() => onRequestWalking?.()}
               onRequestDriving={() => onRequestDriving?.()}
               onClearDirections={() => onClearDirections?.()}
+              onOpenInRealmMap={() => onOpenInRealmMap?.()}
               onBack={() => {
                 if (location) {
                   setView(view === "overview" ? "archive" : "overview");
@@ -642,6 +645,7 @@ function RealmDetailView({
   onRequestWalking,
   onRequestDriving,
   onClearDirections,
+  onOpenInRealmMap,
   onBack,
   onClose,
   onViewQuests,
@@ -666,6 +670,7 @@ function RealmDetailView({
   onRequestWalking: () => void;
   onRequestDriving: () => void;
   onClearDirections: () => void;
+  onOpenInRealmMap?: () => void;
   onBack: () => void;
   onClose: () => void;
   onViewQuests: () => void;
@@ -719,6 +724,7 @@ function RealmDetailView({
             onRequestWalking={onRequestWalking}
             onRequestDriving={onRequestDriving}
             onClearDirections={onClearDirections}
+            onOpenInRealmMap={onOpenInRealmMap}
           />
         </div>
       </header>

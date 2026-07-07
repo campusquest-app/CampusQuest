@@ -1,0 +1,288 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState, type TouchEvent } from "react";
+import { ControlPosition, MapControl, useMap } from "@vis.gl/react-google-maps";
+import {
+  Building2,
+  Compass,
+  Layers,
+  LocateFixed,
+  Move3d,
+  Navigation,
+  PanelRightClose,
+  PanelRightOpen,
+  RotateCcw,
+  RotateCw,
+} from "lucide-react";
+import { CampusQuestMapMarker } from "./CampusQuestMapMarker";
+import { useRealmMapCamera } from "./useRealmMapCamera";
+import { resetRealmMapCamera, URI_MAP_DEFAULT_ZOOM } from "@/lib/realm/googleMapPose";
+import { isRealmVector3dEnabled, REALM_GOOGLE_MAP_ID } from "@/lib/realm/googleMapConfig";
+
+const SWIPE_COLLAPSE_PX = 28;
+
+export function RealmMapControls({
+  expanded,
+  onExpandedChange,
+  onDenied,
+  onUserLocation,
+  userPos,
+  mapLayer,
+  onToggleMapLayer,
+  immersive = false,
+  vector3dEnabled = isRealmVector3dEnabled(),
+  onBuildingsOverlayChange,
+}: {
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+  onDenied: (message: string) => void;
+  onUserLocation: (pos: { lat: number; lng: number } | null) => void;
+  userPos: { lat: number; lng: number } | null;
+  mapLayer: "campus" | "satellite";
+  onToggleMapLayer: () => void;
+  immersive?: boolean;
+  vector3dEnabled?: boolean;
+  onBuildingsOverlayChange?: (show: boolean) => void;
+}) {
+  const map = useMap();
+  const [locating, setLocating] = useState(false);
+  const touchStartYRef = useRef<number | null>(null);
+  const camera = useRealmMapCamera({
+    mapLayer,
+    vector3dEnabled,
+    onNotice: onDenied,
+    onShowFallbackBuildingsChange: onBuildingsOverlayChange,
+  });
+
+  const showLocateWhenCollapsed = locating || userPos != null;
+
+  const locate = useCallback(() => {
+    if (!navigator.geolocation) {
+      onDenied("Location is not supported on this device.");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        onUserLocation(next);
+        setLocating(false);
+        map?.panTo(next);
+        if ((map?.getZoom() ?? 0) < 16) map?.setZoom(URI_MAP_DEFAULT_ZOOM);
+      },
+      () => {
+        setLocating(false);
+        onDenied("Location permission was denied — you can still explore the map.");
+      },
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
+    );
+  }, [map, onDenied, onUserLocation]);
+
+  const toggleLayer = useCallback(() => {
+    const goingCampus = mapLayer === "satellite";
+    onToggleMapLayer();
+    if (goingCampus && map) {
+      resetRealmMapCamera(map, "campus", vector3dEnabled);
+    } else if (map) {
+      map.setTilt(0);
+    }
+  }, [map, mapLayer, onToggleMapLayer, vector3dEnabled]);
+
+  const handleStackTouchStart = (event: TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length !== 1) return;
+    touchStartYRef.current = event.touches[0].clientY;
+  };
+
+  const handleStackTouchMove = (event: TouchEvent<HTMLDivElement>) => {
+    if (!expanded || touchStartYRef.current == null || event.touches.length !== 1) return;
+    const dy = event.touches[0].clientY - touchStartYRef.current;
+    if (dy > SWIPE_COLLAPSE_PX) {
+      onExpandedChange(false);
+      touchStartYRef.current = null;
+    }
+  };
+
+  const handleStackTouchEnd = () => {
+    touchStartYRef.current = null;
+  };
+
+  useEffect(() => {
+    if (!expanded) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onExpandedChange(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded, onExpandedChange]);
+
+  const stackClass = [
+    "cq-realm-map-controls-stack",
+    expanded ? "cq-realm-map-controls-stack--expanded" : "cq-realm-map-controls-stack--collapsed",
+    immersive ? "cq-realm-map-controls-stack--immersive" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <>
+      <MapControl position={ControlPosition.RIGHT_BOTTOM}>
+        <div
+          className={`cq-realm-map-controls${immersive ? " cq-realm-map-controls--immersive" : ""}`}
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+          onTouchStart={handleStackTouchStart}
+          onTouchMove={handleStackTouchMove}
+          onTouchEnd={handleStackTouchEnd}
+        >
+          <div className={stackClass}>
+            {!expanded && showLocateWhenCollapsed ? (
+              <button
+                type="button"
+                onClick={locate}
+                disabled={locating}
+                className="cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-11 w-11 items-center justify-center touch-manipulation disabled:opacity-60"
+                aria-label="Center map on my location"
+                title="My location"
+              >
+                <LocateFixed
+                  className={`h-[18px] w-[18px] ${locating ? "animate-pulse" : ""}`}
+                  strokeWidth={2.2}
+                />
+              </button>
+            ) : null}
+
+            <div className="cq-realm-map-controls-expandable" aria-hidden={!expanded}>
+              <button
+                type="button"
+                onClick={locate}
+                disabled={locating}
+                className="cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--delay-1 flex h-11 w-11 items-center justify-center touch-manipulation disabled:opacity-60"
+                aria-label="Center map on my location"
+                title="My location"
+                tabIndex={expanded ? 0 : -1}
+              >
+                <LocateFixed
+                  className={`h-[18px] w-[18px] ${locating ? "animate-pulse" : ""}`}
+                  strokeWidth={2.2}
+                />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void camera.toggleTilt()}
+                className={`cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--delay-2 flex h-11 w-11 items-center justify-center touch-manipulation${
+                  camera.isCinematic ? " cq-realm-float-btn--active cq-realm-float-btn--tilt-active" : ""
+                }`}
+                aria-label={camera.isCinematic ? "Switch to flat map view" : "Switch to 3D tilted view"}
+                aria-pressed={camera.isCinematic}
+                title={camera.isCinematic ? "Flat view" : "3D tilt"}
+                tabIndex={expanded ? 0 : -1}
+              >
+                <Move3d className="h-[18px] w-[18px]" strokeWidth={2.2} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void camera.toggleBuildings()}
+                className={`cq-realm-float-btn cq-realm-float-btn--buildings cq-realm-map-controls-item cq-realm-map-controls-item--delay-3 flex h-11 w-11 items-center justify-center touch-manipulation${
+                  camera.buildingsMode ? " cq-realm-float-btn--active cq-realm-float-btn--buildings-active" : ""
+                }`}
+                aria-label={camera.buildingsMode ? "Hide raised buildings" : "Show raised buildings"}
+                aria-pressed={camera.buildingsMode}
+                title={camera.buildingsMode ? "Flat buildings" : "Raised buildings"}
+                tabIndex={expanded ? 0 : -1}
+              >
+                <Building2 className="h-[18px] w-[18px]" strokeWidth={2.2} />
+              </button>
+
+              <div className="cq-realm-map-controls-rotate-row cq-realm-map-controls-item cq-realm-map-controls-item--delay-4 flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={camera.rotateLeft}
+                  className="cq-realm-float-btn cq-realm-float-btn--compact flex h-9 w-9 items-center justify-center touch-manipulation"
+                  aria-label="Rotate map left"
+                  title="Rotate left"
+                  tabIndex={expanded ? 0 : -1}
+                >
+                  <RotateCcw className="h-4 w-4" strokeWidth={2.2} />
+                </button>
+                {camera.showCompass ? (
+                  <button
+                    type="button"
+                    onClick={camera.resetHeading}
+                    className="cq-realm-float-btn cq-realm-float-btn--compact cq-realm-float-btn--compass flex h-9 w-9 items-center justify-center touch-manipulation"
+                    aria-label="Reset map to north-up"
+                    title="North up"
+                    tabIndex={expanded ? 0 : -1}
+                  >
+                    <Compass className="h-4 w-4" strokeWidth={2.2} />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={camera.rotateRight}
+                  className="cq-realm-float-btn cq-realm-float-btn--compact flex h-9 w-9 items-center justify-center touch-manipulation"
+                  aria-label="Rotate map right"
+                  title="Rotate right"
+                  tabIndex={expanded ? 0 : -1}
+                >
+                  <RotateCw className="h-4 w-4" strokeWidth={2.2} />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={camera.resetCamera}
+                className="cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--delay-5 flex h-11 w-11 items-center justify-center touch-manipulation"
+                aria-label="Reset campus map view"
+                title="Reset view"
+                tabIndex={expanded ? 0 : -1}
+              >
+                <Navigation className="h-[18px] w-[18px]" strokeWidth={2.2} />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleLayer}
+                className={`cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--delay-6 flex h-11 w-11 items-center justify-center touch-manipulation${
+                  mapLayer === "satellite" ? " cq-realm-float-btn--active" : ""
+                }`}
+                aria-label={mapLayer === "campus" ? "Switch to satellite view" : "Switch to campus view"}
+                aria-pressed={mapLayer === "satellite"}
+                title={mapLayer === "campus" ? "Satellite view" : "Campus view"}
+                tabIndex={expanded ? 0 : -1}
+              >
+                <Layers className="h-[18px] w-[18px]" strokeWidth={2.2} />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onExpandedChange(!expanded)}
+              className={`cq-realm-float-btn cq-realm-map-controls-toggle flex h-11 w-11 items-center justify-center touch-manipulation${
+                expanded ? " cq-realm-map-controls-toggle--expanded" : ""
+              }`}
+              aria-label={expanded ? "Hide map controls" : "Show map controls"}
+              aria-expanded={expanded}
+              title={expanded ? "Hide controls" : "Map controls"}
+            >
+              {expanded ? (
+                <PanelRightClose className="h-[18px] w-[18px]" strokeWidth={2.2} />
+              ) : (
+                <PanelRightOpen className="h-[18px] w-[18px]" strokeWidth={2.2} />
+              )}
+            </button>
+          </div>
+        </div>
+      </MapControl>
+
+      {userPos ? (
+        <CampusQuestMapMarker position={userPos} zIndex={5}>
+          <span className="cq-gmap-user-dot" aria-label="Your location">
+            <span className="cq-gmap-user-dot-pulse" aria-hidden />
+          </span>
+        </CampusQuestMapMarker>
+      ) : null}
+    </>
+  );
+}

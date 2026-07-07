@@ -9,7 +9,7 @@ import {
   MapControl,
   useMap,
 } from "@vis.gl/react-google-maps";
-import { AlertTriangle, Compass, Layers, LocateFixed, MapPinOff, Move3d, Navigation, RotateCcw, RotateCw } from "lucide-react";
+import { AlertTriangle, MapPinOff } from "lucide-react";
 import type { RealmLocationId } from "@/lib/realm/locations";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
@@ -18,11 +18,9 @@ import { isRealmVector3dEnabled, REALM_GOOGLE_MAP_ID } from "@/lib/realm/googleM
 import {
   URI_MAP_CENTER,
   URI_MAP_DEFAULT_ZOOM,
-  URI_MAP_CINEMATIC_TILT,
   URI_MAP_MAX_ZOOM,
   URI_MAP_MIN_ZOOM,
   URI_MAP_TYPE_ID,
-  resetRealmMapCamera,
 } from "@/lib/realm/googleMapPose";
 import { vibrateMapMarkerTap } from "@/lib/realm/mapMarkerHaptic";
 import {
@@ -37,8 +35,10 @@ import { QuestPathOverlay } from "./QuestPathOverlay";
 import { RealmDirectionsOverlay, type RealmDirectionsLoadResult } from "./RealmDirectionsOverlay";
 import { RealmMapFlyTo } from "./RealmMapFlyTo";
 import { RealmMapCameraBootstrap } from "./RealmMapCameraBootstrap";
+import { RealmMapControls } from "./RealmMapControls";
+import { RealmMapVectorInit } from "./RealmMapVectorInit";
+import { RealmRaisedBuildingsOverlay } from "./RealmRaisedBuildingsOverlay";
 import { RealmMapMarker } from "./RealmMapMarker";
-import { useRealmMapCamera } from "./useRealmMapCamera";
 import { markerRevealOpacity, useMapZoom } from "./useMapZoom";
 import type { RealmDirectionsRequest } from "@/lib/realm/realmDirectionsTypes";
 import {
@@ -110,154 +110,6 @@ function groupMatchesFilter(group: GroupedMapLocation, filter: MapMarkerFilter):
 export function hasTrackableQuest(landmark: GoogleRealmMapLandmark): boolean {
   const variant = resolveLandmarkMarkerVariant(landmark);
   return variant === "quest" || variant === "legendary";
-}
-
-function MapActionButtons({
-  onDenied,
-  onUserLocation,
-  userPos,
-  mapLayer,
-  onToggleMapLayer,
-  immersive = false,
-  vector3dEnabled = REALM_VECTOR_3D_ENABLED,
-}: {
-  onDenied: (message: string) => void;
-  onUserLocation: (pos: { lat: number; lng: number } | null) => void;
-  userPos: { lat: number; lng: number } | null;
-  mapLayer: "campus" | "satellite";
-  onToggleMapLayer: () => void;
-  immersive?: boolean;
-  vector3dEnabled?: boolean;
-}) {
-  const map = useMap();
-  const [locating, setLocating] = useState(false);
-  const camera = useRealmMapCamera({
-    mapLayer,
-    vector3dEnabled,
-    onNotice: onDenied,
-  });
-
-  const locate = useCallback(() => {
-    if (!navigator.geolocation) {
-      onDenied("Location is not supported on this device.");
-      return;
-    }
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        onUserLocation(next);
-        setLocating(false);
-        map?.panTo(next);
-        if ((map?.getZoom() ?? 0) < 16) map?.setZoom(URI_MAP_DEFAULT_ZOOM);
-      },
-      () => {
-        setLocating(false);
-        onDenied("Location permission was denied — you can still explore the map.");
-      },
-      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
-    );
-  }, [map, onDenied, onUserLocation]);
-
-  const toggleLayer = useCallback(() => {
-    const goingCampus = mapLayer === "satellite";
-    onToggleMapLayer();
-    if (goingCampus && map) {
-      resetRealmMapCamera(map, "campus", vector3dEnabled);
-    } else if (map) {
-      map.setTilt(0);
-    }
-  }, [map, mapLayer, onToggleMapLayer, vector3dEnabled]);
-
-  return (
-    <>
-      <MapControl position={ControlPosition.RIGHT_BOTTOM}>
-        <div
-          className={`cq-realm-map-controls flex flex-col gap-2${immersive ? " cq-realm-map-controls--immersive" : ""}`}
-        >
-          <button
-            type="button"
-            onClick={locate}
-            disabled={locating}
-            className="cq-realm-float-btn flex h-11 w-11 items-center justify-center touch-manipulation disabled:opacity-60"
-            aria-label="Center map on my location"
-            title="My location"
-          >
-            <LocateFixed className={`h-[18px] w-[18px] ${locating ? "animate-pulse" : ""}`} strokeWidth={2.2} />
-          </button>
-          <button
-            type="button"
-            onClick={camera.toggleTilt}
-            className={`cq-realm-float-btn flex h-11 w-11 items-center justify-center touch-manipulation${
-              camera.isCinematic ? " cq-realm-float-btn--active" : ""
-            }`}
-            aria-label={camera.isCinematic ? "Switch to flat map view" : "Switch to 3D tilted view"}
-            aria-pressed={camera.isCinematic}
-            title={camera.isCinematic ? "Flat view" : "3D tilt"}
-          >
-            <Move3d className="h-[18px] w-[18px]" strokeWidth={2.2} />
-          </button>
-          <div className="cq-realm-map-controls-rotate-row flex gap-1.5">
-            <button
-              type="button"
-              onClick={camera.rotateLeft}
-              className="cq-realm-float-btn cq-realm-float-btn--compact flex h-9 w-9 items-center justify-center touch-manipulation"
-              aria-label="Rotate map left"
-              title="Rotate left"
-            >
-              <RotateCcw className="h-4 w-4" strokeWidth={2.2} />
-            </button>
-            <button
-              type="button"
-              onClick={camera.resetHeading}
-              className="cq-realm-float-btn cq-realm-float-btn--compact flex h-9 w-9 items-center justify-center touch-manipulation"
-              aria-label="Reset map to north-up"
-              title="North up"
-            >
-              <Compass className="h-4 w-4" strokeWidth={2.2} />
-            </button>
-            <button
-              type="button"
-              onClick={camera.rotateRight}
-              className="cq-realm-float-btn cq-realm-float-btn--compact flex h-9 w-9 items-center justify-center touch-manipulation"
-              aria-label="Rotate map right"
-              title="Rotate right"
-            >
-              <RotateCw className="h-4 w-4" strokeWidth={2.2} />
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={camera.resetCamera}
-            className="cq-realm-float-btn flex h-11 w-11 items-center justify-center touch-manipulation"
-            aria-label="Reset campus map view"
-            title="Reset view"
-          >
-            <Navigation className="h-[18px] w-[18px]" strokeWidth={2.2} />
-          </button>
-          <button
-            type="button"
-            onClick={toggleLayer}
-            className={`cq-realm-float-btn flex h-11 w-11 items-center justify-center touch-manipulation${
-              mapLayer === "satellite" ? " cq-realm-float-btn--active" : ""
-            }`}
-            aria-label={mapLayer === "campus" ? "Switch to satellite view" : "Switch to campus view"}
-            aria-pressed={mapLayer === "satellite"}
-            title={mapLayer === "campus" ? "Satellite view" : "Campus view"}
-          >
-            <Layers className="h-[18px] w-[18px]" strokeWidth={2.2} />
-          </button>
-        </div>
-      </MapControl>
-      {userPos ? (
-        <CampusQuestMapMarker position={userPos} zIndex={5}>
-          <span className="cq-gmap-user-dot" aria-label="Your location">
-            <span className="cq-gmap-user-dot-pulse" aria-hidden />
-          </span>
-        </CampusQuestMapMarker>
-      ) : null}
-    </>
-  );
 }
 
 function RealmMapReadyProbe({ onReady }: { onReady: (source: string) => void }) {
@@ -536,6 +388,7 @@ export function GoogleRealmMap({
   isActive = true,
   flyToTarget = null,
   flyToEnabled = false,
+  routeSheetOpen = false,
   directionsRequest = null,
   onDirectionsLoaded,
   onDirectionsError,
@@ -558,6 +411,7 @@ export function GoogleRealmMap({
   isActive?: boolean;
   flyToTarget?: { lat: number; lng: number } | null;
   flyToEnabled?: boolean;
+  routeSheetOpen?: boolean;
   directionsRequest?: RealmDirectionsRequest | null;
   onDirectionsLoaded?: (result: RealmDirectionsLoadResult & { ok: true }) => void;
   onDirectionsError?: (result: RealmDirectionsLoadResult & { ok: false }) => void;
@@ -568,6 +422,8 @@ export function GoogleRealmMap({
   const [tilesLoaded, setTilesLoaded] = useState(() => isRealmMapTilesReady());
   const [notice, setNotice] = useState<string | null>(null);
   const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
+  const [controlsExpanded, setControlsExpanded] = useState(false);
+  const [showFallbackBuildings, setShowFallbackBuildings] = useState(false);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const tilesReadyRef = useRef(isRealmMapTilesReady());
   const sessionStartedRef = useRef(false);
@@ -646,6 +502,7 @@ export function GoogleRealmMap({
 
   const handleMapClick = useCallback(
     (event: { detail: { latLng: { lat: number; lng: number } | null } }) => {
+      setControlsExpanded(false);
       if (!editMode || !editorSelectedId) return;
       const latLng = event.detail.latLng;
       if (!latLng) return;
@@ -707,7 +564,7 @@ export function GoogleRealmMap({
           mapTypeId={mapLayer === "campus" ? URI_MAP_TYPE_ID : "satellite"}
           defaultCenter={URI_MAP_CENTER}
           defaultZoom={URI_MAP_DEFAULT_ZOOM}
-          defaultTilt={vector3dEnabled && mapLayer === "campus" ? URI_MAP_CINEMATIC_TILT : 0}
+          defaultTilt={0}
           defaultHeading={0}
           minZoom={URI_MAP_MIN_ZOOM}
           maxZoom={URI_MAP_MAX_ZOOM}
@@ -726,13 +583,18 @@ export function GoogleRealmMap({
           <RealmMapVisibilityHandler visible={isActive} onRecoverStall={recoverMapStall} />
           <RealmMapFlyTo target={flyToTarget} enabled={flyToEnabled && isActive} />
           <RealmMapContainerObserver surfaceRef={surfaceRef} />
+          <RealmMapVectorInit vector3dEnabled={vector3dEnabled} tilesLoaded={tilesLoaded} />
           <RealmMapCameraBootstrap
             mapLayer={mapLayer}
             vector3dEnabled={vector3dEnabled}
             tilesLoaded={tilesLoaded}
-            onTiltUnsupported={() =>
-              showNotice("3D buildings aren't available on this device — showing flat view.")
-            }
+          />
+
+          <RealmRaisedBuildingsOverlay
+            enabled={showFallbackBuildings && mapLayer === "campus" && !editMode}
+            landmarks={landmarks.map((landmark) => ({ id: landmark.id, major: landmark.major }))}
+            geoPositions={geoPositions}
+            activeMarkerId={activeMarkerId}
           />
 
           <RealmMapMarkers
@@ -756,11 +618,14 @@ export function GoogleRealmMap({
           <RealmDirectionsOverlay
             request={directionsRequest}
             enabled={!editMode && directionsActive}
+            routeSheetOpen={routeSheetOpen}
             onLoaded={handleDirectionsLoaded}
             onError={handleDirectionsError}
           />
 
-          <MapActionButtons
+          <RealmMapControls
+            expanded={controlsExpanded}
+            onExpandedChange={setControlsExpanded}
             onDenied={showNotice}
             onUserLocation={setUserPos}
             userPos={userPos}
@@ -768,6 +633,7 @@ export function GoogleRealmMap({
             onToggleMapLayer={toggleMapLayer}
             immersive={immersive}
             vector3dEnabled={vector3dEnabled}
+            onBuildingsOverlayChange={setShowFallbackBuildings}
           />
 
           {!editMode ? (

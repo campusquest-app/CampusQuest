@@ -11307,6 +11307,109 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   margin-bottom: calc(
     var(--cq-bottom-nav-h, 4rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 4.5rem
   );
+  pointer-events: none;
+}
+
+.cq-realm-map-controls-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  pointer-events: auto;
+}
+
+.cq-realm-map-controls-expandable {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.cq-realm-map-controls-item {
+  opacity: 0;
+  transform: translate3d(0, 14px, 0) scale(0.9);
+  pointer-events: none;
+  transition:
+    opacity 260ms cubic-bezier(0.34, 1.2, 0.64, 1),
+    transform 260ms cubic-bezier(0.34, 1.2, 0.64, 1);
+  will-change: transform, opacity;
+}
+
+.cq-realm-map-controls-stack--expanded .cq-realm-map-controls-item {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  pointer-events: auto;
+}
+
+.cq-realm-map-controls-stack--expanded .cq-realm-map-controls-item--delay-1 {
+  transition-delay: 20ms;
+}
+.cq-realm-map-controls-stack--expanded .cq-realm-map-controls-item--delay-2 {
+  transition-delay: 40ms;
+}
+.cq-realm-map-controls-stack--expanded .cq-realm-map-controls-item--delay-3 {
+  transition-delay: 60ms;
+}
+.cq-realm-map-controls-stack--expanded .cq-realm-map-controls-item--delay-4 {
+  transition-delay: 80ms;
+}
+.cq-realm-map-controls-stack--expanded .cq-realm-map-controls-item--delay-5 {
+  transition-delay: 100ms;
+}
+.cq-realm-map-controls-stack--expanded .cq-realm-map-controls-item--delay-6 {
+  transition-delay: 120ms;
+}
+
+.cq-realm-map-controls-stack--collapsed .cq-realm-map-controls-expandable {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cq-realm-map-controls-stack--expanded .cq-realm-map-controls-expandable {
+  max-height: 28rem;
+  opacity: 1;
+  overflow: visible;
+  transition: max-height 320ms cubic-bezier(0.34, 1.2, 0.64, 1), opacity 220ms ease;
+}
+
+.cq-realm-map-controls-item--visible-collapsed {
+  opacity: 1 !important;
+  transform: translate3d(0, 0, 0) scale(1) !important;
+  pointer-events: auto !important;
+}
+
+.cq-realm-map-controls-stack .cq-realm-float-btn {
+  animation: none;
+}
+
+.cq-realm-map-controls-toggle {
+  opacity: 1 !important;
+  transform: translate3d(0, 0, 0) scale(1) !important;
+  pointer-events: auto !important;
+  animation: none;
+}
+
+.cq-realm-map-controls-toggle--expanded {
+  transform: translate3d(0, 0, 0) rotate(-8deg) scale(1) !important;
+}
+
+.cq-realm-float-btn--tilt-active,
+.cq-realm-float-btn--buildings-active {
+  border-color: rgba(93, 187, 255, 0.85);
+  background: rgba(18, 58, 102, 0.94);
+  box-shadow:
+    0 0 22px rgba(75, 174, 255, 0.42),
+    0 4px 20px rgba(0, 40, 90, 0.42);
+}
+
+.cq-realm-float-btn--buildings-active {
+  border-color: rgba(197, 160, 40, 0.55);
+  box-shadow:
+    0 0 20px rgba(197, 160, 40, 0.28),
+    0 0 18px rgba(75, 174, 255, 0.3),
+    0 4px 20px rgba(0, 40, 90, 0.42);
 }
 
 .cq-realm-map-controls-rotate-row {
@@ -11326,30 +11429,8 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   animation: cq-realm-controls-in 480ms ease 360ms forwards;
 }
 
-.cq-realm-map-controls--immersive .cq-realm-float-btn:nth-child(1) {
-  animation-delay: 360ms;
-}
-
-.cq-realm-map-controls--immersive .cq-realm-float-btn:nth-child(2) {
-  animation-delay: 400ms;
-}
-
-.cq-realm-map-controls--immersive .cq-realm-map-controls-rotate-row {
-  animation: cq-realm-controls-in 480ms ease 440ms forwards;
-  opacity: 0;
-}
-
-.cq-realm-map-controls--immersive .cq-realm-map-controls-rotate-row .cq-realm-float-btn {
+.cq-realm-map-controls--immersive .cq-realm-map-controls-toggle {
   animation: none;
-  opacity: 1;
-}
-
-.cq-realm-map-controls--immersive .cq-realm-float-btn:nth-child(4) {
-  animation-delay: 480ms;
-}
-
-.cq-realm-map-controls--immersive .cq-realm-float-btn:nth-child(5) {
-  animation-delay: 520ms;
 }
 
 @keyframes cq-realm-controls-in {
@@ -16491,6 +16572,69 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   }
 }
 
+/* Raised building fallback overlays (Google map) */
+.cq-raised-building-pin {
+  position: absolute;
+  width: 34px;
+  height: 22px;
+  transform: translate3d(-50%, -50%, 0);
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition:
+    transform 320ms cubic-bezier(0.34, 1.15, 0.64, 1),
+    opacity 280ms ease;
+}
+
+.cq-raised-building-pin-body {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  border: 1px solid rgba(93, 187, 255, 0.45);
+  background: linear-gradient(180deg, rgba(18, 54, 93, 0.82), rgba(8, 28, 58, 0.92));
+  box-shadow: 0 0 10px rgba(79, 216, 255, 0.18);
+  transform: translate3d(0, 0, 0);
+  transition: transform 320ms cubic-bezier(0.34, 1.15, 0.64, 1), box-shadow 280ms ease;
+}
+
+.cq-raised-building-pin-shadow {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: -4px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  filter: blur(3px);
+  opacity: 0;
+  transition: opacity 280ms ease;
+}
+
+.cq-raised-building-pin--major .cq-raised-building-pin-body {
+  width: 110%;
+  height: 110%;
+}
+
+.cq-raised-building-pin--raised .cq-raised-building-pin-body {
+  transform: translate3d(0, -6px, 0) scale(1.03);
+  box-shadow:
+    0 8px 14px rgba(0, 0, 0, 0.35),
+    0 0 14px rgba(79, 216, 255, 0.28);
+}
+
+.cq-raised-building-pin--raised .cq-raised-building-pin-shadow {
+  opacity: 0.75;
+}
+
+.cq-raised-building-pin--selected.cq-raised-building-pin--raised .cq-raised-building-pin-body {
+  transform: translate3d(0, -9px, 0) scale(1.08);
+  border-color: rgba(197, 160, 40, 0.55);
+  box-shadow:
+    0 10px 18px rgba(0, 0, 0, 0.4),
+    0 0 18px rgba(197, 160, 40, 0.22),
+    0 0 16px rgba(79, 216, 255, 0.32);
+}
+
 .cq-realm-map-filter {
   display: flex;
   gap: 0.25rem;
@@ -16743,6 +16887,215 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   flex-direction: column;
   gap: 0.35rem;
   padding-top: 0.15rem;
+}
+
+.cq-realm-directions-realm-open {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+}
+
+.cq-realm-directions-realm-btn {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 18px;
+  border: 1px solid rgba(93, 187, 255, 0.55);
+  background: linear-gradient(180deg, rgba(75, 174, 255, 0.24), rgba(12, 42, 78, 0.92));
+  padding: 0.7rem 0.85rem;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e8f7ff;
+  box-shadow: 0 0 20px rgba(75, 174, 255, 0.18);
+}
+
+.cq-realm-directions-realm-hint {
+  margin: 0;
+  font-size: 11px;
+  color: rgba(165, 243, 252, 0.68);
+  text-align: center;
+}
+
+.cq-realm-directions--collapsed {
+  margin-top: 0.35rem;
+}
+
+.cq-realm-directions-collapsed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(75, 174, 255, 0.32);
+  background: rgba(8, 28, 58, 0.88);
+  padding: 0.4rem 0.7rem;
+  font-size: 11px;
+  font-weight: 700;
+  color: #b8ecff;
+}
+
+.cq-realm-route-sheet-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  pointer-events: none;
+}
+
+.cq-realm-route-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: auto;
+  border-radius: 1.25rem 1.25rem 0 0;
+  border: 1px solid rgba(75, 174, 255, 0.32);
+  border-bottom: none;
+  background: rgba(5, 18, 40, 0.94);
+  box-shadow: 0 -12px 40px rgba(0, 30, 70, 0.45);
+  padding: 0.35rem 1rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+}
+
+.cq-realm-route-sheet--expanded {
+  min-height: 8.5rem;
+}
+
+.cq-realm-route-sheet-handle {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  padding: 0.35rem 0 0.55rem;
+  border: 0;
+  background: transparent;
+}
+
+.cq-realm-route-sheet-grabber {
+  width: 2.4rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.cq-realm-route-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.cq-realm-route-sheet-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.2rem;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: rgba(125, 211, 252, 0.9);
+}
+
+.cq-realm-route-sheet-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #fff;
+}
+
+.cq-realm-route-sheet-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(75, 174, 255, 0.28);
+  background: rgba(8, 28, 58, 0.88);
+  color: #dbeafe;
+}
+
+.cq-realm-route-sheet-meta {
+  margin: 0.55rem 0 0;
+  font-size: 12px;
+  color: rgba(216, 236, 255, 0.82);
+}
+
+.cq-realm-route-sheet-meta--error {
+  color: #fecaca;
+}
+
+.cq-realm-route-sheet-body {
+  margin-top: 0.55rem;
+}
+
+.cq-realm-route-sheet-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e0f2fe;
+}
+
+.cq-realm-route-sheet-note {
+  margin: 0.35rem 0 0;
+  font-size: 11px;
+  color: rgba(165, 243, 252, 0.68);
+}
+
+.cq-route-marker {
+  position: relative;
+  display: block;
+  transform: translate3d(0, 0, 0);
+}
+
+.cq-route-marker--start {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #22c55e;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.55);
+}
+
+.cq-route-marker-pulse {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(34, 197, 94, 0.45);
+  animation: cq-route-marker-pulse 2.4s ease-out infinite;
+}
+
+.cq-route-marker--end .cq-route-marker-pin {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #4baeff;
+  box-shadow: 0 0 14px rgba(75, 174, 255, 0.55);
+}
+
+@keyframes cq-route-marker-pulse {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.7);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.45);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-route-marker-pulse {
+    animation: none;
+  }
 }
 
 .cq-realm-map-chrome-top {

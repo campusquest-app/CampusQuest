@@ -25,10 +25,13 @@ Use this after changes to the Realm map, markers, directions, or location sheet.
 
 ## Directions
 
-- [ ] Tap Walk here — route draws; walking time and distance shown
-- [ ] More options → driving mode works for long routes
-- [ ] Open in Google Maps link works
-- [ ] Deny location permission — Quad/campus center fallback still routes
+- [ ] Tap Walk here — route loads in location sheet
+- [ ] Tap **Open in Realm Map** — stays in CampusQuest (no Google Maps)
+- [ ] Route line draws on map with start + destination markers
+- [ ] Route bottom sheet shows time, distance, and steps
+- [ ] Close route removes polyline and clears sheet
+- [ ] Drive instead opens Google Maps (external)
+- [ ] Deny location permission — approximate route from Quad fallback
 
 ## Camera (Safari/iOS)
 
