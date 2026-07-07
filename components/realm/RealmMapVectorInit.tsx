@@ -22,7 +22,7 @@ export function RealmMapVectorInit({
     if (process.env.NODE_ENV !== "development") return;
     if (!REALM_GOOGLE_MAP_ID) {
       console.warn(
-        "[cq:realm-map] NEXT_PUBLIC_GOOGLE_MAP_ID is missing; native 3D buildings may not render.",
+        "[cq:realm-map] Google Vector Map ID missing. Native 3D buildings unavailable.",
       );
     }
   }, []);

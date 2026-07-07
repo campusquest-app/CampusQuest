@@ -70,6 +70,10 @@
   --cq-dock-scale: 1;
   --cq-dock-opacity: 1;
   --cq-feed-bottom-clearance: calc(var(--cq-bottom-nav-h) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 0.875rem);
+  /* Realm map: space occupied by the floating bottom nav (nav + gap + iOS safe area). */
+  --cq-realm-nav-clearance: calc(var(--cq-bottom-nav-h, 4rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px));
+  /* Safe bottom padding for Realm UI: nav clearance + 24px breathing room. */
+  --cq-realm-bottom-clearance: calc(var(--cq-realm-nav-clearance) + 24px);
 }
 
 /* —— Mobile-safe motion utilities (transform/opacity — Safari-friendly) —— */
@@ -11160,9 +11164,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   right: 0;
   bottom: 0;
   left: 0;
-  height: calc(
-    var(--cq-bottom-nav-h, 4rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 3.5rem
-  );
+  height: calc(var(--cq-realm-nav-clearance) + 3.5rem);
   pointer-events: none;
   background: linear-gradient(
     to top,
@@ -11181,7 +11183,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   left: 0;
   padding:
     3.25rem max(1rem, env(safe-area-inset-right, 0px))
-    calc(var(--cq-bottom-nav-h, 4rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 0.35rem)
+    var(--cq-realm-bottom-clearance)
     max(1rem, env(safe-area-inset-left, 0px));
   text-align: center;
   background: linear-gradient(
@@ -11304,9 +11306,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
 
 .cq-realm-map-controls {
   margin-right: max(0.75rem, env(safe-area-inset-right, 0px));
-  margin-bottom: calc(
-    var(--cq-bottom-nav-h, 4rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 4.5rem
-  );
+  margin-bottom: calc(var(--cq-realm-nav-clearance) + 4.5rem);
   pointer-events: none;
 }
 
@@ -11422,9 +11422,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
 
 .cq-realm-map-controls--classic-reset {
   right: max(0.75rem, env(safe-area-inset-right, 0px));
-  bottom: calc(
-    var(--cq-bottom-nav-h, 4rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 4.5rem
-  );
+  bottom: calc(var(--cq-realm-nav-clearance) + 4.5rem);
   opacity: 1;
   animation: cq-realm-controls-in 480ms ease 360ms forwards;
 }
@@ -16733,6 +16731,11 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   color: rgba(216, 236, 255, 0.55);
 }
 
+/* Keep bottom-center map toasts above the floating bottom nav. */
+.cq-realm-map-surface .cq-realm-map-toast {
+  margin-bottom: var(--cq-realm-bottom-clearance);
+}
+
 .cq-realm-archive-directions-wrap {
   margin-top: -0.25rem;
   margin-bottom: 0.75rem;
@@ -16954,7 +16957,8 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   border-bottom: none;
   background: rgba(5, 18, 40, 0.94);
   box-shadow: 0 -12px 40px rgba(0, 30, 70, 0.45);
-  padding: 0.35rem 1rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+  /* Bottom padding clears the floating bottom nav so route info and controls stay tappable. */
+  padding: 0.35rem 1rem calc(0.85rem + var(--cq-realm-nav-clearance, env(safe-area-inset-bottom, 0px)));
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   will-change: transform;

@@ -17,7 +17,7 @@ import {
 import { CampusQuestMapMarker } from "./CampusQuestMapMarker";
 import { useRealmMapCamera } from "./useRealmMapCamera";
 import { resetRealmMapCamera, URI_MAP_DEFAULT_ZOOM } from "@/lib/realm/googleMapPose";
-import { isRealmVector3dEnabled, REALM_GOOGLE_MAP_ID } from "@/lib/realm/googleMapConfig";
+import { isRealmVector3dEnabled } from "@/lib/realm/googleMapConfig";
 
 const SWIPE_COLLAPSE_PX = 28;
 
@@ -170,12 +170,21 @@ export function RealmMapControls({
               <button
                 type="button"
                 onClick={() => void camera.toggleTilt()}
-                className={`cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--delay-2 flex h-11 w-11 items-center justify-center touch-manipulation${
+                disabled={mapLayer !== "campus" || camera.tiltDisabled}
+                className={`cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--delay-2 flex h-11 w-11 items-center justify-center touch-manipulation disabled:opacity-50${
                   camera.isCinematic ? " cq-realm-float-btn--active cq-realm-float-btn--tilt-active" : ""
                 }`}
                 aria-label={camera.isCinematic ? "Switch to flat map view" : "Switch to 3D tilted view"}
                 aria-pressed={camera.isCinematic}
-                title={camera.isCinematic ? "Flat view" : "3D tilt"}
+                title={
+                  camera.tiltDisabled
+                    ? "3D view isn't supported on this device."
+                    : mapLayer !== "campus"
+                      ? "Switch to campus view for 3D"
+                      : camera.isCinematic
+                        ? "Flat view"
+                        : "3D tilt"
+                }
                 tabIndex={expanded ? 0 : -1}
               >
                 <Move3d className="h-[18px] w-[18px]" strokeWidth={2.2} />
@@ -184,12 +193,19 @@ export function RealmMapControls({
               <button
                 type="button"
                 onClick={() => void camera.toggleBuildings()}
-                className={`cq-realm-float-btn cq-realm-float-btn--buildings cq-realm-map-controls-item cq-realm-map-controls-item--delay-3 flex h-11 w-11 items-center justify-center touch-manipulation${
-                  camera.buildingsMode ? " cq-realm-float-btn--active cq-realm-float-btn--buildings-active" : ""
+                disabled={mapLayer !== "campus"}
+                className={`cq-realm-float-btn cq-realm-float-btn--buildings cq-realm-map-controls-item cq-realm-map-controls-item--delay-3 flex h-11 w-11 items-center justify-center touch-manipulation disabled:opacity-50${
+                  camera.buildingsActive ? " cq-realm-float-btn--active cq-realm-float-btn--buildings-active" : ""
                 }`}
-                aria-label={camera.buildingsMode ? "Hide raised buildings" : "Show raised buildings"}
-                aria-pressed={camera.buildingsMode}
-                title={camera.buildingsMode ? "Flat buildings" : "Raised buildings"}
+                aria-label={camera.buildingsActive ? "Hide raised buildings" : "Show raised buildings"}
+                aria-pressed={camera.buildingsActive}
+                title={
+                  mapLayer !== "campus"
+                    ? "Switch to campus view for raised buildings"
+                    : camera.buildingsActive
+                      ? "Flat buildings"
+                      : "Raised buildings"
+                }
                 tabIndex={expanded ? 0 : -1}
               >
                 <Building2 className="h-[18px] w-[18px]" strokeWidth={2.2} />
@@ -232,7 +248,7 @@ export function RealmMapControls({
 
               <button
                 type="button"
-                onClick={camera.resetCamera}
+                onClick={() => void camera.resetCamera()}
                 className="cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--delay-5 flex h-11 w-11 items-center justify-center touch-manipulation"
                 aria-label="Reset campus map view"
                 title="Reset view"

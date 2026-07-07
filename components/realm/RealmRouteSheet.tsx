@@ -50,7 +50,8 @@ export function RealmRouteSheet({
         ? `translate3d(0, ${dragY}px, 0)`
         : expanded
           ? "translate3d(0, 0, 0)"
-          : "translate3d(0, calc(100% - 4.5rem), 0)",
+          // Collapsed resting position keeps the drag handle above the floating bottom nav.
+          : "translate3d(0, calc(100% - 4.5rem - var(--cq-realm-nav-clearance, 0px)), 0)",
     transition: dragging
       ? "none"
       : `transform ${SWIPE_TRANSITION_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`,

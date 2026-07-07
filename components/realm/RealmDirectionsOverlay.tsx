@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMap } from "@vis.gl/react-google-maps";
 import { buildApproximateCampusRoute } from "@/lib/realm/approximateCampusRoute";
-import { resolveDirectionsOrigin } from "@/lib/realm/resolveDirectionsOrigin";
+import { resolveLiveUserLocation, toDirectionsOrigin } from "@/lib/realm/resolveDirectionsOrigin";
 import {
   parseDirectionsSummary,
   type RealmDirectionsOrigin,
@@ -71,16 +71,45 @@ function buildPulseIcons(): google.maps.IconSequence[] | undefined {
   ];
 }
 
+/** Height the floating bottom nav (plus safe area) occupies over the map, in px. */
+function bottomNavClearancePx(): number {
+  if (typeof window === "undefined" || typeof document === "undefined") return 0;
+  const nav = document.querySelector(".cq-dock-nav");
+  if (!(nav instanceof HTMLElement)) return 0;
+  const rect = nav.getBoundingClientRect();
+  if (rect.height === 0) return 0;
+  return Math.max(0, Math.round(window.innerHeight - rect.top));
+}
+
 function fitRouteBounds(
   map: google.maps.Map,
   path: google.maps.LatLng[],
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
   bottomPadding: number,
 ): void {
   const bounds = new google.maps.LatLngBounds();
+  // Always include both endpoints so the blue user marker and the
+  // destination marker stay in view — never center on the destination alone.
+  bounds.extend(new google.maps.LatLng(origin.lat, origin.lng));
+  bounds.extend(new google.maps.LatLng(destination.lat, destination.lng));
   for (const point of path) bounds.extend(point);
   if (!bounds.isEmpty()) {
     map.fitBounds(bounds, { top: 88, right: 44, bottom: bottomPadding, left: 44 });
   }
+}
+
+function isValidLatLng(point: { lat?: number; lng?: number } | null | undefined): point is {
+  lat: number;
+  lng: number;
+} {
+  return (
+    point != null &&
+    typeof point.lat === "number" &&
+    typeof point.lng === "number" &&
+    Number.isFinite(point.lat) &&
+    Number.isFinite(point.lng)
+  );
 }
 
 /**
@@ -91,12 +120,18 @@ export function RealmDirectionsOverlay({
   request,
   enabled,
   routeSheetOpen = false,
+  userLocation = null,
+  onUserLocation,
   onLoaded,
   onError,
 }: {
   request: RealmDirectionsRequest | null;
   enabled: boolean;
   routeSheetOpen?: boolean;
+  /** Blue user-location marker coordinates — the source of truth for route origin. */
+  userLocation?: { lat: number; lng: number } | null;
+  /** Reports a fresh GPS fix so the blue marker renders where the route starts. */
+  onUserLocation?: (pos: { lat: number; lng: number }) => void;
   onLoaded: (result: RealmDirectionsLoadResult & { ok: true }) => void;
   onError: (result: RealmDirectionsLoadResult & { ok: false }) => void;
 }) {
@@ -109,6 +144,7 @@ export function RealmDirectionsOverlay({
     origin: RealmDirectionsOrigin | null;
     destination: { lat: number; lng: number; label: string } | null;
   }>({ origin: null, destination: null });
+  const lastRoutedRef = useRef<{ requestId: number; lat: number; lng: number } | null>(null);
   const [, setMarkerTick] = useState(0);
 
   useEffect(() => {
@@ -149,14 +185,22 @@ export function RealmDirectionsOverlay({
     origin: RealmDirectionsOrigin,
     destination: { lat: number; lng: number; label: string },
   ) => {
-    const path = pathInput.map((point) => new google.maps.LatLng(point.lat, point.lng));
+    // Anchor the polyline: first point = user location, last point = destination.
+    const points = [
+      { lat: origin.lat, lng: origin.lng },
+      ...pathInput,
+      { lat: destination.lat, lng: destination.lng },
+    ];
+    const path = points.map((point) => new google.maps.LatLng(point.lat, point.lng));
     glowRef.current?.setPath(path);
     lineRef.current?.setPath(path);
     lineRef.current?.setOptions({ icons: buildPulseIcons() });
     markersRef.current = { origin, destination };
     setMarkerTick((n) => n + 1);
     if (map) {
-      fitRouteBounds(map, path, routeSheetOpen ? 240 : 200);
+      // Camera padding accounts for the route sheet and the floating bottom nav.
+      const basePadding = routeSheetOpen ? 240 : 200;
+      fitRouteBounds(map, path, origin, destination, basePadding + bottomNavClearancePx());
     }
   };
 
@@ -167,6 +211,7 @@ export function RealmDirectionsOverlay({
 
     if (!enabled || !request || !glow || !line || !service || !map) {
       activeRequestIdRef.current = null;
+      lastRoutedRef.current = null;
       clearRoute();
       return undefined;
     }
@@ -209,8 +254,40 @@ export function RealmDirectionsOverlay({
     };
 
     void (async () => {
-      const origin = await resolveDirectionsOrigin();
-      if (cancelled || activeRequestIdRef.current !== requestId) return;
+      const destination = request.destination;
+      if (!isValidLatLng(destination)) {
+        finishError("This building does not have coordinates yet.");
+        return;
+      }
+
+      // Route origin = blue user marker. Use its live coordinates when
+      // present; otherwise take a fresh GPS fix and sync the marker to it.
+      let originPoint = isValidLatLng(userLocation) ? userLocation : null;
+      if (!originPoint) {
+        originPoint = await resolveLiveUserLocation();
+        if (cancelled || activeRequestIdRef.current !== requestId) return;
+        if (originPoint) onUserLocation?.(originPoint);
+      }
+
+      if (!isValidLatLng(originPoint)) {
+        finishError("Turn on location to show your route.");
+        return;
+      }
+
+      // Skip refetch when this exact request already routed from this origin
+      // (e.g. the effect re-ran because we reported the GPS fix upward).
+      const last = lastRoutedRef.current;
+      if (last && last.requestId === requestId && last.lat === originPoint.lat && last.lng === originPoint.lng) {
+        return;
+      }
+      lastRoutedRef.current = { requestId, lat: originPoint.lat, lng: originPoint.lng };
+
+      const origin = toDirectionsOrigin(originPoint);
+
+      if (process.env.NODE_ENV === "development") {
+        console.log("[Realm Route] origin user location:", originPoint);
+        console.log("[Realm Route] destination:", destination);
+      }
 
       if (request.travelMode === "WALKING") {
         timeoutId = setTimeout(() => {
@@ -287,7 +364,8 @@ export function RealmDirectionsOverlay({
       cancelled = true;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [enabled, map, onError, onLoaded, request, routeSheetOpen]);
+    // userLocation lat/lng in deps: moving the blue marker re-routes from the new origin.
+  }, [enabled, map, onError, onLoaded, onUserLocation, request, routeSheetOpen, userLocation?.lat, userLocation?.lng]);
 
   const markers = markersRef.current;
 

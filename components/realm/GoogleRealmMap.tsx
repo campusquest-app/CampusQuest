@@ -619,6 +619,8 @@ export function GoogleRealmMap({
             request={directionsRequest}
             enabled={!editMode && directionsActive}
             routeSheetOpen={routeSheetOpen}
+            userLocation={userPos}
+            onUserLocation={setUserPos}
             onLoaded={handleDirectionsLoaded}
             onError={handleDirectionsError}
           />
@@ -672,13 +674,13 @@ export function GoogleRealmMap({
 
           {tilesLoaded && !markersLoaded ? (
             <MapControl position={ControlPosition.BOTTOM_CENTER}>
-              <p className="cq-realm-map-toast mb-4">Loading markers…</p>
+              <p className="cq-realm-map-toast">Loading markers…</p>
             </MapControl>
           ) : null}
 
           {noMarkersVisible ? (
             <MapControl position={ControlPosition.BOTTOM_CENTER}>
-              <div className="cq-realm-map-toast cq-realm-map-toast--empty mb-4 flex items-center gap-1.5">
+              <div className="cq-realm-map-toast cq-realm-map-toast--empty flex items-center gap-1.5">
                 <MapPinOff className="h-3.5 w-3.5" aria-hidden />
                 {filter === "all" ? "No markers found right now." : "Nothing matches this filter right now."}
               </div>
@@ -687,7 +689,7 @@ export function GoogleRealmMap({
 
           {notice ? (
             <MapControl position={ControlPosition.BOTTOM_CENTER}>
-              <p className="cq-realm-map-toast mb-4" role="status">
+              <p className="cq-realm-map-toast" role="status">
                 {notice}
               </p>
             </MapControl>

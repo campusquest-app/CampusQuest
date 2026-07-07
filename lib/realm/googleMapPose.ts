@@ -21,6 +21,8 @@ export const URI_MAP_ROTATE_STEP_DEG = 15;
 /** Standard roadmap keeps building and POI labels visible. */
 export const URI_MAP_TYPE_ID = "roadmap" as const;
 
+const TILT_ACCEPT_EPSILON = 2;
+
 type CameraTarget = {
   center?: google.maps.LatLng | google.maps.LatLngLiteral | null;
   zoom?: number;
@@ -28,9 +30,20 @@ type CameraTarget = {
   heading?: number;
 };
 
+export function centerToLiteral(
+  center: google.maps.LatLng | google.maps.LatLngLiteral | null | undefined,
+): google.maps.LatLngLiteral {
+  if (!center) return URI_MAP_CENTER;
+  if (typeof (center as google.maps.LatLng).lat === "function") {
+    const latLng = center as google.maps.LatLng;
+    return { lat: latLng.lat(), lng: latLng.lng() };
+  }
+  return center as google.maps.LatLngLiteral;
+}
+
 /** Apply camera changes via moveCamera when available (smoother on vector maps). */
 export function moveMapCamera(map: google.maps.Map, target: CameraTarget): void {
-  const center = target.center ?? map.getCenter() ?? URI_MAP_CENTER;
+  const center = centerToLiteral(target.center ?? map.getCenter() ?? URI_MAP_CENTER);
   const zoom = target.zoom ?? map.getZoom() ?? URI_MAP_DEFAULT_ZOOM;
   const tilt = target.tilt ?? map.getTilt() ?? 0;
   const heading = target.heading ?? map.getHeading() ?? 0;
@@ -40,7 +53,7 @@ export function moveMapCamera(map: google.maps.Map, target: CameraTarget): void 
     return;
   }
 
-  if (center) map.panTo(center);
+  map.panTo(center);
   map.setZoom(zoom);
   map.setTilt(tilt);
   map.setHeading(heading);
@@ -54,15 +67,72 @@ export function isVectorMapRendering(map: google.maps.Map): boolean {
   return vector != null && renderingType === vector;
 }
 
-/** Reset any tilt/rotation so the map stays flat and north-up. */
-export function resetFlatMapOrientation(map: google.maps.Map): void {
-  moveMapCamera(map, { tilt: 0, heading: 0 });
+/** Wait for map camera/tiles to settle after moveCamera (required on Safari). */
+export function waitForMapIdle(map: google.maps.Map, timeoutMs = 2200): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      const listener = idleListener as google.maps.MapsEventListener & { remove?: () => void };
+      if (typeof listener?.remove === "function") {
+        listener.remove();
+      } else if (typeof google !== "undefined" && google.maps?.event?.removeListener) {
+        google.maps.event.removeListener(idleListener);
+      }
+      if (timer != null) clearTimeout(timer);
+      resolve();
+    };
+
+    const idleListener = map.addListener("idle", finish);
+    timer = setTimeout(finish, timeoutMs);
+  });
+}
+
+/** Read accepted tilt after camera motion settles. */
+export async function readMapTiltAfterDelay(
+  map: google.maps.Map,
+  delayMs = 120,
+): Promise<number> {
+  await waitForMapIdle(map);
+  if (delayMs > 0) {
+    await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+  }
+  return map.getTilt() ?? 0;
 }
 
 /**
  * Apply cinematic campus camera (tilt + zoom for 3D buildings).
- * Returns the tilt angle the map accepted, or 0 if flat.
+ * Waits for the map to accept the tilt before returning.
  */
+export async function applyTiltCamera(
+  map: google.maps.Map,
+  options?: { preserveCenter?: boolean; preserveHeading?: boolean },
+): Promise<number> {
+  const center = options?.preserveCenter ? map.getCenter() : URI_MAP_CENTER;
+  const heading = options?.preserveHeading ? (map.getHeading() ?? 0) : (map.getHeading() ?? 0);
+  const zoom = Math.max(map.getZoom() ?? 0, URI_MAP_BUILDING_ZOOM);
+  const centerLiteral = centerToLiteral(center);
+
+  for (const targetTilt of [URI_MAP_CINEMATIC_TILT, URI_MAP_FALLBACK_TILT]) {
+    moveMapCamera(map, {
+      center: centerLiteral,
+      zoom,
+      heading,
+      tilt: targetTilt,
+    });
+    const actual = await readMapTiltAfterDelay(map);
+    if (actual >= URI_MAP_FALLBACK_TILT - TILT_ACCEPT_EPSILON) {
+      return actual;
+    }
+  }
+
+  return map.getTilt() ?? 0;
+}
+
+/** @deprecated Prefer applyTiltCamera — sync check is unreliable right after moveCamera. */
 export function applyCinematicCampusCamera(
   map: google.maps.Map,
   options?: { preserveCenter?: boolean; preserveHeading?: boolean },
@@ -72,23 +142,39 @@ export function applyCinematicCampusCamera(
   const zoom = Math.max(map.getZoom() ?? 0, URI_MAP_BUILDING_ZOOM);
 
   moveMapCamera(map, {
-    center: center ?? URI_MAP_CENTER,
+    center: centerToLiteral(center),
     zoom,
     heading,
     tilt: URI_MAP_CINEMATIC_TILT,
   });
 
   const actual = map.getTilt() ?? 0;
-  if (actual >= URI_MAP_FALLBACK_TILT - 2) return actual;
+  if (actual >= URI_MAP_FALLBACK_TILT - TILT_ACCEPT_EPSILON) return actual;
 
   moveMapCamera(map, {
-    center: center ?? URI_MAP_CENTER,
+    center: centerToLiteral(center),
     zoom,
     heading,
     tilt: URI_MAP_FALLBACK_TILT,
   });
 
   return map.getTilt() ?? 0;
+}
+
+/** Animate back to flat while preserving center, zoom, and heading. */
+export async function applyFlatCamera(map: google.maps.Map): Promise<void> {
+  moveMapCamera(map, {
+    center: centerToLiteral(map.getCenter()),
+    zoom: map.getZoom() ?? URI_MAP_DEFAULT_ZOOM,
+    heading: map.getHeading() ?? 0,
+    tilt: 0,
+  });
+  await readMapTiltAfterDelay(map);
+}
+
+/** Reset any tilt/rotation so the map stays flat and north-up. */
+export function resetFlatMapOrientation(map: google.maps.Map): void {
+  moveMapCamera(map, { tilt: 0, heading: 0 });
 }
 
 /** Pan to campus center, restore zoom, and return to flat north-up view. */
@@ -122,25 +208,29 @@ export function resetMapHeading(map: google.maps.Map): void {
 
 /**
  * Attempt to set tilt; returns whether the map accepted the target angle.
- * Some mobile browsers (e.g. Safari) may keep tilt at 0 — callers should fall back gracefully.
+ * Prefer applyTiltCamera for interactive toggles — moveCamera settles asynchronously.
  */
 export function trySetMapTilt(map: google.maps.Map, targetTilt: number): boolean {
   try {
     moveMapCamera(map, { tilt: targetTilt });
     const actual = map.getTilt() ?? 0;
     if (targetTilt === 0) return true;
-    return actual >= targetTilt - 2;
+    return actual >= targetTilt - TILT_ACCEPT_EPSILON;
   } catch {
     return false;
   }
 }
 
-/** Read accepted tilt after a short delay (moveCamera can be async on Safari). */
-export function readMapTiltAfterDelay(
-  map: google.maps.Map,
-  delayMs = 380,
-): Promise<number> {
-  return new Promise((resolve) => {
-    window.setTimeout(() => resolve(map.getTilt() ?? 0), delayMs);
+export function logRealmMapCameraDebug(
+  map: google.maps.Map | null | undefined,
+  detail: Record<string, unknown>,
+): void {
+  if (process.env.NODE_ENV !== "development" || !map) return;
+  console.info("[cq:realm-map:camera]", {
+    zoom: map.getZoom(),
+    tilt: map.getTilt(),
+    heading: map.getHeading(),
+    renderingType: map.getRenderingType?.(),
+    ...detail,
   });
 }
