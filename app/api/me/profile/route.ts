@@ -23,7 +23,11 @@ import { requireAuthUser } from "@/lib/server/supabase";
 import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { syncEquipmentTableFromGameState } from "@/lib/server/equipmentLoadoutDb";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
-import { patchMeProfileSchema, readJson } from "@/lib/server/validation";
+import {
+  mergeSanitizedGameStateJson,
+  rejectForbiddenProfileFields,
+} from "@/lib/server/profileSecurity";
+import { patchMeProfileSchema } from "@/lib/server/validation";
 
 function normalizeDisplayName(value: string) {
   return value.trim();
@@ -65,7 +69,13 @@ export async function PATCH(request: Request) {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:profile:patch", limit: 30, windowMs: 60_000 });
     touchUserActivityFromAuth(auth);
-    const input = await readJson(request, patchMeProfileSchema);
+    const rawBody = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    await rejectForbiddenProfileFields({
+      body: rawBody,
+      userId: auth.user.id,
+      requestPath: "/api/me/profile",
+    });
+    const input = patchMeProfileSchema.parse(rawBody);
     // Gameplay autosync payloads should not overwrite identity fields.
     const identitySuppressedForSync =
       input.gameStateJson !== undefined &&
@@ -74,8 +84,6 @@ export async function PATCH(request: Request) {
     const displayNameInput = identitySuppressedForSync ? undefined : (input.displayName ?? input.display_name);
     const usernameInput = identitySuppressedForSync ? undefined : input.username;
     const classYearInput = input.classYear ?? input.year;
-    const streakDaysInput = input.streakDays ?? input.streak_days;
-    const lastActivityDateInput = input.lastActivityDate ?? input.last_activity_date;
 
     const { data: existing, error: loadError } = await auth.userClient
       .from("profiles")
@@ -187,15 +195,13 @@ export async function PATCH(request: Request) {
     if (input.starterWeapon !== undefined) patch.starter_weapon = input.starterWeapon;
     if (input.scholarGuildId !== undefined) patch.scholar_guild_id = input.scholarGuildId;
     if (input.bio !== undefined) patch.bio = input.bio;
-    if (streakDaysInput !== undefined) patch.streak_days = streakDaysInput;
-    if (lastActivityDateInput !== undefined) patch.last_activity_date = lastActivityDateInput;
     if (input.gameStateJson !== undefined) {
       const existingGsRaw = (existing as { game_state_json?: unknown }).game_state_json;
       const existingGs =
         existingGsRaw && typeof existingGsRaw === "object" && !Array.isArray(existingGsRaw)
           ? (existingGsRaw as Record<string, unknown>)
           : {};
-      patch.game_state_json = { ...existingGs, ...input.gameStateJson };
+      patch.game_state_json = mergeSanitizedGameStateJson(existingGs, input.gameStateJson);
     }
     if (input.characterOnboardingComplete === true) {
       patch.onboarding_character_completed = true;
@@ -271,6 +277,11 @@ export async function PATCH(request: Request) {
       throw new ApiError(400, msg, "PROFILE_PATCH_FAILED");
     }
     if (!dataOut) throw new ApiError(404, "Profile not found after update.", "PROFILE_NOT_FOUND");
+
+    console.log("[PROFILE] Safe profile update complete", {
+      userId: auth.user.id,
+      fields: Object.keys(patch),
+    });
 
     if (patch.game_state_json !== undefined) {
       await syncEquipmentTableFromGameState(

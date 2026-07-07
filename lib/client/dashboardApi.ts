@@ -1,6 +1,7 @@
 "use client";
 
 import { clearAccessToken, getAccessToken } from "@/lib/client/apiSession";
+import { invalidateInvalidClientSession } from "@/lib/client/invalidateAuthSession";
 import { rememberSchoolVerificationSnapshot, type SchoolVerificationClientSnapshot } from "@/lib/client/schoolVerificationCache";
 
 /** Thrown client-side before any HTTP request when Bearer token is unavailable. */
@@ -57,6 +58,10 @@ function logAuthedRequestDev(payload: {
 function missingSessionThrow(method: string, path: string): never {
   logAuthedRequestDev({ phase: "pre", method, path, sessionPresent: false });
   throw new AuthSessionMissingError();
+}
+
+async function handleUnauthorizedApiResponse(reason: string): Promise<void> {
+  await invalidateInvalidClientSession({ reason, notify: true });
 }
 
 function formatDevHttpMessage(path: string, status: number, statusText: string, fallback?: string) {
@@ -224,7 +229,7 @@ export async function fetchMeSchoolVerification(
   });
 
   if (response.status === 401) {
-    clearAccessToken();
+    await handleUnauthorizedApiResponse("school_verification_401");
     throw new SchoolVerificationHttpError("Session expired. Please sign in again.", 401, payload.error?.code ?? "UNAUTHORIZED");
   }
 
@@ -297,7 +302,7 @@ export async function fetchAuthed<T>(path: string, options?: { signal?: AbortSig
   const payload = await parseApiResponse<T>(response);
   if (!response.ok) {
     if (response.status === 401) {
-      clearAccessToken();
+      await handleUnauthorizedApiResponse("fetch_authed_401");
       throw new ApiRequestError("Session expired. Please sign in again.", 401, "UNAUTHORIZED");
     }
     const fallback = payload.error?.message;
@@ -349,7 +354,7 @@ export async function postAuthed<T, B extends Record<string, unknown>>(path: str
   const payload = await parseApiResponse<T>(response);
   if (!response.ok) {
     if (response.status === 401) {
-      clearAccessToken();
+      await handleUnauthorizedApiResponse("fetch_authed_401");
       throw new ApiRequestError("Session expired. Please sign in again.", 401, "UNAUTHORIZED");
     }
     const fallback = payload.error?.message;
@@ -401,7 +406,7 @@ export async function patchAuthed<T, B extends Record<string, unknown>>(path: st
   const payload = await parseApiResponse<T>(response);
   if (!response.ok) {
     if (response.status === 401) {
-      clearAccessToken();
+      await handleUnauthorizedApiResponse("fetch_authed_401");
       throw new ApiRequestError("Session expired. Please sign in again.", 401, "UNAUTHORIZED");
     }
     const fallback = payload.error?.message;
@@ -451,7 +456,7 @@ export async function deleteAuthed<T>(path: string): Promise<T> {
   const payload = await parseApiResponse<T>(response);
   if (!response.ok) {
     if (response.status === 401) {
-      clearAccessToken();
+      await handleUnauthorizedApiResponse("fetch_authed_401");
       throw new ApiRequestError("Session expired. Please sign in again.", 401, "UNAUTHORIZED");
     }
     const fallback = payload.error?.message;

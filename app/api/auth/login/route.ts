@@ -8,7 +8,8 @@ import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { touchUserActivityById } from "@/lib/server/userActivity";
 import { authLoginSchema, readJson } from "@/lib/server/validation";
 
-const GENERIC_LOGIN_ERROR = "Invalid email or password.";
+const GENERIC_LOGIN_ERROR =
+  "Invalid email or password. If you just signed up, confirm your email first.";
 
 type SafeLoginFailure = {
   status: number;
@@ -42,7 +43,7 @@ function classifyLoginFailure(error: unknown): SafeLoginFailure {
   if (code.includes("email_not_confirmed") || message.includes("email not confirmed")) {
     return {
       status: 401,
-      message: "Please confirm your email before signing in.",
+      message: "Please confirm your URI email before signing in.",
       code: "EMAIL_NOT_CONFIRMED",
     };
   }

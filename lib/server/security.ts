@@ -45,13 +45,31 @@ export function enforceRateLimit(args: {
   message?: string;
   code?: string;
 }) {
-  const { userId, routeKey, limit, windowMs, message, code } = args;
+  enforceKeyedRateLimit({
+    key: args.userId,
+    routeKey: args.routeKey,
+    limit: args.limit,
+    windowMs: args.windowMs,
+    message: args.message,
+    code: args.code,
+  });
+}
+
+export function enforceKeyedRateLimit(args: {
+  key: string;
+  routeKey: string;
+  limit: number;
+  windowMs: number;
+  message?: string;
+  code?: string;
+}) {
+  const { key, routeKey, limit, windowMs, message, code } = args;
   const now = Date.now();
-  const key = `${userId}:${routeKey}`;
-  const existing = globalRateStore.get(key);
+  const storeKey = `${routeKey}:${key}`;
+  const existing = globalRateStore.get(storeKey);
 
   if (!existing || now >= existing.resetAt) {
-    globalRateStore.set(key, { count: 1, resetAt: now + windowMs });
+    globalRateStore.set(storeKey, { count: 1, resetAt: now + windowMs });
     return;
   }
 
@@ -60,7 +78,18 @@ export function enforceRateLimit(args: {
   }
 
   existing.count += 1;
-  globalRateStore.set(key, existing);
+  globalRateStore.set(storeKey, existing);
+}
+
+export function getRequestClientIp(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
+  return "unknown";
 }
 
 export function assertModerationSafeText(args: { text: string; field: "post" | "comment"; maxLen: number }) {

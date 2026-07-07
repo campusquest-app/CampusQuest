@@ -489,10 +489,6 @@ export const patchMeProfileSchema = z
     major: z.union([z.literal(""), z.string().trim().min(2).max(120)]).optional(),
     year: z.number().int().min(1900).max(3000).nullable().optional(),
     classYear: z.number().int().min(1900).max(3000).nullable().optional(),
-    streakDays: z.number().int().min(0).max(10_000).optional(),
-    streak_days: z.number().int().min(0).max(10_000).optional(),
-    lastActivityDate: z.string().date().nullable().optional(),
-    last_activity_date: z.string().date().nullable().optional(),
     /** Serialized gameplay snapshot (equipment, extra counters); merged server-side. */
     gameStateJson: z.record(z.string(), z.unknown()).optional(),
     /** When true, server marks character onboarding saved (requires identity + avatar payload). */
@@ -867,6 +863,12 @@ export const patchCampusMemorySchema = z
   .refine((data) => data.savedToProfile !== undefined, {
     message: "At least one field is required.",
   });
+
+export const adminXpAdjustSchema = z.object({
+  amount: z.number().int().min(1).max(1_000_000),
+  action: z.enum(["add", "subtract"]),
+  reason: z.string().trim().min(3).max(500),
+});
 
 export async function readJson<T>(request: Request, schema: z.ZodSchema<T>): Promise<T> {
   const json = await request.json();

@@ -70,10 +70,13 @@ import { QuestBoard } from "./quests/QuestBoard";
 import { QuestCompleteCelebration } from "./quests/QuestCompleteCelebration";
 import type { StatKey } from "@/lib/types";
 import { clearAccessToken, getAccessToken } from "@/lib/client/apiSession";
-import { clearStaleAuthClientState } from "@/lib/client/authSessionClient";
 import {
-  attachSupabaseAuthSync,
-  restoreSupabaseSession,
+  clearStaleAuthClientState,
+  invalidateInvalidClientSession,
+  registerInvalidSessionListener,
+} from "@/lib/client/authSessionClient";
+import {
+  initClientAuth,
   signOutSupabaseSession,
 } from "@/lib/client/supabaseSession";
 import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/agreementAccess";
@@ -238,6 +241,7 @@ export function Dashboard() {
   const [pendingMilestonePopup, setPendingMilestonePopup] = useState<XpMilestoneStatus | null>(null);
   const [xpGainSession, setXpGainSession] = useState<ActivityXPGainSession | null>(null);
   const qrXpHandoffLockRef = useRef(false);
+  const qrScannerCloseTimerRef = useRef<number | null>(null);
   const [dmWithOther, setDmWithOther] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
 
   const openDirectMessage = useCallback(
@@ -529,7 +533,7 @@ export function Dashboard() {
   );
 
   const handleClientSessionMissing = useCallback(() => {
-    clearStaleAuthClientState();
+    void invalidateInvalidClientSession({ reason: "client_session_missing" });
     clearSchoolVerificationSnapshot();
     storeLogout();
     setCharacter(null);
@@ -763,11 +767,20 @@ export function Dashboard() {
       mobile: readMobileViewport(),
       sessionKey: session.sessionKey,
     });
-    setQrScannerOpen(false);
     setPendingScanCode(null);
     setQrDeepLinkError(null);
     setXpGainSession(session);
-  }, [adminQrUnlimited]);
+    refreshAuthoritativeProfileInBackground();
+    refresh();
+    bumpActivityFeedRefresh();
+    if (qrScannerCloseTimerRef.current != null) {
+      window.clearTimeout(qrScannerCloseTimerRef.current);
+    }
+    qrScannerCloseTimerRef.current = window.setTimeout(() => {
+      qrScannerCloseTimerRef.current = null;
+      setQrScannerOpen(false);
+    }, 1000);
+  }, [adminQrUnlimited, refresh, refreshAuthoritativeProfileInBackground]);
 
   const processQrRedeemVerdict = useCallback(
     (verdict: Awaited<ReturnType<typeof redeemCampusQuestQr>>, source: "deep_link" | "scanner") => {
@@ -815,7 +828,11 @@ export function Dashboard() {
           icon: verdict.questCompleted.icon,
           xpReward: verdict.questCompleted.xpReward,
         });
-      } else if (!verdict.xpSession && verdict.reward.xp > 0) {
+      }
+      if (verdict.xpSession) {
+        return;
+      }
+      if (verdict.reward.xp > 0) {
         setGainToast({
           xp: verdict.reward.xp,
           stats: {},
@@ -1210,12 +1227,22 @@ export function Dashboard() {
   }, [searchParams, bootstrapStatus, character?.id]);
 
   useEffect(() => {
+    return registerInvalidSessionListener(() => {
+      clearSchoolVerificationSnapshot();
+      storeLogout();
+      setCharacter(null);
+      setFriendView(null);
+      setFriendViewError(null);
+      setBootstrapStatus("unauthenticated");
+    });
+  }, []);
+
+  useEffect(() => {
     if (!mounted) return;
     let cancelled = false;
 
     async function bootstrap() {
-      attachSupabaseAuthSync();
-      await restoreSupabaseSession();
+      await initClientAuth();
 
       const tokenAtStart = getAccessToken();
       const postLoginBoot = peekPostLoginLoadingPending();
@@ -1234,8 +1261,12 @@ export function Dashboard() {
         }
       }
 
-      const failUnauthenticated = (opts?: { invalidateToken?: boolean }) => {
-        if (opts?.invalidateToken) clearAccessToken();
+      const failUnauthenticated = async (opts?: { invalidateToken?: boolean }) => {
+        if (opts?.invalidateToken) {
+          await invalidateInvalidClientSession({ reason: "bootstrap_invalid_token" });
+        } else {
+          clearStaleAuthClientState();
+        }
         invalidateMeSessionCache();
         storeLogout();
         clearSchoolVerificationSnapshot();
@@ -1245,7 +1276,7 @@ export function Dashboard() {
       };
 
       if (!tokenAtStart) {
-        failUnauthenticated({ invalidateToken: false });
+        await failUnauthenticated({ invalidateToken: false });
         logBootstrapDecision({ sessionFound: false, route: "unauthenticated" });
         setBootstrapStatus("unauthenticated");
         return;
@@ -1264,7 +1295,7 @@ export function Dashboard() {
 
         if (consentRes.status === 401) {
           if (!cancelled) {
-            failUnauthenticated({ invalidateToken: true });
+            await failUnauthenticated({ invalidateToken: true });
             logBootstrapDecision({
               sessionFound: true,
               sessionValidated: false,
@@ -1296,7 +1327,7 @@ export function Dashboard() {
         const snap0 = await fetchMeProfileAndStatsDeduped();
         if (!snap0?.profile || !snap0?.stats) {
           if (!cancelled) {
-            failUnauthenticated({ invalidateToken: true });
+            await failUnauthenticated({ invalidateToken: true });
             logBootstrapDecision({
               sessionFound: true,
               sessionValidated: false,
@@ -1422,7 +1453,7 @@ export function Dashboard() {
         setBootstrapStatus("authenticated");
       } catch {
         if (!cancelled) {
-          failUnauthenticated({ invalidateToken: true });
+          await failUnauthenticated({ invalidateToken: true });
           logBootstrapDecision({
             sessionFound: true,
             sessionValidated: false,
@@ -1901,25 +1932,27 @@ export function Dashboard() {
         onCancel={cancelLogoutConfirm}
         onConfirm={() => void confirmLogout()}
       />
-      <div className={`${screenShake ? "cq-screen-shake " : ""}cq-dashboard-scroll-pad${tab === "realm" ? " cq-dashboard-scroll-pad--realm" : ""}`}>
-        {xpGainSession && (
-          <LevelUpOverlay
-            session={xpGainSession}
-            minimumDurationMs={
-              xpGainSession.afterQrScan
-                ? estimateXpOverlayDurationMs({
-                    isMobile: readMobileViewport(),
-                    afterQrScan: true,
-                    segmentCount: buildRewardAnimationSnapshot(
+      {xpGainSession ? (
+        <LevelUpOverlay
+          session={xpGainSession}
+          minimumDurationMs={
+            xpGainSession.afterQrScan
+              ? estimateXpOverlayDurationMs({
+                  isMobile: readMobileViewport(),
+                  afterQrScan: true,
+                  segmentCount:
+                    xpGainSession.rewardSnapshot?.segments.length ??
+                    buildRewardAnimationSnapshot(
                       xpGainSession.beforeTotalXP,
                       xpGainSession.afterTotalXP,
                     ).segments.length,
-                  }) + 400
-                : 5000
-            }
-            onComplete={finishXpGainOverlay}
-          />
-        )}
+                }) + 400
+              : 5000
+          }
+          onComplete={finishXpGainOverlay}
+        />
+      ) : null}
+      <div className={`${screenShake ? "cq-screen-shake " : ""}cq-dashboard-scroll-pad${tab === "realm" ? " cq-dashboard-scroll-pad--realm" : ""}`}>
         {gainToast?.lastBossDrop && typeof document !== "undefined" && createPortal(
           bossDefeatPhase === "teaser" ? (
             <div

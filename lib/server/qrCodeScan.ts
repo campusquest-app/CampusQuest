@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/server/http";
+import { getTrustedStatsWriteClient } from "@/lib/server/trustedStatsWrite";
 import { recordQrScanActivityEvent } from "@/lib/server/userActivityEvents";
 import { canBypassQrScanLimits, fetchProfileRole, type ProfileRole } from "@/lib/server/permissions";
 import { applyQrActivityStatBoost, resolveQrActivityLink } from "@/lib/server/qrActivityLink";
@@ -223,7 +224,7 @@ async function tryCompleteLinkedQuest(args: {
   const userQuest = await getOrCreateActiveUserQuest({ userClient, userId, questId });
   if (userQuest.status === "claimed") return null;
 
-  await userClient
+  await getTrustedStatsWriteClient()
     .from("user_quests")
     .update({
       progress_count: Math.max(Number(userQuest.progress_count ?? 0), 1),

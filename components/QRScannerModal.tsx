@@ -35,6 +35,7 @@ import {
   type ScanRewardState,
 } from "@/lib/client/scanRewardFlow";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
+import { QrXpGainBurst } from "@/components/xp/QrXpGainBurst";
 
 export type { SigilScannerReward, QrScannerValidationResult };
 
@@ -64,6 +65,7 @@ const PROCESSING_TIMEOUT_MS = 8000;
 const ERROR_MIN_DISPLAY_MS = 2000;
 const ERROR_REVEAL_DELAY_MS = 450;
 const SUCCESS_DISMISS_MS = 1000;
+const XP_HANDOFF_FRAME_MS = 120;
 const FORCE_CLOSE_MS = 2000;
 const PROCESSING_GUARD_RELEASE_MS = 1500;
 const INVALID_QR_DEBOUNCE_MS = 2800;
@@ -174,6 +176,7 @@ export function QRScannerModal({
   const [successBlessing, setSuccessBlessing] = useState<SigilScannerReward | null>(null);
   const [screenJolt, setScreenJolt] = useState(false);
   const [scanRewardState, setScanRewardState] = useState<ScanRewardState>("idle");
+  const [fallbackXpBurst, setFallbackXpBurst] = useState<{ xp: number; label: string } | null>(null);
 
   const scanRewardStateRef = useRef<ScanRewardState>("idle");
   const scanRewardFlowRef = useRef(false);
@@ -447,9 +450,17 @@ export function QRScannerModal({
       stopCameraStream();
       console.info("[cq:qr-scanner] XP awarded", { xp: verdict.xpSession.xpGained });
       logScanner("xp_handoff", { sessionKey: verdict.xpSession.sessionKey });
+      if (onXpHandoff) {
+        onXpHandoff(verdict.xpSession);
+      } else if (verdict.xpSession.xpGained > 0) {
+        setFallbackXpBurst({
+          xp: verdict.xpSession.xpGained,
+          label: verdict.xpSession.activityLabel ?? "QR Check-In Complete",
+        });
+      }
+      await sleep(XP_HANDOFF_FRAME_MS);
       console.info("[cq:qr-scanner] Refreshing data");
       onScanComplete?.(verdict);
-      onXpHandoff?.(verdict.xpSession);
       setScanRewardState("complete");
       setAbsorbing(false);
       scanRewardFlowRef.current = false;
@@ -885,6 +896,7 @@ export function QRScannerModal({
       : null;
 
   return createPortal(
+    <>
     <AnimatePresence>
       {open ? (
         <motion.div
@@ -1027,7 +1039,15 @@ export function QRScannerModal({
           <ScanSuccessOverlay reward={successBlessing} />
         </motion.div>
       ) : null}
-    </AnimatePresence>,
-    document.body,
-  );
+    </AnimatePresence>
+    {fallbackXpBurst ? (
+      <QrXpGainBurst
+        xp={fallbackXpBurst.xp}
+        label={fallbackXpBurst.label}
+        onDone={() => setFallbackXpBurst(null)}
+      />
+    ) : null}
+  </>,
+  document.body,
+);
 }

@@ -3,6 +3,7 @@
 import type { QrScannerValidationResult, SigilScannerReward } from "@/components/scanner/sigilRewardTypes";
 import type { ActivityXPGainSession } from "@/components/xp/xpGainTypes";
 import { buildQrXpSession } from "@/lib/client/buildQrXpSession";
+import { extractQrXpAwarded } from "@/lib/client/extractQrXpAwarded";
 import { ApiRequestError, postAuthed } from "@/lib/client/dashboardApi";
 import { logQrScanDebug } from "@/lib/client/qrScanDebug";
 import { acquireQrRedeemLock, releaseQrRedeemLock } from "@/lib/client/qrScanLock";
@@ -97,20 +98,19 @@ export async function redeemCampusQuestQr(
   try {
     const data = await postAuthed<QrScanApiResponse, typeof requestPayload>("/api/qr/scan", requestPayload);
 
+    console.info("[QR XP RESPONSE]", data);
+    const xp = extractQrXpAwarded(data);
+    console.info("[QR XP AWARDED]", xp);
+
     logQrScanDebug("redeem_completed", {
       code: normalizedCode,
-      xpAwarded: data.xpAwarded,
+      xpAwarded: xp,
       status: data.scan.status ?? null,
     });
     logQrScanDebug("reward_xp", {
       code: normalizedCode,
-      xpAwarded: data.xpAwarded,
+      xpAwarded: xp,
     });
-
-    const xp = Math.max(
-      0,
-      data.xpAwarded ?? data.scan.xpAwarded ?? 0,
-    );
     const afterTotalXP =
       typeof data.totalXp === "number" ? data.totalXp : before.totalXP + xp;
     const activityId = data.scan.activityId ?? "gym";

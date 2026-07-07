@@ -9,8 +9,9 @@ import {
   provisionSignupAuthUser,
 } from "@/lib/server/authBootstrap";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
-import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { createPublicClient } from "@/lib/server/supabase";
+import { enforceKeyedRateLimit, getRequestClientIp } from "@/lib/server/security";
+import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { authSignupSchema, readJson } from "@/lib/server/validation";
 
 export async function POST(request: Request) {
@@ -21,11 +22,31 @@ export async function POST(request: Request) {
     }
 
     const input = await readJson(request, authSignupSchema);
+    const clientIp = getRequestClientIp(request);
+    const normalizedEmail = input.email.trim().toLowerCase();
+
+    enforceKeyedRateLimit({
+      key: `ip:${clientIp}`,
+      routeKey: "auth:signup:ip",
+      limit: 12,
+      windowMs: 60 * 60_000,
+      message: "Too many signup attempts from this network. Please wait a few minutes before trying again.",
+      code: "SIGNUP_RATE_LIMIT",
+    });
+    enforceKeyedRateLimit({
+      key: `email:${normalizedEmail}`,
+      routeKey: "auth:signup:email",
+      limit: 3,
+      windowMs: 60 * 60_000,
+      message: "Too many confirmation emails were sent. Please wait a few minutes before trying again.",
+      code: "EMAIL_RATE_LIMIT",
+    });
+
     const supabase = createPublicClient();
 
     const provisioned = await provisionSignupAuthUser({
       publicClient: supabase,
-      email: input.email,
+      email: normalizedEmail,
       password: input.password,
       displayName: input.displayName,
     });

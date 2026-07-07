@@ -70,7 +70,7 @@ export function classifySupabaseSignupError(error: AuthSupabaseError): ApiError 
   if (code === "over_email_send_rate_limit" || msg.includes("email rate limit") || msg.includes("rate limit exceeded")) {
     return new ApiError(
       429,
-      "Too many signup attempts. Please wait a few minutes and try again.",
+      "Too many confirmation emails were sent. Please wait a few minutes before trying again.",
       "EMAIL_RATE_LIMIT",
     );
   }

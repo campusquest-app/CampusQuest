@@ -10,6 +10,7 @@ import {
   updateStreak,
 } from "@/lib/server/gameplay";
 import { createAdminClient } from "@/lib/server/supabase";
+import { getTrustedStatsWriteClient } from "@/lib/server/trustedStatsWrite";
 import { assertModerationSafeText, assertSafeMinutes, assertSafeXpGrant } from "@/lib/server/security";
 import type { PlayerProgressSnapshot } from "@/lib/server/types";
 
@@ -165,7 +166,7 @@ export async function createUserProfile(userClient: SupabaseClientLike, user: Us
     .single();
   if (profileError) throw new ApiError(400, profileError.message, "PROFILE_CREATE_FAILED");
 
-  const { error: statsError } = await userClient.from("user_stats").insert({
+  const { error: statsError } = await getTrustedStatsWriteClient().from("user_stats").insert({
     user_id: user.id,
     level: 1,
     total_xp: 0,
@@ -395,7 +396,7 @@ export async function logActivity(args: {
   const gain = Math.max(1, Math.floor(xpAmount / 20));
   const nextStats = { ...stats, [statKey]: Number(stats[statKey] ?? 0) + gain };
 
-  const { error: statUpdateError } = await userClient
+  const { error: statUpdateError } = await getTrustedStatsWriteClient()
     .from("user_stats")
     .update(nextStats)
     .eq("user_id", userId);
@@ -478,7 +479,7 @@ export async function completeQuest(args: {
     }
   }
 
-  const { data: completion, error: completionError } = await userClient
+  const { data: completion, error: completionError } = await getTrustedStatsWriteClient()
     .from("quest_completions")
     .insert({
       user_id: userId,
@@ -490,7 +491,7 @@ export async function completeQuest(args: {
     .single();
   if (completionError) throw new ApiError(400, completionError.message, "QUEST_COMPLETION_FAILED");
 
-  const { error: updateError } = await userClient
+  const { error: updateError } = await getTrustedStatsWriteClient()
     .from("user_quests")
     .update({ status: "claimed", completed_at: new Date().toISOString() })
     .eq("id", userQuestId)
@@ -514,7 +515,7 @@ export async function completeQuest(args: {
     .single();
   if (currentStatsError) throw new ApiError(400, currentStatsError.message, "STATS_FETCH_FAILED");
   const nextQuestCount = Number(currentStats?.quests_completed ?? 0) + 1;
-  const { error: statsError } = await userClient
+  const { error: statsError } = await getTrustedStatsWriteClient()
     .from("user_stats")
     .update({ quests_completed: nextQuestCount })
     .eq("user_id", userId);
@@ -619,7 +620,7 @@ export async function scanQrQuest(args: {
 
   const targetCount = Number(quest.target_count ?? 1);
   const nextProgress = Math.max(Number(userQuest.progress_count ?? 0), targetCount);
-  const { error: progressError } = await userClient
+  const { error: progressError } = await getTrustedStatsWriteClient()
     .from("user_quests")
     .update({
       progress_count: nextProgress,
@@ -781,7 +782,7 @@ export async function getOrCreateActiveUserQuest(args: {
     }
   }
 
-  const { data: created, error: insertError } = await userClient
+  const { data: created, error: insertError } = await getTrustedStatsWriteClient()
     .from("user_quests")
     .insert({
       user_id: userId,
@@ -1546,7 +1547,10 @@ export async function attemptBossBattle(args: {
       }
 
       const nextBossesDefeated = Number(stats.bosses_defeated ?? 0) + 1;
-      await userClient.from("user_stats").update({ bosses_defeated: nextBossesDefeated }).eq("user_id", userId);
+      await getTrustedStatsWriteClient()
+        .from("user_stats")
+        .update({ bosses_defeated: nextBossesDefeated })
+        .eq("user_id", userId);
     }
   }
 
@@ -1748,7 +1752,8 @@ export async function addXpInternal(args: AddXpArgs) {
   const levelInfo = calculateLevelProgression(nextTotalXp);
   const leveledUp = levelInfo.level > previousLevel;
 
-  const { error: updateStatsError } = await userClient
+  const statsWriter = getTrustedStatsWriteClient();
+  const { error: updateStatsError } = await statsWriter
     .from("user_stats")
     .update({ total_xp: nextTotalXp, level: levelInfo.level })
     .eq("user_id", userId);
@@ -1760,7 +1765,7 @@ export async function addXpInternal(args: AddXpArgs) {
     currentTotalXp: nextTotalXp,
   });
 
-  const { data: log, error: logError } = await userClient
+  const { data: log, error: logError } = await statsWriter
     .from("xp_logs")
     .insert({
       user_id: userId,
@@ -1774,6 +1779,14 @@ export async function addXpInternal(args: AddXpArgs) {
     .select("*")
     .single();
   if (logError) throw new ApiError(400, logError.message, "XP_LOG_FAILED");
+
+  console.log("[XP] Awarded through trusted path", {
+    userId,
+    amount,
+    sourceType,
+    newTotalXp: nextTotalXp,
+    level: levelInfo.level,
+  });
 
   if (applyStreakUpdate) {
     await updatePlayerStreakOnQuest(userClient, userId);

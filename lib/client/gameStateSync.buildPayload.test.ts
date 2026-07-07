@@ -1,3 +1,19 @@
+process.env.NEXT_PUBLIC_SUPABASE_URL = "http://localhost:54321";
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+
+import { vi } from "vitest";
+
+vi.mock("@/lib/client/dashboardApi", () => ({
+  patchAuthed: vi.fn(),
+  fetchAuthed: vi.fn(),
+}));
+vi.mock("@/lib/client/apiSession", () => ({
+  getAccessToken: vi.fn(),
+}));
+vi.mock("@/lib/client/logoutPrepare", () => ({
+  runLogoutPrepares: vi.fn(),
+}));
+
 import { describe, expect, it } from "vitest";
 import { buildUserStatePatchBodies } from "@/lib/client/gameStateSync";
 import type { Character } from "@/lib/types";
@@ -29,46 +45,31 @@ function minimalCharacter(overrides: Partial<Character> = {}): Character {
 }
 
 describe("buildUserStatePatchBodies", () => {
-  it("includes stats, profile identity, bio, guild/class/weapons, equipment snapshot, and final boss count", () => {
+  it("never includes stats, XP, bio, or streak fields in profile sync payload", () => {
     const c = minimalCharacter({
       bio: " URI rower ",
       classId: "knight",
       starterWeapon: "textbook",
       scholarGuildId: "arts",
+      streakDays: 9,
+      lastActivityDate: "2026-07-01",
     });
-    const { stats, profile } = buildUserStatePatchBodies(c);
+    const { profile } = buildUserStatePatchBodies(c);
 
-    expect(stats.totalXp).toBe(1200);
-    expect(stats.finalBossesDefeated).toBe(3);
-    expect(stats.bossesDefeated).toBe(2);
-    // Identity fields are edited via dedicated profile UX — not synced from local gameplay state.
+    expect(profile).not.toHaveProperty("totalXp");
+    expect(profile).not.toHaveProperty("stats");
+    expect(profile).not.toHaveProperty("bio");
+    expect(profile).not.toHaveProperty("streakDays");
+    expect(profile).not.toHaveProperty("lastActivityDate");
     expect(profile.displayName).toBeUndefined();
     expect(profile.username).toBeUndefined();
     expect(profile.avatarCustomJson).toBe('{"v":2}');
-    expect(profile.bio).toBe("URI rower");
     expect(profile.characterClassId).toBe("knight");
     expect(profile.starterWeapon).toBe("textbook");
     expect(profile.scholarGuildId).toBe("arts");
     const gs = profile.gameStateJson as Record<string, unknown>;
     expect(gs.equippedCosmetics).toEqual({ hat: "h1" });
     expect(gs.finalBossesDefeatedCount).toBe(3);
-  });
-
-  it("persists achievementEarnedAt and achievementCelebratedAt so the unlock modal never replays", () => {
-    const c = minimalCharacter({
-      achievementEarnedAt: { torch_bearer_badge: "2026-06-01T00:00:00.000Z" },
-      achievementCelebratedAt: { torch_bearer_badge: "2026-06-01T00:05:00.000Z" },
-    });
-    const { profile } = buildUserStatePatchBodies(c);
-    const gs = profile.gameStateJson as Record<string, unknown>;
-    expect(gs.achievementEarnedAt).toEqual({ torch_bearer_badge: "2026-06-01T00:00:00.000Z" });
-    expect(gs.achievementCelebratedAt).toEqual({ torch_bearer_badge: "2026-06-01T00:05:00.000Z" });
-  });
-
-  it("defaults achievementCelebratedAt to an empty object when unset", () => {
-    const { profile } = buildUserStatePatchBodies(minimalCharacter());
-    const gs = profile.gameStateJson as Record<string, unknown>;
-    expect(gs.achievementCelebratedAt).toEqual({});
   });
 
   it("maps undecided scholar guild to null", () => {

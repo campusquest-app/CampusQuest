@@ -7,7 +7,8 @@ export type AdminSectionId =
   | "audit"
   | "legal"
   | "system"
-  | "quests";
+  | "quests"
+  | "users";
 
 export type ModerationTabId = "messages" | "content" | "safety" | "appeals";
 
@@ -87,6 +88,12 @@ export const ADMIN_NAV: AdminNavItem[] = [
       { id: "manage", label: "Quest Management" },
       { id: "templates", label: "Templates" },
     ],
+  },
+  {
+    id: "users",
+    label: "Users",
+    icon: "👤",
+    children: [{ id: "xp", label: "XP Management" }],
   },
   {
     id: "system",

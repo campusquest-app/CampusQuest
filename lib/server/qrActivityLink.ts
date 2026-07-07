@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/server/http";
+import { getTrustedStatsWriteClient } from "@/lib/server/trustedStatsWrite";
 
 export type QrActivityLink = {
   activityId: string;
@@ -63,7 +64,7 @@ export async function applyQrActivityStatBoost(args: {
   const current = Number(stats[link.stat] ?? 0);
   const next = Math.min(100, current + link.statGain);
 
-  const { error: updateError } = await userClient
+  const { error: updateError } = await getTrustedStatsWriteClient()
     .from("user_stats")
     .update({ [link.stat]: next })
     .eq("user_id", userId);

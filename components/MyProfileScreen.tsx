@@ -17,6 +17,7 @@ import {
 import { subscribeSocialSync, emitSocialSync } from "@/lib/client/socialSync";
 import { replaceLocalCharacter, updateCharacter } from "@/lib/store";
 import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
+import { persistBioToServer } from "@/lib/client/gameStateSync";
 import { LOGOUT_BLOCKED_SAVE_MESSAGE, resetUserSaveSyncAfterHydrate, isServerBackedUserId } from "@/lib/client/gameStateSync";
 import { hydrateUserPersistenceFromServer } from "@/lib/client/hydrateUserPersistence";
 import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
@@ -95,6 +96,8 @@ export function MyProfileScreen({
   const [cooldownLoading, setCooldownLoading] = useState(false);
   const [repairPreserveCooldown, setRepairPreserveCooldown] = useState(true);
   const [bioDraft, setBioDraft] = useState(character.bio ?? "");
+  const [bioSaving, setBioSaving] = useState(false);
+  const [bioError, setBioError] = useState<string | null>(null);
   const [profileQuadPostsReady, setProfileQuadPostsReady] = useState(false);
   const [postsLoadError, setPostsLoadError] = useState<string | null>(null);
   const [apiConnections, setApiConnections] = useState<ConnectionItem[]>([]);
@@ -346,6 +349,27 @@ export function MyProfileScreen({
     repairPreserveCooldown,
     onRefresh,
   ]);
+
+  const saveBio = useCallback(async () => {
+    const next = bioDraft.trim();
+    const cur = (character.bio ?? "").trim();
+    if (next === cur) {
+      setShowEditBio(false);
+      return;
+    }
+    setBioError(null);
+    setBioSaving(true);
+    try {
+      await persistBioToServer(next);
+      replaceLocalCharacter({ ...character, bio: next || undefined }, { skipRemoteSync: true });
+      setShowEditBio(false);
+      onRefresh?.();
+    } catch (err) {
+      setBioError(err instanceof Error ? err.message : "Could not save bio.");
+    } finally {
+      setBioSaving(false);
+    }
+  }, [bioDraft, character.bio, onRefresh]);
 
   const syncPostsFromCache = useCallback(() => {
     setPosts((prev) => {
@@ -716,24 +740,23 @@ export function MyProfileScreen({
               className="w-full px-3 py-2.5 rounded-xl bg-cq-elevated border border-cq-border text-cq-foreground placeholder:text-cq-subtle text-sm focus:outline-none focus:ring-2 focus:ring-uri-keaney/40 resize-none"
             />
             <p className="text-xs text-cq-muted mt-1">{bioDraft.length}/{BIO_MAX_LENGTH}</p>
+            {bioError ? <p className="text-xs text-red-400 mt-2">{bioError}</p> : null}
             <div className="flex gap-3 justify-end mt-4">
               <button
                 type="button"
                 onClick={() => setShowEditBio(false)}
+                disabled={bioSaving}
                 className="px-4 py-2.5 rounded-xl text-sm font-medium text-cq-muted hover:text-cq-foreground bg-cq-elevated border border-cq-border transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  updateCharacter({ bio: bioDraft });
-                  setShowEditBio(false);
-                  onRefresh?.();
-                }}
-                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-uri-keaney hover:bg-uri-keaney/90 border border-uri-keaney/40 transition-colors"
+                onClick={() => void saveBio()}
+                disabled={bioSaving}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-uri-keaney hover:bg-uri-keaney/90 border border-uri-keaney/40 transition-colors disabled:opacity-60"
               >
-                Save
+                {bioSaving ? "Saving…" : "Save"}
               </button>
             </div>
           </div>

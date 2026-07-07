@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { DEFAULT_POLICY_VERSION } from "@/lib/legal/policy";
 import { fetchMeSchoolVerification, SchoolVerificationHttpError } from "@/lib/client/dashboardApi";
@@ -23,6 +23,10 @@ import { AuthModeSegment } from "@/components/auth/AuthModeSegment";
 import { CampusQuestLogo } from "@/components/CampusQuestLogo";
 import { passwordMeetsRequirements } from "@/lib/passwordRequirements";
 import {
+  AUTH_SESSION_EXPIRED_NOTICE_KEY,
+} from "@/lib/client/invalidateAuthSession";
+
+import {
   HttpRequestError,
   mapGenericError,
   mapSigninError,
@@ -32,6 +36,7 @@ import {
 type Mode = "signin" | "signup";
 type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } | string };
 const REMEMBER_EMAIL_KEY = "cq_auth_remember_email";
+const SIGNUP_COOLDOWN_MS = 3000;
 
 const IS_DEV =
   typeof process !== "undefined" && process.env.NODE_ENV !== "production";
@@ -133,6 +138,19 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     requiredSchoolDomain: string | null;
     currentDomain: string | null;
   } | null>(null);
+  const signupLockedRef = useRef(false);
+  const lastSignupAttemptRef = useRef(0);
+  const loginLockedRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const expiredNotice = sessionStorage.getItem(AUTH_SESSION_EXPIRED_NOTICE_KEY);
+    if (expiredNotice) {
+      sessionStorage.removeItem(AUTH_SESSION_EXPIRED_NOTICE_KEY);
+      setNotice(expiredNotice);
+      setMode("signin");
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -252,6 +270,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
 
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
+    if (isSubmitting || loginLockedRef.current) return;
     setError(null);
     setNotice(null);
     setSuccessBanner(null);
@@ -266,6 +285,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       return;
     }
 
+    loginLockedRef.current = true;
     setIsSubmitting(true);
     try {
       const payload = await fetchJson<{ session?: { access_token?: string; refresh_token?: string } }>(
@@ -307,11 +327,17 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setError(mapSigninError(signInError));
     } finally {
       setIsSubmitting(false);
+      window.setTimeout(() => {
+        loginLockedRef.current = false;
+      }, SIGNUP_COOLDOWN_MS);
     }
   }
 
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
+    if (isSubmitting || signupLockedRef.current) return;
+    const now = Date.now();
+    if (now - lastSignupAttemptRef.current < SIGNUP_COOLDOWN_MS) return;
     setError(null);
     setShowPasswordRequirementsError(false);
     setNotice(null);
@@ -345,6 +371,8 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       return;
     }
 
+    signupLockedRef.current = true;
+    lastSignupAttemptRef.current = now;
     setIsSubmitting(true);
     try {
       const payload = await fetchJson<{
@@ -363,7 +391,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         setPassword("");
         setConfirmPassword("");
         setSuccessBanner("Account Created!");
-        setNotice("Check your email to verify your account, then sign in.");
+        setNotice("Check your URI email to confirm your account before signing in.");
         return;
       }
       setAccessToken(accessToken);
@@ -389,6 +417,9 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setError(mapped.message);
     } finally {
       setIsSubmitting(false);
+      window.setTimeout(() => {
+        signupLockedRef.current = false;
+      }, SIGNUP_COOLDOWN_MS);
     }
   }
 

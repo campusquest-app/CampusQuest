@@ -31,6 +31,11 @@ export function mapSignupError(
     if (error.code === "PASSWORD_REQUIREMENTS" || isPasswordRequirementFailure(error.message, error.code)) {
       return { passwordRequirements: true };
     }
+    if (error.status === 429 || error.code === "EMAIL_RATE_LIMIT") {
+      return {
+        message: "Too many confirmation emails were sent. Please wait a few minutes before trying again.",
+      };
+    }
     if (error.message.trim()) {
       return { message: error.message };
     }
@@ -62,7 +67,7 @@ export function mapSigninError(error: unknown): string {
     }
     // Email confirmation must be checked before the generic 401 branch.
     if (code === "email_not_confirmed" || raw.includes("confirm your email")) {
-      return "Please confirm your email before signing in.";
+      return "Please confirm your URI email before signing in.";
     }
     if (
       error.status === 401 ||
@@ -70,10 +75,10 @@ export function mapSigninError(error: unknown): string {
       raw.includes("invalid email or password") ||
       raw.includes("incorrect email or password")
     ) {
-      return "Incorrect email or password.";
+      return "Invalid email or password. If you just signed up, confirm your email first.";
     }
     if (error.status === 429 || code === "email_rate_limit") {
-      return "Too many attempts. Please wait a moment and try again.";
+      return "Too many confirmation emails were sent. Please wait a few minutes before trying again.";
     }
     // Auth worked but the app profile row is missing / still provisioning.
     if (error.status === 404 || PROFILE_SETUP_CODES.has(code)) {

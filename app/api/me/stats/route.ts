@@ -1,9 +1,7 @@
-import { ZodError } from "zod";
 import { fail, ok, ApiError } from "@/lib/server/http";
+import { logSecurityEvent } from "@/lib/server/profileSecurity";
 import { enforceRateLimit } from "@/lib/server/security";
-import { xpToLevel } from "@/lib/level";
 import { requireAuthUser } from "@/lib/server/supabase";
-import { patchMeStatsSchema, readJson } from "@/lib/server/validation";
 
 export async function GET(request: Request) {
   try {
@@ -28,41 +26,31 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const auth = await requireAuthUser(request);
-    enforceRateLimit({ userId: auth.user.id, routeKey: "me:stats:patch", limit: 120, windowMs: 60_000 });
-    const input = await readJson(request, patchMeStatsSchema);
+    enforceRateLimit({ userId: auth.user.id, routeKey: "me:stats:patch", limit: 30, windowMs: 60_000 });
 
-    const updates: Record<string, unknown> = {};
-    if (input.totalXp !== undefined) {
-      const txp = Math.max(0, Number(input.totalXp));
-      updates.total_xp = txp;
-      updates.level = xpToLevel(txp);
-    }
-    if (input.strength !== undefined) updates.strength = input.strength;
-    if (input.stamina !== undefined) updates.stamina = input.stamina;
-    if (input.knowledge !== undefined) updates.knowledge = input.knowledge;
-    if (input.social !== undefined) updates.social = input.social;
-    if (input.focus !== undefined) updates.focus = input.focus;
-    if (input.bossesDefeated !== undefined) updates.bosses_defeated = input.bossesDefeated;
-    if (input.finalBossesDefeated !== undefined) updates.final_bosses_defeated = input.finalBossesDefeated;
+    const rawBody = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const attemptedFields = Object.keys(rawBody);
 
-    const { data, error } = await auth.userClient
-      .from("user_stats")
-      .update(updates)
-      .eq("user_id", auth.user.id)
-      .select("*")
-      .single();
+    console.warn("[SECURITY] Blocked XP mutation", {
+      userId: auth.user.id,
+      attemptedFields,
+      requestPath: "/api/me/stats",
+    });
 
-    if (error) {
-      throw new ApiError(400, error.message, "STATS_PATCH_FAILED");
-    }
-    if (!data) throw new ApiError(404, "User stats not found.", "STATS_NOT_FOUND");
+    await logSecurityEvent({
+      userId: auth.user.id,
+      eventType: "blocked_profile_stat_mutation",
+      blockedFields: attemptedFields,
+      requestPath: "/api/me/stats",
+      metadata: { method: "PATCH" },
+    });
 
-    return ok(data);
+    throw new ApiError(
+      403,
+      "User stats cannot be updated directly. XP and levels are awarded through gameplay.",
+      "STATS_PATCH_FORBIDDEN",
+    );
   } catch (error) {
-    if (error instanceof ZodError) {
-      return fail(new ApiError(400, error.issues[0]?.message ?? "Invalid payload.", "VALIDATION_ERROR"));
-    }
     return fail(error);
   }
 }
-

@@ -17,3 +17,10 @@ export const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+if (process.env.NODE_ENV !== "production") {
+  console.info("[cq:auth] supabase client ready", {
+    supabaseUrl,
+    hasAnonKey: Boolean(supabaseAnonKey),
+  });
+}
+

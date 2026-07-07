@@ -113,7 +113,12 @@ function LevelUpOverlayRouter({
   reduced: boolean;
   rewardSnapshot: RewardAnimationSnapshot;
 }): ReactNode {
-  const [mobileQrPath, setMobileQrPath] = useState<boolean | null>(null);
+  const [mobileQrPath, setMobileQrPath] = useState<boolean | null>(() => {
+    if (!afterQrScan) return false;
+    if (reduced) return false;
+    if (typeof window === "undefined") return null;
+    return readMobileViewport();
+  });
 
   useLayoutEffect(() => {
     setMobileQrPath(afterQrScan && !reduced && readMobileViewport());
@@ -568,7 +573,7 @@ function LevelUpOverlayInner({
       role="dialog"
       aria-modal="true"
       aria-label="Experience gained"
-      className="fixed inset-0 z-[200] flex items-center justify-center overflow-hidden px-4"
+      className="fixed inset-0 z-[10050] flex items-center justify-center overflow-hidden px-4"
       initial={{ opacity: 0 }}
       animate={{ opacity: exiting ? 0 : 1 }}
       transition={{

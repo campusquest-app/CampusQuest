@@ -249,7 +249,7 @@ export function MobileQrXpRewardOverlay({
       role="dialog"
       aria-modal="true"
       aria-label="Experience gained"
-      className="fixed inset-0 z-[200] flex items-center justify-center overflow-hidden px-4"
+      className="fixed inset-0 z-[10050] flex items-center justify-center overflow-hidden px-4"
       style={{
         opacity: exiting ? 0 : backdropVisible ? 1 : 0,
         transition: `opacity ${exiting ? FADE_OUT_MS : XP_OVERLAY_ENTER_MS}ms ease-out`,

@@ -12,14 +12,14 @@ function httpError(status: number, message: string, code?: string) {
 describe("mapSigninError", () => {
   it("maps invalid credentials (401) to a clear reason", () => {
     expect(mapSigninError(httpError(401, "Invalid email or password.", "INVALID_CREDENTIALS"))).toBe(
-      "Incorrect email or password.",
+      "Invalid email or password. If you just signed up, confirm your email first.",
     );
   });
 
   it("maps unconfirmed email before the generic 401 branch", () => {
     expect(
-      mapSigninError(httpError(401, "Please confirm your email before signing in.", "EMAIL_NOT_CONFIRMED")),
-    ).toBe("Please confirm your email before signing in.");
+      mapSigninError(httpError(401, "Please confirm your URI email before signing in.", "EMAIL_NOT_CONFIRMED")),
+    ).toBe("Please confirm your URI email before signing in.");
   });
 
   it("maps Supabase connection outages (503) to a connection message", () => {
@@ -42,7 +42,7 @@ describe("mapSigninError", () => {
 
   it("maps rate limiting to a wait message", () => {
     expect(mapSigninError(httpError(429, "Too many attempts.", "EMAIL_RATE_LIMIT"))).toBe(
-      "Too many attempts. Please wait a moment and try again.",
+      "Too many confirmation emails were sent. Please wait a few minutes before trying again.",
     );
   });
 
@@ -69,6 +69,12 @@ describe("mapSignupError", () => {
   it("maps network failures to a connection message", () => {
     expect(mapSignupError(new Error("NETWORK_ERROR:/api/auth/signup"))).toEqual({
       message: "Unable to connect. Please try again.",
+    });
+  });
+
+  it("maps email rate limits to a confirmation-email message", () => {
+    expect(mapSignupError(httpError(429, "Too many confirmation emails were sent.", "EMAIL_RATE_LIMIT"))).toEqual({
+      message: "Too many confirmation emails were sent. Please wait a few minutes before trying again.",
     });
   });
 });

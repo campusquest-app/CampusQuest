@@ -23,14 +23,19 @@ export function buildQrXpSession(opts: {
     stats: Character["stats"];
   };
 }): ActivityXPGainSession {
-  const animationStartXP = opts.beforeTotalXP;
-  const animationEndXP = opts.afterTotalXP;
+  const animationStartXP = Math.max(0, Math.floor(opts.beforeTotalXP));
+  const explicitXp = Math.max(0, Math.floor(opts.xpGained));
+  const serverAfterXP = Math.max(0, Math.floor(opts.afterTotalXP));
+  const diffXp = Math.max(0, serverAfterXP - animationStartXP);
+  const xpGained = diffXp > 0 ? Math.max(diffXp, explicitXp) : explicitXp;
+  const animationEndXP =
+    diffXp > 0 ? serverAfterXP : explicitXp > 0 ? animationStartXP + explicitXp : animationStartXP;
   const rewardSnapshot = buildRewardAnimationSnapshot(animationStartXP, animationEndXP);
   return {
     sessionKey: createXpGainSessionKey("xp-qr"),
     beforeTotalXP: animationStartXP,
     afterTotalXP: animationEndXP,
-    xpGained: Math.max(0, animationEndXP - animationStartXP),
+    xpGained,
     rewardSnapshot,
     title: opts.title,
     stats: opts.stats,

@@ -3,7 +3,7 @@
 import type { Character } from "@/lib/types";
 import { getAccessToken } from "@/lib/client/apiSession";
 import { patchAuthed } from "@/lib/client/dashboardApi";
-import type { MeProfileRow, MeStatsRow } from "@/lib/client/profileCharacter";
+import type { MeProfileRow } from "@/lib/client/profileCharacter";
 import { runLogoutPrepares } from "@/lib/client/logoutPrepare";
 
 const UUID_RE =
@@ -133,27 +133,13 @@ export function getCharacterGameStateJson(character: Character): Record<string, 
   };
 }
 
-/** Builds PATCH bodies for `/api/me/stats` and `/api/me/profile` (test hook + sync core). */
+/** Builds PATCH body for `/api/me/profile` gameplay cosmetic sync (never stats/XP). */
 export function buildUserStatePatchBodies(character: Character): {
-  stats: Record<string, unknown>;
   profile: Record<string, unknown>;
 } {
-  const stats = {
-    totalXp: Math.max(0, Math.floor(character.totalXP)),
-    strength: character.stats.strength,
-    stamina: character.stats.stamina,
-    knowledge: character.stats.knowledge,
-    social: character.stats.social,
-    focus: character.stats.focus,
-    bossesDefeated: Math.max(0, Math.floor(character.bossesDefeatedCount ?? 0)),
-    finalBossesDefeated: Math.max(0, Math.floor(character.finalBossesDefeatedCount ?? 0)),
-  };
-
   const profile: Record<string, unknown> = {
     gameStateJson: getCharacterGameStateJson(character),
   };
-  // Identity fields are edited via dedicated /api/me/profile UX flows.
-  // Do not sync name/username from local gameplay state, so server remains source of truth.
 
   const av = character.avatar?.trim();
   if (av && av.length >= 1) profile.avatarCustomJson = av;
@@ -169,14 +155,12 @@ export function buildUserStatePatchBodies(character: Character): {
     profile.scholarGuildId = !g || g === "undecided" ? null : g;
   }
 
-  const bioTrim = character.bio?.trim();
-  if (bioTrim) profile.bio = bioTrim;
-  else profile.bio = "";
+  return { profile };
+}
 
-  profile.streakDays = Math.max(0, Math.floor(character.streakDays ?? 0));
-  profile.lastActivityDate = character.lastActivityDate ?? null;
-
-  return { stats, profile };
+/** Persist bio only — never sends stats, XP, or full profile object. */
+export async function persistBioToServer(bio: string): Promise<MeProfileRow> {
+  return patchAuthed<MeProfileRow, { bio: string }>("/api/me/profile", { bio: bio.trim() });
 }
 
 let debounceTimer: number | null = null;
@@ -218,13 +202,10 @@ async function executePush(character: Character): Promise<void> {
   emit();
 
   try {
-    const { stats, profile } = buildUserStatePatchBodies(character);
+    const { profile } = buildUserStatePatchBodies(character);
     const store = await import("@/lib/store");
     profile.gameStateJson = store.getFullGameStateJsonForServerSync(character);
-    await Promise.all([
-      patchAuthed<MeStatsRow, Record<string, unknown>>("/api/me/stats", stats),
-      patchAuthed<MeProfileRow, Record<string, unknown>>("/api/me/profile", profile),
-    ]);
+    await patchAuthed<MeProfileRow, Record<string, unknown>>("/api/me/profile", profile);
     dirty = false;
     saveStatus = "saved";
     lastSavedAt = Date.now();

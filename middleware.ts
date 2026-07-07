@@ -26,6 +26,41 @@ function isConsentExempt(pathname: string, method: string): boolean {
   return false;
 }
 
+function isJwtStructurallyInvalid(token: string): boolean {
+  const parts = token.split(".");
+  if (parts.length !== 3) return true;
+  try {
+    const payloadRaw = parts[1]?.replace(/-/g, "+").replace(/_/g, "/");
+    if (!payloadRaw) return true;
+    const padded = payloadRaw.padEnd(payloadRaw.length + ((4 - (payloadRaw.length % 4)) % 4), "=");
+    const payload = JSON.parse(atob(padded)) as { exp?: number };
+    if (typeof payload.exp === "number" && payload.exp * 1000 < Date.now() - 30_000) {
+      return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function isBadJwtAuthError(error: unknown): boolean {
+  const message =
+    error && typeof error === "object" && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : String(error ?? "");
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String((error as { code?: unknown }).code ?? "")
+      : "";
+  const haystack = `${message} ${code}`.toLowerCase();
+  return (
+    haystack.includes("bad jwt") ||
+    haystack.includes("invalid jwt") ||
+    haystack.includes("jwt expired") ||
+    haystack.includes("invalid claim")
+  );
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (!pathname.startsWith("/api/")) {
@@ -43,7 +78,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const token = authHeader.slice("Bearer ".length).trim();
-  if (!token) {
+  if (!token || isJwtStructurallyInvalid(token)) {
     return NextResponse.next();
   }
 
@@ -51,6 +86,9 @@ export async function middleware(request: NextRequest) {
     const userClient = createUserClient(token);
     const { data: userData, error: userErr } = await userClient.auth.getUser();
     if (userErr || !userData.user) {
+      if (isBadJwtAuthError(userErr)) {
+        return NextResponse.next();
+      }
       return NextResponse.next();
     }
 
