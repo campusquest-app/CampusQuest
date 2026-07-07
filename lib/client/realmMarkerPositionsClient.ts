@@ -11,8 +11,10 @@ export type RealmMarkerPositionsResponse = {
 
 const PATH = "/api/realm/marker-positions";
 
-export async function fetchRealmMarkerPositions(): Promise<RealmMarkerPositionsResponse> {
-  return fetchAuthed<RealmMarkerPositionsResponse>(PATH);
+export async function fetchRealmMarkerPositions(options?: {
+  signal?: AbortSignal;
+}): Promise<RealmMarkerPositionsResponse> {
+  return fetchAuthed<RealmMarkerPositionsResponse>(PATH, { signal: options?.signal });
 }
 
 export async function saveRealmMarkerPositionsToServer(

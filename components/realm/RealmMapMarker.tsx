@@ -80,7 +80,6 @@ export const RealmMapMarker = memo(function RealmMapMarker({
         opacity: revealOpacity,
         transition: "opacity 280ms ease",
         ...(revealIndex != null ? { ["--marker-enter-index" as string]: revealIndex } : {}),
-        ...(sparkleCount > 0 ? { ["--sparkle-count" as string]: sparkleCount } : {}),
       }}
       data-map-marker="true"
       data-no-drawer-swipe="true"
@@ -96,7 +95,16 @@ export const RealmMapMarker = memo(function RealmMapMarker({
           {sparkleCount > 0 ? (
             <span className="cq-marker-orbit" aria-hidden>
               {Array.from({ length: sparkleCount }, (_, i) => (
-                <span key={i} className="cq-marker-sparkle" style={{ ["--sparkle-i" as string]: i }} />
+                <span
+                  key={i}
+                  className="cq-marker-sparkle-arm"
+                  style={{ transform: `rotate(${(i * 360) / sparkleCount}deg)` }}
+                >
+                  <span
+                    className="cq-marker-sparkle"
+                    style={{ animationDelay: `${(i * -9) / sparkleCount}s` }}
+                  />
+                </span>
               ))}
             </span>
           ) : null}

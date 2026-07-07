@@ -261,7 +261,7 @@ async function parseApiResponse<T>(response: Response): Promise<ApiResponse<T>> 
   return (await response.json().catch(() => ({}))) as ApiResponse<T>;
 }
 
-export async function fetchAuthed<T>(path: string): Promise<T> {
+export async function fetchAuthed<T>(path: string, options?: { signal?: AbortSignal }): Promise<T> {
   const token = getAccessToken();
   if (!token) {
     missingSessionThrow("GET", path);
@@ -276,8 +276,12 @@ export async function fetchAuthed<T>(path: string): Promise<T> {
         Authorization: `Bearer ${token}`,
       },
       cache: "no-store",
+      signal: options?.signal,
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw e;
+    }
     throw new Error(IS_DEV ? `Backend request failed: ${path} could not be reached.` : "Could not reach the backend. Try again.");
   }
 

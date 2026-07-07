@@ -213,6 +213,7 @@ export function Dashboard() {
   const [characterPane, setCharacterPane] = useState<CharacterPane>("sheet");
   const [profileTab, setProfileTab] = useState<ProfileTab>("posts");
   const [tabEnterDirection, setTabEnterDirection] = useState<SwipeNavDirection | null>(null);
+  const [realmKeepAlive, setRealmKeepAlive] = useState(false);
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -303,6 +304,10 @@ export function Dashboard() {
       setTab(t as Tab);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (tab === "realm") setRealmKeepAlive(true);
+  }, [tab]);
 
   const showMilestonePopupIfNeeded = useCallback((popup: XpMilestoneStatus | null | undefined) => {
     if (!popup || dismissedMilestoneKeysRef.current.has(popup.key)) return;
@@ -2183,28 +2188,33 @@ export function Dashboard() {
             />,
           )}
 
-        {tab === "realm" &&
-          renderPilotCampusGate(
-            <TheRealm
-              onBack={() => setTab("quad")}
-              onCreatePost={() => setTab("quad")}
-              onViewProfile={openFriendView}
-              onSharePost={openSharePost}
-              viewer={
-                character
-                  ? {
-                      id: character.id,
-                      name: character.name,
-                      username: character.username,
-                      avatar: character.avatar,
-                    }
-                  : null
-              }
-              userId={character?.id ?? null}
-              isAdmin={moderationAdminNavVisible(pilotCampusState)}
-              userRole={moderationAdminNavVisible(pilotCampusState) ? "admin" : "student"}
-            />,
-          )}
+        {realmKeepAlive ? (
+          <div className={tab === "realm" ? undefined : "hidden"} aria-hidden={tab !== "realm"}>
+            {renderPilotCampusGate(
+              <TheRealm
+                isActive={tab === "realm"}
+                onBack={() => setTab("quad")}
+                onCreatePost={() => setTab("quad")}
+                onViewQuests={() => setTab("quest-board")}
+                onViewProfile={openFriendView}
+                onSharePost={openSharePost}
+                viewer={
+                  character
+                    ? {
+                        id: character.id,
+                        name: character.name,
+                        username: character.username,
+                        avatar: character.avatar,
+                      }
+                    : null
+                }
+                userId={character?.id ?? null}
+                isAdmin={moderationAdminNavVisible(pilotCampusState)}
+                userRole={moderationAdminNavVisible(pilotCampusState) ? "admin" : "student"}
+              />,
+            )}
+          </div>
+        ) : null}
 
         {tab === "organizations" && renderPilotCampusGate(<OrganizationsHub personalization={onboardingPreferences} onBack={goBackTab} />)}
 

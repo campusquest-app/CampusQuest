@@ -50,8 +50,10 @@ function mapApiRow(row: CampusLocationApiRow): CampusLocationRecord {
   };
 }
 
-export async function fetchCampusLocationsClient(): Promise<CampusLocationRecord[]> {
-  const data = await fetchAuthed<{ locations: CampusLocationApiRow[] }>("/api/campus-locations");
+export async function fetchCampusLocationsClient(options?: { signal?: AbortSignal }): Promise<CampusLocationRecord[]> {
+  const data = await fetchAuthed<{ locations: CampusLocationApiRow[] }>("/api/campus-locations", {
+    signal: options?.signal,
+  });
   const rows = (data.locations ?? []).map(mapApiRow);
   if (rows.length > 0) setCampusLocationCatalogCache(rows);
   return rows;
@@ -94,28 +96,34 @@ export async function createCampusLocationFromMarker(args: {
   return data.location;
 }
 
-export function useCampusLocations() {
+export function useCampusLocations(options?: { active?: boolean }) {
+  const active = options?.active ?? true;
   const [locations, setLocations] = useState<CampusLocationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
-      const rows = await fetchCampusLocationsClient();
+      const rows = await fetchCampusLocationsClient({ signal });
+      if (signal?.aborted) return;
       setLocations(rows);
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Could not load campus locations.");
       setLocations([]);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    if (!active) return undefined;
+    const controller = new AbortController();
+    void reload(controller.signal);
+    return () => controller.abort();
+  }, [reload, active]);
 
   return { locations, loading, error, reload };
 }

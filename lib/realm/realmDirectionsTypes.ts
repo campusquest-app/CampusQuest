@@ -1,0 +1,64 @@
+export type RealmTravelMode = "WALKING" | "DRIVING";
+
+export type RealmDirectionsDestination = {
+  lat: number;
+  lng: number;
+  label: string;
+};
+
+export type RealmDirectionsRequest = {
+  id: number;
+  destination: RealmDirectionsDestination;
+  travelMode: RealmTravelMode;
+};
+
+export type RealmDirectionsSummary = {
+  durationText: string;
+  distanceText: string;
+  distanceMeters: number;
+  durationSeconds: number;
+};
+
+export type RealmDirectionsOrigin = {
+  lat: number;
+  lng: number;
+  label: string;
+  usedFallback: boolean;
+  hint: string | null;
+};
+
+export type RealmDirectionsStatus =
+  | { status: "idle" }
+  | { status: "loading"; travelMode: RealmTravelMode; destinationLabel: string }
+  | {
+      status: "ready";
+      travelMode: RealmTravelMode;
+      destinationLabel: string;
+      summary: RealmDirectionsSummary;
+      origin: RealmDirectionsOrigin;
+    }
+  | { status: "error"; travelMode: RealmTravelMode; destinationLabel: string; message: string };
+
+/** Suggest driving when walking route exceeds ~1.2 mi / 2 km. */
+export const REALM_DRIVING_SUGGEST_METERS = 2000;
+
+export function parseDirectionsSummary(
+  result: {
+    routes?: Array<{
+      legs?: Array<{
+        duration?: { text: string; value: number };
+        distance?: { text: string; value: number };
+      }>;
+    }>;
+  },
+): RealmDirectionsSummary | null {
+  const leg = result.routes?.[0]?.legs?.[0];
+  if (!leg?.duration || !leg.distance) return null;
+  return {
+    durationText: leg.duration.text,
+    distanceText: leg.distance.text,
+    distanceMeters: leg.distance.value,
+    durationSeconds: leg.duration.value,
+  };
+}
+

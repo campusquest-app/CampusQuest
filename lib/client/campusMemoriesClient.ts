@@ -19,14 +19,16 @@ export async function fetchCampusMemoryGroups(): Promise<CampusMemoryGroup[]> {
   return data.groups ?? [];
 }
 
-export async function fetchCampusMemoryGroupsAndStats(): Promise<{
+export async function fetchCampusMemoryGroupsAndStats(options?: {
+  signal?: AbortSignal;
+}): Promise<{
   groups: CampusMemoryGroup[];
   stats: CampusMemoryLocationStats[];
 }> {
   const data = await fetchAuthed<{
     groups: CampusMemoryGroup[];
     stats?: CampusMemoryLocationStats[];
-  }>("/api/campus-memories/groups?stats=true");
+  }>("/api/campus-memories/groups?stats=true", { signal: options?.signal });
   return { groups: data.groups ?? [], stats: data.stats ?? [] };
 }
 

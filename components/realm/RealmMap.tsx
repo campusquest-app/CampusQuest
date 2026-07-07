@@ -39,6 +39,13 @@ import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 import { geoToRealmMapPercent } from "@/lib/realm/geoToMapPercent";
 import { GoogleRealmMap } from "./GoogleRealmMap";
+import type { RealmDirectionsLoadResult } from "./RealmDirectionsOverlay";
+import type {
+  RealmDirectionsDestination,
+  RealmDirectionsRequest,
+  RealmDirectionsStatus,
+  RealmTravelMode,
+} from "@/lib/realm/realmDirectionsTypes";
 import { RealmCampusMapLayer } from "./RealmCampusMapLayer";
 import { RealmDecorLayer } from "./RealmDecorLayer";
 import { RealmFootprintsLayer } from "./RealmFootprintsLayer";
@@ -47,6 +54,7 @@ import { RealmMarkerEditorPanel, type RealmMarkerEditorDebug } from "./RealmMark
 import { RealmPathsLayer } from "./RealmPathsLayer";
 import { useRealmMapDiagnostics } from "./useRealmMapDiagnostics";
 import { useMapMarkerTap } from "@/lib/client/mapMarkerTap";
+import { markRealmMapStep, isRealmMapTilesReady } from "@/lib/realm/realmMapLifecycle";
 
 function catalogRowsToRealmLocations(rows: CampusLocationRecord[]): RealmLocation[] {
   return rows.map((row) => ({
@@ -110,6 +118,7 @@ export function RealmMap({
   isAdmin = false,
   userRole = "student",
   immersive = false,
+  isActive = true,
 }: {
   onViewQuests?: (location: RealmLocation) => void;
   onCreatePost?: () => void;
@@ -120,11 +129,12 @@ export function RealmMap({
   isAdmin?: boolean;
   userRole?: string;
   immersive?: boolean;
+  isActive?: boolean;
 }) {
   const [selectedLocation, setSelectedLocation] = useState<HydratedRealmLocation | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null);
-  const [uriMapLoaded, setUriMapLoaded] = useState(false);
+  const [uriMapLoaded, setUriMapLoaded] = useState(() => isRealmMapTilesReady());
   const [panning, setPanning] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [draftPositions, setDraftPositions] = useState<MarkerPositionMap>(() => resolveMarkerPositions());
@@ -143,16 +153,20 @@ export function RealmMap({
   const [questReloadToken, setQuestReloadToken] = useState(0);
   const [showAddMemory, setShowAddMemory] = useState(false);
   const [addMemoryLocationId, setAddMemoryLocationId] = useState<CampusLocationId>("the-quad");
-  const { groups: mapGroups, loaded: mapGroupsLoaded, reload: reloadMapGroups } = useGroupedMapLocations();
+  const { groups: mapGroups, loaded: mapGroupsLoaded, reload: reloadMapGroups } = useGroupedMapLocations({
+    active: isActive,
+  });
   const [selectedMapContent, setSelectedMapContent] = useState<GroupedMapLocation | null>(null);
   const [mapScale, setMapScale] = useState(1);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const mapRootRef = useRef<HTMLDivElement>(null);
   const mapStageRef = useRef<HTMLDivElement>(null);
-  const { locations: catalogRows, reload: reloadCatalog } = useCampusLocations();
+  const { locations: catalogRows, reload: reloadCatalog } = useCampusLocations({ active: isActive });
   const [placingNewLocation, setPlacingNewLocation] = useState(false);
   const [newLocationName, setNewLocationName] = useState("");
   const [createLocationPending, setCreateLocationPending] = useState(false);
+  const [directionsRequest, setDirectionsRequest] = useState<RealmDirectionsRequest | null>(null);
+  const [directionsStatus, setDirectionsStatus] = useState<RealmDirectionsStatus>({ status: "idle" });
 
   const catalogRealmLocations = useMemo(
     () => (catalogRows.length > 0 ? catalogRowsToRealmLocations(catalogRows) : realmLocationsFromCatalog()),
@@ -219,26 +233,38 @@ export function RealmMap({
     isAdmin,
   });
 
-  const loadCampusMemories = useCallback(async () => {
+  const loadCampusMemories = useCallback(async (signal?: AbortSignal) => {
     setMemoriesLoadError(null);
+    markRealmMapStep("data-fetch-start", { source: "memories" });
     try {
-      const { stats } = await fetchCampusMemoryGroupsAndStats();
+      const { stats } = await fetchCampusMemoryGroupsAndStats({ signal });
+      if (signal?.aborted) return;
       const statsMap: Record<string, CampusMemoryLocationStats> = {};
       for (const row of stats) statsMap[row.locationId] = row;
       setMemoryStatsByLocation(statsMap);
-    } catch {
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
       setMemoryStatsByLocation({});
       setMemoriesLoadError("Could not load campus memories for The Realm.");
     } finally {
-      setMemoriesLoaded(true);
+      if (!signal?.aborted) {
+        setMemoriesLoaded(true);
+        markRealmMapStep("data-fetch-end", { source: "memories" });
+      }
     }
   }, []);
 
   useEffect(() => {
-    void loadCampusMemories();
-  }, [loadCampusMemories]);
+    if (!isActive) return undefined;
+    const controller = new AbortController();
+    void loadCampusMemories(controller.signal);
+    return () => controller.abort();
+  }, [loadCampusMemories, isActive]);
 
-  useEffect(() => subscribeCampusMemoriesChanged(() => void loadCampusMemories()), [loadCampusMemories]);
+  useEffect(() => {
+    if (!isActive) return undefined;
+    return subscribeCampusMemoriesChanged(() => void loadCampusMemories());
+  }, [loadCampusMemories, isActive]);
 
   useEffect(() => {
     document.documentElement.toggleAttribute("data-realm-map-panning", panning);
@@ -255,7 +281,9 @@ export function RealmMap({
   }, []);
 
   useEffect(() => {
+    if (!isActive) return undefined;
     let cancelled = false;
+    const controller = new AbortController();
 
     const cached = loadServerMarkerPositionsCache();
     if (cached) {
@@ -264,14 +292,15 @@ export function RealmMap({
 
     void (async () => {
       try {
-        const remote = await fetchRealmMarkerPositions();
-        if (cancelled) return;
+        const remote = await fetchRealmMarkerPositions({ signal: controller.signal });
+        if (cancelled || controller.signal.aborted) return;
         saveServerMarkerPositionsCache(remote.positions, {
           updatedAt: remote.updatedAt,
           updatedBy: remote.updatedBy,
         });
         applyResolvedPositions(remote.positions);
-      } catch {
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
         if (!cancelled && !cached) {
           applyResolvedPositions(loadMarkerPositionOverrides());
         }
@@ -280,8 +309,9 @@ export function RealmMap({
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [applyResolvedPositions]);
+  }, [applyResolvedPositions, isActive]);
 
   const getSavedPositions = useCallback((): MarkerPositionMap => {
     const cached = loadServerMarkerPositionsCache();
@@ -314,6 +344,8 @@ export function RealmMap({
     setSheetOpen(false);
     setActiveMarkerId(null);
     setSelectedMapContent(null);
+    setDirectionsRequest(null);
+    setDirectionsStatus({ status: "idle" });
   }, []);
 
   const handleCreatePost = useCallback(() => {
@@ -503,8 +535,73 @@ export function RealmMap({
     setMapScale(ref.state.scale);
   }, []);
 
+  const selectedDestination = useMemo((): RealmDirectionsDestination | null => {
+    if (!sheetOpen || editMode) return null;
+    if (selectedLocation) {
+      const geo = geoPositions[selectedLocation.id];
+      if (geo) {
+        return { lat: geo.lat, lng: geo.lng, label: selectedLocation.name };
+      }
+    }
+    if (selectedMapContent?.lat != null && selectedMapContent?.lng != null) {
+      return {
+        lat: selectedMapContent.lat,
+        lng: selectedMapContent.lng,
+        label: selectedMapContent.locationName,
+      };
+    }
+    return null;
+  }, [sheetOpen, editMode, selectedLocation, selectedMapContent, geoPositions]);
+
+  const requestDirections = useCallback(
+    (travelMode: RealmTravelMode) => {
+      if (!selectedDestination || !useGoogleMap || editMode) return;
+      const id = Date.now();
+      setDirectionsRequest({
+        id,
+        destination: selectedDestination,
+        travelMode,
+      });
+      setDirectionsStatus({
+        status: "loading",
+        travelMode,
+        destinationLabel: selectedDestination.label,
+      });
+    },
+    [selectedDestination, useGoogleMap, editMode],
+  );
+
+  const clearDirections = useCallback(() => {
+    setDirectionsRequest(null);
+    setDirectionsStatus({ status: "idle" });
+  }, []);
+
+  const handleDirectionsLoaded = useCallback((result: RealmDirectionsLoadResult & { ok: true }) => {
+    setDirectionsStatus({
+      status: "ready",
+      travelMode: result.travelMode,
+      destinationLabel: result.destinationLabel,
+      summary: result.summary,
+      origin: result.origin,
+    });
+  }, []);
+
+  const handleDirectionsError = useCallback((result: RealmDirectionsLoadResult & { ok: false }) => {
+    setDirectionsStatus({
+      status: "error",
+      travelMode: result.travelMode,
+      destinationLabel: result.destinationLabel,
+      message: result.message,
+    });
+  }, []);
+
+  useEffect(() => {
+    setDirectionsRequest(null);
+    setDirectionsStatus({ status: "idle" });
+  }, [selectedDestination?.lat, selectedDestination?.lng]);
+
   const trackedPathDestination = useMemo((): { lat: number; lng: number } | null => {
-    if (editMode || !sheetOpen || !activeMarkerId) return null;
+    if (editMode || directionsRequest || !sheetOpen || !activeMarkerId) return null;
     const landmark = locations.find((l) => l.id === activeMarkerId);
     if (landmark) {
       const hasQuest =
@@ -516,7 +613,18 @@ export function RealmMap({
       return { lat: group.lat, lng: group.lng };
     }
     return null;
-  }, [editMode, sheetOpen, activeMarkerId, locations, geoPositions, supplementaryPins]);
+  }, [editMode, directionsRequest, sheetOpen, activeMarkerId, locations, geoPositions, supplementaryPins]);
+
+  const flyToTarget = useMemo((): { lat: number; lng: number } | null => {
+    if (!sheetOpen || editMode || !activeMarkerId) return null;
+    const landmarkGeo = geoPositions[activeMarkerId as RealmLocationId];
+    if (landmarkGeo) return landmarkGeo;
+    const group = supplementaryPins.find((g) => g.groupKey === activeMarkerId);
+    if (group?.lat != null && group?.lng != null) {
+      return { lat: group.lat, lng: group.lng };
+    }
+    return null;
+  }, [sheetOpen, editMode, activeMarkerId, geoPositions, supplementaryPins]);
 
   return (
     <>
@@ -530,11 +638,6 @@ export function RealmMap({
           calibrateMode ? "realm-map-shell--calibrate" : ""
         } ${editMode ? "realm-map-shell--edit" : ""}`}
       >
-        {!memoriesLoaded ? (
-          <div className="cq-realm-map-banner cq-realm-map-banner--loading" role="status">
-            Loading The Realm…
-          </div>
-        ) : null}
         {memoriesLoadError ? (
           <div className="cq-realm-map-banner cq-realm-map-banner--error">
             <span>{memoriesLoadError}</span>
@@ -554,6 +657,7 @@ export function RealmMap({
           <GoogleRealmMap
             apiKey={GOOGLE_MAPS_API_KEY}
             immersive={immersive}
+            isActive={isActive}
             landmarks={locations.map((location) => ({
               id: location.id,
               name: location.name,
@@ -576,6 +680,11 @@ export function RealmMap({
             onSelectEditorMarker={setEditorSelectedId}
             onMarkerGeoChange={updateMarkerGeoPosition}
             onMapReady={() => setUriMapLoaded(true)}
+            directionsRequest={directionsRequest}
+            onDirectionsLoaded={handleDirectionsLoaded}
+            onDirectionsError={handleDirectionsError}
+            flyToTarget={flyToTarget}
+            flyToEnabled={sheetOpen && !editMode}
           />
         ) : (
           <TransformWrapper
@@ -727,6 +836,13 @@ export function RealmMap({
         onAddMemory={handleAddMemory}
         onOpenMemoryViewer={handleOpenMemoryViewer}
         onOpenMemoryGallery={handleOpenMemoryGallery}
+        directionsEnabled={useGoogleMap && !editMode}
+        directionsDestination={selectedDestination}
+        directionsStatus={directionsStatus}
+        activeTravelMode={directionsRequest?.travelMode ?? null}
+        onRequestWalking={() => requestDirections("WALKING")}
+        onRequestDriving={() => requestDirections("DRIVING")}
+        onClearDirections={clearDirections}
       />
 
       {memoryGalleryLocationId ? (

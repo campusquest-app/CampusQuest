@@ -46,6 +46,9 @@ function findVerticalScrollAncestor(start: EventTarget | null, root: Element | n
  * Pull-down-to-dismiss for a full-screen sheet. The gesture only engages when the
  * touch starts at the top of the content (so inner vertical scrolling keeps working)
  * and is vertical (so horizontal carousels/image swipes are untouched).
+ *
+ * Drag offset updates are batched with requestAnimationFrame so the panel tracks
+ * the finger smoothly on iOS Safari without layout thrash.
  */
 export function useSwipeDownDismiss({
   onDismiss,
@@ -59,6 +62,8 @@ export function useSwipeDownDismiss({
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
   const dragYRef = useRef(0);
+  const pendingYRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
   const onDismissRef = useRef(onDismiss);
   const gestureRef = useRef<DismissGestureState>({
     tracking: false,
@@ -79,10 +84,35 @@ export function useSwipeDownDismiss({
     dragYRef.current = dragY;
   }, [dragY]);
 
+  // Block map panning while the sheet is being dragged down.
+  useEffect(() => {
+    if (!dragging) {
+      document.documentElement.removeAttribute("data-realm-sheet-dragging");
+      return undefined;
+    }
+    document.documentElement.setAttribute("data-realm-sheet-dragging", "true");
+    return () => {
+      document.documentElement.removeAttribute("data-realm-sheet-dragging");
+    };
+  }, [dragging]);
+
   useEffect(() => {
     if (!enabled || !readTouchMobileDevice()) return undefined;
     const root = containerRef.current;
     if (!root) return undefined;
+
+    function flushDragY() {
+      rafRef.current = null;
+      const next = pendingYRef.current;
+      dragYRef.current = next;
+      setDragY(next);
+    }
+
+    function scheduleDragY(next: number) {
+      pendingYRef.current = next;
+      if (rafRef.current != null) return;
+      rafRef.current = window.requestAnimationFrame(flushDragY);
+    }
 
     function resetGesture() {
       gestureRef.current = {
@@ -101,12 +131,10 @@ export function useSwipeDownDismiss({
     function commitDismiss() {
       const height = root?.getBoundingClientRect().height ?? window.innerHeight;
       setDragging(false);
-      setDragY(height);
-      dragYRef.current = height;
+      scheduleDragY(height);
       window.setTimeout(() => {
         onDismissRef.current();
-        setDragY(0);
-        dragYRef.current = 0;
+        scheduleDragY(0);
         resetGesture();
       }, SWIPE_TRANSITION_MS);
     }
@@ -114,7 +142,6 @@ export function useSwipeDownDismiss({
     function onTouchStart(event: TouchEvent) {
       if (event.touches.length !== 1) return;
       if (isInputFocused()) return;
-      // Never steal gestures that begin on buttons, links, or horizontal carousels.
       if (isInteractiveElement(event.target)) return;
 
       const touch = event.touches[0];
@@ -123,7 +150,6 @@ export function useSwipeDownDismiss({
       const atTop = !scrollable || scrollable.scrollTop <= 0;
 
       state.tracking = true;
-      // If content is already scrolled, let the browser scroll — never pull this gesture.
       state.decided = !atTop;
       state.isDown = false;
       state.startX = touch.clientX;
@@ -147,7 +173,6 @@ export function useSwipeDownDismiss({
       state.lastTime = now;
 
       if (!state.decided) {
-        // Horizontal intent → hand off to carousels/image swipes.
         if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_GESTURE_AXIS_LOCK_PX) {
           resetGesture();
           return;
@@ -156,7 +181,6 @@ export function useSwipeDownDismiss({
           state.decided = true;
           state.isDown = true;
         } else if (dy < -SWIPE_GESTURE_AXIS_LOCK_PX) {
-          // Upward → normal scroll.
           resetGesture();
           return;
         } else {
@@ -168,10 +192,7 @@ export function useSwipeDownDismiss({
 
       const next = Math.max(0, dy);
       setDragging(true);
-      setDragY(next);
-      dragYRef.current = next;
-      // Only block native scrolling once the user has clearly pulled down — not on
-      // touchstart or tiny jitter, so taps on buttons still synthesize clicks.
+      scheduleDragY(next);
       if (next > SWIPE_GESTURE_AXIS_LOCK_PX && event.cancelable) event.preventDefault();
     }
 
@@ -180,8 +201,7 @@ export function useSwipeDownDismiss({
       if (!state.isDown) {
         resetGesture();
         if (dragYRef.current !== 0) {
-          setDragY(0);
-          dragYRef.current = 0;
+          scheduleDragY(0);
         }
         return;
       }
@@ -194,8 +214,7 @@ export function useSwipeDownDismiss({
       }
 
       resetGesture();
-      setDragY(0);
-      dragYRef.current = 0;
+      scheduleDragY(0);
     }
 
     root.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -208,6 +227,10 @@ export function useSwipeDownDismiss({
       root.removeEventListener("touchmove", onTouchMove);
       root.removeEventListener("touchend", onTouchEnd);
       root.removeEventListener("touchcancel", onTouchEnd);
+      if (rafRef.current != null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
   }, [containerRef, enabled]);
 

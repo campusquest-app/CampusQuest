@@ -28,7 +28,11 @@ import { SWIPE_TRANSITION_MS } from "@/lib/client/mobileGestures";
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { LocationQuestSection } from "@/components/realm/LocationQuestSection";
+import { RealmDirectionsPanel } from "@/components/realm/RealmDirectionsPanel";
+import { RealmLocationActionsBar } from "@/components/realm/RealmLocationActionsBar";
 import { getRealmLocationHeroImage } from "@/lib/realm/locationHeroImages";
+import type { RealmDirectionsDestination, RealmDirectionsStatus } from "@/lib/realm/realmDirectionsTypes";
+import { countEventsToday, locationSheetTypeLabel, resolveLocationSheetType } from "@/lib/realm/resolveLocationSheetType";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 
 type SheetView = "archive" | "overview" | "quests" | "events";
@@ -56,6 +60,13 @@ export function RealmLocationSheet({
   onOpenMemoryGallery,
   questReloadToken = 0,
   onRefreshAll,
+  directionsEnabled = false,
+  directionsDestination = null,
+  directionsStatus = { status: "idle" },
+  activeTravelMode = null,
+  onRequestWalking,
+  onRequestDriving,
+  onClearDirections,
 }: {
   location: RealmLocation | null;
   mapContent?: GroupedMapLocation | null;
@@ -77,6 +88,13 @@ export function RealmLocationSheet({
   onOpenMemoryGallery?: (locationId: CampusLocationId) => void;
   questReloadToken?: number;
   onRefreshAll?: () => void | Promise<void>;
+  directionsEnabled?: boolean;
+  directionsDestination?: RealmDirectionsDestination | null;
+  directionsStatus?: RealmDirectionsStatus;
+  activeTravelMode?: "WALKING" | "DRIVING" | null;
+  onRequestWalking?: () => void;
+  onRequestDriving?: () => void;
+  onClearDirections?: () => void;
 }) {
   const [view, setView] = useState<SheetView>("archive");
   const [mounted, setMounted] = useState(false);
@@ -158,6 +176,13 @@ export function RealmLocationSheet({
   const archivedCount = memoryStats?.archivedCount ?? 0;
   const activeQuestCount = mapLocationQuestCount(content, locationId);
   const activeEventCount = content.events.length;
+  const eventsToday = countEventsToday(content);
+  const sheetType = resolveLocationSheetType({
+    activeQuestCount,
+    activeEventCount,
+    momentCount,
+    hasQr: content.qrCodes.length > 0,
+  });
   const urgency = getRealmEventUrgency(
     activeEventCount > 0 && content.events[0]
       ? {
@@ -208,6 +233,9 @@ export function RealmLocationSheet({
       >
         <div className="cq-realm-archive-atmosphere" aria-hidden />
         <div className="cq-realm-archive-screen-panel">
+          <div className="cq-realm-sheet-grabber-wrap" aria-hidden>
+            <div className="cq-realm-sheet-grabber" />
+          </div>
           {view === "archive" && location ? (
             <>
               <RealmArchiveHeader
@@ -218,8 +246,54 @@ export function RealmLocationSheet({
                 activeEventCount={activeEventCount}
                 memoriesLoaded={memoriesLoaded}
                 mapContentLoaded={mapContentLoaded}
+                sheetType={sheetType}
                 onBack={onClose}
               />
+
+              <div className="cq-realm-archive-directions-wrap px-4">
+                <RealmLocationActionsBar
+                  locationName={location.name}
+                  sheetType={sheetType}
+                  momentCount={momentCount}
+                  activeQuestCount={activeQuestCount}
+                  eventsToday={eventsToday}
+                  directionsEnabled={directionsEnabled}
+                  directionsDestination={directionsDestination}
+                  directionsStatus={directionsStatus}
+                  onRequestWalking={() => onRequestWalking?.()}
+                  onViewMemories={
+                    onOpenMemoryGallery
+                      ? () => onOpenMemoryGallery(location.id)
+                      : onOpenMemoryViewer
+                        ? () => {
+                            onOpenMemoryViewer({
+                              locationId: location.id,
+                              locationKey: location.id,
+                              locationName: location.name,
+                              count: momentCount,
+                              latestCreatedAt: new Date().toISOString(),
+                              latestPreview: null,
+                              latestMediaType: null,
+                              latestAuthorAvatar: null,
+                              hasRecent: momentCount > 0,
+                            });
+                          }
+                        : undefined
+                  }
+                  onStartQuest={activeQuestCount > 0 ? () => setView("quests") : undefined}
+                  onViewEvents={eventsToday > 0 ? () => setView("events") : undefined}
+                />
+                <RealmDirectionsPanel
+                  destination={directionsDestination}
+                  directionsEnabled={directionsEnabled}
+                  directionsStatus={directionsStatus}
+                  activeTravelMode={activeTravelMode}
+                  hidePrimaryWalk
+                  onRequestWalking={() => onRequestWalking?.()}
+                  onRequestDriving={() => onRequestDriving?.()}
+                  onClearDirections={() => onClearDirections?.()}
+                />
+              </div>
 
               <PullToRefresh
                 className="cq-realm-archive-body cq-realm-archive-body--scroll min-h-0 flex-1"
@@ -316,6 +390,13 @@ export function RealmLocationSheet({
               momentCount={momentCount}
               activeQuestCount={activeQuestCount}
               activeEventCount={activeEventCount}
+              directionsEnabled={directionsEnabled}
+              directionsDestination={directionsDestination}
+              directionsStatus={directionsStatus}
+              activeTravelMode={activeTravelMode}
+              onRequestWalking={() => onRequestWalking?.()}
+              onRequestDriving={() => onRequestDriving?.()}
+              onClearDirections={() => onClearDirections?.()}
               onBack={() => {
                 if (location) {
                   setView(view === "overview" ? "archive" : "overview");
@@ -346,6 +427,7 @@ function RealmArchiveHeader({
   activeEventCount,
   memoriesLoaded,
   mapContentLoaded,
+  sheetType,
   onBack,
 }: {
   location: RealmLocation;
@@ -355,6 +437,7 @@ function RealmArchiveHeader({
   activeEventCount: number;
   memoriesLoaded: boolean;
   mapContentLoaded: boolean;
+  sheetType: ReturnType<typeof resolveLocationSheetType>;
   onBack: () => void;
 }) {
   const heroImage = getRealmLocationHeroImage(location.id);
@@ -388,6 +471,9 @@ function RealmArchiveHeader({
 
       <div className="cq-realm-location-hero-content">
         <p className="cq-realm-location-hero-badge">
+          <span className={`cq-realm-sheet-type cq-realm-sheet-type--${sheetType}`}>
+            {locationSheetTypeLabel(sheetType)}
+          </span>
           <span aria-hidden>{location.markerEmoji}</span>
           <span>{location.fantasyName}</span>
         </p>
@@ -549,6 +635,13 @@ function RealmDetailView({
   momentCount,
   activeQuestCount,
   activeEventCount,
+  directionsEnabled,
+  directionsDestination,
+  directionsStatus,
+  activeTravelMode,
+  onRequestWalking,
+  onRequestDriving,
+  onClearDirections,
   onBack,
   onClose,
   onViewQuests,
@@ -566,6 +659,13 @@ function RealmDetailView({
   momentCount: number;
   activeQuestCount: number;
   activeEventCount: number;
+  directionsEnabled: boolean;
+  directionsDestination: RealmDirectionsDestination | null;
+  directionsStatus: RealmDirectionsStatus;
+  activeTravelMode: "WALKING" | "DRIVING" | null;
+  onRequestWalking: () => void;
+  onRequestDriving: () => void;
+  onClearDirections: () => void;
   onBack: () => void;
   onClose: () => void;
   onViewQuests: () => void;
@@ -608,6 +708,18 @@ function RealmDetailView({
           ) : null}
           <StatChip emoji="⚔️" label={`${activeQuestCount} ${activeQuestCount === 1 ? "Activity" : "Activities"}`} />
           <StatChip emoji="📅" label={`${activeEventCount} ${activeEventCount === 1 ? "Event" : "Events"}`} />
+        </div>
+
+        <div className="cq-realm-archive-directions-wrap cq-realm-archive-directions-wrap--detail">
+          <RealmDirectionsPanel
+            destination={directionsDestination}
+            directionsEnabled={directionsEnabled}
+            directionsStatus={directionsStatus}
+            activeTravelMode={activeTravelMode}
+            onRequestWalking={onRequestWalking}
+            onRequestDriving={onRequestDriving}
+            onClearDirections={onClearDirections}
+          />
         </div>
       </header>
 

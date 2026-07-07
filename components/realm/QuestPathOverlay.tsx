@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useMap } from "@vis.gl/react-google-maps";
 import type { GeoPoint } from "@/lib/realm/realmMapMarkerUtils";
+import { markRealmMapStep } from "@/lib/realm/realmMapLifecycle";
 
 /**
  * Gold dashed path to a tracked quest destination — shown only while a quest is actively tracked.
@@ -48,6 +49,7 @@ export function QuestPathOverlay({
     });
     polyline.setMap(map);
     polylineRef.current = polyline;
+    markRealmMapStep("overlay-creation", { type: "quest-path" });
 
     return () => {
       polyline.setMap(null);

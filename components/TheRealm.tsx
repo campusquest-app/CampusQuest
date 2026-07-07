@@ -11,19 +11,23 @@ export function TheRealm({
   onCreatePost,
   onViewProfile,
   onSharePost,
+  onViewQuests,
   viewer = null,
   userId = null,
   isAdmin = false,
   userRole = "student",
+  isActive = true,
 }: {
   onBack?: () => void;
   onCreatePost?: () => void;
   onViewProfile?: (userId: string) => void;
   onSharePost?: (target: SharePostTarget) => void;
+  onViewQuests?: (location: RealmLocation) => void;
   viewer?: { id: string; name: string; username: string; avatar: string } | null;
   userId?: string | null;
   isAdmin?: boolean;
   userRole?: string;
+  isActive?: boolean;
 }) {
   const [entered, setEntered] = useState(false);
 
@@ -32,8 +36,8 @@ export function TheRealm({
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  function handleViewQuests(_location: RealmLocation) {
-    // Quest flow connects later — keep mock-only for now.
+  function handleViewQuests(location: RealmLocation) {
+    onViewQuests?.(location);
   }
 
   return (
@@ -78,6 +82,7 @@ export function TheRealm({
           isAdmin={isAdmin}
           userRole={userRole}
           immersive
+          isActive={isActive}
         />
 
         <footer className="cq-realm-immersive-footer" aria-hidden>

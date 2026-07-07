@@ -8377,7 +8377,7 @@ html[data-realm-map-panning] {
   cursor: grabbing;
 }
 
-/* Google Maps layer — CQ blue fantasy chrome (inline styles require no mapId) */
+/* Google Maps layer — vector Map ID enables 3D buildings; inline styles used when no mapId */
 .realm-map-shell--google {
   background: linear-gradient(180deg, rgba(5, 24, 52, 0.96), rgba(1, 8, 20, 0.98));
   border: 1px solid rgba(75, 174, 255, 0.35);
@@ -8921,6 +8921,124 @@ html[data-realm-map-panning] {
 .cq-realm-archive-screen-panel {
   height: 100%;
   min-height: 0;
+}
+
+/* Sheet grabber + quick actions (Realm location bottom sheet) */
+.cq-realm-sheet-grabber-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 0.45rem 0 0.15rem;
+  flex-shrink: 0;
+}
+
+.cq-realm-sheet-grabber {
+  width: 2.5rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.cq-realm-sheet-actions {
+  margin-bottom: 0.65rem;
+  padding: 0.75rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(75, 174, 255, 0.28);
+  background: rgba(5, 18, 40, 0.82);
+  box-shadow: 0 8px 28px rgba(0, 30, 70, 0.35);
+}
+
+.cq-realm-sheet-actions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.cq-realm-sheet-type {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cq-realm-sheet-type--quest {
+  border-color: rgba(197, 160, 40, 0.45);
+  background: rgba(197, 160, 40, 0.16);
+  color: #ffe9a8;
+}
+
+.cq-realm-sheet-type--event {
+  border-color: rgba(142, 92, 255, 0.45);
+  background: rgba(142, 92, 255, 0.16);
+  color: #e4d4ff;
+}
+
+.cq-realm-sheet-type--memory {
+  border-color: rgba(79, 216, 255, 0.45);
+  background: rgba(79, 216, 255, 0.14);
+  color: #c8f4ff;
+}
+
+.cq-realm-sheet-walk-eta {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(180, 230, 255, 0.85);
+}
+
+.cq-realm-sheet-actions-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.cq-realm-sheet-actions-grid {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.cq-realm-sheet-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 2.65rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(75, 174, 255, 0.32);
+  background: rgba(8, 28, 58, 0.88);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.cq-realm-sheet-action--primary {
+  border-color: rgba(197, 160, 40, 0.45);
+  background: linear-gradient(180deg, rgba(255, 216, 106, 0.22), rgba(197, 160, 40, 0.14));
+  color: #fff8e6;
+}
+
+.cq-realm-sheet-action:disabled {
+  opacity: 0.65;
+}
+
+/* Block map gestures while swiping the location sheet closed */
+html[data-realm-sheet-dragging] .cq-realm-map-canvas,
+html[data-realm-sheet-dragging] .cq-realm-map-surface {
+  pointer-events: none !important;
 }
 
 .cq-realm-archive-location-header {
@@ -11191,6 +11309,14 @@ html[data-realm-map-panning] {
   );
 }
 
+.cq-realm-map-controls-rotate-row {
+  align-self: flex-end;
+}
+
+.cq-realm-float-btn--compact {
+  border-radius: 18px;
+}
+
 .cq-realm-map-controls--classic-reset {
   right: max(0.75rem, env(safe-area-inset-right, 0px));
   bottom: calc(
@@ -11205,11 +11331,25 @@ html[data-realm-map-panning] {
 }
 
 .cq-realm-map-controls--immersive .cq-realm-float-btn:nth-child(2) {
-  animation-delay: 420ms;
+  animation-delay: 400ms;
 }
 
-.cq-realm-map-controls--immersive .cq-realm-float-btn:nth-child(3) {
+.cq-realm-map-controls--immersive .cq-realm-map-controls-rotate-row {
+  animation: cq-realm-controls-in 480ms ease 440ms forwards;
+  opacity: 0;
+}
+
+.cq-realm-map-controls--immersive .cq-realm-map-controls-rotate-row .cq-realm-float-btn {
+  animation: none;
+  opacity: 1;
+}
+
+.cq-realm-map-controls--immersive .cq-realm-float-btn:nth-child(4) {
   animation-delay: 480ms;
+}
+
+.cq-realm-map-controls--immersive .cq-realm-float-btn:nth-child(5) {
+  animation-delay: 520ms;
 }
 
 @keyframes cq-realm-controls-in {
@@ -15937,6 +16077,9 @@ html[data-realm-map-panning] {
   min-width: 3rem;
   overflow: visible;
   will-change: transform, opacity;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   transition: transform 0.18s ease;
   -webkit-tap-highlight-color: transparent;
 }
@@ -15974,7 +16117,7 @@ html[data-realm-map-panning] {
   border: 2px solid rgba(255, 255, 255, 0.75);
   background: linear-gradient(180deg, var(--cq-marker-grad-top), var(--cq-marker-grad-bot));
   box-shadow:
-    0 0 16px color-mix(in srgb, var(--cq-marker-glow) 65%, transparent),
+    0 0 16px var(--cq-marker-glow),
     0 10px 24px rgba(0, 0, 0, 0.42);
   transition:
     transform 0.18s ease,
@@ -16119,20 +16262,33 @@ html[data-realm-map-panning] {
   inset: 0;
   z-index: 1;
   pointer-events: none;
+  transform-origin: center center;
+  animation: cq-marker-orbit-spin 9s linear infinite;
+  will-change: transform;
+}
+
+.cq-marker-sparkle-arm {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
 }
 
 .cq-marker-sparkle {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  top: -20px;
+  left: -1.5px;
   width: 3px;
   height: 3px;
-  margin: -1.5px 0 0 -1.5px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 0 5px var(--cq-marker-glow);
-  animation: cq-marker-sparkle-orbit 9s linear infinite;
-  animation-delay: calc(var(--sparkle-i, 0) * -9s / var(--sparkle-count, 4));
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.55);
+  transform: translate3d(0, 0, 0);
+  animation: cq-marker-sparkle-twinkle 1.8s ease-in-out infinite;
+  will-change: opacity, transform;
 }
 
 .cq-marker-count-badge {
@@ -16274,16 +16430,21 @@ html[data-realm-map-panning] {
   }
 }
 
-@keyframes cq-marker-sparkle-orbit {
-  from {
-    transform: rotate(calc(var(--sparkle-i, 0) * 360deg / var(--sparkle-count, 4)))
-      translateY(calc(-1 * var(--cq-marker-orbit-r, 20px)))
-      rotate(calc(var(--sparkle-i, 0) * -360deg / var(--sparkle-count, 4)));
-  }
+@keyframes cq-marker-orbit-spin {
   to {
-    transform: rotate(calc(var(--sparkle-i, 0) * 360deg / var(--sparkle-count, 4) + 360deg))
-      translateY(calc(-1 * var(--cq-marker-orbit-r, 20px)))
-      rotate(calc(var(--sparkle-i, 0) * -360deg / var(--sparkle-count, 4) - 360deg));
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cq-marker-sparkle-twinkle {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translate3d(0, 0, 0) scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: translate3d(0, -2px, 0) scale(1);
   }
 }
 
@@ -16308,6 +16469,25 @@ html[data-realm-map-panning] {
   }
   75% {
     transform: rotate(-50deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-marker-orbit,
+  .cq-marker-sparkle,
+  .cq-marker-quest-pulse,
+  .cq-marker-event-aura,
+  .cq-marker-legendary-runes,
+  .cq-marker-selected-pop,
+  .cq-realm-marker--enter .cq-realm-marker-stack,
+  .cq-realm-marker--enter .cq-realm-marker-label {
+    animation: none !important;
+  }
+
+  .cq-realm-marker--state-active .cq-realm-marker-pin,
+  .cq-realm-marker--state-hot .cq-realm-marker-pin,
+  .cq-realm-marker--state-selected .cq-realm-marker-pin {
+    transform: rotate(-45deg);
   }
 }
 
@@ -16407,6 +16587,162 @@ html[data-realm-map-panning] {
 
 .cq-realm-map-toast--empty {
   color: rgba(216, 236, 255, 0.55);
+}
+
+.cq-realm-archive-directions-wrap {
+  margin-top: -0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.cq-realm-archive-directions-wrap--detail {
+  margin-top: 0.75rem;
+  padding: 0 0.25rem;
+}
+
+.cq-realm-directions-primary {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 20px;
+  border: 1px solid rgba(75, 174, 255, 0.42);
+  background: linear-gradient(180deg, rgba(75, 174, 255, 0.22), rgba(15, 48, 88, 0.88));
+  padding: 0.8rem 1rem;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e0f2fe;
+  box-shadow:
+    0 4px 22px rgba(0, 40, 90, 0.38),
+    0 0 24px rgba(75, 174, 255, 0.16);
+  transition: transform 120ms ease, box-shadow 160ms ease;
+}
+
+.cq-realm-directions-primary:active {
+  transform: scale(0.98);
+}
+
+.cq-realm-directions-status,
+.cq-realm-directions-error {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 18px;
+  border: 1px solid rgba(75, 174, 255, 0.28);
+  background: rgba(5, 18, 40, 0.82);
+  padding: 0.7rem 0.85rem;
+  font-size: 12px;
+  color: rgba(216, 236, 255, 0.88);
+}
+
+.cq-realm-directions-error {
+  flex-direction: column;
+  align-items: stretch;
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.cq-realm-directions-retry {
+  align-self: flex-start;
+  border-radius: 9999px;
+  border: 1px solid rgba(75, 174, 255, 0.35);
+  background: rgba(75, 174, 255, 0.12);
+  padding: 0.3rem 0.65rem;
+  font-size: 11px;
+  font-weight: 700;
+  color: #7dd3fc;
+}
+
+.cq-realm-directions-card {
+  border-radius: 20px;
+  border: 1px solid rgba(75, 174, 255, 0.32);
+  background: rgba(5, 18, 40, 0.86);
+  padding: 0.85rem;
+  box-shadow: 0 4px 22px rgba(0, 40, 90, 0.35);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.cq-realm-directions-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.cq-realm-directions-eyebrow {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(125, 211, 252, 0.78);
+}
+
+.cq-realm-directions-summary {
+  margin: 0.2rem 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #f0f9ff;
+}
+
+.cq-realm-directions-dot {
+  margin: 0 0.25rem;
+  color: rgba(125, 211, 252, 0.55);
+}
+
+.cq-realm-directions-hint {
+  margin: 0.35rem 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: rgba(165, 243, 252, 0.55);
+}
+
+.cq-realm-directions-clear {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.cq-realm-directions-secondary,
+.cq-realm-directions-external {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+  border-radius: 16px;
+  border: 1px solid rgba(75, 174, 255, 0.24);
+  background: rgba(8, 28, 56, 0.72);
+  padding: 0.55rem 0.75rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(224, 242, 254, 0.92);
+}
+
+.cq-realm-directions-more-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+  padding: 0.35rem;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(165, 243, 252, 0.62);
+}
+
+.cq-realm-directions-more-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.15rem;
 }
 
 .cq-realm-map-chrome-top {
