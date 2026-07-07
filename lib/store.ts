@@ -1,6 +1,7 @@
 "use client";
 
 import { getCharacterGameStateJson, isServerBackedUserId } from "@/lib/client/gameStateSync";
+import { bumpActivityFeedRefresh } from "@/lib/client/activityFeedRefresh";
 import type { Character, CharacterStats, ActivityLog, BossProgress as BossProgressType, CurrentBoss, UserBoss, StatKey } from "./types";
 import { STAT_KEYS, MAX_STAT } from "./types";
 import { xpToLevel, DAILY_MINIMUM_XP } from "./level";
@@ -705,6 +706,17 @@ export function logActivity(
   }
 
   const logs = loadLogs();
+  if (
+    isRecentDuplicateLog(
+      logs,
+      characterId,
+      (log) => log.activityId === activityId && log.feedType !== "qr_check_in" && log.feedType !== "quest_completed",
+    )
+  ) {
+    return null;
+  }
+
+  const manualTitle = options?.tags?.[0]?.trim() || activity.label;
   const log: ActivityLog = {
     id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     characterId,
@@ -714,6 +726,9 @@ export function logActivity(
     proofUrl: options?.proofUrl,
     tags: options?.tags,
     xpEarned,
+    feedType: "manual_log",
+    title: manualTitle,
+    description: xpEarned > 0 ? `+${xpEarned} XP earned` : undefined,
   };
   logs.push(log);
   saveLogs(logs);
@@ -744,6 +759,7 @@ export function logActivity(
   if (leveledUp) ensureAchievement(c, `Reached Level ${c.level}`);
 
   saveCharacter(c);
+  bumpActivityFeedRefresh();
   const lastBossDrop =
     bossDrop?.defeatedBossName != null
       ? { bossName: bossDrop.defeatedBossName, loot: bossDrop.droppedLoot ?? undefined }
@@ -761,23 +777,68 @@ export function logActivity(
  */
 export function recordQrLinkedActivityLog(
   characterId: string,
-  opts: { activityId: string; xpEarned: number; activityLabel: string },
+  opts: {
+    activityId: string;
+    xpEarned: number;
+    activityLabel: string;
+    feedType?: ActivityLog["feedType"];
+    title?: string;
+    description?: string;
+    qrCodeId?: string;
+    questId?: string;
+    locationName?: string | null;
+  },
 ): LogActivityResult | null {
   const activity = getActivityById(opts.activityId);
-  if (!activity) return null;
 
   const c = loadCharacter();
   if (!c || c.id !== characterId) return null;
 
   const logs = loadLogs();
+  if (
+    opts.qrCodeId &&
+    isRecentDuplicateLog(logs, characterId, (log) => log.qrCodeId === opts.qrCodeId)
+  ) {
+    bumpActivityFeedRefresh();
+    return { character: c };
+  }
+  if (
+    opts.questId &&
+    isRecentDuplicateLog(
+      logs,
+      characterId,
+      (log) => log.questId === opts.questId && log.feedType === "quest_completed",
+    )
+  ) {
+    bumpActivityFeedRefresh();
+    return { character: c };
+  }
+
+  const feedType = opts.feedType ?? (opts.questId ? "quest_completed" : "qr_check_in");
+  const place = opts.locationName?.trim() || opts.activityLabel.trim() || "Campus Location";
+  const title =
+    opts.title?.trim() ||
+    (feedType === "quest_completed"
+      ? `Completed ${opts.activityLabel}`
+      : `Checked in at ${place}`);
+  const description =
+    opts.description?.trim() ||
+    (opts.xpEarned > 0 ? `+${opts.xpEarned} XP earned` : `Scanned ${opts.activityLabel}`);
+
   const log: ActivityLog = {
     id: `log-qr-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     characterId,
     activityId: opts.activityId,
     createdAt: Date.now(),
-    proofUrl: `cq-qr-scan:${opts.activityId}`,
-    tags: ["cq-qr-scan", opts.activityLabel],
+    proofUrl: opts.qrCodeId ? `cq-qr-scan:${opts.qrCodeId}` : `cq-qr-scan:${opts.activityId}`,
+    tags: ["cq-qr", title],
     xpEarned: opts.xpEarned,
+    feedType,
+    title,
+    description,
+    qrCodeId: opts.qrCodeId,
+    questId: opts.questId,
+    locationName: opts.locationName ?? undefined,
   };
   logs.push(log);
   saveLogs(logs);
@@ -792,10 +853,11 @@ export function recordQrLinkedActivityLog(
   const today = todayString();
   updateStreakFromTodaysXp(c, characterId, today);
   saveCharacter(c);
+  bumpActivityFeedRefresh();
 
   const breakdownOut: XpBreakdown = {
     baseAfterMinutes: opts.xpEarned,
-    lines: [{ label: `${opts.activityLabel} · QR check-in`, multiplier: 1, emoji: activity.icon }],
+    lines: [{ label: `${title} · QR check-in`, multiplier: 1, emoji: activity?.icon ?? "📍" }],
     compoundFactor: 1,
     finalXp: opts.xpEarned,
   };
@@ -1358,6 +1420,16 @@ export function addXpToCharacter(characterId: string, amount: number): void {
 }
 
 const MAX_SYNCED_ACTIVITY_LOGS = 450;
+const ACTIVITY_DEDUP_WINDOW_MS = 5 * 60 * 1000;
+
+function isRecentDuplicateLog(
+  logs: ActivityLog[],
+  characterId: string,
+  match: (log: ActivityLog) => boolean,
+): boolean {
+  const cutoff = Date.now() - ACTIVITY_DEDUP_WINDOW_MS;
+  return logs.some((log) => log.characterId === characterId && log.createdAt >= cutoff && match(log));
+}
 const MAX_SYNCED_LOOT_ENTRIES = 400;
 
 export type ClientMirrorV1 = {

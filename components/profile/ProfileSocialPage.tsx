@@ -240,7 +240,7 @@ export function ProfileSocialPage({
               />
             ) : null}
             {tab === "collectibles" ? <ProfileCollectiblesTab character={character} /> : null}
-            {tab === "activity" ? <ProfileActivityTab character={character} /> : null}
+            {tab === "activity" ? <ProfileActivityTab character={character} isOwner={isOwner} /> : null}
           </div>
         </>
       )}

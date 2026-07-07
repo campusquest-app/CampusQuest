@@ -25,7 +25,8 @@ export async function POST(request: Request) {
     return ok(
       {
         scan: result.scan,
-        xpAwarded: result.scan.xpAwarded,
+        xpAwarded: result.totalXpAwarded ?? result.scan.xpAwarded,
+        questCompleted: result.questCompleted,
         milestonesUnlocked: result.milestonesUnlocked,
         leveledUp: result.leveledUp,
         level: result.player.progression.level,

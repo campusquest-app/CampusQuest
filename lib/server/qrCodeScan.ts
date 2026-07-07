@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/server/http";
+import { recordQrScanActivityEvent } from "@/lib/server/userActivityEvents";
 import { canBypassQrScanLimits, fetchProfileRole, type ProfileRole } from "@/lib/server/permissions";
 import { applyQrActivityStatBoost, resolveQrActivityLink } from "@/lib/server/qrActivityLink";
 import { applyQrLocationMilestones } from "@/lib/server/qrMilestones";
@@ -678,6 +679,13 @@ export async function scanCampusQuestQrCode(args: {
   const xpAmount = qr.admin_quest_id ? 0 : Math.max(0, Number(qr.xp_reward ?? 0));
   const scanStatus: "success" | "admin_bypass" = eligibility.bypass ? "admin_bypass" : "success";
 
+  const { data: statsBeforeScan } = await userClient
+    .from("user_stats")
+    .select("total_xp, level")
+    .eq("user_id", userId)
+    .single();
+  const levelBefore = Number(statsBeforeScan?.level ?? 1);
+
   const claimId = await reserveSuccessScanClaim({
     client: admin,
     userId,
@@ -699,15 +707,8 @@ export async function scanCampusQuestQrCode(args: {
   }
 
   let xpResult: Awaited<ReturnType<typeof addXpInternal>> | null = null;
-  let levelBefore = 1;
   try {
     if (xpAmount > 0) {
-      const { data: statsBefore } = await userClient
-        .from("user_stats")
-        .select("total_xp, level")
-        .eq("user_id", userId)
-        .single();
-      levelBefore = Number(statsBefore?.level ?? 1);
       xpResult = await addXpInternal({
         userClient,
         userId,
@@ -781,16 +782,61 @@ export async function scanCampusQuestQrCode(args: {
   });
 
   const player = await getPlayerProgressSnapshot(userClient, userId);
-  const leveledUp = xpResult ? player.progression.level > levelBefore : false;
+  const leveledUp = player.progression.level > levelBefore;
+
+  const questXpAwarded = adminQuestCompletion?.xpResult
+    ? Math.max(0, Number(adminQuestCompletion.quest.xp_reward ?? 0))
+    : questCompletion?.xp
+      ? Math.max(0, Number(questCompletion.xp.xpLog?.xp_amount ?? 0))
+      : 0;
+  const totalXpAwarded = xpAmount + questXpAwarded;
+
+  const questCompleted = adminQuestCompletion?.quest
+    ? {
+        questId: String(adminQuestCompletion.quest.id),
+        questName: String(adminQuestCompletion.quest.name ?? qr.title),
+        icon: String(adminQuestCompletion.quest.icon ?? "🎯"),
+        xpReward: questXpAwarded,
+      }
+    : questCompletion
+      ? {
+          questId: String(questCompletion.completion.quest_id),
+          questName: qr.title,
+          icon: "🎯",
+          xpReward: questXpAwarded,
+        }
+      : null;
 
   logQrScanServer("validation_response", {
     ok: true,
     code: qr.code,
-    xpAwarded: xpAmount,
+    xpAwarded: totalXpAwarded,
+    scanXp: xpAmount,
+    questXp: questXpAwarded,
     activityId: activityLink?.activityId ?? null,
     statBoost,
     leveledUp,
+    questCompleted: Boolean(questCompleted),
   });
+
+  try {
+    await recordQrScanActivityEvent({
+      client: userClient,
+      userId,
+      questCompleted,
+      locationName: qr.location_name,
+      qrTitle: qr.title,
+      totalXpAwarded,
+      qrCodeId: qr.id,
+      questId: questCompleted?.questId ?? qr.quest_id ?? null,
+      locationId: (qr as { location_id?: string | null }).location_id ?? null,
+    });
+  } catch (activityError) {
+    logQrScanServer("activity_event_failed", {
+      code: qr.code,
+      message: activityError instanceof Error ? activityError.message : String(activityError),
+    });
+  }
 
   return {
     scan: {
@@ -800,7 +846,7 @@ export async function scanCampusQuestQrCode(args: {
       description: qr.description,
       type: qr.type,
       locationName: qr.location_name,
-      xpAwarded: xpAmount,
+      xpAwarded: totalXpAwarded,
       bypassedLimits: eligibility.bypass,
       activityId: activityLink?.activityId ?? null,
       activityLabel: activityLink?.activityLabel ?? qr.activity_name ?? qr.title,
@@ -808,8 +854,10 @@ export async function scanCampusQuestQrCode(args: {
     },
     xp: xpResult,
     quest: questCompletion,
+    questCompleted,
     milestonesUnlocked,
     leveledUp,
     player,
+    totalXpAwarded,
   };
 }

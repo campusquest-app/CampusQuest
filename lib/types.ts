@@ -221,6 +221,21 @@ export interface ActivityLog {
   xpEarned?: number;
   /** When set (QR check-ins), recap cards can attribute stat gains without a catalog activity id. */
   qrStatContribution?: { stat: StatKey; gain: number };
+  /** Profile activity feed type — drives icon/title rendering. */
+  feedType?:
+    | "qr_check_in"
+    | "quest_completed"
+    | "xp_reward"
+    | "manual_log"
+    | "post_created"
+    | "memory_saved";
+  /** Human-readable feed title (preferred over catalog label). */
+  title?: string;
+  /** Secondary line under the title in the Activity tab. */
+  description?: string;
+  qrCodeId?: string;
+  questId?: string;
+  locationName?: string;
 }
 
 // —— The Quad (social feed) ——

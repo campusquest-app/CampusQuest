@@ -129,6 +129,8 @@ import { normalizeQrScanInput } from "@/lib/client/normalizeQrScanInput";
 import { logQrScanDebug } from "@/lib/client/qrScanDebug";
 import { QR_SCAN_USER_MESSAGES } from "@/lib/client/qrScanUserMessages";
 import { redeemCampusQuestQr } from "@/lib/client/redeemCampusQuestQr";
+import { bumpActivityFeedRefresh } from "@/lib/client/activityFeedRefresh";
+import { queueQuestCelebration } from "@/lib/questBoardCelebration";
 import { LevelUpOverlay } from "@/components/xp/LevelUpOverlay";
 import { XPGainBanner } from "@/components/xp/XPGainBanner";
 import type { ActivityXPGainSession } from "@/components/xp/xpGainTypes";
@@ -802,6 +804,35 @@ export function Dashboard() {
     [handleQrXpHandoff, navigateToQuad],
   );
 
+  const handleQrScanComplete = useCallback(
+    (verdict: Extract<Awaited<ReturnType<typeof redeemCampusQuestQr>>, { ok: true }>) => {
+      setQrDeepLinkError(null);
+      setPendingScanCode(null);
+      if (verdict.questCompleted) {
+        queueQuestCelebration({
+          questId: verdict.questCompleted.questId,
+          questName: verdict.questCompleted.questName,
+          icon: verdict.questCompleted.icon,
+          xpReward: verdict.questCompleted.xpReward,
+        });
+      } else if (!verdict.xpSession && verdict.reward.xp > 0) {
+        setGainToast({
+          xp: verdict.reward.xp,
+          stats: {},
+          title: `${verdict.reward.sigilName} logged!`,
+          activityLabel: verdict.reward.sigilName,
+        });
+      }
+      setCharacter(getCharacter());
+      refreshAuthoritativeProfileInBackground();
+      refresh();
+      scheduleStreakHydrationFromBackend();
+      bumpActivityFeedRefresh();
+      navigateToQuad();
+    },
+    [navigateToQuad, refresh, refreshAuthoritativeProfileInBackground, scheduleStreakHydrationFromBackend],
+  );
+
   const handleSecureQrCode = useCallback(
     async (code: string) => {
       if (!character) {
@@ -915,6 +946,7 @@ export function Dashboard() {
         navigateToQuad();
         refresh();
         refreshAuthoritativeProfileInBackground();
+        bumpActivityFeedRefresh();
         window.setTimeout(() => setGainToast(null), ms);
         return;
       }
@@ -2384,6 +2416,7 @@ export function Dashboard() {
           onPayloadValidated={handleQrPayloadValidated}
           onSecureCodeScanned={handleSecureQrCode}
           onXpHandoff={handleQrXpHandoff}
+          onScanComplete={handleQrScanComplete}
           pendingScanCode={pendingScanCode}
           prefillErrorBanner={qrDeepLinkError}
           allowRepeatQrScan={adminQrUnlimited}

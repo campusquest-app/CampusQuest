@@ -111,12 +111,35 @@ export function ScanSuccessOverlay({ reward }: ScanSuccessOverlayProps) {
             ))}
 
           <div className="relative z-[8] mt-[-2.5rem] flex w-[min(92vw,340px)] flex-col items-center gap-4 pb-24">
-            <FloatingRewardText
-              tone="xp"
-              label={`+${reward.xp} XP`}
-              sub="XP blessing received."
-              delay={0.12}
-            />
+            {reward.successVariant === "already_claimed" ? (
+              <FloatingRewardText
+                tone="stat"
+                label="Already Claimed"
+                sub="You've already scanned this QR."
+                delay={0.12}
+              />
+            ) : reward.xp > 0 ? (
+              <FloatingRewardText
+                tone="xp"
+                label={`+${reward.xp} XP`}
+                sub="XP blessing received."
+                delay={0.12}
+              />
+            ) : reward.successVariant === "quest_complete" ? (
+              <FloatingRewardText
+                tone="xp"
+                label="Quest Complete"
+                sub="Your quest progress has been saved."
+                delay={0.12}
+              />
+            ) : (
+              <FloatingRewardText
+                tone="xp"
+                label="Check-In Complete"
+                sub="Your campus check-in was recorded."
+                delay={0.12}
+              />
+            )}
             {reward.statIncrease > 0 ? (
               <FloatingRewardText
                 tone="stat"

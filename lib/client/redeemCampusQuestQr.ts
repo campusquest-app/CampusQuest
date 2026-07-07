@@ -1,6 +1,6 @@
 "use client";
 
-import type { QrScannerValidationResult } from "@/components/scanner/sigilRewardTypes";
+import type { QrScannerValidationResult, SigilScannerReward } from "@/components/scanner/sigilRewardTypes";
 import type { ActivityXPGainSession } from "@/components/xp/xpGainTypes";
 import { buildQrXpSession } from "@/lib/client/buildQrXpSession";
 import { ApiRequestError, postAuthed } from "@/lib/client/dashboardApi";
@@ -14,6 +14,7 @@ import {
 } from "@/lib/client/qrScanUserMessages";
 import { getActivityById } from "@/lib/activities";
 import { recordQrLinkedActivityLog } from "@/lib/store";
+import { buildQrScanActivityPayload } from "@/lib/userActivityEventPayload";
 import type { Character, StatKey } from "@/lib/types";
 import { STAT_LABELS } from "@/lib/types";
 
@@ -26,9 +27,17 @@ export type QrScanApiResponse = {
     bypassedLimits?: boolean;
     activityId?: string | null;
     activityLabel?: string | null;
+    qrCodeId?: string;
+    locationName?: string | null;
     statBoost?: { stat: string; statGain: number } | null;
   };
   xpAwarded: number;
+  questCompleted?: {
+    questId: string;
+    questName: string;
+    icon: string;
+    xpReward: number;
+  } | null;
   milestonesUnlocked: string[];
   leveledUp: boolean;
   level: number;
@@ -98,11 +107,28 @@ export async function redeemCampusQuestQr(
       xpAwarded: data.xpAwarded,
     });
 
-    const xp = Math.max(0, data.xpAwarded);
+    const xp = Math.max(
+      0,
+      data.xpAwarded ?? data.scan.xpAwarded ?? 0,
+    );
     const afterTotalXP =
       typeof data.totalXp === "number" ? data.totalXp : before.totalXP + xp;
     const activityId = data.scan.activityId ?? "gym";
-    const activityLabel = data.scan.activityLabel ?? "Hitting the Gym";
+    const locationName = data.scan.locationName ?? null;
+    const qrCodeId = data.scan.qrCodeId;
+    const activityPayload = buildQrScanActivityPayload({
+      questCompleted: data.questCompleted ?? null,
+      locationName,
+      qrTitle: data.scan.title,
+      totalXpAwarded: xp,
+      qrCodeId: qrCodeId ?? normalizedCode,
+      questId: data.questCompleted?.questId ?? null,
+    });
+    const activityLabel =
+      data.questCompleted?.questName ??
+      data.scan.activityLabel ??
+      locationName ??
+      data.scan.title;
     const statIncrease = data.scan.statBoost?.statGain ?? 0;
     const gymDef = getActivityById(activityId);
     const statKey = data.scan.statBoost?.stat as StatKey | undefined;
@@ -135,10 +161,19 @@ export async function redeemCampusQuestQr(
       activityId,
       xpEarned: xp,
       activityLabel,
+      feedType: activityPayload.activity_type,
+      title: activityPayload.title,
+      description: activityPayload.description,
+      qrCodeId: activityPayload.qr_code_id,
+      questId: activityPayload.quest_id ?? data.questCompleted?.questId,
+      locationName,
     });
 
     const gymQuestType =
       activityId === "gym" || /gym/i.test(activityLabel) ? "Strength Quest" : undefined;
+
+    const successVariant: SigilScannerReward["successVariant"] =
+      xp > 0 ? "xp" : data.questCompleted ? "quest_complete" : "check_in";
 
     const xpSession: ActivityXPGainSession | undefined =
       xp > 0
@@ -146,7 +181,9 @@ export async function redeemCampusQuestQr(
               beforeTotalXP: before.totalXP,
               afterTotalXP,
               xpGained: xp,
-              title: `${activityLabel} logged!`,
+              title: data.questCompleted
+                ? `${data.questCompleted.questName} complete!`
+                : `${activityLabel} logged!`,
               activityLabel,
               activityQuestType: gymQuestType,
               primaryStat: gymDef?.stat ?? "strength",
@@ -166,6 +203,7 @@ export async function redeemCampusQuestQr(
       suppressVictoryOverlay: xp > 0,
       handoffToXpOverlay: xp > 0,
       xpSession,
+      questCompleted: data.questCompleted ?? null,
       reward: {
         xp,
         statLabel: STAT_LABELS[gymDef?.stat ?? "strength"],
@@ -174,6 +212,7 @@ export async function redeemCampusQuestQr(
         levelAfter: data.level,
         sigilName: activityLabel,
         milestonesUnlocked: data.milestonesUnlocked,
+        successVariant,
       },
     };
   } catch (error) {
@@ -196,7 +235,14 @@ export async function redeemCampusQuestQr(
       failureReason: error instanceof Error ? error.message : String(error),
       userBanner: banner,
     });
-    return { ok: false, banner };
+    return {
+      ok: false,
+      banner,
+      alreadyClaimed:
+        failureCode === "ALREADY_CLAIMED" ||
+        failureCode === "ADMIN_QUEST_ALREADY_COMPLETED" ||
+        failureCode === "QUEST_ALREADY_CLAIMED",
+    };
   } finally {
     releaseQrRedeemLock(args.character.id, normalizedCode);
   }
