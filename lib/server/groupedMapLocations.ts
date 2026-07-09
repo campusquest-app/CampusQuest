@@ -18,6 +18,7 @@ import type { AdminQuestRow } from "@/lib/adminQuestTypes";
 import { isExpiredAt, mapPercentForCoordinates } from "@/lib/server/campusMapPins";
 import { createAdminClient } from "@/lib/server/supabase";
 import { resolveCampusLocationFromEventFields } from "@/lib/server/urinvolved/locationAliases";
+import { eventDedupeKey, getTodayExternalEventsForMap } from "@/lib/server/urinvolved/todayMapEvents";
 
 type GroupBucket = {
   groupKey: string;
@@ -188,11 +189,16 @@ function eventGroupMeta(locationKey: GroupedMapLocation["locationKey"], location
 }
 
 export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
-  await getCampusLocations({ refreshCache: true });
+  const catalogRows = await getCampusLocations({ refreshCache: true });
   const admin = createAdminClient();
   const now = new Date();
   const nowIso = now.toISOString();
   const buckets = new Map<string, GroupBucket>();
+
+  const externalEventsPromise = getTodayExternalEventsForMap({
+    catalog: catalogRows.map((row) => ({ slug: row.slug, name: row.name })),
+    now,
+  }).catch(() => []);
 
   const [questsResult, qrResult, eventsResult] = await Promise.all([
     admin
@@ -303,6 +309,20 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
         eventUrl: null,
       });
     }
+  }
+
+  // Today's URInvolved events, grouped onto the matching realm locations.
+  // Manual admin pins are untouched; duplicates (same title + start) skipped.
+  const externalEvents = await externalEventsPromise;
+  for (const item of externalEvents) {
+    const meta = resolveGroupMeta({ locationId: item.realmLocationId });
+    if (!meta) continue;
+    const bucket = getOrCreateBucket(buckets, meta);
+    const key = eventDedupeKey(item.pin);
+    const isDuplicate = bucket.events.some(
+      (existing) => existing.id === item.pin.id || eventDedupeKey(existing) === key,
+    );
+    if (!isDuplicate) bucket.events.push(item.pin);
   }
 
   return Array.from(buckets.values())

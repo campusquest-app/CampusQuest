@@ -34,6 +34,9 @@ import { getRealmLocationHeroImage } from "@/lib/realm/locationHeroImages";
 import type { RealmDirectionsDestination, RealmDirectionsStatus } from "@/lib/realm/realmDirectionsTypes";
 import { countEventsToday, locationSheetTypeLabel, resolveLocationSheetType } from "@/lib/realm/resolveLocationSheetType";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
+import { EventPinCard } from "@/components/realm/EventPinCard";
+import { sortEventsForSheet } from "@/lib/realm/eventCountdown";
+import { useNow } from "@/lib/client/useNow";
 
 type SheetView = "archive" | "overview" | "quests" | "events";
 
@@ -683,6 +686,10 @@ function RealmDetailView({
     locationId,
   });
 
+  // Shared clock for every event card in the sheet (single timer).
+  const now = useNow(30_000);
+  const sortedEvents = sortEventsForSheet(content.events, now);
+
   return (
     <div className="cq-realm-detail-scroll">
       <header className="cq-realm-detail-header">
@@ -748,24 +755,13 @@ function RealmDetailView({
                 </section>
               ) : null}
 
-              {content.events.length > 0 ? (
+              {sortedEvents.length > 0 ? (
                 <section className="space-y-2">
                   <h3 className="cq-realm-detail-title">Active Events</h3>
                   <ul className="cq-realm-detail-list">
-                    {content.events.map((event) => (
-                      <li key={event.id} className="cq-realm-detail-event-card">
-                        <div className="min-w-0 flex-1">
-                          <p className="cq-realm-detail-quest-name">{event.title}</p>
-                          <p className="cq-realm-archive-quest-row-meta">
-                            {new Date(event.startsAt).toLocaleString()}
-                          </p>
-                          {event.organizationName ? (
-                            <p className="text-[11px] text-white/45">{event.organizationName}</p>
-                          ) : null}
-                        </div>
-                        <span className={`cq-realm-archive-event-chip-badge cq-realm-archive-event-chip-badge--${urgency}`}>
-                          {eventLabel}
-                        </span>
+                    {sortedEvents.map((event) => (
+                      <li key={event.id}>
+                        <EventPinCard event={event} now={now} locationName={displayName} />
                       </li>
                     ))}
                   </ul>
@@ -802,22 +798,31 @@ function RealmDetailView({
         <div className="cq-realm-detail-body">
           <h3 className="cq-realm-detail-title">Upcoming Events</h3>
           <p className="cq-realm-detail-subtitle">{displayName}</p>
-          {content.events.length === 0 ? (
+          {sortedEvents.length === 0 ? (
             <EmptyPanel message="No upcoming events scheduled at this location." />
           ) : (
-            <ul className="cq-realm-detail-list">
-              {content.events.map((event) => (
-                <li key={event.id} className="cq-realm-detail-event-card">
-                  <div className="min-w-0 flex-1">
-                    <p className="cq-realm-detail-quest-name">{event.title}</p>
-                    <p className="cq-realm-archive-quest-row-meta">{new Date(event.startsAt).toLocaleString()}</p>
-                    {event.organizationName ? (
-                      <p className="text-[11px] text-white/45">{event.organizationName}</p>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <>
+              {sortedEvents.length >= 3 ? (
+                <div
+                  className="cq-event-pin-carousel"
+                  role="list"
+                  aria-label="Events at this location"
+                >
+                  {sortedEvents.map((event) => (
+                    <div key={`mini-${event.id}`} role="listitem" className="cq-event-pin-carousel-item">
+                      <EventPinCard event={event} now={now} locationName={displayName} compact />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <ul className="cq-realm-detail-list">
+                {sortedEvents.map((event) => (
+                  <li key={event.id}>
+                    <EventPinCard event={event} now={now} locationName={displayName} />
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
       ) : null}

@@ -9,6 +9,9 @@ import {
   resolveMarkerTone,
 } from "@/lib/realm/realmMarkerVisuals";
 import type { RealmMarkerVariant } from "@/lib/realm/realmMapMarkerUtils";
+import type { GroupCountdown } from "@/lib/realm/eventCountdown";
+import { EventCountdownBadge } from "./EventCountdownBadge";
+import { MagicalMarkerGlow } from "./MagicalMarkerGlow";
 import { RealmMarkerIcon } from "./RealmMarkerIcon";
 
 function sparkleCountForMarker(
@@ -35,6 +38,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   editMode = false,
   editorSelected = false,
   revealIndex,
+  countdown = null,
 }: {
   variant: RealmMarkerVariant;
   label: string;
@@ -46,6 +50,8 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   editMode?: boolean;
   editorSelected?: boolean;
   revealIndex?: number;
+  /** Grouped event countdown — renders floating badge + urgency pulse. */
+  countdown?: GroupCountdown | null;
 }) {
   const landmarkIcon = landmarkIconForId(landmarkId);
   const tone = useMemo(() => resolveMarkerTone(variant, editMode), [variant, editMode]);
@@ -55,6 +61,9 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   );
 
   const hasActivity = !editMode && activityState !== "idle";
+  const showCountdown = !editMode && countdown != null && countdown.state.kind !== "ended";
+  const countdownUrgency = showCountdown ? countdown.state.urgency : 0;
+  const countdownCancelled = showCountdown && countdown.allCancelled;
   const isLegendary = !editMode && variant === "legendary" && hasActivity;
   const isQuestPulse = !editMode && variant === "quest" && activityState === "active";
   const isEventAura = !editMode && variant === "event" && hasActivity && !isLegendary;
@@ -75,6 +84,8 @@ export const RealmMapMarker = memo(function RealmMapMarker({
         revealOpacity,
         showQrWiggle,
         revealIndex,
+        countdownUrgency,
+        countdownCancelled,
       })}
       style={{
         opacity: revealOpacity,
@@ -86,8 +97,12 @@ export const RealmMapMarker = memo(function RealmMapMarker({
       data-activity-state={activityState}
       aria-label={label}
     >
+      {showCountdown ? <EventCountdownBadge countdown={countdown} /> : null}
       <div className="cq-realm-marker-stack">
         <div className="cq-marker-pin-anchor">
+          {!editMode ? (
+            <MagicalMarkerGlow active={hasActivity} selected={showSelectedPop} />
+          ) : null}
           {isLegendary ? <span className="cq-marker-legendary-runes" aria-hidden /> : null}
           {isEventAura ? <span className="cq-marker-event-aura" aria-hidden /> : null}
           {isQuestPulse ? <span className="cq-marker-quest-pulse" aria-hidden /> : null}
@@ -134,6 +149,8 @@ function buildMarkerClassName(input: {
   revealOpacity: number;
   showQrWiggle: boolean;
   revealIndex?: number;
+  countdownUrgency?: number;
+  countdownCancelled?: boolean;
 }): string {
   return [
     "cq-realm-marker",
@@ -146,6 +163,8 @@ function buildMarkerClassName(input: {
     input.editorSelected ? "cq-realm-marker--editor-selected" : "",
     input.showQrWiggle ? "cq-realm-marker--qr-wiggle" : "",
     input.revealIndex != null ? "cq-realm-marker--enter" : "",
+    input.countdownUrgency ? `cq-realm-marker--urgency-${input.countdownUrgency}` : "",
+    input.countdownCancelled ? "cq-realm-marker--cancelled" : "",
   ]
     .filter(Boolean)
     .join(" ");

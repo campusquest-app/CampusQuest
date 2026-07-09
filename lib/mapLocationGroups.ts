@@ -34,6 +34,14 @@ export type MapEventPin = {
   endsAt: string | null;
   organizationName: string | null;
   eventUrl: string | null;
+  /** "urinvolved" for imported URInvolved events; null/undefined for internal events. */
+  source?: string | null;
+  /** True when the event is cancelled (status flag or "(Cancelled)" in the title). */
+  cancelled?: boolean;
+  imageUrl?: string | null;
+  category?: string | null;
+  /** Raw location text from the source feed (e.g. "weldin hall"). */
+  locationText?: string | null;
 };
 
 export type GroupedMapLocation = {

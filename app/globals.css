@@ -16388,7 +16388,9 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   font-size: 10px;
   font-weight: 800;
   line-height: 1;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.45),
+    0 0 10px var(--cq-marker-glow, rgba(70, 160, 255, 0.5));
   pointer-events: none;
 }
 
@@ -17175,5 +17177,648 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
 
   .cq-realm-marker--state-selected .cq-realm-marker-pin {
     transform: rotate(-45deg) scale(1.12);
+  }
+}
+
+/* —— Magical particle layer (Realm map, inside overlayLayer pane) —— */
+.cq-magic-particle-field {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  contain: layout style paint;
+}
+
+.cq-magic-constellation {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.045;
+  background-image:
+    linear-gradient(rgba(125, 211, 252, 0.55) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 211, 252, 0.55) 1px, transparent 1px);
+  background-size: 170px 170px;
+  mask-image: radial-gradient(circle at 50% 50%, #000 0%, transparent 62%);
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 0%, transparent 62%);
+}
+
+.cq-magic-particle {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: var(--mp-o-min, 0.18);
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
+  animation:
+    cq-magic-drift var(--mp-drift-dur, 22s) ease-in-out var(--mp-delay, 0s) infinite alternate,
+    cq-magic-twinkle var(--mp-twinkle-dur, 3.2s) ease-in-out var(--mp-delay, 0s) infinite;
+}
+
+.cq-magic-particle--cyan {
+  background: rgba(125, 211, 252, 0.95);
+  box-shadow: 0 0 6px rgba(75, 174, 255, 0.7);
+}
+
+.cq-magic-particle--white {
+  background: rgba(235, 246, 255, 0.95);
+  box-shadow: 0 0 5px rgba(210, 235, 255, 0.6);
+}
+
+.cq-magic-particle--gold {
+  background: rgba(255, 224, 130, 0.95);
+  box-shadow: 0 0 7px rgba(255, 200, 90, 0.65);
+}
+
+@keyframes cq-magic-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(var(--mp-dx, 24px), var(--mp-dy, -36px), 0);
+  }
+}
+
+@keyframes cq-magic-twinkle {
+  0%,
+  100% {
+    opacity: var(--mp-o-min, 0.15);
+  }
+  50% {
+    opacity: var(--mp-o-max, 0.65);
+  }
+}
+
+/* —— Ambient realm energy (static frame above the map) —— */
+.cq-realm-aura {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  animation: cq-realm-aura-in 900ms ease 200ms forwards;
+}
+
+@keyframes cq-realm-aura-in {
+  to {
+    opacity: 1;
+  }
+}
+
+.cq-realm-aura-tint {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 130% 110% at 50% 42%, transparent 58%, rgba(2, 12, 32, 0.28) 100%);
+}
+
+.cq-realm-aura-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to bottom, rgba(1, 8, 20, 0.34) 0%, transparent 12%),
+    linear-gradient(to right, rgba(1, 8, 20, 0.2) 0%, transparent 7%),
+    linear-gradient(to left, rgba(1, 8, 20, 0.2) 0%, transparent 7%);
+}
+
+.cq-realm-aura-frame {
+  position: absolute;
+  inset: 5px;
+  border-radius: 14px;
+  border: 1px solid rgba(75, 174, 255, 0.16);
+  box-shadow:
+    inset 0 0 26px rgba(0, 80, 180, 0.14),
+    0 0 18px rgba(0, 119, 255, 0.1);
+}
+
+.cq-realm-aura-corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid rgba(125, 211, 252, 0.5);
+  filter: drop-shadow(0 0 5px rgba(75, 174, 255, 0.45));
+}
+
+.cq-realm-aura-corner--tl {
+  top: 9px;
+  left: 9px;
+  border-right: none;
+  border-bottom: none;
+  border-top-left-radius: 7px;
+}
+
+.cq-realm-aura-corner--tr {
+  top: 9px;
+  right: 9px;
+  border-left: none;
+  border-bottom: none;
+  border-top-right-radius: 7px;
+}
+
+.cq-realm-aura-corner--bl {
+  bottom: calc(var(--cq-realm-nav-clearance, 0px) + 9px);
+  left: 9px;
+  border-right: none;
+  border-top: none;
+  border-bottom-left-radius: 7px;
+}
+
+.cq-realm-aura-corner--br {
+  bottom: calc(var(--cq-realm-nav-clearance, 0px) + 9px);
+  right: 9px;
+  border-left: none;
+  border-top: none;
+  border-bottom-right-radius: 7px;
+}
+
+/* —— Magical marker aura (soft radial glow behind every pin) —— */
+.cq-marker-aura {
+  position: absolute;
+  inset: -13px;
+  z-index: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--cq-marker-glow) 0%, transparent 68%);
+  opacity: 0.42;
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
+}
+
+.cq-marker-aura--active {
+  opacity: 0.55;
+  animation: cq-marker-aura-breathe 3.4s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+.cq-marker-aura--selected {
+  inset: -18px;
+  opacity: 0.9;
+  animation: none;
+}
+
+.cq-marker-aura-ring {
+  position: absolute;
+  inset: -9px;
+  z-index: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 0 12px var(--cq-marker-glow),
+    inset 0 0 8px var(--cq-marker-glow);
+  pointer-events: none;
+  animation: cq-marker-aura-ring-pulse 2.4s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes cq-marker-aura-breathe {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translate3d(0, 0, 0) scale(1.08);
+  }
+}
+
+@keyframes cq-marker-aura-ring-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-magic-particle,
+  .cq-marker-aura--active,
+  .cq-marker-aura-ring,
+  .cq-realm-aura {
+    animation: none !important;
+  }
+
+  .cq-magic-particle {
+    opacity: var(--mp-o-min, 0.18);
+  }
+
+  .cq-realm-aura {
+    opacity: 1;
+  }
+}
+
+/* —— Event countdown badge (floats above event markers) —— */
+.cq-event-countdown {
+  position: relative;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  margin-bottom: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 216, 255, 0.45);
+  background: rgba(4, 16, 38, 0.92);
+  box-shadow:
+    0 0 14px rgba(75, 174, 255, 0.35),
+    0 4px 14px rgba(0, 20, 60, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
+  animation: cq-countdown-float 3.2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.cq-event-countdown-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  white-space: nowrap;
+  color: #c9ecff;
+  text-transform: uppercase;
+}
+
+.cq-event-countdown-count {
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  white-space: nowrap;
+  text-transform: uppercase;
+  color: rgba(255, 224, 130, 0.92);
+}
+
+/* Urgency tiers — faster pulse and hotter glow as start time approaches */
+.cq-event-countdown--u1 {
+  border-color: rgba(79, 216, 255, 0.55);
+}
+
+.cq-event-countdown--u2 {
+  border-color: rgba(125, 211, 252, 0.75);
+  box-shadow:
+    0 0 18px rgba(75, 174, 255, 0.5),
+    0 4px 14px rgba(0, 20, 60, 0.5);
+  animation:
+    cq-countdown-float 2.6s ease-in-out infinite,
+    cq-countdown-pulse 1.8s ease-in-out infinite;
+}
+
+.cq-event-countdown--u3 {
+  border-color: rgba(255, 200, 90, 0.8);
+  box-shadow:
+    0 0 20px rgba(255, 190, 70, 0.55),
+    0 4px 14px rgba(0, 20, 60, 0.5);
+  animation:
+    cq-countdown-float 2s ease-in-out infinite,
+    cq-countdown-pulse 1s ease-in-out infinite;
+}
+
+.cq-event-countdown--u3 .cq-event-countdown-label {
+  color: #ffe6a8;
+}
+
+.cq-event-countdown--u4 {
+  border-color: rgba(255, 226, 140, 0.95);
+  box-shadow:
+    0 0 26px rgba(255, 200, 90, 0.75),
+    0 0 46px rgba(75, 174, 255, 0.35),
+    0 4px 14px rgba(0, 20, 60, 0.5);
+  animation:
+    cq-countdown-float 1.4s ease-in-out infinite,
+    cq-countdown-pulse 0.6s ease-in-out infinite;
+}
+
+.cq-event-countdown--u4 .cq-event-countdown-label {
+  color: #fff3cf;
+  text-shadow: 0 0 10px rgba(255, 214, 110, 0.85);
+}
+
+.cq-event-countdown--live {
+  border-color: rgba(110, 255, 180, 0.85);
+  box-shadow:
+    0 0 22px rgba(61, 220, 132, 0.6),
+    0 4px 14px rgba(0, 20, 60, 0.5);
+}
+
+.cq-event-countdown--live .cq-event-countdown-label {
+  color: #c8ffe3;
+  text-shadow: 0 0 10px rgba(61, 220, 132, 0.75);
+}
+
+.cq-event-countdown--cancelled {
+  border-color: rgba(255, 110, 110, 0.5);
+  background: rgba(28, 10, 14, 0.92);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  animation: none;
+}
+
+.cq-event-countdown--cancelled .cq-event-countdown-label {
+  color: #fda4af;
+}
+
+.cq-event-countdown--cancelled .cq-event-countdown-count {
+  color: rgba(253, 164, 175, 0.7);
+}
+
+@keyframes cq-countdown-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -3px, 0);
+  }
+}
+
+@keyframes cq-countdown-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.72;
+  }
+}
+
+/* Marker urgency — pin pulse speeds up, shake under 10 minutes */
+.cq-realm-marker--urgency-2 .cq-marker-event-aura {
+  animation-duration: 1.8s;
+}
+
+.cq-realm-marker--urgency-3 .cq-marker-event-aura {
+  animation-duration: 1.1s;
+}
+
+.cq-realm-marker--urgency-3 .cq-marker-pin-anchor {
+  animation: cq-marker-urgent-shake 2.6s ease-in-out infinite;
+}
+
+.cq-realm-marker--urgency-4 .cq-marker-event-aura {
+  animation-duration: 0.7s;
+}
+
+.cq-realm-marker--urgency-4 .cq-marker-pin-anchor {
+  animation: cq-marker-urgent-shake 1.4s ease-in-out infinite;
+}
+
+.cq-realm-marker--urgency-4 .cq-realm-marker-pin {
+  box-shadow:
+    0 0 24px var(--cq-marker-glow),
+    0 0 44px var(--cq-marker-glow),
+    0 10px 24px rgba(0, 0, 0, 0.42);
+}
+
+@keyframes cq-marker-urgent-shake {
+  0%,
+  100%,
+  40% {
+    transform: translate3d(0, 0, 0);
+  }
+  6% {
+    transform: translate3d(-2px, 0, 0) rotate(-2deg);
+  }
+  12% {
+    transform: translate3d(2px, 0, 0) rotate(2deg);
+  }
+  18% {
+    transform: translate3d(-2px, 0, 0) rotate(-1.5deg);
+  }
+  24% {
+    transform: translate3d(2px, 0, 0) rotate(1.5deg);
+  }
+  30% {
+    transform: translate3d(-1px, 0, 0);
+  }
+}
+
+/* —— Event pin cards (location sheet) —— */
+.cq-event-pin-card {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.8rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(129, 190, 255, 0.22);
+  background: linear-gradient(160deg, rgba(23, 44, 84, 0.85), rgba(10, 22, 48, 0.92));
+  box-shadow: 0 8px 22px rgba(2, 10, 30, 0.4);
+}
+
+.cq-event-pin-card--live {
+  border-color: rgba(110, 255, 180, 0.4);
+  box-shadow:
+    0 0 16px rgba(61, 220, 132, 0.18),
+    0 8px 22px rgba(2, 10, 30, 0.4);
+}
+
+.cq-event-pin-card--cancelled {
+  border-color: rgba(255, 110, 110, 0.28);
+  background: linear-gradient(160deg, rgba(40, 26, 34, 0.85), rgba(18, 12, 20, 0.92));
+  opacity: 0.85;
+}
+
+.cq-event-pin-card--cancelled .cq-event-pin-card-title,
+.cq-event-pin-card--cancelled .cq-event-pin-card-meta {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.cq-event-pin-card-image {
+  width: 3.5rem;
+  height: 3.5rem;
+  flex-shrink: 0;
+  border-radius: 0.75rem;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.cq-event-pin-card--cancelled .cq-event-pin-card-image {
+  filter: grayscale(0.8) brightness(0.75);
+}
+
+.cq-event-pin-card-body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.cq-event-pin-card-toprow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.cq-event-pin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid rgba(129, 190, 255, 0.35);
+  color: #bfe0ff;
+  background: rgba(30, 64, 120, 0.4);
+}
+
+.cq-event-pin-badge--live {
+  border-color: rgba(110, 255, 180, 0.5);
+  color: #b7ffd9;
+  background: rgba(20, 84, 52, 0.45);
+}
+
+.cq-event-pin-badge--hurry,
+.cq-event-pin-badge--imminent {
+  border-color: rgba(255, 200, 90, 0.55);
+  color: #ffe6a8;
+  background: rgba(110, 74, 12, 0.4);
+}
+
+.cq-event-pin-badge--cancelled {
+  border-color: rgba(255, 110, 110, 0.5);
+  color: #fda4af;
+  background: rgba(90, 22, 30, 0.45);
+}
+
+.cq-event-pin-badge--ended {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cq-event-pin-category {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(190, 214, 255, 0.6);
+}
+
+.cq-event-pin-card-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f2f7ff;
+  line-height: 1.25;
+}
+
+.cq-event-pin-card-meta {
+  font-size: 11.5px;
+  color: rgba(206, 226, 255, 0.78);
+}
+
+.cq-event-pin-card-org {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cq-event-pin-card-source {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(147, 197, 253, 0.65);
+}
+
+.cq-event-pin-card-warning {
+  font-size: 11px;
+  font-weight: 600;
+  color: #f87171;
+}
+
+.cq-event-pin-card-cta {
+  align-self: flex-start;
+  margin-top: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.85rem;
+  border-radius: 0.65rem;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid rgba(129, 190, 255, 0.4);
+  color: #cfe6ff;
+  background: rgba(37, 78, 140, 0.35);
+}
+
+.cq-event-pin-card--cancelled .cq-event-pin-card-cta {
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Mini horizontal carousel for 3+ events at one location */
+.cq-event-pin-carousel {
+  display: flex;
+  gap: 0.6rem;
+  overflow-x: auto;
+  padding: 0.25rem 0.1rem 0.75rem;
+  margin-bottom: 0.5rem;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.cq-event-pin-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-event-pin-carousel-item {
+  flex: 0 0 auto;
+  width: min(72vw, 15rem);
+  scroll-snap-align: start;
+}
+
+.cq-event-pin-card--compact {
+  padding: 0.6rem;
+  gap: 0.55rem;
+}
+
+.cq-event-pin-card--compact .cq-event-pin-card-image {
+  width: 2.6rem;
+  height: 2.6rem;
+}
+
+.cq-event-pin-card--compact .cq-event-pin-card-title {
+  font-size: 0.78rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Cancelled event markers — muted pin, red-tinted label */
+.cq-realm-marker--cancelled .cq-realm-marker-pin {
+  filter: saturate(0.35) brightness(0.8);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.cq-realm-marker--cancelled .cq-marker-event-aura,
+.cq-realm-marker--cancelled .cq-marker-aura--active {
+  animation: none;
+  opacity: 0.18;
+}
+
+.cq-realm-marker--cancelled .cq-realm-marker-label {
+  border-color: rgba(255, 110, 110, 0.4);
+  color: rgba(255, 218, 222, 0.88);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-event-countdown,
+  .cq-event-countdown--u2,
+  .cq-event-countdown--u3,
+  .cq-event-countdown--u4 {
+    animation: cq-countdown-pulse 3s ease-in-out infinite !important;
+  }
+
+  .cq-event-countdown--cancelled {
+    animation: none !important;
+  }
+
+  .cq-realm-marker--urgency-3 .cq-marker-pin-anchor,
+  .cq-realm-marker--urgency-4 .cq-marker-pin-anchor {
+    animation: none !important;
   }
 }

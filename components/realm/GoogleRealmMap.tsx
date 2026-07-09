@@ -37,9 +37,13 @@ import { RealmMapFlyTo } from "./RealmMapFlyTo";
 import { RealmMapCameraBootstrap } from "./RealmMapCameraBootstrap";
 import { RealmMapControls } from "./RealmMapControls";
 import { RealmMapVectorInit } from "./RealmMapVectorInit";
+import { MagicalParticleLayer } from "./MagicalParticleLayer";
+import { RealmAura } from "./RealmAura";
 import { RealmRaisedBuildingsOverlay } from "./RealmRaisedBuildingsOverlay";
 import { RealmMapMarker } from "./RealmMapMarker";
 import { markerRevealOpacity, useMapZoom } from "./useMapZoom";
+import { useNow } from "@/lib/client/useNow";
+import { getGroupCountdown, type GroupCountdown } from "@/lib/realm/eventCountdown";
 import type { RealmDirectionsRequest } from "@/lib/realm/realmDirectionsTypes";
 import {
   beginRealmMapSession,
@@ -241,6 +245,8 @@ function RealmMapMarkers({
 }) {
   const mapZoom = useMapZoom();
   const markersLoggedRef = useRef(false);
+  // One shared 30s clock drives every marker countdown — no per-marker timers.
+  const now = useNow(30_000, !editMode);
 
   useEffect(() => {
     if (!markersReveal || markersLoggedRef.current) return;
@@ -250,6 +256,35 @@ function RealmMapMarkers({
       supplementary: supplementaryPins.length,
     });
   }, [markersReveal, landmarks.length, supplementaryPins.length]);
+
+  // Note: keyed object (not Map) — the global Map constructor is shadowed by
+  // the vis.gl <Map> component import in this file.
+  const countdownByGroup = useMemo<Record<string, GroupCountdown>>(() => {
+    if (editMode) return {};
+    const result: Record<string, GroupCountdown> = {};
+    for (const landmark of landmarks) {
+      const countdown = getGroupCountdown(landmark.mapContent?.events ?? [], now);
+      if (countdown) result[landmark.id] = countdown;
+    }
+    for (const group of supplementaryPins) {
+      const countdown = getGroupCountdown(group.events, now);
+      if (countdown) result[group.groupKey] = countdown;
+    }
+    const entries = Object.entries(result);
+    if (process.env.NODE_ENV === "development" && entries.length > 0) {
+      console.info(
+        "[cq:urinvolved-map] countdown states",
+        entries.map(([key, value]) => ({
+          location: key,
+          label: value.state.label,
+          kind: value.state.kind,
+          events: value.eventCount,
+          allCancelled: value.allCancelled,
+        })),
+      );
+    }
+    return result;
+  }, [editMode, landmarks, supplementaryPins, now]);
 
   const visibleLandmarks = useMemo(
     () => (editMode ? landmarks : landmarks.filter((l) => landmarkMatchesFilter(l, filter))),
@@ -325,6 +360,7 @@ function RealmMapMarkers({
               editMode={editMode}
               editorSelected={editorSelectedId === landmark.id}
               revealIndex={markersReveal ? index : undefined}
+              countdown={countdownByGroup[landmark.id] ?? null}
             />
           </CampusQuestMapMarker>
         );
@@ -351,6 +387,7 @@ function RealmMapMarkers({
               activityCount={activityCount}
               revealOpacity={markerRevealOpacity(mapZoom, false)}
               revealIndex={markersReveal ? visibleLandmarks.length + index : undefined}
+              countdown={countdownByGroup[group.groupKey] ?? null}
             />
           </CampusQuestMapMarker>
         );
@@ -590,6 +627,8 @@ export function GoogleRealmMap({
             tilesLoaded={tilesLoaded}
           />
 
+          <MagicalParticleLayer enabled={tilesLoaded && mapLayer === "campus" && !editMode} />
+
           <RealmRaisedBuildingsOverlay
             enabled={showFallbackBuildings && mapLayer === "campus" && !editMode}
             landmarks={landmarks.map((landmark) => ({ id: landmark.id, major: landmark.major }))}
@@ -695,6 +734,8 @@ export function GoogleRealmMap({
             </MapControl>
           ) : null}
         </Map>
+
+        {tilesLoaded ? <RealmAura /> : null}
 
         {!tilesLoaded ? (
           <div className="cq-realm-map-loading absolute inset-0 z-[4]" aria-busy="true">
