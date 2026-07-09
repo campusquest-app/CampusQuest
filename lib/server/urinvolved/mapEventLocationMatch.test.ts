@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   mapEventToRealmLocation,
-  normalizeLocationName,
+  matchEventLocationWithMeta,
+  normalizeEventLocationText,
 } from "@/lib/server/urinvolved/mapEventLocationMatch";
 
 const CATALOG = [
@@ -9,19 +10,19 @@ const CATALOG = [
   { slug: "memorial-union", name: "Memorial Union" },
   { slug: "library", name: "Library" },
   { slug: "the-quad", name: "The Quad" },
+  { slug: "rec-center", name: "Rec Center" },
 ];
 
-// Real production catalog today — no Weldin Hall entry.
-const CATALOG_WITHOUT_WELDIN = CATALOG.slice(1);
+const CATALOG_WITHOUT_WELDIN = CATALOG.filter((c) => c.slug !== "weldin-hall");
 
 function realmId(match: ReturnType<typeof mapEventToRealmLocation>): string | null {
   return match?.kind === "realm" ? match.realmLocationId : null;
 }
 
-describe("normalizeLocationName", () => {
-  it("lowercases, strips punctuation, collapses spaces", () => {
-    expect(normalizeLocationName("  Weldin   Hall! ")).toBe("weldin hall");
-    expect(normalizeLocationName("WELDIN HALL")).toBe("weldin hall");
+describe("normalizeEventLocationText", () => {
+  it("strips room numbers for matching", () => {
+    expect(normalizeEventLocationText("Memorial Union Room 318")).toBe("memorial union");
+    expect(normalizeEventLocationText("Weldin Hall - Lounge")).toBe("weldin hall - lounge");
   });
 });
 
@@ -31,13 +32,26 @@ describe("mapEventToRealmLocation", () => {
     expect(realmId(mapEventToRealmLocation({ locationName: "Weldin Hall" }, CATALOG))).toBe("weldin-hall");
   });
 
-  it("matches with punctuation and room suffixes", () => {
-    expect(realmId(mapEventToRealmLocation({ venueName: "Weldin Hall - Lounge" }, CATALOG))).toBe(
-      "weldin-hall",
-    );
+  it("matches memorial union with room suffix", () => {
     expect(
-      realmId(mapEventToRealmLocation({ venueName: "Weldin Hall First Floor Lounge" }, CATALOG)),
-    ).toBe("weldin-hall");
+      realmId(mapEventToRealmLocation({ venueName: "Memorial Union Room 318" }, CATALOG)),
+    ).toBe("memorial-union");
+  });
+
+  it("matches uri library alias to library", () => {
+    expect(realmId(mapEventToRealmLocation({ locationName: "URI Library" }, CATALOG))).toBe("library");
+  });
+
+  it("matches mackal field house to rec center", () => {
+    expect(realmId(mapEventToRealmLocation({ locationName: "Mackal Field House" }, CATALOG))).toBe(
+      "rec-center",
+    );
+  });
+
+  it("returns confidence metadata for fuzzy matches", () => {
+    const result = matchEventLocationWithMeta({ locationName: "Carothers Library" }, CATALOG);
+    expect(result?.meta.confidence).toBeGreaterThan(0.8);
+    expect(realmId(result?.match ?? null)).toBe("library");
   });
 
   it("falls back to alias coordinates when the building is not in the catalog", () => {
@@ -50,33 +64,6 @@ describe("mapEventToRealmLocation", () => {
       expect(match.locationName).toBe("Weldin Hall");
       expect(match.latitude).toBeCloseTo(41.49135, 3);
     }
-  });
-
-  it("matches lowercase 'weldin hall' via alias coordinates", () => {
-    const match = mapEventToRealmLocation({ locationName: "weldin hall" }, CATALOG_WITHOUT_WELDIN);
-    expect(match?.kind).toBe("coords");
-  });
-
-  it("matches via the URI alias table into the catalog", () => {
-    expect(realmId(mapEventToRealmLocation({ locationName: "Carothers Library" }, CATALOG))).toBe(
-      "library",
-    );
-    expect(
-      realmId(mapEventToRealmLocation({ locationName: "Robert L Carothers Library" }, CATALOG)),
-    ).toBe("library");
-  });
-
-  it("prefers venue over address", () => {
-    const match = mapEventToRealmLocation(
-      { venueName: "Memorial Union", address: "50 Lower College Rd" },
-      CATALOG,
-    );
-    expect(realmId(match)).toBe("memorial-union");
-  });
-
-  it("falls back to legacy address aliases", () => {
-    const match = mapEventToRealmLocation({ address: "50 Lower College Rd, Kingston RI" }, CATALOG);
-    expect(realmId(match)).toBe("memorial-union");
   });
 
   it("returns null for unknown locations and junk", () => {

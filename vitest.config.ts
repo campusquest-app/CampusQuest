@@ -7,9 +7,13 @@ export default defineConfig({
       "@": path.resolve(__dirname, "."),
     },
   },
+  // Next.js tsconfig uses jsx:"preserve"; tests need real JSX output.
+  oxc: {
+    jsx: { runtime: "automatic" },
+  },
   test: {
     environment: "node",
-    include: ["lib/**/*.test.ts"],
+    include: ["lib/**/*.test.ts", "components/**/*.test.ts"],
   },
 });
 

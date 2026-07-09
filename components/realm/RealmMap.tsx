@@ -166,6 +166,7 @@ export function RealmMap({
   const [placingNewLocation, setPlacingNewLocation] = useState(false);
   const [newLocationName, setNewLocationName] = useState("");
   const [createLocationPending, setCreateLocationPending] = useState(false);
+  const [selectedUrinvolvedEventId, setSelectedUrinvolvedEventId] = useState<string | null>(null);
   const [directionsRequest, setDirectionsRequest] = useState<RealmDirectionsRequest | null>(null);
   const [directionsStatus, setDirectionsStatus] = useState<RealmDirectionsStatus>({ status: "idle" });
   const [activeRouteDestination, setActiveRouteDestination] = useState<RealmDirectionsDestination | null>(null);
@@ -856,6 +857,10 @@ export function RealmMap({
           onStartPlacingNewLocation={() => setPlacingNewLocation(true)}
           onCancelPlacingNewLocation={() => setPlacingNewLocation(false)}
           createLocationPending={createLocationPending}
+          selectedUrinvolvedEventId={selectedUrinvolvedEventId}
+          onSelectUrinvolvedEventId={setSelectedUrinvolvedEventId}
+          onUrinvolvedPlacementsChanged={() => void reloadMapGroups()}
+          selectedLandmarkRealmId={editorSelectedId}
         />
 
         {useGoogleMap && isRouteSheetOpen ? (

@@ -3,6 +3,7 @@
 import { ChevronDown, MapPin, Save, X } from "lucide-react";
 import { useState } from "react";
 import { RealmMapDebugContent } from "./RealmMapDebugPanel";
+import { RealmUrinvolvedPlacementPanel } from "./RealmUrinvolvedPlacementPanel";
 import type { RealmMapLayerReport } from "./useRealmMapDiagnostics";
 
 export type RealmMarkerEditorDebug = {
@@ -28,6 +29,10 @@ export function RealmMarkerEditorPanel({
   onStartPlacingNewLocation,
   onCancelPlacingNewLocation,
   createLocationPending = false,
+  selectedUrinvolvedEventId = null,
+  onSelectUrinvolvedEventId,
+  onUrinvolvedPlacementsChanged,
+  selectedLandmarkRealmId = null,
 }: {
   debug: RealmMarkerEditorDebug;
   report: RealmMapLayerReport | null;
@@ -42,6 +47,10 @@ export function RealmMarkerEditorPanel({
   onStartPlacingNewLocation?: () => void;
   onCancelPlacingNewLocation?: () => void;
   createLocationPending?: boolean;
+  selectedUrinvolvedEventId?: string | null;
+  onSelectUrinvolvedEventId?: (id: string | null) => void;
+  onUrinvolvedPlacementsChanged?: () => void;
+  selectedLandmarkRealmId?: string | null;
 }) {
   const [debugExpanded, setDebugExpanded] = useState(false);
 
@@ -148,6 +157,14 @@ export function RealmMarkerEditorPanel({
             </button>
           )}
         </div>
+
+        <RealmUrinvolvedPlacementPanel
+          active
+          selectedExternalEventId={selectedUrinvolvedEventId}
+          onSelectExternalEventId={onSelectUrinvolvedEventId}
+          onPlacementsChanged={onUrinvolvedPlacementsChanged}
+          selectedLandmarkRealmId={selectedLandmarkRealmId}
+        />
 
         <div className="mt-3 border-t border-white/10 pt-2">
           <button

@@ -870,6 +870,16 @@ export const adminXpAdjustSchema = z.object({
   reason: z.string().trim().min(3).max(500),
 });
 
+export const updateExternalEventPlacementSchema = z.object({
+  externalEventId: uuidSchema,
+  realmLocationId: campusLocationSlugSchema.nullable().optional(),
+  customLat: z.number().min(-90).max(90).nullable().optional(),
+  customLng: z.number().min(-180).max(180).nullable().optional(),
+  customLabel: z.string().trim().max(120).nullable().optional(),
+  normalizedLocationText: z.string().trim().max(300).nullable().optional(),
+  matchStatus: z.enum(["manually_adjusted", "hidden", "ignored"]).optional(),
+});
+
 export async function readJson<T>(request: Request, schema: z.ZodSchema<T>): Promise<T> {
   const json = await request.json();
   return schema.parse(json);

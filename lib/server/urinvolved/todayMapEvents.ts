@@ -2,8 +2,12 @@ import type { MapEventPin } from "@/lib/mapLocationGroups";
 import { getCampusDayWindow, isEventCancelled } from "@/lib/realm/eventCountdown";
 import { createAdminClient } from "@/lib/server/supabase";
 import {
-  mapEventToRealmLocation,
-  normalizeLocationName,
+  loadOverridesForEventIds,
+  resolveExternalEventPlacement,
+  type ExternalEventMapOverrideRow,
+} from "@/lib/server/externalEventMapOverrides";
+import {
+  normalizeEventLocationText,
   type CatalogLocationLike,
   type EventLocationMatch,
 } from "@/lib/server/urinvolved/mapEventLocationMatch";
@@ -11,6 +15,15 @@ import {
 export type TodayExternalMapEvent = {
   pin: MapEventPin;
   match: EventLocationMatch;
+  placement?: {
+    status: ExternalEventMapOverrideRow["matchStatus"] | "runtime_auto";
+    confidence: number | null;
+    matchReason: string | null;
+    needsReview: boolean;
+    appliedOverride: boolean;
+    rawLocation: string;
+    normalizedLocation: string;
+  };
 };
 
 type RawRow = Record<string, unknown>;
@@ -51,17 +64,20 @@ function rowCancelled(row: ReturnType<typeof normalizeRow>): boolean {
 const DEBUG_EVENT_PINS = process.env.NEXT_PUBLIC_DEBUG_EVENT_PINS === "true";
 
 function debugLog(message: string, detail?: unknown): void {
-  if (process.env.NODE_ENV !== "development" && !DEBUG_EVENT_PINS) return;
-  if (detail === undefined) console.info(`[cq:urinvolved-map] ${message}`);
-  else console.info(`[cq:urinvolved-map] ${message}`, detail);
+  if (process.env.NODE_ENV !== "production" || DEBUG_EVENT_PINS) {
+    if (detail === undefined) console.info(`[cq:urinvolved-map] ${message}`);
+    else console.info(`[cq:urinvolved-map] ${message}`, detail);
+  }
 }
 
 /** Dev-only fake event at Weldin Hall starting 8 minutes from now. */
 function debugFakeEvent(catalog: CatalogLocationLike[], now: Date): TodayExternalMapEvent {
   const startsAt = new Date(now.getTime() + 8 * 60_000).toISOString();
   const endsAt = new Date(now.getTime() + 68 * 60_000).toISOString();
+  const fields = { locationName: "Weldin Hall" };
+  const resolved = resolveExternalEventPlacement({ fields, catalog, override: null });
   const match =
-    mapEventToRealmLocation({ locationName: "Weldin Hall" }, catalog) ??
+    resolved.match ??
     ({
       kind: "coords",
       locationName: "Weldin Hall",
@@ -73,6 +89,7 @@ function debugFakeEvent(catalog: CatalogLocationLike[], now: Date): TodayExterna
     match,
     pin: {
       id: "ext:debug-karaoke",
+      externalEventId: "debug-karaoke",
       title: "Debug Karaoke Night",
       startsAt,
       endsAt,
@@ -106,9 +123,6 @@ export async function getTodayExternalEventsForMap(args: {
 
   const admin = createAdminClient();
 
-  // Fetch a padded window (±1 day) and filter to the NY day in JS so a UTC
-  // boundary mismatch can never silently drop events; select * so renamed
-  // columns degrade to fallbacks instead of a query error.
   const fetchStart = new Date(start.getTime() - 24 * 60 * 60 * 1000);
   const fetchEnd = new Date(end.getTime() + 24 * 60 * 60 * 1000);
   const { data, error } = await admin
@@ -121,7 +135,6 @@ export async function getTodayExternalEventsForMap(args: {
     .order("starts_at", { ascending: true });
 
   if (error) {
-    // Map pins must not fail because the external feed table is unavailable.
     debugLog("external events query failed", { error: error.message });
     return DEBUG_EVENT_PINS ? [debugFakeEvent(args.catalog, now)] : [];
   }
@@ -136,54 +149,75 @@ export async function getTodayExternalEventsForMap(args: {
     })),
   );
 
+  const todayRows = rows.filter((row) => {
+    if (!row.startsAt) return false;
+    const startDate = new Date(row.startsAt);
+    return !Number.isNaN(startDate.getTime()) && startDate >= start && startDate < end;
+  });
+
+  const overrides = await loadOverridesForEventIds(todayRows.map((r) => r.id));
+
   const matched: TodayExternalMapEvent[] = [];
   const unmatchedLocations: string[] = [];
   let cancelledCount = 0;
-  let todayCount = 0;
+  let overrideAppliedCount = 0;
 
-  for (const row of rows) {
-    if (!row.startsAt) continue;
-    const startDate = new Date(row.startsAt);
-    if (Number.isNaN(startDate.getTime()) || startDate < start || startDate >= end) continue;
-    todayCount += 1;
-
+  for (const row of todayRows) {
     const rawLocation = row.venueName ?? row.locationName ?? row.address;
     if (!rawLocation) {
       debugLog("event skipped (no location text)", { title: row.title });
       continue;
     }
 
-    const match = mapEventToRealmLocation(
-      { venueName: row.venueName, locationName: row.locationName, address: row.address },
-      args.catalog,
-    );
+    const fields = { venueName: row.venueName, locationName: row.locationName, address: row.address };
+    const override = overrides.get(row.id) ?? null;
+    const resolved = resolveExternalEventPlacement({ fields, catalog: args.catalog, override });
 
     debugLog("location match attempt", {
       title: row.title,
       rawLocation,
-      normalized: normalizeLocationName(rawLocation),
-      matched: match
-        ? match.kind === "realm"
-          ? `realm:${match.realmLocationId}`
-          : `coords:${match.locationName}`
+      normalized: normalizeEventLocationText(rawLocation),
+      matched: resolved.match
+        ? resolved.match.kind === "realm"
+          ? `realm:${resolved.match.realmLocationId}`
+          : `coords:${resolved.match.locationName}`
         : null,
+      confidence: resolved.meta?.confidence ?? null,
+      reason: resolved.meta?.matchReason ?? null,
+      overrideStatus: override?.matchStatus ?? null,
+      appliedOverride: resolved.appliedOverride,
+      renderOnMap: resolved.renderOnMap,
     });
 
-    if (!match) {
+    if (!resolved.renderOnMap || !resolved.match) {
       unmatchedLocations.push(rawLocation);
-      console.warn("[cq:urinvolved-map] UNMATCHED event location:", rawLocation, `(${row.title})`);
+      if (!override || (override.matchStatus !== "hidden" && override.matchStatus !== "ignored")) {
+        console.warn("[cq:urinvolved-map] UNMATCHED event location:", rawLocation, `(${row.title})`);
+      }
       continue;
     }
+
+    if (resolved.appliedOverride) overrideAppliedCount += 1;
 
     const cancelled = rowCancelled(row);
     if (cancelled) cancelledCount += 1;
 
     matched.push({
-      match,
+      match: resolved.match,
+      placement: {
+        status: override?.matchStatus ?? "runtime_auto",
+        confidence: resolved.meta?.confidence ?? override?.matchConfidence ?? null,
+        matchReason: resolved.meta?.matchReason ?? override?.matchReason ?? null,
+        needsReview: resolved.meta?.needsReview ?? false,
+        appliedOverride: resolved.appliedOverride,
+        rawLocation,
+        normalizedLocation: normalizeEventLocationText(rawLocation),
+      },
       pin: {
         id: `ext:${row.id}`,
+        externalEventId: row.id,
         title: row.title,
-        startsAt: row.startsAt,
+        startsAt: row.startsAt!,
         endsAt: row.endsAt,
         organizationName: row.organizationName,
         eventUrl: row.eventUrl,
@@ -192,6 +226,10 @@ export async function getTodayExternalEventsForMap(args: {
         imageUrl: row.imageUrl,
         category: row.category,
         locationText: rawLocation,
+        placementStatus: override?.matchStatus ?? "auto_matched",
+        matchConfidence: resolved.meta?.confidence ?? override?.matchConfidence ?? null,
+        matchReason: resolved.meta?.matchReason ?? override?.matchReason ?? null,
+        needsReview: resolved.meta?.needsReview ?? false,
       },
     });
   }
@@ -203,11 +241,10 @@ export async function getTodayExternalEventsForMap(args: {
 
   debugLog("today external events summary", {
     fetched: rows.length,
-    today: todayCount,
+    today: todayRows.length,
     matched: matched.length,
-    matchedLocations: matched.map((m) =>
-      m.match.kind === "realm" ? m.match.realmLocationId : m.match.locationName,
-    ),
+    overrideApplied: overrideAppliedCount,
+    unmatchedCount: unmatchedLocations.length,
     unmatchedLocations,
     cancelled: cancelledCount,
   });

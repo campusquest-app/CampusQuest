@@ -16,6 +16,7 @@ export const EventCountdownBadge = memo(function EventCountdownBadge({
   if (state.kind === "ended") return null;
 
   const showCount = eventCount > 1;
+  const debugMagic = process.env.NEXT_PUBLIC_DEBUG_MAP_MAGIC === "true";
 
   return (
     <span
@@ -26,6 +27,7 @@ export const EventCountdownBadge = memo(function EventCountdownBadge({
           : `Event countdown: ${state.label}${showCount ? `, ${eventCount} events` : ""}`
       }
     >
+      {debugMagic ? <span className="cq-event-countdown-count">EVENT MAGIC ACTIVE</span> : null}
       {showCount ? <span className="cq-event-countdown-count">{eventCount} Events</span> : null}
       <span className="cq-event-countdown-label">{state.label}</span>
     </span>

@@ -42,6 +42,12 @@ export type MapEventPin = {
   category?: string | null;
   /** Raw location text from the source feed (e.g. "weldin hall"). */
   locationText?: string | null;
+  /** DB id for external_events row (URInvolved). */
+  externalEventId?: string | null;
+  placementStatus?: string | null;
+  matchConfidence?: number | null;
+  matchReason?: string | null;
+  needsReview?: boolean;
 };
 
 export type GroupedMapLocation = {

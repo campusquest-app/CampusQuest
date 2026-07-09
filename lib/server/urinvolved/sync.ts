@@ -13,6 +13,11 @@ import {
   resolveUrinvolvedEventLocation,
 } from "@/lib/server/urinvolved/eventLocation";
 import { parseUrinvolvedEventsRss, type ParsedUrinvolvedEvent } from "@/lib/server/urinvolved/parseRssEvents";
+import { getCampusLocations } from "@/lib/server/campusLocationsDb";
+import {
+  loadOverridesForEventIds,
+  upsertAutoPlacementOverride,
+} from "@/lib/server/externalEventMapOverrides";
 
 export const URINVOLVED_SOURCE = "urinvolved";
 
@@ -100,6 +105,10 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
     try {
       const rssXml = await fetchUrinvolvedEventsRss();
       const parsedEvents = parseUrinvolvedEventsRss(rssXml);
+      const catalog = (await getCampusLocations({ refreshCache: true })).map((row) => ({
+        slug: row.slug,
+        name: row.name,
+      }));
 
       for (const event of parsedEvents) {
         seenEventIds.push(event.externalId);
@@ -132,13 +141,32 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
           .eq("external_id", event.externalId)
           .maybeSingle();
 
-        const { error: upsertError } = await admin.from("external_events").upsert(row, { onConflict: "external_id" });
+        const { data: upserted, error: upsertError } = await admin
+          .from("external_events")
+          .upsert(row, { onConflict: "external_id" })
+          .select("id")
+          .single();
         if (upsertError) {
           errors.push(`Event ${event.externalId}: ${upsertError.message}`);
           continue;
         }
         if (existing) eventsUpdated += 1;
         else eventsCreated += 1;
+
+        const externalEventId = String(upserted?.id ?? existing?.id ?? "");
+        if (externalEventId) {
+          const overrides = await loadOverridesForEventIds([externalEventId]);
+          await upsertAutoPlacementOverride({
+            externalEventId,
+            fields: {
+              venueName: location.venueName,
+              locationName: location.locationName,
+              address: location.address,
+            },
+            catalog,
+            existing: overrides.get(externalEventId) ?? null,
+          });
+        }
       }
     } catch (eventError) {
       errors.push(eventError instanceof Error ? eventError.message : String(eventError));
