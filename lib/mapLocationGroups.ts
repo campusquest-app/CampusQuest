@@ -48,6 +48,8 @@ export type MapEventPin = {
   matchConfidence?: number | null;
   matchReason?: string | null;
   needsReview?: boolean;
+  /** True when an admin moved this event pin from the auto-matched location. */
+  locationManuallyAdjusted?: boolean;
 };
 
 export type GroupedMapLocation = {

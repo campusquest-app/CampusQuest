@@ -13,6 +13,7 @@ import { AlertTriangle, MapPinOff } from "lucide-react";
 import type { RealmLocationId } from "@/lib/realm/locations";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
+import type { UrinvolvedEditPin } from "@/lib/realm/urinvolvedEditPins";
 import { CQ_REALM_MAP_BACKGROUND, CQ_REALM_MAP_STYLE } from "@/lib/realm/campusQuestMapStyles";
 import { isRealmVector3dEnabled, REALM_GOOGLE_MAP_ID } from "@/lib/realm/googleMapConfig";
 import {
@@ -229,6 +230,10 @@ function RealmMapMarkers({
   onTapSupplementary,
   onSelectEditorMarker,
   onMarkerGeoChange,
+  urinvolvedEditPins = [],
+  selectedUrinvolvedEventId = null,
+  onSelectUrinvolvedEvent,
+  onUrinvolvedEventDragEnd,
 }: {
   landmarks: GoogleRealmMapLandmark[];
   geoPositions: Record<RealmLocationId, { lat: number; lng: number }>;
@@ -245,6 +250,10 @@ function RealmMapMarkers({
   onTapSupplementary: (group: GroupedMapLocation) => void;
   onSelectEditorMarker: (id: RealmLocationId) => void;
   onMarkerGeoChange: (id: RealmLocationId, lat: number, lng: number) => void;
+  urinvolvedEditPins?: UrinvolvedEditPin[];
+  selectedUrinvolvedEventId?: string | null;
+  onSelectUrinvolvedEvent?: (externalEventId: string) => void;
+  onUrinvolvedEventDragEnd?: (externalEventId: string, lat: number, lng: number) => void;
 }) {
   const mapZoom = useMapZoom();
   const markersLoggedRef = useRef(false);
@@ -412,10 +421,36 @@ function RealmMapMarkers({
               revealOpacity={markerRevealOpacity(mapZoom, false)}
               revealIndex={markersReveal ? visibleLandmarks.length + index : undefined}
               countdown={countdownByGroup[group.groupKey] ?? null}
+              locationAdjusted={group.events.some((event) => event.locationManuallyAdjusted)}
             />
           </CampusQuestMapMarker>
         );
       })}
+
+      {editMode
+        ? urinvolvedEditPins.map((pin, index) => {
+            const selected = selectedUrinvolvedEventId === pin.externalEventId;
+            return (
+              <CampusQuestMapMarker
+                key={`urinvolved-edit:${pin.externalEventId}`}
+                position={{ lat: pin.lat, lng: pin.lng }}
+                zIndex={selected ? 4000 : 3200}
+                draggable
+                onClick={() => onSelectUrinvolvedEvent?.(pin.externalEventId)}
+                onDragEnd={(lat, lng) => onUrinvolvedEventDragEnd?.(pin.externalEventId, lat, lng)}
+              >
+                <RealmMapMarker
+                  variant="event"
+                  label={pin.title}
+                  editMode
+                  editorSelected={selected}
+                  locationAdjusted={pin.locationManuallyAdjusted}
+                  revealIndex={markersReveal ? visibleLandmarks.length + visibleGroups.length + index : undefined}
+                />
+              </CampusQuestMapMarker>
+            );
+          })
+        : null}
 
       <QuestPathOverlay
         from={pathOrigin}
@@ -453,6 +488,10 @@ export function GoogleRealmMap({
   directionsRequest = null,
   onDirectionsLoaded,
   onDirectionsError,
+  urinvolvedEditPins = [],
+  selectedUrinvolvedEventId = null,
+  onSelectUrinvolvedEvent,
+  onUrinvolvedEventDragEnd,
 }: {
   apiKey: string;
   landmarks: GoogleRealmMapLandmark[];
@@ -476,6 +515,10 @@ export function GoogleRealmMap({
   directionsRequest?: RealmDirectionsRequest | null;
   onDirectionsLoaded?: (result: RealmDirectionsLoadResult & { ok: true }) => void;
   onDirectionsError?: (result: RealmDirectionsLoadResult & { ok: false }) => void;
+  urinvolvedEditPins?: UrinvolvedEditPin[];
+  selectedUrinvolvedEventId?: string | null;
+  onSelectUrinvolvedEvent?: (externalEventId: string) => void;
+  onUrinvolvedEventDragEnd?: (externalEventId: string, lat: number, lng: number) => void;
 }) {
   const [apiError, setApiError] = useState(false);
   const [filter, setFilter] = useState<MapMarkerFilter>("all");
@@ -684,6 +727,10 @@ export function GoogleRealmMap({
             onTapSupplementary={onTapSupplementary}
             onSelectEditorMarker={onSelectEditorMarker}
             onMarkerGeoChange={onMarkerGeoChange}
+            urinvolvedEditPins={urinvolvedEditPins}
+            selectedUrinvolvedEventId={selectedUrinvolvedEventId}
+            onSelectUrinvolvedEvent={onSelectUrinvolvedEvent}
+            onUrinvolvedEventDragEnd={onUrinvolvedEventDragEnd}
           />
 
           <RealmDirectionsOverlay

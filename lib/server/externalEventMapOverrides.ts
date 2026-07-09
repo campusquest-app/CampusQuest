@@ -79,6 +79,15 @@ function overrideToMatch(
   override: ExternalEventMapOverrideRow,
   catalog: CatalogLocationLike[],
 ): EventLocationMatch | null {
+  if (override.customLat != null && override.customLng != null) {
+    return {
+      kind: "coords",
+      locationName: override.customLabel ?? "Custom location",
+      latitude: override.customLat,
+      longitude: override.customLng,
+      matchedText: override.rawLocationText ?? override.customLabel ?? "Custom location",
+    };
+  }
   if (override.realmLocationId) {
     const entry = catalog.find((c) => c.slug === override.realmLocationId);
     return {
@@ -310,16 +319,26 @@ export async function saveManualPlacementOverride(args: {
   const admin = createAdminClient();
   const now = new Date().toISOString();
   const status = args.matchStatus ?? "manually_adjusted";
+  const isDrag =
+    args.customLat != null &&
+    args.customLng != null &&
+    Number.isFinite(args.customLat) &&
+    Number.isFinite(args.customLng);
 
   const row = {
     external_event_id: args.externalEventId,
-    realm_location_id: args.realmLocationId ?? null,
-    custom_lat: args.customLat ?? null,
-    custom_lng: args.customLng ?? null,
+    realm_location_id: isDrag ? null : (args.realmLocationId ?? null),
+    custom_lat: isDrag ? args.customLat : (args.realmLocationId ? null : (args.customLat ?? null)),
+    custom_lng: isDrag ? args.customLng : (args.realmLocationId ? null : (args.customLng ?? null)),
     custom_label: args.customLabel ?? null,
     match_status: status,
     match_confidence: status === "manually_adjusted" ? 1 : null,
-    match_reason: status === "manually_adjusted" ? "manual_override" : status,
+    match_reason:
+      status === "manually_adjusted"
+        ? isDrag
+          ? "manual_drag"
+          : "manual_override"
+        : status,
     raw_location_text: args.rawLocationText ?? null,
     normalized_location_text: args.normalizedLocationText ?? null,
     updated_by: args.updatedBy,

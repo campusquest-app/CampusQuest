@@ -33,11 +33,13 @@ import { AddCampusMemorySheet } from "@/components/memories/AddCampusMemorySheet
 import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
 import { LocationMemoriesGallery } from "@/components/memories/LocationMemoriesGallery";
 import { useGroupedMapLocations } from "@/lib/client/mapLocationGroupsClient";
+import { saveUrinvolvedPlacement } from "@/lib/client/urinvolvedMapPlacementsClient";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount, mapLocationQuestCount } from "@/lib/mapLocationGroups";
+import { buildUrinvolvedEditPinsFromGroups, type UrinvolvedEditPin } from "@/lib/realm/urinvolvedEditPins";
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
-import { geoToRealmMapPercent } from "@/lib/realm/geoToMapPercent";
+import { geoToRealmMapPercent, realmMapPercentToGeo } from "@/lib/realm/geoToMapPercent";
 import { GoogleRealmMap } from "./GoogleRealmMap";
 import type { RealmDirectionsLoadResult } from "./RealmDirectionsOverlay";
 import { RealmRouteSheet } from "./RealmRouteSheet";
@@ -190,6 +192,31 @@ export function RealmMap({
   const supplementaryPins = useMemo(
     () => mapGroups.filter((group): group is SupplementaryMapPin => !group.attachToLandmark && mapLocationActivityCount(group) > 0),
     [mapGroups],
+  );
+
+  const urinvolvedEditPins = useMemo(
+    () => (editMode && isAdmin ? buildUrinvolvedEditPinsFromGroups(mapGroups) : []),
+    [editMode, isAdmin, mapGroups],
+  );
+
+  const handleUrinvolvedEventDragEnd = useCallback(
+    async (externalEventId: string, lat: number, lng: number) => {
+      try {
+        await saveUrinvolvedPlacement({
+          externalEventId,
+          customLat: round6(lat),
+          customLng: round6(lng),
+          realmLocationId: null,
+          matchStatus: "manually_adjusted",
+        });
+        setSelectedUrinvolvedEventId(externalEventId);
+        setEditorSelectedId(null);
+        await reloadMapGroups();
+      } catch (error) {
+        console.error("[cq:urinvolved-edit] drag save failed", error);
+      }
+    },
+    [reloadMapGroups],
   );
 
   const locations = useMemo((): HydratedRealmLocation[] => {
@@ -442,6 +469,7 @@ export function RealmMap({
   const handleExitEdit = useCallback(() => {
     setEditMode(false);
     setEditorSelectedId(null);
+    setSelectedUrinvolvedEventId(null);
     setDraggingId(null);
     setSaveMessage(null);
     setDraftPositions(getSavedPositions());
@@ -756,6 +784,10 @@ export function RealmMap({
             flyToTarget={flyToTarget}
             flyToEnabled={sheetOpen && !editMode}
             routeSheetOpen={isRouteSheetOpen}
+            urinvolvedEditPins={urinvolvedEditPins}
+            selectedUrinvolvedEventId={selectedUrinvolvedEventId}
+            onSelectUrinvolvedEvent={setSelectedUrinvolvedEventId}
+            onUrinvolvedEventDragEnd={(id, lat, lng) => void handleUrinvolvedEventDragEnd(id, lat, lng)}
           />
         ) : (
           <TransformWrapper
@@ -835,7 +867,19 @@ export function RealmMap({
                             onTap={() => openSupplementaryPin(group)}
                           />
                         ))
-                      : null}
+                      : urinvolvedEditPins.map((pin) => (
+                          <UrinvolvedEventEditPin
+                            key={pin.externalEventId}
+                            pin={pin}
+                            selected={selectedUrinvolvedEventId === pin.externalEventId}
+                            mapStageRef={mapStageRef}
+                            onSelect={() => {
+                              setSelectedUrinvolvedEventId(pin.externalEventId);
+                              setEditorSelectedId(null);
+                            }}
+                            onDragEnd={(lat, lng) => void handleUrinvolvedEventDragEnd(pin.externalEventId, lat, lng)}
+                          />
+                        ))}
                   </div>
                 </div>
               </div>
@@ -998,6 +1042,9 @@ function SupplementaryLocationPin({
         <span className="realm-pin-emoji">📍</span>
       </span>
       <span className="realm-pin-label">{group.locationName}</span>
+      {group.events.some((event) => event.locationManuallyAdjusted) ? (
+        <span className="cq-realm-marker-adjusted cq-realm-marker-adjusted--canvas">Adjusted</span>
+      ) : null}
     </button>
   );
 }
@@ -1008,6 +1055,87 @@ function round2(n: number): number {
 
 function round6(n: number): number {
   return Math.round(n * 1_000_000) / 1_000_000;
+}
+
+function UrinvolvedEventEditPin({
+  pin,
+  selected,
+  mapStageRef,
+  onSelect,
+  onDragEnd,
+}: {
+  pin: UrinvolvedEditPin;
+  selected: boolean;
+  mapStageRef: React.RefObject<HTMLDivElement | null>;
+  onSelect: () => void;
+  onDragEnd: (lat: number, lng: number) => void;
+}) {
+  const mapPos = geoToRealmMapPercent(pin.lat, pin.lng);
+  const [pos, setPos] = useState(mapPos);
+  const dragRef = useRef({ active: false, pointerId: -1, moved: false });
+
+  useEffect(() => {
+    setPos(geoToRealmMapPercent(pin.lat, pin.lng));
+  }, [pin.lat, pin.lng]);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    dragRef.current = { active: true, pointerId: e.pointerId, moved: false };
+    onSelect();
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!dragRef.current.active || e.pointerId !== dragRef.current.pointerId) return;
+    const stage = mapStageRef.current;
+    if (!stage) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current.moved = true;
+    setPos(pointerToPercent(stage, e.clientX, e.clientY));
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (e.pointerId !== dragRef.current.pointerId) return;
+    e.stopPropagation();
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    const wasDrag = dragRef.current.moved;
+    dragRef.current = { active: false, pointerId: -1, moved: false };
+    if (wasDrag) {
+      const geo = realmMapPercentToGeo(pos.x, pos.y);
+      onDragEnd(geo.latitude, geo.longitude);
+    } else {
+      onSelect();
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      className={`realm-pin realm-marker location-marker map-pin touch-manipulation realm-pin--editable ${
+        selected ? "realm-pin--active" : ""
+      }`}
+      style={{ left: `${pos.x}%`, top: `${pos.y}%`, touchAction: "none" }}
+      aria-label={`${pin.title}. Drag to reposition URInvolved event pin.`}
+      data-map-marker="true"
+      data-no-drawer-swipe="true"
+    >
+      <span className="realm-pin-dot" aria-hidden>
+        <span className="realm-pin-emoji">📅</span>
+      </span>
+      <span className="realm-pin-label">{pin.title}</span>
+      {pin.locationManuallyAdjusted ? (
+        <span className="cq-realm-marker-adjusted cq-realm-marker-adjusted--canvas">Adjusted</span>
+      ) : null}
+    </button>
+  );
 }
 
 function LocationPin({

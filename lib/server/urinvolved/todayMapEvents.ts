@@ -230,6 +230,7 @@ export async function getTodayExternalEventsForMap(args: {
         matchConfidence: resolved.meta?.confidence ?? override?.matchConfidence ?? null,
         matchReason: resolved.meta?.matchReason ?? override?.matchReason ?? null,
         needsReview: resolved.meta?.needsReview ?? false,
+        locationManuallyAdjusted: override?.matchStatus === "manually_adjusted",
       },
     });
   }

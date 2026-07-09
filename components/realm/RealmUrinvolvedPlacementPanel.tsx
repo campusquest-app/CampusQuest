@@ -147,7 +147,7 @@ function EventPlacementEditor({
           onClick={onReset}
           className="rounded-lg border border-white/15 px-2.5 py-1.5 text-[10px] text-white/75"
         >
-          Reset auto-match
+          Reset to URInvolved location
         </button>
         <button
           type="button"

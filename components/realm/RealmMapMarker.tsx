@@ -52,6 +52,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   editorSelected = false,
   revealIndex,
   countdown = null,
+  locationAdjusted = false,
 }: {
   variant: RealmMarkerVariant;
   label: string;
@@ -65,6 +66,8 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   revealIndex?: number;
   /** Grouped event countdown — renders floating badge + urgency pulse. */
   countdown?: GroupCountdown | null;
+  /** Admin-only cue when a URInvolved pin was manually repositioned. */
+  locationAdjusted?: boolean;
 }) {
   const landmarkIcon = landmarkIconForId(landmarkId);
   const tone = useMemo(() => resolveMarkerTone(variant, editMode), [variant, editMode]);
@@ -134,6 +137,11 @@ export const RealmMapMarker = memo(function RealmMapMarker({
     >
       {showCountdown && effectiveCountdown ? (
         <EventCountdownBadge countdown={effectiveCountdown} />
+      ) : null}
+      {locationAdjusted ? (
+        <span className="cq-realm-marker-adjusted" title="Admin adjusted location">
+          Adjusted
+        </span>
       ) : null}
       <div className="cq-realm-marker-stack">
         <div className="cq-marker-pin-anchor">

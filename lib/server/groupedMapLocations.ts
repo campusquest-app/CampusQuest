@@ -214,6 +214,33 @@ function externalEventCoordsMeta(match: {
   };
 }
 
+/** Admin-dragged URInvolved events get their own pin (not grouped with landmark/auto coords). */
+function externalEventPerIdMeta(match: {
+  externalEventId: string;
+  locationName: string;
+  latitude: number;
+  longitude: number;
+}): Omit<GroupBucket, "qrCodes" | "quests" | "events"> | null {
+  if (!isValidCampusCoordinate(match.latitude, match.longitude)) return null;
+  const map = geoToRealmMapPercent(match.latitude, match.longitude);
+  return {
+    groupKey: `ext-event:${match.externalEventId}`,
+    locationKey: "other",
+    realmLocationId: null,
+    locationName: match.locationName,
+    locationAddress: null,
+    x: map.x,
+    y: map.y,
+    lat: match.latitude,
+    lng: match.longitude,
+    attachToLandmark: false,
+  };
+}
+
+function isDragPlacedUrinvolvedEvent(item: Awaited<ReturnType<typeof getTodayExternalEventsForMap>>[number]): boolean {
+  return item.pin.placementStatus === "manually_adjusted" && item.match.kind === "coords";
+}
+
 export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
   const catalogRows = await getCampusLocations({ refreshCache: true });
   const admin = createAdminClient();
@@ -342,9 +369,16 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
   const externalEvents = await externalEventsPromise;
   for (const item of externalEvents) {
     const meta =
-      item.match.kind === "realm"
-        ? resolveGroupMeta({ locationId: item.match.realmLocationId })
-        : externalEventCoordsMeta(item.match);
+      isDragPlacedUrinvolvedEvent(item) && item.pin.externalEventId && item.match.kind === "coords"
+        ? externalEventPerIdMeta({
+            externalEventId: item.pin.externalEventId,
+            locationName: item.match.locationName,
+            latitude: item.match.latitude,
+            longitude: item.match.longitude,
+          })
+        : item.match.kind === "realm"
+          ? resolveGroupMeta({ locationId: item.match.realmLocationId })
+          : externalEventCoordsMeta(item.match);
     if (!meta) continue;
     const bucket = getOrCreateBucket(buckets, meta);
     const key = eventDedupeKey(item.pin);
