@@ -73,6 +73,9 @@ export type GoogleRealmMapLandmark = {
 
 export type MapMarkerFilter = "all" | "quests" | "events" | "memories" | "qr";
 
+/** NEXT_PUBLIC_DEBUG_MAP_MAGIC=true forces event marker visuals + debug logs. */
+const MAP_MAGIC_DEBUG = process.env.NEXT_PUBLIC_DEBUG_MAP_MAGIC === "true";
+
 const FILTER_OPTIONS: { id: MapMarkerFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "quests", label: "Quests" },
@@ -270,19 +273,6 @@ function RealmMapMarkers({
       const countdown = getGroupCountdown(group.events, now);
       if (countdown) result[group.groupKey] = countdown;
     }
-    const entries = Object.entries(result);
-    if (process.env.NODE_ENV === "development" && entries.length > 0) {
-      console.info(
-        "[cq:urinvolved-map] countdown states",
-        entries.map(([key, value]) => ({
-          location: key,
-          label: value.state.label,
-          kind: value.state.kind,
-          events: value.eventCount,
-          allCancelled: value.allCancelled,
-        })),
-      );
-    }
     return result;
   }, [editMode, landmarks, supplementaryPins, now]);
 
@@ -300,6 +290,40 @@ function RealmMapMarkers({
           ),
     [supplementaryPins, editMode, filter],
   );
+
+  // Dev debug panel: full pipeline summary from map data to rendered markers.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development" && !MAP_MAGIC_DEBUG) return;
+    const allGroups = [
+      ...landmarks.map((l) => ({ key: l.id, events: l.mapContent?.events ?? [] })),
+      ...supplementaryPins.map((g) => ({ key: g.groupKey, events: g.events })),
+    ];
+    const eventPins = allGroups.flatMap((g) => g.events);
+    const externalPins = eventPins.filter((e) => e.source === "urinvolved");
+    console.groupCollapsed("[cq:event-pins] map debug panel");
+    console.info("total event pins loaded:", eventPins.length);
+    console.info("external (URInvolved) event pins:", externalPins.length);
+    console.info(
+      "grouped event marker locations:",
+      allGroups.filter((g) => g.events.length > 0).map((g) => `${g.key} (${g.events.length})`),
+    );
+    console.info(
+      "countdown states:",
+      Object.entries(countdownByGroup).map(([key, value]) => ({
+        location: key,
+        label: value.state.label,
+        kind: value.state.kind,
+        events: value.eventCount,
+        allCancelled: value.allCancelled,
+      })),
+    );
+    console.info(
+      "visible markers:",
+      visibleLandmarks.length + visibleGroups.length,
+      `(landmarks ${visibleLandmarks.length}, supplementary ${visibleGroups.length}, filter "${filter}", editMode ${editMode})`,
+    );
+    console.groupEnd();
+  }, [countdownByGroup, landmarks, supplementaryPins, visibleLandmarks, visibleGroups, filter, editMode]);
 
   const trackedDestination = trackedPathDestination;
   const pathOrigin = userPos ?? URI_MAP_CENTER;
@@ -464,6 +488,14 @@ export function GoogleRealmMap({
   const surfaceRef = useRef<HTMLDivElement>(null);
   const tilesReadyRef = useRef(isRealmMapTilesReady());
   const sessionStartedRef = useRef(false);
+
+  useEffect(() => {
+    // Build stamp on load — proves which deployment the (PWA-cached) client runs.
+    console.info("[cq:build]", process.env.NEXT_PUBLIC_BUILD_TIMESTAMP ?? "dev/unknown");
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      console.info("[cq:event-pins] prefers-reduced-motion detected — shake off, soft pulse only");
+    }
+  }, []);
   const vector3dEnabled = REALM_VECTOR_3D_ENABLED;
   const useVectorMapId = vector3dEnabled && mapLayer === "campus";
 

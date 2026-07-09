@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo } from "react";
 import { landmarkIconForId } from "@/lib/realm/landmarkIcons";
 import type { MarkerActivityState } from "@/lib/realm/markerActivityState";
 import type { RealmLocationId } from "@/lib/realm/locations";
@@ -25,6 +25,19 @@ function sparkleCountForMarker(
   if (activityState === "active") return 3;
   return 0;
 }
+
+/**
+ * Debug visual mode: forces the "hurry" magic state on every event marker so
+ * CSS/rendering can be verified independently of countdown/date logic.
+ */
+const DEBUG_MAP_MAGIC = process.env.NEXT_PUBLIC_DEBUG_MAP_MAGIC === "true";
+
+const DEBUG_MAGIC_COUNTDOWN: GroupCountdown = {
+  state: { kind: "hurry", label: "DEBUG MAGIC", urgency: 3 },
+  featuredEventId: null,
+  eventCount: 1,
+  allCancelled: false,
+};
 
 /** Premium game-style map pin with tiered activity animations. */
 export const RealmMapMarker = memo(function RealmMapMarker({
@@ -61,9 +74,31 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   );
 
   const hasActivity = !editMode && activityState !== "idle";
-  const showCountdown = !editMode && countdown != null && countdown.state.kind !== "ended";
-  const countdownUrgency = showCountdown ? countdown.state.urgency : 0;
-  const countdownCancelled = showCountdown && countdown.allCancelled;
+
+  let effectiveCountdown = countdown;
+  if (DEBUG_MAP_MAGIC && !editMode && (variant === "event" || countdown != null)) {
+    effectiveCountdown = DEBUG_MAGIC_COUNTDOWN;
+  }
+  const showCountdown =
+    !editMode && effectiveCountdown != null && effectiveCountdown.state.kind !== "ended";
+  const countdownUrgency = showCountdown ? effectiveCountdown!.state.urgency : 0;
+  const countdownCancelled = showCountdown && Boolean(effectiveCountdown?.allCancelled);
+  // Magic ring/spark layer for live-countdown (non-cancelled) event markers.
+  const showEventMagic = showCountdown && !countdownCancelled;
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development" && !DEBUG_MAP_MAGIC) return;
+    if (!showCountdown || !effectiveCountdown) return;
+    console.info("[cq:event-marker]", {
+      label,
+      countdown: effectiveCountdown.state.label,
+      kind: effectiveCountdown.state.kind,
+      urgency: effectiveCountdown.state.urgency,
+      cancelled: effectiveCountdown.allCancelled,
+      className: `cq-realm-marker--urgency-${effectiveCountdown.state.urgency}${effectiveCountdown.allCancelled ? " cq-realm-marker--cancelled" : ""}`,
+    });
+  }, [label, showCountdown, effectiveCountdown]);
+
   const isLegendary = !editMode && variant === "legendary" && hasActivity;
   const isQuestPulse = !editMode && variant === "quest" && activityState === "active";
   const isEventAura = !editMode && variant === "event" && hasActivity && !isLegendary;
@@ -97,11 +132,22 @@ export const RealmMapMarker = memo(function RealmMapMarker({
       data-activity-state={activityState}
       aria-label={label}
     >
-      {showCountdown ? <EventCountdownBadge countdown={countdown} /> : null}
+      {showCountdown && effectiveCountdown ? (
+        <EventCountdownBadge countdown={effectiveCountdown} />
+      ) : null}
       <div className="cq-realm-marker-stack">
         <div className="cq-marker-pin-anchor">
           {!editMode ? (
-            <MagicalMarkerGlow active={hasActivity} selected={showSelectedPop} />
+            <MagicalMarkerGlow active={hasActivity || showEventMagic} selected={showSelectedPop} />
+          ) : null}
+          {showEventMagic ? (
+            <span className="cq-event-magic" aria-hidden>
+              <span className="cq-event-magic-ring" />
+              <span className="cq-event-magic-ring cq-event-magic-ring--second" />
+              <span className="cq-event-magic-spark cq-event-magic-spark--one" />
+              <span className="cq-event-magic-spark cq-event-magic-spark--two" />
+              <span className="cq-event-magic-spark cq-event-magic-spark--three" />
+            </span>
           ) : null}
           {isLegendary ? <span className="cq-marker-legendary-runes" aria-hidden /> : null}
           {isEventAura ? <span className="cq-marker-event-aura" aria-hidden /> : null}

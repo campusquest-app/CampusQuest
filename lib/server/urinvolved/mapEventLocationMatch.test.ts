@@ -11,6 +11,13 @@ const CATALOG = [
   { slug: "the-quad", name: "The Quad" },
 ];
 
+// Real production catalog today — no Weldin Hall entry.
+const CATALOG_WITHOUT_WELDIN = CATALOG.slice(1);
+
+function realmId(match: ReturnType<typeof mapEventToRealmLocation>): string | null {
+  return match?.kind === "realm" ? match.realmLocationId : null;
+}
+
 describe("normalizeLocationName", () => {
   it("lowercases, strips punctuation, collapses spaces", () => {
     expect(normalizeLocationName("  Weldin   Hall! ")).toBe("weldin hall");
@@ -20,23 +27,42 @@ describe("normalizeLocationName", () => {
 
 describe("mapEventToRealmLocation", () => {
   it("matches exact catalog names case-insensitively", () => {
-    expect(
-      mapEventToRealmLocation({ locationName: "weldin hall" }, CATALOG)?.realmLocationId,
-    ).toBe("weldin-hall");
-    expect(
-      mapEventToRealmLocation({ locationName: "Weldin Hall" }, CATALOG)?.realmLocationId,
-    ).toBe("weldin-hall");
+    expect(realmId(mapEventToRealmLocation({ locationName: "weldin hall" }, CATALOG))).toBe("weldin-hall");
+    expect(realmId(mapEventToRealmLocation({ locationName: "Weldin Hall" }, CATALOG))).toBe("weldin-hall");
   });
 
   it("matches with punctuation and room suffixes", () => {
+    expect(realmId(mapEventToRealmLocation({ venueName: "Weldin Hall - Lounge" }, CATALOG))).toBe(
+      "weldin-hall",
+    );
     expect(
-      mapEventToRealmLocation({ venueName: "Weldin Hall - Lounge" }, CATALOG)?.realmLocationId,
+      realmId(mapEventToRealmLocation({ venueName: "Weldin Hall First Floor Lounge" }, CATALOG)),
     ).toBe("weldin-hall");
   });
 
-  it("matches via the URI alias table", () => {
+  it("falls back to alias coordinates when the building is not in the catalog", () => {
+    const match = mapEventToRealmLocation(
+      { venueName: "Weldin Hall First Floor Lounge" },
+      CATALOG_WITHOUT_WELDIN,
+    );
+    expect(match?.kind).toBe("coords");
+    if (match?.kind === "coords") {
+      expect(match.locationName).toBe("Weldin Hall");
+      expect(match.latitude).toBeCloseTo(41.49135, 3);
+    }
+  });
+
+  it("matches lowercase 'weldin hall' via alias coordinates", () => {
+    const match = mapEventToRealmLocation({ locationName: "weldin hall" }, CATALOG_WITHOUT_WELDIN);
+    expect(match?.kind).toBe("coords");
+  });
+
+  it("matches via the URI alias table into the catalog", () => {
+    expect(realmId(mapEventToRealmLocation({ locationName: "Carothers Library" }, CATALOG))).toBe(
+      "library",
+    );
     expect(
-      mapEventToRealmLocation({ locationName: "Carothers Library" }, CATALOG)?.realmLocationId,
+      realmId(mapEventToRealmLocation({ locationName: "Robert L Carothers Library" }, CATALOG)),
     ).toBe("library");
   });
 
@@ -45,12 +71,12 @@ describe("mapEventToRealmLocation", () => {
       { venueName: "Memorial Union", address: "50 Lower College Rd" },
       CATALOG,
     );
-    expect(match?.realmLocationId).toBe("memorial-union");
+    expect(realmId(match)).toBe("memorial-union");
   });
 
   it("falls back to legacy address aliases", () => {
     const match = mapEventToRealmLocation({ address: "50 Lower College Rd, Kingston RI" }, CATALOG);
-    expect(match?.realmLocationId).toBe("memorial-union");
+    expect(realmId(match)).toBe("memorial-union");
   });
 
   it("returns null for unknown locations and junk", () => {

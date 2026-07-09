@@ -188,6 +188,32 @@ function eventGroupMeta(locationKey: GroupedMapLocation["locationKey"], location
   };
 }
 
+/**
+ * Bucket meta for external events at known campus buildings that are not
+ * (yet) catalog Realm locations — pins by raw coordinates as a standalone
+ * supplementary marker (e.g. Weldin Hall).
+ */
+function externalEventCoordsMeta(match: {
+  locationName: string;
+  latitude: number;
+  longitude: number;
+}): Omit<GroupBucket, "qrCodes" | "quests" | "events"> | null {
+  if (!isValidCampusCoordinate(match.latitude, match.longitude)) return null;
+  const map = geoToRealmMapPercent(match.latitude, match.longitude);
+  return {
+    groupKey: `ext-event:${match.locationName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    locationKey: "other",
+    realmLocationId: null,
+    locationName: match.locationName,
+    locationAddress: null,
+    x: map.x,
+    y: map.y,
+    lat: match.latitude,
+    lng: match.longitude,
+    attachToLandmark: false,
+  };
+}
+
 export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
   const catalogRows = await getCampusLocations({ refreshCache: true });
   const admin = createAdminClient();
@@ -315,7 +341,10 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
   // Manual admin pins are untouched; duplicates (same title + start) skipped.
   const externalEvents = await externalEventsPromise;
   for (const item of externalEvents) {
-    const meta = resolveGroupMeta({ locationId: item.realmLocationId });
+    const meta =
+      item.match.kind === "realm"
+        ? resolveGroupMeta({ locationId: item.match.realmLocationId })
+        : externalEventCoordsMeta(item.match);
     if (!meta) continue;
     const bucket = getOrCreateBucket(buckets, meta);
     const key = eventDedupeKey(item.pin);
