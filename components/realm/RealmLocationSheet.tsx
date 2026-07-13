@@ -31,7 +31,7 @@ import { LocationQuestSection } from "@/components/realm/LocationQuestSection";
 import { RealmDirectionsPanel } from "@/components/realm/RealmDirectionsPanel";
 import { RealmLocationActionsBar } from "@/components/realm/RealmLocationActionsBar";
 import { getRealmLocationHeroImage } from "@/lib/realm/locationHeroImages";
-import type { RealmDirectionsDestination, RealmDirectionsStatus } from "@/lib/realm/realmDirectionsTypes";
+import type { RealmDirectionsDestination, RealmDirectionsStatus, RealmTravelMode } from "@/lib/realm/realmDirectionsTypes";
 import { countEventsToday, locationSheetTypeLabel, resolveLocationSheetType } from "@/lib/realm/resolveLocationSheetType";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 import { EventPinCard } from "@/components/realm/EventPinCard";
@@ -96,7 +96,7 @@ export function RealmLocationSheet({
   directionsEnabled?: boolean;
   directionsDestination?: RealmDirectionsDestination | null;
   directionsStatus?: RealmDirectionsStatus;
-  activeTravelMode?: "WALKING" | "DRIVING" | null;
+  activeTravelMode?: RealmTravelMode | null;
   onRequestWalking?: () => void;
   onRequestDriving?: () => void;
   onClearDirections?: () => void;
@@ -673,7 +673,7 @@ function RealmDetailView({
   directionsEnabled: boolean;
   directionsDestination: RealmDirectionsDestination | null;
   directionsStatus: RealmDirectionsStatus;
-  activeTravelMode: "WALKING" | "DRIVING" | null;
+  activeTravelMode: RealmTravelMode | null;
   onRequestWalking: () => void;
   onRequestDriving: () => void;
   onClearDirections: () => void;

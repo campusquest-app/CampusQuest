@@ -134,6 +134,18 @@ export async function upsertBuildingFromGeocode(args: {
     return existingRow;
   }
 
+  // Never overwrite coordinates an admin dragged to a verified position.
+  const { data: manualRow } = await admin
+    .from("campus_locations")
+    .select("manually_adjusted, latitude, longitude")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (manualRow?.manually_adjusted && manualRow.latitude != null && manualRow.longitude != null) {
+    const kept = existing.find((row) => row.slug === slug);
+    if (kept) return kept;
+  }
+
   const aliases = Array.from(aliasSet).filter(Boolean);
   const now = new Date().toISOString();
   const row = {

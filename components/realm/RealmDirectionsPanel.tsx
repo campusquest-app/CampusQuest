@@ -7,8 +7,10 @@ import {
   REALM_DRIVING_SUGGEST_METERS,
   type RealmDirectionsDestination,
   type RealmDirectionsStatus,
+  type RealmTravelMode,
 } from "@/lib/realm/realmDirectionsTypes";
 import { isDirectionsLoadingForDestination } from "@/lib/realm/routeUiHelpers";
+import { formatRouteStatsLine } from "@/lib/realm/formatRouteSummary";
 
 export function RealmDirectionsPanel({
   destination,
@@ -24,7 +26,7 @@ export function RealmDirectionsPanel({
   destination: RealmDirectionsDestination | null;
   directionsEnabled: boolean;
   directionsStatus: RealmDirectionsStatus;
-  activeTravelMode: "WALKING" | "DRIVING" | null;
+  activeTravelMode: RealmTravelMode | null;
   onRequestWalking: () => void;
   onRequestDriving: () => void;
   onClearDirections: () => void;
@@ -136,13 +138,7 @@ export function RealmDirectionsPanel({
               <p className="cq-realm-directions-eyebrow">
                 {ready.travelMode === "DRIVING" ? "Drive" : "Walk"} to {ready.destinationLabel}
               </p>
-              <p className="cq-realm-directions-summary">
-                <span>{ready.summary.durationText}</span>
-                <span className="cq-realm-directions-dot" aria-hidden>
-                  ·
-                </span>
-                <span>{ready.summary.distanceText}</span>
-              </p>
+              <p className="cq-realm-directions-summary">{formatRouteStatsLine(ready.summary)}</p>
               {ready.origin.hint ? (
                 <p className="cq-realm-directions-hint">{ready.origin.hint}</p>
               ) : ready.origin.usedFallback ? (

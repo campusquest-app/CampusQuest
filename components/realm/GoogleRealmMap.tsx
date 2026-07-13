@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import {
   APIProvider,
   ColorScheme,
@@ -24,6 +24,9 @@ import {
   URI_MAP_TYPE_ID,
 } from "@/lib/realm/googleMapPose";
 import { vibrateMapMarkerTap } from "@/lib/realm/mapMarkerHaptic";
+import { markUserCameraInteraction } from "@/lib/realm/mapCameraGuard";
+import { useUserGeolocation } from "@/lib/client/useUserGeolocation";
+import type { PlaceSearchResult } from "@/lib/realm/placesSearch";
 import {
   getLocationActivityState,
   groupActivityCounts,
@@ -37,6 +40,8 @@ import { RealmDirectionsOverlay, type RealmDirectionsLoadResult } from "./RealmD
 import { RealmMapFlyTo } from "./RealmMapFlyTo";
 import { RealmMapCameraBootstrap } from "./RealmMapCameraBootstrap";
 import { RealmMapControls } from "./RealmMapControls";
+import { RealmMapSearch } from "./RealmMapSearch";
+import { RealmUserLocationMarker } from "./RealmUserLocationMarker";
 import { RealmMapVectorInit } from "./RealmMapVectorInit";
 import { MagicalParticleLayer } from "./MagicalParticleLayer";
 import { RealmAura } from "./RealmAura";
@@ -118,6 +123,17 @@ function groupMatchesFilter(group: GroupedMapLocation, filter: MapMarkerFilter):
 export function hasTrackableQuest(landmark: GoogleRealmMapLandmark): boolean {
   const variant = resolveLandmarkMarkerVariant(landmark);
   return variant === "quest" || variant === "legendary";
+}
+
+function RealmMapInstanceRef({ mapRef }: { mapRef: MutableRefObject<google.maps.Map | null> }) {
+  const map = useMap();
+  useEffect(() => {
+    mapRef.current = map ?? null;
+    return () => {
+      mapRef.current = null;
+    };
+  }, [map, mapRef]);
+  return null;
 }
 
 function RealmMapReadyProbe({ onReady }: { onReady: (source: string) => void }) {
@@ -493,6 +509,9 @@ export function GoogleRealmMap({
   selectedUrinvolvedEventId = null,
   onSelectUrinvolvedEvent,
   onUrinvolvedEventDragEnd,
+  onPlaceSelected,
+  searchPin = null,
+  flyToForce = false,
 }: {
   apiKey: string;
   landmarks: GoogleRealmMapLandmark[];
@@ -512,6 +531,7 @@ export function GoogleRealmMap({
   isActive?: boolean;
   flyToTarget?: { lat: number; lng: number } | null;
   flyToEnabled?: boolean;
+  flyToForce?: boolean;
   routeSheetOpen?: boolean;
   directionsRequest?: RealmDirectionsRequest | null;
   routeAbortSignal?: AbortSignal | null;
@@ -521,13 +541,14 @@ export function GoogleRealmMap({
   selectedUrinvolvedEventId?: string | null;
   onSelectUrinvolvedEvent?: (externalEventId: string) => void;
   onUrinvolvedEventDragEnd?: (externalEventId: string, lat: number, lng: number) => void;
+  onPlaceSelected?: (place: PlaceSearchResult) => void;
+  searchPin?: { lat: number; lng: number; name: string } | null;
 }) {
   const [apiError, setApiError] = useState(false);
   const [filter, setFilter] = useState<MapMarkerFilter>("all");
   const [mapLayer, setMapLayer] = useState<"campus" | "satellite">("campus");
   const [tilesLoaded, setTilesLoaded] = useState(() => isRealmMapTilesReady());
   const [notice, setNotice] = useState<string | null>(null);
-  const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
   const [controlsExpanded, setControlsExpanded] = useState(false);
   const [showFallbackBuildings, setShowFallbackBuildings] = useState(false);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -599,6 +620,15 @@ export function GoogleRealmMap({
     window.setTimeout(() => setNotice(null), 4200);
   }, []);
 
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const geolocation = useUserGeolocation({
+    onFollowPan: (pos) => {
+      mapRef.current?.panTo(pos);
+    },
+    onDenied: showNotice,
+  });
+  const userPos = geolocation.userPos;
+
   const visibleLandmarkCount = useMemo(() => {
     if (editMode) return landmarks.length;
     return landmarks.filter((l) => landmarkMatchesFilter(l, filter)).length;
@@ -654,6 +684,7 @@ export function GoogleRealmMap({
   return (
     <APIProvider
       apiKey={apiKey}
+      libraries={["places"]}
       onLoad={() => {
         markGoogleMapsApiReady();
         markRealmMapStep("api-load");
@@ -690,12 +721,16 @@ export function GoogleRealmMap({
           reuseMaps
           onTilesLoaded={() => markTilesReady("onTilesLoaded")}
           onDragstart={() => document.documentElement.toggleAttribute("data-realm-map-panning", true)}
-          onDragend={() => document.documentElement.removeAttribute("data-realm-map-panning")}
+          onDragend={() => {
+            document.documentElement.removeAttribute("data-realm-map-panning");
+            markUserCameraInteraction();
+          }}
           onClick={handleMapClick}
         >
+          <RealmMapInstanceRef mapRef={mapRef} />
           <RealmMapReadyProbe onReady={markTilesReady} />
           <RealmMapVisibilityHandler visible={isActive} onRecoverStall={recoverMapStall} />
-          <RealmMapFlyTo target={flyToTarget} enabled={flyToEnabled && isActive} />
+          <RealmMapFlyTo target={flyToTarget} enabled={flyToEnabled && isActive} force={flyToForce} />
           <RealmMapContainerObserver surfaceRef={surfaceRef} />
           <RealmMapVectorInit vector3dEnabled={vector3dEnabled} tilesLoaded={tilesLoaded} />
           <RealmMapCameraBootstrap
@@ -741,22 +776,52 @@ export function GoogleRealmMap({
             routeSheetOpen={routeSheetOpen}
             userLocation={userPos}
             abortSignal={routeAbortSignal}
-            onUserLocation={setUserPos}
+            onUserLocation={geolocation.setFix}
             onLoaded={handleDirectionsLoaded}
             onError={handleDirectionsError}
           />
+
+          {!editMode && onPlaceSelected ? (
+            <MapControl position={ControlPosition.TOP_LEFT}>
+              <RealmMapSearch onSelect={onPlaceSelected} disabled={!tilesLoaded} />
+            </MapControl>
+          ) : null}
+
+          {geolocation.fix ? (
+            <RealmUserLocationMarker
+              position={{ lat: geolocation.fix.lat, lng: geolocation.fix.lng }}
+              accuracyMeters={geolocation.fix.accuracy}
+              heading={geolocation.fix.heading}
+            />
+          ) : null}
+
+          {searchPin ? (
+            <CampusQuestMapMarker position={searchPin} zIndex={4500}>
+              <RealmMapMarker
+                variant="default"
+                label={searchPin.name}
+                activityState="active"
+                activityCount={0}
+                revealOpacity={1}
+              />
+            </CampusQuestMapMarker>
+          ) : null}
 
           <RealmMapControls
             expanded={controlsExpanded}
             onExpandedChange={setControlsExpanded}
             onDenied={showNotice}
-            onUserLocation={setUserPos}
             userPos={userPos}
+            locating={geolocation.locating}
+            followMode={geolocation.followMode}
+            onLocate={geolocation.locateOnce}
+            onToggleFollow={geolocation.toggleFollow}
             mapLayer={mapLayer}
             onToggleMapLayer={toggleMapLayer}
             immersive={immersive}
             vector3dEnabled={vector3dEnabled}
             onBuildingsOverlayChange={setShowFallbackBuildings}
+            mapRef={mapRef}
           />
 
           {!editMode ? (

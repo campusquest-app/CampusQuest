@@ -36,7 +36,11 @@ export async function fetchGoogleDirections(args: {
         travelMode:
           args.travelMode === "DRIVING"
             ? google.maps.TravelMode.DRIVING
-            : google.maps.TravelMode.WALKING,
+            : args.travelMode === "BICYCLING"
+              ? google.maps.TravelMode.BICYCLING
+              : args.travelMode === "TRANSIT"
+                ? google.maps.TravelMode.TRANSIT
+                : google.maps.TravelMode.WALKING,
       },
       (result, status) => {
         if (settled) return;

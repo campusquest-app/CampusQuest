@@ -10,6 +10,8 @@ import {
 import { REALM_LOCATIONS, type RealmLocation, type RealmLocationId } from "@/lib/realm/locations";
 import { realmLocationsFromCatalog, type CampusLocationRecord } from "@/lib/locations/campusLocationCatalog";
 import { createCampusLocationFromMarker, useCampusLocations } from "@/lib/client/campusLocationsClient";
+import { resolveSearchPlaceMatch } from "@/lib/realm/resolveSearchPlace";
+import type { PlaceSearchResult } from "@/lib/realm/placesSearch";
 import { REALM_MAP_VIEW_HEIGHT, REALM_MAP_VIEW_WIDTH } from "@/lib/realm/mapGeometry";
 import {
   applyMarkerPositionsToLocations,
@@ -173,6 +175,8 @@ export function RealmMap({
   const [directionsStatus, setDirectionsStatus] = useState<RealmDirectionsStatus>({ status: "idle" });
   const [activeRouteDestination, setActiveRouteDestination] = useState<RealmDirectionsDestination | null>(null);
   const [isRouteSheetOpen, setIsRouteSheetOpen] = useState(false);
+  const [searchPin, setSearchPin] = useState<{ lat: number; lng: number; name: string } | null>(null);
+  const [flyToForce, setFlyToForce] = useState(false);
   const pendingRouteOpenRef = useRef(false);
   const routeAbortRef = useRef<AbortController | null>(null);
   const routeRequestIdRef = useRef(0);
@@ -375,8 +379,34 @@ export function RealmMap({
     setSheetOpen(true);
   }, [editMode]);
 
+  const handlePlaceSelected = useCallback(
+    (place: PlaceSearchResult) => {
+      if (editMode) return;
+      const match = resolveSearchPlaceMatch({
+        place,
+        landmarks: locations.map((l) => ({ id: l.id, name: l.name, shortLabel: l.shortLabel })),
+        supplementaryPins,
+      });
+      setFlyToForce(true);
+      setSearchPin({ lat: place.lat, lng: place.lng, name: place.name });
+      if (match.kind === "landmark") {
+        const location = locations.find((l) => l.id === match.id);
+        if (location) openLocation(location);
+        return;
+      }
+      setSelectedLocation(null);
+      setSelectedMapContent(match.group);
+      setActiveMarkerId(match.group.groupKey);
+      setSheetInitialView("overview");
+      setSheetOpen(true);
+    },
+    [editMode, locations, supplementaryPins, openLocation],
+  );
+
   const closeSheet = useCallback(() => {
     setSheetOpen(false);
+    setSearchPin(null);
+    setFlyToForce(false);
     if (!isRouteSheetOpen) {
       setActiveMarkerId(null);
       setSelectedMapContent(null);
@@ -831,11 +861,14 @@ export function RealmMap({
             onDirectionsError={handleDirectionsError}
             flyToTarget={flyToTarget}
             flyToEnabled={sheetOpen && !editMode}
+            flyToForce={flyToForce}
             routeSheetOpen={isRouteSheetOpen}
             urinvolvedEditPins={urinvolvedEditPins}
             selectedUrinvolvedEventId={selectedUrinvolvedEventId}
             onSelectUrinvolvedEvent={setSelectedUrinvolvedEventId}
             onUrinvolvedEventDragEnd={(id, lat, lng) => void handleUrinvolvedEventDragEnd(id, lat, lng)}
+            onPlaceSelected={handlePlaceSelected}
+            searchPin={searchPin}
           />
         ) : (
           <TransformWrapper
