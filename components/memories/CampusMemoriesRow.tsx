@@ -154,11 +154,7 @@ const MemoryTile = memo(function MemoryTile({
         {live ? <span className="cq-memories-live-dot" aria-hidden /> : null}
       </span>
       <span className="cq-memories-tile-label">{tile.label}</span>
-      {active && group ? (
-        <span className="cq-memories-tile-count">{countLabel(group)}</span>
-      ) : (
-        <span className="cq-memories-tile-count cq-memories-tile-count--muted">–</span>
-      )}
+      {active && group ? <span className="cq-memories-tile-count">{countLabel(group)}</span> : null}
     </button>
   );
 });
@@ -340,7 +336,7 @@ export function CampusMemoriesRow({
       {showQuietHint ? (
         <p className="cq-memories-row-hint">
           <Sparkles className="cq-memories-row-hint-icon" aria-hidden />
-          Campus memories will appear here. Be the first to share today&apos;s adventure.
+          No memories yet today
         </p>
       ) : null}
     </section>
