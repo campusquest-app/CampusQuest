@@ -2,6 +2,7 @@
 
 import { Calendar, Camera, Footprints } from "lucide-react";
 import type { RealmDirectionsDestination, RealmDirectionsStatus } from "@/lib/realm/realmDirectionsTypes";
+import { isDirectionsLoadingForDestination } from "@/lib/realm/routeUiHelpers";
 import {
   locationSheetTypeLabel,
   type RealmLocationSheetType,
@@ -33,7 +34,7 @@ export function RealmLocationActionsBar({
   onViewEvents?: () => void;
 }) {
   const walkReady = directionsStatus.status === "ready" ? directionsStatus : null;
-  const walkLoading = directionsStatus.status === "loading";
+  const walkLoading = isDirectionsLoadingForDestination(directionsDestination, directionsStatus);
 
   return (
     <div className="cq-realm-sheet-actions" role="region" aria-label="Location actions">

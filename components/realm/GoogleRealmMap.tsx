@@ -486,6 +486,7 @@ export function GoogleRealmMap({
   flyToEnabled = false,
   routeSheetOpen = false,
   directionsRequest = null,
+  routeAbortSignal = null,
   onDirectionsLoaded,
   onDirectionsError,
   urinvolvedEditPins = [],
@@ -513,6 +514,7 @@ export function GoogleRealmMap({
   flyToEnabled?: boolean;
   routeSheetOpen?: boolean;
   directionsRequest?: RealmDirectionsRequest | null;
+  routeAbortSignal?: AbortSignal | null;
   onDirectionsLoaded?: (result: RealmDirectionsLoadResult & { ok: true }) => void;
   onDirectionsError?: (result: RealmDirectionsLoadResult & { ok: false }) => void;
   urinvolvedEditPins?: UrinvolvedEditPin[];
@@ -738,6 +740,7 @@ export function GoogleRealmMap({
             enabled={!editMode && directionsActive}
             routeSheetOpen={routeSheetOpen}
             userLocation={userPos}
+            abortSignal={routeAbortSignal}
             onUserLocation={setUserPos}
             onLoaded={handleDirectionsLoaded}
             onError={handleDirectionsError}

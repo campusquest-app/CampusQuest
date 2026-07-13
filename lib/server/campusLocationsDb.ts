@@ -214,8 +214,17 @@ export async function updateCampusLocation(args: {
     shortLabel: string;
     isActive: boolean;
   }>;
+  onlyIfCoordinatesMissing?: boolean;
 }): Promise<CampusLocationRecord> {
   const admin = createAdminClient();
+
+  if (args.onlyIfCoordinatesMissing) {
+    const existing = await getCampusLocationBySlug(args.slug, admin);
+    if (existing?.latitude != null && existing?.longitude != null) {
+      return existing;
+    }
+  }
+
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   const p = args.patch;
   if (p.name != null) patch.name = p.name.trim();

@@ -8,6 +8,7 @@ import {
   type RealmDirectionsDestination,
   type RealmDirectionsStatus,
 } from "@/lib/realm/realmDirectionsTypes";
+import { isDirectionsLoadingForDestination } from "@/lib/realm/routeUiHelpers";
 
 export function RealmDirectionsPanel({
   destination,
@@ -37,16 +38,22 @@ export function RealmDirectionsPanel({
 
   const destinationLabel = destination.label;
   const ready = directionsStatus.status === "ready" ? directionsStatus : null;
-  const loading = directionsStatus.status === "loading";
+  const loading = isDirectionsLoadingForDestination(destination, directionsStatus);
   const error = directionsStatus.status === "error" ? directionsStatus : null;
+  const destinationCoords =
+    destination.lat != null && destination.lng != null
+      ? { lat: destination.lat, lng: destination.lng }
+      : error?.destinationLat != null && error.destinationLng != null
+        ? { lat: error.destinationLat, lng: error.destinationLng }
+        : null;
   const showDriveSuggestion =
     ready?.travelMode === "WALKING" && ready.summary.distanceMeters >= REALM_DRIVING_SUGGEST_METERS;
 
   const openDrivingInGoogleMaps = () => {
-    if (!ready) return;
+    if (!ready || !destinationCoords) return;
     const url = buildGoogleMapsDirectionsUrl({
       origin: { lat: ready.origin.lat, lng: ready.origin.lng },
-      destination: { lat: destination.lat, lng: destination.lng },
+      destination: destinationCoords,
       travelMode: "DRIVING",
     });
     window.open(url, "_blank", "noopener,noreferrer");
@@ -79,6 +86,7 @@ export function RealmDirectionsPanel({
         <button
           type="button"
           onClick={onRequestWalking}
+          disabled={loading}
           className="cq-realm-directions-primary touch-manipulation"
         >
           <Footprints className="h-4 w-4 shrink-0" aria-hidden />
@@ -98,9 +106,26 @@ export function RealmDirectionsPanel({
       {error ? (
         <div className="cq-realm-directions-error" role="alert">
           <p>{error.message}</p>
-          <button type="button" onClick={onRequestWalking} className="cq-realm-directions-retry touch-manipulation">
-            Try again
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={onRequestWalking} className="cq-realm-directions-retry touch-manipulation">
+              Try again
+            </button>
+            {destinationCoords ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const url = buildGoogleMapsDirectionsUrl({
+                    destination: destinationCoords,
+                    travelMode: "WALKING",
+                  });
+                  window.open(url, "_blank", "noopener,noreferrer");
+                }}
+                className="cq-realm-directions-retry touch-manipulation"
+              >
+                Open in Maps
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

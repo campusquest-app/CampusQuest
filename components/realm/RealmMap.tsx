@@ -41,7 +41,7 @@ import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 import { geoToRealmMapPercent, realmMapPercentToGeo } from "@/lib/realm/geoToMapPercent";
 import { GoogleRealmMap } from "./GoogleRealmMap";
-import type { RealmDirectionsLoadResult } from "./RealmDirectionsOverlay";
+import type { RealmDirectionsLoadResult } from "./RealmDirectionsOverlay.types";
 import { RealmRouteSheet } from "./RealmRouteSheet";
 import type {
   RealmDirectionsDestination,
@@ -174,6 +174,9 @@ export function RealmMap({
   const [activeRouteDestination, setActiveRouteDestination] = useState<RealmDirectionsDestination | null>(null);
   const [isRouteSheetOpen, setIsRouteSheetOpen] = useState(false);
   const pendingRouteOpenRef = useRef(false);
+  const routeAbortRef = useRef<AbortController | null>(null);
+  const routeRequestIdRef = useRef(0);
+  const routeInFlightRef = useRef(false);
 
   const catalogRealmLocations = useMemo(
     () => (catalogRows.length > 0 ? catalogRowsToRealmLocations(catalogRows) : realmLocationsFromCatalog()),
@@ -575,15 +578,18 @@ export function RealmMap({
     if (!sheetOpen || editMode) return null;
     if (selectedLocation) {
       const geo = geoPositions[selectedLocation.id];
-      if (geo) {
-        return { lat: geo.lat, lng: geo.lng, label: selectedLocation.name };
-      }
-    }
-    if (selectedMapContent?.lat != null && selectedMapContent?.lng != null) {
       return {
-        lat: selectedMapContent.lat,
-        lng: selectedMapContent.lng,
+        id: selectedLocation.id,
+        label: selectedLocation.name,
+        lat: geo?.lat,
+        lng: geo?.lng,
+      };
+    }
+    if (selectedMapContent) {
+      return {
         label: selectedMapContent.locationName,
+        lat: selectedMapContent.lat ?? undefined,
+        lng: selectedMapContent.lng ?? undefined,
       };
     }
     return null;
@@ -594,21 +600,36 @@ export function RealmMap({
   const requestDirections = useCallback(
     (travelMode: RealmTravelMode) => {
       const dest = routeDestination;
-      if (!dest || !useGoogleMap || editMode) {
+      if (!dest?.label || !useGoogleMap || editMode) {
         setDirectionsStatus({
           status: "error",
           travelMode,
           destinationLabel: dest?.label ?? "destination",
-          message: dest
+          message: dest?.label
             ? "Route unavailable right now."
-            : "This building does not have coordinates yet.",
+            : "We couldn't locate this campus destination.",
         });
         return;
       }
+
+      if (
+        routeInFlightRef.current &&
+        directionsStatus.status === "loading" &&
+        (directionsStatus.destinationId === dest.id ||
+          directionsStatus.destinationLabel === dest.label)
+      ) {
+        return;
+      }
+
+      routeAbortRef.current?.abort();
+      const controller = new AbortController();
+      routeAbortRef.current = controller;
+
+      const requestId = ++routeRequestIdRef.current;
+      routeInFlightRef.current = true;
       setActiveRouteDestination(dest);
-      const id = Date.now();
       setDirectionsRequest({
-        id,
+        id: requestId,
         destination: dest,
         travelMode,
       });
@@ -616,13 +637,20 @@ export function RealmMap({
         status: "loading",
         travelMode,
         destinationLabel: dest.label,
+        destinationId: dest.id,
+        destinationLat: dest.lat,
+        destinationLng: dest.lng,
       });
     },
-    [routeDestination, useGoogleMap, editMode],
+    [directionsStatus, editMode, routeDestination, useGoogleMap],
   );
 
   const clearDirections = useCallback(() => {
     pendingRouteOpenRef.current = false;
+    routeAbortRef.current?.abort();
+    routeAbortRef.current = null;
+    routeInFlightRef.current = false;
+    routeRequestIdRef.current += 1;
     setDirectionsRequest(null);
     setDirectionsStatus({ status: "idle" });
     setActiveRouteDestination(null);
@@ -631,14 +659,14 @@ export function RealmMap({
 
   const openRouteOnMap = useCallback(() => {
     const dest = selectedDestination ?? activeRouteDestination;
-    if (!dest || !useGoogleMap || editMode) {
+    if (!dest?.label || !useGoogleMap || editMode) {
       setDirectionsStatus({
         status: "error",
         travelMode: "WALKING",
         destinationLabel: dest?.label ?? "destination",
-        message: dest
-          ? "Turn on location to show your route."
-          : "This building does not have coordinates yet.",
+        message: dest?.label
+          ? "Turn on location access to create a route."
+          : "We couldn't locate this campus destination.",
       });
       return;
     }
@@ -668,6 +696,9 @@ export function RealmMap({
   }, [clearDirections]);
 
   const handleDirectionsLoaded = useCallback((result: RealmDirectionsLoadResult & { ok: true }) => {
+    if (result.requestId !== routeRequestIdRef.current) return;
+    routeInFlightRef.current = false;
+    routeAbortRef.current = null;
     setDirectionsStatus({
       status: "ready",
       travelMode: result.travelMode,
@@ -683,20 +714,36 @@ export function RealmMap({
   }, []);
 
   const handleDirectionsError = useCallback((result: RealmDirectionsLoadResult & { ok: false }) => {
+    if (result.requestId !== routeRequestIdRef.current) return;
+    routeInFlightRef.current = false;
+    routeAbortRef.current = null;
     setDirectionsStatus({
       status: "error",
       travelMode: result.travelMode,
       destinationLabel: result.destinationLabel,
       message: result.message,
+      destinationLat: result.destinationLat,
+      destinationLng: result.destinationLng,
     });
   }, []);
 
   useEffect(() => {
+    return () => {
+      routeAbortRef.current?.abort();
+      routeInFlightRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (isRouteSheetOpen) return;
+    routeAbortRef.current?.abort();
+    routeAbortRef.current = null;
+    routeInFlightRef.current = false;
+    routeRequestIdRef.current += 1;
     setDirectionsRequest(null);
     setDirectionsStatus({ status: "idle" });
     setActiveRouteDestination(null);
-  }, [isRouteSheetOpen, selectedDestination?.lat, selectedDestination?.lng]);
+  }, [isRouteSheetOpen, selectedDestination?.id, selectedDestination?.label, selectedDestination?.lat, selectedDestination?.lng]);
 
   const trackedPathDestination = useMemo((): { lat: number; lng: number } | null => {
     if (editMode || directionsRequest || isRouteSheetOpen || !sheetOpen || !activeMarkerId) return null;
@@ -779,6 +826,7 @@ export function RealmMap({
             onMarkerGeoChange={updateMarkerGeoPosition}
             onMapReady={() => setUriMapLoaded(true)}
             directionsRequest={directionsRequest}
+            routeAbortSignal={routeAbortRef.current?.signal ?? null}
             onDirectionsLoaded={handleDirectionsLoaded}
             onDirectionsError={handleDirectionsError}
             flyToTarget={flyToTarget}

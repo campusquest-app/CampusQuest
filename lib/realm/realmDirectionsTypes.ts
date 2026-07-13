@@ -1,9 +1,10 @@
 export type RealmTravelMode = "WALKING" | "DRIVING";
 
 export type RealmDirectionsDestination = {
-  lat: number;
-  lng: number;
   label: string;
+  id?: string;
+  lat?: number;
+  lng?: number;
 };
 
 export type RealmDirectionsRequest = {
@@ -31,7 +32,14 @@ export type RealmDirectionsOrigin = {
 
 export type RealmDirectionsStatus =
   | { status: "idle" }
-  | { status: "loading"; travelMode: RealmTravelMode; destinationLabel: string }
+  | {
+      status: "loading";
+      travelMode: RealmTravelMode;
+      destinationLabel: string;
+      destinationId?: string;
+      destinationLat?: number;
+      destinationLng?: number;
+    }
   | {
       status: "ready";
       travelMode: RealmTravelMode;
@@ -39,7 +47,14 @@ export type RealmDirectionsStatus =
       summary: RealmDirectionsSummary;
       origin: RealmDirectionsOrigin;
     }
-  | { status: "error"; travelMode: RealmTravelMode; destinationLabel: string; message: string };
+  | {
+      status: "error";
+      travelMode: RealmTravelMode;
+      destinationLabel: string;
+      message: string;
+      destinationLat?: number;
+      destinationLng?: number;
+    };
 
 /** Suggest driving when walking route exceeds ~1.2 mi / 2 km. */
 export const REALM_DRIVING_SUGGEST_METERS = 2000;
