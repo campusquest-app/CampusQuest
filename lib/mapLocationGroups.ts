@@ -1,5 +1,6 @@
 import type { CampusLocationKey } from "@/lib/campusLocations";
 import { isCampusLocationId } from "@/lib/locations/registry";
+import { filterVisibleMapEvents } from "@/lib/realm/eventVisibility";
 import type { RealmLocationId } from "@/lib/realm/locations";
 import { countUniqueLocationQuests } from "@/lib/realm/locationQuestDedupe";
 
@@ -44,6 +45,9 @@ export type MapEventPin = {
   locationText?: string | null;
   /** DB id for external_events row (URInvolved). */
   externalEventId?: string | null;
+  /** URInvolved source id (`external_events.external_id`), used for logical dedupe. */
+  sourceExternalId?: string | null;
+  updatedAt?: string | null;
   placementStatus?: string | null;
   matchConfidence?: number | null;
   matchReason?: string | null;
@@ -103,8 +107,11 @@ export function emptyMapLocationContent(): Pick<GroupedMapLocation, "qrCodes" | 
 export function mapLocationActivityCount(
   group: Pick<GroupedMapLocation, "qrCodes" | "quests" | "events">,
   locationId?: string | null,
+  now: Date = new Date(),
 ): number {
-  return mapLocationQuestCount(group, locationId) + group.events.length;
+  // Events only count while inside their visibility window (until 24h after
+  // they end) — expired events must not inflate pin activity counts.
+  return mapLocationQuestCount(group, locationId) + filterVisibleMapEvents(group.events, now).length;
 }
 
 export function mapLocationQuestCount(

@@ -14,6 +14,7 @@ import {
 } from "@/lib/server/urinvolved/eventLocation";
 import { parseUrinvolvedEventsRss, type ParsedUrinvolvedEvent } from "@/lib/server/urinvolved/parseRssEvents";
 import { getCampusLocations } from "@/lib/server/campusLocationsDb";
+import { getLogicalEventKey, isLogicalEventCancelled } from "@/lib/realm/dedupeLogicalEvents";
 import {
   loadOverridesForEventIds,
   upsertAutoPlacementOverride,
@@ -87,6 +88,56 @@ async function resolveImportedEventLocation(event: ParsedUrinvolvedEvent) {
   return resolveUrinvolvedEventLocation({ venueName, address });
 }
 
+async function findActiveLogicalDuplicateEvent(
+  admin: ReturnType<typeof createAdminClient>,
+  event: ParsedUrinvolvedEvent,
+): Promise<{ id: string; external_id: string } | null> {
+  if (!event.startsAt) return null;
+
+  const startMs = new Date(event.startsAt).getTime();
+  if (Number.isNaN(startMs)) return null;
+  const windowStart = new Date(startMs - 15 * 60_000).toISOString();
+  const windowEnd = new Date(startMs + 15 * 60_000).toISOString();
+
+  const { data } = await admin
+    .from("external_events")
+    .select(
+      "id, external_id, title, organization_name, location_name, venue_name, address, starts_at, event_url, updated_at, tags",
+    )
+    .eq("source", URINVOLVED_SOURCE)
+    .eq("is_active", true)
+    .gte("starts_at", windowStart)
+    .lte("starts_at", windowEnd);
+
+  const incomingKey = getLogicalEventKey({
+    title: event.title,
+    startsAt: event.startsAt,
+    organizationName: event.organizationName,
+    locationName: event.locationName,
+    sourceExternalId: event.externalId,
+    eventUrl: event.eventUrl,
+  });
+
+  for (const row of data ?? []) {
+    if (String(row.external_id) === event.externalId) continue;
+    const rowKey = getLogicalEventKey({
+      title: String(row.title ?? ""),
+      startsAt: (row.starts_at as string | null) ?? null,
+      organizationName: (row.organization_name as string | null) ?? null,
+      locationName: (row.location_name as string | null) ?? null,
+      locationText: (row.venue_name as string | null) ?? (row.address as string | null) ?? null,
+      sourceExternalId: String(row.external_id),
+      eventUrl: (row.event_url as string | null) ?? null,
+      updatedAt: (row.updated_at as string | null) ?? null,
+      tags: (row.tags as string[] | null) ?? null,
+    });
+    if (rowKey === incomingKey) {
+      return { id: String(row.id), external_id: String(row.external_id) };
+    }
+  }
+  return null;
+}
+
 export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "api"): Promise<UrinvolvedSyncSummary> {
   const admin = createAdminClient();
   const errors: string[] = [];
@@ -111,11 +162,14 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
       }));
 
       for (const event of parsedEvents) {
-        seenEventIds.push(event.externalId);
+        const logicalDuplicate = await findActiveLogicalDuplicateEvent(admin, event);
+        const canonicalExternalId = logicalDuplicate?.external_id ?? event.externalId;
+
         const location = await resolveImportedEventLocation(event);
+        const cancelled = isLogicalEventCancelled({ title: event.title, tags: event.tags });
         const row = {
           source: URINVOLVED_SOURCE,
-          external_id: event.externalId,
+          external_id: canonicalExternalId,
           title: event.title.slice(0, 500),
           description: event.description.slice(0, 5000) || null,
           organization_name: event.organizationName,
@@ -127,7 +181,7 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
           image_url: event.imageUrl,
           event_url: event.eventUrl,
           category: event.category,
-          tags: event.tags,
+          tags: cancelled ? Array.from(new Set([...event.tags, "cancelled"])) : event.tags,
           latitude: location.locationMatch?.latitude ?? null,
           longitude: location.locationMatch?.longitude ?? null,
           is_active: true,
@@ -138,7 +192,7 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
         const { data: existing } = await admin
           .from("external_events")
           .select("id")
-          .eq("external_id", event.externalId)
+          .eq("external_id", canonicalExternalId)
           .maybeSingle();
 
         const { data: upserted, error: upsertError } = await admin
@@ -152,6 +206,15 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
         }
         if (existing) eventsUpdated += 1;
         else eventsCreated += 1;
+
+        if (logicalDuplicate && logicalDuplicate.external_id !== event.externalId) {
+          await admin
+            .from("external_events")
+            .update({ is_active: false, updated_at: now })
+            .eq("external_id", event.externalId);
+        }
+
+        seenEventIds.push(canonicalExternalId);
 
         const externalEventId = String(upserted?.id ?? existing?.id ?? "");
         if (externalEventId) {

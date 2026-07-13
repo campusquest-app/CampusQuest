@@ -877,7 +877,12 @@ export const updateExternalEventPlacementSchema = z.object({
   customLng: z.number().min(-180).max(180).nullable().optional(),
   customLabel: z.string().trim().max(120).nullable().optional(),
   normalizedLocationText: z.string().trim().max(300).nullable().optional(),
-  matchStatus: z.enum(["manually_adjusted", "hidden", "ignored"]).optional(),
+  matchStatus: z.enum(["manually_adjusted", "hidden", "ignored", "verified"]).optional(),
+});
+
+export const verifyExternalEventPlacementSchema = z.object({
+  externalEventId: uuidSchema,
+  registrySlug: campusLocationSlugSchema.optional(),
 });
 
 export async function readJson<T>(request: Request, schema: z.ZodSchema<T>): Promise<T> {

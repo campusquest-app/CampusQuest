@@ -11,6 +11,8 @@ import {
   type MapQrPin,
   realmLocationIdForCampusKey,
 } from "@/lib/mapLocationGroups";
+import { dedupeLogicalMapEvents } from "@/lib/realm/dedupeLogicalEvents";
+import { effectiveEventEndIso, isEventVisibleOnMap } from "@/lib/realm/eventVisibility";
 import { geoToRealmMapPercent, realmMapPercentToGeo } from "@/lib/realm/geoToMapPercent";
 import { ApiError } from "@/lib/server/http";
 import { isAdminQuestCurrentlyActive, isAdminQuestsSchemaError } from "@/lib/server/adminQuests";
@@ -18,7 +20,7 @@ import type { AdminQuestRow } from "@/lib/adminQuestTypes";
 import { isExpiredAt, mapPercentForCoordinates } from "@/lib/server/campusMapPins";
 import { createAdminClient } from "@/lib/server/supabase";
 import { resolveCampusLocationFromEventFields } from "@/lib/server/urinvolved/locationAliases";
-import { eventDedupeKey, getTodayExternalEventsForMap } from "@/lib/server/urinvolved/todayMapEvents";
+import { getTodayExternalEventsForMap } from "@/lib/server/urinvolved/todayMapEvents";
 
 type GroupBucket = {
   groupKey: string;
@@ -245,7 +247,6 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
   const catalogRows = await getCampusLocations({ refreshCache: true });
   const admin = createAdminClient();
   const now = new Date();
-  const nowIso = now.toISOString();
   const buckets = new Map<string, GroupBucket>();
 
   const externalEventsPromise = getTodayExternalEventsForMap({
@@ -272,8 +273,9 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
     admin
       .from("campus_events")
       .select("id, title, starts_at, ends_at, location_name, is_cancelled, host_organization_id, student_organizations(name)")
-      .eq("is_cancelled", false)
-      .gte("starts_at", nowIso),
+      // Include live and recently-ended events (visible until 24h after end),
+      // and cancelled events (shown as cancelled until the same cutoff).
+      .gte("starts_at", new Date(now.getTime() - 72 * 60 * 60 * 1000).toISOString()),
   ]);
 
   if (questsResult.error && !isAdminQuestsSchemaError(questsResult.error)) {
@@ -345,7 +347,10 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
 
   if (!eventsResult.error) {
     for (const row of eventsResult.data ?? []) {
-      if (row.ends_at && new Date(String(row.ends_at)) <= now) continue;
+      const startsAt = String(row.starts_at);
+      const endsAt = (row.ends_at as string | null) ?? null;
+      // Shared lifecycle rule: visible until 24h after the (effective) end.
+      if (!isEventVisibleOnMap({ end_time: effectiveEventEndIso(startsAt, endsAt) }, now)) continue;
       const locationName = String(row.location_name ?? "");
       const locationKey = inferCampusKeyFromEventLocation(locationName);
       const meta = eventGroupMeta(locationKey, locationName);
@@ -356,16 +361,16 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
       bucket.events.push({
         id: String(row.id),
         title: String(row.title),
-        startsAt: String(row.starts_at),
-        endsAt: (row.ends_at as string | null) ?? null,
+        startsAt,
+        endsAt,
         organizationName: org?.name ?? null,
         eventUrl: null,
+        cancelled: Boolean(row.is_cancelled),
       });
     }
   }
 
   // Today's URInvolved events, grouped onto the matching realm locations.
-  // Manual admin pins are untouched; duplicates (same title + start) skipped.
   const externalEvents = await externalEventsPromise;
   for (const item of externalEvents) {
     const meta =
@@ -381,11 +386,7 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
           : externalEventCoordsMeta(item.match);
     if (!meta) continue;
     const bucket = getOrCreateBucket(buckets, meta);
-    const key = eventDedupeKey(item.pin);
-    const isDuplicate = bucket.events.some(
-      (existing) => existing.id === item.pin.id || eventDedupeKey(existing) === key,
-    );
-    if (!isDuplicate) bucket.events.push(item.pin);
+    bucket.events.push(item.pin);
   }
 
   return Array.from(buckets.values())
@@ -403,7 +404,7 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
       attachToLandmark: bucket.attachToLandmark,
       qrCodes: bucket.qrCodes,
       quests: bucket.quests,
-      events: bucket.events,
+      events: dedupeLogicalMapEvents(bucket.events),
     }));
 }
 

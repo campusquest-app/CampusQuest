@@ -1,9 +1,7 @@
 import type { MapEventPin } from "@/lib/mapLocationGroups";
+import { DEFAULT_EVENT_DURATION_MS, filterVisibleMapEvents } from "@/lib/realm/eventVisibility";
 
 export const CAMPUS_TIME_ZONE = "America/New_York";
-
-/** Grace window after starts_at during which an event with no ends_at counts as live. */
-const DEFAULT_EVENT_DURATION_MS = 2 * 60 * 60 * 1000;
 
 /**
  * UTC window covering "today" as experienced on campus (America/New_York),
@@ -147,11 +145,14 @@ export type GroupCountdown = {
  * Countdown for a grouped location marker: the most urgent non-cancelled
  * event wins; "Next:" prefix when several events share the location.
  * Returns null when the group has no displayable (non-ended) events.
+ * Events past their 24h post-end visibility window are excluded entirely
+ * (they no longer count toward stacked-event indicators).
  */
 export function getGroupCountdown(events: MapEventPin[], now: Date): GroupCountdown | null {
-  if (events.length === 0) return null;
+  const visible = filterVisibleMapEvents(events, now);
+  if (visible.length === 0) return null;
 
-  const scored = events.map((event) => {
+  const scored = visible.map((event) => {
     const cancelled = isEventCancelled(event);
     return {
       event,
@@ -203,7 +204,11 @@ export function getGroupCountdown(events: MapEventPin[], now: Date): GroupCountd
   };
 }
 
-/** Sort events for the location sheet: live → soonest upcoming → ended, cancelled last. */
+/**
+ * Sort events for the location sheet: live → soonest upcoming → ended,
+ * cancelled last. Events past their 24h post-end visibility window are
+ * excluded from the list entirely.
+ */
 export function sortEventsForSheet(events: MapEventPin[], now: Date): MapEventPin[] {
   const rank = (event: MapEventPin): number => {
     if (isEventCancelled(event)) return 3;
@@ -212,9 +217,21 @@ export function sortEventsForSheet(events: MapEventPin[], now: Date): MapEventPi
     if (state.kind === "ended") return 2;
     return 1;
   };
-  return [...events].sort((a, b) => {
+  return filterVisibleMapEvents(events, now).sort((a, b) => {
     const rankDiff = rank(a) - rank(b);
     if (rankDiff !== 0) return rankDiff;
     return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
+  });
+}
+
+/**
+ * True when any visible event at the location has already ended or is
+ * cancelled — the sheet then titles the section "Events" instead of
+ * "Active Events".
+ */
+export function hasEndedOrCancelledEvents(events: MapEventPin[], now: Date): boolean {
+  return filterVisibleMapEvents(events, now).some((event) => {
+    if (isEventCancelled(event)) return true;
+    return getEventCountdownState(event.startsAt, event.endsAt, now, false).kind === "ended";
   });
 }

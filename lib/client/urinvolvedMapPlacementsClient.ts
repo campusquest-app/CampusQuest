@@ -14,11 +14,37 @@ export type UrinvolvedPlacementOverride = {
   customLat: number | null;
   customLng: number | null;
   customLabel: string | null;
-  matchStatus: "auto_matched" | "manually_adjusted" | "unmatched" | "hidden" | "ignored";
+  matchStatus:
+    | "auto_matched"
+    | "manually_adjusted"
+    | "verified"
+    | "needs_review"
+    | "unmatched"
+    | "hidden"
+    | "ignored";
   matchConfidence: number | null;
   matchReason: string | null;
   rawLocationText: string | null;
   normalizedLocationText: string | null;
+  googlePlaceId?: string | null;
+  formattedAddress?: string | null;
+  manuallyVerified?: boolean;
+  resolutionDebug?: {
+    originalLocationText: string;
+    normalizedBuildingName: string;
+    confidence: number;
+    matchReason: string;
+    manuallyOverridden: boolean;
+    renderOnMap: boolean;
+    selectedGoogleResult?: {
+      placeId: string;
+      name: string;
+      formattedAddress: string;
+      latitude: number;
+      longitude: number;
+      confidence: number;
+    } | null;
+  } | null;
 };
 
 export type UrinvolvedPlacementEvent = {
@@ -49,6 +75,7 @@ export type UrinvolvedPlacementEvent = {
     matchedText: string;
   } | null;
   renderOnMap: boolean;
+  resolutionDebug?: UrinvolvedPlacementOverride["resolutionDebug"];
   suggestedMatches: Array<{
     realmLocationId: string;
     name: string;
@@ -84,4 +111,17 @@ export async function resetUrinvolvedPlacement(
   externalEventId: string,
 ): Promise<{ override: UrinvolvedPlacementOverride | null }> {
   return postAuthed(`/api/internal/admin/urinvolved-map-placements/${externalEventId}/reset`, {});
+}
+
+export async function resolveUrinvolvedPlacementFromName(
+  externalEventId: string,
+): Promise<{ override: UrinvolvedPlacementOverride }> {
+  return postAuthed(`/api/internal/admin/urinvolved-map-placements/${externalEventId}/resolve`, {});
+}
+
+export async function verifyUrinvolvedPlacement(args: {
+  externalEventId: string;
+  registrySlug?: string;
+}): Promise<{ override: UrinvolvedPlacementOverride }> {
+  return postAuthed(`/api/internal/admin/urinvolved-map-placements/${args.externalEventId}/verify`, args);
 }

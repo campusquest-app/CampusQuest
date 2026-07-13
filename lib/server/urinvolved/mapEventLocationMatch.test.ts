@@ -22,7 +22,7 @@ function realmId(match: ReturnType<typeof mapEventToRealmLocation>): string | nu
 describe("normalizeEventLocationText", () => {
   it("strips room numbers for matching", () => {
     expect(normalizeEventLocationText("Memorial Union Room 318")).toBe("memorial union");
-    expect(normalizeEventLocationText("Weldin Hall - Lounge")).toBe("weldin hall - lounge");
+    expect(normalizeEventLocationText("Weldin Hall - Lounge")).toBe("weldin hall");
   });
 });
 
@@ -62,7 +62,7 @@ describe("mapEventToRealmLocation", () => {
     expect(match?.kind).toBe("coords");
     if (match?.kind === "coords") {
       expect(match.locationName).toBe("Weldin Hall");
-      expect(match.latitude).toBeCloseTo(41.49135, 3);
+      expect(match.latitude).toBeCloseTo(41.4908, 3);
     }
   });
 

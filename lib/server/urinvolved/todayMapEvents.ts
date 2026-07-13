@@ -1,11 +1,14 @@
 import type { MapEventPin } from "@/lib/mapLocationGroups";
+import { dedupeLogicalEventFields } from "@/lib/realm/dedupeLogicalEvents";
 import { getCampusDayWindow, isEventCancelled } from "@/lib/realm/eventCountdown";
+import { effectiveEventEndIso, isEventVisibleOnMap } from "@/lib/realm/eventVisibility";
 import { createAdminClient } from "@/lib/server/supabase";
 import {
   loadOverridesForEventIds,
   resolveExternalEventPlacement,
   type ExternalEventMapOverrideRow,
 } from "@/lib/server/externalEventMapOverrides";
+import { loadCampusBuildingRegistry } from "@/lib/server/urinvolved/campusBuildingRegistry";
 import {
   normalizeEventLocationText,
   type CatalogLocationLike,
@@ -40,6 +43,7 @@ function str(row: RawRow, ...keys: string[]): string | null {
 function normalizeRow(row: RawRow) {
   return {
     id: String(row.id ?? ""),
+    externalId: str(row, "external_id", "external_event_id", "source_event_id"),
     title: str(row, "title", "name", "event_name") ?? "Campus Event",
     startsAt: str(row, "starts_at", "start_time", "event_start", "start_at", "date"),
     endsAt: str(row, "ends_at", "end_time", "event_end", "end_at"),
@@ -52,6 +56,7 @@ function normalizeRow(row: RawRow) {
     category: str(row, "category"),
     status: str(row, "status", "event_status"),
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
+    updatedAt: str(row, "updated_at", "last_seen_at"),
   };
 }
 
@@ -81,8 +86,8 @@ function debugFakeEvent(catalog: CatalogLocationLike[], now: Date): TodayExterna
     ({
       kind: "coords",
       locationName: "Weldin Hall",
-      latitude: 41.49135,
-      longitude: -71.52814,
+      latitude: 41.4908,
+      longitude: -71.5294,
       matchedText: "Weldin Hall",
     } satisfies EventLocationMatch);
   return {
@@ -105,9 +110,11 @@ function debugFakeEvent(catalog: CatalogLocationLike[], now: Date): TodayExterna
 }
 
 /**
- * Today's URInvolved events (campus/NY calendar day) matched to Realm map
- * locations. Events on other days or with unmatchable locations are excluded,
- * so pins automatically appear on the right day and disappear after it.
+ * URInvolved events matched to Realm map locations. Pins appear on the
+ * event's campus (NY) calendar day and, once the event ends, remain visible
+ * for exactly 24 hours after the end time before disappearing
+ * (see isEventVisibleOnMap). Rows are never deleted — only hidden from
+ * active map views, so event history stays available elsewhere.
  */
 export async function getTodayExternalEventsForMap(args: {
   catalog: CatalogLocationLike[];
@@ -123,7 +130,9 @@ export async function getTodayExternalEventsForMap(args: {
 
   const admin = createAdminClient();
 
-  const fetchStart = new Date(start.getTime() - 24 * 60 * 60 * 1000);
+  // Fetch back far enough to catch events that ended within the last 24h
+  // (retention window) even if they started 1–2 days ago.
+  const fetchStart = new Date(start.getTime() - 72 * 60 * 60 * 1000);
   const fetchEnd = new Date(end.getTime() + 24 * 60 * 60 * 1000);
   const { data, error } = await admin
     .from("external_events")
@@ -149,13 +158,26 @@ export async function getTodayExternalEventsForMap(args: {
     })),
   );
 
-  const todayRows = rows.filter((row) => {
-    if (!row.startsAt) return false;
-    const startDate = new Date(row.startsAt);
-    return !Number.isNaN(startDate.getTime()) && startDate >= start && startDate < end;
-  });
+  const todayRows = dedupeLogicalEventFields(
+    rows.filter((row) => {
+      if (!row.startsAt) return false;
+      const startDate = new Date(row.startsAt);
+      if (Number.isNaN(startDate.getTime())) return false;
+      if (startDate >= end) return false;
+      return isEventVisibleOnMap(
+        { end_time: effectiveEventEndIso(row.startsAt, row.endsAt) },
+        now,
+      );
+    }).map((row) => ({
+      ...row,
+      sourceExternalId: row.externalId,
+      locationText: row.venueName ?? row.locationName ?? row.address,
+      cancelled: rowCancelled(row),
+    })),
+  );
 
   const overrides = await loadOverridesForEventIds(todayRows.map((r) => r.id));
+  const registry = await loadCampusBuildingRegistry();
 
   const matched: TodayExternalMapEvent[] = [];
   const unmatchedLocations: string[] = [];
@@ -171,7 +193,12 @@ export async function getTodayExternalEventsForMap(args: {
 
     const fields = { venueName: row.venueName, locationName: row.locationName, address: row.address };
     const override = overrides.get(row.id) ?? null;
-    const resolved = resolveExternalEventPlacement({ fields, catalog: args.catalog, override });
+    const resolved = resolveExternalEventPlacement({
+      fields,
+      catalog: args.catalog,
+      override,
+      registry,
+    });
 
     debugLog("location match attempt", {
       title: row.title,
@@ -216,6 +243,8 @@ export async function getTodayExternalEventsForMap(args: {
       pin: {
         id: `ext:${row.id}`,
         externalEventId: row.id,
+        sourceExternalId: row.externalId,
+        updatedAt: row.updatedAt,
         title: row.title,
         startsAt: row.startsAt!,
         endsAt: row.endsAt,
@@ -251,18 +280,4 @@ export async function getTodayExternalEventsForMap(args: {
   });
 
   return matched;
-}
-
-/**
- * Dedupe key so the same event never creates two pins (sync/render reruns,
- * campus_events copies). Cancellation suffixes are kept — "Karaoke Night" and
- * "Karaoke Night (Cancelled)" are different events and must both render.
- */
-export function eventDedupeKey(event: Pick<MapEventPin, "title" | "startsAt">): string {
-  const title = event.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-  const startMinute = Math.floor(new Date(event.startsAt).getTime() / 60_000);
-  return `${title}@${startMinute}`;
 }

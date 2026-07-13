@@ -35,7 +35,8 @@ import type { RealmDirectionsDestination, RealmDirectionsStatus } from "@/lib/re
 import { countEventsToday, locationSheetTypeLabel, resolveLocationSheetType } from "@/lib/realm/resolveLocationSheetType";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 import { EventPinCard } from "@/components/realm/EventPinCard";
-import { sortEventsForSheet } from "@/lib/realm/eventCountdown";
+import { hasEndedOrCancelledEvents, sortEventsForSheet } from "@/lib/realm/eventCountdown";
+import { filterVisibleMapEvents } from "@/lib/realm/eventVisibility";
 import { useNow } from "@/lib/client/useNow";
 
 type SheetView = "archive" | "overview" | "quests" | "events";
@@ -173,7 +174,10 @@ export function RealmLocationSheet({
   if (!mounted || !open || typeof document === "undefined") return null;
   if (!location && !mapContent) return null;
 
-  const content = mapContent ?? emptyMapLocationContent();
+  const rawContent = mapContent ?? emptyMapLocationContent();
+  // Map lifecycle rule: events vanish from the sheet 24h after they end, so
+  // every count/list/preview below only sees currently-visible events.
+  const content = { ...rawContent, events: filterVisibleMapEvents(rawContent.events) };
   const displayName = location?.name ?? mapContent?.locationName ?? "Campus location";
   const displayAddress = mapContent?.locationAddress ?? null;
   const locationId = location?.id ?? mapContent?.realmLocationId ?? null;
@@ -689,6 +693,10 @@ function RealmDetailView({
   // Shared clock for every event card in the sheet (single timer).
   const now = useNow(30_000);
   const sortedEvents = sortEventsForSheet(content.events, now);
+  // "Active Events" only while everything listed is upcoming/live; once the
+  // list includes ended or cancelled events (still inside their 24h window),
+  // the section is just "Events".
+  const eventsSectionTitle = hasEndedOrCancelledEvents(content.events, now) ? "Events" : "Active Events";
 
   return (
     <div className="cq-realm-detail-scroll">
@@ -757,7 +765,7 @@ function RealmDetailView({
 
               {sortedEvents.length > 0 ? (
                 <section className="space-y-2">
-                  <h3 className="cq-realm-detail-title">Active Events</h3>
+                  <h3 className="cq-realm-detail-title">{eventsSectionTitle}</h3>
                   <ul className="cq-realm-detail-list">
                     {sortedEvents.map((event) => (
                       <li key={event.id}>
@@ -796,7 +804,9 @@ function RealmDetailView({
 
       {view === "events" ? (
         <div className="cq-realm-detail-body">
-          <h3 className="cq-realm-detail-title">Upcoming Events</h3>
+          <h3 className="cq-realm-detail-title">
+            {hasEndedOrCancelledEvents(content.events, now) ? "Events" : "Upcoming Events"}
+          </h3>
           <p className="cq-realm-detail-subtitle">{displayName}</p>
           {sortedEvents.length === 0 ? (
             <EmptyPanel message="No upcoming events scheduled at this location." />

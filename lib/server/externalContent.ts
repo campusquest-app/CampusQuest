@@ -1,3 +1,4 @@
+import { dedupeLogicalEventFields } from "@/lib/realm/dedupeLogicalEvents";
 import { createAdminClient } from "@/lib/server/supabase";
 import { resolveUrinvolvedEventLocation } from "@/lib/server/urinvolved/eventLocation";
 import { externalEventQualifiesForMap } from "@/lib/server/urinvolved/locationAliases";
@@ -86,7 +87,7 @@ export async function listActiveExternalEvents(filters?: {
   const pastCutoff = Date.now() - EXTERNAL_EVENTS_PAST_GRACE_MS;
   const searchNeedle = filters?.search?.trim().toLowerCase() ?? "";
 
-  return (data ?? [])
+  const mapped = (data ?? [])
     .filter((row) => {
       if (!filters?.includePast && row.starts_at && new Date(row.starts_at).getTime() < pastCutoff) {
         return false;
@@ -162,6 +163,14 @@ export async function listActiveExternalEvents(filters?: {
       longitude: row.longitude,
       imported: true as const,
     }));
+
+  return dedupeLogicalEventFields(
+    mapped.map((item) => ({
+      ...item,
+      sourceExternalId: item.externalId,
+      locationText: item.location,
+    })),
+  );
 }
 
 export async function listActiveExternalOrganizations(filters?: {

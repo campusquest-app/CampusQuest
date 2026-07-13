@@ -1,14 +1,22 @@
 import type { CatalogLocationLike, EventLocationMatch } from "@/lib/server/urinvolved/mapEventLocationTypes";
 import {
-  matchEventLocationWithMeta,
   normalizeEventLocationText,
   type EventLocationMatchMeta,
 } from "@/lib/server/urinvolved/eventLocationMatcher";
+import { loadCampusBuildingRegistry } from "@/lib/server/urinvolved/campusBuildingRegistry";
+import {
+  resolveEventLocationAsync,
+  resolveEventLocationFromRegistrySync,
+  type EventLocationResolutionDebug,
+} from "@/lib/server/urinvolved/eventLocationResolver";
 import { createAdminClient } from "@/lib/server/supabase";
+import { effectiveEventEndIso, isEventVisibleOnMap } from "@/lib/realm/eventVisibility";
 
 export type ExternalEventMapMatchStatus =
   | "auto_matched"
   | "manually_adjusted"
+  | "verified"
+  | "needs_review"
   | "unmatched"
   | "hidden"
   | "ignored";
@@ -25,12 +33,21 @@ export type ExternalEventMapOverrideRow = {
   matchReason: string | null;
   rawLocationText: string | null;
   normalizedLocationText: string | null;
+  googlePlaceId: string | null;
+  formattedAddress: string | null;
+  resolutionDebug: EventLocationResolutionDebug | null;
+  manuallyVerified: boolean;
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-const PROTECTED_STATUSES: ExternalEventMapMatchStatus[] = ["manually_adjusted", "hidden", "ignored"];
+const PROTECTED_STATUSES: ExternalEventMapMatchStatus[] = [
+  "manually_adjusted",
+  "verified",
+  "hidden",
+  "ignored",
+];
 
 function rowFromDb(row: Record<string, unknown>): ExternalEventMapOverrideRow {
   return {
@@ -45,6 +62,10 @@ function rowFromDb(row: Record<string, unknown>): ExternalEventMapOverrideRow {
     matchReason: (row.match_reason as string | null) ?? null,
     rawLocationText: (row.raw_location_text as string | null) ?? null,
     normalizedLocationText: (row.normalized_location_text as string | null) ?? null,
+    googlePlaceId: (row.google_place_id as string | null) ?? null,
+    formattedAddress: (row.formatted_address as string | null) ?? null,
+    resolutionDebug: (row.resolution_debug as EventLocationResolutionDebug | null) ?? null,
+    manuallyVerified: Boolean(row.manually_verified),
     updatedBy: (row.updated_by as string | null) ?? null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
@@ -97,15 +118,6 @@ function overrideToMatch(
       matchedText: override.rawLocationText ?? override.customLabel ?? override.realmLocationId,
     };
   }
-  if (override.customLat != null && override.customLng != null) {
-    return {
-      kind: "coords",
-      locationName: override.customLabel ?? "Custom location",
-      latitude: override.customLat,
-      longitude: override.customLng,
-      matchedText: override.rawLocationText ?? override.customLabel ?? "Custom location",
-    };
-  }
   return null;
 }
 
@@ -115,6 +127,7 @@ export type ResolvedExternalEventPlacement = {
   override: ExternalEventMapOverrideRow | null;
   renderOnMap: boolean;
   appliedOverride: boolean;
+  resolutionDebug: EventLocationResolutionDebug | null;
 };
 
 export function resolveExternalEventPlacement(args: {
@@ -125,6 +138,7 @@ export function resolveExternalEventPlacement(args: {
   };
   catalog: CatalogLocationLike[];
   override?: ExternalEventMapOverrideRow | null;
+  registry?: Awaited<ReturnType<typeof loadCampusBuildingRegistry>>;
 }): ResolvedExternalEventPlacement {
   const rawLocation =
     args.fields.venueName?.trim() ||
@@ -140,10 +154,16 @@ export function resolveExternalEventPlacement(args: {
       override,
       renderOnMap: false,
       appliedOverride: true,
+      resolutionDebug: override.resolutionDebug,
     };
   }
 
-  if (override?.matchStatus === "manually_adjusted") {
+  if (
+    override &&
+    (override.matchStatus === "manually_adjusted" ||
+      override.matchStatus === "verified" ||
+      override.manuallyVerified)
+  ) {
     const match = overrideToMatch(override, args.catalog);
     return {
       match,
@@ -160,37 +180,66 @@ export function resolveExternalEventPlacement(args: {
       override,
       renderOnMap: Boolean(match),
       appliedOverride: true,
+      resolutionDebug: override.resolutionDebug,
     };
   }
 
-  const auto = matchEventLocationWithMeta(args.fields, args.catalog);
-  if (!auto) {
+  if (override?.matchStatus === "unmatched" || override?.matchStatus === "needs_review") {
     return {
       match: null,
       meta: {
         rawLocation,
-        normalizedLocation: normalizeEventLocationText(rawLocation),
-        confidence: 0,
-        matchReason: "unmatched",
-        needsReview: false,
+        normalizedLocation: override.normalizedLocationText ?? normalizeEventLocationText(rawLocation),
+        confidence: override.matchConfidence ?? 0,
+        matchReason: override.matchReason ?? override.matchStatus,
+        needsReview: override.matchStatus === "needs_review",
         matchedText: rawLocation,
       },
       override,
       renderOnMap: false,
-      appliedOverride: false,
+      appliedOverride: true,
+      resolutionDebug: override.resolutionDebug,
     };
   }
+
+  if (override?.matchStatus === "auto_matched") {
+    const match = overrideToMatch(override, args.catalog);
+    if (match) {
+      return {
+        match,
+        meta: {
+          rawLocation,
+          normalizedLocation: override.normalizedLocationText ?? normalizeEventLocationText(rawLocation),
+          confidence: override.matchConfidence ?? 0.8,
+          matchReason: override.matchReason ?? "auto_matched",
+          needsReview: (override.matchConfidence ?? 0) < 0.9,
+          matchedText: match.matchedText,
+        },
+        override,
+        renderOnMap: true,
+        appliedOverride: true,
+        resolutionDebug: override.resolutionDebug,
+      };
+    }
+  }
+
+  const registry = args.registry ?? [];
+  const auto = resolveEventLocationFromRegistrySync({
+    fields: args.fields,
+    registry,
+    catalog: args.catalog,
+  });
 
   return {
     match: auto.match,
     meta: auto.meta,
     override,
-    renderOnMap: true,
+    renderOnMap: auto.debug.renderOnMap,
     appliedOverride: false,
+    resolutionDebug: auto.debug,
   };
 }
 
-/** Legacy wrapper — runtime auto-match only. */
 export function mapEventToRealmLocationWithOverrides(
   fields: {
     venueName?: string | null;
@@ -209,6 +258,39 @@ function placementLog(message: string, detail?: Record<string, unknown>): void {
   else console.info(`[cq:urinvolved-placement] ${message}`);
 }
 
+function resolutionToOverrideRow(args: {
+  externalEventId: string;
+  rawLocation: string;
+  resolved: Awaited<ReturnType<typeof resolveEventLocationAsync>>;
+  now: string;
+}) {
+  const { resolved } = args;
+  const match = resolved.match;
+  const meta = resolved.meta;
+  const status: ExternalEventMapMatchStatus = !match
+    ? "unmatched"
+    : meta?.needsReview
+      ? "needs_review"
+      : "auto_matched";
+
+  return {
+    external_event_id: args.externalEventId,
+    realm_location_id: match?.kind === "realm" ? match.realmLocationId : null,
+    custom_lat: match?.kind === "coords" ? match.latitude : null,
+    custom_lng: match?.kind === "coords" ? match.longitude : null,
+    custom_label: match?.kind === "coords" ? match.locationName : null,
+    match_status: status,
+    match_confidence: meta?.confidence ?? 0,
+    match_reason: meta?.matchReason ?? status,
+    raw_location_text: args.rawLocation || null,
+    normalized_location_text: meta?.normalizedLocation ?? null,
+    google_place_id: resolved.googlePlaceId,
+    formatted_address: resolved.formattedAddress,
+    resolution_debug: resolved.debug,
+    updated_at: args.now,
+  };
+}
+
 export async function upsertAutoPlacementOverride(args: {
   externalEventId: string;
   fields: {
@@ -218,11 +300,18 @@ export async function upsertAutoPlacementOverride(args: {
   };
   catalog: CatalogLocationLike[];
   existing?: ExternalEventMapOverrideRow | null;
+  forceGoogle?: boolean;
 }): Promise<ExternalEventMapOverrideRow | null> {
   if (args.existing && PROTECTED_STATUSES.includes(args.existing.matchStatus)) {
     placementLog("override preserved (protected status)", {
       externalEventId: args.externalEventId,
       status: args.existing.matchStatus,
+    });
+    return args.existing;
+  }
+  if (args.existing?.manuallyVerified) {
+    placementLog("override preserved (manually verified)", {
+      externalEventId: args.externalEventId,
     });
     return args.existing;
   }
@@ -232,53 +321,27 @@ export async function upsertAutoPlacementOverride(args: {
     args.fields.locationName?.trim() ||
     args.fields.address?.trim() ||
     "";
-  const normalized = normalizeEventLocationText(rawLocation);
-  const auto = matchEventLocationWithMeta(args.fields, args.catalog);
+
+  const locationChanged =
+    Boolean(args.existing?.rawLocationText) &&
+    normalizeEventLocationText(args.existing!.rawLocationText!) !== normalizeEventLocationText(rawLocation);
+
+  const forceGoogle = args.forceGoogle ?? locationChanged;
+
+  const resolved = await resolveEventLocationAsync({
+    fields: args.fields,
+    catalog: args.catalog,
+    forceGoogle,
+  });
 
   const admin = createAdminClient();
   const now = new Date().toISOString();
-
-  if (!auto) {
-    const row = {
-      external_event_id: args.externalEventId,
-      realm_location_id: null,
-      custom_lat: null,
-      custom_lng: null,
-      custom_label: null,
-      match_status: "unmatched" as const,
-      match_confidence: 0,
-      match_reason: "unmatched",
-      raw_location_text: rawLocation || null,
-      normalized_location_text: normalized || null,
-      updated_at: now,
-    };
-    const { data, error } = await admin
-      .from("external_event_map_overrides")
-      .upsert(row, { onConflict: "external_event_id" })
-      .select("*")
-      .single();
-    if (error) {
-      console.warn("[cq:urinvolved-placement] unmatched upsert failed", error.message);
-      return null;
-    }
-    placementLog("unmatched stored", { externalEventId: args.externalEventId, rawLocation });
-    return rowFromDb(data as Record<string, unknown>);
-  }
-
-  const { match, meta } = auto;
-  const row = {
-    external_event_id: args.externalEventId,
-    realm_location_id: match.kind === "realm" ? match.realmLocationId : null,
-    custom_lat: match.kind === "coords" ? match.latitude : null,
-    custom_lng: match.kind === "coords" ? match.longitude : null,
-    custom_label: match.kind === "coords" ? match.locationName : null,
-    match_status: "auto_matched" as const,
-    match_confidence: meta.confidence,
-    match_reason: meta.matchReason,
-    raw_location_text: rawLocation || null,
-    normalized_location_text: meta.normalizedLocation,
-    updated_at: now,
-  };
+  const row = resolutionToOverrideRow({
+    externalEventId: args.externalEventId,
+    rawLocation,
+    resolved,
+    now,
+  });
 
   const { data, error } = await admin
     .from("external_event_map_overrides")
@@ -291,16 +354,73 @@ export async function upsertAutoPlacementOverride(args: {
     return null;
   }
 
-  placementLog("auto matched", {
+  placementLog(resolved.match ? "auto matched" : "unmatched stored", {
     externalEventId: args.externalEventId,
     rawLocation,
-    normalized: meta.normalizedLocation,
-    matched:
-      match.kind === "realm" ? `realm:${match.realmLocationId}` : `coords:${match.locationName}`,
-    confidence: meta.confidence,
-    reason: meta.matchReason,
-    needsReview: meta.needsReview,
+    normalized: resolved.meta?.normalizedLocation,
+    confidence: resolved.meta?.confidence,
+    reason: resolved.meta?.matchReason,
+    renderOnMap: resolved.debug.renderOnMap,
+    googlePlaceId: resolved.googlePlaceId,
   });
+
+  return rowFromDb(data as Record<string, unknown>);
+}
+
+export async function resolvePlacementFromLocationName(args: {
+  externalEventId: string;
+  fields: {
+    venueName?: string | null;
+    locationName?: string | null;
+    address?: string | null;
+  };
+  catalog: CatalogLocationLike[];
+  updatedBy: string;
+}): Promise<ExternalEventMapOverrideRow | null> {
+  const existing = (await loadOverridesForEventIds([args.externalEventId])).get(args.externalEventId) ?? null;
+  if (existing?.matchStatus === "manually_adjusted" || existing?.manuallyVerified) {
+    return existing;
+  }
+
+  return upsertAutoPlacementOverride({
+    externalEventId: args.externalEventId,
+    fields: args.fields,
+    catalog: args.catalog,
+    existing: null,
+    forceGoogle: true,
+  });
+}
+
+export async function markPlacementVerified(args: {
+  externalEventId: string;
+  updatedBy: string;
+  registrySlug?: string | null;
+}): Promise<ExternalEventMapOverrideRow> {
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+
+  if (args.registrySlug) {
+    const { markBuildingRegistryVerified } = await import("@/lib/server/urinvolved/campusBuildingRegistry");
+    await markBuildingRegistryVerified(args.registrySlug);
+  }
+
+  const { data, error } = await admin
+    .from("external_event_map_overrides")
+    .update({
+      match_status: "verified",
+      manually_verified: true,
+      match_confidence: 1,
+      match_reason: "admin_verified",
+      updated_by: args.updatedBy,
+      updated_at: now,
+    })
+    .eq("external_event_id", args.externalEventId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Could not verify placement.");
+  }
 
   return rowFromDb(data as Record<string, unknown>);
 }
@@ -312,7 +432,7 @@ export async function saveManualPlacementOverride(args: {
   customLat?: number | null;
   customLng?: number | null;
   customLabel?: string | null;
-  matchStatus?: Extract<ExternalEventMapMatchStatus, "manually_adjusted" | "hidden" | "ignored">;
+  matchStatus?: Extract<ExternalEventMapMatchStatus, "manually_adjusted" | "hidden" | "ignored" | "verified">;
   rawLocationText?: string | null;
   normalizedLocationText?: string | null;
 }): Promise<ExternalEventMapOverrideRow> {
@@ -332,7 +452,7 @@ export async function saveManualPlacementOverride(args: {
     custom_lng: isDrag ? args.customLng : (args.realmLocationId ? null : (args.customLng ?? null)),
     custom_label: args.customLabel ?? null,
     match_status: status,
-    match_confidence: status === "manually_adjusted" ? 1 : null,
+    match_confidence: status === "manually_adjusted" || status === "verified" ? 1 : null,
     match_reason:
       status === "manually_adjusted"
         ? isDrag
@@ -341,6 +461,7 @@ export async function saveManualPlacementOverride(args: {
         : status,
     raw_location_text: args.rawLocationText ?? null,
     normalized_location_text: args.normalizedLocationText ?? null,
+    manually_verified: status === "verified",
     updated_by: args.updatedBy,
     updated_at: now,
   };
@@ -355,12 +476,6 @@ export async function saveManualPlacementOverride(args: {
     throw new Error(error?.message ?? "Could not save placement override.");
   }
 
-  placementLog("manual override saved", {
-    externalEventId: args.externalEventId,
-    status,
-    realmLocationId: args.realmLocationId,
-  });
-
   return rowFromDb(data as Record<string, unknown>);
 }
 
@@ -372,6 +487,7 @@ export async function resetPlacementToAutoMatch(args: {
     address?: string | null;
   };
   catalog: CatalogLocationLike[];
+  forceGoogle?: boolean;
 }): Promise<ExternalEventMapOverrideRow | null> {
   const admin = createAdminClient();
   await admin.from("external_event_map_overrides").delete().eq("external_event_id", args.externalEventId);
@@ -380,6 +496,7 @@ export async function resetPlacementToAutoMatch(args: {
     fields: args.fields,
     catalog: args.catalog,
     existing: null,
+    forceGoogle: args.forceGoogle ?? true,
   });
 }
 
@@ -397,6 +514,7 @@ export type AdminUrinvolvedPlacementEvent = {
   autoMatch: EventLocationMatchMeta | null;
   currentMatch: EventLocationMatch | null;
   renderOnMap: boolean;
+  resolutionDebug: EventLocationResolutionDebug | null;
   suggestedMatches: Array<{ realmLocationId: string; name: string; confidence: number; reason: string }>;
 };
 
@@ -412,7 +530,7 @@ export async function listAdminUrinvolvedPlacements(args: {
   const admin = createAdminClient();
   const { getCampusDayWindow } = await import("@/lib/realm/eventCountdown");
   const { start, end } = getCampusDayWindow(now);
-  const fetchStart = new Date(start.getTime() - 24 * 60 * 60 * 1000);
+  const fetchStart = new Date(start.getTime() - 72 * 60 * 60 * 1000);
   const fetchEnd = new Date(end.getTime() + 24 * 60 * 60 * 1000);
 
   const { data, error } = await admin
@@ -430,11 +548,19 @@ export async function listAdminUrinvolvedPlacements(args: {
     const startsAt = String(row.starts_at ?? "");
     if (!startsAt) return false;
     const d = new Date(startsAt);
-    return !Number.isNaN(d.getTime()) && d >= start && d < end;
+    if (Number.isNaN(d.getTime())) return false;
+    if (d >= end) return false;
+    return isEventVisibleOnMap(
+      { end_time: effectiveEventEndIso(startsAt, (row.ends_at as string | null) ?? null) },
+      now,
+    );
   });
 
   const ids = todayRows.map((r) => String(r.id));
-  const overrides = await loadOverridesForEventIds(ids);
+  const [overrides, registry] = await Promise.all([
+    loadOverridesForEventIds(ids),
+    loadCampusBuildingRegistry(),
+  ]);
 
   const events: AdminUrinvolvedPlacementEvent[] = [];
   const unmatched: AdminUrinvolvedPlacementEvent[] = [];
@@ -452,8 +578,13 @@ export async function listAdminUrinvolvedPlacements(args: {
     if (!rawLocation) continue;
 
     const override = overrides.get(externalEventId) ?? null;
-    const auto = matchEventLocationWithMeta(fields, args.catalog);
-    const resolved = resolveExternalEventPlacement({ fields, catalog: args.catalog, override });
+    const auto = resolveEventLocationFromRegistrySync({ fields, registry, catalog: args.catalog });
+    const resolved = resolveExternalEventPlacement({
+      fields,
+      catalog: args.catalog,
+      override,
+      registry,
+    });
     const suggestedMatches = suggestLocationMatches(rawLocation, args.catalog);
 
     const item: AdminUrinvolvedPlacementEvent = {
@@ -467,25 +598,24 @@ export async function listAdminUrinvolvedPlacements(args: {
       normalizedLocationText: normalizeEventLocationText(rawLocation),
       source: "urinvolved",
       override,
-      autoMatch: auto?.meta ?? null,
+      autoMatch: auto.meta,
       currentMatch: resolved.match,
       renderOnMap: resolved.renderOnMap,
+      resolutionDebug: resolved.resolutionDebug ?? override?.resolutionDebug ?? auto.debug,
       suggestedMatches,
     };
 
     events.push(item);
     if (!resolved.renderOnMap && override?.matchStatus !== "hidden" && override?.matchStatus !== "ignored") {
       unmatched.push(item);
-    } else if (resolved.meta?.needsReview && override?.matchStatus !== "manually_adjusted") {
+    } else if (
+      (resolved.meta?.needsReview || override?.matchStatus === "needs_review") &&
+      override?.matchStatus !== "manually_adjusted" &&
+      override?.matchStatus !== "verified"
+    ) {
       needsReview.push(item);
     }
   }
-
-  placementLog("admin placement summary", {
-    total: events.length,
-    unmatched: unmatched.length,
-    needsReview: needsReview.length,
-  });
 
   return { events, unmatched, needsReview };
 }

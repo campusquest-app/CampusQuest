@@ -6,12 +6,20 @@ const CATALOG = [
   { slug: "library", name: "Library" },
 ];
 
+const BASE_OVERRIDE = {
+  googlePlaceId: null,
+  formattedAddress: null,
+  resolutionDebug: null,
+  manuallyVerified: false,
+} as const;
+
 describe("resolveExternalEventPlacement", () => {
   it("honors hidden manual overrides", () => {
     const resolved = resolveExternalEventPlacement({
       fields: { locationName: "Memorial Union" },
       catalog: CATALOG,
       override: {
+        ...BASE_OVERRIDE,
         id: "o1",
         externalEventId: "e1",
         realmLocationId: "memorial-union",
@@ -37,6 +45,7 @@ describe("resolveExternalEventPlacement", () => {
       fields: { locationName: "Unknown Building" },
       catalog: CATALOG,
       override: {
+        ...BASE_OVERRIDE,
         id: "o2",
         externalEventId: "e2",
         realmLocationId: "library",

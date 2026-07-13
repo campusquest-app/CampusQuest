@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import {
   fetchUrinvolvedMapPlacements,
   resetUrinvolvedPlacement,
+  resolveUrinvolvedPlacementFromName,
   saveUrinvolvedPlacement,
+  verifyUrinvolvedPlacement,
   type UrinvolvedPlacementEvent,
   type UrinvolvedPlacementsResponse,
 } from "@/lib/client/urinvolvedMapPlacementsClient";
@@ -27,6 +29,10 @@ function statusLabel(status: string | null | undefined): string {
   switch (status) {
     case "manually_adjusted":
       return "Manually adjusted";
+    case "verified":
+      return "Verified";
+    case "needs_review":
+      return "Location needs review";
     case "auto_matched":
       return "Auto matched";
     case "hidden":
@@ -48,6 +54,8 @@ function EventPlacementEditor({
   onHide,
   onIgnore,
   onReset,
+  onResolve,
+  onVerify,
   onClose,
 }: {
   event: UrinvolvedPlacementEvent;
@@ -57,6 +65,8 @@ function EventPlacementEditor({
   onHide: () => void;
   onIgnore: () => void;
   onReset: () => void;
+  onResolve: () => void;
+  onVerify: () => void;
   onClose: () => void;
 }) {
   const [selectedSlug, setSelectedSlug] = useState(
@@ -101,6 +111,46 @@ function EventPlacementEditor({
         </div>
       </dl>
 
+      {event.resolutionDebug ? (
+        <details className="rounded border border-white/10 bg-black/25 p-2 text-[10px] text-white/75">
+          <summary className="cursor-pointer font-semibold text-white/85">Resolution debug</summary>
+          <dl className="mt-2 space-y-1">
+            <div>
+              <dt className="text-white/45">Normalized building</dt>
+              <dd>{event.resolutionDebug.normalizedBuildingName || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-white/45">Google result</dt>
+              <dd>
+                {event.resolutionDebug.selectedGoogleResult
+                  ? `${event.resolutionDebug.selectedGoogleResult.name} (${event.resolutionDebug.selectedGoogleResult.formattedAddress})`
+                  : "None"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-white/45">Place ID</dt>
+              <dd className="break-all">{event.override?.googlePlaceId ?? event.resolutionDebug.selectedGoogleResult?.placeId ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-white/45">Coordinates</dt>
+              <dd>
+                {event.currentMatch?.kind === "coords"
+                  ? `${event.currentMatch.latitude?.toFixed(5)}, ${event.currentMatch.longitude?.toFixed(5)}`
+                  : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-white/45">Confidence</dt>
+              <dd>{Math.round((event.resolutionDebug.confidence ?? 0) * 100)}%</dd>
+            </div>
+            <div>
+              <dt className="text-white/45">Manually overridden</dt>
+              <dd>{event.resolutionDebug.manuallyOverridden || event.override?.manuallyVerified ? "Yes" : "No"}</dd>
+            </div>
+          </dl>
+        </details>
+      ) : null}
+
       <label className="block text-[10px] font-semibold text-white/70">
         Assign map location
         <select
@@ -144,10 +194,26 @@ function EventPlacementEditor({
         <button
           type="button"
           disabled={saving}
+          onClick={onResolve}
+          className="rounded-lg border border-cyan-400/40 bg-cyan-500/15 px-2.5 py-1.5 text-[10px] font-semibold text-cyan-100"
+        >
+          Resolve from location name
+        </button>
+        <button
+          type="button"
+          disabled={saving || !event.currentMatch}
+          onClick={onVerify}
+          className="rounded-lg border border-emerald-400/40 px-2.5 py-1.5 text-[10px] text-emerald-100"
+        >
+          Mark location as verified
+        </button>
+        <button
+          type="button"
+          disabled={saving}
           onClick={onReset}
           className="rounded-lg border border-white/15 px-2.5 py-1.5 text-[10px] text-white/75"
         >
-          Reset to URInvolved location
+          Re-resolve with Google
         </button>
         <button
           type="button"
@@ -249,6 +315,37 @@ export function RealmUrinvolvedPlacementPanel({
     }
   };
 
+  const handleResolve = async (externalEventId: string) => {
+    setSaving(true);
+    try {
+      await resolveUrinvolvedPlacementFromName(externalEventId);
+      await reload();
+      onPlacementsChanged?.();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleVerify = async (event: UrinvolvedPlacementEvent) => {
+    setSaving(true);
+    try {
+      const registrySlug =
+        event.currentMatch?.kind === "realm"
+          ? event.currentMatch.realmLocationId
+          : event.resolutionDebug?.normalizedBuildingName
+            ? event.resolutionDebug.normalizedBuildingName.replace(/\s+/g, "-")
+            : undefined;
+      await verifyUrinvolvedPlacement({
+        externalEventId: event.externalEventId,
+        registrySlug: typeof registrySlug === "string" ? registrySlug : undefined,
+      });
+      await reload();
+      onPlacementsChanged?.();
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (!active) return null;
 
   return (
@@ -310,6 +407,8 @@ export function RealmUrinvolvedPlacementPanel({
           onHide={() => void handleStatus(selectedEvent.externalEventId, "hidden")}
           onIgnore={() => void handleStatus(selectedEvent.externalEventId, "ignored")}
           onReset={() => void handleReset(selectedEvent.externalEventId)}
+          onResolve={() => void handleResolve(selectedEvent.externalEventId)}
+          onVerify={() => void handleVerify(selectedEvent)}
           onClose={() => onSelectExternalEventId?.(null)}
         />
       ) : null}

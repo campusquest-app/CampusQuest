@@ -1,4 +1,7 @@
 import {
+  normalizeCampusLocationName,
+} from "@/lib/server/urinvolved/normalizeCampusLocationName";
+import {
   normalizeLocationName,
   resolveCampusLocationFromEventFields,
 } from "@/lib/server/urinvolved/locationAliases";
@@ -16,18 +19,9 @@ const CONTAINMENT_MIN_LENGTH = 6;
 const FUZZY_MIN_CONFIDENCE = 0.65;
 const REVIEW_CONFIDENCE_THRESHOLD = 0.9;
 
-const ROOM_SUFFIX_PATTERN =
-  /\b(room|rm|suite|ste|#)\s*#?\s*[a-z0-9-]+\b/gi;
-const FLOOR_SUFFIX_PATTERN = /\b(first|second|third|fourth|1st|2nd|3rd|4th)\s+floor\b/gi;
-
 /** Normalize event location text for matching (room numbers stripped). */
 export function normalizeEventLocationText(value: string): string {
-  return normalizeLocationName(
-    value
-      .replace(ROOM_SUFFIX_PATTERN, " ")
-      .replace(FLOOR_SUFFIX_PATTERN, " ")
-      .replace(/\s+/g, " "),
-  );
+  return normalizeCampusLocationName(value);
 }
 
 function stripSecondaryWords(value: string): string {
