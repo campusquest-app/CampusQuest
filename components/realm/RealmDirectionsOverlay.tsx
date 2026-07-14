@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { useMap } from "@vis.gl/react-google-maps";
 import { getRouteToLocation } from "@/lib/realm/getRouteToLocation";
 import {
+  GOOGLE_ATTRIBUTION_BAND_PX,
+  measureRealmNavClearancePx,
+} from "@/lib/realm/mapChromePadding";
+import {
   type RealmDirectionsOrigin,
   type RealmDirectionsRequest,
 } from "@/lib/realm/realmDirectionsTypes";
@@ -13,14 +17,18 @@ import type { RealmDirectionsLoadResult } from "./RealmDirectionsOverlay.types";
 
 export type { RealmDirectionsLoadResult } from "./RealmDirectionsOverlay.types";
 
-/** Height the floating bottom nav (plus safe area) occupies over the map, in px. */
+/** Dock + Google attribution band clearance so fitBounds never tucks under UI. */
 function bottomNavClearancePx(): number {
-  if (typeof window === "undefined" || typeof document === "undefined") return 0;
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return GOOGLE_ATTRIBUTION_BAND_PX;
+  }
+  const measured = measureRealmNavClearancePx();
+  if (measured > 0) return measured + GOOGLE_ATTRIBUTION_BAND_PX;
   const nav = document.querySelector(".cq-dock-nav");
-  if (!(nav instanceof HTMLElement)) return 0;
+  if (!(nav instanceof HTMLElement)) return GOOGLE_ATTRIBUTION_BAND_PX;
   const rect = nav.getBoundingClientRect();
-  if (rect.height === 0) return 0;
-  return Math.max(0, Math.round(window.innerHeight - rect.top));
+  if (rect.height === 0) return GOOGLE_ATTRIBUTION_BAND_PX;
+  return Math.max(0, Math.round(window.innerHeight - rect.top)) + GOOGLE_ATTRIBUTION_BAND_PX;
 }
 
 function fitRouteBounds(

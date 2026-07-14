@@ -74,7 +74,7 @@ export function RealmMarkerEditorPanel({
   return (
     <div
       data-no-drawer-swipe="true"
-      className="realm-map-editor-panel absolute inset-x-3 bottom-[4.75rem] z-[6] flex max-h-[min(42vh,20rem)] flex-col overflow-hidden rounded-xl border border-uri-keaney/35 bg-[#041E42]/92 shadow-xl backdrop-blur-md transition-all duration-200 sm:inset-x-auto sm:bottom-auto sm:left-3 sm:top-3 sm:max-h-[min(70vh,28rem)] sm:w-[min(18rem,88vw)]"
+      className="realm-map-editor-panel absolute inset-x-3 z-[6] flex max-h-[min(42vh,20rem)] flex-col overflow-hidden rounded-xl border border-uri-keaney/35 bg-[#041E42]/92 shadow-xl backdrop-blur-md transition-all duration-200 sm:inset-x-auto sm:bottom-auto sm:left-3 sm:top-3 sm:max-h-[min(70vh,28rem)] sm:w-[min(18rem,88vw)]"
     >
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 py-2.5">
         <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-uri-keaney">Map Editor</p>

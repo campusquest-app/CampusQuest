@@ -1,6 +1,6 @@
 "use client";
 
-import { postAuthed, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
+import { postAuthed, fetchAuthed, patchAuthed, deleteAuthed } from "@/lib/client/dashboardApi";
 
 export type GroupMemberSummary = {
   id: string;
@@ -53,4 +53,25 @@ export async function renameGroupConversation(conversationId: string, title: str
 
 export async function leaveGroupConversation(conversationId: string): Promise<void> {
   await postAuthed(`/api/social/conversations/${conversationId}/leave`, {});
+}
+
+export async function addMembersToGroup(
+  conversationId: string,
+  memberIds: string[],
+): Promise<GroupConversationDetails> {
+  const payload = await postAuthed<{ conversation: GroupConversationDetails }, { memberIds: string[] }>(
+    `/api/social/conversations/${conversationId}/members`,
+    { memberIds },
+  );
+  return payload.conversation;
+}
+
+export async function removeMemberFromGroup(
+  conversationId: string,
+  memberId: string,
+): Promise<GroupConversationDetails> {
+  const payload = await deleteAuthed<{ conversation: GroupConversationDetails }>(
+    `/api/social/conversations/${conversationId}/members/${memberId}`,
+  );
+  return payload.conversation;
 }

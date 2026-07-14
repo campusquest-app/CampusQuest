@@ -115,6 +115,14 @@ export const updateGroupConversationSchema = z.object({
   title: z.string().trim().min(1).max(80),
 });
 
+export const addGroupMembersSchema = z.object({
+  memberIds: z.array(uuidSchema).min(1).max(20),
+});
+
+export const removeGroupMemberSchema = z.object({
+  memberId: uuidSchema,
+});
+
 export const directConversationSchema = z.object({
   otherUserId: uuidSchema,
 });

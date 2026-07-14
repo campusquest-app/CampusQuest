@@ -38,22 +38,8 @@ export type GroupMemberSummary = {
   role: "owner" | "member";
 };
 
-export function buildGroupDisplayName(args: {
-  title: string | null;
-  members: Array<{ id: string; displayName: string }>;
-  viewerId: string;
-}): string {
-  const trimmed = args.title?.trim();
-  if (trimmed) return trimmed;
-  const others = args.members.filter((m) => m.id !== args.viewerId);
-  const firstNames = others
-    .map((m) => m.displayName.trim().split(/\s+/)[0] || m.displayName)
-    .filter(Boolean);
-  if (firstNames.length === 0) return "Group chat";
-  if (firstNames.length === 1) return firstNames[0]!;
-  if (firstNames.length === 2) return `${firstNames[0]}, ${firstNames[1]}`;
-  return `${firstNames[0]}, ${firstNames[1]} +${firstNames.length - 2}`;
-}
+export { buildGroupDisplayName } from "@/lib/groupDisplayName";
+import { buildGroupDisplayName } from "@/lib/groupDisplayName";
 
 async function getConversationType(
   admin: SupabaseClientLike,
@@ -784,7 +770,7 @@ export async function getConversationDetails(args: {
 
   const displayName = buildGroupDisplayName({
     title: conversation.title,
-    members: members.map((m) => ({ id: m.id, displayName: m.displayName })),
+    members: members.map((m) => ({ id: m.id, displayName: m.displayName, username: m.username })),
     viewerId: userId,
   });
 
@@ -863,6 +849,130 @@ export async function leaveGroupConversation(args: {
   if (error) throw new ApiError(400, error.message, "GROUP_LEAVE_FAILED");
 
   return { left: true };
+}
+
+export async function addGroupMembers(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  conversationId: string;
+  memberIds: string[];
+}) {
+  const { userClient, userId, conversationId, memberIds } = args;
+  const admin = createAdminClient();
+  const convoType = await getConversationType(admin, conversationId);
+  if (convoType !== "group") {
+    throw new ApiError(400, "Only group conversations support adding members.", "VALIDATION_ERROR");
+  }
+  await assertConversationParticipant(userClient, userId, conversationId);
+  await assertAccountCanSocialize(userClient, userId);
+
+  const uniqueMembers = Array.from(new Set(memberIds.filter((id) => id && id !== userId)));
+  if (uniqueMembers.length === 0) {
+    throw new ApiError(400, "Select at least one person to add.", "VALIDATION_ERROR");
+  }
+  if (uniqueMembers.length > 20) {
+    throw new ApiError(400, "You can add up to 20 people at a time.", "VALIDATION_ERROR");
+  }
+
+  const { data: existingRows, error: existingError } = await admin
+    .from("direct_conversation_participants")
+    .select("user_id")
+    .eq("conversation_id", conversationId);
+  if (existingError) throw new ApiError(400, existingError.message, "CONVERSATION_PARTICIPANTS_FETCH_FAILED");
+
+  const existingIds = new Set((existingRows ?? []).map((row) => row.user_id));
+  if (existingIds.size + uniqueMembers.filter((id) => !existingIds.has(id)).length > 31) {
+    throw new ApiError(400, "Group chats support up to 30 members.", "VALIDATION_ERROR");
+  }
+
+  const toAdd: string[] = [];
+  for (const memberId of uniqueMembers) {
+    if (existingIds.has(memberId)) continue;
+    const relationship = await getRelationshipStatus({ userClient, userId, otherUserId: memberId });
+    if (!relationship.canMessage) {
+      throw new ApiError(
+        403,
+        "You can only add accepted CampusQuest connections to a group.",
+        "GROUP_MEMBER_NOT_ALLOWED",
+      );
+    }
+    toAdd.push(memberId);
+  }
+
+  if (toAdd.length === 0) {
+    return getConversationDetails({ userClient, userId, conversationId });
+  }
+
+  const { error: insertError } = await admin.from("direct_conversation_participants").insert(
+    toAdd.map((memberId) => ({
+      conversation_id: conversationId,
+      user_id: memberId,
+      role: "member",
+    })),
+  );
+  if (insertError) throw new ApiError(400, insertError.message, "GROUP_ADD_MEMBER_FAILED");
+
+  await admin
+    .from("direct_conversations")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", conversationId);
+
+  return getConversationDetails({ userClient, userId, conversationId });
+}
+
+export async function removeGroupMember(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  conversationId: string;
+  memberId: string;
+}) {
+  const { userClient, userId, conversationId, memberId } = args;
+  const admin = createAdminClient();
+  const convoType = await getConversationType(admin, conversationId);
+  if (convoType !== "group") {
+    throw new ApiError(400, "Only group conversations support removing members.", "VALIDATION_ERROR");
+  }
+
+  const { data: actor, error: actorError } = await admin
+    .from("direct_conversation_participants")
+    .select("role")
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (actorError) throw new ApiError(400, actorError.message, "CONVERSATION_PARTICIPANT_CHECK_FAILED");
+  if (!actor) throw new ApiError(403, "Conversation access denied.", "CONVERSATION_FORBIDDEN");
+  if (actor.role !== "owner") {
+    throw new ApiError(403, "Only the group owner can remove members.", "FORBIDDEN");
+  }
+  if (memberId === userId) {
+    throw new ApiError(400, "Use leave to remove yourself from the group.", "VALIDATION_ERROR");
+  }
+
+  const { data: target, error: targetError } = await admin
+    .from("direct_conversation_participants")
+    .select("role")
+    .eq("conversation_id", conversationId)
+    .eq("user_id", memberId)
+    .maybeSingle();
+  if (targetError) throw new ApiError(400, targetError.message, "CONVERSATION_PARTICIPANT_CHECK_FAILED");
+  if (!target) throw new ApiError(404, "Member not found in this group.", "GROUP_MEMBER_NOT_FOUND");
+  if (target.role === "owner") {
+    throw new ApiError(400, "The group owner cannot be removed.", "VALIDATION_ERROR");
+  }
+
+  const { error } = await admin
+    .from("direct_conversation_participants")
+    .delete()
+    .eq("conversation_id", conversationId)
+    .eq("user_id", memberId);
+  if (error) throw new ApiError(400, error.message, "GROUP_REMOVE_MEMBER_FAILED");
+
+  await admin
+    .from("direct_conversations")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", conversationId);
+
+  return getConversationDetails({ userClient, userId, conversationId });
 }
 
 async function assertConversationParticipant(userClient: SupabaseClientLike, userId: string, conversationId: string) {
@@ -971,7 +1081,7 @@ export async function listConversations(args: { userClient: SupabaseClientLike; 
       const title = convoTitleById.get(conversationId) ?? null;
       const displayName = buildGroupDisplayName({
         title,
-        members: members.map((m) => ({ id: m.id, displayName: m.displayName })),
+        members: members.map((m) => ({ id: m.id, displayName: m.displayName, username: m.username })),
         viewerId: userId,
       });
 

@@ -39,6 +39,7 @@ import { QuestPathOverlay } from "./QuestPathOverlay";
 import { RealmDirectionsOverlay, type RealmDirectionsLoadResult } from "./RealmDirectionsOverlay";
 import { RealmMapFlyTo } from "./RealmMapFlyTo";
 import { RealmMapCameraBootstrap } from "./RealmMapCameraBootstrap";
+import { RealmMapChromePadding } from "./RealmMapChromePadding";
 import { RealmMapControls } from "./RealmMapControls";
 import { RealmMapSearch } from "./RealmMapSearch";
 import { RealmUserLocationMarker } from "./RealmUserLocationMarker";
@@ -730,6 +731,8 @@ export function GoogleRealmMap({
           <RealmMapInstanceRef mapRef={mapRef} />
           <RealmMapReadyProbe onReady={markTilesReady} />
           <RealmMapVisibilityHandler visible={isActive} onRecoverStall={recoverMapStall} />
+          {/* Keep Google logo/attribution clear of dock, FABs, and CQ gradients. */}
+          <RealmMapChromePadding enabled={isActive} />
           <RealmMapFlyTo target={flyToTarget} enabled={flyToEnabled && isActive} force={flyToForce} />
           <RealmMapContainerObserver surfaceRef={surfaceRef} />
           <RealmMapVectorInit vector3dEnabled={vector3dEnabled} tilesLoaded={tilesLoaded} />

@@ -36,6 +36,7 @@ export type InboxGroupChatRow = {
   memberCount: number;
   memberNames?: string[];
   memberAvatars?: string[];
+  memberSummaries?: Array<{ avatarUrl?: string | null; displayName?: string }>;
   latestMessage: string | null;
   latestMessageAt: string | null;
   lastReadAt?: string | null;

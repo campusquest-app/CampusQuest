@@ -196,6 +196,10 @@ export function Inbox({
           .filter((m) => m.id !== character.id)
           .map((m) => m.avatarUrl ?? "")
           .slice(0, 3),
+        memberSummaries: row.members
+          .filter((m) => m.id !== character.id)
+          .slice(0, 3)
+          .map((m) => ({ avatarUrl: m.avatarUrl, displayName: m.displayName })),
         latestMessage: conversationPreviewText(row.latestMessage),
         latestMessageAt: row.latestMessage?.createdAt ?? null,
         lastReadAt: row.lastReadAt,
@@ -738,6 +742,7 @@ export function Inbox({
         <GroupMessageThread
           currentUser={character}
           conversationId={groupWith}
+          friends={friends}
           onClose={() => setGroupWith(null)}
           onMessageSent={() => void loadMessageCenter()}
         />
@@ -821,7 +826,11 @@ function InboxThreadRow({
         <button type="button" onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-3">
           <div className="relative h-[56px] w-[56px] shrink-0">
             {result.kind === "group" ? (
-              <GroupAvatarStack avatars={result.memberAvatars} size={56} />
+              <GroupAvatarStack
+                members={groupConv?.memberSummaries}
+                avatars={result.memberAvatars}
+                size={56}
+              />
             ) : (
               <div className="h-full w-full overflow-hidden rounded-full bg-[#262626]">
                 <AvatarDisplay avatar={result.avatar} fitParent size={56} />

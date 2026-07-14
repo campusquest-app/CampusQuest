@@ -74,6 +74,16 @@
   --cq-realm-nav-clearance: calc(var(--cq-bottom-nav-h, 4rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px));
   /* Safe bottom padding for Realm UI: nav clearance + 24px breathing room. */
   --cq-realm-bottom-clearance: calc(var(--cq-realm-nav-clearance) + 24px);
+  /*
+   * Google Maps Platform requires logo + copyright to stay unobstructed.
+   * Runtime JS (RealmMapChromePadding) overwrites these with measured values;
+   * fallbacks keep layout sane before the first measurement.
+   */
+  --cq-realm-attribution-band: 42px;
+  --cq-realm-map-padding-top: 10px;
+  --cq-realm-map-padding-right: max(8px, env(safe-area-inset-right, 0px));
+  --cq-realm-map-padding-bottom: calc(var(--cq-realm-nav-clearance) + var(--cq-realm-attribution-band));
+  --cq-realm-map-padding-left: max(8px, env(safe-area-inset-left, 0px));
 }
 
 /* —— Mobile-safe motion utilities (transform/opacity — Safari-friendly) —— */
@@ -8674,6 +8684,7 @@ html[data-realm-map-panning] {
 }
 
 .realm-map-editor-panel {
+  bottom: calc(var(--cq-realm-map-padding-bottom) + 0.5rem);
   animation: realm-map-editor-in 0.22s ease-out;
 }
 
@@ -8690,6 +8701,7 @@ html[data-realm-map-panning] {
 
 @media (min-width: 640px) {
   .realm-map-editor-panel {
+    bottom: auto;
     animation-name: realm-map-editor-in-desktop;
   }
 
@@ -11157,6 +11169,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   width: 100%;
 }
 
+/* Dock-only scrim — must NOT cover the Google attribution band above the dock. */
 .cq-realm-immersive-stage::before {
   content: "";
   position: absolute;
@@ -11164,12 +11177,12 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   right: 0;
   bottom: 0;
   left: 0;
-  height: calc(var(--cq-realm-nav-clearance) + 3.5rem);
+  height: var(--cq-realm-nav-clearance);
   pointer-events: none;
   background: linear-gradient(
     to top,
-    rgba(1, 8, 20, 0.92) 0%,
-    rgba(1, 8, 20, 0.55) 42%,
+    rgba(1, 8, 20, 0.94) 0%,
+    rgba(1, 8, 20, 0.5) 55%,
     transparent 100%
   );
 }
@@ -11181,18 +11194,13 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   right: 0;
   bottom: 0;
   left: 0;
+  /* Text sits above Google logo/copyright; no fill over the attribution band. */
   padding:
-    3.25rem max(1rem, env(safe-area-inset-right, 0px))
-    var(--cq-realm-bottom-clearance)
+    1.25rem max(1rem, env(safe-area-inset-right, 0px))
+    var(--cq-realm-map-padding-bottom)
     max(1rem, env(safe-area-inset-left, 0px));
   text-align: center;
-  background: linear-gradient(
-    to top,
-    rgba(1, 8, 20, 0.96) 0%,
-    rgba(1, 8, 20, 0.72) 38%,
-    rgba(1, 8, 20, 0.2) 72%,
-    transparent 100%
-  );
+  background: transparent;
   opacity: 0;
   transform: translateY(8px);
   transition: opacity 520ms ease 280ms, transform 520ms cubic-bezier(0.22, 1, 0.36, 1) 280ms;
@@ -11298,15 +11306,18 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
 }
 
 .cq-realm-float-btn--edit {
-  bottom: calc(
-    var(--cq-bottom-nav-h, 4rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 4.75rem
-  );
+  /* Absolute (not a MapControl) — clear dock + Google attribution + FAB stack. */
+  bottom: calc(var(--cq-realm-map-padding-bottom) + 4.75rem);
   animation: cq-realm-controls-in 480ms ease 400ms forwards;
 }
 
+/*
+ * RIGHT_BOTTOM MapControls are already inset by Map.padding (dock + attribution).
+ * Only add a small gap so the stack sits neatly above the Google chrome band.
+ */
 .cq-realm-map-controls {
-  margin-right: max(0.75rem, env(safe-area-inset-right, 0px));
-  margin-bottom: calc(var(--cq-realm-nav-clearance) + 4.5rem);
+  margin-right: 0.35rem;
+  margin-bottom: 0.35rem;
   pointer-events: none;
 }
 
@@ -11422,7 +11433,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
 
 .cq-realm-map-controls--classic-reset {
   right: max(0.75rem, env(safe-area-inset-right, 0px));
-  bottom: calc(var(--cq-realm-nav-clearance) + 4.5rem);
+  bottom: calc(var(--cq-realm-map-padding-bottom) + 0.5rem);
   opacity: 1;
   animation: cq-realm-controls-in 480ms ease 360ms forwards;
 }
@@ -13207,6 +13218,34 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
 
 .cq-dm-composer-icon:active {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.cq-group-thread-header {
+  background: #000000;
+}
+
+.cq-group-thread-messages {
+  background: #000000;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cq-group-jump-bottom {
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.cq-group-info-sheet {
+  box-shadow: 0 -18px 48px rgba(0, 0, 0, 0.55);
+  max-height: min(92dvh, 920px);
+}
+
+.cq-group-avatar--empty {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-group-jump-bottom {
+    transition: none;
+  }
 }
 
 .cq-dm-composer-mic--active {
@@ -15853,9 +15892,10 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   pointer-events: none;
 }
 
+/* Header (with Dynamic Island inset) sits above the map — no double safe-area-top. */
 .cq-realm-map-search {
-  margin: calc(0.65rem + env(safe-area-inset-top, 0px)) 0.65rem 0;
-  width: min(22rem, calc(100vw - 5.5rem));
+  margin: 0.4rem 0.55rem 0;
+  width: min(22rem, calc(100vw - 5.5rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
   pointer-events: auto;
 }
 
@@ -16985,10 +17025,14 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
     0 0 16px rgba(79, 216, 255, 0.32);
 }
 
+/*
+ * Filter chips live in Google's TOP_CENTER MapControl slot, which is already
+ * inset by Map.padding.top. Keep a small gap under the Realm header edge.
+ */
 .cq-realm-map-filter {
   display: flex;
   gap: 0.25rem;
-  margin-top: 0.35rem;
+  margin-top: 0.15rem;
   padding: 0.3rem;
   border-radius: 9999px;
   border: 1px solid rgba(75, 174, 255, 0.32);
@@ -17001,11 +17045,11 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   opacity: 0;
   transform: translateY(-10px);
   transition: opacity 380ms ease, transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+  max-width: min(100%, calc(100vw - max(1rem, env(safe-area-inset-left, 0px)) - max(1rem, env(safe-area-inset-right, 0px))));
 }
 
 .cq-realm-map-filter--immersive {
-  margin-top: 0.4rem;
-  max-width: min(100%, calc(100vw - max(1rem, env(safe-area-inset-left, 0px)) - max(1rem, env(safe-area-inset-right, 0px))));
+  margin-top: 0.2rem;
 }
 
 .cq-realm-map-filter--entered {
@@ -17083,9 +17127,9 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   color: rgba(216, 236, 255, 0.55);
 }
 
-/* Keep bottom-center map toasts above the floating bottom nav. */
+/* BOTTOM_CENTER toasts are already inset by Map.padding — small gap only. */
 .cq-realm-map-surface .cq-realm-map-toast {
-  margin-bottom: var(--cq-realm-bottom-clearance);
+  margin-bottom: 0.35rem;
 }
 
 .cq-realm-archive-directions-wrap {
@@ -17754,7 +17798,8 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
 }
 
 .cq-realm-aura-corner--bl {
-  bottom: calc(var(--cq-realm-nav-clearance, 0px) + 9px);
+  /* Stay above the Google logo/copyright band. */
+  bottom: calc(var(--cq-realm-map-padding-bottom) + 9px);
   left: 9px;
   border-right: none;
   border-top: none;
@@ -17762,7 +17807,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
 }
 
 .cq-realm-aura-corner--br {
-  bottom: calc(var(--cq-realm-nav-clearance, 0px) + 9px);
+  bottom: calc(var(--cq-realm-map-padding-bottom) + 9px);
   right: 9px;
   border-left: none;
   border-top: none;
