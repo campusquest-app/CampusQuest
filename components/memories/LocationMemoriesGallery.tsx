@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { Camera, MapPin, X } from "lucide-react";
 import type { CampusMemory, CampusMemoryGroup } from "@/lib/types";
 import type { CampusLocationId } from "@/lib/locations/registry";
-import { getCampusLocation } from "@/lib/locations/registry";
+import { tryGetCampusLocation } from "@/lib/locations/registry";
 import { fetchCampusMemoriesByLocation } from "@/lib/client/campusMemoriesClient";
 import { subscribeCampusMemoriesChanged } from "@/lib/client/campusMemoriesSync";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
@@ -85,11 +85,11 @@ export function LocationMemoriesGallery({
 
   const openMemory = useCallback(
     (memory: CampusMemory) => {
-      const loc = getCampusLocation(locationId);
+      const loc = tryGetCampusLocation(locationId);
       onOpenMemory(
         {
           locationId,
-          locationKey: memory.locationKey ?? loc.legacyCampusKey ?? locationId,
+          locationKey: memory.locationKey ?? loc?.legacyCampusKey ?? locationId,
           locationName: memory.locationName ?? locationName,
           count: memories.length,
           latestCreatedAt: memories[0]?.createdAt ?? memory.createdAt,

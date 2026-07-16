@@ -55,14 +55,20 @@ function zoneOffsetMs(instant: Date): number {
   return wallAsUtc - instant.getTime();
 }
 
-/** "6:30 PM" in campus time. */
-export function formatCampusTime(instant: Date | string): string {
+/** "6:30 PM" in campus time. Never throws on invalid / missing timestamps. */
+export function formatCampusTime(instant: Date | string | null | undefined): string {
+  if (instant == null) return "Time TBD";
   const date = typeof instant === "string" ? new Date(instant) : instant;
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: CAMPUS_TIME_ZONE,
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "Time TBD";
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: CAMPUS_TIME_ZONE,
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
+  } catch {
+    return "Time TBD";
+  }
 }
 
 const CANCELLED_PATTERN = /\bcancell?ed\b/i;
@@ -94,7 +100,7 @@ export type EventCountdownState = {
 };
 
 export function getEventCountdownState(
-  startsAt: Date | string,
+  startsAt: Date | string | null | undefined,
   endsAt: Date | string | null | undefined,
   now: Date,
   cancelled = false,
@@ -104,11 +110,19 @@ export function getEventCountdownState(
   }
 
   const start = typeof startsAt === "string" ? new Date(startsAt) : startsAt;
-  const end = endsAt
+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) {
+    return { kind: "upcoming", label: "Time TBD", urgency: 0 };
+  }
+
+  const parsedEnd = endsAt
     ? typeof endsAt === "string"
       ? new Date(endsAt)
       : endsAt
-    : new Date(start.getTime() + DEFAULT_EVENT_DURATION_MS);
+    : null;
+  const end =
+    parsedEnd instanceof Date && !Number.isNaN(parsedEnd.getTime())
+      ? parsedEnd
+      : new Date(start.getTime() + DEFAULT_EVENT_DURATION_MS);
 
   if (now >= end) {
     return { kind: "ended", label: "Ended", urgency: 0 };
@@ -118,6 +132,9 @@ export function getEventCountdownState(
   }
 
   const minutes = Math.ceil((start.getTime() - now.getTime()) / 60_000);
+  if (!Number.isFinite(minutes)) {
+    return { kind: "upcoming", label: "Time TBD", urgency: 0 };
+  }
   if (minutes <= 2) {
     return { kind: "imminent", label: "STARTING NOW", urgency: 4 };
   }
@@ -171,7 +188,10 @@ export function getGroupCountdown(events: MapEventPin[], now: Date): GroupCountd
       const aLive = a.state.kind === "live" ? 0 : 1;
       const bLive = b.state.kind === "live" ? 0 : 1;
       if (aLive !== bLive) return aLive - bLive;
-      return new Date(a.event.startsAt).getTime() - new Date(b.event.startsAt).getTime();
+      const aStart = Date.parse(a.event.startsAt);
+      const bStart = Date.parse(b.event.startsAt);
+      return (Number.isFinite(aStart) ? aStart : Number.POSITIVE_INFINITY) -
+        (Number.isFinite(bStart) ? bStart : Number.POSITIVE_INFINITY);
     });
 
   if (runnable.length === 0) {
@@ -186,13 +206,16 @@ export function getGroupCountdown(events: MapEventPin[], now: Date): GroupCountd
   const featured = runnable[0];
   let state = featured.state;
   if (active.length > 1 && state.kind !== "live") {
-    const minutes = Math.ceil(
-      (new Date(featured.event.startsAt).getTime() - now.getTime()) / 60_000,
-    );
-    if (state.kind === "hurry" || state.kind === "imminent") {
-      state = { ...state, label: state.kind === "imminent" ? "STARTING NOW" : `HURRY! ${minutes}m` };
-    } else if (state.kind === "soon" || state.kind === "closing") {
-      state = { ...state, label: `Next: ${minutes}m` };
+    const startMs = Date.parse(featured.event.startsAt);
+    const minutes = Number.isFinite(startMs)
+      ? Math.ceil((startMs - now.getTime()) / 60_000)
+      : NaN;
+    if (Number.isFinite(minutes)) {
+      if (state.kind === "hurry" || state.kind === "imminent") {
+        state = { ...state, label: state.kind === "imminent" ? "STARTING NOW" : `HURRY! ${minutes}m` };
+      } else if (state.kind === "soon" || state.kind === "closing") {
+        state = { ...state, label: `Next: ${minutes}m` };
+      }
     }
   }
 
@@ -220,7 +243,10 @@ export function sortEventsForSheet(events: MapEventPin[], now: Date): MapEventPi
   return filterVisibleMapEvents(events, now).sort((a, b) => {
     const rankDiff = rank(a) - rank(b);
     if (rankDiff !== 0) return rankDiff;
-    return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
+    const aStart = Date.parse(a.startsAt);
+    const bStart = Date.parse(b.startsAt);
+    return (Number.isFinite(aStart) ? aStart : Number.POSITIVE_INFINITY) -
+      (Number.isFinite(bStart) ? bStart : Number.POSITIVE_INFINITY);
   });
 }
 

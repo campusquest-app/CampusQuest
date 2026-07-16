@@ -11,11 +11,14 @@ export {
   getCampusLocationIds,
   getCampusLocationName,
   getCampusMemoryLocationOptions,
+  isCampusLocationCatalogStale,
   isCampusLocationId,
   legacyCampusKeyFromLocationId,
   listCampusLocationRegistryEntries,
   realmLocationsFromCatalog,
   sortMemoryGroups,
+  synthesizeCampusLocation,
+  tryGetCampusLocation,
 } from "@/lib/locations/campusLocationCatalog";
 
 import {

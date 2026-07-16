@@ -5,7 +5,7 @@ import { Camera, MapPin, Sparkles } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import type { CampusMemory, CampusMemoryGroup } from "@/lib/types";
 import type { CampusLocationId } from "@/lib/locations/registry";
-import { getCampusLocation } from "@/lib/locations/registry";
+import { getCampusLocationName, tryGetCampusLocation } from "@/lib/locations/registry";
 import { fetchCampusMemoriesByLocation } from "@/lib/client/campusMemoriesClient";
 import { subscribeCampusMemoriesChanged } from "@/lib/client/campusMemoriesSync";
 
@@ -41,15 +41,22 @@ function writeViewedMap(map: Record<string, string>): void {
   }
 }
 
-function toMemoryGroup(locationId: CampusLocationId, memories: CampusMemory[]): CampusMemoryGroup {
+function toMemoryGroup(
+  locationId: CampusLocationId,
+  memories: CampusMemory[],
+  fallbackName: string,
+): CampusMemoryGroup {
   const latest = memories[0];
   const recentCutoff = Date.now() - 2 * 60 * 60 * 1000;
-  const hasRecent = memories.some((m) => Date.parse(m.createdAt) >= recentCutoff);
-  const loc = getCampusLocation(locationId);
+  const hasRecent = memories.some((m) => {
+    const ts = Date.parse(m.createdAt);
+    return Number.isFinite(ts) && ts >= recentCutoff;
+  });
+  const loc = tryGetCampusLocation(locationId);
   return {
     locationId,
-    locationKey: loc.legacyCampusKey ?? locationId,
-    locationName: latest?.locationName ?? loc.name,
+    locationKey: loc?.legacyCampusKey ?? locationId,
+    locationName: latest?.locationName ?? loc?.name ?? fallbackName ?? getCampusLocationName(locationId),
     count: memories.length,
     latestCreatedAt: latest?.createdAt ?? new Date().toISOString(),
     latestPreview:
@@ -125,7 +132,10 @@ export function LocationMemoriesSection({
     [memories],
   );
 
-  const group = useMemo(() => toMemoryGroup(locationId, sortedMemories), [locationId, sortedMemories]);
+  const group = useMemo(
+    () => toMemoryGroup(locationId, sortedMemories, locationName),
+    [locationId, locationName, sortedMemories],
+  );
 
   const markViewed = useCallback((memory: CampusMemory) => {
     setViewedMap((prev) => {

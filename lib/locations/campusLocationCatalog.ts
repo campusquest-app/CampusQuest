@@ -89,11 +89,55 @@ export function setCampusLocationCatalogCache(rows: CampusLocationRecord[]): voi
   catalogCacheAt = Date.now();
 }
 
+/**
+ * Returns the best available catalog. Once a fetch has populated `catalogCache`,
+ * we keep serving it even after TTL (stale-while-revalidate) so custom/admin
+ * location slugs never disappear mid-session and crash marker sheets.
+ */
 export function getCampusLocationCatalogSnapshot(): CampusLocationRecord[] {
-  if (catalogCache && Date.now() - catalogCacheAt < CATALOG_TTL_MS) {
+  if (catalogCache && catalogCache.length > 0) {
     return catalogCache;
   }
   return FALLBACK_CAMPUS_LOCATIONS;
+}
+
+/** True when cache is empty or older than TTL — callers should refetch, not drop rows. */
+export function isCampusLocationCatalogStale(): boolean {
+  if (!catalogCache || catalogCache.length === 0) return true;
+  return Date.now() - catalogCacheAt >= CATALOG_TTL_MS;
+}
+
+/** Synthetic entry so UI never throws on unknown / temporarily missing slugs. */
+export function synthesizeCampusLocation(id: CampusLocationId): CampusLocationRegistryEntry {
+  const label = id
+    .trim()
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (ch) => ch.toUpperCase()) || "Campus location";
+  return {
+    id,
+    slug: id,
+    name: label,
+    description: "",
+    category: "landmark",
+    latitude: null,
+    longitude: null,
+    mapX: 50,
+    mapY: 50,
+    markerEmoji: "📍",
+    shortLabel: label,
+    fantasyName: label,
+    flavorText: "",
+    major: false,
+    legacyCampusKey: null,
+    sortOrder: 9999,
+    isBuiltin: false,
+    isActive: true,
+  };
+}
+
+export function tryGetCampusLocation(id: CampusLocationId | null | undefined): CampusLocationRegistryEntry | null {
+  if (!id || typeof id !== "string" || !id.trim()) return null;
+  return listCampusLocationRegistryEntries(true).find((e) => e.slug === id) ?? null;
 }
 
 function registryEntryFromRecord(row: CampusLocationRecord): CampusLocationRegistryEntry {
@@ -114,10 +158,12 @@ export function isCampusLocationId(value: string | null | undefined): value is C
   return listCampusLocationRegistryEntries(true).some((e) => e.slug === value);
 }
 
+/**
+ * Resolve a campus location for UI. Never throws — unknown IDs get a synthetic
+ * fallback so marker taps cannot take down the Realm via AppErrorBoundary.
+ */
 export function getCampusLocation(id: CampusLocationId): CampusLocationRegistryEntry {
-  const entry = listCampusLocationRegistryEntries(true).find((e) => e.slug === id);
-  if (!entry) throw new Error(`Unknown campus location id: ${id}`);
-  return entry;
+  return tryGetCampusLocation(id) ?? synthesizeCampusLocation(id);
 }
 
 export function getCampusLocationName(id: CampusLocationId): string {

@@ -30,7 +30,17 @@ import { fetchCampusMemoryGroupsAndStats } from "@/lib/client/campusMemoriesClie
 import { subscribeCampusMemoriesChanged } from "@/lib/client/campusMemoriesSync";
 import type { CampusMemoryGroup, CampusMemoryLocationStats } from "@/lib/types";
 import type { CampusLocationId } from "@/lib/locations/registry";
-import { getCampusLocation } from "@/lib/locations/registry";
+import { getCampusLocationName, isCampusLocationCatalogStale } from "@/lib/locations/registry";
+import {
+  createMarkerTapGate,
+  getMarkerUnavailableMessage,
+  normalizeGroupedMapContent,
+  resolveLandmarkTap,
+  resolveSupplementaryTap,
+  inferMarkerKindFromGroup,
+  logFailedMarkerClick,
+} from "@/lib/realm/safeMarkerClick";
+import { RealmMarkerErrorBoundary } from "./RealmMarkerErrorBoundary";
 import { AddCampusMemorySheet } from "@/components/memories/AddCampusMemorySheet";
 import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
 import { LocationMemoriesGallery } from "@/components/memories/LocationMemoriesGallery";
@@ -138,6 +148,9 @@ export function RealmMap({
 }) {
   const [selectedLocation, setSelectedLocation] = useState<HydratedRealmLocation | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [markerNotice, setMarkerNotice] = useState<string | null>(null);
+  const markerTapGateRef = useRef(createMarkerTapGate(400));
+  const markerNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null);
   const [uriMapLoaded, setUriMapLoaded] = useState(() => isRealmMapTilesReady());
   const [panning, setPanning] = useState(false);
@@ -358,26 +371,75 @@ export function RealmMap({
     return resolveMarkerPositions(loadMarkerPositionOverrides());
   }, []);
 
+  const showMarkerNotice = useCallback((message: string) => {
+    setMarkerNotice(message);
+    if (markerNoticeTimerRef.current) clearTimeout(markerNoticeTimerRef.current);
+    markerNoticeTimerRef.current = setTimeout(() => setMarkerNotice(null), 3200);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (markerNoticeTimerRef.current) clearTimeout(markerNoticeTimerRef.current);
+    };
+  }, []);
+
   const openLocation = useCallback(
     (location: HydratedRealmLocation) => {
       if (editMode) return;
-      setSelectedLocation(location);
-      setSelectedMapContent(location.mapContent);
-      setActiveMarkerId(location.id);
-      setSheetInitialView("archive");
-      setSheetOpen(true);
+      if (!markerTapGateRef.current.tryOpen(location.id)) return;
+      try {
+        if (isCampusLocationCatalogStale()) {
+          void reloadCatalog();
+        }
+        setSelectedLocation(location);
+        setSelectedMapContent(normalizeGroupedMapContent(location.mapContent));
+        setActiveMarkerId(location.id);
+        setSheetInitialView("archive");
+        setSheetOpen(true);
+        setMarkerNotice(null);
+      } catch (exception) {
+        logFailedMarkerClick({
+          markerType: "landmark",
+          markerId: location.id,
+          source: "openLocation",
+          lookupResult: "error",
+          exception,
+        });
+        showMarkerNotice(getMarkerUnavailableMessage());
+      }
     },
-    [editMode],
+    [editMode, reloadCatalog, showMarkerNotice],
   );
 
-  const openSupplementaryPin = useCallback((group: GroupedMapLocation) => {
-    if (editMode) return;
-    setSelectedLocation(null);
-    setSelectedMapContent(group);
-    setActiveMarkerId(group.groupKey);
-    setSheetInitialView("overview");
-    setSheetOpen(true);
-  }, [editMode]);
+  const openSupplementaryPin = useCallback(
+    (group: GroupedMapLocation) => {
+      if (editMode) return;
+      const resolved = resolveSupplementaryTap({ group, source: "openSupplementaryPin" });
+      if (!resolved.ok) {
+        showMarkerNotice(resolved.message);
+        return;
+      }
+      if (!markerTapGateRef.current.tryOpen(resolved.id)) return;
+      try {
+        setSelectedLocation(null);
+        setSelectedMapContent(normalizeGroupedMapContent(group));
+        setActiveMarkerId(group.groupKey);
+        setSheetInitialView("overview");
+        setSheetOpen(true);
+        setMarkerNotice(null);
+      } catch (exception) {
+        logFailedMarkerClick({
+          markerType: inferMarkerKindFromGroup(group),
+          markerId: group.groupKey,
+          source: "openSupplementaryPin",
+          lookupResult: "error",
+          exception,
+        });
+        showMarkerNotice(getMarkerUnavailableMessage());
+      }
+    },
+    [editMode, showMarkerNotice],
+  );
 
   const handlePlaceSelected = useCallback(
     (place: PlaceSearchResult) => {
@@ -577,10 +639,29 @@ export function RealmMap({
 
   const handleTapLandmark = useCallback(
     (id: RealmLocationId) => {
-      const location = locations.find((l) => l.id === id);
-      if (location) openLocation(location);
+      const resolved = resolveLandmarkTap({
+        markerId: id,
+        locations,
+        source: "handleTapLandmark",
+      });
+      if (!resolved.ok) {
+        // Stale catalog / sync race: refresh data and surface a local toast (never crash).
+        if (resolved.reason === "missing" || resolved.reason === "stale") {
+          void reloadCatalog();
+          void reloadMapGroups();
+        }
+        showMarkerNotice(resolved.message);
+        return;
+      }
+      const location = locations.find((l) => l.id === resolved.id);
+      if (!location) {
+        void reloadCatalog();
+        showMarkerNotice(getMarkerUnavailableMessage());
+        return;
+      }
+      openLocation(location);
     },
-    [locations, openLocation],
+    [locations, openLocation, reloadCatalog, reloadMapGroups, showMarkerNotice],
   );
 
   const editorDebug: RealmMarkerEditorDebug = useMemo(() => {
@@ -1024,41 +1105,65 @@ export function RealmMap({
         ) : null}
       </div>
 
-      <RealmLocationSheet
-        location={selectedLocation}
-        mapContent={selectedMapContent}
-        open={sheetOpen}
-        initialView={sheetInitialView}
-        memoriesLoaded={memoriesLoaded}
-        memoryStats={selectedLocation ? memoryStatsByLocation[selectedLocation.id] ?? null : null}
-        mapContentLoaded={mapGroupsLoaded}
-        viewer={viewer}
-        currentUserId={userId}
-        onClose={closeSheet}
-        onViewQuests={onViewQuests}
-        onCreatePost={handleCreatePost}
-        onRefreshMemories={loadCampusMemories}
-        onRefreshAll={handleRefreshLocationData}
-        questReloadToken={questReloadToken}
-        onViewProfile={onViewProfile}
-        onSharePost={onSharePost}
-        onAddMemory={handleAddMemory}
-        onOpenMemoryViewer={handleOpenMemoryViewer}
-        onOpenMemoryGallery={handleOpenMemoryGallery}
-        directionsEnabled={useGoogleMap && !editMode}
-        directionsDestination={selectedDestination}
-        directionsStatus={directionsStatus}
-        activeTravelMode={directionsRequest?.travelMode ?? null}
-        onRequestWalking={() => requestDirections("WALKING")}
-        onRequestDriving={() => requestDirections("DRIVING")}
-        onClearDirections={clearDirections}
-        onOpenInRealmMap={openRouteOnMap}
-      />
+      <RealmMarkerErrorBoundary
+        markerId={activeMarkerId}
+        markerType={
+          selectedLocation
+            ? "landmark"
+            : selectedMapContent
+              ? inferMarkerKindFromGroup(selectedMapContent)
+              : "landmark"
+        }
+        onRecover={closeSheet}
+      >
+        <RealmLocationSheet
+          location={selectedLocation}
+          mapContent={selectedMapContent}
+          open={sheetOpen}
+          initialView={sheetInitialView}
+          memoriesLoaded={memoriesLoaded}
+          memoryStats={selectedLocation ? memoryStatsByLocation[selectedLocation.id] ?? null : null}
+          mapContentLoaded={mapGroupsLoaded}
+          viewer={viewer}
+          currentUserId={userId}
+          onClose={closeSheet}
+          onViewQuests={onViewQuests}
+          onCreatePost={handleCreatePost}
+          onRefreshMemories={loadCampusMemories}
+          onRefreshAll={handleRefreshLocationData}
+          questReloadToken={questReloadToken}
+          onViewProfile={onViewProfile}
+          onSharePost={onSharePost}
+          onAddMemory={handleAddMemory}
+          onOpenMemoryViewer={handleOpenMemoryViewer}
+          onOpenMemoryGallery={handleOpenMemoryGallery}
+          directionsEnabled={useGoogleMap && !editMode}
+          directionsDestination={selectedDestination}
+          directionsStatus={directionsStatus}
+          activeTravelMode={directionsRequest?.travelMode ?? null}
+          onRequestWalking={() => requestDirections("WALKING")}
+          onRequestDriving={() => requestDirections("DRIVING")}
+          onClearDirections={clearDirections}
+          onOpenInRealmMap={openRouteOnMap}
+        />
+      </RealmMarkerErrorBoundary>
+
+      {markerNotice ? (
+        <div
+          className="fixed inset-x-0 bottom-0 z-[75] flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none"
+          role="status"
+        >
+          <p className="cq-realm-map-toast pointer-events-auto max-w-sm text-center">{markerNotice}</p>
+        </div>
+      ) : null}
 
       {memoryGalleryLocationId ? (
         <LocationMemoriesGallery
           locationId={memoryGalleryLocationId}
-          locationName={getCampusLocation(memoryGalleryLocationId).name}
+          locationName={
+            locations.find((l) => l.id === memoryGalleryLocationId)?.name ??
+            getCampusLocationName(memoryGalleryLocationId)
+          }
           open
           onClose={() => setMemoryGalleryLocationId(null)}
           onAddMemory={handleAddMemory}

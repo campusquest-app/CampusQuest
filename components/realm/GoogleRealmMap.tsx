@@ -356,16 +356,24 @@ function RealmMapMarkers({
 
   const handleLandmarkTap = useCallback(
     (id: RealmLocationId) => {
-      vibrateMapMarkerTap();
-      onTapLandmark(id);
+      try {
+        vibrateMapMarkerTap();
+        onTapLandmark(id);
+      } catch (exception) {
+        console.warn("[cq:realm-marker] landmark tap failed", { id, exception });
+      }
     },
     [onTapLandmark],
   );
 
   const handleGroupTap = useCallback(
     (group: GroupedMapLocation) => {
-      vibrateMapMarkerTap();
-      onTapSupplementary(group);
+      try {
+        vibrateMapMarkerTap();
+        onTapSupplementary(group);
+      } catch (exception) {
+        console.warn("[cq:realm-marker] group tap failed", { groupKey: group?.groupKey, exception });
+      }
     },
     [onTapSupplementary],
   );

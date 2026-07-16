@@ -177,7 +177,13 @@ export function RealmLocationSheet({
   const rawContent = mapContent ?? emptyMapLocationContent();
   // Map lifecycle rule: events vanish from the sheet 24h after they end, so
   // every count/list/preview below only sees currently-visible events.
-  const content = { ...rawContent, events: filterVisibleMapEvents(rawContent.events) };
+  // Guard partial/stale payloads so one bad pin never crashes the sheet.
+  const content = {
+    ...rawContent,
+    quests: Array.isArray(rawContent.quests) ? rawContent.quests : [],
+    qrCodes: Array.isArray(rawContent.qrCodes) ? rawContent.qrCodes : [],
+    events: filterVisibleMapEvents(Array.isArray(rawContent.events) ? rawContent.events : []),
+  };
   const displayName = location?.name ?? mapContent?.locationName ?? "Campus location";
   const displayAddress = mapContent?.locationAddress ?? null;
   const locationId = location?.id ?? mapContent?.realmLocationId ?? null;
@@ -192,30 +198,17 @@ export function RealmLocationSheet({
     momentCount,
     hasQr: content.qrCodes.length > 0,
   });
-  const urgency = getRealmEventUrgency(
-    activeEventCount > 0 && content.events[0]
+  const previewEventStartMs = content.events[0] ? Date.parse(content.events[0].startsAt) : Number.NaN;
+  const previewEventTimer =
+    activeEventCount > 0 && content.events[0] && Number.isFinite(previewEventStartMs)
       ? {
-          status: new Date(content.events[0].startsAt) <= new Date() ? "active" : "countdown",
+          status: (previewEventStartMs <= Date.now() ? "active" : "countdown") as "active" | "countdown",
           label: content.events[0].title,
-          minutesUntilStart: Math.max(
-            0,
-            Math.round((new Date(content.events[0].startsAt).getTime() - Date.now()) / 60_000),
-          ),
+          minutesUntilStart: Math.max(0, Math.round((previewEventStartMs - Date.now()) / 60_000)),
         }
-      : { status: "countdown", minutesUntilStart: 999, label: "No scheduled events" },
-  );
-  const eventLabel = formatRealmEventLabel(
-    activeEventCount > 0 && content.events[0]
-      ? {
-          status: new Date(content.events[0].startsAt) <= new Date() ? "active" : "countdown",
-          label: content.events[0].title,
-          minutesUntilStart: Math.max(
-            0,
-            Math.round((new Date(content.events[0].startsAt).getTime() - Date.now()) / 60_000),
-          ),
-        }
-      : { status: "countdown", minutesUntilStart: 999, label: "No scheduled events" },
-  );
+      : { status: "countdown" as const, minutesUntilStart: 999, label: "No scheduled events" };
+  const urgency = getRealmEventUrgency(previewEventTimer);
+  const eventLabel = formatRealmEventLabel(previewEventTimer);
   const activityLine = buildActivityLine({
     activeQuests: activeQuestCount,
     activeEvents: activeEventCount,

@@ -49,6 +49,21 @@ describe("formatCampusTime", () => {
   it("formats 22:30 UTC in July as 6:30 PM campus time", () => {
     expect(formatCampusTime("2026-07-09T22:30:00.000Z")).toBe("6:30 PM");
   });
+
+  it("never throws on invalid or missing timestamps", () => {
+    expect(formatCampusTime("not-a-date")).toBe("Time TBD");
+    expect(formatCampusTime(null)).toBe("Time TBD");
+    expect(formatCampusTime(undefined)).toBe("Time TBD");
+    expect(formatCampusTime(new Date(Number.NaN))).toBe("Time TBD");
+  });
+});
+
+describe("getEventCountdownState invalid starts", () => {
+  it("returns a safe upcoming state instead of throwing", () => {
+    const now = new Date("2026-07-16T18:00:00.000Z");
+    expect(getEventCountdownState("bad", null, now).label).toBe("Time TBD");
+    expect(getEventCountdownState(null, null, now).kind).toBe("upcoming");
+  });
 });
 
 describe("isEventCancelled", () => {
