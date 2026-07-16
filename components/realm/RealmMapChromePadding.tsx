@@ -18,8 +18,8 @@ function paddingsEqual(a: MapChromePadding, b: MapChromePadding): boolean {
 /**
  * Keeps Google Maps logo / copyright attribution clear of CampusQuest UI by:
  * 1. Applying Map.padding so Google chrome and MapControls inset automatically
- * 2. Publishing matching CSS vars for absolute overlays (edit FAB, gradients)
- * 3. Recomputing on resize, orientation change, and visualViewport shifts
+ * 2. Publishing matching CSS vars for absolute overlays (aura, footer, edit FAB)
+ * 3. Recomputing on resize, orientation change, visualViewport, and dock layout
  */
 export function RealmMapChromePadding({ enabled = true }: { enabled?: boolean }) {
   const map = useMap();
@@ -52,25 +52,33 @@ export function RealmMapChromePadding({ enabled = true }: { enabled?: boolean })
     // Dock height is measured into --cq-bottom-nav-h after layout; re-check shortly.
     const settleTimer = window.setTimeout(apply, 120);
     const settleTimer2 = window.setTimeout(apply, 480);
+    const settleTimer3 = window.setTimeout(apply, 1200);
 
-    // Observe the map container itself for flex/rotation size changes.
-    const div = map.getDiv();
-    const ro =
-      typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(() => {
-            apply();
-          })
-        : null;
-    if (div) ro?.observe(div);
+    const observers: ResizeObserver[] = [];
+    const mapDiv = map.getDiv();
+    if (typeof ResizeObserver !== "undefined") {
+      if (mapDiv) {
+        const mapRo = new ResizeObserver(() => apply());
+        mapRo.observe(mapDiv);
+        observers.push(mapRo);
+      }
+      const dock = document.querySelector(".cq-dock-nav");
+      if (dock instanceof HTMLElement) {
+        const dockRo = new ResizeObserver(() => apply());
+        dockRo.observe(dock);
+        observers.push(dockRo);
+      }
+    }
 
     return () => {
       window.clearTimeout(settleTimer);
       window.clearTimeout(settleTimer2);
+      window.clearTimeout(settleTimer3);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("orientationchange", onResize);
       vv?.removeEventListener("resize", onResize);
       vv?.removeEventListener("scroll", onResize);
-      ro?.disconnect();
+      for (const observer of observers) observer.disconnect();
       lastPaddingRef.current = null;
       clearMapChromePaddingCssVars();
     };

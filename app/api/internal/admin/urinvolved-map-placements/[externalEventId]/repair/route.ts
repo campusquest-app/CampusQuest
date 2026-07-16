@@ -10,25 +10,22 @@ export async function POST(request: Request, context: RouteContext) {
     const auth = await requireAdminUser(request);
     enforceRateLimit({
       userId: auth.user.id,
-      routeKey: "admin:urinvolved-placement:resolve",
-      limit: 20,
+      routeKey: "admin:urinvolved-placement:repair",
+      limit: 30,
       windowMs: 60_000,
     });
     const { externalEventId } = await context.params;
     if (!externalEventId) {
-      return fail(new ApiError(404, "External event not found.", "EXTERNAL_EVENT_NOT_FOUND"));
+      return fail(new ApiError(400, "externalEventId is required.", "BAD_REQUEST"));
     }
 
+    const body = (await request.json().catch(() => ({}))) as { forceGoogle?: boolean };
     const result = await resolveAndUpsertEventMapPlacement(externalEventId, {
-      forceGoogle: true,
+      forceGoogle: body.forceGoogle !== false,
       revalidate: true,
     });
 
-    if (result.failureReason === "Event not found") {
-      return fail(new ApiError(404, "External event not found.", "EXTERNAL_EVENT_NOT_FOUND"));
-    }
-
-    return ok({ override: result.override, result });
+    return ok({ result });
   } catch (error) {
     return fail(error);
   }

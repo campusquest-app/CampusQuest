@@ -7,6 +7,8 @@ const CATALOG = [
 ];
 
 const BASE_OVERRIDE = {
+  source: "urinvolved",
+  occurrenceStart: null,
   googlePlaceId: null,
   formattedAddress: null,
   resolutionDebug: null,

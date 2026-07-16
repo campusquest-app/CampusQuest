@@ -15,10 +15,8 @@ import {
 import { parseUrinvolvedEventsRss, type ParsedUrinvolvedEvent } from "@/lib/server/urinvolved/parseRssEvents";
 import { getCampusLocations } from "@/lib/server/campusLocationsDb";
 import { getLogicalEventKey, isLogicalEventCancelled } from "@/lib/realm/dedupeLogicalEvents";
-import {
-  loadOverridesForEventIds,
-  upsertAutoPlacementOverride,
-} from "@/lib/server/externalEventMapOverrides";
+import { resolveAndUpsertEventMapPlacement } from "@/lib/server/urinvolved/resolveAndUpsertEventMapPlacement";
+import { revalidatePath } from "next/cache";
 
 export const URINVOLVED_SOURCE = "urinvolved";
 
@@ -218,16 +216,10 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
 
         const externalEventId = String(upserted?.id ?? existing?.id ?? "");
         if (externalEventId) {
-          const overrides = await loadOverridesForEventIds([externalEventId]);
-          await upsertAutoPlacementOverride({
-            externalEventId,
-            fields: {
-              venueName: location.venueName,
-              locationName: location.locationName,
-              address: location.address,
-            },
+          // Shared placement pipeline — never depends on opening the map.
+          await resolveAndUpsertEventMapPlacement(externalEventId, {
             catalog,
-            existing: overrides.get(externalEventId) ?? null,
+            revalidate: false,
           });
         }
       }
@@ -318,6 +310,13 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
       orgs_updated: orgsUpdated,
       error_message: errors.length > 0 ? errors.slice(0, 5).join(" | ") : null,
     });
+
+    try {
+      revalidatePath("/api/quests/map-pins");
+      revalidatePath("/realm");
+    } catch {
+      /* ignore outside Next request context */
+    }
 
     return {
       success,

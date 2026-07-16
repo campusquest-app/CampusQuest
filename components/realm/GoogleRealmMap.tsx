@@ -784,9 +784,40 @@ export function GoogleRealmMap({
             onError={handleDirectionsError}
           />
 
-          {!editMode && onPlaceSelected ? (
-            <MapControl position={ControlPosition.TOP_LEFT}>
-              <RealmMapSearch onSelect={onPlaceSelected} disabled={!tilesLoaded} />
+          {!editMode ? (
+            <MapControl position={ControlPosition.TOP_CENTER}>
+              <div
+                className={`cq-realm-map-top-chrome${immersive ? " cq-realm-map-top-chrome--immersive" : ""}${
+                  tilesLoaded ? " cq-realm-map-top-chrome--entered" : ""
+                }`}
+              >
+                {onPlaceSelected ? (
+                  <RealmMapSearch onSelect={onPlaceSelected} disabled={!tilesLoaded} />
+                ) : null}
+                <div className="cq-realm-map-filter" role="group" aria-label="Map marker filters">
+                  {FILTER_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setFilter(opt.id)}
+                      aria-pressed={filter === opt.id}
+                      className={`cq-realm-map-filter-chip touch-manipulation${
+                        filter === opt.id ? " cq-realm-map-filter-chip--active" : ""
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </MapControl>
+          ) : null}
+
+          {editMode ? (
+            <MapControl position={ControlPosition.TOP_CENTER}>
+              <p className="cq-realm-map-edit-hint mt-3">
+                Drag a pin — or select one, then tap the map to place it. Save from the marker editor.
+              </p>
             </MapControl>
           ) : null}
 
@@ -826,40 +857,6 @@ export function GoogleRealmMap({
             onBuildingsOverlayChange={setShowFallbackBuildings}
             mapRef={mapRef}
           />
-
-          {!editMode ? (
-            <MapControl position={ControlPosition.TOP_CENTER}>
-              <div
-                className={`cq-realm-map-filter${immersive ? " cq-realm-map-filter--immersive" : ""}${
-                  tilesLoaded ? " cq-realm-map-filter--entered" : ""
-                }`}
-                role="group"
-                aria-label="Map marker filters"
-              >
-                {FILTER_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setFilter(opt.id)}
-                    aria-pressed={filter === opt.id}
-                    className={`cq-realm-map-filter-chip touch-manipulation${
-                      filter === opt.id ? " cq-realm-map-filter-chip--active" : ""
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </MapControl>
-          ) : null}
-
-          {editMode ? (
-            <MapControl position={ControlPosition.TOP_CENTER}>
-              <p className="cq-realm-map-edit-hint mt-3">
-                Drag a pin — or select one, then tap the map to place it. Save from the marker editor.
-              </p>
-            </MapControl>
-          ) : null}
 
           {tilesLoaded && !markersLoaded ? (
             <MapControl position={ControlPosition.BOTTOM_CENTER}>

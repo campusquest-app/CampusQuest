@@ -64,6 +64,8 @@ describe("upsertAutoPlacementOverride protection", () => {
     const existing = {
       id: "1",
       externalEventId: "evt-1",
+      source: "urinvolved",
+      occurrenceStart: "2026-07-16T22:30:00.000Z",
       realmLocationId: null,
       customLat: 41.4908,
       customLng: -71.5294,

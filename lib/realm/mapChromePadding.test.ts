@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   GOOGLE_ATTRIBUTION_BAND_PX,
+  MAP_CHROME_FAB_GAP_PX,
   MAP_CHROME_LEFT_INSET_PX,
   MAP_CHROME_RIGHT_INSET_PX,
   MAP_CHROME_TOP_INSET_PX,
@@ -15,7 +16,7 @@ describe("computeMapChromePadding", () => {
       attributionBandPx: GOOGLE_ATTRIBUTION_BAND_PX,
     });
 
-    expect(padding.bottom).toBe(100 + GOOGLE_ATTRIBUTION_BAND_PX);
+    expect(padding.bottom).toBe(100 + GOOGLE_ATTRIBUTION_BAND_PX + MAP_CHROME_FAB_GAP_PX);
     expect(padding.top).toBe(MAP_CHROME_TOP_INSET_PX);
     expect(padding.left).toBe(MAP_CHROME_LEFT_INSET_PX);
     expect(padding.right).toBe(MAP_CHROME_RIGHT_INSET_PX);
@@ -38,6 +39,14 @@ describe("computeMapChromePadding", () => {
       navClearancePx: 0,
       safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
     });
-    expect(padding.bottom).toBe(GOOGLE_ATTRIBUTION_BAND_PX);
+    expect(padding.bottom).toBe(GOOGLE_ATTRIBUTION_BAND_PX + MAP_CHROME_FAB_GAP_PX);
+  });
+
+  it("always reserves fab gap so RIGHT_BOTTOM controls clear the logo", () => {
+    const padding = computeMapChromePadding({
+      navClearancePx: 80,
+      fabGapPx: 12,
+    });
+    expect(padding.bottom).toBe(80 + GOOGLE_ATTRIBUTION_BAND_PX + 12);
   });
 });

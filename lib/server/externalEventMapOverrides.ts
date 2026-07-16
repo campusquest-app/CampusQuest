@@ -13,17 +13,24 @@ import { createAdminClient } from "@/lib/server/supabase";
 import { effectiveEventEndIso, isEventVisibleOnMap } from "@/lib/realm/eventVisibility";
 
 export type ExternalEventMapMatchStatus =
-  | "auto_matched"
+  | "pending"
+  | "resolved"
+  | "unresolved"
+  | "invalid"
+  | "online"
+  | "auto_matched" // legacy alias of resolved
   | "manually_adjusted"
   | "verified"
   | "needs_review"
-  | "unmatched"
+  | "unmatched" // legacy alias of unresolved
   | "hidden"
   | "ignored";
 
 export type ExternalEventMapOverrideRow = {
   id: string;
   externalEventId: string;
+  source: string;
+  occurrenceStart: string | null;
   realmLocationId: string | null;
   customLat: number | null;
   customLng: number | null;
@@ -42,6 +49,9 @@ export type ExternalEventMapOverrideRow = {
   updatedAt: string;
 };
 
+/** Statuses that intentionally hide a pin from the public map. */
+const HIDDEN_STATUSES: ExternalEventMapMatchStatus[] = ["hidden", "ignored", "online", "invalid"];
+
 const PROTECTED_STATUSES: ExternalEventMapMatchStatus[] = [
   "manually_adjusted",
   "verified",
@@ -53,6 +63,8 @@ function rowFromDb(row: Record<string, unknown>): ExternalEventMapOverrideRow {
   return {
     id: String(row.id),
     externalEventId: String(row.external_event_id),
+    source: String(row.source ?? "urinvolved"),
+    occurrenceStart: (row.occurrence_start as string | null) ?? null,
     realmLocationId: (row.realm_location_id as string | null) ?? null,
     customLat: row.custom_lat == null ? null : Number(row.custom_lat),
     customLng: row.custom_lng == null ? null : Number(row.custom_lng),
@@ -147,10 +159,17 @@ export function resolveExternalEventPlacement(args: {
     "";
   const override = args.override ?? null;
 
-  if (override?.matchStatus === "hidden" || override?.matchStatus === "ignored") {
+  if (override && HIDDEN_STATUSES.includes(override.matchStatus)) {
     return {
       match: null,
-      meta: null,
+      meta: {
+        rawLocation,
+        normalizedLocation: override.normalizedLocationText ?? normalizeEventLocationText(rawLocation),
+        confidence: override.matchConfidence ?? 0,
+        matchReason: override.matchReason ?? override.matchStatus,
+        needsReview: false,
+        matchedText: rawLocation,
+      },
       override,
       renderOnMap: false,
       appliedOverride: true,
@@ -184,36 +203,22 @@ export function resolveExternalEventPlacement(args: {
     };
   }
 
-  if (override?.matchStatus === "unmatched" || override?.matchStatus === "needs_review") {
-    return {
-      match: null,
-      meta: {
-        rawLocation,
-        normalizedLocation: override.normalizedLocationText ?? normalizeEventLocationText(rawLocation),
-        confidence: override.matchConfidence ?? 0,
-        matchReason: override.matchReason ?? override.matchStatus,
-        needsReview: override.matchStatus === "needs_review",
-        matchedText: rawLocation,
-      },
-      override,
-      renderOnMap: false,
-      appliedOverride: true,
-      resolutionDebug: override.resolutionDebug,
-    };
-  }
-
-  if (override?.matchStatus === "auto_matched") {
-    const match = overrideToMatch(override, args.catalog);
-    if (match) {
+  // Stored placement with real coords / realm pin — always prefer it (including needs_review).
+  // Previously needs_review/unmatched short-circuited to renderOnMap:false even when coords existed.
+  if (override) {
+    const stored = overrideToMatch(override, args.catalog);
+    if (stored) {
+      const needsReview =
+        override.matchStatus === "needs_review" || (override.matchConfidence ?? 0) < 0.9;
       return {
-        match,
+        match: stored,
         meta: {
           rawLocation,
           normalizedLocation: override.normalizedLocationText ?? normalizeEventLocationText(rawLocation),
           confidence: override.matchConfidence ?? 0.8,
-          matchReason: override.matchReason ?? "auto_matched",
-          needsReview: (override.matchConfidence ?? 0) < 0.9,
-          matchedText: match.matchedText,
+          matchReason: override.matchReason ?? override.matchStatus,
+          needsReview,
+          matchedText: stored.matchedText,
         },
         override,
         renderOnMap: true,
@@ -221,6 +226,8 @@ export function resolveExternalEventPlacement(args: {
         resolutionDebug: override.resolutionDebug,
       };
     }
+
+    // Unresolved / pending / stale row with no coords: fall through and re-resolve.
   }
 
   const registry = args.registry ?? [];
@@ -263,22 +270,31 @@ function resolutionToOverrideRow(args: {
   rawLocation: string;
   resolved: Awaited<ReturnType<typeof resolveEventLocationAsync>>;
   now: string;
+  source?: string;
+  occurrenceStart?: string | null;
 }) {
   const { resolved } = args;
   const match = resolved.match;
   const meta = resolved.meta;
   const status: ExternalEventMapMatchStatus = !match
-    ? "unmatched"
+    ? "unresolved"
     : meta?.needsReview
       ? "needs_review"
-      : "auto_matched";
+      : "resolved";
 
   return {
     external_event_id: args.externalEventId,
-    realm_location_id: match?.kind === "realm" ? match.realmLocationId : null,
+    source: args.source ?? "urinvolved",
+    occurrence_start: args.occurrenceStart ?? null,
+    realm_location_id: match?.kind === "realm" ? match.realmLocationId : resolved.registrySlug,
     custom_lat: match?.kind === "coords" ? match.latitude : null,
     custom_lng: match?.kind === "coords" ? match.longitude : null,
-    custom_label: match?.kind === "coords" ? match.locationName : null,
+    custom_label:
+      match?.kind === "coords"
+        ? match.locationName
+        : match?.kind === "realm"
+          ? match.locationName
+          : null,
     match_status: status,
     match_confidence: meta?.confidence ?? 0,
     match_reason: meta?.matchReason ?? status,
@@ -286,7 +302,10 @@ function resolutionToOverrideRow(args: {
     normalized_location_text: meta?.normalizedLocation ?? null,
     google_place_id: resolved.googlePlaceId,
     formatted_address: resolved.formattedAddress,
-    resolution_debug: resolved.debug,
+    resolution_debug: {
+      ...resolved.debug,
+      renderOnMap: Boolean(match) && (resolved.debug.renderOnMap || (meta?.confidence ?? 0) >= 0.75),
+    },
     updated_at: args.now,
   };
 }
@@ -301,6 +320,8 @@ export async function upsertAutoPlacementOverride(args: {
   catalog: CatalogLocationLike[];
   existing?: ExternalEventMapOverrideRow | null;
   forceGoogle?: boolean;
+  source?: string;
+  occurrenceStart?: string | null;
 }): Promise<ExternalEventMapOverrideRow | null> {
   if (args.existing && PROTECTED_STATUSES.includes(args.existing.matchStatus)) {
     placementLog("override preserved (protected status)", {
@@ -341,6 +362,8 @@ export async function upsertAutoPlacementOverride(args: {
     rawLocation,
     resolved,
     now,
+    source: args.source,
+    occurrenceStart: args.occurrenceStart,
   });
 
   const { data, error } = await admin
@@ -354,14 +377,19 @@ export async function upsertAutoPlacementOverride(args: {
     return null;
   }
 
-  placementLog(resolved.match ? "auto matched" : "unmatched stored", {
+  placementLog(resolved.match ? "resolved" : "unresolved stored", {
     externalEventId: args.externalEventId,
     rawLocation,
     normalized: resolved.meta?.normalizedLocation,
+    matchedBuilding: resolved.match?.locationName ?? null,
+    latitude: resolved.match?.kind === "coords" ? resolved.match.latitude : null,
+    longitude: resolved.match?.kind === "coords" ? resolved.match.longitude : null,
     confidence: resolved.meta?.confidence,
     reason: resolved.meta?.matchReason,
-    renderOnMap: resolved.debug.renderOnMap,
+    matchStatus: row.match_status,
+    renderOnMap: Boolean(resolved.match) && (resolved.debug.renderOnMap || (resolved.meta?.confidence ?? 0) >= 0.75),
     googlePlaceId: resolved.googlePlaceId,
+    failureReason: resolved.match ? null : resolved.meta?.matchReason ?? "unresolved_location",
   });
 
   return rowFromDb(data as Record<string, unknown>);
@@ -606,12 +634,18 @@ export async function listAdminUrinvolvedPlacements(args: {
     };
 
     events.push(item);
-    if (!resolved.renderOnMap && override?.matchStatus !== "hidden" && override?.matchStatus !== "ignored") {
+    if (
+      !resolved.renderOnMap &&
+      override?.matchStatus !== "hidden" &&
+      override?.matchStatus !== "ignored" &&
+      override?.matchStatus !== "online"
+    ) {
       unmatched.push(item);
     } else if (
       (resolved.meta?.needsReview || override?.matchStatus === "needs_review") &&
       override?.matchStatus !== "manually_adjusted" &&
-      override?.matchStatus !== "verified"
+      override?.matchStatus !== "verified" &&
+      override?.matchStatus !== "resolved"
     ) {
       needsReview.push(item);
     }
