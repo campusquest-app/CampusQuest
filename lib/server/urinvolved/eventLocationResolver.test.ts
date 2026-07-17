@@ -24,18 +24,32 @@ const WELDIN_REGISTRY: CampusBuildingRegistryEntry = {
 };
 
 describe("resolveEventLocationFromRegistrySync", () => {
-  it("resolves Weldin Hall First Floor Lounge to Weldin Hall", () => {
+  it("resolves Weldin Hall First Floor Lounge to the canonical weldin-hall landmark", () => {
     const result = resolveEventLocationFromRegistrySync({
       fields: { venueName: "Weldin Hall First Floor Lounge" },
       registry: [WELDIN_REGISTRY],
       catalog: CATALOG,
     });
-    expect(result.match?.kind).toBe("coords");
-    if (result.match?.kind === "coords") {
+    expect(result.match?.kind).toBe("realm");
+    if (result.match?.kind === "realm") {
+      expect(result.match.realmLocationId).toBe("weldin-hall");
       expect(result.match.locationName).toBe("Weldin Hall");
-      expect(result.match.latitude).toBeCloseTo(41.4908, 3);
     }
     expect(result.debug.normalizedBuildingName).toBe("weldin hall");
+  });
+
+  it("resolves short aliases (Weldin / Weldin Lounge) to the same landmark", () => {
+    for (const venueName of ["Weldin", "Weldin Lounge", "Weldin Hall"]) {
+      const result = resolveEventLocationFromRegistrySync({
+        fields: { venueName },
+        registry: [{ ...WELDIN_REGISTRY, aliases: [...WELDIN_REGISTRY.aliases, "weldin lounge", "weldin"] }],
+        catalog: CATALOG,
+      });
+      expect(result.match?.kind).toBe("realm");
+      if (result.match?.kind === "realm") {
+        expect(result.match.realmLocationId).toBe("weldin-hall");
+      }
+    }
   });
 
   it("uses verified registry coordinates with highest priority", () => {

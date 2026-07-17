@@ -20,6 +20,11 @@ import type { AdminQuestRow } from "@/lib/adminQuestTypes";
 import { isExpiredAt, mapPercentForCoordinates } from "@/lib/server/campusMapPins";
 import { createAdminClient } from "@/lib/server/supabase";
 import { resolveCampusLocationFromEventFields } from "@/lib/server/urinvolved/locationAliases";
+import {
+  loadCampusBuildingRegistry,
+  matchBuildingRegistryEntry,
+  type CampusBuildingRegistryEntry,
+} from "@/lib/server/urinvolved/campusBuildingRegistry";
 import { getTodayExternalEventsForMap } from "@/lib/server/urinvolved/todayMapEvents";
 
 type GroupBucket = {
@@ -243,6 +248,33 @@ function isDragPlacedUrinvolvedEvent(item: Awaited<ReturnType<typeof getTodayExt
   return item.pin.placementStatus === "manually_adjusted" && item.match.kind === "coords";
 }
 
+/**
+ * Prefer the canonical campus landmark for any event whose venue text matches
+ * a campus_locations row (name/alias/slug). Prevents purple coords pins from
+ * duplicating blue landmarks at the same building.
+ */
+export function resolveCanonicalLandmarkForExternalEvent(
+  item: Awaited<ReturnType<typeof getTodayExternalEventsForMap>>[number],
+  registry: CampusBuildingRegistryEntry[],
+): string | null {
+  if (item.match.kind === "realm") return item.match.realmLocationId;
+
+  const locationText =
+    item.pin.locationText?.trim() ||
+    (item.match.kind === "coords" ? item.match.locationName.trim() : "") ||
+    "";
+  if (!locationText) return null;
+
+  const registryHit = matchBuildingRegistryEntry(locationText, registry);
+  if (registryHit) return registryHit.slug;
+
+  const aliasResolved = resolveCampusLocationFromEventFields({
+    venueName: locationText,
+    locationName: locationText,
+  });
+  return aliasResolved.locationMatch?.realmLocationId ?? null;
+}
+
 export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
   const catalogRows = await getCampusLocations({ refreshCache: true });
   const admin = createAdminClient();
@@ -253,6 +285,7 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
     catalog: catalogRows.map((row) => ({ slug: row.slug, name: row.name })),
     now,
   }).catch(() => []);
+  const buildingRegistryPromise = loadCampusBuildingRegistry().catch(() => []);
 
   const [questsResult, qrResult, eventsResult] = await Promise.all([
     admin
@@ -371,19 +404,31 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
   }
 
   // Today's URInvolved events, grouped onto the matching realm locations.
-  const externalEvents = await externalEventsPromise;
+  // Always prefer attaching to a canonical campus landmark when the venue text
+  // or match names a known building — never render a second pin at that building.
+  const [externalEvents, buildingRegistry] = await Promise.all([
+    externalEventsPromise,
+    buildingRegistryPromise,
+  ]);
+
   for (const item of externalEvents) {
-    const meta =
-      isDragPlacedUrinvolvedEvent(item) && item.pin.externalEventId && item.match.kind === "coords"
-        ? externalEventPerIdMeta({
-            externalEventId: item.pin.externalEventId,
-            locationName: item.match.locationName,
-            latitude: item.match.latitude,
-            longitude: item.match.longitude,
-          })
-        : item.match.kind === "realm"
-          ? resolveGroupMeta({ locationId: item.match.realmLocationId })
-          : externalEventCoordsMeta(item.match);
+    const landmarkSlug = resolveCanonicalLandmarkForExternalEvent(item, buildingRegistry);
+    let meta: Omit<GroupBucket, "qrCodes" | "quests" | "events"> | null = landmarkSlug
+      ? resolveGroupMeta({ locationId: landmarkSlug })
+      : null;
+
+    // True off-landmark placements only (no campus building match).
+    if (!meta && isDragPlacedUrinvolvedEvent(item) && item.pin.externalEventId && item.match.kind === "coords") {
+      meta = externalEventPerIdMeta({
+        externalEventId: item.pin.externalEventId,
+        locationName: item.match.locationName,
+        latitude: item.match.latitude,
+        longitude: item.match.longitude,
+      });
+    } else if (!meta && item.match.kind === "coords") {
+      meta = externalEventCoordsMeta(item.match);
+    }
+
     if (!meta) continue;
     const bucket = getOrCreateBucket(buckets, meta);
     bucket.events.push(item.pin);

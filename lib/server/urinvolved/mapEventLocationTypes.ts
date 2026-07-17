@@ -13,6 +13,9 @@ export type UriAliasTarget = {
 
 export const URI_LOCATION_ALIASES: Record<string, UriAliasTarget> = {
   "weldin hall": { name: "Weldin Hall", latitude: 41.4908, longitude: -71.5294 },
+  "weldin hall first floor lounge": { name: "Weldin Hall", latitude: 41.4908, longitude: -71.5294 },
+  "weldin hall lounge": { name: "Weldin Hall", latitude: 41.4908, longitude: -71.5294 },
+  "weldin lounge": { name: "Weldin Hall", latitude: 41.4908, longitude: -71.5294 },
   "weldin": { name: "Weldin Hall", latitude: 41.4908, longitude: -71.5294 },
   "swan hall": { name: "Swan Hall", latitude: 41.48725, longitude: -71.5317 },
   "swan auditorium": { name: "Swan Hall", latitude: 41.48725, longitude: -71.5317 },

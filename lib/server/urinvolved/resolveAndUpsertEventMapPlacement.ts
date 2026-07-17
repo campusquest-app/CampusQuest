@@ -332,13 +332,16 @@ export async function resolveAndUpsertEventMapPlacement(
       .eq("id", eventId);
 
     if (override) {
+      // Landmark attachments must not mirror coords into custom_lat/lng — that
+      // creates a duplicate purple pin beside the blue campus location marker.
+      const attachToLandmark = Boolean(override.realmLocationId);
       const { data: refreshed } = await admin
         .from("external_event_map_overrides")
         .update({
           occurrence_start: occurrenceStart,
           source,
-          custom_lat: override.customLat ?? latitude,
-          custom_lng: override.customLng ?? longitude,
+          custom_lat: attachToLandmark ? null : (override.customLat ?? latitude),
+          custom_lng: attachToLandmark ? null : (override.customLng ?? longitude),
           custom_label: override.customLabel ?? matchedBuilding ?? parentBuilding,
           updated_at: new Date().toISOString(),
         })
@@ -350,8 +353,8 @@ export async function resolveAndUpsertEventMapPlacement(
           ...override,
           source,
           occurrenceStart,
-          customLat: override.customLat ?? latitude,
-          customLng: override.customLng ?? longitude,
+          customLat: attachToLandmark ? null : (override.customLat ?? latitude),
+          customLng: attachToLandmark ? null : (override.customLng ?? longitude),
           customLabel: override.customLabel ?? matchedBuilding ?? parentBuilding,
         };
       }

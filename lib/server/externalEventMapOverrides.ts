@@ -112,15 +112,8 @@ function overrideToMatch(
   override: ExternalEventMapOverrideRow,
   catalog: CatalogLocationLike[],
 ): EventLocationMatch | null {
-  if (override.customLat != null && override.customLng != null) {
-    return {
-      kind: "coords",
-      locationName: override.customLabel ?? "Custom location",
-      latitude: override.customLat,
-      longitude: override.customLng,
-      matchedText: override.rawLocationText ?? override.customLabel ?? "Custom location",
-    };
-  }
+  // Canonical campus location wins over custom lat/lng so building events never
+  // spawn a second pin beside the landmark (even after an admin drag).
   if (override.realmLocationId) {
     const entry = catalog.find((c) => c.slug === override.realmLocationId);
     return {
@@ -128,6 +121,15 @@ function overrideToMatch(
       realmLocationId: override.realmLocationId,
       locationName: override.customLabel ?? entry?.name ?? override.realmLocationId.replace(/-/g, " "),
       matchedText: override.rawLocationText ?? override.customLabel ?? override.realmLocationId,
+    };
+  }
+  if (override.customLat != null && override.customLng != null) {
+    return {
+      kind: "coords",
+      locationName: override.customLabel ?? "Custom location",
+      latitude: override.customLat,
+      longitude: override.customLng,
+      matchedText: override.rawLocationText ?? override.customLabel ?? "Custom location",
     };
   }
   return null;
@@ -183,6 +185,25 @@ export function resolveExternalEventPlacement(args: {
       override.matchStatus === "verified" ||
       override.manuallyVerified)
   ) {
+    // Even protected overrides that clearly name a campus building must attach
+    // to that landmark — never keep a duplicate coords pin at the same building.
+    const registry = args.registry ?? [];
+    const buildingAttach = resolveEventLocationFromRegistrySync({
+      fields: args.fields,
+      registry,
+      catalog: args.catalog,
+    });
+    if (buildingAttach.match?.kind === "realm") {
+      return {
+        match: buildingAttach.match,
+        meta: buildingAttach.meta,
+        override,
+        renderOnMap: true,
+        appliedOverride: true,
+        resolutionDebug: buildingAttach.debug,
+      };
+    }
+
     const match = overrideToMatch(override, args.catalog);
     return {
       match,
@@ -282,13 +303,17 @@ function resolutionToOverrideRow(args: {
       ? "needs_review"
       : "resolved";
 
+  // Realm/catalog matches store only the slug — never duplicate landmark coords
+  // into custom_lat/lng (that creates a second map pin).
+  const realmId =
+    match?.kind === "realm" ? match.realmLocationId : resolved.registrySlug;
   return {
     external_event_id: args.externalEventId,
     source: args.source ?? "urinvolved",
     occurrence_start: args.occurrenceStart ?? null,
-    realm_location_id: match?.kind === "realm" ? match.realmLocationId : resolved.registrySlug,
-    custom_lat: match?.kind === "coords" ? match.latitude : null,
-    custom_lng: match?.kind === "coords" ? match.longitude : null,
+    realm_location_id: realmId,
+    custom_lat: match?.kind === "coords" && !realmId ? match.latitude : null,
+    custom_lng: match?.kind === "coords" && !realmId ? match.longitude : null,
     custom_label:
       match?.kind === "coords"
         ? match.locationName

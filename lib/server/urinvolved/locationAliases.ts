@@ -24,6 +24,18 @@ type AliasEntry = {
 
 const ALIAS_ENTRIES: AliasEntry[] = [
   {
+    aliases: [
+      "weldin hall",
+      "weldin hall first floor lounge",
+      "weldin hall lounge",
+      "weldin lounge",
+      "weldin",
+      "weldon hall",
+      "weldon",
+    ],
+    realmLocationId: "weldin-hall",
+  },
+  {
     aliases: ["memorial union", "mu", "uri memorial union", "memorial union building"],
     addressAliases: [
       "50 lower college rd kingston ri 02881",

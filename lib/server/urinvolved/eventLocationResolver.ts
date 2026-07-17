@@ -52,20 +52,39 @@ function rawLocationFromFields(fields: {
   );
 }
 
-function coordsMatch(
+/**
+ * Registry hits always attach to the canonical campus_locations slug as a
+ * realm landmark. Never emit a separate coords pin for a known building —
+ * that duplicates the blue landmark with a purple event pin.
+ */
+function registryMatch(
   building: string,
   entry: CampusBuildingRegistryEntry,
   sourceText: string,
   reason: string,
   confidence: number,
+  catalog?: CatalogLocationLike[],
 ): EventLocationResolutionResult {
-  const match: EventLocationMatch = {
-    kind: "coords",
-    locationName: entry.canonicalName,
-    latitude: entry.latitude,
-    longitude: entry.longitude,
-    matchedText: sourceText,
-  };
+  const inCatalog =
+    !catalog ||
+    catalog.length === 0 ||
+    catalog.some((c) => c.slug === entry.slug || normalizeCampusLocationName(c.name) === normalizeCampusLocationName(entry.canonicalName));
+
+  const match: EventLocationMatch = inCatalog
+    ? {
+        kind: "realm",
+        realmLocationId: entry.slug,
+        locationName: entry.canonicalName,
+        matchedText: sourceText,
+      }
+    : {
+        kind: "coords",
+        locationName: entry.canonicalName,
+        latitude: entry.latitude,
+        longitude: entry.longitude,
+        matchedText: sourceText,
+      };
+
   const meta: EventLocationMatchMeta = {
     rawLocation: sourceText,
     normalizedLocation: building,
@@ -100,9 +119,13 @@ function googleMatch(
   registry: CampusBuildingRegistryEntry | null,
   reason: string,
 ): EventLocationResolutionResult {
+  // Geocode that lands on a saved campus_locations row attaches to that landmark.
+  if (registry?.slug) {
+    return registryMatch(building, registry, sourceText, reason, geocode.confidence);
+  }
   const match: EventLocationMatch = {
     kind: "coords",
-    locationName: registry?.canonicalName ?? geocode.name,
+    locationName: geocode.name,
     latitude: geocode.latitude,
     longitude: geocode.longitude,
     matchedText: sourceText,
@@ -186,7 +209,7 @@ export async function resolveEventLocationAsync(args: {
 
   const registryHit = matchBuildingRegistryEntry(sourceText, registry);
   if (registryHit?.verified) {
-    return coordsMatch(building, registryHit, sourceText, "verified_registry", 1);
+    return registryMatch(building, registryHit, sourceText, "verified_registry", 1, args.catalog);
   }
 
   if (!args.forceGoogle) {
@@ -213,12 +236,13 @@ export async function resolveEventLocationAsync(args: {
     }
 
     if (registryHit) {
-      return coordsMatch(
+      return registryMatch(
         building,
         registryHit,
         sourceText,
         registryHit.verified ? "verified_registry" : "registry_match",
         registryHit.verified ? 1 : 0.92,
+        args.catalog,
       );
     }
   }
@@ -230,7 +254,7 @@ export async function resolveEventLocationAsync(args: {
   const geocode = await geocodeUriBuilding({ buildingName: building, fetchImpl: args.fetchImpl });
   if (!geocode) {
     if (registryHit) {
-      return coordsMatch(building, registryHit, sourceText, "registry_fallback", 0.8);
+      return registryMatch(building, registryHit, sourceText, "registry_fallback", 0.8, args.catalog);
     }
     return unresolved(sourceText, building, "google_unresolved");
   }
@@ -265,10 +289,10 @@ export function resolveEventLocationFromRegistrySync(args: {
   const registryHit = matchBuildingRegistryEntry(sourceText, args.registry);
 
   if (registryHit?.verified) {
-    return coordsMatch(building, registryHit, sourceText, "verified_registry", 1);
+    return registryMatch(building, registryHit, sourceText, "verified_registry", 1, args.catalog);
   }
   if (registryHit) {
-    return coordsMatch(building, registryHit, sourceText, "registry_match", 0.92);
+    return registryMatch(building, registryHit, sourceText, "registry_match", 0.92, args.catalog);
   }
 
   const auto = matchEventLocationWithMeta(args.fields, args.catalog);
