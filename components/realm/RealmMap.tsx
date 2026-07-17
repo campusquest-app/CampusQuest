@@ -10,8 +10,7 @@ import {
 import { REALM_LOCATIONS, type RealmLocation, type RealmLocationId } from "@/lib/realm/locations";
 import { realmLocationsFromCatalog, type CampusLocationRecord } from "@/lib/locations/campusLocationCatalog";
 import { createCampusLocationFromMarker, useCampusLocations } from "@/lib/client/campusLocationsClient";
-import { resolveSearchPlaceMatch } from "@/lib/realm/resolveSearchPlace";
-import type { PlaceSearchResult } from "@/lib/realm/placesSearch";
+import type { MapSearchResult } from "@/lib/realm/mapAutocomplete";
 import { REALM_MAP_VIEW_HEIGHT, REALM_MAP_VIEW_WIDTH } from "@/lib/realm/mapGeometry";
 import {
   applyMarkerPositionsToLocations,
@@ -129,6 +128,7 @@ export function RealmMap({
   onCreatePost,
   onViewProfile,
   onSharePost,
+  onOpenOrganization,
   viewer = null,
   userId = null,
   isAdmin = false,
@@ -140,6 +140,7 @@ export function RealmMap({
   onCreatePost?: () => void;
   onViewProfile?: (userId: string) => void;
   onSharePost?: (target: SharePostTarget) => void;
+  onOpenOrganization?: (organizationId: string) => void;
   viewer?: { id: string; name: string; username: string; avatar: string } | null;
   userId?: string | null;
   isAdmin?: boolean;
@@ -161,7 +162,7 @@ export function RealmMap({
   const [draggingId, setDraggingId] = useState<RealmLocationId | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [savePending, setSavePending] = useState(false);
-  const [sheetInitialView, setSheetInitialView] = useState<"archive" | "overview">("archive");
+  const [sheetInitialView, setSheetInitialView] = useState<"archive" | "overview" | "quests" | "events">("archive");
   const [memoriesLoaded, setMemoriesLoaded] = useState(false);
   const [memoriesLoadError, setMemoriesLoadError] = useState<string | null>(null);
   const [memoryStatsByLocation, setMemoryStatsByLocation] = useState<Record<string, CampusMemoryLocationStats>>({});
@@ -389,7 +390,10 @@ export function RealmMap({
   }, []);
 
   const openLocation = useCallback(
-    (location: HydratedRealmLocation) => {
+    (
+      location: HydratedRealmLocation,
+      options?: { initialView?: "archive" | "overview" | "quests" | "events" },
+    ) => {
       if (editMode) return;
       if (!markerTapGateRef.current.tryOpen(location.id)) return;
       try {
@@ -399,7 +403,7 @@ export function RealmMap({
         setSelectedLocation(location);
         setSelectedMapContent(normalizeGroupedMapContent(location.mapContent));
         setActiveMarkerId(location.id);
-        setSheetInitialView("archive");
+        setSheetInitialView(options?.initialView ?? "archive");
         setSheetOpen(true);
         setMarkerNotice(null);
       } catch (exception) {
@@ -447,27 +451,99 @@ export function RealmMap({
   );
 
   const handlePlaceSelected = useCallback(
-    (place: PlaceSearchResult) => {
+    (result: MapSearchResult) => {
       if (editMode) return;
-      const match = resolveSearchPlaceMatch({
-        place,
-        landmarks: locations.map((l) => ({ id: l.id, name: l.name, shortLabel: l.shortLabel })),
-        supplementaryPins,
-      });
-      setFlyToForce(true);
-      setSearchPin({ lat: place.lat, lng: place.lng, name: place.name });
-      if (match.kind === "landmark") {
-        const location = locations.find((l) => l.id === match.id);
-        if (location) openLocation(location);
-        return;
+
+      try {
+        setFlyToForce(true);
+
+        if (result.kind === "club") {
+          const orgName = result.title.trim().toLowerCase();
+          const matchingGroup = [...locations.map((l) => l.mapContent), ...supplementaryPins]
+            .filter((group): group is GroupedMapLocation => Boolean(group))
+            .find((group) =>
+              group.events.some(
+                (event) => event.organizationName?.trim().toLowerCase() === orgName,
+              ),
+            );
+
+          if (matchingGroup?.lat != null && matchingGroup?.lng != null) {
+            setSearchPin({ lat: matchingGroup.lat, lng: matchingGroup.lng, name: result.title });
+            if (matchingGroup.realmLocationId) {
+              const location = locations.find((l) => l.id === matchingGroup.realmLocationId);
+              if (location) {
+                openLocation(location, { initialView: "events" });
+                return;
+              }
+            }
+            setSelectedLocation(null);
+            setSelectedMapContent(normalizeGroupedMapContent(matchingGroup));
+            setActiveMarkerId(matchingGroup.groupKey);
+            setSheetInitialView("events");
+            setSheetOpen(true);
+            return;
+          }
+
+          if (result.organizationId && onOpenOrganization) {
+            onOpenOrganization(result.organizationId);
+            return;
+          }
+
+          showMarkerNotice(`Open Organizations to view ${result.title}.`);
+          return;
+        }
+
+        if (result.lat != null && result.lng != null) {
+          setSearchPin({ lat: result.lat, lng: result.lng, name: result.title });
+        }
+
+        const view =
+          result.kind === "quest"
+            ? "quests"
+            : result.kind === "event"
+              ? "events"
+              : "archive";
+
+        if (result.realmLocationId) {
+          const location = locations.find((l) => l.id === result.realmLocationId);
+          if (location) {
+            openLocation(location, { initialView: view });
+            return;
+          }
+        }
+
+        const group =
+          (result.groupKey
+            ? supplementaryPins.find((g) => g.groupKey === result.groupKey)
+            : null) ??
+          (result.markerId
+            ? supplementaryPins.find((g) => g.groupKey === result.markerId)
+            : null);
+
+        if (group) {
+          setSelectedLocation(null);
+          setSelectedMapContent(normalizeGroupedMapContent(group));
+          setActiveMarkerId(group.groupKey);
+          setSheetInitialView(view === "archive" ? "overview" : view);
+          setSheetOpen(true);
+          return;
+        }
+
+        if (result.markerId) {
+          const location = locations.find((l) => l.id === result.markerId);
+          if (location) {
+            openLocation(location, { initialView: view });
+            return;
+          }
+        }
+
+        showMarkerNotice("We couldn’t open that result on the map.");
+      } catch (error) {
+        console.warn("[cq:map-search] failed to open result", error);
+        showMarkerNotice("Search couldn’t open that place. Try another result.");
       }
-      setSelectedLocation(null);
-      setSelectedMapContent(match.group);
-      setActiveMarkerId(match.group.groupKey);
-      setSheetInitialView("overview");
-      setSheetOpen(true);
     },
-    [editMode, locations, supplementaryPins, openLocation],
+    [editMode, locations, supplementaryPins, openLocation, onOpenOrganization, showMarkerNotice],
   );
 
   const closeSheet = useCallback(() => {

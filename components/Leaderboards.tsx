@@ -468,7 +468,7 @@ export function Leaderboards({
           ) : guildsSorted.length === 0 ? (
             <LeaderboardEmptyState
               message="No guilds have been created yet."
-              detail="Create a guild in Find Friends, or join one when guilds become available."
+              detail="Create a guild in Guilds, or join one when guilds become available."
             />
           ) : (
             <div className="space-y-3">
@@ -881,7 +881,7 @@ function GuildRankRow({
             </ul>
           ) : (
             <p className="text-sm text-white/50">
-              {guild.memberCount} member{guild.memberCount === 1 ? "" : "s"}. Open Find Friends to view guild details.
+              {guild.memberCount} member{guild.memberCount === 1 ? "" : "s"}. Open Guilds to view guild details.
             </p>
           )}
         </div>

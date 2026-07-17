@@ -94,6 +94,7 @@ export function MagicalParticleLayer({ enabled }: { enabled: boolean }) {
     div.className = "cq-magic-particle-field";
     div.style.width = `${FIELD_SIZE}px`;
     div.style.height = `${FIELD_SIZE}px`;
+    div.style.pointerEvents = "none";
     div.setAttribute("aria-hidden", "true");
 
     class ParticleFieldOverlay extends google.maps.OverlayView {

@@ -199,12 +199,12 @@ export function RealmMapControls({
               aria-pressed={camera.isCinematic}
               title={
                 camera.tiltDisabled
-                  ? "3D view isn't supported on this device."
+                  ? "3D view isn't supported on this device or map style."
                   : mapLayer !== "campus"
                     ? "Switch to campus view for 3D"
                     : camera.isCinematic
-                      ? "Flat view"
-                      : "3D tilt"
+                      ? "Flat view (0°)"
+                      : "Tilt 45°"
               }
               tabIndex={expanded ? 0 : -1}
             >
@@ -218,14 +218,14 @@ export function RealmMapControls({
               className={`cq-realm-float-btn cq-realm-float-btn--buildings cq-realm-map-controls-item cq-realm-map-controls-item--delay-3 flex h-11 w-11 items-center justify-center touch-manipulation disabled:opacity-50${
                 camera.buildingsActive ? " cq-realm-float-btn--active cq-realm-float-btn--buildings-active" : ""
               }`}
-              aria-label={camera.buildingsActive ? "Hide raised buildings" : "Show raised buildings"}
+              aria-label={camera.buildingsActive ? "Hide 3D building view" : "Show 3D building view"}
               aria-pressed={camera.buildingsActive}
               title={
                 mapLayer !== "campus"
-                  ? "Switch to campus view for raised buildings"
+                  ? "Switch to campus view for 3D buildings"
                   : camera.buildingsActive
-                    ? "Flat buildings"
-                    : "Raised buildings"
+                    ? "Exit 3D view"
+                    : "3D view (zoom 18.5, tilt 60°)"
               }
               tabIndex={expanded ? 0 : -1}
             >
@@ -237,30 +237,33 @@ export function RealmMapControls({
                 type="button"
                 onClick={camera.rotateLeft}
                 className="cq-realm-float-btn cq-realm-float-btn--compact flex h-9 w-9 items-center justify-center touch-manipulation"
-                aria-label="Rotate map left"
-                title="Rotate left"
+                aria-label="Rotate map left 20 degrees"
+                title="Rotate left 20°"
                 tabIndex={expanded ? 0 : -1}
               >
                 <RotateCcw className="h-4 w-4" strokeWidth={2.2} />
               </button>
-              {camera.showCompass ? (
-                <button
-                  type="button"
-                  onClick={camera.resetHeading}
-                  className="cq-realm-float-btn cq-realm-float-btn--compact cq-realm-float-btn--compass flex h-9 w-9 items-center justify-center touch-manipulation"
-                  aria-label="Reset map to north-up"
-                  title="North up"
-                  tabIndex={expanded ? 0 : -1}
-                >
-                  <Compass className="h-4 w-4" strokeWidth={2.2} />
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={camera.resetHeading}
+                className={`cq-realm-float-btn cq-realm-float-btn--compact cq-realm-float-btn--compass flex h-9 w-9 items-center justify-center touch-manipulation${
+                  camera.showCompass ? "" : " opacity-50"
+                }`}
+                aria-label="Reset map to north-up"
+                title="North up"
+                tabIndex={expanded ? 0 : -1}
+                style={{
+                  transform: `rotate(${-camera.heading}deg)`,
+                }}
+              >
+                <Compass className="h-4 w-4" strokeWidth={2.2} />
+              </button>
               <button
                 type="button"
                 onClick={camera.rotateRight}
                 className="cq-realm-float-btn cq-realm-float-btn--compact flex h-9 w-9 items-center justify-center touch-manipulation"
-                aria-label="Rotate map right"
-                title="Rotate right"
+                aria-label="Rotate map right 20 degrees"
+                title="Rotate right 20°"
                 tabIndex={expanded ? 0 : -1}
               >
                 <RotateCw className="h-4 w-4" strokeWidth={2.2} />

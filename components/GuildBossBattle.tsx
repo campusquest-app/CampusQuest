@@ -106,7 +106,7 @@ export function GuildBossBattle({
       <div className="rounded-xl border border-white/10 bg-white/[0.03] py-8 text-center sm:py-10">
         <p className="text-sm text-white/60">No guild yet — join one to unlock guild battle.</p>
         <p className="mt-2 px-3 text-xs text-white/45">
-          Open <strong className="text-white/70">Friends</strong> → Find Guilds. Your logs will chip this boss down and fuel the weekly guild race.
+          Open <strong className="text-white/70">Guilds</strong> from the menu. Your logs will chip this boss down and fuel the weekly guild race.
         </p>
       </div>
     ) : (

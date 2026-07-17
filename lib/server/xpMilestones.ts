@@ -7,7 +7,7 @@ export const XP_UNLOCK_MILESTONES = [
     threshold: 300,
     title: "Create Guild",
     description:
-      "You've reached 300 total XP and unlocked Create Guild. Head to Find Friends to start or join a guild and earn bonus XP with other Rams.",
+      "You've reached 300 total XP and unlocked Create Guild. Head to Guilds in the menu to start or join a guild and earn bonus XP with other Rams.",
   },
 ] as const;
 

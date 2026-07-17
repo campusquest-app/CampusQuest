@@ -17,6 +17,7 @@ import {
   Map,
   QrCode,
   Settings,
+  Shield,
   Sparkles,
   Swords,
   Target,
@@ -34,6 +35,7 @@ import { setIsDrawerOpen } from "@/lib/client/appDrawerStore";
 
 export type AppDrawerDestination =
   | "friends"
+  | "guilds"
   | "trending"
   | "quad"
   | "leaderboards"
@@ -54,7 +56,6 @@ type DrawerPanel = "menu" | "settings" | "help";
 
 type MenuItemId =
   | AppDrawerDestination
-  | "guilds"
   | "mini-games"
   | "achievements"
   | "quest-board"
@@ -83,6 +84,7 @@ const MAIN_NAV: MenuItem[] = [
   { id: "quad", label: "Quad", icon: <Home className={ICON} aria-hidden /> },
   { id: "realm", label: "Map", icon: <Map className={ICON} aria-hidden /> },
   { id: "friends", label: "Friends", icon: <Users className={ICON} aria-hidden /> },
+  { id: "guilds", label: "Guilds", icon: <Shield className={ICON} aria-hidden /> },
   { id: "leaderboards", label: "Ranks", icon: <Trophy className={ICON} aria-hidden /> },
   { id: "profile", label: "Profile", icon: <User className={ICON} aria-hidden /> },
 ];
@@ -136,8 +138,9 @@ function isMenuItemActive(id: MenuItemId, ctx: DrawerActiveContext): boolean {
     case "realm":
       return tab === "realm";
     case "friends":
-    case "guilds":
       return tab === "friends";
+    case "guilds":
+      return tab === "guilds";
     case "events":
       return tab === "events";
     case "leaderboards":

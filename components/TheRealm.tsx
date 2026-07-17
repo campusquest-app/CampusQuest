@@ -12,6 +12,7 @@ export function TheRealm({
   onViewProfile,
   onSharePost,
   onViewQuests,
+  onOpenOrganization,
   viewer = null,
   userId = null,
   isAdmin = false,
@@ -23,6 +24,7 @@ export function TheRealm({
   onViewProfile?: (userId: string) => void;
   onSharePost?: (target: SharePostTarget) => void;
   onViewQuests?: (location: RealmLocation) => void;
+  onOpenOrganization?: (organizationId: string) => void;
   viewer?: { id: string; name: string; username: string; avatar: string } | null;
   userId?: string | null;
   isAdmin?: boolean;
@@ -77,6 +79,7 @@ export function TheRealm({
           onCreatePost={onCreatePost}
           onViewProfile={onViewProfile}
           onSharePost={onSharePost}
+          onOpenOrganization={onOpenOrganization}
           viewer={viewer}
           userId={userId}
           isAdmin={isAdmin}

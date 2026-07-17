@@ -29,6 +29,7 @@ import { SkillsLoreScreen } from "./SkillsLoreScreen";
 import { TheQuad, type QuadFeedTab } from "./TheQuad";
 import { BossBattles } from "./BossBattles";
 import { FindFriends } from "./FindFriends";
+import { GuildsScreen } from "./GuildsScreen";
 import { Leaderboards } from "./Leaderboards";
 import { MyProfileScreen } from "./MyProfileScreen";
 import { UserProfileScreen } from "./UserProfileScreen";
@@ -158,9 +159,9 @@ const QRScannerModalLazy = dynamic(
   { ssr: false },
 );
 
-type Tab = "quad" | "friends" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations" | "realm" | "mini-games" | "achievements" | "quest-board" | "manual-log" | "progress-hub" | "skills-lore";
+type Tab = "quad" | "friends" | "guilds" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations" | "realm" | "mini-games" | "achievements" | "quest-board" | "manual-log" | "progress-hub" | "skills-lore";
 
-const TAB_QUERY_VALUES: Tab[] = ["quad", "friends", "battle", "leaderboards", "character", "inbox", "events", "organizations", "realm"];
+const TAB_QUERY_VALUES: Tab[] = ["quad", "friends", "guilds", "battle", "leaderboards", "character", "inbox", "events", "organizations", "realm"];
 
 function createXpGainSessionKey(prefix = "xp"): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -584,7 +585,7 @@ export function Dashboard() {
   }, []);
 
   const handleDrawerNavigate = useCallback(
-    (dest: AppDrawerDestination | "guilds" | "mini-games" | "achievements" | "quest-board" | "settings" | "manual-log" | "progress-hub" | "skills-lore" | "collectibles" | "scan") => {
+    (dest: AppDrawerDestination | "mini-games" | "achievements" | "quest-board" | "settings" | "manual-log" | "progress-hub" | "skills-lore" | "collectibles" | "scan") => {
       switch (dest) {
         case "friends":
           setTab("friends");
@@ -610,7 +611,7 @@ export function Dashboard() {
           navigateToTab("organizations");
           break;
         case "guilds":
-          setTab("friends");
+          navigateToTab("guilds");
           break;
         case "battle":
           setTab("battle");
@@ -1158,7 +1159,7 @@ export function Dashboard() {
 
   useEffect(() => {
     if (bootstrapStatus !== "authenticated" || !character?.id) return;
-    if (tab === "events" || tab === "realm" || tab === "organizations") {
+    if (tab === "events" || tab === "realm" || tab === "organizations" || tab === "guilds") {
       recordUserActivityPing();
     }
   }, [bootstrapStatus, character?.id, tab]);
@@ -2244,6 +2245,11 @@ export function Dashboard() {
             />,
           )}
 
+        {tab === "guilds" &&
+          renderPilotCampusGate(
+            <GuildsScreen character={character} onRefresh={refresh} onBack={goBackTab} />,
+          )}
+
         {tab === "events" &&
           renderPilotCampusGate(
             <EventsFeed
@@ -2261,6 +2267,14 @@ export function Dashboard() {
                 onBack={() => setTab("quad")}
                 onCreatePost={() => setTab("quad")}
                 onViewQuests={() => setTab("quest-board")}
+                onOpenOrganization={(organizationId) => {
+                  try {
+                    window.sessionStorage.setItem("cq_open_org_id", organizationId);
+                  } catch {
+                    /* ignore */
+                  }
+                  navigateToTab("organizations");
+                }}
                 onViewProfile={openFriendView}
                 onSharePost={openSharePost}
                 viewer={
@@ -2376,23 +2390,6 @@ export function Dashboard() {
         ) : null}
       </DashboardTabSwipeShell>
       </div>
-
-      {character && showBottomNav ? (
-        <button
-          type="button"
-          onClick={() => {
-            const next = !musicMuted;
-            setMusicMuted(next);
-            setGameMusicMuted(next);
-          }}
-          className={`cq-bottom-chrome-follower fixed z-40 h-6 w-6 rounded-full border border-white/15 bg-black/30 text-[10px] text-white/50 backdrop-blur-sm transition hover:text-white/85 ${tab === "quad" ? "left-3" : "right-2"}`}
-          title={musicMuted ? "Unmute game music" : "Mute game music"}
-          aria-label={musicMuted ? "Unmute game music" : "Mute game music"}
-          aria-pressed={musicMuted}
-        >
-          {musicMuted ? "🔇" : "🔊"}
-        </button>
-      ) : null}
 
       <AnimatePresence>
         {showBottomNav ? (

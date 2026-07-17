@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Lock } from "lucide-react";
 import {
   avatarFromConnectionProfile,
   cancelOutgoingConnectionRequest,
@@ -15,29 +14,16 @@ import {
   type ConnectionRequestItem,
 } from "@/lib/client/socialConnectionsClient";
 import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
-import {
-  getRecommendedGuilds,
-  getGuildById,
-  joinGuild,
-  leaveGuild,
-  requestGuildInvite,
-  hasRequestedInvite,
-  GUILD_INTEREST_LABELS,
-} from "@/lib/guildStore";
-import { getGuildWeeklyScores } from "@/lib/guildWeeklyRace";
-import type { Character, Friend, Guild, GuildInterest } from "@/lib/types";
+import type { Character, Friend } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS } from "@/lib/types";
 import { StatIcon } from "@/components/stats/StatIcon";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { formatStreakBadge } from "@/lib/streakMessaging";
-import { GuildCard } from "./GuildCard";
-import { CreateGuildModal } from "./CreateGuildModal";
-import { ViewGuildModal } from "./ViewGuildModal";
-import { GuildLiveSearchField, PeopleLiveSearchField } from "./friends/FriendsGuildsLiveSearch";
+import { PeopleLiveSearchField } from "./friends/FriendsGuildsLiveSearch";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
 
 export function FindFriends({
-  character,
+  character: _character,
   onRefresh,
   onOpenDm,
   onViewProfile,
@@ -54,11 +40,8 @@ export function FindFriends({
   const [socialError, setSocialError] = useState<string | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
   const [respondingId, setRespondingId] = useState<string | null>(null);
-  const [showCreateGuild, setShowCreateGuild] = useState(false);
-  const [viewGuild, setViewGuild] = useState<Guild | null>(null);
   const [pendingOpen, setPendingOpen] = useState(false);
   const [peopleSearchError, setPeopleSearchError] = useState<string | null>(null);
-  const [guildSearchError, setGuildSearchError] = useState<string | null>(null);
 
   const refreshSocial = useCallback(async () => {
     setSocialError(null);
@@ -142,44 +125,15 @@ export function FindFriends({
     }
   }
 
-  function refresh() {
-    void refreshSocial();
-  }
-
   const friends: Friend[] = connections.map((connection) => connectionItemToFriend(connection));
-
-  function handleJoinGuild(guildId: string) {
-    joinGuild(character.id, guildId);
-    refresh();
-  }
-
-  function handleRequestGuildInvite(guildId: string) {
-    requestGuildInvite(character.id, guildId);
-    refresh();
-  }
-
-  function handleLeaveGuild(guildId: string) {
-    leaveGuild(character.id, guildId);
-    setViewGuild(null);
-    refresh();
-  }
-
-  const interests: GuildInterest[] = ["study", "fitness", "networking", "clubs"];
-  const recommendedByInterest = interests.map((interest) => ({
-    interest,
-    guilds: getRecommendedGuilds(interest),
-  }));
-
-  const weeklyRace = getGuildWeeklyScores().slice(0, 5);
-  const canCreateGuild = character.totalXP >= 300;
 
   return (
     <section className="cq-tab-shell space-y-6 pb-8">
       <header className="cq-screen-header">
         <p className="cq-screen-header__eyebrow">Campus Connections</p>
-        <h1 className="cq-screen-header__title">Friends &amp; Guilds</h1>
+        <h1 className="cq-screen-header__title">Find People</h1>
         <p className="cq-screen-header__subtitle">
-          Follow classmates, accept requests, and team up in guilds for bonus XP.
+          Follow classmates, accept requests, and grow your campus network.
         </p>
       </header>
       {actionToast ? (
@@ -283,232 +237,115 @@ export function FindFriends({
 
       {!socialLoading || incoming.length > 0 || outgoing.length > 0 || connections.length > 0 ? (
         <>
-      {weeklyRace.length > 0 && (
-        <div className="rounded-2xl border border-uri-gold/40 bg-gradient-to-r from-uri-gold/10 to-transparent p-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-uri-gold mb-2">⚔️ Guild vs guild (this week)</h3>
-          <p className="text-[11px] text-cq-muted mb-2">#1 guild next Monday: members get +10% XP for the week. Every log adds race points.</p>
-          <ol className="space-y-1">
-            {weeklyRace.map((row, i) => {
-              const g = getGuildById(row.guildId);
-              return (
-                <li key={row.guildId} className="flex justify-between text-sm text-slate-800">
-                  <span>
-                    {i + 1}. {g?.name ?? row.guildId}
-                  </span>
-                  <span className="font-mono text-uri-keaney">{row.score} pts</span>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      )}
-
-      {/* Find Friends — above Guilds */}
-      <div className="card p-4 sm:p-5">
-        <h2 className="font-display font-semibold text-cq-foreground mb-2 flex items-center gap-2">
-          <span aria-hidden>👋</span> Find People
-        </h2>
-        <p className="text-sm text-cq-muted mb-4">
-          Start typing to find classmates by name or username. Tap <strong className="text-cq-muted">Follow</strong> on a result to send a request — once they accept, you&apos;ll follow each other and see their posts on The Quad.
-        </p>
-        <PeopleLiveSearchField
-          connections={connections}
-          outgoing={outgoing}
-          incoming={incoming}
-          onRefresh={handlePeopleSearchRefresh}
-          onViewProfile={onViewProfile}
-          onToast={setActionToast}
-          onError={setPeopleSearchError}
-          onClearError={() => setPeopleSearchError(null)}
-        />
-        {peopleSearchError ? <p className="text-sm text-amber-400 mt-2">{peopleSearchError}</p> : null}
-      </div>
-
-      {outgoing.length > 0 && (
-        <div className="card p-4 sm:p-5">
-          <button
-            type="button"
-            onClick={() => setPendingOpen((o) => !o)}
-            className="w-full flex items-center justify-between gap-2 text-left rounded-lg -mx-1 px-1 py-1 hover:bg-cq-elevated transition-colors"
-            aria-expanded={pendingOpen}
-          >
-            <span className="font-display font-semibold text-cq-foreground flex items-center gap-2">
-              <span aria-hidden>📤</span> Pending Sent Requests ({outgoing.length})
-            </span>
-            <span className="text-cq-muted text-sm" aria-hidden>{pendingOpen ? "▼" : "▶"}</span>
-          </button>
-          {pendingOpen && (
-            <ul className="space-y-2 mt-3 pt-3 border-t border-cq-border">
-              {outgoing.map((req) => (
-                <li
-                  key={req.requestId}
-                  className="flex items-center gap-3 p-2.5 rounded-xl bg-cq-elevated border border-cq-border"
-                >
-                  <div className="cq-avatar-slot w-9 h-9 border border-cq-border">
-                    <AvatarDisplay avatar={avatarFromConnectionProfile(req)} fitParent size={36} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-slate-800 truncate">{req.displayName}</p>
-                    <p className="text-xs text-uri-keaney/80">@{req.username}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleUnsend(req.requestId)}
-                    className="flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium text-amber-400/90 border border-amber-400/40 hover:bg-amber-400/10"
-                  >
-                    Unsend
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {/* Find Guilds */}
-      <div className="card p-4 sm:p-5">
-        <h2 className="font-display font-semibold text-cq-foreground mb-2 flex items-center gap-2">
-          <span aria-hidden>🛡️</span> Find Guilds
-        </h2>
-        <p className="text-sm text-cq-muted mb-4">
-          Search by guild name or interest. Results appear as you type.
-        </p>
-        <GuildLiveSearchField
-          character={character}
-          onRefresh={refresh}
-          onViewGuild={(guildId) => {
-            const guild = getGuildById(guildId);
-            if (guild) setViewGuild(guild);
-          }}
-          onToast={setActionToast}
-          onError={setGuildSearchError}
-          onClearError={() => setGuildSearchError(null)}
-        />
-        {guildSearchError ? <p className="text-sm text-amber-400 mt-2">{guildSearchError}</p> : null}
-      </div>
-
-      {/* Guilds banner + section */}
-      <div className="rounded-2xl border border-cq-border bg-cq-card p-4 sm:p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h2 className="font-display font-semibold text-cq-foreground mb-1 flex items-center gap-2">
-              <span aria-hidden>🛡️</span> Guilds
+          <div className="card p-4 sm:p-5">
+            <h2 className="font-display font-semibold text-cq-foreground mb-2 flex items-center gap-2">
+              <span aria-hidden>👋</span> Find People
             </h2>
-            <p className="text-sm text-slate-700">Join a Guild, earn bonus XP together.</p>
+            <p className="text-sm text-cq-muted mb-4">
+              Start typing to find classmates by name or username. Tap{" "}
+              <strong className="text-cq-muted">Follow</strong> on a result to send a request — once they
+              accept, you&apos;ll follow each other and see their posts on The Quad.
+            </p>
+            <PeopleLiveSearchField
+              connections={connections}
+              outgoing={outgoing}
+              incoming={incoming}
+              onRefresh={handlePeopleSearchRefresh}
+              onViewProfile={onViewProfile}
+              onToast={setActionToast}
+              onError={setPeopleSearchError}
+              onClearError={() => setPeopleSearchError(null)}
+            />
+            {peopleSearchError ? <p className="text-sm text-amber-400 mt-2">{peopleSearchError}</p> : null}
           </div>
-          <button
-            type="button"
-            onClick={() => canCreateGuild && setShowCreateGuild(true)}
-            disabled={!canCreateGuild}
-            title={!canCreateGuild ? "Reach 300 total XP to create a guild" : undefined}
-            className="cq-guild-create-btn"
-            aria-label={canCreateGuild ? "Create Guild" : "Create Guild — unlock at 300 XP"}
-          >
-            {canCreateGuild ? (
-              "Create Guild"
-            ) : (
-              <>
-                <Lock className="h-4 w-4 shrink-0" aria-hidden strokeWidth={2.25} />
-                Create Guild (Unlock at 300 XP)
-              </>
-            )}
-          </button>
-        </div>
 
-        <p className="text-xs text-cq-muted mt-4 mb-3">Browse guilds</p>
-        {recommendedByInterest.every(({ guilds }) => guilds.length === 0) ? (
-          <ScreenDataState
-            variant="empty"
-            message="No guilds have been created yet."
-            detail={
-              canCreateGuild
-                ? "Be the first to create a guild, or search above when guilds become available."
-                : "Join a guild when guilds become available, or unlock Create Guild at 300 XP."
-            }
-            compact
-          />
-        ) : (
-        <div className="space-y-4">
-          {recommendedByInterest.map(({ interest, guilds }) =>
-            guilds.length > 0 ? (
-              <div key={interest}>
-                <h3 className="text-xs font-medium text-cq-muted uppercase tracking-wider mb-2">
-                  {GUILD_INTEREST_LABELS[interest]}
-                </h3>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {guilds.map((guild) => (
-                    <GuildCard
-                      key={guild.id}
-                      guild={guild}
-                      currentUserId={character.id}
-                      userGuildIds={character.guildIds ?? []}
-                      hasRequestedInvite={hasRequestedInvite(character.id, guild.id)}
-                      onJoin={handleJoinGuild}
-                      onRequestInvite={handleRequestGuildInvite}
-                      onLeave={handleLeaveGuild}
-                      onView={setViewGuild}
-                    />
+          {outgoing.length > 0 && (
+            <div className="card p-4 sm:p-5">
+              <button
+                type="button"
+                onClick={() => setPendingOpen((o) => !o)}
+                className="w-full flex items-center justify-between gap-2 text-left rounded-lg -mx-1 px-1 py-1 hover:bg-cq-elevated transition-colors"
+                aria-expanded={pendingOpen}
+              >
+                <span className="font-display font-semibold text-cq-foreground flex items-center gap-2">
+                  <span aria-hidden>📤</span> Pending Sent Requests ({outgoing.length})
+                </span>
+                <span className="text-cq-muted text-sm" aria-hidden>
+                  {pendingOpen ? "▼" : "▶"}
+                </span>
+              </button>
+              {pendingOpen && (
+                <ul className="space-y-2 mt-3 pt-3 border-t border-cq-border">
+                  {outgoing.map((req) => (
+                    <li
+                      key={req.requestId}
+                      className="flex items-center gap-3 p-2.5 rounded-xl bg-cq-elevated border border-cq-border"
+                    >
+                      <div className="cq-avatar-slot w-9 h-9 border border-cq-border">
+                        <AvatarDisplay avatar={avatarFromConnectionProfile(req)} fitParent size={36} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-slate-800 truncate">{req.displayName}</p>
+                        <p className="text-xs text-uri-keaney/80">@{req.username}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleUnsend(req.requestId)}
+                        className="flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium text-amber-400/90 border border-amber-400/40 hover:bg-amber-400/10"
+                      >
+                        Unsend
+                      </button>
+                    </li>
                   ))}
-                </div>
-              </div>
-            ) : null
+                </ul>
+              )}
+            </div>
           )}
-        </div>
-        )}
-      </div>
 
-      <div className="card p-4 sm:p-5">
-        <h3 className="font-display font-semibold text-cq-foreground mb-3 flex items-center gap-2">
-          <span aria-hidden>🦌</span> Connections ({friends.length})
-        </h3>
-        {socialLoading ? (
-          <ScreenDataState variant="loading" message="Loading connections…" compact />
-        ) : friends.length === 0 ? (
-          <ScreenDataState
-            variant="empty"
-            message="No connections yet."
-            detail="Follow someone or accept a request — you'll follow each other once they accept."
-            compact
-          />
-        ) : (
-          <ul className="space-y-4">
-            {friends.map((friend) => {
-              const connection = connections.find((row) => row.userId === friend.userId);
-              return (
-              <FriendCard
-                key={friend.userId}
-                friend={friend}
-                title={connection?.title}
-                guild={connection?.guild}
-                statsAvailable={connection?.statsAvailable !== false}
-                onMessage={onOpenDm ? () => onOpenDm({ userId: friend.userId, username: friend.username, name: friend.name, avatar: friend.avatar }) : undefined}
-                onViewProfile={onViewProfile}
+          <div className="card p-4 sm:p-5">
+            <h3 className="font-display font-semibold text-cq-foreground mb-3 flex items-center gap-2">
+              <span aria-hidden>🦌</span> Connections ({friends.length})
+            </h3>
+            {socialLoading ? (
+              <ScreenDataState variant="loading" message="Loading connections…" compact />
+            ) : friends.length === 0 ? (
+              <ScreenDataState
+                variant="empty"
+                message="No connections yet."
+                detail="Follow someone or accept a request — you'll follow each other once they accept."
+                compact
               />
-              );
-            })}
-          </ul>
-        )}
-      </div>
+            ) : (
+              <ul className="space-y-4">
+                {friends.map((friend) => {
+                  const connection = connections.find((row) => row.userId === friend.userId);
+                  return (
+                    <FriendCard
+                      key={friend.userId}
+                      friend={friend}
+                      title={connection?.title}
+                      guild={connection?.guild}
+                      statsAvailable={connection?.statsAvailable !== false}
+                      onMessage={
+                        onOpenDm
+                          ? () =>
+                              onOpenDm({
+                                userId: friend.userId,
+                                username: friend.username,
+                                name: friend.name,
+                                avatar: friend.avatar,
+                              })
+                          : undefined
+                      }
+                      onViewProfile={onViewProfile}
+                    />
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </>
       ) : null}
-
-      {showCreateGuild && (
-        <CreateGuildModal
-          characterId={character.id}
-          onClose={() => setShowCreateGuild(false)}
-          onCreated={refresh}
-        />
-      )}
-      {viewGuild && (
-        <ViewGuildModal
-          guild={viewGuild}
-          currentUserId={character.id}
-          onLeave={handleLeaveGuild}
-          onClose={() => setViewGuild(null)}
-          onDeleted={refresh}
-          onUpdated={() => { refresh(); setViewGuild((g) => (g ? getGuildById(g.id) ?? g : null)); }}
-        />
-      )}
     </section>
   );
 }
@@ -558,7 +395,9 @@ function FriendCard({
             ) : (
               <p className="font-semibold text-cq-foreground truncate">{friend.name}</p>
             )}
-            <span className="text-xs font-medium text-uri-keaney/90 px-2 py-0.5 rounded bg-uri-keaney/15 border border-uri-keaney/30">Following</span>
+            <span className="text-xs font-medium text-uri-keaney/90 px-2 py-0.5 rounded bg-uri-keaney/15 border border-uri-keaney/30">
+              Following
+            </span>
           </div>
           {onViewProfile ? (
             <button
@@ -582,9 +421,7 @@ function FriendCard({
             })()}
           </div>
           {(title || guild) && (
-            <p className="mt-1.5 text-xs text-white/60">
-              {[title, guild].filter(Boolean).join(" · ")}
-            </p>
+            <p className="mt-1.5 text-xs text-white/60">{[title, guild].filter(Boolean).join(" · ")}</p>
           )}
           <div className="flex gap-2 mt-2 flex-wrap">
             {onMessage && (

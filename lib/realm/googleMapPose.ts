@@ -16,7 +16,13 @@ export const URI_MAP_CINEMATIC_TILT = 67.5;
 /** Fallback tilt when 67.5° is rejected (some devices cap at 45°). */
 export const URI_MAP_FALLBACK_TILT = 45;
 
-export const URI_MAP_ROTATE_STEP_DEG = 15;
+export const URI_MAP_ROTATE_STEP_DEG = 20;
+
+/** Target tilt for the “3D view” control (within Google’s 0–67.5° range). */
+export const URI_MAP_3D_VIEW_TILT = 60;
+
+/** Zoom for the “3D view” control where extruded buildings read clearly. */
+export const URI_MAP_3D_VIEW_ZOOM = 18.5;
 
 /** Standard roadmap keeps building and POI labels visible. */
 export const URI_MAP_TYPE_ID = "roadmap" as const;
@@ -170,6 +176,35 @@ export async function applyFlatCamera(map: google.maps.Map): Promise<void> {
     tilt: 0,
   });
   await readMapTiltAfterDelay(map);
+}
+
+/**
+ * Explicit 3D discovery pose: zoom in, tilt for perspective, keep heading.
+ * Used by the 3D / buildings control so acceptance tests can verify real camera motion.
+ */
+export async function apply3dBuildingView(
+  map: google.maps.Map,
+  options?: { tilt?: number; zoom?: number },
+): Promise<number> {
+  const tilt = options?.tilt ?? URI_MAP_3D_VIEW_TILT;
+  const zoom = Math.max(options?.zoom ?? URI_MAP_3D_VIEW_ZOOM, URI_MAP_BUILDING_ZOOM);
+  const heading = map.getHeading() ?? 0;
+  const center = centerToLiteral(map.getCenter());
+
+  moveMapCamera(map, { center, zoom, heading, tilt });
+  let actual = await readMapTiltAfterDelay(map);
+  if (actual >= tilt - TILT_ACCEPT_EPSILON) return actual;
+
+  // Fall back through supported tilt steps if 60° is rejected.
+  for (const candidate of [URI_MAP_CINEMATIC_TILT, URI_MAP_FALLBACK_TILT, 45, 30]) {
+    if (candidate > tilt) continue;
+    moveMapCamera(map, { center, zoom, heading, tilt: candidate });
+    actual = await readMapTiltAfterDelay(map);
+    if (actual >= Math.min(candidate, URI_MAP_FALLBACK_TILT) - TILT_ACCEPT_EPSILON) {
+      return actual;
+    }
+  }
+  return map.getTilt() ?? 0;
 }
 
 /** Reset any tilt/rotation so the map stays flat and north-up. */

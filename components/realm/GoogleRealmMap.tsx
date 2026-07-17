@@ -25,7 +25,12 @@ import {
 import { vibrateMapMarkerTap } from "@/lib/realm/mapMarkerHaptic";
 import { markUserCameraInteraction } from "@/lib/realm/mapCameraGuard";
 import { useUserGeolocation } from "@/lib/client/useUserGeolocation";
-import type { PlaceSearchResult } from "@/lib/realm/placesSearch";
+import type { MapSearchResult } from "@/lib/realm/mapAutocomplete";
+import {
+  assignVisibleMarkerColors,
+  markerColorHintFromVariant,
+  type MarkerPaletteColor,
+} from "@/lib/realm/markerColorPalette";
 import {
   getLocationActivityState,
   groupActivityCounts,
@@ -38,6 +43,8 @@ import { QuestPathOverlay } from "./QuestPathOverlay";
 import { RealmDirectionsOverlay, type RealmDirectionsLoadResult } from "./RealmDirectionsOverlay";
 import { RealmMapFlyTo } from "./RealmMapFlyTo";
 import { RealmMapCameraBootstrap } from "./RealmMapCameraBootstrap";
+import { RealmMapCameraDebugHud } from "./RealmMapCameraDebugHud";
+import { RealmMapCameraGestures } from "./RealmMapCameraGestures";
 import { RealmMapChromePadding } from "./RealmMapChromePadding";
 import { RealmMapControls } from "./RealmMapControls";
 import { RealmMapFirstOpenCamera } from "./RealmMapFirstOpenCamera";
@@ -51,21 +58,17 @@ import { MagicalParticleLayer } from "./MagicalParticleLayer";
 import { RealmAura } from "./RealmAura";
 import { RealmRaisedBuildingsOverlay } from "./RealmRaisedBuildingsOverlay";
 import { RealmMapMarker } from "./RealmMapMarker";
-import { markerRevealOpacity, useMapZoom } from "./useMapZoom";
+import { markerRevealOpacity, markerZoomTier, useMapZoom } from "./useMapZoom";
 import { useNow } from "@/lib/client/useNow";
 import { getGroupCountdown, type GroupCountdown } from "@/lib/realm/eventCountdown";
 import type { RealmDirectionsRequest } from "@/lib/realm/realmDirectionsTypes";
 import {
   REALM_HEART_OF_CAMPUS,
-  REALM_QUICK_ACTIONS,
   discoveryPriorityScore,
   distanceMeters,
-  flyMapCamera,
   hasSeenRealmWelcome,
   markRealmWelcomeSeen,
-  type RealmQuickActionId,
 } from "@/lib/realm/realmFirstOpen";
-import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 import { resetUserCameraInteraction } from "@/lib/realm/mapCameraGuard";
 import {
   beginRealmMapSession,
@@ -78,9 +81,12 @@ import {
   resetGoogleMapsApiLoadPromise,
   resetRealmMapTilesReady,
 } from "@/lib/realm/realmMapLifecycle";
+import { RealmMapExploreModeController } from "./RealmMapExploreModeController";
+import { clearMapExploring } from "@/lib/client/realmMapExploreMode";
 
 const MAP_BACKGROUND = CQ_REALM_MAP_BACKGROUND;
 const REALM_VECTOR_3D_ENABLED = isRealmVector3dEnabled();
+const REALM_CAMERA_DEBUG = process.env.NODE_ENV === "development";
 
 export type GoogleRealmMapLandmark = {
   id: RealmLocationId;
@@ -97,14 +103,6 @@ export type MapMarkerFilter = "all" | "quests" | "events" | "memories" | "qr";
 
 /** NEXT_PUBLIC_DEBUG_MAP_MAGIC=true forces event marker visuals + debug logs. */
 const MAP_MAGIC_DEBUG = process.env.NEXT_PUBLIC_DEBUG_MAP_MAGIC === "true";
-
-const FILTER_OPTIONS: { id: MapMarkerFilter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "quests", label: "Quests" },
-  { id: "events", label: "Events" },
-  { id: "memories", label: "Memories" },
-  { id: "qr", label: "QR" },
-];
 
 function landmarkMatchesFilter(landmark: GoogleRealmMapLandmark, filter: MapMarkerFilter): boolean {
   switch (filter) {
@@ -313,6 +311,7 @@ function RealmMapMarkers({
   onUrinvolvedEventDragEnd?: (externalEventId: string, lat: number, lng: number) => void;
 }) {
   const mapZoom = useMapZoom();
+  const zoomTier = markerZoomTier(mapZoom);
   const markersLoggedRef = useRef(false);
   // One shared 30s clock drives every marker countdown — no per-marker timers.
   const now = useNow(30_000, !editMode);
@@ -396,6 +395,82 @@ function RealmMapMarkers({
       return scoreB - scoreA;
     });
   }, [supplementaryPins, editMode, filter, discoveryCenter, userPos]);
+
+  const markerColors = useMemo(() => {
+    const origin = discoveryCenter ?? userPos ?? REALM_HEART_OF_CAMPUS;
+    const entries: Array<{
+      id: string;
+      lat: number;
+      lng: number;
+      hint: ReturnType<typeof markerColorHintFromVariant>;
+      preferGold: boolean;
+      distanceM: number;
+    }> = [];
+
+    for (const landmark of visibleLandmarks) {
+      const pos = geoPositions[landmark.id] ?? REALM_HEART_OF_CAMPUS;
+      const variant = resolveLandmarkMarkerVariant(landmark);
+      entries.push({
+        id: landmark.id,
+        lat: pos.lat,
+        lng: pos.lng,
+        hint: markerColorHintFromVariant(variant),
+        preferGold: false,
+        distanceM: distanceMeters(origin, pos),
+      });
+    }
+    for (const group of visibleGroups) {
+      if (group.lat == null || group.lng == null) continue;
+      const variant = resolveGroupMarkerVariant(group);
+      entries.push({
+        id: group.groupKey,
+        lat: group.lat,
+        lng: group.lng,
+        hint: markerColorHintFromVariant(variant),
+        preferGold: false,
+        distanceM: distanceMeters(origin, { lat: group.lat, lng: group.lng }),
+      });
+    }
+
+    // Gold reserved for the closest opportunity-bearing marker when possible.
+    const withContent = entries
+      .filter((e) => {
+        const landmark = visibleLandmarks.find((l) => l.id === e.id);
+        if (landmark) {
+          return (
+            (landmark.mapContent?.quests.length ?? 0) > 0 ||
+            (landmark.mapContent?.events.length ?? 0) > 0 ||
+            landmark.upcomingEvents > 0 ||
+            landmark.activeMomentCount > 0 ||
+            (landmark.mapContent?.qrCodes.length ?? 0) > 0
+          );
+        }
+        const group = visibleGroups.find((g) => g.groupKey === e.id);
+        return Boolean(group && mapLocationActivityCount(group) > 0);
+      })
+      .sort((a, b) => a.distanceM - b.distanceM);
+    if (withContent[0]) withContent[0].preferGold = true;
+
+    return assignVisibleMarkerColors(entries);
+  }, [visibleLandmarks, visibleGroups, geoPositions, discoveryCenter, userPos]);
+
+  function colorFor(id: string): MarkerPaletteColor {
+    return markerColors.get(id) ?? "electric-blue";
+  }
+
+  function landmarkOpportunityCount(landmark: GoogleRealmMapLandmark): number {
+    const content = landmark.mapContent;
+    return (
+      (content?.quests.length ?? 0) +
+      (content?.events.length ?? 0) +
+      (content?.qrCodes.length ?? 0) +
+      Math.max(0, landmark.activeMomentCount)
+    );
+  }
+
+  function groupOpportunityCount(group: GroupedMapLocation): number {
+    return group.quests.length + group.events.length + group.qrCodes.length;
+  }
 
   // Dev debug panel: full pipeline summary from map data to rendered markers.
   useEffect(() => {
@@ -502,6 +577,9 @@ function RealmMapMarkers({
               major={landmark.major}
               activityState={editMode ? "idle" : activityState}
               activityCount={activityCount}
+              opportunityCount={landmarkOpportunityCount(landmark)}
+              color={colorFor(landmark.id)}
+              zoomTier={zoomTier}
               revealOpacity={reveal}
               editMode={editMode}
               editorSelected={editorSelectedId === landmark.id}
@@ -541,6 +619,9 @@ function RealmMapMarkers({
               label={group.locationName}
               activityState={activityState}
               activityCount={activityCount}
+              opportunityCount={groupOpportunityCount(group)}
+              color={colorFor(group.groupKey)}
+              zoomTier={zoomTier}
               revealOpacity={markerRevealOpacity(mapZoom, false)}
               revealIndex={markersReveal ? visibleLandmarks.length + index : undefined}
               countdown={countdownByGroup[group.groupKey] ?? null}
@@ -648,12 +729,11 @@ export function GoogleRealmMap({
   selectedUrinvolvedEventId?: string | null;
   onSelectUrinvolvedEvent?: (externalEventId: string) => void;
   onUrinvolvedEventDragEnd?: (externalEventId: string, lat: number, lng: number) => void;
-  onPlaceSelected?: (place: PlaceSearchResult) => void;
+  onPlaceSelected?: (result: MapSearchResult) => void;
   searchPin?: { lat: number; lng: number; name: string } | null;
 }) {
   const [apiError, setApiError] = useState(false);
-  const [filter, setFilter] = useState<MapMarkerFilter>("all");
-  const [quickAction, setQuickAction] = useState<RealmQuickActionId | null>(null);
+  const filter: MapMarkerFilter = "all";
   const [mapLayer, setMapLayer] = useState<"campus" | "satellite">("campus");
   const [tilesLoaded, setTilesLoaded] = useState(() => isRealmMapTilesReady());
   const [notice, setNotice] = useState<string | null>(null);
@@ -662,10 +742,12 @@ export function GoogleRealmMap({
   const [discoveryCenter, setDiscoveryCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [welcomeVisible, setWelcomeVisible] = useState(false);
   const [particlesReady, setParticlesReady] = useState(false);
+  const [searchActive, setSearchActive] = useState(false);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const tilesReadyRef = useRef(isRealmMapTilesReady());
   const sessionStartedRef = useRef(false);
   const firstOpenDoneRef = useRef(false);
+  const exploreApiRef = useRef<{ expandChrome: () => void; noteMapInteraction: () => void } | null>(null);
 
   useEffect(() => {
     // Build stamp on load — proves which deployment the (PWA-cached) client runs.
@@ -733,7 +815,10 @@ export function GoogleRealmMap({
     setMapLayer((prev) => (prev === "campus" ? "satellite" : "campus"));
   }, []);
 
-  useEffect(() => () => document.documentElement.removeAttribute("data-realm-map-panning"), []);
+  useEffect(() => () => {
+    document.documentElement.removeAttribute("data-realm-map-panning");
+    clearMapExploring();
+  }, []);
 
   const showNotice = useCallback((message: string) => {
     setNotice(message);
@@ -750,6 +835,8 @@ export function GoogleRealmMap({
   const userPos = geolocation.userPos;
 
   const sheetOpen = Boolean(activeMarkerId) || routeSheetOpen;
+  const forceChromeExpanded =
+    sheetOpen || searchActive || editMode || controlsExpanded || Boolean(directionsRequest);
 
   const discovery = useRealmMapDiscovery({
     enabled: isActive && !editMode,
@@ -781,80 +868,23 @@ export function GoogleRealmMap({
     [onCameraResolved],
   );
 
-  const handleQuickAction = useCallback(
-    (id: RealmQuickActionId) => {
-      dismissWelcome();
-      setQuickAction(id);
-      const map = mapRef.current;
-
-      if (id === "live") {
-        setFilter("events");
-        return;
-      }
-      if (id === "buildings") {
-        setFilter("all");
-        return;
-      }
-      if (id === "popular") {
-        setFilter("all");
-        const target = {
-          lat: REALM_LOCATION_GEO["the-quad"].latitude,
-          lng: REALM_LOCATION_GEO["the-quad"].longitude,
-        };
-        setDiscoveryCenter(target);
-        if (map) {
-          resetUserCameraInteraction();
-          void flyMapCamera(map, target, { startZoom: 16.2, endZoom: 17.5, durationMs: 900 });
-        }
-        return;
-      }
-      if (id === "study") {
-        setFilter("all");
-        const target = {
-          lat: REALM_LOCATION_GEO.library.latitude,
-          lng: REALM_LOCATION_GEO.library.longitude,
-        };
-        setDiscoveryCenter(target);
-        if (map) {
-          resetUserCameraInteraction();
-          void flyMapCamera(map, target, { startZoom: 16.2, endZoom: 17.6, durationMs: 900 });
-        }
-        return;
-      }
-      if (id === "closest-quest") {
-        setFilter("quests");
-        const origin = userPos ?? discoveryCenter ?? REALM_HEART_OF_CAMPUS;
-        const questLandmarks = landmarks
-          .filter((l) => (l.mapContent?.quests.length ?? 0) > 0 || l.activeQuests > 0)
-          .map((l) => ({
-            landmark: l,
-            pos: geoPositions[l.id],
-          }))
-          .filter((row): row is { landmark: GoogleRealmMapLandmark; pos: { lat: number; lng: number } } =>
-            Boolean(row.pos),
-          )
-          .sort(
-            (a, b) => distanceMeters(origin, a.pos) - distanceMeters(origin, b.pos),
-          );
-        const nearest = questLandmarks[0];
-        if (nearest && map) {
-          setDiscoveryCenter(nearest.pos);
-          resetUserCameraInteraction();
-          void flyMapCamera(map, nearest.pos, { startZoom: 16.2, endZoom: 17.8, durationMs: 900 });
-        } else {
-          showNotice("No active quests nearby — exploring campus landmarks instead.");
-          setFilter("all");
-        }
-      }
-    },
-    [
-      dismissWelcome,
-      userPos,
-      discoveryCenter,
-      landmarks,
-      geoPositions,
-      showNotice,
-    ],
+  const searchBuildings = useMemo(
+    () =>
+      landmarks
+        .map((landmark) => {
+          const geo = geoPositions[landmark.id];
+          if (!geo) return null;
+          return {
+            id: landmark.id,
+            name: landmark.name,
+            shortLabel: landmark.shortLabel,
+            address: landmark.mapContent?.locationAddress ?? null,
+            lat: geo.lat,
+            lng: geo.lng,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => row != null),
+    [landmarks, geoPositions],
   );
 
   // Dismiss welcome on first meaningful map interaction.
@@ -884,14 +914,6 @@ export function GoogleRealmMap({
       (group) => mapLocationActivityCount(group) > 0 && groupMatchesFilter(group, filter),
     ).length;
   }, [supplementaryPins, editMode, filter]);
-
-  const filterEmpty =
-    markersLoaded &&
-    tilesLoaded &&
-    !editMode &&
-    filter !== "all" &&
-    landmarks.filter((l) => landmarkMatchesFilter(l, filter)).length === 0 &&
-    visibleGroupCount === 0;
 
   const noMarkersVisible =
     markersLoaded && tilesLoaded && !editMode && visibleLandmarkCount === 0 && visibleGroupCount === 0;
@@ -967,6 +989,11 @@ export function GoogleRealmMap({
           maxZoom={URI_MAP_MAX_ZOOM}
           gestureHandling="greedy"
           rotateControl
+          tiltInteractionEnabled
+          headingInteractionEnabled
+          mapTypeControl={false}
+          streetViewControl={false}
+          fullscreenControl={false}
           disableDefaultUI
           clickableIcons={false}
           backgroundColor={MAP_BACKGROUND}
@@ -982,8 +1009,16 @@ export function GoogleRealmMap({
           <RealmMapInstanceRef mapRef={mapRef} />
           <RealmMapReadyProbe onReady={markTilesReady} />
           <RealmMapVisibilityHandler visible={isActive} onRecoverStall={recoverMapStall} />
+          <RealmMapExploreModeController
+            enabled={isActive && tilesLoaded && !editMode}
+            forceExpanded={forceChromeExpanded}
+            surfaceRef={surfaceRef}
+            exploreApiRef={exploreApiRef}
+          />
           {/* Keep Google logo/attribution clear of dock, FABs, and CQ gradients. */}
           <RealmMapChromePadding enabled={isActive} />
+          <RealmMapCameraGestures enabled={isActive && tilesLoaded} />
+          {REALM_CAMERA_DEBUG ? <RealmMapCameraDebugHud enabled={isActive && tilesLoaded} /> : null}
           {tilesLoaded && isActive && !editMode && !firstOpenDoneRef.current ? (
             <RealmMapFirstOpenCamera
               enabled
@@ -1032,10 +1067,12 @@ export function GoogleRealmMap({
             discoveryLabelsHidden={discovery.labelsHidden}
             onTapLandmark={(id) => {
               dismissWelcome();
+              exploreApiRef.current?.expandChrome();
               onTapLandmark(id);
             }}
             onTapSupplementary={(group) => {
               dismissWelcome();
+              exploreApiRef.current?.expandChrome();
               onTapSupplementary(group);
             }}
             onSelectEditorMarker={onSelectEditorMarker}
@@ -1064,42 +1101,22 @@ export function GoogleRealmMap({
                 }`}
               >
                 {onPlaceSelected ? (
-                  <RealmMapSearch onSelect={onPlaceSelected} disabled={!tilesLoaded} />
+                  <RealmMapSearch
+                    buildings={searchBuildings}
+                    groups={[
+                      ...landmarks
+                        .map((landmark) => landmark.mapContent)
+                        .filter((group): group is GroupedMapLocation => Boolean(group)),
+                      ...supplementaryPins,
+                    ]}
+                    onSelect={(result) => {
+                      exploreApiRef.current?.expandChrome();
+                      onPlaceSelected(result);
+                    }}
+                    onActiveChange={setSearchActive}
+                    disabled={!tilesLoaded}
+                  />
                 ) : null}
-                <div className="cq-realm-map-quick-actions" role="group" aria-label="Quick map actions">
-                  {REALM_QUICK_ACTIONS.map((action) => (
-                    <button
-                      key={action.id}
-                      type="button"
-                      onClick={() => handleQuickAction(action.id)}
-                      aria-pressed={quickAction === action.id}
-                      className={`cq-realm-map-quick-chip touch-manipulation${
-                        quickAction === action.id ? " cq-realm-map-quick-chip--active" : ""
-                      }`}
-                    >
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="cq-realm-map-filter" role="group" aria-label="Map marker filters">
-                  {FILTER_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => {
-                        dismissWelcome();
-                        setQuickAction(null);
-                        setFilter(opt.id);
-                      }}
-                      aria-pressed={filter === opt.id}
-                      className={`cq-realm-map-filter-chip touch-manipulation${
-                        filter === opt.id ? " cq-realm-map-filter-chip--active" : ""
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
                 <RealmOpportunitiesBanner
                   visible={discovery.bannerVisible}
                   copy={discovery.bannerCopy}
@@ -1135,6 +1152,8 @@ export function GoogleRealmMap({
                 activityState="active"
                 activityCount={0}
                 revealOpacity={1}
+                color="gold"
+                zoomTier="near"
               />
             </CampusQuestMapMarker>
           ) : null}
@@ -1162,28 +1181,7 @@ export function GoogleRealmMap({
             </MapControl>
           ) : null}
 
-          {filterEmpty ? (
-            <MapControl position={ControlPosition.BOTTOM_CENTER}>
-              <div className="cq-realm-map-toast cq-realm-map-toast--empty flex flex-wrap items-center justify-center gap-2">
-                <span className="inline-flex items-center gap-1.5">
-                  <MapPinOff className="h-3.5 w-3.5" aria-hidden />
-                  Nothing matches this filter — showing campus landmarks.
-                </span>
-                <button
-                  type="button"
-                  className="cq-realm-map-toast-action touch-manipulation"
-                  onClick={() => {
-                    setFilter("all");
-                    setQuickAction(null);
-                  }}
-                >
-                  Show all
-                </button>
-              </div>
-            </MapControl>
-          ) : null}
-
-          {noMarkersVisible && !filterEmpty ? (
+          {noMarkersVisible ? (
             <MapControl position={ControlPosition.BOTTOM_CENTER}>
               <div className="cq-realm-map-toast cq-realm-map-toast--empty flex items-center gap-1.5">
                 <MapPinOff className="h-3.5 w-3.5" aria-hidden />

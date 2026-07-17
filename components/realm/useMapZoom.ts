@@ -26,3 +26,10 @@ export function markerRevealOpacity(zoom: number, major: boolean): number {
   if (zoom >= 16.5) return 1;
   return (zoom - 14.5) / 2;
 }
+
+/** Scale/label density tier for magical pins. */
+export function markerZoomTier(zoom: number): "far" | "mid" | "near" {
+  if (zoom < 15.2) return "far";
+  if (zoom < 16.2) return "mid";
+  return "near";
+}

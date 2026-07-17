@@ -5856,11 +5856,15 @@ html[data-cq-quad-hidden="true"] .cq-quad-header-shell {
   transform: translateX(-50%) scale(var(--cq-dock-scale, 1));
   transform-origin: center bottom;
   opacity: var(--cq-dock-opacity, 1);
-  transition: transform 180ms ease, opacity 180ms ease, bottom 180ms ease;
+  transition:
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    bottom 260ms cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
   box-sizing: border-box;
+  will-change: transform, opacity;
 }
 
 .cq-dock-nav--drawer-open,
@@ -5900,6 +5904,46 @@ html[data-cq-realm-immersive] .cq-dock-nav__rail {
     0 20px 56px -14px rgba(0, 0, 0, 0.72),
     0 0 28px rgba(0, 119, 255, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    min-height 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 240ms ease,
+    backdrop-filter 240ms ease,
+    border-color 240ms ease;
+}
+
+/* Map explore / navigation mode — compact dock while panning the Realm map. */
+html[data-cq-map-exploring][data-cq-realm-immersive] {
+  --cq-dock-scale: 0.83;
+  --cq-dock-opacity: 0.7;
+}
+
+html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + max(4px, calc(var(--cq-dock-bottom-offset, 14px) - 8px)));
+}
+
+html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__rail {
+  min-height: 2.35rem;
+  padding: 0.28rem 0.48rem 0.24rem;
+  background: rgba(5, 18, 40, 0.55);
+  border-color: rgba(75, 174, 255, 0.12);
+  backdrop-filter: blur(36px);
+  -webkit-backdrop-filter: blur(36px);
+}
+
+html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__item {
+  min-height: 2.35rem;
+  min-width: 2.45rem;
+}
+
+html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__scan-btn {
+  height: 2.55rem;
+  width: 2.55rem;
+  margin-top: -0.2rem;
+}
+
+html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__item--active {
+  color: #ffffff;
 }
 
 @keyframes cq-realm-dock-in {
@@ -6168,8 +6212,7 @@ html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-scan-btn svg {
   .cq-bottom-nav-icon-slot,
   .cq-bottom-nav-label,
   .cq-bottom-nav-scan-btn,
-  .cq-dashboard-scroll-pad,
-  .cq-bottom-chrome-follower {
+  .cq-dashboard-scroll-pad {
     transition-duration: 0.01ms !important;
   }
 
@@ -6194,11 +6237,6 @@ html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-scan-btn svg {
   height: calc(100dvh - env(safe-area-inset-top, 0px));
   min-height: calc(100dvh - env(safe-area-inset-top, 0px));
   overflow: hidden;
-}
-
-.cq-bottom-chrome-follower {
-  bottom: var(--cq-feed-bottom-clearance, calc(var(--cq-bottom-nav-h, 5.75rem) + 1rem));
-  transition: bottom 400ms ease-in-out;
 }
 
 .cq-quad-feed-body {
@@ -11237,6 +11275,80 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   opacity: 1;
 }
 
+/* Dev camera HUD — does not cover the gesture center (LEFT_BOTTOM, compact). */
+.cq-realm-map-camera-debug {
+  margin: 0 0 0.35rem 0.35rem;
+  max-width: min(14rem, calc(100vw - 5rem));
+  border-radius: 12px;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  background: rgba(2, 12, 28, 0.88);
+  padding: 0.45rem 0.55rem;
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(186, 230, 253, 0.92);
+  pointer-events: auto;
+  touch-action: manipulation;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(0, 20, 50, 0.45);
+}
+
+.cq-realm-map-camera-debug-title {
+  margin: 0 0 0.25rem;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+}
+
+.cq-realm-map-camera-debug-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cq-realm-map-camera-debug-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+
+.cq-realm-map-camera-debug-actions button {
+  border-radius: 8px;
+  border: 1px solid rgba(125, 211, 252, 0.4);
+  background: rgba(14, 48, 88, 0.9);
+  padding: 0.22rem 0.4rem;
+  font-size: 9px;
+  font-weight: 700;
+  color: #e0f2fe;
+  touch-action: manipulation;
+}
+
+.cq-realm-map-camera-debug-actions button:active {
+  transform: scale(0.96);
+}
+
+/* When tilted, soften decorative overlays so extruded buildings stay visible. */
+html[data-realm-map-tilted] .cq-realm-aura {
+  opacity: 0.42 !important;
+  animation: none;
+}
+
+html[data-realm-map-tilted] .cq-magic-particle-field {
+  opacity: 0.35;
+}
+
+html[data-realm-map-tilted] .cq-raised-building-pin {
+  opacity: 0.55;
+}
+
+.cq-realm-map-canvas,
+.cq-realm-map-canvas > div {
+  touch-action: none;
+}
+
 .cq-realm-map-banner {
   position: absolute;
   z-index: 8;
@@ -11469,12 +11581,16 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   }
 }
 
-.cq-realm-marker--enter .cq-realm-marker-stack {
+.cq-realm-marker--enter .cq-realm-marker-stack,
+.cq-realm-marker--enter .marker-pin,
+.cq-realm-marker--enter .realm-marker-pin {
   animation: cq-realm-marker-enter 0.58s cubic-bezier(0.34, 1.4, 0.64, 1) both;
   animation-delay: calc(var(--marker-enter-index, 0) * 48ms + 300ms);
 }
 
-.cq-realm-marker--enter .cq-realm-marker-label {
+.cq-realm-marker--enter .cq-realm-marker-label,
+.cq-realm-marker--enter .marker-label,
+.cq-realm-marker--enter .realm-marker-label {
   animation: cq-realm-marker-enter 0.5s cubic-bezier(0.34, 1.4, 0.64, 1) both;
   animation-delay: calc(var(--marker-enter-index, 0) * 48ms + 360ms);
 }
@@ -15966,9 +16082,11 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
 
 /* Header (with Dynamic Island inset) sits above the map — no double safe-area-top. */
 .cq-realm-map-search {
+  position: relative;
   margin: 0;
   width: min(22rem, calc(100vw - 2rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
   pointer-events: auto;
+  z-index: 40;
 }
 
 .cq-realm-map-search-field {
@@ -16021,41 +16139,109 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   color: rgba(255, 255, 255, 0.55);
 }
 
+.cq-realm-map-search-dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 80;
+  max-height: min(18rem, calc(100dvh - 7.5rem - env(safe-area-inset-bottom, 0px)));
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid rgba(75, 174, 255, 0.32);
+  background: rgba(4, 18, 40, 0.96);
+  box-shadow:
+    0 14px 36px rgba(0, 24, 64, 0.55),
+    0 0 24px rgba(0, 119, 255, 0.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.cq-realm-map-search-empty {
+  margin: 0;
+  padding: 0.85rem 0.9rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(186, 230, 253, 0.72);
+  text-align: center;
+}
+
 .cq-realm-map-search-results {
-  margin: 0.35rem 0 0;
-  max-height: 14rem;
+  margin: 0;
+  max-height: min(18rem, calc(100dvh - 7.5rem - env(safe-area-inset-bottom, 0px)));
   overflow-y: auto;
-  border-radius: 0.85rem;
-  border: 1px solid rgba(222, 184, 92, 0.28);
-  background: rgba(10, 8, 4, 0.94);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: max(0.25rem, env(safe-area-inset-bottom, 0px));
 }
 
 .cq-realm-map-search-result {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.55rem;
   width: 100%;
-  padding: 0.55rem 0.75rem;
+  padding: 0.6rem 0.75rem;
   text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.08);
 }
 
 .cq-realm-map-search-result:last-child {
   border-bottom: none;
 }
 
+.cq-realm-map-search-result:active {
+  background: rgba(56, 189, 248, 0.1);
+}
+
+.cq-realm-map-search-result-leading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 0.55rem;
+  background: rgba(12, 74, 110, 0.55);
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  flex-shrink: 0;
+}
+
+.cq-realm-map-search-result-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: #7dd3fc;
+}
+
+.cq-realm-map-search-result-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .cq-realm-map-search-result-main {
   font-size: 13px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(240, 249, 255, 0.95);
+  line-height: 1.25;
 }
 
 .cq-realm-map-search-result-sub {
-  margin-top: 0.1rem;
+  margin-top: 0.12rem;
   font-size: 11px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(186, 230, 253, 0.68);
+  line-height: 1.25;
+}
+
+.cq-realm-map-search-result-type {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(125, 211, 252, 0.8);
 }
 
 .cq-gmap-filter-bar {
@@ -16158,207 +16344,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   }
 }
 
-/* —— Google Realm markers (SVG/CSS fantasy layer) —— */
-.realm-marker {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  cursor: pointer;
-  position: relative;
-  padding-bottom: 2px;
-  min-width: 2.75rem;
-}
-
-.realm-marker:active {
-  transform: scale(0.96);
-}
-
-.realm-marker-icon {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  height: 30px;
-  width: 30px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  border: 2px solid rgba(222, 184, 92, 0.92);
-  background: radial-gradient(circle at 32% 28%, #1a2f52 0%, #0b1528 78%);
-  box-shadow:
-    inset 0 0 0 1px rgba(118, 86, 32, 0.55),
-    0 0 8px -2px rgba(222, 184, 92, 0.4),
-    0 2px 8px rgba(0, 0, 0, 0.42);
-  transition: transform 160ms ease, box-shadow 160ms ease;
-}
-
-@media (hover: hover) {
-  .realm-marker:hover .realm-marker-icon {
-    transform: translateY(-2px);
-    box-shadow:
-      inset 0 0 0 1px rgba(118, 86, 32, 0.55),
-      0 0 14px -2px rgba(222, 184, 92, 0.62),
-      0 4px 12px rgba(0, 0, 0, 0.48);
-  }
-}
-
-.realm-marker-label {
-  margin-top: 4px;
-  max-width: 6.5rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #f8eed2 0%, #ecdcb2 100%);
-  border: 1px solid rgba(126, 92, 38, 0.55);
-  padding: 2px 6px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: #43320f;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.38);
-}
-
-.realm-marker--plain .realm-marker-icon {
-  height: 26px;
-  width: 26px;
-  border-color: rgba(222, 184, 92, 0.75);
-  background: rgba(10, 18, 32, 0.88);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
-}
-
-.realm-marker--plain .realm-marker-label {
-  background: rgba(10, 18, 32, 0.82);
-  border-color: rgba(222, 184, 92, 0.35);
-  color: rgba(255, 255, 255, 0.82);
-}
-
-.realm-marker--active .realm-marker-icon {
-  border-color: rgba(255, 220, 120, 1);
-  animation: realm-marker-active-pulse 2.4s ease-in-out infinite;
-}
-
-.realm-marker--active .realm-marker-label {
-  background: linear-gradient(180deg, #ffe9b0 0%, #f3d684 100%);
-  border-color: rgba(146, 104, 36, 0.85);
-}
-
-.realm-marker-glow {
-  position: absolute;
-  top: -2px;
-  left: 50%;
-  z-index: 0;
-  height: 34px;
-  width: 34px;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  border: 1px solid rgba(129, 161, 255, 0.4);
-  box-shadow: 0 0 12px rgba(104, 111, 255, 0.42);
-  animation: realm-marker-glow-pulse 3s ease-in-out infinite;
-}
-
-.realm-marker-glow--memories {
-  height: 38px;
-  width: 38px;
-  top: -4px;
-  border-color: rgba(251, 191, 36, 0.45);
-  box-shadow: 0 0 14px rgba(251, 191, 36, 0.38);
-}
-
-.realm-marker-ring {
-  position: absolute;
-  top: -6px;
-  left: 50%;
-  z-index: 1;
-  height: 42px;
-  width: 42px;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  border: 1px dashed rgba(222, 184, 92, 0.45);
-  animation: realm-marker-ring-spin 14s linear infinite;
-  pointer-events: none;
-}
-
-.realm-marker--quest .realm-marker-icon {
-  border-color: rgba(129, 161, 255, 0.92);
-  background: radial-gradient(circle at 32% 28%, #24306a 0%, #101334 78%);
-}
-
-.realm-marker--legendary .realm-marker-icon {
-  border-color: rgba(167, 139, 250, 0.95);
-  background: radial-gradient(circle at 32% 28%, #3a2868 0%, #140f28 78%);
-  box-shadow:
-    inset 0 0 0 1px rgba(126, 92, 38, 0.55),
-    0 0 14px -2px rgba(167, 139, 250, 0.55),
-    0 0 10px rgba(222, 184, 92, 0.35),
-    0 2px 8px rgba(0, 0, 0, 0.42);
-}
-
-.realm-marker--legendary .realm-marker-glow {
-  border-color: rgba(167, 139, 250, 0.55);
-  box-shadow: 0 0 16px rgba(167, 139, 250, 0.5), 0 0 10px rgba(222, 184, 92, 0.35);
-}
-
-.realm-marker--event .realm-marker-icon {
-  border-color: rgba(251, 191, 36, 0.92);
-  background: radial-gradient(circle at 32% 28%, #5c3f10 0%, #2a1c08 78%);
-}
-
-.realm-marker--qr .realm-marker-icon {
-  border-color: rgba(255, 220, 120, 0.95);
-  background: radial-gradient(circle at 32% 28%, #3f3010 0%, #1a1406 78%);
-}
-
-.realm-marker--memories .realm-marker-icon {
-  border-color: rgba(253, 224, 71, 0.9);
-}
-
-.realm-marker--major .realm-marker-icon {
-  border-width: 2.5px;
-}
-
-.realm-marker--editable .realm-marker-icon {
-  border-style: dashed;
-  cursor: grab;
-}
-
-.realm-marker--selected .realm-marker-icon {
-  border-color: rgba(251, 191, 36, 0.95);
-  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.26), 0 2px 12px rgba(0, 0, 0, 0.5);
-}
-
-@keyframes realm-marker-glow-pulse {
-  0%,
-  100% {
-    opacity: 0.72;
-    transform: translateX(-50%) scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: translateX(-50%) scale(1.06);
-  }
-}
-
-@keyframes realm-marker-ring-spin {
-  to {
-    transform: translateX(-50%) rotate(360deg);
-  }
-}
-
-@keyframes realm-marker-active-pulse {
-  0%,
-  100% {
-    box-shadow:
-      inset 0 0 0 1px rgba(118, 86, 32, 0.55),
-      0 0 10px rgba(255, 206, 92, 0.45),
-      0 2px 8px rgba(0, 0, 0, 0.42);
-  }
-  50% {
-    box-shadow:
-      inset 0 0 0 1px rgba(118, 86, 32, 0.55),
-      0 0 18px rgba(255, 206, 92, 0.62),
-      0 2px 8px rgba(0, 0, 0, 0.42);
-  }
-}
+/* Legacy circular .realm-marker-icon styles removed — see magical pins below. */
 
 .realm-mode-toggle {
   display: inline-flex;
@@ -16460,15 +16446,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   color: rgba(90, 62, 18, 0.65);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .realm-marker-glow,
-  .realm-marker-ring,
-  .realm-marker--active .realm-marker-icon {
-    animation: none !important;
-  }
-}
-
-/* —— Clean flat Google map markers —— */
+/* —— Clean flat Google map markers (unused legacy) —— */
 .cq-map-marker {
   display: flex;
   flex-direction: column;
@@ -16608,251 +16586,145 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
 }
 
 /* —— CampusQuest Realm map markers (premium game pins) —— */
+/* —— Magical Realm map pins (fantasy teardrop + unique neon palette) —— */
+.realm-marker,
 .cq-realm-marker {
+  --cq-marker-grad-top: #2f86ff;
+  --cq-marker-grad-bot: #005fd8;
+  --cq-marker-glow: rgba(70, 160, 255, 0.65);
+  --cq-marker-glow-soft: rgba(70, 160, 255, 0.35);
+  --cq-marker-label-border: rgba(80, 170, 255, 0.45);
   display: flex;
   flex-direction: column;
   align-items: center;
   cursor: pointer;
   position: relative;
   z-index: 10;
-  min-width: 3rem;
+  min-width: 2.75rem;
   overflow: visible;
   will-change: transform, opacity;
   transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  transition: transform 0.18s ease;
+  transition: transform 0.2s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
+.marker-stack,
 .cq-realm-marker-stack {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   overflow: visible;
-  transition: transform 0.18s ease;
+  transition: transform 0.2s ease;
+  pointer-events: none;
 }
 
+.marker-pin-anchor,
 .cq-marker-pin-anchor {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  width: 46px;
-  height: 46px;
+  width: 52px;
+  height: 58px;
   overflow: visible;
-  --cq-marker-orbit-r: 20px;
+  pointer-events: none;
 }
 
+/* Pointed pin body — classic map-pin silhouette */
+.marker-pin,
 .cq-realm-marker-pin {
   position: relative;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 50% 50% 50% 12%;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 10px;
+  border-radius: 50% 50% 50% 0;
   transform: rotate(-45deg);
-  border: 2px solid rgba(255, 255, 255, 0.75);
-  background: linear-gradient(180deg, var(--cq-marker-grad-top), var(--cq-marker-grad-bot));
+  border: 2px solid rgba(255, 255, 255, 0.88);
+  background: linear-gradient(145deg, var(--cq-marker-grad-top), var(--cq-marker-grad-bot));
   box-shadow:
-    0 0 16px var(--cq-marker-glow),
-    0 10px 24px rgba(0, 0, 0, 0.42);
+    0 0 14px var(--cq-marker-glow),
+    0 0 28px var(--cq-marker-glow-soft),
+    0 8px 18px rgba(0, 0, 0, 0.45);
   transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease;
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+  animation: realm-marker-idle-breathe 3.6s ease-in-out infinite;
+  pointer-events: auto;
 }
 
+.marker-icon,
 .cq-realm-marker-icon {
-  width: 23px;
-  height: 23px;
-  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(6, 16, 36, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
   transform: rotate(45deg);
+  color: #fff;
   flex-shrink: 0;
+  pointer-events: none;
 }
 
+.marker-icon .cq-realm-marker-icon,
+.cq-realm-marker-icon.cq-realm-marker-icon {
+  width: 15px;
+  height: 15px;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  transform: none;
+}
+
+/* Legacy connector removed — pin tip + ground ring replace it */
 .cq-realm-marker-connector {
-  display: block;
-  width: 2px;
-  height: 6px;
-  margin-top: -1px;
-  background: linear-gradient(180deg, var(--cq-marker-grad-bot), transparent);
-  opacity: 0.85;
+  display: none;
 }
 
+.marker-label,
 .cq-realm-marker-label {
   position: relative;
-  z-index: 3;
+  z-index: 4;
   margin-top: 2px;
-  max-width: 9rem;
+  max-width: 7.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 6px 12px;
+  padding: 4px 10px;
   border-radius: 999px;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 1.15;
-  color: #fff;
-  background: rgba(5, 15, 35, 0.92);
-  border: 1px solid var(--cq-marker-label-border, rgba(80, 170, 255, 0.45));
-  box-shadow: 0 4px 16px rgba(0, 40, 100, 0.4);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(4, 10, 24, 0.82);
+  border: 1px solid var(--cq-marker-label-border, rgba(80, 170, 255, 0.4));
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease,
-    border-color 0.18s ease;
-}
-
-/* Activity state layering */
-.cq-realm-marker--state-hot {
-  z-index: 28;
-}
-
-.cq-realm-marker--state-active {
-  z-index: 24;
-}
-
-.cq-realm-marker--state-selected {
-  z-index: 100;
-}
-
-.cq-realm-marker--state-active .cq-realm-marker-pin,
-.cq-realm-marker--state-hot .cq-realm-marker-pin {
-  transform: rotate(-45deg) scale(1.05);
-  animation: cq-realm-marker-alive-pulse 2.4s ease-in-out infinite;
-}
-
-@keyframes cq-realm-marker-alive-pulse {
-  0%,
-  100% {
-    filter: brightness(1);
-    box-shadow:
-      0 0 14px var(--cq-marker-glow),
-      0 8px 18px rgba(0, 0, 0, 0.35);
-  }
-  50% {
-    filter: brightness(1.12);
-    box-shadow:
-      0 0 22px var(--cq-marker-glow),
-      0 10px 22px rgba(0, 0, 0, 0.4);
-  }
-}
-
-.cq-realm-marker--state-selected .cq-realm-marker-stack {
-  transform: translateY(-3px);
-}
-
-.cq-realm-marker--state-selected .cq-realm-marker-pin {
-  transform: rotate(-45deg) scale(1.18);
-  box-shadow:
-    0 0 36px var(--cq-marker-glow),
-    0 0 56px var(--cq-marker-glow),
-    0 14px 36px rgba(0, 0, 0, 0.55);
-}
-
-.cq-realm-marker--state-selected .cq-realm-marker-label {
-  border-color: rgba(255, 255, 255, 0.62);
-  box-shadow:
-    0 0 22px var(--cq-marker-glow),
-    0 6px 20px rgba(0, 40, 100, 0.5);
-  color: #fff;
-}
-
-/* Tiered activity effects — anchored to pin center */
-.cq-marker-quest-pulse {
-  position: absolute;
-  inset: -3px;
-  z-index: 0;
-  border-radius: 50% 50% 50% 12%;
-  transform: rotate(-45deg);
-  box-shadow: 0 0 14px rgba(197, 160, 40, 0.45);
-  pointer-events: none;
-  animation: cq-marker-glow-breathe 3.2s ease-in-out infinite;
-}
-
-.cq-marker-event-aura {
-  position: absolute;
-  inset: -5px;
-  z-index: 0;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--cq-marker-glow) 0%, transparent 72%);
-  pointer-events: none;
-  animation: cq-marker-glow-breathe 3.6s ease-in-out infinite;
-}
-
-.cq-marker-legendary-runes {
-  position: absolute;
-  inset: -7px;
-  z-index: 0;
-  border-radius: 50%;
-  opacity: 0.55;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg,
-    rgba(197, 160, 40, 0.55) 48deg,
-    transparent 96deg,
-    rgba(255, 216, 106, 0.4) 168deg,
-    transparent 240deg,
-    rgba(197, 160, 40, 0.45) 300deg,
-    transparent 360deg
-  );
-  filter: blur(0.5px);
-  pointer-events: none;
-  animation: cq-marker-legendary-spin 11s linear infinite;
-}
-
-.cq-marker-selected-pop {
-  position: absolute;
-  inset: -2px;
-  z-index: 0;
-  border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.65);
-  pointer-events: none;
-  animation: cq-marker-selected-pop 0.55s ease-out forwards;
-}
-
-.cq-marker-orbit {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  transform-origin: center center;
-  animation: cq-marker-orbit-spin 9s linear infinite;
-  will-change: transform;
-}
-
-.cq-marker-sparkle-arm {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  transform-origin: 0 0;
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
   pointer-events: none;
 }
 
-.cq-marker-sparkle {
-  position: absolute;
-  top: -20px;
-  left: -1.5px;
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 0 5px rgba(255, 255, 255, 0.55);
-  transform: translate3d(0, 0, 0);
-  animation: cq-marker-sparkle-twinkle 1.8s ease-in-out infinite;
-  will-change: opacity, transform;
-}
-
+.marker-count,
 .cq-marker-count-badge {
   position: absolute;
-  right: -5px;
-  bottom: 4px;
+  top: -6px;
+  right: -8px;
   z-index: 6;
   display: flex;
   align-items: center;
@@ -16869,109 +16741,481 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   line-height: 1;
   box-shadow:
     0 2px 8px rgba(0, 0, 0, 0.45),
-    0 0 10px var(--cq-marker-glow, rgba(70, 160, 255, 0.5));
+    0 0 10px var(--cq-marker-glow);
+  transform: rotate(45deg);
   pointer-events: none;
 }
 
-/* Tone palettes */
-.cq-realm-marker--tone-building {
-  --cq-marker-grad-top: #2f86ff;
-  --cq-marker-grad-bot: #005fd8;
-  --cq-marker-glow: rgba(70, 160, 255, 0.6);
-  --cq-marker-label-border: rgba(80, 170, 255, 0.45);
+.marker-ground-ring {
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  z-index: 1;
+  width: 28px;
+  height: 10px;
+  margin-left: -14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--cq-marker-grad-top);
+  background: radial-gradient(ellipse at center, var(--cq-marker-glow-soft) 0%, transparent 72%);
+  box-shadow: 0 0 10px var(--cq-marker-glow);
+  opacity: 0.75;
+  pointer-events: none;
+  animation: realm-marker-ring-pulse 3.4s ease-in-out infinite;
 }
 
-.cq-realm-marker--tone-quest,
-.cq-realm-marker--tone-legendary {
-  --cq-marker-grad-top: #ffd86a;
-  --cq-marker-grad-bot: var(--uri-gold, #c5a028);
-  --cq-marker-glow: rgba(197, 160, 40, 0.52);
-  --cq-marker-label-border: rgba(197, 160, 40, 0.42);
+.marker-aura {
+  position: absolute;
+  inset: -8px -4px 2px;
+  z-index: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 42%, var(--cq-marker-glow) 0%, transparent 68%);
+  opacity: 0.45;
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
 }
 
-.cq-realm-marker--tone-event {
-  --cq-marker-grad-top: #a67bff;
-  --cq-marker-grad-bot: #6b3fd9;
-  --cq-marker-glow: rgba(142, 92, 255, 0.65);
-  --cq-marker-label-border: rgba(142, 92, 255, 0.5);
+.marker-aura--active {
+  opacity: 0.58;
+  animation: realm-marker-aura-breathe 3.6s ease-in-out infinite;
 }
 
-.cq-realm-marker--tone-memories {
-  --cq-marker-grad-top: #7ee9ff;
-  --cq-marker-grad-bot: #1aa8d4;
-  --cq-marker-glow: rgba(79, 216, 255, 0.65);
-  --cq-marker-label-border: rgba(79, 216, 255, 0.5);
+.marker-aura--selected {
+  inset: -14px -8px 0;
+  opacity: 0.92;
+  animation: none;
 }
 
-.cq-realm-marker--tone-qr {
-  --cq-marker-grad-top: #5ef0a0;
-  --cq-marker-grad-bot: #22b85c;
-  --cq-marker-glow: rgba(61, 220, 132, 0.65);
+.marker-aura-ring {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  z-index: 0;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 0 12px var(--cq-marker-glow),
+    inset 0 0 8px var(--cq-marker-glow-soft);
+  pointer-events: none;
+  animation: realm-marker-aura-ring-pulse 2.2s ease-in-out infinite;
+}
+
+.marker-particles {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.marker-particle {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  width: 2.5px;
+  height: 2.5px;
+  margin: -1.25px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.7);
+  --p-angle: calc((var(--p-i) / var(--p-n)) * 360deg);
+  --p-radius: 20px;
+  transform: rotate(var(--p-angle)) translateX(var(--p-radius));
+  animation: realm-marker-particle-twinkle 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.marker-selected-pop {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  z-index: 1;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+  animation: cq-marker-selected-pop 0.55s ease-out forwards;
+}
+
+/* Activity state layering */
+.cq-realm-marker--state-hot {
+  z-index: 28;
+}
+
+.cq-realm-marker--state-active {
+  z-index: 24;
+}
+
+.cq-realm-marker--state-selected {
+  z-index: 100;
+}
+
+.cq-realm-marker--state-active .marker-pin,
+.cq-realm-marker--state-hot .marker-pin,
+.cq-realm-marker--state-active .cq-realm-marker-pin,
+.cq-realm-marker--state-hot .cq-realm-marker-pin {
+  animation: realm-marker-idle-breathe 2.6s ease-in-out infinite;
+}
+
+.cq-realm-marker--state-selected .marker-stack,
+.cq-realm-marker--state-selected .cq-realm-marker-stack {
+  transform: translateY(-4px);
+}
+
+.cq-realm-marker--state-selected .marker-pin,
+.cq-realm-marker--state-selected .cq-realm-marker-pin {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 12px;
+  transform: rotate(-45deg) scale(1.08);
+  animation: none;
+  box-shadow:
+    0 0 22px var(--cq-marker-glow),
+    0 0 40px var(--cq-marker-glow),
+    0 12px 28px rgba(0, 0, 0, 0.5);
+}
+
+.cq-realm-marker--state-selected .marker-ground-ring {
+  width: 36px;
+  height: 12px;
+  margin-left: -18px;
+  opacity: 1;
+  animation: realm-marker-ring-pulse 1.8s ease-in-out infinite;
+}
+
+.cq-realm-marker--state-selected .marker-label,
+.cq-realm-marker--state-selected .cq-realm-marker-label {
+  border-color: rgba(255, 255, 255, 0.65);
+  color: #fff;
+  box-shadow:
+    0 0 16px var(--cq-marker-glow-soft),
+    0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.realm-marker--starting-soon .marker-pin,
+.realm-marker--starting-soon .cq-realm-marker-pin {
+  animation: realm-marker-urgent-pulse 1.1s ease-in-out infinite;
+  filter: saturate(1.15);
+}
+
+.realm-marker--starting-soon .marker-ground-ring {
+  animation: realm-marker-ring-pulse 1.4s ease-in-out infinite;
+}
+
+/* Unique palette colors — no two visible markers should share when avoidable */
+.realm-marker--electric-blue {
+  --cq-marker-grad-top: #4aa3ff;
+  --cq-marker-grad-bot: #0a63d8;
+  --cq-marker-glow: rgba(74, 163, 255, 0.7);
+  --cq-marker-glow-soft: rgba(74, 163, 255, 0.35);
+  --cq-marker-label-border: rgba(74, 163, 255, 0.5);
+}
+.realm-marker--cyan {
+  --cq-marker-grad-top: #5ef0ff;
+  --cq-marker-grad-bot: #00a8c4;
+  --cq-marker-glow: rgba(64, 230, 255, 0.7);
+  --cq-marker-glow-soft: rgba(64, 230, 255, 0.35);
+  --cq-marker-label-border: rgba(64, 230, 255, 0.5);
+}
+.realm-marker--teal {
+  --cq-marker-grad-top: #3de8c8;
+  --cq-marker-grad-bot: #0d9a82;
+  --cq-marker-glow: rgba(45, 220, 190, 0.7);
+  --cq-marker-glow-soft: rgba(45, 220, 190, 0.35);
+  --cq-marker-label-border: rgba(45, 220, 190, 0.5);
+}
+.realm-marker--emerald {
+  --cq-marker-grad-top: #4ef0a0;
+  --cq-marker-grad-bot: #14a85a;
+  --cq-marker-glow: rgba(61, 220, 132, 0.7);
+  --cq-marker-glow-soft: rgba(61, 220, 132, 0.35);
   --cq-marker-label-border: rgba(61, 220, 132, 0.5);
 }
+.realm-marker--lime {
+  --cq-marker-grad-top: #c6f24a;
+  --cq-marker-grad-bot: #7cb80f;
+  --cq-marker-glow: rgba(180, 230, 60, 0.65);
+  --cq-marker-glow-soft: rgba(180, 230, 60, 0.32);
+  --cq-marker-label-border: rgba(180, 230, 60, 0.45);
+}
+.realm-marker--gold {
+  --cq-marker-grad-top: #ffe27a;
+  --cq-marker-grad-bot: #c5a028;
+  --cq-marker-glow: rgba(255, 210, 80, 0.75);
+  --cq-marker-glow-soft: rgba(255, 210, 80, 0.4);
+  --cq-marker-label-border: rgba(255, 210, 80, 0.55);
+}
+.realm-marker--amber {
+  --cq-marker-grad-top: #ffc14a;
+  --cq-marker-grad-bot: #d48a00;
+  --cq-marker-glow: rgba(255, 180, 50, 0.7);
+  --cq-marker-glow-soft: rgba(255, 180, 50, 0.35);
+  --cq-marker-label-border: rgba(255, 180, 50, 0.5);
+}
+.realm-marker--orange {
+  --cq-marker-grad-top: #ff9a4a;
+  --cq-marker-grad-bot: #e05a00;
+  --cq-marker-glow: rgba(255, 140, 60, 0.7);
+  --cq-marker-glow-soft: rgba(255, 140, 60, 0.35);
+  --cq-marker-label-border: rgba(255, 140, 60, 0.5);
+}
+.realm-marker--coral {
+  --cq-marker-grad-top: #ff7a6a;
+  --cq-marker-grad-bot: #e03a2a;
+  --cq-marker-glow: rgba(255, 110, 90, 0.7);
+  --cq-marker-glow-soft: rgba(255, 110, 90, 0.35);
+  --cq-marker-label-border: rgba(255, 110, 90, 0.5);
+}
+.realm-marker--red {
+  --cq-marker-grad-top: #ff5a5a;
+  --cq-marker-grad-bot: #c41e1e;
+  --cq-marker-glow: rgba(255, 70, 70, 0.7);
+  --cq-marker-glow-soft: rgba(255, 70, 70, 0.35);
+  --cq-marker-label-border: rgba(255, 70, 70, 0.5);
+}
+.realm-marker--pink {
+  --cq-marker-grad-top: #ff7ab8;
+  --cq-marker-grad-bot: #d12e78;
+  --cq-marker-glow: rgba(255, 100, 180, 0.7);
+  --cq-marker-glow-soft: rgba(255, 100, 180, 0.35);
+  --cq-marker-label-border: rgba(255, 100, 180, 0.5);
+}
+.realm-marker--magenta {
+  --cq-marker-grad-top: #ff5ae0;
+  --cq-marker-grad-bot: #b01a9a;
+  --cq-marker-glow: rgba(255, 80, 220, 0.7);
+  --cq-marker-glow-soft: rgba(255, 80, 220, 0.35);
+  --cq-marker-label-border: rgba(255, 80, 220, 0.5);
+}
+.realm-marker--purple {
+  --cq-marker-grad-top: #b48aff;
+  --cq-marker-grad-bot: #6b3fd9;
+  --cq-marker-glow: rgba(160, 110, 255, 0.7);
+  --cq-marker-glow-soft: rgba(160, 110, 255, 0.35);
+  --cq-marker-label-border: rgba(160, 110, 255, 0.5);
+}
+.realm-marker--violet {
+  --cq-marker-grad-top: #9a6aff;
+  --cq-marker-grad-bot: #4f1fc4;
+  --cq-marker-glow: rgba(140, 90, 255, 0.7);
+  --cq-marker-glow-soft: rgba(140, 90, 255, 0.35);
+  --cq-marker-label-border: rgba(140, 90, 255, 0.5);
+}
+.realm-marker--indigo {
+  --cq-marker-grad-top: #7a8cff;
+  --cq-marker-grad-bot: #3040c8;
+  --cq-marker-glow: rgba(110, 130, 255, 0.7);
+  --cq-marker-glow-soft: rgba(110, 130, 255, 0.35);
+  --cq-marker-label-border: rgba(110, 130, 255, 0.5);
+}
 
+/* Back-compat tone classes (edit mode / legacy) */
+.cq-realm-marker--tone-building {
+  --cq-marker-grad-top: #4aa3ff;
+  --cq-marker-grad-bot: #0a63d8;
+  --cq-marker-glow: rgba(74, 163, 255, 0.7);
+  --cq-marker-glow-soft: rgba(74, 163, 255, 0.35);
+  --cq-marker-label-border: rgba(74, 163, 255, 0.5);
+}
+.cq-realm-marker--tone-quest,
+.cq-realm-marker--tone-legendary {
+  --cq-marker-grad-top: #ffe27a;
+  --cq-marker-grad-bot: #c5a028;
+  --cq-marker-glow: rgba(255, 210, 80, 0.75);
+  --cq-marker-glow-soft: rgba(255, 210, 80, 0.4);
+  --cq-marker-label-border: rgba(255, 210, 80, 0.55);
+}
+.cq-realm-marker--tone-event {
+  --cq-marker-grad-top: #b48aff;
+  --cq-marker-grad-bot: #6b3fd9;
+  --cq-marker-glow: rgba(160, 110, 255, 0.7);
+  --cq-marker-glow-soft: rgba(160, 110, 255, 0.35);
+  --cq-marker-label-border: rgba(160, 110, 255, 0.5);
+}
+.cq-realm-marker--tone-memories {
+  --cq-marker-grad-top: #5ef0ff;
+  --cq-marker-grad-bot: #00a8c4;
+  --cq-marker-glow: rgba(64, 230, 255, 0.7);
+  --cq-marker-glow-soft: rgba(64, 230, 255, 0.35);
+  --cq-marker-label-border: rgba(64, 230, 255, 0.5);
+}
+.cq-realm-marker--tone-qr {
+  --cq-marker-grad-top: #4ef0a0;
+  --cq-marker-grad-bot: #14a85a;
+  --cq-marker-glow: rgba(61, 220, 132, 0.7);
+  --cq-marker-glow-soft: rgba(61, 220, 132, 0.35);
+  --cq-marker-label-border: rgba(61, 220, 132, 0.5);
+}
 .cq-realm-marker--tone-admin {
   --cq-marker-grad-top: #ff7a7a;
   --cq-marker-grad-bot: #d93636;
-  --cq-marker-glow: rgba(255, 90, 90, 0.65);
+  --cq-marker-glow: rgba(255, 90, 90, 0.7);
+  --cq-marker-glow-soft: rgba(255, 90, 90, 0.35);
   --cq-marker-label-border: rgba(255, 90, 90, 0.55);
 }
 
+.cq-realm-marker--major .marker-pin-anchor,
 .cq-realm-marker--major .cq-marker-pin-anchor {
-  width: 48px;
-  height: 48px;
-  --cq-marker-orbit-r: 21px;
+  width: 56px;
+  height: 64px;
 }
 
+.cq-realm-marker--major .marker-pin,
 .cq-realm-marker--major .cq-realm-marker-pin {
-  width: 48px;
-  height: 48px;
-}
-
-.cq-realm-marker--major .cq-realm-marker-icon {
-  width: 24px;
-  height: 24px;
+  width: 40px;
+  height: 40px;
 }
 
 @media (hover: hover) {
+  .realm-marker:hover .marker-stack,
   .cq-realm-marker:hover .cq-realm-marker-stack {
-    transform: translateY(-4px);
+    transform: translateY(-3px);
   }
 
+  .realm-marker:hover .marker-pin,
   .cq-realm-marker:hover .cq-realm-marker-pin {
-    transform: rotate(-45deg) scale(1.1);
+    transform: rotate(-45deg) scale(1.06);
     box-shadow:
-      0 0 28px var(--cq-marker-glow),
-      0 14px 34px rgba(0, 0, 0, 0.5);
+      0 0 20px var(--cq-marker-glow),
+      0 0 36px var(--cq-marker-glow-soft),
+      0 12px 26px rgba(0, 0, 0, 0.5);
   }
 
+  .realm-marker:hover .marker-label,
   .cq-realm-marker:hover .cq-realm-marker-label {
-    transform: scale(1.04);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.55);
   }
 }
 
+.realm-marker:active .marker-pin,
 .cq-realm-marker:active .cq-realm-marker-pin {
-  transform: rotate(-45deg) scale(1.2);
+  transform: rotate(-45deg) scale(1.1);
 }
 
+.cq-realm-marker--editable .marker-pin,
 .cq-realm-marker--editable .cq-realm-marker-pin {
   border-style: dashed;
   cursor: grab;
+  animation: none;
 }
 
+.cq-realm-marker--editor-selected .marker-pin,
 .cq-realm-marker--editor-selected .cq-realm-marker-pin {
   box-shadow:
-    0 0 0 4px rgba(255, 255, 255, 0.35),
-    0 0 32px var(--cq-marker-glow),
-    0 14px 36px rgba(0, 0, 0, 0.55);
-}
-
-.cq-realm-marker--qr-wiggle .cq-realm-marker-pin {
-  animation: cq-realm-marker-qr-wiggle 4s ease-in-out infinite;
+    0 0 0 3px rgba(255, 255, 255, 0.35),
+    0 0 28px var(--cq-marker-glow),
+    0 12px 28px rgba(0, 0, 0, 0.5);
 }
 
 .cq-realm-marker--faded {
   pointer-events: none;
+}
+
+@keyframes realm-marker-idle-breathe {
+  0%,
+  100% {
+    filter: brightness(1);
+    box-shadow:
+      0 0 12px var(--cq-marker-glow),
+      0 0 24px var(--cq-marker-glow-soft),
+      0 8px 16px rgba(0, 0, 0, 0.42);
+  }
+  50% {
+    filter: brightness(1.1);
+    box-shadow:
+      0 0 18px var(--cq-marker-glow),
+      0 0 32px var(--cq-marker-glow-soft),
+      0 9px 18px rgba(0, 0, 0, 0.45);
+  }
+}
+
+@keyframes realm-marker-urgent-pulse {
+  0%,
+  100% {
+    filter: brightness(1.05);
+    box-shadow:
+      0 0 16px var(--cq-marker-glow),
+      0 0 30px var(--cq-marker-glow);
+  }
+  50% {
+    filter: brightness(1.22);
+    box-shadow:
+      0 0 26px var(--cq-marker-glow),
+      0 0 44px var(--cq-marker-glow);
+  }
+}
+
+@keyframes realm-marker-ring-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.18);
+  }
+}
+
+@keyframes realm-marker-aura-breathe {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.72;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes realm-marker-aura-ring-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes realm-marker-particle-twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: rotate(var(--p-angle)) translateX(var(--p-radius)) scale(0.7);
+  }
+  50% {
+    opacity: 1;
+    transform: rotate(var(--p-angle)) translateX(calc(var(--p-radius) + 2px)) scale(1.15);
+  }
+}
+
+/* Legacy activity FX kept but toned down / unused by new markup */
+.cq-marker-quest-pulse,
+.cq-marker-event-aura,
+.cq-marker-legendary-runes,
+.cq-marker-orbit,
+.cq-marker-sparkle-arm,
+.cq-marker-sparkle,
+.cq-marker-selected-pop {
+  display: none;
+}
+
+@keyframes cq-realm-marker-alive-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.12);
+  }
 }
 
 @keyframes cq-marker-glow-breathe {
@@ -17040,14 +17284,20 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   .cq-marker-legendary-runes,
   .cq-marker-selected-pop,
   .cq-realm-marker--enter .cq-realm-marker-stack,
-  .cq-realm-marker--enter .cq-realm-marker-label {
+  .cq-realm-marker--enter .cq-realm-marker-label,
+  .cq-realm-marker--enter .marker-pin,
+  .cq-realm-marker--enter .marker-label,
+  .cq-realm-marker--enter .realm-marker-pin,
+  .cq-realm-marker--enter .realm-marker-label {
     animation: none !important;
   }
 
   .cq-realm-marker--state-active .cq-realm-marker-pin,
   .cq-realm-marker--state-hot .cq-realm-marker-pin,
-  .cq-realm-marker--state-selected .cq-realm-marker-pin {
-    transform: rotate(-45deg);
+  .cq-realm-marker--state-selected .cq-realm-marker-pin,
+  .cq-realm-marker--state-active .marker-pin,
+  .cq-realm-marker--state-hot .marker-pin,
+  .cq-realm-marker--state-selected .marker-pin {
     animation: none !important;
   }
 }
@@ -17145,6 +17395,80 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   opacity: 1;
   transform: translateY(0);
   transition-delay: 180ms;
+}
+
+.cq-realm-map-top-chrome,
+.cq-realm-map-search,
+.cq-realm-map-quick-actions,
+.cq-realm-map-filter {
+  transition:
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    gap 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    max-height 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Explore mode — tuck top chrome so the map stays primary. */
+html[data-cq-map-exploring] .cq-realm-map-top-chrome--entered {
+  gap: 0.22rem;
+  margin-top: 0;
+}
+
+html[data-cq-map-exploring] .cq-realm-map-search {
+  transform: scale(0.85);
+  transform-origin: top center;
+  opacity: 0.75;
+}
+
+html[data-cq-map-exploring] .cq-realm-map-quick-actions {
+  opacity: 0;
+  max-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateY(-4px) scale(0.96);
+}
+
+html[data-cq-map-exploring] .cq-realm-map-filter {
+  transform: scale(0.88);
+  transform-origin: top center;
+  opacity: 0.72;
+  gap: 0.2rem;
+}
+
+html[data-cq-map-exploring] .cq-realm-map-filter-chip {
+  padding: 0.22rem 0.55rem;
+  font-size: 9px;
+}
+
+html[data-cq-map-exploring] .cq-realm-map-controls,
+html[data-cq-map-exploring] .cq-realm-map-controls-stack {
+  opacity: 0.72;
+  transform: scale(0.92);
+  transform-origin: bottom right;
+  transition:
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Keep the user beacon fully visible while chrome compacts. */
+html[data-cq-map-exploring] .cq-gmap-user-location,
+html[data-cq-map-exploring] .cq-gmap-user-here-label {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-cq-map-exploring] .cq-realm-map-top-chrome,
+  html[data-cq-map-exploring] .cq-realm-map-search,
+  html[data-cq-map-exploring] .cq-realm-map-quick-actions,
+  html[data-cq-map-exploring] .cq-realm-map-filter,
+  html[data-cq-map-exploring] .cq-realm-map-controls,
+  html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav,
+  html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__rail {
+    transition-duration: 120ms !important;
+  }
 }
 
 /* Quick-discovery chips under search (Live Now / Popular / …). */
@@ -17337,10 +17661,34 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 16px rgba(251, 191, 36, 0.35);
 }
 
+.cq-realm-marker--discovery-nearest .marker-pin,
+.cq-realm-marker--discovery-spotlight .marker-pin,
 .cq-realm-marker--discovery-nearest .cq-realm-marker-pin,
 .cq-realm-marker--discovery-spotlight .cq-realm-marker-pin {
   /* Visual emphasis only — stored marker tone is unchanged. */
   filter: drop-shadow(0 0 8px rgba(245, 197, 66, 0.45));
+}
+
+/* Zoom-out: shrink pins slightly; hide non-priority labels first */
+.realm-marker[data-zoom-tier="far"] .marker-pin-anchor {
+  transform: scale(0.82);
+  transform-origin: 50% 100%;
+}
+
+.realm-marker[data-zoom-tier="mid"] .marker-pin-anchor {
+  transform: scale(0.9);
+  transform-origin: 50% 100%;
+}
+
+.realm-marker[data-zoom-tier="far"] .marker-label,
+.realm-marker[data-zoom-tier="mid"]:not(.cq-realm-marker--state-selected):not(.cq-realm-marker--state-hot):not(.realm-marker--starting-soon) .marker-label {
+  opacity: 0;
+  pointer-events: none;
+  max-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
 }
 
 @keyframes cq-realm-discovery-pulse {
@@ -18065,16 +18413,14 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
     transition: none !important;
   }
 
-  .cq-realm-marker--state-idle .cq-realm-marker-pin,
-  .cq-realm-marker--state-active .cq-realm-marker-pin,
-  .cq-realm-marker--state-hot .cq-realm-marker-pin {
-    box-shadow:
-      0 0 18px var(--cq-marker-glow),
-      0 12px 30px rgba(0, 0, 0, 0.45);
+  .cq-realm-marker--state-idle .realm-marker-pin,
+  .cq-realm-marker--state-active .realm-marker-pin,
+  .cq-realm-marker--state-hot .realm-marker-pin {
+    filter: drop-shadow(0 0 10px var(--cq-marker-glow, rgba(104, 171, 232, 0.55)));
   }
 
-  .cq-realm-marker--state-selected .cq-realm-marker-pin {
-    transform: rotate(-45deg) scale(1.12);
+  .cq-realm-marker--state-selected .realm-marker-pin {
+    transform: translateY(-3px) scale(1.08);
   }
 }
 
@@ -18299,6 +18645,12 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   .cq-magic-particle,
   .cq-marker-aura--active,
   .cq-marker-aura-ring,
+  .marker-aura--active,
+  .marker-aura-ring,
+  .marker-particle,
+  .marker-ground-ring,
+  .marker-pin,
+  .cq-realm-marker-pin,
   .cq-realm-aura {
     animation: none !important;
   }
@@ -18591,6 +18943,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   animation-duration: 1.1s;
 }
 
+.cq-realm-marker--urgency-3 .marker-pin-anchor,
 .cq-realm-marker--urgency-3 .cq-marker-pin-anchor {
   animation: cq-marker-urgent-shake 2.6s ease-in-out infinite;
 }
@@ -18599,10 +18952,12 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   animation-duration: 0.7s;
 }
 
+.cq-realm-marker--urgency-4 .marker-pin-anchor,
 .cq-realm-marker--urgency-4 .cq-marker-pin-anchor {
   animation: cq-marker-urgent-shake 1.4s ease-in-out infinite;
 }
 
+.cq-realm-marker--urgency-4 .marker-pin,
 .cq-realm-marker--urgency-4 .cq-realm-marker-pin {
   box-shadow:
     0 0 24px var(--cq-marker-glow),

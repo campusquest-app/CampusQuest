@@ -85,7 +85,7 @@ const HELP_ARTICLES: HelpArticle[] = [
     keywords: ["guild", "team", "group", "bonus", "race"],
     body: [
       "Guilds let Rams team up for bonus XP, races, and shared progression.",
-      "Find guilds through Friends or campus events. Your guild tag appears on your profile when you join.",
+      "Find guilds from the Guilds item in the side menu. Your guild tag appears on your profile when you join.",
       "Assist posts on The Quad and guild activities can earn extra rewards for your whole team.",
     ],
   },

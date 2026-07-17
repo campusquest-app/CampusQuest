@@ -309,6 +309,21 @@ export function OrganizationsHub({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (loading) return;
+    let orgId: string | null = null;
+    try {
+      orgId = window.sessionStorage.getItem("cq_open_org_id");
+      if (orgId) window.sessionStorage.removeItem("cq_open_org_id");
+    } catch {
+      return;
+    }
+    if (!orgId) return;
+    void openOrganizationById(orgId);
+    // openOrganizationById is stable enough for one-shot deep link after load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, organizations]);
+
   async function handleSubmitOrganizationRequest(event: FormEvent) {
     event.preventDefault();
     setSubmitting(true);

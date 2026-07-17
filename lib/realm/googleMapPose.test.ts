@@ -3,6 +3,7 @@ import {
   URI_MAP_CINEMATIC_TILT,
   URI_MAP_FALLBACK_TILT,
   URI_MAP_ROTATE_STEP_DEG,
+  apply3dBuildingView,
   applyTiltCamera,
   centerToLiteral,
   moveMapCamera,
@@ -55,8 +56,23 @@ describe("googleMapPose camera helpers", () => {
 
     rotateMapHeading(map, URI_MAP_ROTATE_STEP_DEG);
     expect(map.moveCamera).toHaveBeenCalledWith(
-      expect.objectContaining({ heading: 5 }),
+      expect.objectContaining({ heading: (350 + URI_MAP_ROTATE_STEP_DEG) % 360 }),
     );
+  });
+
+  it("apply3dBuildingView requests zoom 18.5 and tilt 60", async () => {
+    const map = createMockMap({
+      getTilt: vi.fn(() => 60),
+      getZoom: vi.fn(() => 17),
+    });
+    // Fire idle immediately so waitForMapIdle resolves.
+    const resultPromise = apply3dBuildingView(map);
+    queueMicrotask(() => map._fire("idle"));
+    const tilt = await resultPromise;
+    expect(map.moveCamera).toHaveBeenCalledWith(
+      expect.objectContaining({ tilt: 60, zoom: 18.5 }),
+    );
+    expect(tilt).toBe(60);
   });
 
   it("moveMapCamera uses moveCamera when available", () => {

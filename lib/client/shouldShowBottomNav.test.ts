@@ -21,6 +21,7 @@ describe("shouldShowBottomNav", () => {
   it("hides on secondary tabs", () => {
     expect(shouldShowBottomNav({ ...base, tab: "events" })).toBe(false);
     expect(shouldShowBottomNav({ ...base, tab: "organizations" })).toBe(false);
+    expect(shouldShowBottomNav({ ...base, tab: "guilds" })).toBe(false);
     expect(shouldShowBottomNav({ ...base, tab: "quest-board" })).toBe(false);
   });
 
