@@ -53,6 +53,8 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   revealIndex,
   countdown = null,
   locationAdjusted = false,
+  discoveryMode = null,
+  discoveryLabel = null,
 }: {
   variant: RealmMarkerVariant;
   label: string;
@@ -68,6 +70,9 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   countdown?: GroupCountdown | null;
   /** Admin-only cue when a URInvolved pin was manually repositioned. */
   locationAdjusted?: boolean;
+  /** Temporary first-open highlight — does not change stored marker style. */
+  discoveryMode?: "nearest" | "spotlight" | null;
+  discoveryLabel?: string | null;
 }) {
   const landmarkIcon = landmarkIconForId(landmarkId);
   const tone = useMemo(() => resolveMarkerTone(variant, editMode), [variant, editMode]);
@@ -109,6 +114,8 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   const showSelectedPop = !editMode && activityState === "selected";
   const showBadge = !editMode && activityState === "hot" && activityCount >= 2;
   const showQrWiggle = !editMode && tone === "qr" && activityState !== "idle";
+  const showDiscovery = !editMode && discoveryMode != null;
+  const showDiscoveryLabel = showDiscovery && Boolean(discoveryLabel);
 
   return (
     <div
@@ -124,6 +131,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
         revealIndex,
         countdownUrgency,
         countdownCancelled,
+        discoveryMode,
       })}
       style={{
         opacity: revealOpacity,
@@ -135,6 +143,15 @@ export const RealmMapMarker = memo(function RealmMapMarker({
       data-activity-state={activityState}
       aria-label={label}
     >
+      {showDiscoveryLabel ? (
+        <span
+          className={`cq-realm-discovery-label${
+            discoveryMode === "spotlight" ? " cq-realm-discovery-label--spotlight" : ""
+          }`}
+        >
+          {discoveryLabel}
+        </span>
+      ) : null}
       {showCountdown && effectiveCountdown ? (
         <EventCountdownBadge countdown={effectiveCountdown} />
       ) : null}
@@ -146,7 +163,15 @@ export const RealmMapMarker = memo(function RealmMapMarker({
       <div className="cq-realm-marker-stack">
         <div className="cq-marker-pin-anchor">
           {!editMode ? (
-            <MagicalMarkerGlow active={hasActivity || showEventMagic} selected={showSelectedPop} />
+            <MagicalMarkerGlow active={hasActivity || showEventMagic || showDiscovery} selected={showSelectedPop} />
+          ) : null}
+          {showDiscovery ? (
+            <span
+              className={`cq-realm-discovery-ring${
+                discoveryMode === "spotlight" ? " cq-realm-discovery-ring--spotlight" : ""
+              }`}
+              aria-hidden
+            />
           ) : null}
           {showEventMagic ? (
             <span className="cq-event-magic" aria-hidden>
@@ -205,6 +230,7 @@ function buildMarkerClassName(input: {
   revealIndex?: number;
   countdownUrgency?: number;
   countdownCancelled?: boolean;
+  discoveryMode?: "nearest" | "spotlight" | null;
 }): string {
   return [
     "cq-realm-marker",
@@ -219,6 +245,8 @@ function buildMarkerClassName(input: {
     input.revealIndex != null ? "cq-realm-marker--enter" : "",
     input.countdownUrgency ? `cq-realm-marker--urgency-${input.countdownUrgency}` : "",
     input.countdownCancelled ? "cq-realm-marker--cancelled" : "",
+    input.discoveryMode === "nearest" ? "cq-realm-marker--discovery-nearest" : "",
+    input.discoveryMode === "spotlight" ? "cq-realm-marker--discovery-spotlight" : "",
   ]
     .filter(Boolean)
     .join(" ");

@@ -80,7 +80,7 @@ export function RealmMapSearch({
           type="search"
           value={query}
           disabled={disabled}
-          placeholder="Search campus & nearby places"
+          placeholder="Search buildings, clubs, events..."
           className="cq-realm-map-search-input"
           aria-label="Search places on the map"
           aria-expanded={open}

@@ -5,8 +5,8 @@ export const DESTINATION_COORD_CACHE_TTL_MS = 24 * 60 * 60_000;
 export const ROUTE_ERROR_MESSAGES = {
   locationUnavailable: "Turn on location access to create a route.",
   destinationNotFound: "We couldn't locate this campus destination.",
-  timeout: "Route lookup took too long. Tap to try again.",
-  network: "Route unavailable right now.",
+  timeout: "Unable to load the route. Try again.",
+  network: "Unable to load the route. Try again.",
   aborted: "Route lookup canceled.",
   missingCoordinates: "We couldn't locate this campus destination.",
 } as const;

@@ -15850,14 +15850,54 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   border: 2px solid #fff;
   background: #4c9aff;
   box-shadow: 0 0 10px rgba(76, 154, 255, 0.8), 0 2px 6px rgba(0, 0, 0, 0.4);
+  z-index: 3;
 }
 
 .cq-gmap-user-dot-pulse {
   position: absolute;
-  inset: -8px;
+  left: 50%;
+  top: 50%;
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
   border-radius: 50%;
-  border: 1px solid rgba(76, 154, 255, 0.6);
-  animation: realm-moments-glow 2s ease-in-out infinite;
+  background: rgba(76, 154, 255, 0.22);
+  animation: cq-user-beacon-pulse 2.2s ease-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.cq-gmap-user-beacon-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(96, 180, 255, 0.95);
+  box-shadow: 0 0 12px rgba(76, 154, 255, 0.7);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.cq-gmap-user-here-label {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 0.18rem 0.45rem;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #eff6ff;
+  background: rgba(8, 28, 58, 0.88);
+  border: 1px solid rgba(96, 180, 255, 0.55);
+  box-shadow: 0 4px 12px rgba(0, 20, 50, 0.45);
+  pointer-events: none;
+  z-index: 4;
 }
 
 .cq-gmap-user-location {
@@ -15869,6 +15909,11 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   height: 1px;
 }
 
+.cq-gmap-user-location--beacon {
+  /* Anchored overlay — Google Advanced Marker keeps lat/lng; CSS only animates. */
+  will-change: transform;
+}
+
 .cq-gmap-user-accuracy {
   position: absolute;
   left: 50%;
@@ -15878,6 +15923,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   background: rgba(76, 154, 255, 0.12);
   border: 1px solid rgba(76, 154, 255, 0.28);
   pointer-events: none;
+  z-index: 0;
 }
 
 .cq-gmap-user-heading {
@@ -15892,6 +15938,30 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   border-bottom: 12px solid rgba(76, 154, 255, 0.85);
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
   pointer-events: none;
+  z-index: 3;
+}
+
+@keyframes cq-user-beacon-pulse {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.7;
+  }
+  70% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-gmap-user-dot-pulse {
+    animation: none;
+    opacity: 0.35;
+    transform: scale(1);
+  }
 }
 
 /* Header (with Dynamic Island inset) sits above the map — no double safe-area-top. */
@@ -16653,6 +16723,23 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
 .cq-realm-marker--state-active .cq-realm-marker-pin,
 .cq-realm-marker--state-hot .cq-realm-marker-pin {
   transform: rotate(-45deg) scale(1.05);
+  animation: cq-realm-marker-alive-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes cq-realm-marker-alive-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+    box-shadow:
+      0 0 14px var(--cq-marker-glow),
+      0 8px 18px rgba(0, 0, 0, 0.35);
+  }
+  50% {
+    filter: brightness(1.12);
+    box-shadow:
+      0 0 22px var(--cq-marker-glow),
+      0 10px 22px rgba(0, 0, 0, 0.4);
+  }
 }
 
 .cq-realm-marker--state-selected .cq-realm-marker-stack {
@@ -16961,6 +17048,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   .cq-realm-marker--state-hot .cq-realm-marker-pin,
   .cq-realm-marker--state-selected .cq-realm-marker-pin {
     transform: rotate(-45deg);
+    animation: none !important;
   }
 }
 
@@ -17057,6 +17145,297 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   opacity: 1;
   transform: translateY(0);
   transition-delay: 180ms;
+}
+
+/* Quick-discovery chips under search (Live Now / Popular / …). */
+.cq-realm-map-quick-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0.15rem;
+  mask-image: linear-gradient(to right, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+}
+
+.cq-realm-map-quick-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-realm-map-quick-chip {
+  flex: 0 0 auto;
+  border-radius: 9999px;
+  padding: 0.32rem 0.7rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(216, 236, 255, 0.72);
+  border: 1px solid rgba(75, 174, 255, 0.28);
+  background: rgba(5, 18, 40, 0.72);
+  box-shadow: 0 4px 14px rgba(0, 40, 90, 0.28);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, transform 120ms ease;
+}
+
+.cq-realm-map-quick-chip:active {
+  transform: scale(0.96);
+}
+
+.cq-realm-map-quick-chip--active {
+  color: #03101f;
+  border-color: rgba(125, 211, 252, 0.65);
+  background: linear-gradient(180deg, #7dd3fc 0%, #38bdf8 100%);
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.4);
+}
+
+.cq-realm-map-toast-action {
+  border-radius: 9999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #03101f;
+  background: linear-gradient(180deg, #4baeff 0%, #2b8fd9 100%);
+  border: none;
+}
+
+/* First-open welcome tip — floats under chrome, dismissible. */
+.cq-realm-welcome-card {
+  width: min(17.5rem, calc(100vw - 2.5rem));
+  margin-top: 0.15rem;
+  padding: 0.7rem 0.75rem 0.75rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(75, 174, 255, 0.35);
+  background: rgba(4, 18, 40, 0.92);
+  box-shadow:
+    0 10px 28px rgba(0, 30, 70, 0.45),
+    0 0 24px rgba(0, 119, 255, 0.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  color: rgba(226, 242, 255, 0.92);
+  animation: cq-realm-welcome-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cq-realm-welcome-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* First-open nearby opportunities banner — under filters, above bottom nav. */
+.cq-realm-opportunities-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: min(18rem, calc(100vw - 2.5rem));
+  margin-top: 0.05rem;
+  padding: 0.42rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(222, 184, 92, 0.4);
+  background: rgba(12, 10, 4, 0.9);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: rgba(255, 246, 214, 0.95);
+  animation: cq-realm-opportunities-banner-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cq-realm-opportunities-banner-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f5d56a;
+  box-shadow: 0 0 8px rgba(245, 213, 106, 0.7);
+}
+
+.cq-realm-opportunities-banner-text {
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  text-align: left;
+}
+
+@keyframes cq-realm-opportunities-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Temporary first-open discovery overlays (nearest / live spotlight). */
+.cq-realm-discovery-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  border-radius: 50%;
+  border: 2px solid rgba(245, 197, 66, 0.9);
+  box-shadow:
+    0 0 0 4px rgba(245, 197, 66, 0.18),
+    0 0 18px rgba(245, 197, 66, 0.45);
+  animation: cq-realm-discovery-pulse 1.8s ease-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.cq-realm-discovery-ring--spotlight {
+  width: 62px;
+  height: 62px;
+  margin: -31px 0 0 -31px;
+  border-color: rgba(251, 191, 36, 0.98);
+  box-shadow:
+    0 0 0 5px rgba(251, 191, 36, 0.22),
+    0 0 28px rgba(251, 191, 36, 0.55);
+  animation-duration: 1.15s;
+}
+
+.cq-realm-discovery-label {
+  position: absolute;
+  bottom: calc(100% + 0.15rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  white-space: nowrap;
+  padding: 0.22rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  color: #1a1404;
+  background: linear-gradient(180deg, #ffe9a3 0%, #f5c542 100%);
+  border: 1px solid rgba(180, 130, 20, 0.55);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  animation: cq-realm-discovery-label-in 360ms ease both;
+}
+
+.cq-realm-discovery-label--spotlight {
+  bottom: calc(100% + 0.55rem);
+  font-size: 10px;
+  padding: 0.28rem 0.58rem;
+  background: linear-gradient(180deg, #fff1c2 0%, #fbbf24 100%);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 16px rgba(251, 191, 36, 0.35);
+}
+
+.cq-realm-marker--discovery-nearest .cq-realm-marker-pin,
+.cq-realm-marker--discovery-spotlight .cq-realm-marker-pin {
+  /* Visual emphasis only — stored marker tone is unchanged. */
+  filter: drop-shadow(0 0 8px rgba(245, 197, 66, 0.45));
+}
+
+@keyframes cq-realm-discovery-pulse {
+  0% {
+    transform: scale(0.72);
+    opacity: 0.85;
+  }
+  70% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+}
+
+@keyframes cq-realm-discovery-label-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-realm-opportunities-banner,
+  .cq-realm-discovery-label {
+    animation: none;
+  }
+
+  .cq-realm-discovery-ring {
+    animation: none;
+    opacity: 0.75;
+    transform: scale(1);
+  }
+}
+
+.cq-realm-welcome-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cq-realm-welcome-card-emoji {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.cq-realm-welcome-card-title {
+  margin: 0;
+  flex: 1;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #e8f6ff;
+}
+
+.cq-realm-welcome-card-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(216, 236, 255, 0.7);
+}
+
+.cq-realm-welcome-card-list {
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.cq-realm-welcome-card-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: rgba(186, 220, 245, 0.82);
+}
+
+.cq-realm-welcome-card-bullet {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: 0 0 auto;
+  color: #7dd3fc;
 }
 
 .cq-realm-map-filter {
@@ -17665,6 +18044,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   .cq-realm-map-surface,
   .cq-realm-map-top-chrome,
   .cq-realm-map-filter,
+  .cq-realm-welcome-card,
   .cq-realm-float-btn,
   .cq-realm-marker,
   .cq-realm-marker *,

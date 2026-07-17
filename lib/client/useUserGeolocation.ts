@@ -51,9 +51,12 @@ export function useUserGeolocation(options?: UseUserGeolocationOptions) {
     }
   }, []);
 
-  const locateOnce = useCallback((onPosition?: (pos: { lat: number; lng: number }) => void) => {
+  const locateOnce = useCallback((
+    onPosition?: (pos: { lat: number; lng: number }) => void,
+    opts?: { silent?: boolean },
+  ) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      options?.onDenied?.("Location is not supported on this device.");
+      if (!opts?.silent) options?.onDenied?.("Location is not supported on this device.");
       return;
     }
     setLocating(true);
@@ -65,7 +68,9 @@ export function useUserGeolocation(options?: UseUserGeolocationOptions) {
       },
       () => {
         setLocating(false);
-        options?.onDenied?.("Location permission was denied — you can still explore the map.");
+        if (!opts?.silent) {
+          options?.onDenied?.("Location permission was denied — you can still explore the map.");
+        }
       },
       { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 },
     );

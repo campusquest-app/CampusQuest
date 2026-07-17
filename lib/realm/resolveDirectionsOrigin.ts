@@ -31,9 +31,11 @@ export async function resolveLiveUserLocation(signal?: AbortSignal): Promise<{ l
           reject(error);
         },
         {
-          enableHighAccuracy: true,
+          // Prefer a recent cached fix so Walk-to never blocks the UI thread
+          // waiting on a fresh high-accuracy GPS lock under the location sheet.
+          enableHighAccuracy: false,
           timeout: 8_000,
-          maximumAge: 0,
+          maximumAge: 30_000,
         },
       );
     });

@@ -26,12 +26,14 @@ export function RealmRouteSheet({
   directionsStatus,
   onClose,
   onStart,
+  onRetry,
 }: {
   open: boolean;
   destinationLabel: string;
   directionsStatus: RealmDirectionsStatus;
   onClose: () => void;
   onStart?: () => void;
+  onRetry?: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(true);
@@ -123,9 +125,18 @@ export function RealmRouteSheet({
         ) : null}
 
         {error ? (
-          <p className="cq-realm-route-sheet-meta cq-realm-route-sheet-meta--error" role="alert">
-            {error.message}
-          </p>
+          <div className="cq-realm-route-sheet-meta cq-realm-route-sheet-meta--error" role="alert">
+            <p>{error.message}</p>
+            {onRetry ? (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="cq-realm-route-sheet-preview touch-manipulation mt-2"
+              >
+                Try again
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         {ready ? (

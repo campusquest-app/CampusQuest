@@ -88,7 +88,6 @@ export function RealmDirectionsPanel({
         <button
           type="button"
           onClick={onRequestWalking}
-          disabled={loading}
           className="cq-realm-directions-primary touch-manipulation"
         >
           <Footprints className="h-4 w-4 shrink-0" aria-hidden />

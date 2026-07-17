@@ -63,7 +63,7 @@ export function RealmLocationActionsBar({
             type="button"
             className="cq-realm-sheet-action cq-realm-sheet-action--primary touch-manipulation"
             onClick={onRequestWalking}
-            disabled={walkLoading}
+            aria-busy={walkLoading}
           >
             <Footprints className="h-4 w-4 shrink-0" aria-hidden />
             {walkLoading ? "Finding route…" : `Walk to ${locationName}`}

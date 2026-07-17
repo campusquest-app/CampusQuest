@@ -12,6 +12,7 @@ import {
   type RealmDirectionsRequest,
 } from "@/lib/realm/realmDirectionsTypes";
 import { markRealmMapStep } from "@/lib/realm/realmMapLifecycle";
+import { logWalkRoute } from "@/lib/realm/walkRouteLog";
 import { RealmRouteMarkers } from "./RealmRouteMarkers";
 import type { RealmDirectionsLoadResult } from "./RealmDirectionsOverlay.types";
 
@@ -87,13 +88,14 @@ function buildPulseIcons(): google.maps.IconSequence[] | undefined {
 
 /**
  * Fetches walking/driving routes and renders them on the Realm map.
+ * One DirectionsService per map instance. Fetch lifecycle is keyed only by
+ * request.id — abort signals and sheet padding must not restart the request.
  */
 export function RealmDirectionsOverlay({
   request,
   enabled,
   routeSheetOpen = false,
   userLocation = null,
-  abortSignal = null,
   onUserLocation,
   onLoaded,
   onError,
@@ -102,7 +104,6 @@ export function RealmDirectionsOverlay({
   enabled: boolean;
   routeSheetOpen?: boolean;
   userLocation?: { lat: number; lng: number } | null;
-  abortSignal?: AbortSignal | null;
   onUserLocation?: (pos: { lat: number; lng: number }) => void;
   onLoaded: (result: RealmDirectionsLoadResult & { ok: true }) => void;
   onError: (result: RealmDirectionsLoadResult & { ok: false }) => void;
@@ -112,8 +113,18 @@ export function RealmDirectionsOverlay({
   const lineRef = useRef<google.maps.Polyline | null>(null);
   const serviceRef = useRef<google.maps.DirectionsService | null>(null);
   const activeRequestIdRef = useRef<number | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const userLocationRef = useRef(userLocation);
+  const routeSheetOpenRef = useRef(routeSheetOpen);
+  const onLoadedRef = useRef(onLoaded);
+  const onErrorRef = useRef(onError);
+  const onUserLocationRef = useRef(onUserLocation);
   userLocationRef.current = userLocation;
+  routeSheetOpenRef.current = routeSheetOpen;
+  onLoadedRef.current = onLoaded;
+  onErrorRef.current = onError;
+  onUserLocationRef.current = onUserLocation;
+
   const markersRef = useRef<{
     origin: RealmDirectionsOrigin | null;
     destination: { lat: number; lng: number; label: string } | null;
@@ -136,6 +147,8 @@ export function RealmDirectionsOverlay({
     serviceRef.current = service;
 
     return () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
       activeRequestIdRef.current = null;
       glow.setMap(null);
       line.setMap(null);
@@ -170,50 +183,76 @@ export function RealmDirectionsOverlay({
     markersRef.current = { origin, destination };
     setMarkerTick((n) => n + 1);
     if (map) {
-      const basePadding = routeSheetOpen ? 240 : 200;
+      const basePadding = routeSheetOpenRef.current ? 240 : 200;
       fitRouteBounds(map, path, origin, destination, basePadding + bottomNavClearancePx());
     }
   };
+
+  const requestId = request?.id ?? null;
 
   useEffect(() => {
     const glow = glowRef.current;
     const line = lineRef.current;
     const service = serviceRef.current;
 
-    if (!enabled || !request || !glow || !line || !service || !map) {
+    if (!enabled || requestId == null || !request || !glow || !line || !service || !map) {
+      abortRef.current?.abort();
+      abortRef.current = null;
       activeRequestIdRef.current = null;
       clearRoute();
       return undefined;
     }
 
-    const requestId = request.id;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     activeRequestIdRef.current = requestId;
+
+    const destinationSnapshot = request.destination;
+    const travelMode = request.travelMode;
     let cancelled = false;
 
-    const isStale = () => cancelled || activeRequestIdRef.current !== requestId;
+    const isStale = () =>
+      cancelled || activeRequestIdRef.current !== requestId || controller.signal.aborted;
 
-    let settled = false;
+    logWalkRoute("route requested", {
+      requestId,
+      destination: destinationSnapshot.label,
+      travelMode,
+      hasCoords: destinationSnapshot.lat != null && destinationSnapshot.lng != null,
+    });
 
     void (async () => {
       try {
         const result = await getRouteToLocation({
           requestId,
-          destinationId: request.destination.id,
-          destinationName: request.destination.label,
-          latitude: request.destination.lat,
-          longitude: request.destination.lng,
-          travelMode: request.travelMode,
+          destinationId: destinationSnapshot.id,
+          destinationName: destinationSnapshot.label,
+          latitude: destinationSnapshot.lat,
+          longitude: destinationSnapshot.lng,
+          travelMode,
           directionsService: service,
           userLocation: userLocationRef.current,
-          signal: abortSignal ?? undefined,
+          signal: controller.signal,
           isStale,
         });
 
-        if (isStale()) return;
+        if (isStale()) {
+          logWalkRoute("stale response ignored", { requestId });
+          return;
+        }
 
         if (!result.ok) {
-          if (result.code === "aborted") return;
-          onError({
+          if (result.code === "aborted") {
+            logWalkRoute("aborted", { requestId });
+            return;
+          }
+          logWalkRoute("failure", {
+            requestId,
+            code: result.code,
+            message: result.message,
+          });
+          onErrorRef.current({
             ok: false,
             requestId,
             travelMode: result.travelMode,
@@ -222,13 +261,23 @@ export function RealmDirectionsOverlay({
             destinationLat: result.destination?.lat,
             destinationLng: result.destination?.lng,
           });
-          settled = true;
           clearRoute();
           return;
         }
 
+        logWalkRoute("route returned", {
+          requestId,
+          fromCache: result.fromCache,
+          approximate: result.approximate,
+        });
+        logWalkRoute("destination resolved", {
+          requestId,
+          lat: result.destination.lat,
+          lng: result.destination.lng,
+        });
+
         if (!userLocationRef.current && result.origin) {
-          onUserLocation?.({ lat: result.origin.lat, lng: result.origin.lng });
+          onUserLocationRef.current?.({ lat: result.origin.lat, lng: result.origin.lng });
         }
 
         applyPath(result.path, result.origin, result.destination);
@@ -237,7 +286,7 @@ export function RealmDirectionsOverlay({
           approximate: result.approximate,
           fromCache: result.fromCache,
         });
-        onLoaded({
+        onLoadedRef.current({
           ok: true,
           requestId,
           travelMode: result.travelMode,
@@ -247,51 +296,62 @@ export function RealmDirectionsOverlay({
           directions: result.directions,
           approximate: result.approximate,
         });
-        settled = true;
       } catch (error) {
         if (isStale()) return;
-        onError({
+        logWalkRoute("failure", {
+          requestId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        onErrorRef.current({
           ok: false,
           requestId,
-          travelMode: request.travelMode,
-          destinationLabel: request.destination.label,
-          message: "Route unavailable right now.",
-          destinationLat: request.destination.lat,
-          destinationLng: request.destination.lng,
+          travelMode,
+          destinationLabel: destinationSnapshot.label,
+          message: "Unable to load the route. Try again.",
+          destinationLat: destinationSnapshot.lat,
+          destinationLng: destinationSnapshot.lng,
         });
-        settled = true;
         clearRoute();
       } finally {
-        if (!settled && !isStale() && !abortSignal?.aborted) {
-          onError({
-            ok: false,
-            requestId,
-            travelMode: request.travelMode,
-            destinationLabel: request.destination.label,
-            message: "Route unavailable right now.",
-            destinationLat: request.destination.lat,
-            destinationLng: request.destination.lng,
-          });
+        if (abortRef.current === controller) {
+          abortRef.current = null;
         }
+        logWalkRoute("cleanup", { requestId, cancelled: isStale() });
       }
     })();
 
     return () => {
       cancelled = true;
+      controller.abort();
       if (activeRequestIdRef.current === requestId) {
         activeRequestIdRef.current = null;
       }
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
     };
-  }, [
-    abortSignal,
-    enabled,
-    map,
-    onError,
-    onLoaded,
-    onUserLocation,
-    request,
-    routeSheetOpen,
-  ]);
+    // Intentionally keyed only by request id + enabled + map.
+    // Callbacks, abort props, userLocation, and routeSheetOpen use refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- request fields read from request when id changes
+  }, [enabled, map, requestId]);
+
+  // Refit padding when the route sheet opens/closes without re-fetching.
+  useEffect(() => {
+    const markers = markersRef.current;
+    if (!map || !markers.origin || !markers.destination) return;
+    const path = lineRef.current?.getPath();
+    if (!path || path.getLength() === 0) return;
+    const points: google.maps.LatLng[] = [];
+    path.forEach((point) => points.push(point));
+    const basePadding = routeSheetOpen ? 240 : 200;
+    fitRouteBounds(
+      map,
+      points,
+      markers.origin,
+      markers.destination,
+      basePadding + bottomNavClearancePx(),
+    );
+  }, [map, routeSheetOpen]);
 
   const markers = markersRef.current;
 
