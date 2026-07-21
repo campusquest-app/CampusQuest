@@ -26,6 +26,26 @@ alter table public.profiles
   add column if not exists qa_selected_role text
   check (qa_selected_role is null or qa_selected_role in ('student', 'faculty_staff'));
 
+-- 4a. Relax the role-escalation guard for trusted contexts: direct database
+--     connections (migrations, admin psql) have no JWT and must be allowed,
+--     as must service-role API calls. Client JWT contexts stay blocked.
+create or replace function public.block_profiles_role_escalation()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.jwt() is null or coalesce(auth.jwt()->>'role', '') = 'service_role' then
+    return new;
+  end if;
+  if new.role is distinct from old.role then
+    raise exception 'profiles.role cannot be changed by client';
+  end if;
+  return new;
+end;
+$$;
+
 -- 4. Existing non-admin/non-tester users choose their own role: the historical
 --    blanket default 'student' was never an explicit choice, so clear it.
 --    (Server code treats NULL as baseline student permissions, so nothing
