@@ -82,7 +82,10 @@ function AuthHeader() {
   return (
     <div className="cq-auth-header flex flex-col items-center text-center">
       <CampusQuestLogo variant="auth" priority className="mb-3" />
-      <h1 className="cq-auth-brand-title font-display">CampusQuest</h1>
+      <h1 className="cq-auth-brand-title font-display">
+        CampusQuest
+        <span className="cq-auth-brand-beta">beta</span>
+      </h1>
       <p className="cq-auth-subtitle mt-2 max-w-[18rem]">Discover campus. Find opportunities. Get involved.</p>
     </div>
   );

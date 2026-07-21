@@ -10567,6 +10567,20 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   font-weight: 800;
   letter-spacing: 0.06em;
   color: #f0f9ff;
+  white-space: nowrap;
+}
+
+/* Beta label — part of the brand lockup, baseline-aligned with the title. */
+.cq-auth-brand-beta {
+  margin-left: clamp(0.5rem, 2vw, 1rem);
+  font-size: 0.32em;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: #7eb8ff;
+  opacity: 0.95;
+  vertical-align: baseline;
+  white-space: nowrap;
 }
 
 .cq-auth-eyebrow {
