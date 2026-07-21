@@ -19,7 +19,7 @@ import {
   type StoredIdentityChangeEvent,
 } from "@/lib/identityWeeklyBudget";
 import { enforceRateLimit } from "@/lib/server/security";
-import { requireAuthUser } from "@/lib/server/supabase";
+import { createAdminClient, requireAuthUser } from "@/lib/server/supabase";
 import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { syncEquipmentTableFromGameState } from "@/lib/server/equipmentLoadoutDb";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
@@ -58,7 +58,34 @@ export async function GET(request: Request) {
       throw new ApiError(404, error?.message ?? "Profile not found.", "PROFILE_NOT_FOUND");
     }
 
-    return ok(enrichProfileRowForApiClient(data as unknown as Record<string, unknown>, auth.user.email));
+    let profileRow = data as unknown as Record<string, unknown>;
+
+    // Self-heal: users recognized as admins by the authorization system but
+    // with a legacy NULL role get role='admin' server-side, so they are never
+    // shown the student/faculty-staff prompt. Never downgrades existing roles.
+    if ((profileRow.role ?? null) == null && profileRow.is_test_user !== true) {
+      try {
+        const isPlatformAdminUser = await resolveIsPlatformAdmin(auth.userClient, auth.user);
+        if (isPlatformAdminUser) {
+          const { data: healed } = await createAdminClient()
+            .from("profiles")
+            .update({ role: "admin" })
+            .eq("id", auth.user.id)
+            .is("role", null)
+            .select("*")
+            .single();
+          if (healed) profileRow = healed as unknown as Record<string, unknown>;
+        }
+      } catch (healError) {
+        // Non-fatal: worst case the admin sees the role prompt guard later.
+        console.warn("[cq][role] admin role self-heal failed", {
+          userId: auth.user.id,
+          message: healError instanceof Error ? healError.message : String(healError),
+        });
+      }
+    }
+
+    return ok(enrichProfileRowForApiClient(profileRow, auth.user.email));
   } catch (error) {
     return fail(error);
   }

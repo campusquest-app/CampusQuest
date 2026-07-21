@@ -49,13 +49,14 @@ export async function ensurePlayerSetup(args: {
     : buildUsername(email ?? userId, userId);
   const defaultName = displayName?.trim() || (email ? email.split("@")[0] : "CampusQuest Player");
 
+  // role intentionally omitted: new users choose Student / Faculty-Staff on
+  // the account-type onboarding screen (NULL role = "not chosen yet").
   const { error: profileError } = await admin.from("profiles").upsert(
     {
       id: userId,
       username,
       display_name: defaultName.slice(0, 50),
       bio: "",
-      role: "student",
     },
     { onConflict: "id", ignoreDuplicates: true },
   );

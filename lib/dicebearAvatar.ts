@@ -66,6 +66,24 @@ export function parseDiceBearAvatar(avatar: string): DiceBearAvatarV2 | null {
   }
 }
 
+/**
+ * Selection state for optional appearance layers (glasses, hats, accessories, …).
+ * "None" is active when the layer is disabled (probability 0) or no variant is stored.
+ */
+export function isOptionalLayerNoneSelected(current: unknown, probability: unknown): boolean {
+  if (probability === 0) return true;
+  return current == null || (Array.isArray(current) && current.length === 0);
+}
+
+export function isOptionalLayerVariantSelected(
+  current: unknown,
+  value: string,
+  probability: unknown,
+): boolean {
+  if (probability === 0) return false;
+  return JSON.stringify(current) === JSON.stringify([value]);
+}
+
 export function randomDiceBearSeed(): string {
   const bytes = new Uint8Array(10);
   if (typeof globalThis.crypto !== "undefined" && globalThis.crypto.getRandomValues) {

@@ -39,6 +39,8 @@ export const FORBIDDEN_PROFILE_MUTATION_FIELDS = [
   "isTestUser",
   "is_hidden",
   "isHidden",
+  "qa_selected_role",
+  "qaSelectedRole",
   "created_at",
   "createdAt",
   "updated_at",

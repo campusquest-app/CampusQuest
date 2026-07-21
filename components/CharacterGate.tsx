@@ -63,6 +63,17 @@ export function CharacterGate({
     }
   }, [prefillProfile]);
 
+  // Role-aware onboarding copy (chosen on the account-type screen; QA accounts
+  // carry their test choice in qa_selected_role).
+  const accountType =
+    prefillProfile?.is_test_user === true || prefillProfile?.role === "qa"
+      ? prefillProfile?.qa_selected_role
+      : prefillProfile?.role;
+  const roleWelcomeCopy =
+    accountType === "faculty_staff"
+      ? "You'll use this identity to share opportunities, create events, and support students across campus."
+      : "You'll use this identity to discover events, join organizations, take on quests, and earn XP.";
+
   const nameTrimmed = name.trim();
   const usernameNormalized = toUsername(username || nameTrimmed);
   const nameValid = nameTrimmed.length >= 1 && nameTrimmed.length <= NAME_MAX;
@@ -193,6 +204,7 @@ export function CharacterGate({
               <CampusQuestLogo variant="drawer" className="mx-auto mb-4" priority />
               <h1 className="font-display font-bold text-2xl text-white mb-1">Create your character</h1>
               <p className="text-sm text-white/60">First pick your name and username.</p>
+              <p className="mt-1 text-xs text-white/45">{roleWelcomeCopy}</p>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 sm:p-8 pt-4 space-y-6">

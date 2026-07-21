@@ -11,6 +11,7 @@ import {
   type PeopleSearchResult,
 } from "@/lib/client/friendsGuildsSearchClient";
 import {
+  cancelOutgoingConnectionRequest,
   respondToConnectionRequest,
   type ConnectionItem,
   type ConnectionRequestItem,
@@ -66,9 +67,16 @@ function PeopleConnectionButton({
 
   if (state === "requested") {
     return (
-      <span className="cq-live-search-action cq-live-search-action--muted shrink-0" aria-live="polite">
-        Requested
-      </span>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
+        title="Cancel request"
+        aria-label="Cancel connection request"
+        className="cq-live-search-action cq-live-search-action--muted shrink-0 touch-manipulation disabled:opacity-60"
+      >
+        {disabled ? "..." : "Requested"}
+      </button>
     );
   }
 
@@ -150,7 +158,21 @@ export function PeopleLiveSearchField({
       setActionUserId(row.userId);
       onClearError();
       try {
-        if (connectionState === "follow_back") {
+        if (connectionState === "requested") {
+          const normalized = row.username.trim().toLowerCase();
+          const outgoingRequest = outgoing.find(
+            (req) => req.userId === row.userId || req.username.trim().toLowerCase() === normalized,
+          );
+          if (outgoingRequest) {
+            await cancelOutgoingConnectionRequest(outgoingRequest.requestId);
+            onToast("Request cancelled");
+          }
+          setOptimisticRequestedUserIds((prev) => {
+            const next = new Set(prev);
+            next.delete(row.userId);
+            return next;
+          });
+        } else if (connectionState === "follow_back") {
           const incomingRequest = incoming.find((req) => req.userId === row.userId);
           if (!incomingRequest) {
             onError("This follow request is no longer available.");
@@ -208,11 +230,7 @@ export function PeopleLiveSearchField({
         return (
           <PeopleConnectionButton
             state={connectionState}
-            disabled={
-              actionUserId === row.userId ||
-              connectionState === "friends" ||
-              connectionState === "requested"
-            }
+            disabled={actionUserId === row.userId || connectionState === "friends"}
             onClick={() => void handlePeopleAction(row, connectionState)}
           />
         );

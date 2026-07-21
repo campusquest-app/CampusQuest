@@ -124,10 +124,13 @@ import {
   peekPostLoginLoadingPending,
 } from "@/lib/client/postLoginLoading";
 import {
+  isProfileSetupComplete,
   resolveAppShellRoute,
   resolveProfileRoute,
   type ProfileRoute,
 } from "@/lib/client/appShellRoute";
+import { RoleSelectionGate } from "@/components/RoleSelectionGate";
+import { AccountTypeModal } from "@/components/AccountTypeModal";
 import { buildQrXpSession } from "@/lib/client/buildQrXpSession";
 import { normalizeQrScanInput } from "@/lib/client/normalizeQrScanInput";
 import { logQrScanDebug } from "@/lib/client/qrScanDebug";
@@ -191,7 +194,7 @@ function logBootstrapDecision(info: {
   sessionFound: boolean;
   sessionValidated?: boolean;
   onboardingCompleted?: boolean | null;
-  route: "unauthenticated" | "character_gate" | "app";
+  route: "unauthenticated" | "role_gate" | "character_gate" | "app";
 }) {
   if (process.env.NODE_ENV === "production") return;
   console.info("[cq] bootstrap", {
@@ -222,6 +225,7 @@ export function Dashboard() {
   const [realmKeepAlive, setRealmKeepAlive] = useState(false);
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showAccountTypeModal, setShowAccountTypeModal] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [logoutConfirmError, setLogoutConfirmError] = useState<string | null>(null);
   const [drawerSubPanel, setDrawerSubPanel] = useState<"menu" | "settings" | "help">("menu");
@@ -285,6 +289,8 @@ export function Dashboard() {
   const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("bootstrapping");
   const [bootstrapNonce, setBootstrapNonce] = useState(0);
   const [gatePrefillProfile, setGatePrefillProfile] = useState<MeProfileRow | null>(null);
+  /** Set when the account-type screen must show; drives the new/existing-user variant. */
+  const [roleGateProfile, setRoleGateProfile] = useState<MeProfileRow | null>(null);
   const [pilotCampusState, setPilotCampusState] = useState<PilotCampusState>({ status: "loading" });
   const [campusFetchNonce, setCampusFetchNonce] = useState(0);
   const [showCampusSlowNotice, setShowCampusSlowNotice] = useState(false);
@@ -1049,6 +1055,9 @@ export function Dashboard() {
           setTab("character");
           setCharacterPane("profile");
           break;
+        case "account-type":
+          setShowAccountTypeModal(true);
+          break;
         case "notifications":
           setTab("inbox");
           break;
@@ -1441,13 +1450,20 @@ export function Dashboard() {
           refresh();
         }
 
+        setRoleGateProfile(routeDecision === "role_gate" ? profileMerged : null);
+
         scheduleDeferredOnboardingPrefs();
 
         logBootstrapDecision({
           sessionFound: true,
           sessionValidated: true,
           onboardingCompleted: profileMerged.onboarding_completed ?? null,
-          route: routeDecision === "character_gate" ? "character_gate" : "app",
+          route:
+            routeDecision === "role_gate"
+              ? "role_gate"
+              : routeDecision === "character_gate"
+                ? "character_gate"
+                : "app",
         });
 
         setProfileRoute(routeDecision);
@@ -1707,6 +1723,22 @@ export function Dashboard() {
     );
   }
 
+  if (appShellRoute === "role_selection") {
+    return (
+      <RoleSelectionGate
+        variant={roleGateProfile && isProfileSetupComplete(roleGateProfile) ? "existing_user" : "new_user"}
+        onComplete={(updatedProfile) => {
+          setRoleGateProfile(null);
+          const nextRoute = resolveProfileRoute(updatedProfile);
+          if (nextRoute === "character_gate") {
+            setGatePrefillProfile(updatedProfile);
+          }
+          setProfileRoute(nextRoute);
+        }}
+      />
+    );
+  }
+
   if (appShellRoute === "onboarding") {
     return (
       <CharacterGate
@@ -1933,6 +1965,7 @@ export function Dashboard() {
         onCancel={cancelLogoutConfirm}
         onConfirm={() => void confirmLogout()}
       />
+      {showAccountTypeModal && <AccountTypeModal onClose={() => setShowAccountTypeModal(false)} />}
       {xpGainSession ? (
         <LevelUpOverlay
           session={xpGainSession}

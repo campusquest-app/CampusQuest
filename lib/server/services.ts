@@ -9,6 +9,7 @@ import {
   rollLootDrop,
   updateStreak,
 } from "@/lib/server/gameplay";
+import { listLeaderboardIneligibleUserIds } from "@/lib/server/leaderboardEligibility";
 import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { createAdminClient } from "@/lib/server/supabase";
 import { getTrustedStatsWriteClient } from "@/lib/server/trustedStatsWrite";
@@ -1148,16 +1149,17 @@ export async function getMyGuild(userClient: SupabaseClientLike, userId: string)
   if (membersError) throw new ApiError(400, membersError.message, "GUILD_MEMBERS_FETCH_FAILED");
 
   const userIds = (members ?? []).map((m) => m.user_id);
-  const [{ data: profiles }, { data: stats }, hiddenIds] = await Promise.all([
+  const [{ data: profiles }, { data: stats }, hiddenIds, ineligibleIds] = await Promise.all([
     userClient.from("profiles").select("id, username, display_name, avatar_url").in("id", userIds),
     userClient.from("user_stats").select("user_id, level, total_xp").in("user_id", userIds),
     listHiddenUserIds(userClient),
+    listLeaderboardIneligibleUserIds(userClient, userIds),
   ]);
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
   const statsMap = new Map((stats ?? []).map((s) => [s.user_id, s]));
 
-  const memberLeaderboard = (members ?? [])
+  const visibleMembers = (members ?? [])
     // QA/test accounts (is_hidden = true) are visible only to themselves.
     .filter((member) => member.user_id === userId || !hiddenIds.has(member.user_id))
     .map((member) => {
@@ -1174,12 +1176,21 @@ export async function getMyGuild(userClient: SupabaseClientLike, userId: string)
         total_xp: Number(s?.total_xp ?? 0),
       };
     })
-    .sort((a, b) => b.total_xp - a.total_xp)
-    .map((member, index) => ({ rank: index + 1, ...member }));
+    .sort((a, b) => b.total_xp - a.total_xp);
+
+  // Only eligible students compete for ranks. Faculty/staff, admins, and
+  // QA/test members stay visible in the roster but are unranked and never
+  // shift another member's rank.
+  const rankedMembers = visibleMembers
+    .filter((member) => !ineligibleIds.has(member.user_id))
+    .map((member, index) => ({ rank: index + 1 as number | null, ...member }));
+  const unrankedMembers = visibleMembers
+    .filter((member) => ineligibleIds.has(member.user_id))
+    .map((member) => ({ rank: null as number | null, ...member }));
 
   return {
     guild,
-    members: memberLeaderboard,
+    members: [...rankedMembers, ...unrankedMembers],
   };
 }
 
@@ -1690,7 +1701,7 @@ export async function fetchUserInventory(userClient: SupabaseClientLike, userId:
 }
 
 export async function fetchLeaderboards(userClient: SupabaseClientLike) {
-  const [{ data: players, error: playersError }, { data: guilds, error: guildsError }, { data: achievements, error: achievementsError }, hiddenIds] =
+  const [{ data: players, error: playersError }, { data: guilds, error: guildsError }, { data: achievements, error: achievementsError }, ineligibleIds] =
     await Promise.all([
       userClient
         .from("user_stats")
@@ -1707,7 +1718,7 @@ export async function fetchLeaderboards(userClient: SupabaseClientLike) {
         .select("user_id, quest_id, created_at, profiles(username, display_name)")
         .order("created_at", { ascending: false })
         .limit(100),
-      listHiddenUserIds(userClient),
+      listLeaderboardIneligibleUserIds(userClient),
     ]);
 
   if (playersError) throw new ApiError(400, playersError.message, "PLAYERS_LEADERBOARD_FAILED");
@@ -1715,8 +1726,9 @@ export async function fetchLeaderboards(userClient: SupabaseClientLike) {
   if (achievementsError) throw new ApiError(400, achievementsError.message, "ACHIEVEMENTS_FETCH_FAILED");
 
   return {
-    // QA/test accounts (is_hidden = true) never appear on leaderboards.
-    players: (players ?? []).filter((player) => !hiddenIds.has(String((player as { user_id?: string }).user_id ?? ""))).map((player, index) => {
+    // Only eligible students rank (role = student, not hidden, not test user).
+    // Faculty/staff, admins, and QA/test accounts never appear here.
+    players: (players ?? []).filter((player) => !ineligibleIds.has(String((player as { user_id?: string }).user_id ?? ""))).map((player, index) => {
       const totalXp = Math.max(0, Number((player as { total_xp?: number }).total_xp ?? 0));
       const storedLevel = Number((player as { level?: number }).level ?? 1);
       const level = calculateLevelProgression(totalXp).level;
@@ -1739,7 +1751,7 @@ export async function fetchLeaderboards(userClient: SupabaseClientLike) {
       ...guild,
     })),
     achievements: (achievements ?? []).filter(
-      (row) => !hiddenIds.has(String((row as { user_id?: string }).user_id ?? "")),
+      (row) => !ineligibleIds.has(String((row as { user_id?: string }).user_id ?? "")),
     ),
   };
 }

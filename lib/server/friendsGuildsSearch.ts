@@ -92,7 +92,7 @@ async function fetchConnectionSets(
     }
     if (status !== "pending") continue;
     if (requesterId === userId) outgoingIds.add(otherId);
-    else incomingIds.add(addresseeId);
+    else incomingIds.add(otherId);
   }
 
   return { connectedIds, incomingIds, outgoingIds };

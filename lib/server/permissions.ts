@@ -4,10 +4,11 @@ import { ApiError } from "@/lib/server/http";
 import { isAdminEmailFallback } from "@/lib/platformAdmin";
 import { isAdminEmail, isAuthEmailConfirmed, userHasModerationAdminAccess } from "@/lib/server/adminEmails";
 
-export type ProfileRole = "student" | "qa" | "beta_internal" | "admin" | "super_admin";
+export type ProfileRole = "student" | "faculty_staff" | "qa" | "beta_internal" | "admin" | "super_admin";
 
 const ROLE_RANK: Record<ProfileRole, number> = {
   student: 0,
+  faculty_staff: 0,
   qa: 0,
   beta_internal: 0,
   admin: 1,
@@ -15,7 +16,15 @@ const ROLE_RANK: Record<ProfileRole, number> = {
 };
 
 export function normalizeProfileRole(raw: string | null | undefined): ProfileRole {
-  if (raw === "admin" || raw === "super_admin" || raw === "qa" || raw === "beta_internal") return raw;
+  if (
+    raw === "admin" ||
+    raw === "super_admin" ||
+    raw === "qa" ||
+    raw === "beta_internal" ||
+    raw === "faculty_staff"
+  ) {
+    return raw;
+  }
   return "student";
 }
 

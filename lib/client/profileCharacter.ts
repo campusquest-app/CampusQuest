@@ -26,6 +26,11 @@ export type MeProfileRow = {
   character_class_id?: string | null;
   starter_weapon?: string | null;
   scholar_guild_id?: string | null;
+  /** Account type — see lib/roles.ts. NULL until the user picks one. */
+  role?: string | null;
+  is_test_user?: boolean | null;
+  /** QA accounts store their role-selection test choice here; role stays 'qa'. */
+  qa_selected_role?: string | null;
   /** When display/username last changed — used for client-side cooldown UX. */
   display_name_changed_at?: string | null;
   username_changed_at?: string | null;

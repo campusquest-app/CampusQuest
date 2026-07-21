@@ -19,6 +19,8 @@ export type ProfileRow = {
   is_test_user?: boolean | null;
   is_hidden?: boolean | null;
   role?: string | null;
+  /** QA accounts store their role-selection test choice here; role stays 'qa'. */
+  qa_selected_role?: string | null;
 };
 
 export type UserStatsRow = {

@@ -6,8 +6,8 @@ import {
 import { compareXpLeaderboardEntries } from "@/lib/leaderboardRanking";
 import { xpToLevel } from "@/lib/level";
 import { ApiError } from "@/lib/server/http";
+import { listLeaderboardIneligibleUserIds } from "@/lib/server/leaderboardEligibility";
 import { listAcceptedFriendUserIds } from "@/lib/server/messaging";
-import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { requireVerifiedSchoolForCoreAccess } from "@/lib/server/schoolVerification";
 import { createAdminClient } from "@/lib/server/supabase";
 
@@ -210,18 +210,19 @@ export function mapProfileToLeaderboardEntry(row: ProfileStatRow): Omit<Leaderbo
 
 async function fetchProfilesAndStats(admin: SupabaseClientLike, userIds: string[]) {
   if (userIds.length === 0) return [];
-  const [{ data: profiles, error }, hiddenIds] = await Promise.all([
+  const [{ data: profiles, error }, ineligibleIds] = await Promise.all([
     admin
       .from("profiles")
       .select(
         "id, username, display_name, avatar_url, avatar_custom_json, scholar_guild_id, streak_days, user_stats(level, total_xp, strength, stamina, knowledge, social, focus, bosses_defeated, final_bosses_defeated)",
       )
       .in("id", userIds),
-    listHiddenUserIds(admin),
+    listLeaderboardIneligibleUserIds(admin, userIds),
   ]);
   if (error) throw new ApiError(400, error.message, "LEADERBOARD_PROFILES_FETCH_FAILED");
-  // QA/test accounts (is_hidden = true) never appear on leaderboards.
-  const rows = ((profiles ?? []) as ProfileStatRow[]).filter((row) => !hiddenIds.has(row.id));
+  // Only eligible students rank: faculty/staff, admins, QA/test, and hidden
+  // accounts never appear and never shift another user's rank.
+  const rows = ((profiles ?? []) as ProfileStatRow[]).filter((row) => !ineligibleIds.has(row.id));
   await reconcileStaleStoredLevels(admin, rows);
   return rows;
 }
@@ -357,23 +358,16 @@ export async function fetchFriendsXpLeaderboard(args: {
   const safetyAllowedSet = await loadSafetyAllowedSet(admin, cohortIds, nowMs);
   const rankedIdsAll = cohortIds.filter((id) => safetyAllowedSet.has(id));
 
+  // fetchProfilesAndStats drops ranking-ineligible accounts (faculty/staff,
+  // admins, QA/test, hidden), so build entries from the rows it returns.
   const profilesRows = await fetchProfilesAndStats(admin, rankedIdsAll);
-
-  const profileById = new Map(profilesRows.map((row) => [row.id, row]));
-  const baseEntries: Omit<LeaderboardXpRow, "rank">[] = [];
-  for (const id of rankedIdsAll) {
-    const row = profileById.get(id);
-    if (!row) {
-      console.warn("[cq][leaderboard] friends cohort profile missing", { userId, missingUserId: id });
-      continue;
-    }
-    baseEntries.push(mapProfileToLeaderboardEntry(row));
-  }
+  const baseEntries = profilesRows.map((row) => mapProfileToLeaderboardEntry(row));
 
   const ranked = sortAndRank(baseEntries, "totalXp");
 
   if (acceptedFriendCount > 0 && ranked.length === 0) {
-    console.error("[cq][leaderboard] friends leaderboard empty despite accepted connections", {
+    // Can legitimately happen when every friend is leaderboard-ineligible.
+    console.warn("[cq][leaderboard] friends leaderboard empty despite accepted connections", {
       userId,
       acceptedFriendCount,
       cohortIds,

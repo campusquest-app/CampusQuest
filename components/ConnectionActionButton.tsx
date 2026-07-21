@@ -9,6 +9,7 @@ import {
   requestConnection,
   type ConnectionActionState,
 } from "@/lib/client/connectionRequestActions";
+import { cancelOutgoingConnectionRequest } from "@/lib/client/socialConnectionsClient";
 import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 
 export function ConnectionActionButton({
@@ -61,6 +62,24 @@ export function ConnectionActionButton({
       if (outcome.toastMessage) onToast?.(outcome.toastMessage);
     } catch (error) {
       onToast?.(error instanceof Error ? error.message : "Could not send request.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCancelRequest() {
+    if (!requestId || busy) return;
+    setBusy(true);
+    try {
+      await cancelOutgoingConnectionRequest(requestId);
+      await syncRelationship();
+      emitSocialSync({ source: "friends" });
+      onStateChange?.();
+      onToast?.("Request cancelled");
+    } catch (error) {
+      // e.g. the request was accepted in the meantime — re-sync to show the real state.
+      await syncRelationship();
+      onToast?.(error instanceof Error ? error.message : "Could not cancel request.");
     } finally {
       setBusy(false);
     }
@@ -137,13 +156,18 @@ export function ConnectionActionButton({
 
   if (state === "outgoing") {
     return (
-      <span
-        className={`inline-flex min-h-[44px] items-center rounded-xl border border-white/15 bg-white/[0.05] font-medium text-white/55 ${
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void handleCancelRequest()}
+        title="Cancel request"
+        aria-label="Cancel connection request"
+        className={`inline-flex min-h-[44px] items-center rounded-xl border border-white/15 bg-white/[0.05] font-medium text-white/70 hover:border-rose-300/40 hover:text-rose-100 disabled:opacity-60 ${
           compact ? "px-3 py-2 text-xs" : "px-4 py-2 text-sm"
         }`}
       >
-        Requested
-      </span>
+        {busy ? "Cancelling…" : "Requested"}
+      </button>
     );
   }
 

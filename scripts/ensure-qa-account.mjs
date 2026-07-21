@@ -79,7 +79,7 @@ if (!userId) {
     email,
     password,
     email_confirm: true,
-    user_metadata: { display_name: "QA Signup Tester", is_test_user: true },
+    user_metadata: { display_name: "CampusQuest QA", is_test_user: true },
   });
   if (error || !data.user) {
     console.error(`createUser failed: ${error?.message ?? "unknown"}`);
@@ -94,8 +94,8 @@ if (!userId) {
 
 const qaProfile = {
   id: userId,
-  username: "qa_signup_tester",
-  display_name: "QA Signup Tester",
+  username: "campusquestqa",
+  display_name: "CampusQuest QA",
   bio: "",
   role: "qa",
   is_test_user: true,

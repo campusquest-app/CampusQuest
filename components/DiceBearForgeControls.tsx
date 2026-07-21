@@ -1,7 +1,12 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { DiceBearAvatarV2, DiceBearStyleId } from "@/lib/dicebearAvatar";
+import {
+  isOptionalLayerNoneSelected,
+  isOptionalLayerVariantSelected,
+  type DiceBearAvatarV2,
+  type DiceBearStyleId,
+} from "@/lib/dicebearAvatar";
 import {
   BG_FANTASY_PRESETS,
   HAIR_COLOR_SWATCHES,
@@ -61,6 +66,55 @@ const BACKDROP_CARD =
 
 function jsonEq(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * Grid for optional appearance layers (glasses, hats, accessories, …) with a
+ * reusable "None" option. Selecting None clears the stored variant and sets
+ * the layer probability to 0; selecting a variant restores probability 100.
+ */
+function OptionalLayerGrid({
+  options,
+  current,
+  probability,
+  optionKey,
+  probabilityKey,
+  patchOptions,
+}: {
+  options: readonly { label: string; v: string | null }[];
+  current: unknown;
+  probability: unknown;
+  optionKey: string;
+  probabilityKey: string;
+  patchOptions: (partial: Record<string, unknown>) => void;
+}) {
+  return (
+    <OptionGrid>
+      {options.map((h) => {
+        const active =
+          h.v == null
+            ? isOptionalLayerNoneSelected(current, probability)
+            : isOptionalLayerVariantSelected(current, h.v, probability);
+        return (
+          <button
+            key={String(h.v)}
+            type="button"
+            aria-pressed={active}
+            onClick={() =>
+              h.v == null
+                ? patchOptions({ [optionKey]: undefined, [probabilityKey]: 0 })
+                : patchOptions({ [optionKey]: [h.v], [probabilityKey]: 100 })
+            }
+            className={`${CHIP} ${
+              active ? "border-uri-keaney bg-uri-keaney/25 text-white" : "border-white/12 bg-white/5 text-white/85"
+            }`}
+          >
+            {h.label}
+          </button>
+        );
+      })}
+    </OptionGrid>
+  );
 }
 
 export function DiceBearBackgroundPicker({
@@ -176,59 +230,24 @@ export function DiceBearForgeControls({
         </OptionGrid>
       </ForgeSection>
       <ForgeSection icon="👓" title="Spectacles" subtitle="Worn arcana">
-        <OptionGrid>
-          {U.LORELEI_GLASSES.map((h) => (
-            <button
-              key={String(h.v)}
-              type="button"
-              onClick={() =>
-                h.v == null
-                  ? patchOptions({ glassesProbability: 0 })
-                  : patchOptions({ glasses: [h.v], glassesProbability: 100 })
-              }
-              className={`${CHIP} ${
-                h.v == null
-                  ? o.glassesProbability === 0 ||
-                      !Array.isArray(o.glasses) ||
-                      o.glasses.length === 0
-                    ? "border-uri-keaney bg-uri-keaney/25 text-white"
-                    : "border-white/12 bg-white/5"
-                  : jsonEq(o.glasses, [h.v])
-                    ? "border-uri-keaney bg-uri-keaney/25 text-white"
-                    : "border-white/12 bg-white/5 text-white/85"
-              }`}
-            >
-              {h.label}
-            </button>
-          ))}
-        </OptionGrid>
+        <OptionalLayerGrid
+          options={U.LORELEI_GLASSES}
+          current={o.glasses}
+          probability={o.glassesProbability}
+          optionKey="glasses"
+          probabilityKey="glassesProbability"
+          patchOptions={patchOptions}
+        />
       </ForgeSection>
       <ForgeSection icon="🌸" title="Hair charm" subtitle="Floral accent">
-        <OptionGrid>
-          {U.LORELEI_HAT_FLOWERS.map((h) => (
-            <button
-              key={String(h.v)}
-              type="button"
-              onClick={() =>
-                h.v
-                  ? patchOptions({ hairAccessories: ["flowers"], hairAccessoriesProbability: 100 })
-                  : patchOptions({ hairAccessoriesProbability: 0 })
-              }
-              className={`${CHIP} ${
-                h.v
-                  ? jsonEq(o.hairAccessories, ["flowers"]) &&
-                      (o.hairAccessoriesProbability as number) !== 0
-                    ? "border-uri-keaney bg-uri-keaney/25 text-white"
-                    : "border-white/12 bg-white/5 text-white/85"
-                  : (o.hairAccessoriesProbability === 0 || o.hairAccessories == null) && !h.v
-                    ? "border-uri-keaney bg-uri-keaney/25 text-white"
-                    : "border-white/12 bg-white/5 text-white/85"
-              }`}
-            >
-              {h.label}
-            </button>
-          ))}
-        </OptionGrid>
+        <OptionalLayerGrid
+          options={U.LORELEI_HAT_FLOWERS.map((h) => ({ label: h.label, v: h.v ? "flowers" : null }))}
+          current={o.hairAccessories}
+          probability={o.hairAccessoriesProbability}
+          optionKey="hairAccessories"
+          probabilityKey="hairAccessoriesProbability"
+          patchOptions={patchOptions}
+        />
       </ForgeSection>
     </>
   );
@@ -284,80 +303,34 @@ export function DiceBearForgeControls({
         </OptionGrid>
       </ForgeSection>
       <ForgeSection icon="👓" title="Glasses" subtitle="Light & shadow lenses">
-        <OptionGrid>
-          {U.PIXEL_GLASSES.map((h) => (
-            <button
-              key={String(h.v)}
-              type="button"
-              onClick={() =>
-                h.v == null
-                  ? patchOptions({ glassesProbability: 0 })
-                  : patchOptions({ glasses: [h.v], glassesProbability: 100 })
-              }
-              className={`${CHIP} ${
-                h.v == null
-                  ? (o.glassesProbability === 0 || !o.glasses) && o.glasses == null
-                    ? "border-uri-keaney bg-uri-keaney/25"
-                    : "border-white/12 bg-white/5"
-                  : jsonEq(o.glasses, [h.v])
-                    ? "border-uri-keaney bg-uri-keaney/25"
-                    : "border-white/12 bg-white/5"
-              }`}
-            >
-              {h.label}
-            </button>
-          ))}
-        </OptionGrid>
+        <OptionalLayerGrid
+          options={U.PIXEL_GLASSES}
+          current={o.glasses}
+          probability={o.glassesProbability}
+          optionKey="glasses"
+          probabilityKey="glassesProbability"
+          patchOptions={patchOptions}
+        />
       </ForgeSection>
       <ForgeSection icon="🎩" title="Helm & hat" subtitle="Crowns & caps">
-        <OptionGrid>
-          {U.PIXEL_HAT.map((h) => (
-            <button
-              key={String(h.v)}
-              type="button"
-              onClick={() =>
-                h.v == null ? patchOptions({ hatProbability: 0 }) : patchOptions({ hat: [h.v], hatProbability: 100 })
-              }
-              className={`${CHIP} ${
-                h.v == null
-                  ? (o.hatProbability === 0 || !o.hat) && !o.hat
-                    ? "border-uri-keaney bg-uri-keaney/25"
-                    : "border-white/12 bg-white/5"
-                  : jsonEq(o.hat, [h.v])
-                    ? "border-uri-keaney bg-uri-keaney/25"
-                    : "border-white/12 bg-white/5"
-              }`}
-            >
-              {h.label}
-            </button>
-          ))}
-        </OptionGrid>
+        <OptionalLayerGrid
+          options={U.PIXEL_HAT}
+          current={o.hat}
+          probability={o.hatProbability}
+          optionKey="hat"
+          probabilityKey="hatProbability"
+          patchOptions={patchOptions}
+        />
       </ForgeSection>
       <ForgeSection icon="✨" title="Relics" subtitle="Charms & trinkets">
-        <OptionGrid>
-          {U.PIXEL_ACCESSORIES.map((h) => (
-            <button
-              key={String(h.v)}
-              type="button"
-              onClick={() =>
-                h.v == null
-                  ? patchOptions({ accessoriesProbability: 0 })
-                  : patchOptions({ accessories: [h.v], accessoriesProbability: 100 })
-              }
-              className={`${CHIP} ${
-                h.v == null
-                  ? o.accessoriesProbability === 0 || !o.accessories
-                    ? "border-uri-keaney bg-uri-keaney/25"
-                    : "border-white/12 bg-white/5"
-                  : jsonEq(o.accessories, [h.v])
-                    ? "border-uri-keaney bg-uri-keaney/25"
-                    : "border-white/12 bg-white/5"
-              }`}
-            >
-              {h.label}
-            </button>
-          ))}
-        </OptionGrid>
+        <OptionalLayerGrid
+          options={U.PIXEL_ACCESSORIES}
+          current={o.accessories}
+          probability={o.accessoriesProbability}
+          optionKey="accessories"
+          probabilityKey="accessoriesProbability"
+          patchOptions={patchOptions}
+        />
       </ForgeSection>
     </>
   );
@@ -413,48 +386,24 @@ export function DiceBearForgeControls({
         </OptionGrid>
       </ForgeSection>
       <ForgeSection icon="👓" title="Glasses">
-        <OptionGrid>
-          {U.ADV_GLASSES.map((h) => (
-            <button
-              key={String(h.v)}
-              type="button"
-              onClick={() =>
-                h.v == null
-                  ? patchOptions({ glassesProbability: 0 })
-                  : patchOptions({ glasses: [h.v], glassesProbability: 100 })
-              }
-              className={`${CHIP} ${
-                jsonEq(h.v ? [h.v] : null, o.glasses as string[] | null) || (h.v == null && !o.glasses)
-                  ? "border-uri-keaney bg-uri-keaney/25"
-                  : "border-white/12 bg-white/5"
-              }`}
-            >
-              {h.label}
-            </button>
-          ))}
-        </OptionGrid>
+        <OptionalLayerGrid
+          options={U.ADV_GLASSES}
+          current={o.glasses}
+          probability={o.glassesProbability}
+          optionKey="glasses"
+          probabilityKey="glassesProbability"
+          patchOptions={patchOptions}
+        />
       </ForgeSection>
       <ForgeSection icon="🎭" title="Marks & features" subtitle="Tales worn on the face">
-        <OptionGrid>
-          {U.ADV_FEATURES.map((h) => (
-            <button
-              key={String(h.v)}
-              type="button"
-              onClick={() =>
-                h.v == null
-                  ? patchOptions({ featuresProbability: 0 })
-                  : patchOptions({ features: [h.v], featuresProbability: 100 })
-              }
-              className={`${CHIP} ${
-                h.v == null ? !o.features && o.featuresProbability === 0 : jsonEq(o.features, [h.v])
-                  ? "border-uri-keaney bg-uri-keaney/25"
-                  : "border-white/12 bg-white/5"
-              }`}
-            >
-              {h.label}
-            </button>
-          ))}
-        </OptionGrid>
+        <OptionalLayerGrid
+          options={U.ADV_FEATURES}
+          current={o.features}
+          probability={o.featuresProbability}
+          optionKey="features"
+          probabilityKey="featuresProbability"
+          patchOptions={patchOptions}
+        />
       </ForgeSection>
     </>
   );
@@ -510,24 +459,14 @@ export function DiceBearForgeControls({
         </OptionGrid>
       </ForgeSection>
       <ForgeSection icon="👓" title="Glasses">
-        <OptionGrid>
-          {U.MICAH_GLASSES.map((h) => (
-            <button
-              key={String(h.v)}
-              type="button"
-              onClick={() =>
-                h.v == null
-                  ? patchOptions({ glassesProbability: 0 })
-                  : patchOptions({ glasses: [h.v], glassesProbability: 100 })
-              }
-              className={`${CHIP} ${
-                h.v == null ? !o.glasses : jsonEq(o.glasses, [h.v]) ? "border-uri-keaney bg-uri-keaney/25" : "border-white/12 bg-white/5"
-              }`}
-            >
-              {h.label}
-            </button>
-          ))}
-        </OptionGrid>
+        <OptionalLayerGrid
+          options={U.MICAH_GLASSES}
+          current={o.glasses}
+          probability={o.glassesProbability}
+          optionKey="glasses"
+          probabilityKey="glassesProbability"
+          patchOptions={patchOptions}
+        />
       </ForgeSection>
       <ForgeSection icon="🥋" title="Raiment" subtitle="Shirt & collar">
         <OptionGrid>
@@ -583,24 +522,14 @@ export function DiceBearForgeControls({
         </OptionGrid>
       </ForgeSection>
       <ForgeSection icon="🛡️" title="Face accessories" subtitle="Spectacles & badges">
-        <OptionGrid>
-          {U.PEEPS_ACCESSORIES.map((h) => (
-            <button
-              key={String(h.v)}
-              type="button"
-              onClick={() =>
-                h.v == null
-                  ? patchOptions({ accessoriesProbability: 0 })
-                  : patchOptions({ accessories: [h.v], accessoriesProbability: 100 })
-              }
-              className={`${CHIP} ${
-                h.v == null ? !o.accessories : jsonEq(o.accessories, [h.v]) ? "border-uri-keaney bg-uri-keaney/25" : "border-white/12 bg-white/5"
-              }`}
-            >
-              {h.label}
-            </button>
-          ))}
-        </OptionGrid>
+        <OptionalLayerGrid
+          options={U.PEEPS_ACCESSORIES}
+          current={o.accessories}
+          probability={o.accessoriesProbability}
+          optionKey="accessories"
+          probabilityKey="accessoriesProbability"
+          patchOptions={patchOptions}
+        />
       </ForgeSection>
     </>
   );

@@ -14,9 +14,55 @@ describe("appShellRoute", () => {
     expect(isProfileSetupComplete({})).toBe(false);
   });
 
-  it("resolves profile route from explicit completion flags", () => {
-    expect(resolveProfileRoute({ onboarding_completed: true })).toBe("app");
-    expect(resolveProfileRoute({ onboarding_character_completed: null })).toBe("character_gate");
+  it("resolves profile route from explicit completion flags once a role is chosen", () => {
+    expect(resolveProfileRoute({ onboarding_completed: true, role: "student" })).toBe("app");
+    expect(resolveProfileRoute({ onboarding_character_completed: null, role: "student" })).toBe(
+      "character_gate",
+    );
+    expect(resolveProfileRoute({ onboarding_completed: true, role: "faculty_staff" })).toBe("app");
+  });
+
+  it("routes users without a valid role to the role gate first", () => {
+    // New user: role selection comes before character setup.
+    expect(resolveProfileRoute({ onboarding_completed: false, role: null })).toBe("role_gate");
+    // Existing onboarded user with NULL/legacy-invalid role: one-time prompt.
+    expect(resolveProfileRoute({ onboarding_completed: true, role: null })).toBe("role_gate");
+    expect(resolveProfileRoute({ onboarding_completed: true, role: "" })).toBe("role_gate");
+    expect(resolveProfileRoute({ onboarding_completed: true, role: "banana" })).toBe("role_gate");
+  });
+
+  it("never shows the role gate to admins or internal testers", () => {
+    expect(resolveProfileRoute({ onboarding_completed: true, role: "admin" })).toBe("app");
+    expect(resolveProfileRoute({ onboarding_completed: true, role: "super_admin" })).toBe("app");
+    expect(resolveProfileRoute({ onboarding_completed: true, role: "beta_internal" })).toBe("app");
+    expect(resolveProfileRoute({ onboarding_completed: false, role: "admin" })).toBe("character_gate");
+  });
+
+  it("routes QA accounts by their separate test selection, keeping role = qa", () => {
+    expect(
+      resolveProfileRoute({
+        onboarding_completed: false,
+        role: "qa",
+        is_test_user: true,
+        qa_selected_role: null,
+      }),
+    ).toBe("role_gate");
+    expect(
+      resolveProfileRoute({
+        onboarding_completed: false,
+        role: "qa",
+        is_test_user: true,
+        qa_selected_role: "student",
+      }),
+    ).toBe("character_gate");
+    expect(
+      resolveProfileRoute({
+        onboarding_completed: true,
+        role: "qa",
+        is_test_user: true,
+        qa_selected_role: "faculty_staff",
+      }),
+    ).toBe("app");
   });
 
   it("hydrates quietly during bootstrap when not post-login", () => {
@@ -79,5 +125,26 @@ describe("appShellRoute", () => {
         hasCharacter: false,
       }),
     ).toBe("onboarding");
+  });
+
+  it("shows the role-selection screen when the profile route requires it", () => {
+    expect(
+      resolveAppShellRoute({
+        bootstrapStatus: "authenticated",
+        profileRoute: "role_gate",
+        showPostLoginLoading: false,
+        hasCharacter: false,
+      }),
+    ).toBe("role_selection");
+
+    // Existing users keep their hydrated character while picking a role.
+    expect(
+      resolveAppShellRoute({
+        bootstrapStatus: "authenticated",
+        profileRoute: "role_gate",
+        showPostLoginLoading: false,
+        hasCharacter: true,
+      }),
+    ).toBe("role_selection");
   });
 });

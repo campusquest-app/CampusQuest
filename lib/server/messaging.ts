@@ -517,13 +517,18 @@ export async function cancelConnectionRequest(args: {
   if (requestError || !request) throw new ApiError(404, "Connection request not found.", "CONNECTION_REQUEST_NOT_FOUND");
   if (request.status !== "pending") throw new ApiError(409, "Request already resolved.", "CONNECTION_REQUEST_RESOLVED");
 
-  const { data, error } = await userClient
+  // Hard-delete the pending row so the pair can immediately send a fresh
+  // request. Status guards in the delete protect against a concurrent accept.
+  const { data: deleted, error } = await userClient
     .from("student_connections")
-    .update({ status: "cancelled", responded_at: new Date().toISOString() })
+    .delete()
     .eq("id", request.id)
-    .select("id, status, requester_id, addressee_id, responded_at")
-    .single();
-  if (error || !data) throw new ApiError(400, error?.message ?? "Could not cancel request.", "CONNECTION_CANCEL_FAILED");
+    .eq("requester_id", userId)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
+  if (error) throw new ApiError(400, error.message, "CONNECTION_CANCEL_FAILED");
+  if (!deleted) throw new ApiError(409, "Request already resolved.", "CONNECTION_REQUEST_RESOLVED");
 
   try {
     await removeFriendRequestNotifications({
@@ -532,7 +537,13 @@ export async function cancelConnectionRequest(args: {
     });
   } catch {}
 
-  return data;
+  return {
+    id: request.id,
+    status: "cancelled" as const,
+    requester_id: request.requester_id,
+    addressee_id: request.addressee_id,
+    responded_at: new Date().toISOString(),
+  };
 }
 
 export async function removeConnection(args: {

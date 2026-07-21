@@ -4,6 +4,7 @@ import {
   Bell,
   ChevronRight,
   GraduationCap,
+  IdCard,
   LogOut,
   Moon,
   QrCode,
@@ -17,6 +18,7 @@ import { DrawerSubPanelShell } from "./DrawerSubPanelShell";
 
 export type SettingsActionId =
   | "account"
+  | "account-type"
   | "profile-character"
   | "notifications"
   | "privacy"
@@ -39,6 +41,7 @@ const SETTINGS_SECTIONS: { title: string; rows: SettingsRow[] }[] = [
     title: "Account",
     rows: [
       { id: "account", label: "Account", description: "Name, username, sign-in", icon: User },
+      { id: "account-type", label: "Account Type", description: "Student or Faculty / Staff", icon: IdCard },
       { id: "profile-character", label: "Profile & Character", description: "Avatar, stats, bio", icon: UserCircle },
       { id: "notifications", label: "Notifications", description: "Alerts and inbox", icon: Bell },
     ],

@@ -27,14 +27,22 @@ export function isTestUserProfile(
 type ClientLike = Pick<ReturnType<typeof createAdminClient>, "from">;
 
 /**
- * IDs of profiles flagged is_hidden = true (QA/test accounts).
+ * IDs of profiles that must never appear on public surfaces:
+ * is_hidden = true OR is_test_user = true OR role = 'qa'.
  * Used to exclude them from leaderboards, search, analytics, and other public
- * surfaces. Tolerates a pre-migration schema by returning an empty set.
+ * surfaces. Tolerates a pre-migration schema by falling back to is_hidden only.
  */
 export async function listHiddenUserIds(client?: ClientLike): Promise<Set<string>> {
   try {
     const supabase = client ?? createAdminClient();
-    const { data, error } = await supabase.from("profiles").select("id").eq("is_hidden", true);
+    let { data, error } = await supabase
+      .from("profiles")
+      .select("id")
+      .or("is_hidden.eq.true,is_test_user.eq.true,role.eq.qa");
+    if (error) {
+      // Pre-migration schema: retry on the oldest flag only.
+      ({ data, error } = await supabase.from("profiles").select("id").eq("is_hidden", true));
+    }
     if (error || !data) return new Set();
     return new Set(data.map((row) => row.id as string));
   } catch {
@@ -75,6 +83,9 @@ const PROFILE_ONBOARDING_RESET = {
   major: null,
   class_year: null,
   bio: "",
+  // Role-selection test state: cleared so the QA account sees the "I am a..."
+  // screen again. The protected role = 'qa' itself is never touched.
+  qa_selected_role: null,
 } as const;
 
 /** Columns that may not exist on older schemas — retried without on 42703. */
@@ -90,6 +101,7 @@ const OPTIONAL_RESET_COLUMNS = [
   "last_activity_date",
   "major",
   "class_year",
+  "qa_selected_role",
 ] as const;
 
 function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
@@ -236,7 +248,7 @@ export async function ensureQaTestAccount(): Promise<EnsureQaAccountResult> {
       email,
       password,
       email_confirm: true,
-      user_metadata: { display_name: "QA Signup Tester", is_test_user: true },
+      user_metadata: { display_name: "CampusQuest QA", is_test_user: true },
     });
     if (createError || !createdUser.user) {
       throw new ApiError(400, createError?.message ?? "Could not create QA auth user.", "QA_ACCOUNT_CREATE_FAILED");
@@ -247,8 +259,8 @@ export async function ensureQaTestAccount(): Promise<EnsureQaAccountResult> {
 
   const qaProfile: Record<string, unknown> = {
     id: userId,
-    username: "qa_signup_tester",
-    display_name: "QA Signup Tester",
+    username: "campusquestqa",
+    display_name: "CampusQuest QA",
     bio: "",
     role: "qa",
     is_test_user: true,
