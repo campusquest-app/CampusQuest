@@ -237,8 +237,8 @@ export function RealmMapControls({
                 type="button"
                 onClick={camera.rotateLeft}
                 className="cq-realm-float-btn cq-realm-float-btn--compact flex h-9 w-9 items-center justify-center touch-manipulation"
-                aria-label="Rotate map left 20 degrees"
-                title="Rotate left 20°"
+                aria-label="Rotate map left 15 degrees"
+                title="Rotate left 15°"
                 tabIndex={expanded ? 0 : -1}
               >
                 <RotateCcw className="h-4 w-4" strokeWidth={2.2} />
@@ -249,8 +249,8 @@ export function RealmMapControls({
                 className={`cq-realm-float-btn cq-realm-float-btn--compact cq-realm-float-btn--compass flex h-9 w-9 items-center justify-center touch-manipulation${
                   camera.showCompass ? "" : " opacity-50"
                 }`}
-                aria-label="Reset map to north-up"
-                title="North up"
+                aria-label="Reset map heading to north"
+                title="Reset north"
                 tabIndex={expanded ? 0 : -1}
                 style={{
                   transform: `rotate(${-camera.heading}deg)`,
@@ -262,8 +262,8 @@ export function RealmMapControls({
                 type="button"
                 onClick={camera.rotateRight}
                 className="cq-realm-float-btn cq-realm-float-btn--compact flex h-9 w-9 items-center justify-center touch-manipulation"
-                aria-label="Rotate map right 20 degrees"
-                title="Rotate right 20°"
+                aria-label="Rotate map right 15 degrees"
+                title="Rotate right 15°"
                 tabIndex={expanded ? 0 : -1}
               >
                 <RotateCw className="h-4 w-4" strokeWidth={2.2} />

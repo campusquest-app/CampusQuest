@@ -16,7 +16,7 @@ export const URI_MAP_CINEMATIC_TILT = 67.5;
 /** Fallback tilt when 67.5° is rejected (some devices cap at 45°). */
 export const URI_MAP_FALLBACK_TILT = 45;
 
-export const URI_MAP_ROTATE_STEP_DEG = 20;
+export const URI_MAP_ROTATE_STEP_DEG = 15;
 
 /** Target tilt for the “3D view” control (within Google’s 0–67.5° range). */
 export const URI_MAP_3D_VIEW_TILT = 60;
@@ -47,12 +47,18 @@ export function centerToLiteral(
   return center as google.maps.LatLngLiteral;
 }
 
+/** Normalize heading to an integer degrees value in `[0, 359]`. */
+export function normalizeHeadingDegrees(heading: number): number {
+  if (!Number.isFinite(heading)) return 0;
+  return ((Math.round(heading) % 360) + 360) % 360;
+}
+
 /** Apply camera changes via moveCamera when available (smoother on vector maps). */
 export function moveMapCamera(map: google.maps.Map, target: CameraTarget): void {
   const center = centerToLiteral(target.center ?? map.getCenter() ?? URI_MAP_CENTER);
   const zoom = target.zoom ?? map.getZoom() ?? URI_MAP_DEFAULT_ZOOM;
   const tilt = target.tilt ?? map.getTilt() ?? 0;
-  const heading = target.heading ?? map.getHeading() ?? 0;
+  const heading = normalizeHeadingDegrees(target.heading ?? map.getHeading() ?? 0);
 
   if (typeof map.moveCamera === "function") {
     map.moveCamera({ center, zoom, tilt, heading });
@@ -229,15 +235,21 @@ export function resetRealmMapCamera(
   }
 }
 
-/** Rotate heading by a delta, wrapping 0–360. */
+/** Rotate heading by a delta, wrapping 0–359. */
 export function rotateMapHeading(map: google.maps.Map, deltaDegrees: number): void {
   const current = map.getHeading() ?? 0;
-  const next = ((current + deltaDegrees) % 360 + 360) % 360;
+  const next = normalizeHeadingDegrees(current + deltaDegrees);
+  if (typeof map.setHeading === "function") {
+    map.setHeading(next);
+  }
   moveMapCamera(map, { heading: next });
 }
 
 /** Smoothly reset heading to north-up. */
 export function resetMapHeading(map: google.maps.Map): void {
+  if (typeof map.setHeading === "function") {
+    map.setHeading(0);
+  }
   moveMapCamera(map, { heading: 0 });
 }
 

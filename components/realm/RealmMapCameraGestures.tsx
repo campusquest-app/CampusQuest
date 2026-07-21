@@ -18,9 +18,13 @@ export function RealmMapCameraGestures({ enabled }: { enabled: boolean }) {
       rotateControl: true,
       tiltInteractionEnabled: true,
       headingInteractionEnabled: true,
+      zoomControl: true,
       mapTypeControl: false,
       streetViewControl: false,
       fullscreenControl: false,
+      keyboardShortcuts: true,
+      isFractionalZoomEnabled: true,
+      clickableIcons: false,
     });
 
     if (typeof map.setTiltInteractionEnabled === "function") {
@@ -38,6 +42,8 @@ export function RealmMapCameraGestures({ enabled }: { enabled: boolean }) {
     if (!div) return undefined;
 
     div.style.touchAction = "none";
+    // Ensure empty overlay siblings never steal multi-touch from the canvas.
+    div.style.pointerEvents = "auto";
 
     const setPanningAttr = (active: boolean) => {
       document.documentElement.toggleAttribute("data-realm-map-panning", active);

@@ -44,6 +44,13 @@ export function useRealmMapCamera({
   /** null = unknown; false only after confirmed device/renderer rejection with a Map ID present. */
   const [tiltSupported, setTiltSupported] = useState<boolean | null>(null);
   const busyRef = useRef(false);
+  /** Latest camera pose — refs avoid remount/reset loops when markers update. */
+  const cameraPoseRef = useRef<{
+    center: google.maps.LatLngLiteral | null;
+    zoom: number;
+    heading: number;
+    tilt: number;
+  }>({ center: null, zoom: 0, heading: 0, tilt: 0 });
 
   useEffect(() => {
     if (!map) return undefined;
@@ -52,7 +59,16 @@ export function useRealmMapCamera({
       const nextTilt = map.getTilt() ?? 0;
       const nextHeading = map.getHeading() ?? 0;
       const nextZoom = map.getZoom() ?? 0;
+      const center = map.getCenter();
       const vector = isVectorMapRendering(map);
+      cameraPoseRef.current = {
+        center: center
+          ? { lat: center.lat(), lng: center.lng() }
+          : cameraPoseRef.current.center,
+        zoom: nextZoom,
+        heading: nextHeading,
+        tilt: nextTilt,
+      };
       setTilt(nextTilt);
       setHeading(nextHeading);
       setZoom(nextZoom);
@@ -113,7 +129,7 @@ export function useRealmMapCamera({
   }, [map]);
 
   const missingMapIdMessage =
-    "3D tilt needs a Google Vector Map ID (NEXT_PUBLIC_GOOGLE_MAP_ID).";
+    "3D tilt needs a Google Vector Map ID (NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID).";
 
   const toggleTilt = useCallback(async () => {
     if (!map || busyRef.current) return;
@@ -132,11 +148,17 @@ export function useRealmMapCamera({
 
     busyRef.current = true;
     const goingCinematic = (map.getTilt() ?? 0) < TILT_ACTIVE_THRESHOLD;
+    const zoomBefore = map.getZoom() ?? 0;
 
     try {
       if (goingCinematic) {
-        ensureBuildingZoom();
-        // Explicit 0° ↔ 45° toggle (acceptance).
+        if (zoomBefore + 0.01 < URI_MAP_BUILDING_ZOOM) {
+          ensureBuildingZoom();
+        }
+        // Flat ↔ tilted: prefer 45°, then highest supported at this zoom.
+        if (typeof map.setTilt === "function") {
+          map.setTilt(URI_MAP_FALLBACK_TILT);
+        }
         moveMapCamera(map, {
           tilt: URI_MAP_FALLBACK_TILT,
           zoom: Math.max(map.getZoom() ?? 0, URI_MAP_BUILDING_ZOOM),
@@ -149,6 +171,8 @@ export function useRealmMapCamera({
         }
 
         const vector = isVectorMapRendering(map);
+        // Always trust the map's accepted tilt for UI state.
+        setTilt(actual);
         logRealmMapCameraDebug(map, {
           action: "tilt-on",
           actualTilt: actual,
@@ -161,16 +185,27 @@ export function useRealmMapCamera({
         if (actual < TILT_ACTIVE_THRESHOLD) {
           if (!REALM_GOOGLE_MAP_ID) {
             onNotice?.(missingMapIdMessage);
+          } else if ((map.getZoom() ?? 0) < URI_MAP_BUILDING_ZOOM) {
+            onNotice?.("Zoom in to use 3D tilt.");
           } else {
             setTiltSupported(false);
-            onNotice?.("3D view isn't supported on this device or map style.");
+            onNotice?.("Zoom in to use 3D tilt.");
           }
           await applyFlatCamera(map);
         } else {
           setTiltSupported(true);
+          // At close zoom, nudge toward the highest supported tilt when 45° stuck low.
+          if (actual < URI_MAP_FALLBACK_TILT - 1 && (map.getZoom() ?? 0) >= URI_MAP_BUILDING_ZOOM) {
+            const higher = await applyTiltCamera(map, { preserveCenter: true, preserveHeading: true });
+            setTilt(higher);
+          }
         }
       } else {
+        if (typeof map.setTilt === "function") {
+          map.setTilt(0);
+        }
         await applyFlatCamera(map);
+        setTilt(map.getTilt() ?? 0);
         if (buildingsRequested && native3dAvailable && !fallbackBuildingsMode) {
           setBuildingsRequested(false);
         }

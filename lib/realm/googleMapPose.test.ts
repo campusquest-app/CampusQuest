@@ -7,6 +7,7 @@ import {
   applyTiltCamera,
   centerToLiteral,
   moveMapCamera,
+  normalizeHeadingDegrees,
   rotateMapHeading,
   trySetMapTilt,
   waitForMapIdle,
@@ -47,6 +48,16 @@ describe("googleMapPose camera helpers", () => {
     } as google.maps.LatLng;
 
     expect(centerToLiteral(latLng)).toEqual({ lat: 41.5, lng: -71.5 });
+  });
+
+  it("normalizeHeadingDegrees keeps values in 0–359", () => {
+    expect(normalizeHeadingDegrees(-15)).toBe(345);
+    expect(normalizeHeadingDegrees(360)).toBe(0);
+    expect(normalizeHeadingDegrees(375)).toBe(15);
+  });
+
+  it("rotate step is 15 degrees", () => {
+    expect(URI_MAP_ROTATE_STEP_DEG).toBe(15);
   });
 
   it("rotateMapHeading wraps around 360", () => {

@@ -945,12 +945,32 @@ export function GoogleRealmMap({
     [onDirectionsError],
   );
 
+  const retryMapLoad = useCallback(() => {
+    resetGoogleMapsApiLoadPromise();
+    resetRealmMapTilesReady();
+    tilesReadyRef.current = false;
+    setTilesLoaded(false);
+    setApiError(false);
+    void loadGoogleMapsApiOnce().catch(() => {
+      setApiError(true);
+    });
+  }, []);
+
   if (apiError) {
     return (
       <div className="cq-realm-map-loading" role="alert">
         <AlertTriangle className="h-6 w-6 text-amber-300" strokeWidth={1.75} aria-hidden />
         <p className="cq-realm-map-loading-title">The campus map could not load.</p>
-        <p className="cq-realm-map-loading-copy">Check your connection and Google Maps key, then reload the app.</p>
+        <p className="cq-realm-map-loading-copy">
+          Check your connection and Google Maps key, then try again.
+        </p>
+        <button
+          type="button"
+          className="cq-realm-map-toast-action touch-manipulation mt-2"
+          onClick={retryMapLoad}
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -976,8 +996,10 @@ export function GoogleRealmMap({
       >
         <Map
           className="h-full w-full cq-realm-map-canvas"
-          /* Vector Map ID enables raised 3D buildings — inline styles apply only without mapId. */
+          /* Vector Map ID enables raised 3D buildings — inline styles apply only without mapId.
+           * Also set NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID on Vercel and redeploy (build-time inline). */
           mapId={useVectorMapId ? REALM_GOOGLE_MAP_ID : undefined}
+          renderingType={useVectorMapId ? "VECTOR" : undefined}
           colorScheme={useVectorMapId ? ColorScheme.DARK : undefined}
           styles={useVectorMapId ? undefined : mapLayer === "campus" ? CQ_REALM_MAP_STYLE : undefined}
           mapTypeId={mapLayer === "campus" ? URI_MAP_TYPE_ID : "satellite"}
@@ -991,6 +1013,9 @@ export function GoogleRealmMap({
           rotateControl
           tiltInteractionEnabled
           headingInteractionEnabled
+          zoomControl
+          keyboardShortcuts
+          isFractionalZoomEnabled
           mapTypeControl={false}
           streetViewControl={false}
           fullscreenControl={false}
