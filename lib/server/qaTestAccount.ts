@@ -245,18 +245,22 @@ export async function ensureQaTestAccount(): Promise<EnsureQaAccountResult> {
     created = true;
   }
 
-  const { error: profileError } = await admin.from("profiles").upsert(
-    {
-      id: userId,
-      username: "qa_signup_tester",
-      display_name: "QA Signup Tester",
-      bio: "",
-      role: "qa",
-      is_test_user: true,
-      is_hidden: true,
-    },
-    { onConflict: "id" },
-  );
+  const qaProfile: Record<string, unknown> = {
+    id: userId,
+    username: "qa_signup_tester",
+    display_name: "QA Signup Tester",
+    bio: "",
+    role: "qa",
+    is_test_user: true,
+    is_hidden: true,
+    is_internal_tester: true,
+  };
+  let { error: profileError } = await admin.from("profiles").upsert(qaProfile, { onConflict: "id" });
+  if (profileError && isMissingColumnError(profileError)) {
+    // Pre-migration schema without is_internal_tester — role 'qa' still grants the bypass.
+    delete qaProfile.is_internal_tester;
+    ({ error: profileError } = await admin.from("profiles").upsert(qaProfile, { onConflict: "id" }));
+  }
   if (profileError) {
     throw new ApiError(400, profileError.message, "QA_ACCOUNT_PROFILE_FAILED");
   }

@@ -6,7 +6,13 @@ import {
   type CampusVerificationSnapshot,
 } from "@/lib/campusAccess";
 import { getPilotSchoolConfig } from "@/lib/server/pilotMode";
-import { fetchProfileRole, isPlatformAdmin, normalizeProfileRole } from "@/lib/server/permissions";
+import {
+  fetchProfileAccessFlags,
+  fetchProfileRole,
+  isInternalTesterRole,
+  isPlatformAdmin,
+  normalizeProfileRole,
+} from "@/lib/server/permissions";
 import { createAdminClient } from "@/lib/server/supabase";
 
 export { canAccessCampusFeatures, isEmailVerifiedForCampus } from "@/lib/campusAccess";
@@ -16,48 +22,95 @@ export function logCampusAccessServerDev(payload: Record<string, unknown>) {
   console.info("[cq] school-verification", payload);
 }
 
+type CampusAccessUser = {
+  id: string;
+  email?: string | null;
+  email_confirmed_at?: string | null;
+  confirmed_at?: string | null;
+};
+
+export type CampusAccessIdentity = {
+  isPlatformAdmin: boolean;
+  /** qa / beta_internal role or profiles.is_internal_tester — full campus access, no admin rights. */
+  isInternalTester: boolean;
+};
+
+/**
+ * Resolves the trusted-account bypasses (platform admin + internal tester) in
+ * a single profile read. Role/flag based only — never email-domain based.
+ */
+export async function resolveCampusAccessIdentity(
+  userClient: SupabaseClient,
+  user: CampusAccessUser,
+): Promise<CampusAccessIdentity> {
+  const flags = await fetchProfileAccessFlags(userClient, user.id, { email: user.email });
+  const isAdmin = isPlatformAdmin(user as User, flags.role);
+  logCampusAccessServerDev({
+    emailDomain: extractCampusEmailDomain(user.email),
+    profileRole: flags.role,
+    isAdmin,
+    isInternalTester: flags.isInternalTester,
+    isConfirmed: isEmailVerifiedForCampus(user),
+  });
+  return { isPlatformAdmin: isAdmin, isInternalTester: flags.isInternalTester };
+}
+
 /** Platform admin: profiles.role admin+ with confirmed email, moderation allow-list, or dev fallback emails. */
 export async function resolveIsPlatformAdmin(
   userClient: SupabaseClient,
-  user: {
-    id: string;
-    email?: string | null;
-    email_confirmed_at?: string | null;
-    confirmed_at?: string | null;
-  },
+  user: CampusAccessUser,
 ): Promise<boolean> {
-  const profileRole = await fetchProfileRole(userClient, user.id, { email: user.email });
-  const isAdmin = isPlatformAdmin(user as User, profileRole);
-  logCampusAccessServerDev({
-    emailDomain: extractCampusEmailDomain(user.email),
-    profileRole,
-    isAdmin,
-    isConfirmed: isEmailVerifiedForCampus(user),
-  });
-  return isAdmin;
+  const identity = await resolveCampusAccessIdentity(userClient, user);
+  return identity.isPlatformAdmin;
 }
 
 export async function userIdHasPlatformAdminAccess(userId: string): Promise<boolean> {
+  const identity = await userIdCampusAccessIdentity(userId);
+  return identity.isPlatformAdmin;
+}
+
+/** Admin OR internal tester — the set of accounts that bypass campus scoping. */
+export async function userIdHasCampusBypassAccess(userId: string): Promise<boolean> {
+  const identity = await userIdCampusAccessIdentity(userId);
+  return identity.isPlatformAdmin || identity.isInternalTester;
+}
+
+async function userIdCampusAccessIdentity(userId: string): Promise<CampusAccessIdentity> {
   const admin = createAdminClient();
   const { data, error } = await admin.auth.admin.getUserById(userId);
-  if (error || !data.user) return false;
+  if (error || !data.user) return { isPlatformAdmin: false, isInternalTester: false };
   const user = data.user;
-  if (!isEmailVerifiedForCampus(user)) return false;
 
-  const { data: profile } = await admin.from("profiles").select("role").eq("id", userId).maybeSingle();
-  const profileRole = normalizeProfileRole((profile as { role?: string | null } | null)?.role);
-  return isPlatformAdmin(user, profileRole);
+  let { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .select("role, is_internal_tester")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileError) {
+    // Pre-migration schema without is_internal_tester — retry with role only.
+    ({ data: profile } = await admin.from("profiles").select("role").eq("id", userId).maybeSingle());
+  }
+  const row = profile as { role?: string | null; is_internal_tester?: boolean | null } | null;
+  const profileRole = normalizeProfileRole(row?.role);
+  const isInternalTester = row?.is_internal_tester === true || isInternalTesterRole(profileRole);
+
+  if (!isEmailVerifiedForCampus(user)) {
+    return { isPlatformAdmin: false, isInternalTester };
+  }
+  return { isPlatformAdmin: isPlatformAdmin(user, profileRole), isInternalTester };
 }
 
 export function canUserAccessCampusFeatures(args: {
   user: Pick<User, "email" | "email_confirmed_at"> & { confirmed_at?: string | null };
   isPlatformAdmin: boolean;
+  isInternalTester?: boolean;
   verification?: CampusVerificationSnapshot | null;
   pilotDomain?: string | null;
 }): boolean {
   const pilotDomain = args.pilotDomain ?? getPilotSchoolConfig().schoolDomain;
   return canAccessCampusFeatures({
     isPlatformAdmin: args.isPlatformAdmin,
+    isInternalTester: args.isInternalTester ?? false,
     email: args.user.email,
     emailVerified: isEmailVerifiedForCampus(args.user),
     pilotDomain,

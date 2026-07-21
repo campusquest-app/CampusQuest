@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/server/http";
-import { userIdHasPlatformAdminAccess, resolveIsPlatformAdmin } from "@/lib/server/campusAccess";
+import { resolveCampusAccessIdentity, userIdHasCampusBypassAccess } from "@/lib/server/campusAccess";
 import { extractEmailDomain, getPilotSchoolConfig } from "@/lib/server/pilotMode";
 import { createAdminClient } from "@/lib/server/supabase";
 
@@ -103,7 +103,8 @@ export async function requireVerifiedSchoolForCoreAccess(args: {
   };
 }) {
   const { userClient, user } = args;
-  if (await resolveIsPlatformAdmin(userClient, user)) {
+  const identity = await resolveCampusAccessIdentity(userClient, user);
+  if (identity.isPlatformAdmin || identity.isInternalTester) {
     return syntheticPilotVerificationForPlatformAdmin();
   }
   const existing = await userClient
@@ -134,11 +135,11 @@ export async function requireMatchingVerifiedSchool(args: {
   otherUserId: string;
 }) {
   const { userId, otherUserId } = args;
-  const [initiatorIsAdmin, otherIsAdmin] = await Promise.all([
-    userIdHasPlatformAdminAccess(userId),
-    userIdHasPlatformAdminAccess(otherUserId),
+  const [initiatorBypasses, otherBypasses] = await Promise.all([
+    userIdHasCampusBypassAccess(userId),
+    userIdHasCampusBypassAccess(otherUserId),
   ]);
-  if (initiatorIsAdmin || otherIsAdmin) {
+  if (initiatorBypasses || otherBypasses) {
     return;
   }
   const admin = createAdminClient();

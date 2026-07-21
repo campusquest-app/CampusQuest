@@ -1,6 +1,6 @@
 /**
  * Campus feature eligibility — shared client/server logic.
- * Platform admins always bypass pilot school domain requirements.
+ * Platform admins and internal testers always bypass pilot school domain requirements.
  */
 
 import { normalizeEmail } from "@/lib/platformAdmin";
@@ -39,16 +39,19 @@ export function emailMatchesPilotDomain(
 
 /**
  * Single gate for campus pilot features (Quad, orgs, events, map, etc.).
- * Admin check runs first; only non-admins are evaluated against campus email rules.
+ * Trusted internal accounts (admins and internal testers) bypass campus email
+ * rules entirely; only normal users are evaluated against the pilot domain.
  */
 export function canAccessCampusFeatures(args: {
   isPlatformAdmin: boolean;
+  /** Role/flag-based bypass for QA + beta_internal accounts — never email-domain based. */
+  isInternalTester?: boolean;
   email?: string | null;
   emailVerified: boolean;
   pilotDomain?: string | null;
   verification?: CampusVerificationSnapshot | null;
 }): boolean {
-  if (args.isPlatformAdmin) return true;
+  if (args.isPlatformAdmin || args.isInternalTester) return true;
 
   const verification = args.verification;
   if (

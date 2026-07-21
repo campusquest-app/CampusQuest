@@ -10,6 +10,8 @@ export type SchoolVerificationClientSnapshot = {
     requiredPilotSchoolName: string;
   };
   platformAdminAccess: boolean;
+  /** Trusted internal test account — always bypasses the campus verification gate. */
+  internalTesterAccess?: boolean;
   /** @deprecated Use platformAdminAccess */
   moderationAdminAccess?: boolean;
 };

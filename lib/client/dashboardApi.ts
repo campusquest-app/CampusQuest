@@ -91,6 +91,7 @@ export class SchoolVerificationHttpError extends Error {
 type ApiSchoolPayload = {
   verification?: SchoolVerificationClientSnapshot["verification"];
   platformAdminAccess?: boolean;
+  internalTesterAccess?: boolean;
   moderationAdminAccess?: boolean;
   verified?: boolean;
   schoolName?: string | null;
@@ -118,6 +119,7 @@ function buildSnapshotFromApiPayload(data: ApiSchoolPayload): MeSchoolVerificati
         requiredPilotSchoolName: v.requiredPilotSchoolName ?? "your school",
       },
       platformAdminAccess,
+      internalTesterAccess: data.internalTesterAccess === true,
       moderationAdminAccess: platformAdminAccess,
     };
   }
@@ -135,6 +137,7 @@ function buildSnapshotFromApiPayload(data: ApiSchoolPayload): MeSchoolVerificati
         requiredPilotSchoolName: requiredSchoolName,
       },
       platformAdminAccess,
+      internalTesterAccess: data.internalTesterAccess === true,
       moderationAdminAccess: platformAdminAccess,
     };
   }

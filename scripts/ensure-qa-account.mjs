@@ -3,7 +3,8 @@
  * Provision (or reset) the permanent QA onboarding test account.
  *
  * - Creates auth user qa-signup@campusquest.app if missing (email pre-confirmed).
- * - Flags its profile: is_test_user = true, is_hidden = true, role = 'qa'.
+ * - Flags its profile: is_test_user = true, is_hidden = true, is_internal_tester = true, role = 'qa'.
+ *   (is_internal_tester / role 'qa' permanently bypass the campus email verification gate.)
  * - Resets all onboarding/progress state so the next sign-in starts at Sign Up.
  * - Never deletes the account; auth credentials are preserved.
  *
@@ -91,29 +92,35 @@ if (!userId) {
   console.log(`QA auth user already exists: ${email} (${userId}).`);
 }
 
-const { error: profileError } = await admin.from("profiles").upsert(
-  {
-    id: userId,
-    username: "qa_signup_tester",
-    display_name: "QA Signup Tester",
-    bio: "",
-    role: "qa",
-    is_test_user: true,
-    is_hidden: true,
-    onboarding_completed: false,
-    onboarding_completed_at: null,
-    onboarding_character_completed: false,
-    avatar_custom_json: null,
-    avatar_url: null,
-    character_class_id: null,
-    starter_weapon: null,
-    scholar_guild_id: null,
-  },
-  { onConflict: "id" },
-);
+const qaProfile = {
+  id: userId,
+  username: "qa_signup_tester",
+  display_name: "QA Signup Tester",
+  bio: "",
+  role: "qa",
+  is_test_user: true,
+  is_hidden: true,
+  is_internal_tester: true,
+  onboarding_completed: false,
+  onboarding_completed_at: null,
+  onboarding_character_completed: false,
+  avatar_custom_json: null,
+  avatar_url: null,
+  character_class_id: null,
+  starter_weapon: null,
+  scholar_guild_id: null,
+};
+let { error: profileError } = await admin.from("profiles").upsert(qaProfile, { onConflict: "id" });
+if (profileError && /is_internal_tester/.test(profileError.message ?? "")) {
+  // Pre-migration schema — role 'qa' still grants the campus-gate bypass.
+  delete qaProfile.is_internal_tester;
+  ({ error: profileError } = await admin.from("profiles").upsert(qaProfile, { onConflict: "id" }));
+}
 if (profileError) {
   console.error(`Profile upsert failed: ${profileError.message}`);
-  console.error("Did you apply supabase/migrations/20260721150000_qa_test_account.sql?");
+  console.error(
+    "Did you apply supabase/migrations/20260721150000_qa_test_account.sql and 20260721160000_internal_tester_access.sql?",
+  );
   process.exit(1);
 }
 

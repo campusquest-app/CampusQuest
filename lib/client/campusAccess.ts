@@ -15,14 +15,17 @@ function logCampusAccessDev(payload: Record<string, unknown>) {
 }
 
 /**
- * Client gate after `/api/me/school-verification` — admin bypass runs before campus domain rules.
+ * Client gate after `/api/me/school-verification` — trusted-account bypasses
+ * (admin, internal tester) run before campus domain rules.
  */
 export function canAccessCampusFromSnapshot(snapshot: SchoolVerificationClientSnapshot): boolean {
   const isAdmin = snapshotPlatformAdminAccess(snapshot);
+  const isInternalTester = snapshot.internalTesterAccess === true;
 
-  if (isAdmin) {
+  if (isAdmin || isInternalTester) {
     logCampusAccessDev({
-      isAdmin: true,
+      isAdmin,
+      isInternalTester,
       isConfirmed: true,
       emailDomain: snapshot.verification.schoolDomain,
       decision: "allow",

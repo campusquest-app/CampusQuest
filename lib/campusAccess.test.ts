@@ -39,6 +39,42 @@ describe("campusAccess", () => {
     ).toBe(true);
   });
 
+  it("always allows internal testers regardless of email domain", () => {
+    expect(
+      canAccessCampusFeatures({
+        isPlatformAdmin: false,
+        isInternalTester: true,
+        email: "qa-signup@campusquest.app",
+        emailVerified: true,
+        pilotDomain: "uri.edu",
+        verification: { status: "pending", schoolName: null, schoolDomain: null },
+      }),
+    ).toBe(true);
+
+    expect(
+      canAccessCampusFeatures({
+        isPlatformAdmin: false,
+        isInternalTester: true,
+        email: "future-tester@example.com",
+        emailVerified: false,
+        pilotDomain: "uri.edu",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not treat non-testers as internal testers", () => {
+    expect(
+      canAccessCampusFeatures({
+        isPlatformAdmin: false,
+        isInternalTester: false,
+        email: "other@gmail.com",
+        emailVerified: true,
+        pilotDomain: "uri.edu",
+        verification: { status: "pending", schoolName: null, schoolDomain: "gmail.com" },
+      }),
+    ).toBe(false);
+  });
+
   it("requires verified pilot school for regular students", () => {
     expect(
       canAccessCampusFeatures({
