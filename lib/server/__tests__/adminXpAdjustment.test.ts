@@ -23,6 +23,7 @@ function chain(result: { data?: unknown; error?: { message: string } | null }) {
   builder.select = vi.fn(() => builder);
   builder.eq = vi.fn(() => builder);
   builder.single = vi.fn(() => Promise.resolve(result));
+  builder.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }));
   builder.insert = vi.fn(() => Promise.resolve({ error: null }));
   builder.update = vi.fn(() => ({
     eq: vi.fn(() => Promise.resolve({ error: null })),

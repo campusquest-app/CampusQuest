@@ -25,6 +25,16 @@ export async function tryAwardTorchBearerBadge(args: {
   const { userId, user, email, allowAdmin = false } = args;
   const admin = createAdminClient();
 
+  // QA/test accounts never receive badges.
+  const { data: flagRow } = await admin
+    .from("profiles")
+    .select("is_test_user")
+    .eq("id", userId)
+    .maybeSingle();
+  if (flagRow?.is_test_user === true) {
+    return null;
+  }
+
   if (!allowAdmin) {
     const role = await fetchProfileRole(admin as never, userId, { email });
     if (user && userHasPlatformAdminAccess(user, role)) {

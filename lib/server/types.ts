@@ -15,6 +15,10 @@ export type ProfileRow = {
   character_class_id?: string | null;
   starter_weapon?: string | null;
   scholar_guild_id?: string | null;
+  /** QA/test account flags — see lib/server/qaTestAccount.ts. */
+  is_test_user?: boolean | null;
+  is_hidden?: boolean | null;
+  role?: string | null;
 };
 
 export type UserStatsRow = {

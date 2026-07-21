@@ -21,6 +21,16 @@ export async function touchUserActivity(
   const minInterval = options?.minIntervalMs ?? USER_ACTIVITY_MIN_INTERVAL_MS;
   const now = Date.now();
 
+  // QA/test accounts never record activity (kept out of DAU/MAU metrics).
+  const { data: flagRow, error: flagError } = await client
+    .from("profiles")
+    .select("is_test_user")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!flagError && flagRow?.is_test_user === true) {
+    return false;
+  }
+
   if (!options?.force) {
     const cached = touchCache.get(userId);
     if (cached != null && now - cached < minInterval) {

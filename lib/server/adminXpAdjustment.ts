@@ -27,6 +27,20 @@ export async function adminAdjustUserXp(args: {
   const admin = createAdminClient();
   const statsWriter = getTrustedStatsWriteClient();
 
+  // QA/test accounts never earn XP — not even through manual admin grants.
+  const { data: targetFlags } = await admin
+    .from("profiles")
+    .select("is_test_user")
+    .eq("id", targetUserId)
+    .maybeSingle();
+  if (targetFlags?.is_test_user === true) {
+    throw new ApiError(
+      403,
+      "This is a QA test account (is_test_user = true); it cannot receive XP adjustments.",
+      "QA_ACCOUNT_XP_FORBIDDEN",
+    );
+  }
+
   const { data: stats, error: statsError } = await admin
     .from("user_stats")
     .select("total_xp, level")

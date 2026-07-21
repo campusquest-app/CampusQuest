@@ -5,6 +5,7 @@ import {
   startOfCalendarDayInTimeZone,
   startOfCalendarMonthInTimeZone,
 } from "@/lib/server/analyticsTime";
+import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { createAdminClient } from "@/lib/server/supabase";
 
 async function countTable(admin: ReturnType<typeof createAdminClient>, table: string) {
@@ -89,6 +90,7 @@ export async function getPilotAnalyticsSnapshot() {
     weeklyRows,
     monthlyRows,
     lastActivityResult,
+    hiddenIds,
   ] = await Promise.all([
     countTable(admin, "profiles"),
     countTable(admin, "campus_events"),
@@ -108,29 +110,35 @@ export async function getPilotAnalyticsSnapshot() {
       .order("last_active_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    listHiddenUserIds(admin),
   ]);
 
   if (lastActivityResult.error && !isMissingLastActiveColumn(lastActivityResult.error)) {
     throw new ApiError(400, lastActivityResult.error.message, "ANALYTICS_LAST_ACTIVITY_FAILED");
   }
 
+  // QA/test accounts (is_hidden = true) never count toward user or activity metrics.
+  const visibleDailyRows = dailyRows.filter((row) => !hiddenIds.has(row.id));
+  const visibleWeeklyRows = weeklyRows.filter((row) => !hiddenIds.has(row.id));
+  const visibleMonthlyRows = monthlyRows.filter((row) => !hiddenIds.has(row.id));
+
   const activeUserIds = Array.from(
-    new Set([...dailyRows, ...weeklyRows, ...monthlyRows].map((row) => row.id)),
+    new Set([...visibleDailyRows, ...visibleWeeklyRows, ...visibleMonthlyRows].map((row) => row.id)),
   );
   const bannedIds = await loadBannedUserIds(admin, activeUserIds);
 
   return {
-    totalUsers,
+    totalUsers: Math.max(0, totalUsers - hiddenIds.size),
     verifiedUsers: verifiedUsersCount ?? 0,
     eventsCreated,
     eventRsvps,
     organizationsCreated,
     messagesSent,
     reportsSubmitted: messageReports + eventReports + organizationReports,
-    dailyActiveUsers: countActiveUsers(dailyRows, bannedIds, false),
-    dailyActiveStudents: countActiveUsers(dailyRows, bannedIds, true),
-    weeklyActiveUsers: countActiveUsers(weeklyRows, bannedIds, false),
-    monthlyActiveUsers: countActiveUsers(monthlyRows, bannedIds, false),
+    dailyActiveUsers: countActiveUsers(visibleDailyRows, bannedIds, false),
+    dailyActiveStudents: countActiveUsers(visibleDailyRows, bannedIds, true),
+    weeklyActiveUsers: countActiveUsers(visibleWeeklyRows, bannedIds, false),
+    monthlyActiveUsers: countActiveUsers(visibleMonthlyRows, bannedIds, false),
     lastActivityAt: (lastActivityResult.data?.last_active_at as string | null) ?? null,
     analyticsTimezone: PILOT_ANALYTICS_TIMEZONE,
     generatedAt: now.toISOString(),

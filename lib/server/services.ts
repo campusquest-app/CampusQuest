@@ -9,6 +9,7 @@ import {
   rollLootDrop,
   updateStreak,
 } from "@/lib/server/gameplay";
+import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { createAdminClient } from "@/lib/server/supabase";
 import { getTrustedStatsWriteClient } from "@/lib/server/trustedStatsWrite";
 import { assertModerationSafeText, assertSafeMinutes, assertSafeXpGrant } from "@/lib/server/security";
@@ -1147,15 +1148,18 @@ export async function getMyGuild(userClient: SupabaseClientLike, userId: string)
   if (membersError) throw new ApiError(400, membersError.message, "GUILD_MEMBERS_FETCH_FAILED");
 
   const userIds = (members ?? []).map((m) => m.user_id);
-  const [{ data: profiles }, { data: stats }] = await Promise.all([
+  const [{ data: profiles }, { data: stats }, hiddenIds] = await Promise.all([
     userClient.from("profiles").select("id, username, display_name, avatar_url").in("id", userIds),
     userClient.from("user_stats").select("user_id, level, total_xp").in("user_id", userIds),
+    listHiddenUserIds(userClient),
   ]);
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
   const statsMap = new Map((stats ?? []).map((s) => [s.user_id, s]));
 
   const memberLeaderboard = (members ?? [])
+    // QA/test accounts (is_hidden = true) are visible only to themselves.
+    .filter((member) => member.user_id === userId || !hiddenIds.has(member.user_id))
     .map((member) => {
       const p = profileMap.get(member.user_id);
       const s = statsMap.get(member.user_id);
@@ -1686,7 +1690,7 @@ export async function fetchUserInventory(userClient: SupabaseClientLike, userId:
 }
 
 export async function fetchLeaderboards(userClient: SupabaseClientLike) {
-  const [{ data: players, error: playersError }, { data: guilds, error: guildsError }, { data: achievements, error: achievementsError }] =
+  const [{ data: players, error: playersError }, { data: guilds, error: guildsError }, { data: achievements, error: achievementsError }, hiddenIds] =
     await Promise.all([
       userClient
         .from("user_stats")
@@ -1703,6 +1707,7 @@ export async function fetchLeaderboards(userClient: SupabaseClientLike) {
         .select("user_id, quest_id, created_at, profiles(username, display_name)")
         .order("created_at", { ascending: false })
         .limit(100),
+      listHiddenUserIds(userClient),
     ]);
 
   if (playersError) throw new ApiError(400, playersError.message, "PLAYERS_LEADERBOARD_FAILED");
@@ -1710,7 +1715,8 @@ export async function fetchLeaderboards(userClient: SupabaseClientLike) {
   if (achievementsError) throw new ApiError(400, achievementsError.message, "ACHIEVEMENTS_FETCH_FAILED");
 
   return {
-    players: (players ?? []).map((player, index) => {
+    // QA/test accounts (is_hidden = true) never appear on leaderboards.
+    players: (players ?? []).filter((player) => !hiddenIds.has(String((player as { user_id?: string }).user_id ?? ""))).map((player, index) => {
       const totalXp = Math.max(0, Number((player as { total_xp?: number }).total_xp ?? 0));
       const storedLevel = Number((player as { level?: number }).level ?? 1);
       const level = calculateLevelProgression(totalXp).level;
@@ -1732,7 +1738,9 @@ export async function fetchLeaderboards(userClient: SupabaseClientLike) {
       rank: index + 1,
       ...guild,
     })),
-    achievements: achievements ?? [],
+    achievements: (achievements ?? []).filter(
+      (row) => !hiddenIds.has(String((row as { user_id?: string }).user_id ?? "")),
+    ),
   };
 }
 
@@ -1747,6 +1755,33 @@ export async function addXpInternal(args: AddXpArgs) {
   if (statsError || !stats) throw new ApiError(404, "User stats not found.", "STATS_NOT_FOUND");
 
   const previousTotalXp = Number(stats.total_xp ?? 0);
+
+  // QA/test accounts (profiles.is_test_user = true) exercise gameplay flows
+  // without earning XP, levels, milestones, streaks, or xp_logs rows.
+  const { data: testFlagRow } = await userClient
+    .from("profiles")
+    .select("is_test_user")
+    .eq("id", userId)
+    .maybeSingle();
+  if (testFlagRow?.is_test_user === true) {
+    const progression = calculateLevelProgression(previousTotalXp);
+    return {
+      xpLog: {
+        id: `qa-noop-${Date.now()}`,
+        user_id: userId,
+        source_type: sourceType === "streak_bonus" ? "bonus" : sourceType,
+        source_id: sourceId ?? null,
+        activity_id: activityId ?? null,
+        quest_completion_id: questCompletionId ?? null,
+        xp_amount: amount,
+        note: note ?? null,
+        created_at: new Date().toISOString(),
+      },
+      progression,
+      milestonesUnlocked: [] as Awaited<ReturnType<typeof processXpMilestoneCrossings>>["newlyUnlocked"],
+      leveledUp: false,
+    };
+  }
   const nextTotalXp = previousTotalXp + amount;
   const previousLevel = calculateLevelProgression(previousTotalXp).level;
   const levelInfo = calculateLevelProgression(nextTotalXp);

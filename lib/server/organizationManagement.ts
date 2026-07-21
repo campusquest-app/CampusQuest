@@ -1,6 +1,7 @@
 import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
 import { ApiError } from "@/lib/server/http";
 import { createNotificationsBulk } from "@/lib/server/notifications";
+import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { requireVerifiedSchoolForCoreAccess } from "@/lib/server/schoolVerification";
 import { createAdminClient } from "@/lib/server/supabase";
 
@@ -230,15 +231,19 @@ export async function listOrganizationAdminDashboard(args: {
   if (eventsError) throw new ApiError(400, eventsError.message, "ORGANIZATION_EVENTS_FETCH_FAILED");
   const eventRows = events ?? [];
   const eventIds = eventRows.map((row: any) => row.id);
-  const { data: rsvps, error: rsvpsError } = eventIds.length
-    ? await userClient
-        .from("event_rsvps")
-        .select("event_id, status")
-        .in("event_id", eventIds)
-    : { data: [], error: null as any };
+  const [{ data: rsvps, error: rsvpsError }, orgHiddenIds] = await Promise.all([
+    eventIds.length
+      ? userClient
+          .from("event_rsvps")
+          .select("event_id, status, user_id")
+          .in("event_id", eventIds)
+      : Promise.resolve({ data: [] as any[], error: null as any }),
+    listHiddenUserIds(userClient),
+  ]);
   if (rsvpsError) throw new ApiError(400, rsvpsError.message, "ORGANIZATION_EVENT_RSVPS_FAILED");
   const attendanceByEvent = new Map<string, number>();
   for (const row of rsvps ?? []) {
+    if (orgHiddenIds.has(row.user_id as string)) continue;
     if (row.status === "going") {
       attendanceByEvent.set(row.event_id, (attendanceByEvent.get(row.event_id) ?? 0) + 1);
     }
@@ -631,12 +636,17 @@ export async function listOrganizationEventAttendees(args: {
   if (eventError) throw new ApiError(400, eventError.message, "EVENT_LOOKUP_FAILED");
   if (!event) throw new ApiError(404, "Event not found for organization.", "EVENT_NOT_FOUND");
 
-  const { data: rsvps, error: rsvpError } = await userClient
-    .from("event_rsvps")
-    .select("user_id, status, updated_at")
-    .eq("event_id", eventId)
-    .order("updated_at", { ascending: false });
+  const [{ data: rsvpsRaw, error: rsvpError }, hiddenIds] = await Promise.all([
+    userClient
+      .from("event_rsvps")
+      .select("user_id, status, updated_at")
+      .eq("event_id", eventId)
+      .order("updated_at", { ascending: false }),
+    listHiddenUserIds(userClient),
+  ]);
   if (rsvpError) throw new ApiError(400, rsvpError.message, "EVENT_ATTENDEES_FETCH_FAILED");
+  // QA/test accounts (is_hidden = true) never appear in attendee lists.
+  const rsvps = (rsvpsRaw ?? []).filter((row) => !hiddenIds.has(row.user_id as string));
   const userIds = Array.from(new Set((rsvps ?? []).map((row) => row.user_id)));
   const { data: profiles, error: profileError } = userIds.length
     ? await userClient.from("profiles").select("id, username, display_name").in("id", userIds)

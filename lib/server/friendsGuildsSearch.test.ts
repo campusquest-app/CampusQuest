@@ -25,6 +25,8 @@ describe("friendsGuildsSearch", () => {
               in: () => ({
                 or: async () => ({ data: [], error: null }),
               }),
+              // listHiddenUserIds: profiles.is_hidden = true lookup
+              eq: async () => ({ data: [], error: null }),
             }),
           };
         }

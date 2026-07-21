@@ -10,6 +10,7 @@ import {
   requestOrganizationJoin,
   setOrganizationFollow,
 } from "@/lib/server/organizationManagement";
+import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { requireVerifiedSchoolForCoreAccess } from "@/lib/server/schoolVerification";
 import { createAdminClient } from "@/lib/server/supabase";
 
@@ -96,19 +97,22 @@ export async function listEvents(args: {
     }
   }
 
-  const [{ data: rsvps, error: rsvpError }, { data: myRsvps, error: myRsvpError }] = await Promise.all([
+  const [{ data: rsvps, error: rsvpError }, { data: myRsvps, error: myRsvpError }, hiddenIds] = await Promise.all([
     eventIds.length > 0
-      ? userClient.from("event_rsvps").select("event_id, status").in("event_id", eventIds)
+      ? userClient.from("event_rsvps").select("event_id, status, user_id").in("event_id", eventIds)
       : Promise.resolve({ data: [] as any[], error: null as any }),
     eventIds.length > 0
       ? userClient.from("event_rsvps").select("event_id, status").in("event_id", eventIds).eq("user_id", userId)
       : Promise.resolve({ data: [] as any[], error: null as any }),
+    listHiddenUserIds(userClient),
   ]);
   if (rsvpError) throw new ApiError(400, rsvpError.message, "EVENT_RSVP_COUNTS_FAILED");
   if (myRsvpError) throw new ApiError(400, myRsvpError.message, "EVENT_RSVP_STATUS_FAILED");
 
   const counts = new Map<string, number>();
   for (const row of rsvps ?? []) {
+    // QA/test accounts (is_hidden = true) never count toward attendee totals.
+    if (hiddenIds.has(row.user_id as string)) continue;
     if (row.status === "going") counts.set(row.event_id, (counts.get(row.event_id) ?? 0) + 1);
   }
   const myMap = new Map<string, "going" | "interested" | "not_going">();

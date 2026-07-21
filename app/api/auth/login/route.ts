@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { confirmEmailAndSignIn, findAuthUserIdByEmail, logAuthError, logAuthFlow } from "@/lib/server/authBootstrap";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
-import { createPublicClient } from "@/lib/server/supabase";
+import { resetQaOnboardingOnLoginIfTestUser } from "@/lib/server/qaTestAccount";
+import { createAdminClient, createPublicClient } from "@/lib/server/supabase";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { touchUserActivityById } from "@/lib/server/userActivity";
 import { authLoginSchema, readJson } from "@/lib/server/validation";
@@ -147,13 +148,28 @@ export async function POST(request: Request) {
       throw setupError;
     }
 
-    const torchBearer = await tryAwardTorchBearerBadge({
-      userId: authUser.id,
-      user: authUser,
-      email: authUser.email,
-    });
-
-    touchUserActivityById(authUser.id, { force: true });
+    // QA test accounts (is_test_user = true) always restart onboarding on
+    // sign-in and never earn badges or count as active users.
+    let torchBearer: Awaited<ReturnType<typeof tryAwardTorchBearerBadge>> = null;
+    const qaOnboardingReset = await resetQaOnboardingOnLoginIfTestUser(player.profile);
+    if (qaOnboardingReset) {
+      const { data: freshProfile } = await createAdminClient()
+        .from("profiles")
+        .select("*")
+        .eq("id", authUser.id)
+        .single();
+      if (freshProfile) {
+        player = { ...player, profile: freshProfile as typeof player.profile };
+      }
+      logAuthFlow("login", "qa_onboarding_reset", { userId: authUser.id });
+    } else {
+      torchBearer = await tryAwardTorchBearerBadge({
+        userId: authUser.id,
+        user: authUser,
+        email: authUser.email,
+      });
+      touchUserActivityById(authUser.id, { force: true });
+    }
 
     logAuthFlow("login", "success", {
       userId: authUser.id,

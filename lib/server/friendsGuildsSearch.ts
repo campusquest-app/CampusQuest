@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/server/http";
 import { calculateLevelProgression } from "@/lib/server/gameplay";
+import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { createAdminClient } from "@/lib/server/supabase";
 import {
   rankUserSearchCandidates,
@@ -189,11 +190,16 @@ export async function searchPeopleProfiles(args: {
     }
   }
 
-  const candidates = Array.from(profileMap.values()).map((row) => ({
-    userId: row.id,
-    username: row.username,
-    displayName: row.display_name,
-  }));
+  // QA/test accounts (is_hidden = true) never appear in user search.
+  const hiddenIds = await listHiddenUserIds(args.userClient);
+
+  const candidates = Array.from(profileMap.values())
+    .filter((row) => !hiddenIds.has(row.id))
+    .map((row) => ({
+      userId: row.id,
+      username: row.username,
+      displayName: row.display_name,
+    }));
 
   const ranked = rankUserSearchCandidates(query, candidates, connectedIds, limit);
   if (ranked.length === 0) return [];

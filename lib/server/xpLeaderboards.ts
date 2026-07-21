@@ -7,6 +7,7 @@ import { compareXpLeaderboardEntries } from "@/lib/leaderboardRanking";
 import { xpToLevel } from "@/lib/level";
 import { ApiError } from "@/lib/server/http";
 import { listAcceptedFriendUserIds } from "@/lib/server/messaging";
+import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { requireVerifiedSchoolForCoreAccess } from "@/lib/server/schoolVerification";
 import { createAdminClient } from "@/lib/server/supabase";
 
@@ -209,14 +210,18 @@ export function mapProfileToLeaderboardEntry(row: ProfileStatRow): Omit<Leaderbo
 
 async function fetchProfilesAndStats(admin: SupabaseClientLike, userIds: string[]) {
   if (userIds.length === 0) return [];
-  const { data: profiles, error } = await admin
-    .from("profiles")
-    .select(
-      "id, username, display_name, avatar_url, avatar_custom_json, scholar_guild_id, streak_days, user_stats(level, total_xp, strength, stamina, knowledge, social, focus, bosses_defeated, final_bosses_defeated)",
-    )
-    .in("id", userIds);
+  const [{ data: profiles, error }, hiddenIds] = await Promise.all([
+    admin
+      .from("profiles")
+      .select(
+        "id, username, display_name, avatar_url, avatar_custom_json, scholar_guild_id, streak_days, user_stats(level, total_xp, strength, stamina, knowledge, social, focus, bosses_defeated, final_bosses_defeated)",
+      )
+      .in("id", userIds),
+    listHiddenUserIds(admin),
+  ]);
   if (error) throw new ApiError(400, error.message, "LEADERBOARD_PROFILES_FETCH_FAILED");
-  const rows = (profiles ?? []) as ProfileStatRow[];
+  // QA/test accounts (is_hidden = true) never appear on leaderboards.
+  const rows = ((profiles ?? []) as ProfileStatRow[]).filter((row) => !hiddenIds.has(row.id));
   await reconcileStaleStoredLevels(admin, rows);
   return rows;
 }

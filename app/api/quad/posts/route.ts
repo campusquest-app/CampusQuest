@@ -16,6 +16,7 @@ import {
   normalizeQuadPostProofUrl,
   QUAD_POSTS_WITH_PROFILE_SELECT,
 } from "@/lib/server/quadPosts";
+import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { createRealmMomentForPost } from "@/lib/server/realmMoments";
 import { maybeAwardQuadPostCreationXp } from "@/lib/server/quadPostXp";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
@@ -102,14 +103,20 @@ export async function GET(request: Request) {
       query = query.eq("visibility", "public");
     }
 
-    const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
+    const [{ data, error }, hiddenIds] = await Promise.all([
+      query.order("created_at", { ascending: false }).limit(limit),
+      listHiddenUserIds(auth.userClient),
+    ]);
 
     if (error) {
       logQuadPostError("list", error, { userId: auth.user.id });
       throw new ApiError(400, error.message ?? "Could not load Quad posts.", "QUAD_POSTS_LIST_FAILED");
     }
 
-    const posts = (data ?? []) as unknown as QuadPostApiRow[];
+    // QA/test account posts stay visible to the author, hidden from everyone else.
+    const posts = ((data ?? []) as unknown as QuadPostApiRow[]).filter(
+      (post) => post.user_id === auth.user.id || !hiddenIds.has(post.user_id),
+    );
     const postIds = posts.map((p) => p.id);
     const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
     const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);

@@ -1,5 +1,6 @@
 import { fail, ok } from "@/lib/server/http";
 import { requireAdminUser } from "@/lib/server/adminAuth";
+import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { createAdminClient } from "@/lib/server/supabase";
 import { enforceRateLimit } from "@/lib/server/security";
 
@@ -66,8 +67,11 @@ export async function GET(request: Request) {
     if (profilesError) throw profilesError;
     if (safetyError) throw safetyError;
 
+    // QA/test accounts are managed via the dedicated QA panel, not user lists.
+    const hiddenIds = await listHiddenUserIds(admin);
+
     const safetyMap = new Map((safetyRows ?? []).map((row) => [row.user_id, row]));
-    const users = (profiles ?? []).map((profile) => {
+    const users = (profiles ?? []).filter((profile) => !hiddenIds.has(profile.id)).map((profile) => {
       const safety = safetyMap.get(profile.id);
       return {
         id: profile.id,

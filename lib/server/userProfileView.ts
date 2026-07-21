@@ -9,6 +9,7 @@ import {
   fetchViewerReactionsForPosts,
 } from "@/lib/server/quadReactions";
 import { QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
+import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { createAdminClient } from "@/lib/server/supabase";
 import { xpToLevel } from "@/lib/level";
 
@@ -147,6 +148,14 @@ export async function getUserProfileForViewer(args: {
   }
   if (!profileResult.data) {
     throw new ApiError(404, "User not found.", "USER_NOT_FOUND");
+  }
+
+  // QA/test accounts (is_hidden = true) have no public profile — except to themselves.
+  if (viewerId !== targetUserId) {
+    const hiddenIds = await listHiddenUserIds(userClient);
+    if (hiddenIds.has(targetUserId)) {
+      throw new ApiError(404, "User not found.", "USER_NOT_FOUND");
+    }
   }
   if (statsResult.error) {
     throw new ApiError(400, statsResult.error.message, "PROFILE_STATS_FETCH_FAILED");

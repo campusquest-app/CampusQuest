@@ -18,6 +18,8 @@ const PROTECTED_EMAILS = new Set(
     "campusquest@campusquestapp.com",
     "nicklockhart22@uri.edu",
     "nicholaslockhart22@gmail.com",
+    // Permanent QA onboarding account — reset via admin panel, never deleted.
+    "qa-signup@campusquest.app",
   ].map((e) => e.toLowerCase()),
 );
 
