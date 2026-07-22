@@ -97,13 +97,17 @@ export function flyMapCamera(
   const reduced =
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // Preserve any live tilt/heading — never flatten the camera during fly-to.
+  const heading = map.getHeading() ?? 0;
+  const tilt = map.getTilt() ?? 0;
+
   if (reduced || durationMs <= 0) {
-    moveMapCamera(map, { center: target, zoom: endZoom });
+    moveMapCamera(map, { center: target, zoom: endZoom, heading, tilt });
     return Promise.resolve();
   }
 
   // Seed a slightly zoomed-out frame, then animate zoom while panTo runs.
-  moveMapCamera(map, { center: target, zoom: startZoom });
+  moveMapCamera(map, { center: target, zoom: startZoom, heading, tilt });
   map.panTo(target);
 
   return new Promise((resolve) => {
@@ -121,7 +125,12 @@ export function flyMapCamera(
       if (t < 1) {
         frame = window.requestAnimationFrame(tick);
       } else {
-        moveMapCamera(map, { center: target, zoom: endZoom });
+        moveMapCamera(map, {
+          center: target,
+          zoom: endZoom,
+          heading: map.getHeading() ?? heading,
+          tilt: map.getTilt() ?? tilt,
+        });
         resolve();
       }
     };

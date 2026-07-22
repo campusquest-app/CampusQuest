@@ -9,14 +9,11 @@ import {
   URI_MAP_ROTATE_STEP_DEG,
   apply3dBuildingView,
   applyFlatCamera,
-  applyTiltCamera,
   isVectorMapRendering,
   logRealmMapCameraDebug,
   moveMapCamera,
-  readMapTiltAfterDelay,
+  normalizeHeadingDegrees,
   resetRealmMapCamera,
-  resetMapHeading,
-  rotateMapHeading,
 } from "@/lib/realm/googleMapPose";
 
 const TILT_ACTIVE_THRESHOLD = 2;
@@ -41,16 +38,9 @@ export function useRealmMapCamera({
   const [buildingsRequested, setBuildingsRequested] = useState(false);
   const [fallbackBuildingsMode, setFallbackBuildingsMode] = useState(false);
   const [native3dAvailable, setNative3dAvailable] = useState(false);
-  /** null = unknown; false only after confirmed device/renderer rejection with a Map ID present. */
-  const [tiltSupported, setTiltSupported] = useState<boolean | null>(null);
   const busyRef = useRef(false);
-  /** Latest camera pose — refs avoid remount/reset loops when markers update. */
-  const cameraPoseRef = useRef<{
-    center: google.maps.LatLngLiteral | null;
-    zoom: number;
-    heading: number;
-    tilt: number;
-  }>({ center: null, zoom: 0, heading: 0, tilt: 0 });
+  const mapRef = useRef<google.maps.Map | null>(null);
+  mapRef.current = map;
 
   useEffect(() => {
     if (!map) return undefined;
@@ -59,23 +49,10 @@ export function useRealmMapCamera({
       const nextTilt = map.getTilt() ?? 0;
       const nextHeading = map.getHeading() ?? 0;
       const nextZoom = map.getZoom() ?? 0;
-      const center = map.getCenter();
-      const vector = isVectorMapRendering(map);
-      cameraPoseRef.current = {
-        center: center
-          ? { lat: center.lat(), lng: center.lng() }
-          : cameraPoseRef.current.center,
-        zoom: nextZoom,
-        heading: nextHeading,
-        tilt: nextTilt,
-      };
       setTilt(nextTilt);
       setHeading(nextHeading);
       setZoom(nextZoom);
-      setNative3dAvailable(vector);
-      if (nextTilt >= TILT_ACTIVE_THRESHOLD) {
-        setTiltSupported(true);
-      }
+      setNative3dAvailable(isVectorMapRendering(map));
     };
 
     sync();
@@ -113,7 +90,6 @@ export function useRealmMapCamera({
     }
   }, [mapLayer]);
 
-  // If tilt returns flat while native buildings were on, disable buildings mode.
   useEffect(() => {
     if (!buildingsRequested || fallbackBuildingsMode || !native3dAvailable) return;
     if (!isCinematic) {
@@ -121,117 +97,67 @@ export function useRealmMapCamera({
     }
   }, [buildingsRequested, fallbackBuildingsMode, isCinematic, native3dAvailable]);
 
-  const ensureBuildingZoom = useCallback(() => {
-    if (!map) return;
-    if ((map.getZoom() ?? 0) < URI_MAP_BUILDING_ZOOM) {
-      map.setZoom(URI_MAP_BUILDING_ZOOM);
-    }
-  }, [map]);
-
   const missingMapIdMessage =
     "3D tilt needs a Google Vector Map ID (NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID).";
 
-  const toggleTilt = useCallback(async () => {
-    if (!map || busyRef.current) return;
+  const toggleTilt = useCallback(() => {
+    const active = mapRef.current;
+    if (!active || busyRef.current) return;
     if (mapLayer !== "campus") {
       onNotice?.("Switch to campus view for 3D tilt.");
       return;
     }
-    if (tiltSupported === false && REALM_GOOGLE_MAP_ID) {
-      onNotice?.("3D view isn't supported on this device or map style.");
-      return;
-    }
     if (!REALM_GOOGLE_MAP_ID) {
       onNotice?.(missingMapIdMessage);
-      // Still attempt — proves whether the renderer accepts tilt without a Map ID.
     }
+
+    const zoomNow = active.getZoom() ?? 0;
+    if (zoomNow < URI_MAP_BUILDING_ZOOM) {
+      active.setZoom(URI_MAP_BUILDING_ZOOM);
+    }
+
+    const currentTilt = active.getTilt() ?? 0;
+    const requestedTilt = currentTilt > TILT_ACTIVE_THRESHOLD ? 0 : URI_MAP_FALLBACK_TILT;
 
     busyRef.current = true;
-    const goingCinematic = (map.getTilt() ?? 0) < TILT_ACTIVE_THRESHOLD;
-    const zoomBefore = map.getZoom() ?? 0;
+    moveMapCamera(active, {
+      tilt: requestedTilt,
+      heading: active.getHeading() ?? 0,
+      zoom: Math.max(active.getZoom() ?? URI_MAP_BUILDING_ZOOM, URI_MAP_BUILDING_ZOOM),
+    });
 
-    try {
-      if (goingCinematic) {
-        if (zoomBefore + 0.01 < URI_MAP_BUILDING_ZOOM) {
-          ensureBuildingZoom();
-        }
-        // Flat ↔ tilted: prefer 45°, then highest supported at this zoom.
-        if (typeof map.setTilt === "function") {
-          map.setTilt(URI_MAP_FALLBACK_TILT);
-        }
-        moveMapCamera(map, {
-          tilt: URI_MAP_FALLBACK_TILT,
-          zoom: Math.max(map.getZoom() ?? 0, URI_MAP_BUILDING_ZOOM),
-          heading: map.getHeading() ?? 0,
-        });
-        let actual = await readMapTiltAfterDelay(map);
-        // If 45° was rejected, retry via cinematic helper (67.5 → 45).
-        if (actual < TILT_ACTIVE_THRESHOLD) {
-          actual = await applyTiltCamera(map, { preserveCenter: true, preserveHeading: true });
-        }
+    window.setTimeout(() => {
+      const actualTilt = active.getTilt() ?? 0;
+      setTilt(actualTilt);
+      logRealmMapCameraDebug(active, {
+        action: requestedTilt > 0 ? "tilt-on" : "tilt-off",
+        requestedTilt,
+        actualTilt,
+        mapIdConfigured: Boolean(REALM_GOOGLE_MAP_ID),
+        vectorRendering: isVectorMapRendering(active),
+      });
 
-        const vector = isVectorMapRendering(map);
-        // Always trust the map's accepted tilt for UI state.
-        setTilt(actual);
-        logRealmMapCameraDebug(map, {
-          action: "tilt-on",
-          actualTilt: actual,
-          vector3dEnabled,
-          mapIdConfigured: Boolean(REALM_GOOGLE_MAP_ID),
-          vectorRendering: vector,
-          buildingsRequested,
-        });
-
-        if (actual < TILT_ACTIVE_THRESHOLD) {
-          if (!REALM_GOOGLE_MAP_ID) {
-            onNotice?.(missingMapIdMessage);
-          } else if ((map.getZoom() ?? 0) < URI_MAP_BUILDING_ZOOM) {
-            onNotice?.("Zoom in to use 3D tilt.");
-          } else {
-            setTiltSupported(false);
-            onNotice?.("Zoom in to use 3D tilt.");
-          }
-          await applyFlatCamera(map);
-        } else {
-          setTiltSupported(true);
-          // At close zoom, nudge toward the highest supported tilt when 45° stuck low.
-          if (actual < URI_MAP_FALLBACK_TILT - 1 && (map.getZoom() ?? 0) >= URI_MAP_BUILDING_ZOOM) {
-            const higher = await applyTiltCamera(map, { preserveCenter: true, preserveHeading: true });
-            setTilt(higher);
-          }
-        }
-      } else {
-        if (typeof map.setTilt === "function") {
-          map.setTilt(0);
-        }
-        await applyFlatCamera(map);
-        setTilt(map.getTilt() ?? 0);
-        if (buildingsRequested && native3dAvailable && !fallbackBuildingsMode) {
-          setBuildingsRequested(false);
-        }
-        logRealmMapCameraDebug(map, {
-          action: "tilt-off",
-          mapIdConfigured: Boolean(REALM_GOOGLE_MAP_ID),
-          buildingsRequested,
-        });
+      if (requestedTilt > 0 && actualTilt < TILT_ACTIVE_THRESHOLD) {
+        onNotice?.(
+          "3D tilt is unavailable. Confirm this Map ID is Vector with Tilt and Rotation enabled.",
+        );
       }
-    } finally {
+      if (requestedTilt === 0 && buildingsRequested && native3dAvailable && !fallbackBuildingsMode) {
+        setBuildingsRequested(false);
+      }
       busyRef.current = false;
-    }
+    }, 500);
   }, [
     buildingsRequested,
-    ensureBuildingZoom,
     fallbackBuildingsMode,
-    map,
     mapLayer,
     native3dAvailable,
     onNotice,
-    tiltSupported,
-    vector3dEnabled,
   ]);
 
   const go3dView = useCallback(async () => {
-    if (!map || busyRef.current) return;
+    const active = mapRef.current;
+    if (!active || busyRef.current) return;
     if (mapLayer !== "campus") {
       onNotice?.("Switch to campus view for 3D.");
       return;
@@ -242,10 +168,11 @@ export function useRealmMapCamera({
 
     busyRef.current = true;
     try {
-      const actual = await apply3dBuildingView(map);
-      const vector = isVectorMapRendering(map);
+      const actual = await apply3dBuildingView(active);
+      const vector = isVectorMapRendering(active);
       setNative3dAvailable(vector);
-      logRealmMapCameraDebug(map, {
+      setTilt(actual);
+      logRealmMapCameraDebug(active, {
         action: "3d-view",
         actualTilt: actual,
         vectorRendering: vector,
@@ -253,7 +180,6 @@ export function useRealmMapCamera({
       });
 
       if (actual >= TILT_ACTIVE_THRESHOLD) {
-        setTiltSupported(true);
         setBuildingsRequested(true);
         setFallbackBuildingsMode(!vector);
         if (!vector) {
@@ -264,15 +190,18 @@ export function useRealmMapCamera({
       } else {
         setFallbackBuildingsMode(true);
         setBuildingsRequested(true);
-        onNotice?.("Using campus building highlights — native 3D is unavailable here.");
+        onNotice?.(
+          "3D tilt is unavailable. Confirm this Map ID is Vector with Tilt and Rotation enabled.",
+        );
       }
     } finally {
       busyRef.current = false;
     }
-  }, [map, mapLayer, onNotice]);
+  }, [mapLayer, onNotice]);
 
   const toggleBuildings = useCallback(async () => {
-    if (!map || busyRef.current) return;
+    const active = mapRef.current;
+    if (!active || busyRef.current) return;
     if (mapLayer !== "campus") {
       onNotice?.("Switch to campus view for raised buildings.");
       return;
@@ -281,7 +210,7 @@ export function useRealmMapCamera({
     if (buildingsRequested) {
       setBuildingsRequested(false);
       setFallbackBuildingsMode(false);
-      logRealmMapCameraDebug(map, {
+      logRealmMapCameraDebug(active, {
         action: "buildings-off",
         mapIdConfigured: Boolean(REALM_GOOGLE_MAP_ID),
       });
@@ -289,31 +218,47 @@ export function useRealmMapCamera({
     }
 
     await go3dView();
-  }, [buildingsRequested, go3dView, map, mapLayer, onNotice]);
+  }, [buildingsRequested, go3dView, mapLayer, onNotice]);
+
+  const rotateMap = useCallback((delta: number) => {
+    const active = mapRef.current;
+    if (!active) return;
+    const currentHeading = active.getHeading() ?? 0;
+    const nextHeading = normalizeHeadingDegrees(currentHeading + delta);
+    moveMapCamera(active, {
+      heading: nextHeading,
+      tilt: active.getTilt() ?? 0,
+      zoom: active.getZoom() ?? undefined,
+    });
+  }, []);
 
   const rotateLeft = useCallback(() => {
-    if (!map) return;
-    rotateMapHeading(map, -URI_MAP_ROTATE_STEP_DEG);
-  }, [map]);
+    rotateMap(-URI_MAP_ROTATE_STEP_DEG);
+  }, [rotateMap]);
 
   const rotateRight = useCallback(() => {
-    if (!map) return;
-    rotateMapHeading(map, URI_MAP_ROTATE_STEP_DEG);
-  }, [map]);
+    rotateMap(URI_MAP_ROTATE_STEP_DEG);
+  }, [rotateMap]);
 
   const resetHeadingToNorth = useCallback(() => {
-    if (!map) return;
-    resetMapHeading(map);
-  }, [map]);
+    const active = mapRef.current;
+    if (!active) return;
+    moveMapCamera(active, {
+      heading: 0,
+      tilt: active.getTilt() ?? 0,
+      zoom: active.getZoom() ?? undefined,
+    });
+  }, []);
 
   const resetCamera = useCallback(async () => {
-    if (!map) return;
+    const active = mapRef.current;
+    if (!active) return;
     setBuildingsRequested(false);
     setFallbackBuildingsMode(false);
-    resetRealmMapCamera(map, mapLayer, vector3dEnabled);
-    await applyFlatCamera(map);
-    logRealmMapCameraDebug(map, { action: "reset-camera" });
-  }, [map, mapLayer, vector3dEnabled]);
+    resetRealmMapCamera(active, mapLayer, vector3dEnabled);
+    await applyFlatCamera(active);
+    logRealmMapCameraDebug(active, { action: "reset-camera" });
+  }, [mapLayer, vector3dEnabled]);
 
   const showCompass =
     Math.abs(heading) > HEADING_VISIBLE_THRESHOLD &&
@@ -329,7 +274,7 @@ export function useRealmMapCamera({
     native3dAvailable,
     showFallbackBuildings,
     isCinematic,
-    tiltDisabled: tiltSupported === false && Boolean(REALM_GOOGLE_MAP_ID),
+    tiltDisabled: false,
     showCompass,
     campus3dCapable: mapLayer === "campus",
     toggleTilt,

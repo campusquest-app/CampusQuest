@@ -11283,6 +11283,8 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
 .cq-realm-map-surface {
   opacity: 0;
   transition: opacity 480ms ease 120ms;
+  overscroll-behavior: none;
+  /* Do not set touch-action: none on the surface — let Google Maps own gestures. */
 }
 
 .cq-realm-map-surface--ready {
@@ -11358,9 +11360,10 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   opacity: 0.55;
 }
 
-.cq-realm-map-canvas,
-.cq-realm-map-canvas > div {
-  touch-action: none;
+.cq-realm-map-canvas {
+  /* Avoid forcing touch-action: none on Google’s internal canvas — that can
+     block two-finger tilt/rotate on some mobile browsers. */
+  touch-action: manipulation;
 }
 
 .cq-realm-map-banner {

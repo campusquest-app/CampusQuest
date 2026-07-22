@@ -15,7 +15,7 @@ import {
   RotateCw,
 } from "lucide-react";
 import { useRealmMapCamera } from "./useRealmMapCamera";
-import { resetRealmMapCamera, URI_MAP_DEFAULT_ZOOM } from "@/lib/realm/googleMapPose";
+import { URI_MAP_DEFAULT_ZOOM } from "@/lib/realm/googleMapPose";
 import { isRealmVector3dEnabled } from "@/lib/realm/googleMapConfig";
 import { resetUserCameraInteraction } from "@/lib/realm/mapCameraGuard";
 
@@ -81,14 +81,10 @@ export function RealmMapControls({
   }, [followMode, map, mapRef, onToggleFollow, userPos]);
 
   const toggleLayer = useCallback(() => {
-    const goingCampus = mapLayer === "satellite";
+    // Only change mapTypeId via React prop — do not recreate the map or force
+    // heading/tilt here (that was wiping VECTOR camera state).
     onToggleMapLayer();
-    if (goingCampus && map) {
-      resetRealmMapCamera(map, "campus", vector3dEnabled);
-    } else if (map) {
-      map.setTilt(0);
-    }
-  }, [map, mapLayer, onToggleMapLayer, vector3dEnabled]);
+  }, [onToggleMapLayer]);
 
   const handleStackTouchStart = (event: TouchEvent<HTMLDivElement>) => {
     if (event.touches.length !== 1) return;

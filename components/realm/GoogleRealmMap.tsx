@@ -15,7 +15,11 @@ import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
 import type { UrinvolvedEditPin } from "@/lib/realm/urinvolvedEditPins";
 import { CQ_REALM_MAP_BACKGROUND, CQ_REALM_MAP_STYLE } from "@/lib/realm/campusQuestMapStyles";
-import { isRealmVector3dEnabled, REALM_GOOGLE_MAP_ID } from "@/lib/realm/googleMapConfig";
+import {
+  isRealmVector3dEnabled,
+  REALM_GOOGLE_MAP_ID,
+  warnIfRealmMapIdMissing,
+} from "@/lib/realm/googleMapConfig";
 import {
   URI_MAP_CENTER,
   URI_MAP_MAX_ZOOM,
@@ -82,6 +86,7 @@ import {
   resetRealmMapTilesReady,
 } from "@/lib/realm/realmMapLifecycle";
 import { RealmMapExploreModeController } from "./RealmMapExploreModeController";
+import { RealmMapVectorDiagnostics } from "./RealmMapVectorDiagnostics";
 import { clearMapExploring } from "@/lib/client/realmMapExploreMode";
 
 const MAP_BACKGROUND = CQ_REALM_MAP_BACKGROUND;
@@ -752,12 +757,28 @@ export function GoogleRealmMap({
   useEffect(() => {
     // Build stamp on load — proves which deployment the (PWA-cached) client runs.
     console.info("[cq:build]", process.env.NEXT_PUBLIC_BUILD_TIMESTAMP ?? "dev/unknown");
+    warnIfRealmMapIdMissing();
+    if (
+      process.env.NODE_ENV === "development" &&
+      !process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID &&
+      !process.env.NEXT_PUBLIC_GOOGLE_MAP_ID
+    ) {
+      console.error(
+        "NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID is missing from the client bundle. Restart the Next.js development server after editing .env.local.",
+      );
+    }
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       console.info("[cq:event-pins] prefers-reduced-motion detected — shake off, soft pulse only");
     }
   }, []);
   const vector3dEnabled = REALM_VECTOR_3D_ENABLED;
-  const useVectorMapId = vector3dEnabled && mapLayer === "campus";
+  /**
+   * Keep mapId / renderingType / colorScheme STABLE for the map lifetime.
+   * Toggling them with campus↔satellite recreates or reuses a different cached
+   * map instance in @vis.gl/react-google-maps and injects heading:0/tilt:0 via
+   * defaultTilt/defaultHeading falsy checks — which kills vector camera state.
+   */
+  const useVectorMapId = vector3dEnabled;
 
   const markTilesReady = useCallback(
     (source: string) => {
@@ -993,20 +1014,22 @@ export function GoogleRealmMap({
       <div
         ref={surfaceRef}
         className={`absolute inset-0 cq-realm-map-surface${tilesLoaded ? " cq-realm-map-surface--ready" : ""}`}
+        data-cq-gesture-block="all"
+        data-no-drawer-swipe="true"
       >
         <Map
           className="h-full w-full cq-realm-map-canvas"
           /* Vector Map ID enables raised 3D buildings — inline styles apply only without mapId.
-           * Also set NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID on Vercel and redeploy (build-time inline). */
+           * Also set NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID on Vercel and redeploy (build-time inline).
+           * Do NOT pass defaultTilt/defaultHeading — vis.gl treats 0 as falsy and re-injects
+           * heading:0/tilt:0 into setOptions when reusing maps, resetting the camera. */
           mapId={useVectorMapId ? REALM_GOOGLE_MAP_ID : undefined}
           renderingType={useVectorMapId ? "VECTOR" : undefined}
           colorScheme={useVectorMapId ? ColorScheme.DARK : undefined}
           styles={useVectorMapId ? undefined : mapLayer === "campus" ? CQ_REALM_MAP_STYLE : undefined}
           mapTypeId={mapLayer === "campus" ? URI_MAP_TYPE_ID : "satellite"}
           defaultCenter={URI_MAP_CENTER}
-          defaultZoom={15.6}
-          defaultTilt={0}
-          defaultHeading={0}
+          defaultZoom={17}
           minZoom={URI_MAP_MIN_ZOOM}
           maxZoom={URI_MAP_MAX_ZOOM}
           gestureHandling="greedy"
@@ -1019,7 +1042,7 @@ export function GoogleRealmMap({
           mapTypeControl={false}
           streetViewControl={false}
           fullscreenControl={false}
-          disableDefaultUI
+          disableDefaultUI={false}
           clickableIcons={false}
           backgroundColor={MAP_BACKGROUND}
           reuseMaps
@@ -1043,6 +1066,7 @@ export function GoogleRealmMap({
           {/* Keep Google logo/attribution clear of dock, FABs, and CQ gradients. */}
           <RealmMapChromePadding enabled={isActive} />
           <RealmMapCameraGestures enabled={isActive && tilesLoaded} />
+          <RealmMapVectorDiagnostics enabled={isActive && tilesLoaded && !editMode} />
           {REALM_CAMERA_DEBUG ? <RealmMapCameraDebugHud enabled={isActive && tilesLoaded} /> : null}
           {tilesLoaded && isActive && !editMode && !firstOpenDoneRef.current ? (
             <RealmMapFirstOpenCamera

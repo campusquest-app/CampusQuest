@@ -32,6 +32,11 @@ export const DRAWER_SWIPE_IGNORE_SELECTOR = [
   ".realm-marker",
   ".location-marker",
   ".post-actions",
+  // Google Maps owns pan / pinch / two-finger tilt+rotate inside the Realm map.
+  ".cq-realm-map-surface",
+  ".cq-realm-map-canvas",
+  ".gm-style",
+  ".gm-style-moc",
 ].join(", ");
 
 const DRAWER_HORIZONTAL_SCROLL_SELECTOR = [

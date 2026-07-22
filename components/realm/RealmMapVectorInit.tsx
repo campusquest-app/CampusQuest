@@ -2,15 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import { useMap } from "@vis.gl/react-google-maps";
-import { REALM_GOOGLE_MAP_ID, warnIfRealmMapIdMissing } from "@/lib/realm/googleMapConfig";
-import { isVectorMapRendering, logRealmMapCameraDebug } from "@/lib/realm/googleMapPose";
+import { warnIfRealmMapIdMissing } from "@/lib/realm/googleMapConfig";
+import { isVectorMapRendering } from "@/lib/realm/googleMapPose";
 
 /**
- * Ensures vector rendering when a Map ID is configured and logs a clear
- * development warning when the Map ID is missing (does not log the ID/key).
- *
- * Also re-asserts gesture / zoom options after tiles load — `reuseMaps` and
- * layer switches can drop them.
+ * Re-asserts gesture interaction flags after tiles load.
+ * Does NOT touch heading/tilt/center/zoom — those must stay under user control.
  */
 export function RealmMapVectorInit({
   vector3dEnabled,
@@ -22,7 +19,7 @@ export function RealmMapVectorInit({
   onVectorRendering?: (vector: boolean) => void;
 }) {
   const map = useMap();
-  const idleLoggedRef = useRef(false);
+  const warnedRef = useRef(false);
 
   useEffect(() => {
     warnIfRealmMapIdMissing();
@@ -43,6 +40,7 @@ export function RealmMapVectorInit({
       keyboardShortcuts: true,
       isFractionalZoomEnabled: true,
       clickableIcons: false,
+      // Never pass heading/tilt here — setOptions with 0 resets the camera.
     });
 
     if (typeof map.setTiltInteractionEnabled === "function") {
@@ -57,45 +55,20 @@ export function RealmMapVectorInit({
       return;
     }
 
+    // Prefer setRenderingType when available; Map ID still owns cloud style.
     const renderingType = google.maps.RenderingType?.VECTOR;
-    if (renderingType != null) {
-      if (typeof map.setRenderingType === "function") {
-        map.setRenderingType(renderingType);
-      } else {
-        map.setOptions({ renderingType });
-      }
+    if (renderingType != null && typeof map.setRenderingType === "function") {
+      map.setRenderingType(renderingType);
     }
 
-    let warnedNonVector = false;
-    const report = () => {
-      const vector = isVectorMapRendering(map);
-      onVectorRendering?.(vector);
-      if (process.env.NODE_ENV === "development" && !vector && !warnedNonVector) {
-        warnedNonVector = true;
-        console.warn(
-          "[cq:realm-map] Map ID is set but vector rendering was not detected. " +
-            "Confirm the Map ID is a vector map style in Google Cloud Console.",
-        );
-      }
-    };
-
-    report();
-
-    // One concise idle diagnostic — do not spam on every idle.
-    const idleListener = map.addListener("idle", () => {
-      report();
-      if (process.env.NODE_ENV !== "development" || idleLoggedRef.current) return;
-      idleLoggedRef.current = true;
-      logRealmMapCameraDebug(map, {
-        action: "idle-vector-check",
-        mapIdPresent: Boolean(REALM_GOOGLE_MAP_ID),
-        vectorRendering: isVectorMapRendering(map),
-      });
-    });
-
-    return () => {
-      google.maps.event.removeListener(idleListener);
-    };
+    const vector = isVectorMapRendering(map);
+    onVectorRendering?.(vector);
+    if (process.env.NODE_ENV === "development" && !vector && !warnedRef.current) {
+      warnedRef.current = true;
+      console.error(
+        "CampusQuest map is not using VECTOR rendering. Open Google Cloud Console > Google Maps Platform > Map Management > select the JavaScript Map ID > confirm Map type is Vector and Tilt and Rotation are enabled.",
+      );
+    }
   }, [map, onVectorRendering, tilesLoaded, vector3dEnabled]);
 
   return null;

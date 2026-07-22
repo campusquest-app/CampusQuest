@@ -4,8 +4,8 @@ import { useEffect } from "react";
 import { useMap } from "@vis.gl/react-google-maps";
 
 /**
- * Ensures Google Maps accepts native tilt/rotate gestures and prevents the
- * page/drawer from stealing multi-touch while the user manipulates the camera.
+ * Ensures Google Maps accepts native tilt/rotate gestures.
+ * Never writes heading/tilt through setOptions (that resets VECTOR camera).
  */
 export function RealmMapCameraGestures({ enabled }: { enabled: boolean }) {
   const map = useMap();
@@ -13,26 +13,21 @@ export function RealmMapCameraGestures({ enabled }: { enabled: boolean }) {
   useEffect(() => {
     if (!map || !enabled) return;
 
-    map.setOptions({
-      gestureHandling: "greedy",
-      rotateControl: true,
-      tiltInteractionEnabled: true,
-      headingInteractionEnabled: true,
-      zoomControl: true,
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: false,
-      keyboardShortcuts: true,
-      isFractionalZoomEnabled: true,
-      clickableIcons: false,
-    });
-
     if (typeof map.setTiltInteractionEnabled === "function") {
       map.setTiltInteractionEnabled(true);
     }
     if (typeof map.setHeadingInteractionEnabled === "function") {
       map.setHeadingInteractionEnabled(true);
     }
+    map.setOptions({
+      gestureHandling: "greedy",
+      rotateControl: true,
+      tiltInteractionEnabled: true,
+      headingInteractionEnabled: true,
+      zoomControl: true,
+      keyboardShortcuts: true,
+      isFractionalZoomEnabled: true,
+    });
   }, [map, enabled]);
 
   useEffect(() => {
@@ -41,23 +36,22 @@ export function RealmMapCameraGestures({ enabled }: { enabled: boolean }) {
     const div = map.getDiv();
     if (!div) return undefined;
 
-    div.style.touchAction = "none";
-    // Ensure empty overlay siblings never steal multi-touch from the canvas.
+    // Prefer browser default touch handling for Google’s gesture engine.
+    div.style.touchAction = "manipulation";
     div.style.pointerEvents = "auto";
+    div.setAttribute("data-no-drawer-swipe", "true");
+    div.setAttribute("data-cq-gesture-block", "all");
 
     const setPanningAttr = (active: boolean) => {
       document.documentElement.toggleAttribute("data-realm-map-panning", active);
     };
 
     const onTouchStart = (event: TouchEvent) => {
-      if (event.touches.length >= 2) setPanningAttr(true);
+      if (event.touches.length >= 1) setPanningAttr(true);
     };
-    const onTouchEnd = (event: TouchEvent) => {
-      if (event.touches.length < 2) setPanningAttr(false);
-    };
+    const onTouchEnd = () => setPanningAttr(false);
     const onTouchCancel = () => setPanningAttr(false);
 
-    // Passive only — never preventDefault; Google Maps owns multi-touch.
     div.addEventListener("touchstart", onTouchStart, { passive: true });
     div.addEventListener("touchend", onTouchEnd, { passive: true });
     div.addEventListener("touchcancel", onTouchCancel, { passive: true });
