@@ -14,6 +14,9 @@ describe("sortAndRank", () => {
     totalXp: 0,
     streakDays: 0,
     avatar: "🎓",
+    profileImageUrl: null,
+    avatarImageUrl: null,
+    avatarType: "initials",
     strength: 0,
     stamina: 0,
     knowledge: 0,
@@ -71,6 +74,23 @@ describe("mapProfileToLeaderboardEntry", () => {
     expect(entry.totalXp).toBe(0);
     expect(entry.streakDays).toBe(4);
     expect(entry.displayName).toBe("Sam");
+    expect(entry.profileImageUrl).toBeNull();
+    expect(entry.avatarImageUrl).toBeNull();
+    expect(entry.avatarType).toBe("initials");
+  });
+
+  it("exposes photo fields when avatar_url is valid", () => {
+    const entry = mapProfileToLeaderboardEntry({
+      id: "user-photo",
+      username: "pat",
+      display_name: "Pat",
+      avatar_url: "https://cdn.example.com/pat.jpg",
+      avatar_custom_json: null,
+      streak_days: 0,
+      user_stats: null,
+    });
+    expect(entry.profileImageUrl).toBe("https://cdn.example.com/pat.jpg");
+    expect(entry.avatarType).toBe("photo");
   });
 
   it("derives level from total_xp", () => {

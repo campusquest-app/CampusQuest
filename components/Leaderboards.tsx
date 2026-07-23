@@ -15,9 +15,13 @@ import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import type { Character } from "@/lib/types";
-import { AvatarDisplay } from "./AvatarDisplay";
+import { UserAvatar } from "./UserAvatar";
 import { AchievementShowcaseStrip } from "./achievements/AchievementShowcaseStrip";
-import { normalizeAvatarInput } from "@/lib/resolveAvatarForDisplay";
+import {
+  collapsedAvatarString,
+  normalizeUserAvatarFields,
+  type UserAvatarType,
+} from "@/lib/userAvatar";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
 
 type SortBy = "totalXp" | "guildLevel";
@@ -61,8 +65,12 @@ type ScholarGuildMember = {
   guildId: string;
   userId: string;
   name: string;
+  username: string;
   totalXP: number;
   avatar: string;
+  profileImageUrl: string | null;
+  avatarImageUrl: string | null;
+  avatarType: UserAvatarType;
 };
 
 const GUILD_XP_PER_LEVEL = 100;
@@ -123,6 +131,9 @@ type XpLeaderboardRowUi = {
   level: number;
   totalXp: number;
   avatar: string;
+  profileImageUrl: string | null;
+  avatarImageUrl: string | null;
+  avatarType: UserAvatarType;
   scholarGuildId?: string | null;
   strength: number;
   stamina: number;
@@ -134,9 +145,21 @@ type XpLeaderboardRowUi = {
 };
 
 function sanitizeLeaderboardRow(row: XpLeaderboardRowUi): XpLeaderboardRowUi {
+  const normalized = normalizeUserAvatarFields({
+    displayName: row.displayName,
+    username: row.username,
+    profileImageUrl: row.profileImageUrl,
+    avatarImageUrl: row.avatarImageUrl,
+    avatar: row.avatar,
+  });
   return {
     ...row,
-    avatar: normalizeAvatarInput(row.avatar),
+    displayName: normalized.displayName || row.displayName,
+    username: normalized.username || row.username,
+    profileImageUrl: normalized.profileImageUrl,
+    avatarImageUrl: normalized.avatarImageUrl,
+    avatarType: normalized.avatarType,
+    avatar: collapsedAvatarString(normalized),
   };
 }
 
@@ -196,8 +219,12 @@ export function Leaderboards({
           guildId: g.id,
           userId: u.userId,
           name: u.displayName,
+          username: u.username,
           totalXP: u.totalXp,
           avatar: u.avatar,
+          profileImageUrl: u.profileImageUrl,
+          avatarImageUrl: u.avatarImageUrl,
+          avatarType: u.avatarType,
         }))
         .sort(compareScholarGuildMemberEntries);
       const totalXP = members.reduce((sum, m) => sum + m.totalXP, 0);
@@ -580,6 +607,8 @@ export function Leaderboards({
                           name={row.displayName}
                           username={row.username}
                           avatar={row.avatar}
+                          profileImageUrl={row.profileImageUrl}
+                          avatarImageUrl={row.avatarImageUrl}
                           level={row.level}
                           totalXP={row.totalXp}
                           isCurrentUser={row.userId === character.id}
@@ -640,9 +669,14 @@ export function Leaderboards({
                               <span className="text-[10px] font-semibold text-white/35 w-6 shrink-0 tabular-nums">
                                 #{memberIndex + 1}
                               </span>
-                              <div className="cq-avatar-slot h-8 w-8 shrink-0 rounded-lg border border-white/10 bg-white/[0.06]">
-                                <AvatarDisplay avatar={m.avatar} fitParent size={32} />
-                              </div>
+                              <UserAvatar
+                                size="sm"
+                                displayName={m.name}
+                                username={m.username}
+                                profileImageUrl={m.profileImageUrl}
+                                avatarImageUrl={m.avatarImageUrl}
+                                avatar={m.avatar}
+                              />
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-white truncate">{m.name}</p>
                               </div>
@@ -718,7 +752,14 @@ function ScholarsYourRankCard({
       <div className="cq-lb-your-rank-body">
         <RankBadge rank={entry.rank} large showMedal />
         <span className="cq-lb-your-rank-avatar">
-          <AvatarDisplay avatar={entry.avatar} fitParent size={52} />
+          <UserAvatar
+            size={52}
+            displayName={entry.displayName}
+            username={entry.username}
+            profileImageUrl={entry.profileImageUrl}
+            avatarImageUrl={entry.avatarImageUrl}
+            avatar={entry.avatar}
+          />
         </span>
         <div className="min-w-0 flex-1">
           <p className="cq-lb-your-rank-name truncate">{entry.displayName}</p>
@@ -864,9 +905,12 @@ function GuildRankRow({
                       key={memberId}
                       className="flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.04] border border-white/10"
                     >
-                      <div className="cq-avatar-slot w-9 h-9 bg-white/[0.06] border border-white/10">
-                        {member ? <AvatarDisplay avatar={member.avatar} fitParent size={36} /> : <span className="text-lg text-white/40">?</span>}
-                      </div>
+                      <UserAvatar
+                        size="compact"
+                        displayName={member?.name}
+                        username={member?.username}
+                        avatar={member?.avatar}
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-white text-sm truncate">{member ? member.name : "Unknown"}</p>
                         <p className="text-xs text-white/50 truncate">{member ? `@${member.username}` : memberId}</p>
@@ -942,7 +986,14 @@ function PodiumCard({
       ) : null}
       <RankBadge rank={user.rank} large={place === 1} />
       <div className={`cq-lb-podium-avatar cq-lb-podium-avatar--${place}`}>
-        <AvatarDisplay avatar={user.avatar} fitParent size={place === 1 ? 60 : place === 2 ? 52 : 50} />
+        <UserAvatar
+          size={place === 1 ? "podium1" : place === 2 ? "podium2" : "podium3"}
+          displayName={user.displayName}
+          username={user.username}
+          profileImageUrl={user.profileImageUrl}
+          avatarImageUrl={user.avatarImageUrl}
+          avatar={user.avatar}
+        />
       </div>
       <p className="cq-lb-podium-name truncate">
         {user.displayName}
@@ -1005,6 +1056,8 @@ function LeaderboardRow({
   name,
   username,
   avatar,
+  profileImageUrl,
+  avatarImageUrl,
   level,
   totalXP,
   isCurrentUser,
@@ -1017,6 +1070,8 @@ function LeaderboardRow({
   name: string;
   username: string;
   avatar: string;
+  profileImageUrl: string | null;
+  avatarImageUrl: string | null;
   level: number;
   totalXP: number;
   isCurrentUser: boolean;
@@ -1029,7 +1084,14 @@ function LeaderboardRow({
     <>
       <RankBadge rank={rank} />
       <span className="cq-lb-row-avatar">
-        <AvatarDisplay avatar={avatar} fitParent size={44} />
+        <UserAvatar
+          size="row"
+          displayName={name}
+          username={username}
+          profileImageUrl={profileImageUrl}
+          avatarImageUrl={avatarImageUrl}
+          avatar={avatar}
+        />
       </span>
       <div className="flex-1 min-w-0 text-left">
         <p className="font-medium text-white truncate flex items-center gap-1.5 min-w-0">

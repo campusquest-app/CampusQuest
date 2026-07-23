@@ -10,6 +10,11 @@ import { listLeaderboardIneligibleUserIds } from "@/lib/server/leaderboardEligib
 import { listAcceptedFriendUserIds } from "@/lib/server/messaging";
 import { requireVerifiedSchoolForCoreAccess } from "@/lib/server/schoolVerification";
 import { createAdminClient } from "@/lib/server/supabase";
+import {
+  collapsedAvatarString,
+  normalizeUserAvatarFields,
+  type UserAvatarType,
+} from "@/lib/userAvatar";
 
 type SupabaseClientLike = ReturnType<typeof createAdminClient>;
 
@@ -45,7 +50,13 @@ export type LeaderboardXpRow = {
   level: number;
   totalXp: number;
   streakDays: number;
+  /** Legacy collapsed avatar string (photo URL, custom JSON, or default emoji). */
   avatar: string;
+  /** Uploaded profile photo URL when valid; otherwise null. */
+  profileImageUrl: string | null;
+  /** Custom/generated character avatar payload when present; otherwise null. */
+  avatarImageUrl: string | null;
+  avatarType: UserAvatarType;
   scholarGuildId?: string | null;
   strength: number;
   stamina: number;
@@ -166,6 +177,14 @@ function levelFromTotalXp(totalXp: number, storedLevel: number | null | undefine
 export function mapProfileToLeaderboardEntry(row: ProfileStatRow): Omit<LeaderboardXpRow, "rank"> {
   const stats = Array.isArray(row.user_stats) ? row.user_stats[0] : row.user_stats;
   const streakDays = Math.max(0, Number(row.streak_days ?? 0));
+  const avatarFields = normalizeUserAvatarFields({
+    displayName: row.display_name,
+    username: row.username,
+    avatar_url: row.avatar_url,
+    avatar_custom_json: row.avatar_custom_json,
+  });
+  // Keep legacy `avatar` for older clients; prefer photo → custom → emoji.
+  const avatar = collapsedAvatarString(avatarFields) || resolveProfileAvatar(row);
 
   if (!stats) {
     return {
@@ -182,7 +201,10 @@ export function mapProfileToLeaderboardEntry(row: ProfileStatRow): Omit<Leaderbo
       focus: 0,
       bossesDefeated: 0,
       finalBossesDefeated: 0,
-      avatar: resolveProfileAvatar(row),
+      avatar,
+      profileImageUrl: avatarFields.profileImageUrl,
+      avatarImageUrl: avatarFields.avatarImageUrl,
+      avatarType: avatarFields.avatarType,
       scholarGuildId: row.scholar_guild_id ?? null,
     };
   }
@@ -203,7 +225,10 @@ export function mapProfileToLeaderboardEntry(row: ProfileStatRow): Omit<Leaderbo
     focus: Math.max(0, Number(s.focus ?? 0)),
     bossesDefeated: Math.max(0, Number(s.bosses_defeated ?? 0)),
     finalBossesDefeated: Math.max(0, Number(s.final_bosses_defeated ?? 0)),
-    avatar: resolveProfileAvatar(row),
+    avatar,
+    profileImageUrl: avatarFields.profileImageUrl,
+    avatarImageUrl: avatarFields.avatarImageUrl,
+    avatarType: avatarFields.avatarType,
     scholarGuildId: row.scholar_guild_id ?? null,
   };
 }

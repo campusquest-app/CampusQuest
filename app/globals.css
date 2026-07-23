@@ -3166,6 +3166,119 @@ html[data-cq-bottom-nav-hidden] {
   object-position: center center;
 }
 
+/* —— Shared UserAvatar (leaderboards + dense lists) —— */
+.cq-user-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: rgba(15, 23, 42, 0.72);
+  color: rgba(226, 232, 240, 0.92);
+  isolation: isolate;
+}
+
+.cq-user-avatar__placeholder {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    110deg,
+    rgba(148, 163, 184, 0.12) 0%,
+    rgba(148, 163, 184, 0.28) 45%,
+    rgba(148, 163, 184, 0.12) 100%
+  );
+  background-size: 200% 100%;
+  animation: cq-user-avatar-shimmer 1.2s ease-in-out infinite;
+  z-index: 0;
+}
+
+@keyframes cq-user-avatar-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-user-avatar__placeholder {
+    animation: none;
+    background: rgba(148, 163, 184, 0.18);
+  }
+}
+
+.cq-user-avatar__img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.cq-user-avatar__img--cover {
+  object-fit: cover;
+  object-position: center center;
+}
+
+.cq-user-avatar__custom {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.cq-user-avatar__custom .avatar-display-frame,
+.cq-user-avatar__custom .avatar-display-frame__inner {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  border-radius: inherit;
+}
+
+/* Custom/pixel character art: contain so full figure is visible, never stretched */
+.cq-user-avatar__custom .avatar-display-frame__inner > svg,
+.cq-user-avatar__custom .avatar-display-frame__inner svg,
+.cq-user-avatar__custom .avatar-display-dicebear svg,
+.cq-user-avatar__custom .avatar-display-img {
+  object-fit: contain;
+  object-position: center center;
+}
+
+.cq-user-avatar__initials {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  color: rgba(241, 245, 249, 0.95);
+  background: linear-gradient(145deg, rgba(56, 189, 248, 0.28), rgba(14, 116, 144, 0.45));
+  user-select: none;
+}
+
+.cq-user-avatar__icon {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: rgba(186, 230, 253, 0.75);
+  background: rgba(30, 41, 59, 0.9);
+}
+
 .avatar-display-prop-badge {
   position: absolute;
   z-index: 5;
@@ -3991,30 +4104,32 @@ html[data-cq-bottom-nav-hidden] {
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.06);
   display: flex;
-  align-items: stretch;
-  justify-content: stretch;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
   padding: 0;
   position: relative;
   isolation: isolate;
   contain: paint;
+  flex-shrink: 0;
+  aspect-ratio: 1 / 1;
 }
 
 .cq-lb-podium-avatar--1 {
-  width: 3.75rem;
-  height: 3.75rem;
+  width: 4.5rem; /* 72px */
+  height: 4.5rem;
   box-shadow: 0 0 16px -4px rgba(252, 211, 77, 0.4);
 }
 
 .cq-lb-podium-avatar--2 {
-  width: 3.25rem;
-  height: 3.25rem;
+  width: 4rem; /* 64px */
+  height: 4rem;
   box-shadow: 0 0 12px -4px rgba(203, 213, 225, 0.25);
 }
 
 .cq-lb-podium-avatar--3 {
-  width: 3.125rem;
-  height: 3.125rem;
+  width: 4rem; /* 64px */
+  height: 4rem;
   box-shadow: 0 0 12px -4px rgba(245, 158, 11, 0.28);
 }
 
@@ -4642,28 +4757,30 @@ html[data-cq-bottom-nav-hidden] {
 }
 
 .cq-lb-row-avatar {
-  width: 2.75rem;
-  height: 2.75rem;
+  width: 3.375rem; /* 54px */
+  height: 3.375rem;
   border-radius: 9999px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.06);
   display: flex;
-  align-items: stretch;
-  justify-content: stretch;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
   flex-shrink: 0;
   padding: 0;
   position: relative;
   isolation: isolate;
   contain: paint;
+  aspect-ratio: 1 / 1;
 }
 
-.cq-lb-podium-avatar .avatar-display-frame,
-.cq-lb-row-avatar .avatar-display-frame {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
+.cq-lb-podium-avatar .cq-user-avatar,
+.cq-lb-row-avatar .cq-user-avatar,
+.cq-lb-your-rank-avatar .cq-user-avatar {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
 }
 
 .cq-leaderboard-row {
@@ -4724,6 +4841,22 @@ html[data-cq-bottom-nav-hidden] {
 
   .cq-lb-podium-card--3 {
     min-height: 8rem;
+  }
+
+  .cq-lb-podium-avatar--1 {
+    width: 3.75rem; /* ~60px on narrow screens */
+    height: 3.75rem;
+  }
+
+  .cq-lb-podium-avatar--2,
+  .cq-lb-podium-avatar--3 {
+    width: 3.25rem; /* ~52px */
+    height: 3.25rem;
+  }
+
+  .cq-lb-row-avatar {
+    width: 2.75rem; /* ~44px */
+    height: 2.75rem;
   }
 
   .cq-lb-podium-name {
