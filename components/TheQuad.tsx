@@ -75,6 +75,7 @@ export function TheQuad({
   canModeratePosts = false,
   onPostXpReward,
   onLogQuest,
+  showXpProgressBar = false,
 }: {
   character: Character;
   onRefresh?: () => void;
@@ -94,6 +95,8 @@ export function TheQuad({
   canModeratePosts?: boolean;
   onPostXpReward?: (reward: QuadPostXpReward) => void;
   onLogQuest?: () => void;
+  /** When true (prefs loaded + enabled), show Level/XP/Streak strip in TopNav. */
+  showXpProgressBar?: boolean;
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
@@ -449,6 +452,7 @@ export function TheQuad({
               unreadNotificationCount={unreadNotificationCount}
               feedTab={feedTab}
               onSelectFeedTab={onFeedTabChange}
+              showXpProgressBar={showXpProgressBar}
             />
           </div>,
           document.body,

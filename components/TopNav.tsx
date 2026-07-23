@@ -20,6 +20,11 @@ export type TopNavProps = {
   feedTab?: QuadFeedTab;
   /** Called when the user picks a feed from the brand dropdown. */
   onSelectFeedTab?: (tab: QuadFeedTab) => void;
+  /**
+   * When true, render Level/XP/Streak strip. Must stay false until preferences are
+   * loaded and the user explicitly enabled the bar (default off).
+   */
+  showXpProgressBar?: boolean;
 };
 
 /** Premium shell header — Instagram-style: icons + centered brand on one row */
@@ -30,6 +35,7 @@ export function TopNav({
   unreadNotificationCount,
   feedTab,
   onSelectFeedTab,
+  showXpProgressBar = false,
 }: TopNavProps) {
   const shellRef = useRef<HTMLElement | null>(null);
   const brandTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -68,7 +74,7 @@ export function TopNav({
       window.visualViewport?.removeEventListener?.("resize", sync);
       document.documentElement.style.removeProperty(TOPNAV_CSS_VAR);
     };
-  }, [character?.id, character?.level, character?.totalXP, character?.streakDays]);
+  }, [character?.id, character?.level, character?.totalXP, character?.streakDays, showXpProgressBar]);
 
   return (
     <header
@@ -151,7 +157,7 @@ export function TopNav({
           )}
         </div>
 
-        {character ? (
+        {character && showXpProgressBar ? (
           <div className="cq-top-nav-meta">
             <TopNavLevelProgress character={character} />
           </div>

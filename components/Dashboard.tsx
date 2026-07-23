@@ -51,6 +51,15 @@ import { StatIcon } from "@/components/stats/StatIcon";
 import { getActivityById } from "@/lib/activities";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { isGameMusicMuted, playXpDing, playLevelUpFanfare, setGameMusicMuted } from "@/lib/playGameSound";
+import {
+  XP_PROGRESS_BAR_PREF_INITIAL,
+  clearGuestShowXpProgressBar,
+  parseShowXpProgressBarFromProfile,
+  readGuestShowXpProgressBar,
+  shouldRenderXpProgressBar,
+  writeGuestShowXpProgressBar,
+  type XpProgressBarPreferenceState,
+} from "@/lib/client/xpProgressBarPreference";
 import { recordUserActivityPing } from "@/lib/client/recordUserActivity";
 import {
   evaluateXpMilestoneCrossing,
@@ -296,6 +305,10 @@ export function Dashboard() {
   const [showCampusSlowNotice, setShowCampusSlowNotice] = useState(false);
   const campusFetchGenRef = useRef(0);
   const [musicMuted, setMusicMuted] = useState(false);
+  const [xpProgressBarPref, setXpProgressBarPref] = useState<XpProgressBarPreferenceState>(
+    XP_PROGRESS_BAR_PREF_INITIAL,
+  );
+  const [xpProgressBarSaveError, setXpProgressBarSaveError] = useState<string | null>(null);
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
   /** Mount scanner module after first open so AnimatePresence can exit; chunk still loads on first tap only. */
   const [qrScannerEverOpened, setQrScannerEverOpened] = useState(false);
@@ -518,6 +531,10 @@ export function Dashboard() {
         const merged = syncAchievementsAfterHydrate(buildLocalCharacterFromServer(snap.profile, snap.stats));
         replaceLocalCharacter(merged, { skipRemoteSync: true });
         setCharacter(merged);
+        setXpProgressBarPref({
+          loaded: true,
+          enabled: parseShowXpProgressBarFromProfile(snap.profile.show_xp_progress_bar),
+        });
       }
     });
   }, []);
@@ -542,6 +559,9 @@ export function Dashboard() {
   const handleClientSessionMissing = useCallback(() => {
     void invalidateInvalidClientSession({ reason: "client_session_missing" });
     clearSchoolVerificationSnapshot();
+    clearGuestShowXpProgressBar();
+    setXpProgressBarPref(XP_PROGRESS_BAR_PREF_INITIAL);
+    setXpProgressBarSaveError(null);
     storeLogout();
     setCharacter(null);
     setFriendView(null);
@@ -1004,6 +1024,9 @@ export function Dashboard() {
     invalidateMeSessionCache();
     resetMeSessionInflight();
     clearSchoolVerificationSnapshot();
+    clearGuestShowXpProgressBar();
+    setXpProgressBarPref(XP_PROGRESS_BAR_PREF_INITIAL);
+    setXpProgressBarSaveError(null);
     storeLogout();
     setCharacter(null);
     setGatePrefillProfile(null);
@@ -1087,6 +1110,36 @@ export function Dashboard() {
       }
     },
     [openQrScanner],
+  );
+
+  const handleToggleShowXpProgressBar = useCallback(
+    (next: boolean) => {
+      setXpProgressBarSaveError(null);
+      setXpProgressBarPref({ loaded: true, enabled: next });
+
+      const c = getCharacter();
+      const token = getAccessToken();
+      const serverBacked = Boolean(c && token && isServerBackedUserId(c.id));
+
+      if (!serverBacked) {
+        writeGuestShowXpProgressBar(next);
+        return;
+      }
+
+      void (async () => {
+        try {
+          const { patchAuthed } = await import("@/lib/client/dashboardApi");
+          await patchAuthed<MeProfileRow, { showXpProgressBar: boolean }>("/api/me/profile", {
+            showXpProgressBar: next,
+          });
+        } catch {
+          setXpProgressBarPref({ loaded: true, enabled: !next });
+          setXpProgressBarSaveError("Couldn't save that setting. Try again.");
+          window.setTimeout(() => setXpProgressBarSaveError(null), 4000);
+        }
+      })();
+    },
+    [],
   );
 
   useEffect(() => {
@@ -1239,6 +1292,9 @@ export function Dashboard() {
   useEffect(() => {
     return registerInvalidSessionListener(() => {
       clearSchoolVerificationSnapshot();
+      clearGuestShowXpProgressBar();
+      setXpProgressBarPref(XP_PROGRESS_BAR_PREF_INITIAL);
+      setXpProgressBarSaveError(null);
       storeLogout();
       setCharacter(null);
       setFriendView(null);
@@ -1259,6 +1315,8 @@ export function Dashboard() {
 
       setBootstrapStatus("bootstrapping");
       setProfileRoute("unknown");
+      setXpProgressBarPref(XP_PROGRESS_BAR_PREF_INITIAL);
+      setXpProgressBarSaveError(null);
 
       if (!tokenAtStart || postLoginBoot) {
         setCharacter(null);
@@ -1268,6 +1326,13 @@ export function Dashboard() {
           setCharacter(local);
         } else {
           setCharacter(null);
+          // Guest / local-only character: resolve display pref from guest LS immediately.
+          if (local?.id.startsWith("char-")) {
+            setXpProgressBarPref({
+              loaded: true,
+              enabled: readGuestShowXpProgressBar(),
+            });
+          }
         }
       }
 
@@ -1280,6 +1345,9 @@ export function Dashboard() {
         invalidateMeSessionCache();
         storeLogout();
         clearSchoolVerificationSnapshot();
+        clearGuestShowXpProgressBar();
+        setXpProgressBarPref(XP_PROGRESS_BAR_PREF_INITIAL);
+        setXpProgressBarSaveError(null);
         setGatePrefillProfile(null);
         setOnboardingPreferences(null);
         refresh();
@@ -1375,6 +1443,11 @@ export function Dashboard() {
         profileSnap = profileMerged;
 
         if (cancelled) return;
+
+        setXpProgressBarPref({
+          loaded: true,
+          enabled: parseShowXpProgressBarFromProfile(profileMerged.show_xp_progress_bar),
+        });
 
         const onboardingDone = profileMerged.onboarding_completed === true;
         const characterDone = profileMerged.onboarding_character_completed === true;
@@ -1952,6 +2025,10 @@ export function Dashboard() {
         showAdminNav={moderationAdminNavVisible(pilotCampusState)}
         unreadNotificationCount={unreadNotificationCount}
         musicMuted={musicMuted}
+        showXpProgressBar={xpProgressBarPref.enabled}
+        xpProgressBarPrefLoaded={xpProgressBarPref.loaded}
+        onToggleShowXpProgressBar={handleToggleShowXpProgressBar}
+        xpProgressBarSaveError={xpProgressBarSaveError}
         activeContext={{ tab, quadFeedTab, characterPane, profileTab }}
         drawerWidth={drawerWidth}
         drawerTranslateX={drawerTranslateX}
@@ -2265,6 +2342,7 @@ export function Dashboard() {
             canModeratePosts={moderationAdminNavVisible(pilotCampusState)}
             onPostXpReward={handleQuadPostXpReward}
             onLogQuest={() => setTab("manual-log")}
+            showXpProgressBar={shouldRenderXpProgressBar(xpProgressBarPref)}
           />
         )}
 

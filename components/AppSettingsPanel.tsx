@@ -73,11 +73,20 @@ export function AppSettingsPanel({
   onAction,
   onRequestSignOut,
   musicMuted,
+  showXpProgressBar = false,
+  xpProgressBarPrefLoaded = false,
+  onToggleShowXpProgressBar,
+  xpProgressBarSaveError = null,
 }: {
   onBack: () => void;
   onAction: (id: SettingsActionId) => void;
   onRequestSignOut?: () => void;
   musicMuted?: boolean;
+  showXpProgressBar?: boolean;
+  /** When false, keep the toggle off and disabled so the bar never flashes before prefs resolve. */
+  xpProgressBarPrefLoaded?: boolean;
+  onToggleShowXpProgressBar?: (next: boolean) => void;
+  xpProgressBarSaveError?: string | null;
 }) {
   function handleRow(id: SettingsActionId) {
     if (id === "sign-out") {
@@ -86,6 +95,9 @@ export function AppSettingsPanel({
     }
     onAction(id);
   }
+
+  const xpBarChecked = xpProgressBarPrefLoaded && showXpProgressBar;
+  const xpBarDisabled = !xpProgressBarPrefLoaded || !onToggleShowXpProgressBar;
 
   return (
     <DrawerSubPanelShell title="Settings" onBack={onBack}>
@@ -100,8 +112,9 @@ export function AppSettingsPanel({
                   const Icon = row.icon;
                   const isLast = index === section.rows.length - 1;
                   const soundHint = row.id === "sound" && musicMuted != null ? (musicMuted ? "Muted" : "On") : null;
+                  const isExperienceLastNav = section.title === "Experience" && isLast;
                   return (
-                    <li key={row.id} className={!isLast ? "border-b border-white/[0.06]" : undefined}>
+                    <li key={row.id} className={!isLast || isExperienceLastNav ? "border-b border-white/[0.06]" : undefined}>
                       <button
                         type="button"
                         onClick={() => handleRow(row.id)}
@@ -121,6 +134,41 @@ export function AppSettingsPanel({
                     </li>
                   );
                 })}
+                {section.title === "Experience" ? (
+                  <li>
+                    <div className="flex w-full items-center gap-3 px-3 py-3.5">
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-white/92">Show XP progress bar</span>
+                        <span className="block text-[11px] text-white/40">
+                          Display your level, XP progress, and streak at the top of the app.
+                        </span>
+                        {xpProgressBarSaveError ? (
+                          <span className="mt-1 block text-[11px] text-rose-300/90" role="status" aria-live="polite">
+                            {xpProgressBarSaveError}
+                          </span>
+                        ) : null}
+                      </span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={xpBarChecked}
+                        aria-label="Show XP progress bar"
+                        disabled={xpBarDisabled}
+                        onClick={() => onToggleShowXpProgressBar?.(!xpBarChecked)}
+                        className={`relative h-7 w-12 shrink-0 rounded-full transition touch-manipulation disabled:opacity-40 ${
+                          xpBarChecked ? "bg-cyan-400/80" : "bg-white/15"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${
+                            xpBarChecked ? "left-[1.35rem]" : "left-0.5"
+                          }`}
+                          aria-hidden
+                        />
+                      </button>
+                    </div>
+                  </li>
+                ) : null}
               </ul>
             </section>
           ))}

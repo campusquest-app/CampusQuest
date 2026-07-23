@@ -509,6 +509,8 @@ export const patchMeProfileSchema = z
     starterIntroSeen: z.literal(true).optional(),
     /** Dev-only: clear persisted intro dismissal for onboarding QA. */
     starterIntroSeenReset: z.literal(true).optional(),
+    /** Display preference: Level/XP/Streak top nav bar. */
+    showXpProgressBar: z.boolean().optional(),
     /** When true and caller is moderation-admin, skips cooldown enforcement and does not bump name-change timestamps (repairs/migrations via API only). Ignored for other users. */
     preserveIdentityCooldownTimestamps: z.literal(true).optional(),
   })

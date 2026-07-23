@@ -184,6 +184,10 @@ export function AppSideDrawer({
   showAdminNav,
   unreadNotificationCount = 0,
   musicMuted,
+  showXpProgressBar,
+  xpProgressBarPrefLoaded,
+  onToggleShowXpProgressBar,
+  xpProgressBarSaveError,
   initialPanel = "menu",
   activeContext,
   drawerWidth = 360,
@@ -200,6 +204,10 @@ export function AppSideDrawer({
   showAdminNav?: boolean;
   unreadNotificationCount?: number;
   musicMuted?: boolean;
+  showXpProgressBar?: boolean;
+  xpProgressBarPrefLoaded?: boolean;
+  onToggleShowXpProgressBar?: (next: boolean) => void;
+  xpProgressBarSaveError?: string | null;
   initialPanel?: DrawerPanel;
   activeContext?: DrawerActiveContext;
   drawerWidth?: number;
@@ -410,6 +418,10 @@ export function AppSideDrawer({
                 }
               }}
               musicMuted={musicMuted}
+              showXpProgressBar={showXpProgressBar}
+              xpProgressBarPrefLoaded={xpProgressBarPrefLoaded}
+              onToggleShowXpProgressBar={onToggleShowXpProgressBar}
+              xpProgressBarSaveError={xpProgressBarSaveError}
             />
           ) : (
             <AppHelpSupportPanel onBack={() => setPanel("menu")} />

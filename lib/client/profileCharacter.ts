@@ -20,6 +20,8 @@ export type MeProfileRow = {
   onboarding_character_completed?: boolean | null;
   /** Server: starter "New Player Protocol" overlay suppressed after first dismiss or backfill. */
   starter_intro_seen_at?: string | null;
+  /** When true, show Level/XP/Streak bar in the top nav. Default false. */
+  show_xp_progress_bar?: boolean | null;
   beginner_chain_completed_at?: string | null;
   beginner_chain_celebration_seen_at?: string | null;
   avatar_custom_json?: string | null;

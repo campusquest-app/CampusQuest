@@ -264,6 +264,10 @@ export async function PATCH(request: Request) {
       patch.starter_intro_seen_at = nowIso;
     }
 
+    if (input.showXpProgressBar !== undefined) {
+      patch.show_xp_progress_bar = input.showXpProgressBar;
+    }
+
     if (Object.keys(patch).length === 0) {
       throw new ApiError(400, "No profile fields to update.", "PROFILE_PATCH_EMPTY");
     }
