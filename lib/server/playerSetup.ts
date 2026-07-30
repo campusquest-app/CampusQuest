@@ -1,6 +1,10 @@
 import { ApiError } from "@/lib/server/http";
 import { createAdminClient } from "@/lib/server/supabase";
 import type { ProfileRow, UserStatsRow } from "@/lib/server/types";
+import {
+  isKnownQaAccountEmail,
+  QA_ACCOUNT_PROFILE_FLAGS,
+} from "@/lib/internalAccount";
 
 function sanitizeUsername(seed: string) {
   const normalized = seed
@@ -49,19 +53,36 @@ export async function ensurePlayerSetup(args: {
     : buildUsername(email ?? userId, userId);
   const defaultName = displayName?.trim() || (email ? email.split("@")[0] : "CampusQuest Player");
 
-  // role intentionally omitted: new users choose Student / Faculty-Staff on
-  // the account-type onboarding screen (NULL role = "not chosen yet").
-  const { error: profileError } = await admin.from("profiles").upsert(
-    {
-      id: userId,
-      username,
-      display_name: defaultName.slice(0, 50),
-      bio: "",
-    },
-    { onConflict: "id", ignoreDuplicates: true },
-  );
+  // role intentionally omitted for normal users: they choose Student /
+  // Faculty-Staff on the account-type onboarding screen (NULL = not chosen).
+  // Known QA emails are flagged immediately so they bypass campus-domain
+  // gates, stay hidden from public surfaces, and never earn competitive rewards.
+  const isQa = isKnownQaAccountEmail(email);
+  const profileInsert: Record<string, unknown> = {
+    id: userId,
+    username,
+    display_name: defaultName.slice(0, 50),
+    bio: "",
+    ...(isQa ? QA_ACCOUNT_PROFILE_FLAGS : {}),
+  };
+
+  const { error: profileError } = await admin.from("profiles").upsert(profileInsert, {
+    onConflict: "id",
+    ignoreDuplicates: true,
+  });
   if (profileError) {
     throw new ApiError(400, profileError.message, "PROFILE_SETUP_FAILED");
+  }
+
+  if (isQa) {
+    // ignoreDuplicates may leave an older unflagged row — force QA flags.
+    const { error: flagError } = await admin
+      .from("profiles")
+      .update({ ...QA_ACCOUNT_PROFILE_FLAGS })
+      .eq("id", userId);
+    if (flagError && !/column .* does not exist/i.test(flagError.message ?? "")) {
+      throw new ApiError(400, flagError.message, "QA_PROFILE_FLAGS_FAILED");
+    }
   }
 
   const { error: statsError } = await admin.from("user_stats").upsert(

@@ -5,10 +5,10 @@ import {
   isEmailVerifiedForCampus,
   type CampusVerificationSnapshot,
 } from "@/lib/campusAccess";
+import { isInternalAccount } from "@/lib/internalAccount";
 import { getPilotSchoolConfig } from "@/lib/server/pilotMode";
 import {
   fetchProfileAccessFlags,
-  fetchProfileRole,
   isInternalTesterRole,
   isPlatformAdmin,
   normalizeProfileRole,
@@ -45,14 +45,16 @@ export async function resolveCampusAccessIdentity(
 ): Promise<CampusAccessIdentity> {
   const flags = await fetchProfileAccessFlags(userClient, user.id, { email: user.email });
   const isAdmin = isPlatformAdmin(user as User, flags.role);
+  // fetchProfileAccessFlags already applies isInternalAccount (email + flags).
+  const isInternalTester = flags.isInternalTester;
   logCampusAccessServerDev({
     emailDomain: extractCampusEmailDomain(user.email),
     profileRole: flags.role,
     isAdmin,
-    isInternalTester: flags.isInternalTester,
+    isInternalTester,
     isConfirmed: isEmailVerifiedForCampus(user),
   });
-  return { isPlatformAdmin: isAdmin, isInternalTester: flags.isInternalTester };
+  return { isPlatformAdmin: isAdmin, isInternalTester };
 }
 
 /** Platform admin: profiles.role admin+ with confirmed email, moderation allow-list, or dev fallback emails. */
@@ -83,16 +85,26 @@ async function userIdCampusAccessIdentity(userId: string): Promise<CampusAccessI
 
   let { data: profile, error: profileError } = await admin
     .from("profiles")
-    .select("role, is_internal_tester")
+    .select("role, is_internal_tester, is_test_user")
     .eq("id", userId)
     .maybeSingle();
   if (profileError) {
     // Pre-migration schema without is_internal_tester — retry with role only.
     ({ data: profile } = await admin.from("profiles").select("role").eq("id", userId).maybeSingle());
   }
-  const row = profile as { role?: string | null; is_internal_tester?: boolean | null } | null;
+  const row = profile as { role?: string | null; is_internal_tester?: boolean | null; is_test_user?: boolean | null } | null;
   const profileRole = normalizeProfileRole(row?.role);
-  const isInternalTester = row?.is_internal_tester === true || isInternalTesterRole(profileRole);
+  const isInternalTester =
+    isInternalAccount(
+      { email: user.email },
+      {
+        role: profileRole,
+        is_internal_tester: row?.is_internal_tester,
+        is_test_user: row?.is_test_user,
+      },
+    ) ||
+    row?.is_internal_tester === true ||
+    isInternalTesterRole(profileRole);
 
   if (!isEmailVerifiedForCampus(user)) {
     return { isPlatformAdmin: false, isInternalTester };

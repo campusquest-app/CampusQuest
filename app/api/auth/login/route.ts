@@ -151,7 +151,10 @@ export async function POST(request: Request) {
     // QA test accounts (is_test_user = true) always restart onboarding on
     // sign-in and never earn badges or count as active users.
     let torchBearer: Awaited<ReturnType<typeof tryAwardTorchBearerBadge>> = null;
-    const qaOnboardingReset = await resetQaOnboardingOnLoginIfTestUser(player.profile);
+    const qaOnboardingReset = await resetQaOnboardingOnLoginIfTestUser({
+      ...player.profile,
+      email: authUser.email,
+    });
     if (qaOnboardingReset) {
       const { data: freshProfile } = await createAdminClient()
         .from("profiles")

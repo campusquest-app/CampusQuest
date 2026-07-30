@@ -4,6 +4,7 @@
  */
 
 import { normalizeEmail } from "@/lib/platformAdmin";
+import { isInternalAccount } from "@/lib/internalAccount";
 
 export type CampusVerificationSnapshot = {
   status: "pending" | "verified";
@@ -39,12 +40,13 @@ export function emailMatchesPilotDomain(
 
 /**
  * Single gate for campus pilot features (Quad, orgs, events, map, etc.).
- * Trusted internal accounts (admins and internal testers) bypass campus email
- * rules entirely; only normal users are evaluated against the pilot domain.
+ * Trusted internal accounts (admins and internal testers / permanent QA email)
+ * bypass campus email rules entirely; only normal users are evaluated against
+ * the pilot domain.
  */
 export function canAccessCampusFeatures(args: {
   isPlatformAdmin: boolean;
-  /** Role/flag-based bypass for QA + beta_internal accounts — never email-domain based. */
+  /** Role/flag/exact-QA-email bypass — never whole-domain @campusquestapp.com. */
   isInternalTester?: boolean;
   email?: string | null;
   emailVerified: boolean;
@@ -52,6 +54,8 @@ export function canAccessCampusFeatures(args: {
   verification?: CampusVerificationSnapshot | null;
 }): boolean {
   if (args.isPlatformAdmin || args.isInternalTester) return true;
+  // Exact known QA emails can bypass even before profile flags hydrate.
+  if (isInternalAccount({ email: args.email }, null)) return true;
 
   const verification = args.verification;
   if (

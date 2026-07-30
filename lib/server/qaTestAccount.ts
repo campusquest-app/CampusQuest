@@ -1,6 +1,22 @@
 import { ApiError } from "@/lib/server/http";
 import { findAuthUserIdByEmail } from "@/lib/server/authBootstrap";
 import { createAdminClient } from "@/lib/server/supabase";
+import {
+  isInternalAccount,
+  isKnownQaAccountEmail,
+  isPermanentQaEmail,
+  QA_ACCOUNT_PROFILE_FLAGS,
+  resolveQaTestAccountEmail,
+  PERMANENT_QA_SIGNUP_EMAIL,
+} from "@/lib/internalAccount";
+
+export {
+  isInternalAccount,
+  isKnownQaAccountEmail,
+  isPermanentQaEmail,
+  PERMANENT_QA_SIGNUP_EMAIL,
+  resolveQaTestAccountEmail,
+} from "@/lib/internalAccount";
 
 /**
  * Permanent QA test account for exercising the sign-up / onboarding flow.
@@ -11,11 +27,11 @@ import { createAdminClient } from "@/lib/server/supabase";
  * - Every reset path checks is_test_user = true so a real user can never be affected.
  * - The account never earns XP, badges, or streaks and is excluded from all
  *   public surfaces (leaderboards, search, analytics) via is_hidden filters.
+ * - Campus-domain bypass is granted via {@link isInternalAccount} (exact email
+ *   + profile flags). Random @campusquestapp.com addresses are never included.
  */
 
-export const QA_TEST_ACCOUNT_EMAIL = (
-  process.env.QA_TEST_ACCOUNT_EMAIL ?? "qa-signup@campusquest.app"
-).toLowerCase();
+export const QA_TEST_ACCOUNT_EMAIL = resolveQaTestAccountEmail();
 
 /** True only for rows explicitly flagged as test users. */
 export function isTestUserProfile(
@@ -262,10 +278,7 @@ export async function ensureQaTestAccount(): Promise<EnsureQaAccountResult> {
     username: "campusquestqa",
     display_name: "CampusQuest QA",
     bio: "",
-    role: "qa",
-    is_test_user: true,
-    is_hidden: true,
-    is_internal_tester: true,
+    ...QA_ACCOUNT_PROFILE_FLAGS,
   };
   let { error: profileError } = await admin.from("profiles").upsert(qaProfile, { onConflict: "id" });
   if (profileError && isMissingColumnError(profileError)) {
@@ -290,14 +303,35 @@ export async function ensureQaTestAccount(): Promise<EnsureQaAccountResult> {
 }
 
 /**
- * Login hook: when a test user signs in, wipe onboarding state so the app
- * routes them to the first sign-up screen. No-op (and safe) for real users.
+ * Login hook: when a QA test user signs in, wipe onboarding state so the app
+ * routes them through the full sign-up / onboarding screens again.
+ *
+ * Triggers only for:
+ * - profiles.is_test_user = true, OR
+ * - an exact known QA email (so flags can be applied if signup lagged)
+ *
+ * Does NOT reset ordinary internal testers (is_internal_tester / beta_internal)
+ * — campus bypass for those roles stays separate from onboarding wipe.
  */
 export async function resetQaOnboardingOnLoginIfTestUser(profile: {
   id: string;
   is_test_user?: boolean | null;
+  role?: string | null;
+  is_internal_tester?: boolean | null;
+  email?: string | null;
 }): Promise<boolean> {
-  if (!isTestUserProfile(profile)) return false;
+  const isKnownQa = isKnownQaAccountEmail(profile.email);
+  if (!isKnownQa && !isTestUserProfile(profile)) {
+    return false;
+  }
+  if (!isTestUserProfile(profile)) {
+    // Ensure flags exist before wiping so subsequent surfaces stay excluded.
+    const admin = createAdminClient();
+    await admin
+      .from("profiles")
+      .update({ ...QA_ACCOUNT_PROFILE_FLAGS })
+      .eq("id", profile.id);
+  }
   await resetQaOnboardingState(profile.id);
   return true;
 }

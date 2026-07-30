@@ -44,7 +44,7 @@ describe("campusAccess", () => {
       canAccessCampusFeatures({
         isPlatformAdmin: false,
         isInternalTester: true,
-        email: "qa-signup@campusquest.app",
+        email: "qa_signup@campusquestapp.com",
         emailVerified: true,
         pilotDomain: "uri.edu",
         verification: { status: "pending", schoolName: null, schoolDomain: null },
@@ -60,6 +60,32 @@ describe("campusAccess", () => {
         pilotDomain: "uri.edu",
       }),
     ).toBe(true);
+  });
+
+  it("allows the permanent QA email even without isInternalTester flag hydrated", () => {
+    expect(
+      canAccessCampusFeatures({
+        isPlatformAdmin: false,
+        isInternalTester: false,
+        email: "qa_signup@campusquestapp.com",
+        emailVerified: true,
+        pilotDomain: "uri.edu",
+        verification: { status: "pending", schoolName: null, schoolDomain: null },
+      }),
+    ).toBe(true);
+  });
+
+  it("does not allow arbitrary campusquestapp.com emails", () => {
+    expect(
+      canAccessCampusFeatures({
+        isPlatformAdmin: false,
+        isInternalTester: false,
+        email: "random@campusquestapp.com",
+        emailVerified: true,
+        pilotDomain: "uri.edu",
+        verification: { status: "pending", schoolName: null, schoolDomain: null },
+      }),
+    ).toBe(false);
   });
 
   it("does not treat non-testers as internal testers", () => {

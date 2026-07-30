@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { User } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/server/http";
+import { isInternalAccount } from "@/lib/internalAccount";
 import { isAdminEmailFallback } from "@/lib/platformAdmin";
 import { isAdminEmail, isAuthEmailConfirmed, userHasModerationAdminAccess } from "@/lib/server/adminEmails";
 
@@ -98,7 +99,7 @@ export async function fetchProfileAccessFlags(
 ): Promise<ProfileAccessFlags> {
   const { data, error } = await userClient
     .from("profiles")
-    .select("role, is_internal_tester")
+    .select("role, is_internal_tester, is_test_user, is_hidden")
     .eq("id", userId)
     .maybeSingle();
 
@@ -106,19 +107,36 @@ export async function fetchProfileAccessFlags(
     // Missing is_internal_tester column (pre-migration): fall back to role-only fetch.
     if (error.code === "42703" || /column .* does not exist/i.test(error.message ?? "")) {
       const role = await fetchProfileRole(userClient, userId, options);
-      return { role, isInternalTester: isInternalTesterRole(role) };
+      return {
+        role,
+        isInternalTester:
+          isInternalTesterRole(role) || isInternalAccount({ email: options?.email }, { role }),
+      };
     }
     throw new ApiError(400, error.message, "PROFILE_ROLE_FETCH_FAILED");
   }
 
-  const row = data as { role?: string | null; is_internal_tester?: boolean | null } | null;
+  const row = data as {
+    role?: string | null;
+    is_internal_tester?: boolean | null;
+    is_test_user?: boolean | null;
+    is_hidden?: boolean | null;
+  } | null;
   let role = normalizeProfileRole(row?.role);
   if (role === "student" && options?.email && emailImpliesAdminRole(options.email)) {
     role = "super_admin";
   }
   return {
     role,
-    isInternalTester: row?.is_internal_tester === true || isInternalTesterRole(role),
+    isInternalTester: isInternalAccount(
+      { email: options?.email },
+      {
+        role,
+        is_internal_tester: row?.is_internal_tester,
+        is_test_user: row?.is_test_user,
+        is_hidden: row?.is_hidden,
+      },
+    ),
   };
 }
 

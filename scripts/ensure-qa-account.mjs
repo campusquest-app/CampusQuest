@@ -2,9 +2,9 @@
 /**
  * Provision (or reset) the permanent QA onboarding test account.
  *
- * - Creates auth user qa-signup@campusquest.app if missing (email pre-confirmed).
+ * - Creates auth user qa_signup@campusquestapp.com if missing (email pre-confirmed).
  * - Flags its profile: is_test_user = true, is_hidden = true, is_internal_tester = true, role = 'qa'.
- *   (is_internal_tester / role 'qa' permanently bypass the campus email verification gate.)
+ *   (Exact email + flags permanently bypass the campus email verification gate.)
  * - Resets all onboarding/progress state so the next sign-in starts at Sign Up.
  * - Never deletes the account; auth credentials are preserved.
  *
@@ -12,7 +12,7 @@
  * Requires: NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
  *           QA_TEST_ACCOUNT_PASSWORD (only on first creation)
  *
- * Run the migration first: supabase/migrations/20260721150000_qa_test_account.sql
+ * Exact email only — other @campusquestapp.com addresses are NOT treated as QA.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -45,7 +45,7 @@ loadEnvLocal();
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const email = (process.env.QA_TEST_ACCOUNT_EMAIL ?? "qa-signup@campusquest.app").toLowerCase();
+const email = (process.env.QA_TEST_ACCOUNT_EMAIL ?? "qa_signup@campusquestapp.com").toLowerCase();
 
 if (!url || !serviceKey) {
   console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");

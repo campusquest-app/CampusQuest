@@ -7,23 +7,27 @@ Do **not** publish these credentials in public marketing pages.
 
 | Field | Value |
 |--------|--------|
-| Email | Set in production secrets as `QA_TEST_ACCOUNT_EMAIL` (default seed: `qa-signup@campusquest.app`) |
+| Email | `qa_signup@campusquestapp.com` (or `QA_TEST_ACCOUNT_EMAIL` in production secrets) |
 | Password | Set in production secrets as `QA_TEST_ACCOUNT_PASSWORD` |
+
+Exact email match only. Other `@campusquestapp.com` addresses do **not** bypass campus verification.
 
 Provision / reset via:
 
 ```bash
-node scripts/ensure-qa-account.mjs
+QA_TEST_ACCOUNT_EMAIL=qa_signup@campusquestapp.com QA_TEST_ACCOUNT_PASSWORD='…' node scripts/ensure-qa-account.mjs
 ```
 
 Or Admin → QA Account Reset (`/api/internal/admin/qa-account/reset`) when signed in as a platform admin.
 
+On every login, the QA profile’s onboarding state is wiped so you can re-test signup screens (role selection, character creation, legal consent) without deleting the auth user.
+
 ## Reviewer notes
 
-1. This account bypasses campus-email gate restrictions used for student verification during limited campus rollout.
-2. Role is `qa` / test — it can exercise social features without appearing on public student leaderboards.
-3. After login, reviewers can open **The Quad**, **Inbox**, **Profile**, **Settings**, and **Realm**.
-4. To verify safety tools: open another profile → Report / Block; open a post → Report; Settings → Blocked users; Settings → Delete account (do **not** delete the shared reviewer account—use a disposable account if testing deletion).
+1. This account bypasses campus-email (`@uri.edu`) restrictions via `isInternalAccount`.
+2. Role is `qa` / test — excluded from leaderboards, search, directories, analytics, founders, and competitive rewards.
+3. After login, reviewers still walk the full onboarding UI; school-domain gate is synthetically satisfied.
+4. To verify safety tools: open another profile → Report / Block; Settings → Delete account (do **not** delete the shared reviewer account—use a disposable account if testing deletion).
 
 ## Public URLs for store listings
 
@@ -33,12 +37,3 @@ Or Admin → QA Account Reset (`/api/internal/admin/qa-account/reset`) when sign
 | Terms of Service | `https://campusquest.app/legal/terms` |
 | Community Guidelines | `https://campusquest.app/legal/community-guidelines` |
 | Support | `https://campusquest.app/support` |
-
-## Production checklist (pre-submit)
-
-- [ ] App is **not** labeled Beta / Pilot / Test build in consumer UI
-- [ ] Account deletion works in Settings
-- [ ] Report + Block available on profiles; Report on posts, comments, messages, events
-- [ ] Infringement contact documented on `/support`
-- [ ] Reviewer credentials filled in the store console
-- [ ] Native permission strings present for camera, location, photos, microphone, notifications (when shipping native wrappers)
