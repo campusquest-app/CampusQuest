@@ -30,6 +30,8 @@ import { DrawerPlayerProfileCard } from "@/components/DrawerPlayerProfileCard";
 import { CampusQuestLogo } from "@/components/CampusQuestLogo";
 import { AppSettingsPanel, type SettingsActionId } from "@/components/AppSettingsPanel";
 import { AppHelpSupportPanel } from "@/components/AppHelpSupportPanel";
+import { BlockedUsersPanel } from "@/components/safety/BlockedUsersPanel";
+import { DeleteAccountPanel } from "@/components/safety/DeleteAccountPanel";
 import { DRAWER_SNAP_MS } from "@/lib/client/drawerGeometry";
 import { setIsDrawerOpen } from "@/lib/client/appDrawerStore";
 
@@ -52,7 +54,7 @@ export type AppDrawerDestination =
   | "progress-hub"
   | "skills-lore";
 
-type DrawerPanel = "menu" | "settings" | "help";
+type DrawerPanel = "menu" | "settings" | "help" | "blocked-users" | "delete-account";
 
 type MenuItemId =
   | AppDrawerDestination
@@ -181,6 +183,7 @@ export function AppSideDrawer({
   onNavigate,
   onSettingsAction,
   onRequestSignOut,
+  onAccountDeleted,
   showAdminNav,
   unreadNotificationCount = 0,
   musicMuted,
@@ -201,6 +204,8 @@ export function AppSideDrawer({
   onNavigate: (dest: MenuItemId) => void;
   onSettingsAction: (action: SettingsActionId) => void;
   onRequestSignOut?: () => void;
+  /** Called after self-serve account deletion succeeds. */
+  onAccountDeleted?: () => void;
   showAdminNav?: boolean;
   unreadNotificationCount?: number;
   musicMuted?: boolean;
@@ -404,7 +409,7 @@ export function AppSideDrawer({
                     Admin tools
                   </Link>
                 ) : null}
-                <p className="cq-drawer-version text-center">CampusQuest v0.1</p>
+                <p className="cq-drawer-version text-center">CampusQuest</p>
               </div>
             </>
           ) : panel === "settings" ? (
@@ -412,6 +417,14 @@ export function AppSideDrawer({
               onBack={() => setPanel("menu")}
               onRequestSignOut={onRequestSignOut}
               onAction={(action) => {
+                if (action === "blocked-users") {
+                  setPanel("blocked-users");
+                  return;
+                }
+                if (action === "delete-account") {
+                  setPanel("delete-account");
+                  return;
+                }
                 onSettingsAction(action);
                 if (action !== "sound" && action !== "appearance") {
                   onClose();
@@ -422,6 +435,16 @@ export function AppSideDrawer({
               xpProgressBarPrefLoaded={xpProgressBarPrefLoaded}
               onToggleShowXpProgressBar={onToggleShowXpProgressBar}
               xpProgressBarSaveError={xpProgressBarSaveError}
+            />
+          ) : panel === "blocked-users" ? (
+            <BlockedUsersPanel onBack={() => setPanel("settings")} />
+          ) : panel === "delete-account" ? (
+            <DeleteAccountPanel
+              onBack={() => setPanel("settings")}
+              onDeleted={() => {
+                onClose();
+                onAccountDeleted?.();
+              }}
             />
           ) : (
             <AppHelpSupportPanel onBack={() => setPanel("menu")} />

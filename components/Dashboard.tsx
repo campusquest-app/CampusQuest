@@ -1086,8 +1086,12 @@ export function Dashboard() {
           break;
         case "privacy":
           if (typeof window !== "undefined") {
-            window.location.href = "/legal/privacy";
+            window.location.href = "/support";
           }
+          break;
+        case "blocked-users":
+        case "delete-account":
+          // Handled inside AppSideDrawer sub-panels.
           break;
         case "campus":
           setTab("character");
@@ -2021,6 +2025,13 @@ export function Dashboard() {
         onNavigate={handleDrawerNavigate}
         onSettingsAction={handleSettingsAction}
         onRequestSignOut={openLogoutConfirm}
+        onAccountDeleted={() => {
+          setSideMenuOpen(false);
+          setDrawerSubPanel("menu");
+          setCharacter(null);
+          setBootstrapStatus("unauthenticated");
+          setBootstrapNonce((n) => n + 1);
+        }}
         initialPanel={drawerSubPanel}
         showAdminNav={moderationAdminNavVisible(pilotCampusState)}
         unreadNotificationCount={unreadNotificationCount}

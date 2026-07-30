@@ -98,7 +98,7 @@ const HELP_ARTICLES: HelpArticle[] = [
     body: [
       "Why didn’t my scan work? The code may be expired, already used today, or outside scan hours. Try again in good lighting.",
       "How do I change my name or avatar? Open Settings → Profile & Character or edit from your Profile tab.",
-      "Is CampusQuest only for URI? Pilot access is campus-specific. Verify your school email when prompted.",
+      "Is CampusQuest only for one school? Access may be campus-specific. Verify your school email when prompted.",
     ],
   },
 ];
@@ -116,7 +116,7 @@ const SUPPORT_LINKS: { id: string; label: string; description: string; icon: Luc
     label: "Contact Support",
     description: "Email the CampusQuest team",
     icon: Mail,
-    href: "mailto:support@campusquest.app?subject=CampusQuest%20Support",
+    href: "/support",
   },
   {
     id: "guidelines",

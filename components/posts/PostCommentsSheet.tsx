@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Heart, Image as ImageIcon, X } from "lucide-react";
+import { Heart, X } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import type { FieldNote, QuadComment } from "@/lib/types";
 import { QUAD_COMMENT_MAX_CHARS } from "@/lib/types";
 import type { QuadCommentActionResult } from "@/lib/client/quadCommentActions";
 import { nestQuadComments, type QuadCommentNode } from "@/lib/quadCommentsTree";
+import { ReportContentSheet } from "@/components/safety/ReportContentSheet";
 
 const DISMISS_DRAG_PX = 96;
 const QUICK_EMOJIS = ["❤️", "🙌", "🔥", "👏", "😮", "😂", "🎉", "💯"] as const;
@@ -36,6 +37,7 @@ function CommentRow({
   onReply,
   onToggleLike,
   likePendingId,
+  onReport,
 }: {
   comment: QuadCommentNode;
   depth?: number;
@@ -43,6 +45,7 @@ function CommentRow({
   onReply: (target: ReplyTarget) => void;
   onToggleLike?: (commentId: string, liked: boolean) => void | Promise<void | QuadCommentActionResult>;
   likePendingId: string | null;
+  onReport?: (comment: QuadCommentNode) => void;
 }) {
   const authorProfile = {
     userId: comment.authorId,
@@ -97,6 +100,15 @@ function CommentRow({
               >
                 Reply
               </button>
+              {onReport ? (
+                <button
+                  type="button"
+                  className="cq-comments-sheet-reply-btn"
+                  onClick={() => onReport(comment)}
+                >
+                  Report
+                </button>
+              ) : null}
             </div>
           </div>
           <button
@@ -127,6 +139,7 @@ function CommentRow({
                 onReply={onReply}
                 onToggleLike={onToggleLike}
                 likePendingId={likePendingId}
+                onReport={onReport}
               />
             ))}
           </ul>
@@ -167,6 +180,8 @@ export function PostCommentsSheet({
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [entered, setEntered] = useState(false);
+  const [reportTarget, setReportTarget] = useState<QuadCommentNode | null>(null);
+  const [reportNotice, setReportNotice] = useState<string | null>(null);
   const dragStartY = useRef(0);
   const dragYRef = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -342,10 +357,16 @@ export function PostCommentsSheet({
                   onReply={startReply}
                   onToggleLike={onToggleCommentLike ? handleToggleLike : undefined}
                   likePendingId={likePendingId}
+                  onReport={(c) => setReportTarget(c)}
                 />
               ))}
             </ul>
           )}
+          {reportNotice ? (
+            <p className="px-4 py-2 text-center text-xs text-cyan-200/85" role="status">
+              {reportNotice}
+            </p>
+          ) : null}
         </div>
 
         {onAddComment ? (
@@ -397,24 +418,7 @@ export function PostCommentsSheet({
                 enterKeyHint="send"
               />
               <div className="cq-comments-sheet-composer-tools">
-                <button
-                  type="button"
-                  className="cq-comments-sheet-tool-btn"
-                  disabled
-                  aria-label="Add image (coming soon)"
-                  title="Coming soon"
-                >
-                  <ImageIcon className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  className="cq-comments-sheet-tool-btn"
-                  disabled
-                  aria-label="Add GIF (coming soon)"
-                  title="Coming soon"
-                >
-                  <span className="cq-comments-sheet-gif-label">GIF</span>
-                </button>
+                {/* Image/GIF attachments ship in a later release — omit unfinished controls from store builds. */}
               </div>
               <button
                 type="submit"
@@ -427,6 +431,23 @@ export function PostCommentsSheet({
           </form>
         ) : null}
       </div>
+      {reportTarget ? (
+        <ReportContentSheet
+          mode="comment"
+          commentId={reportTarget.id}
+          reportedUserId={reportTarget.authorId}
+          targetLabel={`Comment by @${reportTarget.authorUsername}`}
+          onClose={() => setReportTarget(null)}
+          onSubmitted={() => {
+            setReportNotice("Thanks — we received your report.");
+            window.setTimeout(() => setReportNotice(null), 2800);
+          }}
+          onError={(message) => {
+            setReportNotice(message);
+            window.setTimeout(() => setReportNotice(null), 3200);
+          }}
+        />
+      ) : null}
     </div>,
     document.body,
   );

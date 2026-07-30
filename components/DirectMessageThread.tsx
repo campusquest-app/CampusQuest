@@ -1073,7 +1073,7 @@ export function DirectMessageThread({
         ) : null}
         {!loading && (blockedByMe || blockedByOther) ? (
           <p className="rounded-lg bg-rose-500/10 px-3 py-3 text-sm text-rose-200/90">
-            {blockedByMe ? "You blocked this user. Unblock from settings to message again." : "You cannot message this user."}
+            {blockedByMe ? "You blocked this user. Unblock them in Settings → Blocked users to message again." : "You cannot message this user."}
           </p>
         ) : null}
         {canMessage && messages.length === 0 && !loading ? (

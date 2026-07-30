@@ -18,6 +18,8 @@ import { ProfileLockedPanel } from "./ProfileLockedPanel";
 import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
 import type { CampusMemoryGroup } from "@/lib/types";
 import { ConnectionActionButton } from "@/components/ConnectionActionButton";
+import { ReportContentSheet } from "@/components/safety/ReportContentSheet";
+import { postAuthed } from "@/lib/client/dashboardApi";
 import type { ProfileRelationshipStatus } from "@/lib/client/userProfileViewClient";
 
 export function ProfileSocialPage({
@@ -101,6 +103,22 @@ export function ProfileSocialPage({
   const [memoryViewerInitialId, setMemoryViewerInitialId] = useState<string | undefined>();
   const [menuOpen, setMenuOpen] = useState(false);
   const [connectionToast, setConnectionToast] = useState<string | null>(null);
+  const [safetySheet, setSafetySheet] = useState<"report" | null>(null);
+  const [blockBusy, setBlockBusy] = useState(false);
+
+  async function handleBlockUser() {
+    if (blockBusy) return;
+    setBlockBusy(true);
+    try {
+      await postAuthed("/api/social/blocks", { userId: character.id });
+      setConnectionToast("User blocked. Manage blocks in Settings → Blocked users.");
+      onConnectionChange?.();
+    } catch (err) {
+      setConnectionToast(err instanceof Error ? err.message : "Could not block user.");
+    } finally {
+      setBlockBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!connectionToast) return undefined;
@@ -193,8 +211,35 @@ export function ProfileSocialPage({
             }}
             onStateChange={onConnectionChange}
           />
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              className="flex-1 rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/[0.07]"
+              onClick={() => setSafetySheet("report")}
+            >
+              Report
+            </button>
+            <button
+              type="button"
+              className="flex-1 rounded-xl border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-100 hover:bg-rose-500/15"
+              onClick={() => void handleBlockUser()}
+              disabled={blockBusy}
+            >
+              {blockBusy ? "Blocking…" : "Block"}
+            </button>
+          </div>
           {connectionToast ? (
             <p className="mt-2 text-xs text-cyan-100/85">{connectionToast}</p>
+          ) : null}
+          {safetySheet === "report" ? (
+            <ReportContentSheet
+              mode="user"
+              userId={character.id}
+              targetLabel={`@${character.username}`}
+              onClose={() => setSafetySheet(null)}
+              onSubmitted={() => setConnectionToast("Thanks — we received your report.")}
+              onError={(message) => setConnectionToast(message)}
+            />
           ) : null}
         </div>
       )}

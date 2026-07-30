@@ -23,7 +23,7 @@ export function SchoolVerificationScreen({
       <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-950/75 backdrop-blur-xl shadow-2xl shadow-black/30 p-5 sm:p-8">
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Campus Email Verification Required</h1>
         <p className="mt-3 text-sm sm:text-base text-white/75 leading-relaxed">
-          CampusQuest pilot access is currently limited to verified students at {requiredSchoolName}.
+          CampusQuest access is currently limited to verified students at {requiredSchoolName}.
         </p>
         <div className="mt-6 rounded-2xl border border-white/15 bg-white/[0.03] p-4 sm:p-5 space-y-2 text-sm text-white/80">
           <p>

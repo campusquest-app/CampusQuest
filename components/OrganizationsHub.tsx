@@ -648,7 +648,7 @@ export function OrganizationsHub({
             className="mt-3 space-y-2"
           >
             <p className="text-[11px] text-white/50">
-              Pilot safety: requests are reviewed before an org appears. You’ll get an in-app notification when your request is
+              Safety: requests are reviewed before an org appears. You’ll get an in-app notification when your request is
               decided.
             </p>
           <form onSubmit={handleSubmitOrganizationRequest} className="flex flex-col gap-3">

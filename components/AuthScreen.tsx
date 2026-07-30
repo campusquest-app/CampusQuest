@@ -84,7 +84,6 @@ function AuthHeader() {
       <CampusQuestLogo variant="auth" priority className="mb-3" />
       <h1 className="cq-auth-brand-title font-display">
         CampusQuest
-        <span className="cq-auth-brand-beta">beta</span>
       </h1>
       <p className="cq-auth-subtitle mt-2 max-w-[18rem]">Discover campus. Find opportunities. Get involved.</p>
     </div>
@@ -96,20 +95,6 @@ const AUTH_PANEL_VARIANTS = {
   center: { opacity: 1, x: 0 },
   exit: (m: Mode) => ({ opacity: 0, x: m === "signup" ? -28 : 28 }),
 };
-
-function GoogleSignInButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className="cq-auth-btn-secondary flex w-full items-center justify-center gap-2">
-      <svg aria-hidden viewBox="0 0 24 24" className="h-[18px] w-[18px]">
-        <path
-          fill="#EA4335"
-          d="M12 10.2v3.6h5.1c-.2 1.2-1.6 3.6-5.1 3.6-3.1 0-5.6-2.5-5.6-5.6s2.5-5.6 5.6-5.6c1.8 0 3 .8 3.7 1.4l2.5-2.4C16.9 3.6 14.7 2.6 12 2.6 6.9 2.6 2.6 6.9 2.6 12s4.3 9.4 9.4 9.4c5.4 0 9-3.8 9-9.2 0-.6-.1-1.1-.2-1.6H12z"
-        />
-      </svg>
-      Continue with Google
-    </button>
-  );
-}
 
 export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const reduceMotion = useReducedMotion();
@@ -481,10 +466,6 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     setConfirmPassword("");
   }
 
-  function handleGooglePlaceholder() {
-    setNotice("Google sign-in is coming soon.");
-  }
-
   if (needsConsent) {
     return (
       <LegalConsentScreen
@@ -600,8 +581,6 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                   <button type="submit" disabled={isSubmitting} className="cq-auth-btn-primary w-full">
                     {isSubmitting ? "Signing In..." : "Sign In"}
                   </button>
-                  <div className="cq-auth-divider py-1">OR</div>
-                  <GoogleSignInButton onClick={handleGooglePlaceholder} />
                   <p className="cq-auth-trust pt-1">Secure sign-in · Email verification supported</p>
                   {error?.includes("confirm") || notice?.includes("Confirmation") ? (
                     <button
@@ -721,8 +700,6 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                   <button type="submit" disabled={isSubmitting} className="cq-auth-btn-primary w-full">
                     {isSubmitting ? "Creating Account..." : "Create Account"}
                   </button>
-                  <div className="cq-auth-divider py-1">OR</div>
-                  <GoogleSignInButton onClick={handleGooglePlaceholder} />
                 </form>
                 <p className="cq-auth-switch-row">
                   Already have an account?{" "}

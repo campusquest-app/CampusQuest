@@ -35,7 +35,8 @@ const sections = [
   {
     title: "6. Account Deletion",
     body: [
-      "Users may request account deletion by contacting support@campusquest.app.",
+      "You can delete your account in the app under Settings → Delete account.",
+      "You may also request deletion by emailing support@campusquest.app from the address on your account.",
       "Some information may be retained when legally required or needed for safety, fraud prevention, or dispute resolution.",
     ],
   },

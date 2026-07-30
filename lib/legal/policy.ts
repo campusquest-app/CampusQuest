@@ -4,4 +4,5 @@ export const LEGAL_DOC_LINKS = {
   privacy: "/legal/privacy",
   terms: "/legal/terms",
   guidelines: "/legal/community-guidelines",
+  support: "/support",
 } as const;

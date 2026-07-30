@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Ban,
   Bell,
   ChevronRight,
   GraduationCap,
@@ -9,6 +10,7 @@ import {
   Moon,
   QrCode,
   Shield,
+  Trash2,
   User,
   UserCircle,
   Volume2,
@@ -22,6 +24,8 @@ export type SettingsActionId =
   | "profile-character"
   | "notifications"
   | "privacy"
+  | "blocked-users"
+  | "delete-account"
   | "campus"
   | "qr-permissions"
   | "appearance"
@@ -44,20 +48,38 @@ const SETTINGS_SECTIONS: { title: string; rows: SettingsRow[] }[] = [
       { id: "account-type", label: "Account Type", description: "Student or Faculty / Staff", icon: IdCard },
       { id: "profile-character", label: "Profile & Character", description: "Avatar, stats, bio", icon: UserCircle },
       { id: "notifications", label: "Notifications", description: "Alerts and inbox", icon: Bell },
+      {
+        id: "delete-account",
+        label: "Delete account",
+        description: "Permanently remove your CampusQuest account",
+        icon: Trash2,
+        danger: true,
+      },
     ],
   },
   {
     title: "Safety & campus",
     rows: [
-      { id: "privacy", label: "Privacy & Safety", description: "Privacy policy and community rules", icon: Shield },
+      {
+        id: "privacy",
+        label: "Privacy, Terms & Support",
+        description: "Policies, permissions, and how to get help",
+        icon: Shield,
+      },
+      {
+        id: "blocked-users",
+        label: "Blocked users",
+        description: "Manage people you’ve blocked",
+        icon: Ban,
+      },
       { id: "campus", label: "Campus / School", description: "School verification and campus access", icon: GraduationCap },
-      { id: "qr-permissions", label: "QR Scanner Permissions", description: "Camera access for CQ Scan", icon: QrCode },
+      { id: "qr-permissions", label: "Camera & QR permissions", description: "Camera access for CQ Scan", icon: QrCode },
     ],
   },
   {
     title: "Experience",
     rows: [
-      { id: "appearance", label: "Appearance", description: "Dark theme (CampusQuest navy)", icon: Moon },
+      { id: "appearance", label: "Appearance", description: "CampusQuest uses a dark theme", icon: Moon },
       {
         id: "sound",
         label: "Sound & Haptics",
@@ -120,12 +142,24 @@ export function AppSettingsPanel({
                         onClick={() => handleRow(row.id)}
                         className="group flex w-full items-center gap-3 px-3 py-3.5 text-left transition hover:bg-white/[0.04] active:scale-[0.995] touch-manipulation"
                       >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-cyan-200/90">
+                        <span
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+                            row.danger
+                              ? "border-rose-400/25 bg-rose-500/10 text-rose-200"
+                              : "border-white/[0.08] bg-white/[0.04] text-cyan-200/90"
+                          }`}
+                        >
                           <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-semibold text-white/92">{row.label}</span>
-                          <span className="block text-[11px] text-white/40">
+                          <span
+                            className={`block text-sm font-semibold ${
+                              row.danger ? "text-rose-100" : "text-white/92"
+                            }`}
+                          >
+                            {row.label}
+                          </span>
+                          <span className={`block text-[11px] ${row.danger ? "text-rose-200/50" : "text-white/40"}`}>
                             {soundHint ? `${row.description} · ${soundHint}` : row.description}
                           </span>
                         </span>

@@ -183,6 +183,42 @@ export const reportQuadPostSchema = z.object({
   details: z.string().trim().max(1000).optional(),
 });
 
+export const contentReportReasonSchema = z.enum([
+  "harassment",
+  "hate_speech",
+  "nudity",
+  "violence",
+  "spam",
+  "misinformation",
+  "copyright_infringement",
+  "restricted_content",
+  "impersonation",
+  "other",
+]);
+
+export const reportUserSchema = z.object({
+  reason: contentReportReasonSchema,
+  details: z.string().trim().max(2000).optional(),
+});
+
+export const reportCommentSchema = z.object({
+  reason: contentReportReasonSchema,
+  details: z.string().trim().max(2000).optional(),
+  reportedUserId: uuidSchema.optional(),
+});
+
+export const reportInfringementSchema = z.object({
+  reason: z.enum(["copyright_infringement", "other"]).default("copyright_infringement"),
+  details: z.string().trim().min(20).max(2000),
+  contentUrl: z.string().trim().url().max(2000).optional(),
+  targetId: uuidSchema.optional(),
+});
+
+/** Self-serve account deletion — must type DELETE to confirm. */
+export const deleteOwnAccountSchema = z.object({
+  confirmation: z.literal("DELETE"),
+});
+
 export const resolveQuadPostReportSchema = z.object({
   reportId: uuidSchema,
   status: z.enum(["resolved", "dismissed", "reviewing"]),

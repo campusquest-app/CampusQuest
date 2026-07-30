@@ -57,6 +57,7 @@ export const USER_DATA_DELETION_STEPS: DeletionStep[] = [
   { table: "campus_event_reports", columns: ["reporter_id"], description: "campus event reports" },
   { table: "organization_reports", columns: ["reporter_id"], description: "organization reports" },
   { table: "quad_post_reports", columns: ["reporter_id", "post_owner_id"], description: "quad post reports" },
+  { table: "content_reports", columns: ["reporter_id", "reported_user_id"], description: "content reports" },
   { table: "user_onboarding_preferences", columns: ["user_id"], description: "onboarding preferences" },
   { table: "user_legal_consents", columns: ["user_id"], description: "legal consents" },
   { table: "user_beginner_quest_claims", columns: ["user_id"], description: "beginner quest claims" },
