@@ -36,8 +36,8 @@ export function AvatarPresetPicker({
   return (
     <section className="cq-avatar-preset-section" aria-label="Choose your avatar preset">
       <header className="cq-avatar-preset-header">
-        <h4 className="cq-avatar-preset-title">Choose Your Avatar</h4>
-        <p className="cq-avatar-preset-subtitle">Pick a preset to start. You can customize everything later.</p>
+        <h4 className="cq-avatar-preset-title">Avatar presets</h4>
+        <p className="cq-avatar-preset-subtitle">Optional looks inside Customize More.</p>
       </header>
 
       <div className="cq-avatar-preset-grid">

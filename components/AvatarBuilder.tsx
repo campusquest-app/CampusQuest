@@ -174,7 +174,7 @@ export function AvatarBuilder({
       <section className="space-y-3 rounded-2xl border border-white/10 bg-uri-navy/80 px-4 py-4 sm:px-5 sm:py-5">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">Class starter looks</p>
-          <h3 className="text-sm font-semibold text-white">Pick a vibe</h3>
+          <h3 className="text-sm font-semibold text-white">Choose Your Campus Style</h3>
           <p className="text-xs text-white/65">Applies a curated DiceBear style + colors inspired by each class.</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -303,8 +303,8 @@ export function AvatarBuilder({
       <section className="rounded-3xl border border-white/10 bg-uri-navy/90 px-4 py-5 sm:px-6 sm:py-6 space-y-5">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">Forge your visage</p>
-            <h3 className="text-sm font-semibold text-white">DiceBear avatar lab</h3>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">Customize Your Look</p>
+            <h3 className="text-sm font-semibold text-white">Avatar details</h3>
           </div>
         </div>
         {controls}

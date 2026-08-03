@@ -108,7 +108,7 @@ export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
     v: 2,
     style: "lorelei",
     seed: "cq-avatar-preset-1",
-    label: "Preset 1",
+    label: "Campus Classic",
     options: {
       backgroundColor: ["041e42"],
       backgroundType: ["gradientLinear"],
@@ -125,7 +125,7 @@ export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
     v: 2,
     style: "loreleiNeutral",
     seed: "cq-avatar-preset-2",
-    label: "Preset 2",
+    label: "Keaney Cool",
     options: {
       backgroundColor: ["68abe8", "041e42"],
       backgroundType: ["gradientLinear"],
@@ -143,7 +143,7 @@ export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
     v: 2,
     style: "pixelArt",
     seed: "cq-avatar-preset-3",
-    label: "Preset 3",
+    label: "Pixel Scholar",
     options: {
       backgroundColor: ["c5d4c0", "e8e4e0"],
       backgroundType: ["gradientLinear"],
@@ -161,7 +161,7 @@ export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
     v: 2,
     style: "pixelArtNeutral",
     seed: "cq-avatar-preset-4",
-    label: "Preset 4",
+    label: "Soft Focus",
     options: {
       backgroundColor: ["d4c4b8", "f6d4c8"],
       backgroundType: ["gradientLinear"],
@@ -180,7 +180,7 @@ export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
     v: 2,
     style: "openPeeps",
     seed: "cq-avatar-preset-5",
-    label: "Preset 5",
+    label: "Open Smile",
     options: {
       backgroundColor: ["312e81", "0ea5e9"],
       backgroundType: ["gradientLinear"],
@@ -195,7 +195,7 @@ export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
     v: 2,
     style: "adventurer",
     seed: "cq-avatar-preset-6",
-    label: "Preset 6",
+    label: "Trailblazer",
     options: {
       backgroundColor: ["7c2d12", "1c1917"],
       backgroundType: ["gradientLinear"],
@@ -213,7 +213,7 @@ export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
     v: 2,
     style: "adventurerNeutral",
     seed: "cq-avatar-preset-7",
-    label: "Preset 7",
+    label: "Violet Dream",
     options: {
       backgroundColor: ["4c1d95", "1e1b4b"],
       backgroundType: ["gradientLinear"],
@@ -231,7 +231,7 @@ export const AVATAR_LOOK_PRESETS: readonly AvatarLookPreset[] = [
     v: 2,
     style: "micah",
     seed: "cq-avatar-preset-8",
-    label: "Preset 8",
+    label: "Gold Glow",
     options: {
       backgroundColor: ["422006", "ca8a04"],
       backgroundType: ["gradientLinear"],

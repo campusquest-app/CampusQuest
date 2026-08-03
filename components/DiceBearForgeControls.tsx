@@ -12,7 +12,6 @@ import {
   HAIR_COLOR_SWATCHES,
   SKIN_TONE_SWATCHES,
   dicebearAdvancedUi as U,
-  hairstyleNumberLabel,
 } from "@/lib/dicebearAdvancedOptions";
 
 function ForgeSection({
