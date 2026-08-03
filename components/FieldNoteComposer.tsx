@@ -4,9 +4,8 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Camera,
   Image as ImageIcon,
-  Calendar,
-  Award,
   ChevronLeft,
+  ChevronDown,
   X,
   Heart,
   MapPin,
@@ -25,13 +24,6 @@ import { FIELD_NOTE_MAX_CHARS, RAMMARK_MAX_LENGTH, RAMMARK_MAX_PER_POST } from "
 import type { RamMark } from "@/lib/types";
 import type { RealmLocationId } from "@/lib/realm/locations";
 import { useCampusLocations } from "@/lib/client/campusLocationsClient";
-
-type CaptionStarter = "event" | "achievement";
-
-const CAPTION_PREFIX: Record<CaptionStarter, string> = {
-  event: "What's happening on campus: ",
-  achievement: "Just unlocked: ",
-};
 
 export function FieldNoteComposer({
   character,
@@ -120,23 +112,6 @@ export function FieldNoteComposer({
 
   const removeRamMark = useCallback((tag: string) => {
     setRamMarks((prev) => prev.filter((r) => r.tag !== tag));
-  }, []);
-
-  const applyCaptionStarter = useCallback((starter: CaptionStarter) => {
-    const prefix = CAPTION_PREFIX[starter];
-    setBody((prev) => {
-      if (prev.startsWith(prefix)) return prev;
-      const next = `${prefix}${prev}`.slice(0, FIELD_NOTE_MAX_CHARS);
-      return next;
-    });
-    window.requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (el) {
-        el.focus();
-        const end = el.value.length;
-        el.setSelectionRange(end, end);
-      }
-    });
   }, []);
 
   async function readImageFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -368,90 +343,91 @@ export function FieldNoteComposer({
             <MapPin className="h-[18px] w-[18px]" strokeWidth={2} />
             <span>Location</span>
           </button>
-          <button
-            type="button"
-            onClick={() => applyCaptionStarter("achievement")}
-            className="cq-composer-action cq-composer-action--pill"
-            aria-label="Start an achievement post"
-          >
-            <Award className="h-[18px] w-[18px]" strokeWidth={2} />
-            <span>Achievement</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => applyCaptionStarter("event")}
-            className="cq-composer-action cq-composer-action--pill"
-            aria-label="Start an event post"
-          >
-            <Calendar className="h-[18px] w-[18px]" strokeWidth={2} />
-            <span>Event</span>
-          </button>
         </div>
 
         <div className="cq-composer-more">
           <button
             type="button"
-            className="cq-composer-more-summary"
+            className="cq-composer-more-toggle"
             aria-expanded={moreOpen}
             onClick={() => setMoreOpen((v) => !v)}
           >
-            More options
+            <span>More options</span>
+            <ChevronDown
+              className={`cq-composer-more-chevron ${moreOpen ? "cq-composer-more-chevron--open" : ""}`}
+              strokeWidth={2.4}
+              aria-hidden
+            />
           </button>
-          {moreOpen ? (
-          <div className="cq-composer-more-body">
-            <label htmlFor="field-note-location" className="cq-composer-label">
-              Add to Realm Map
-            </label>
-            <select
-              ref={locationSelectRef}
-              id="field-note-location"
-              value={locationId}
-              onChange={(e) => setLocationId(e.target.value as RealmLocationId | "")}
-              className="cq-composer-select"
-            >
-              <option value="">No location</option>
-              {campusLocations.map((loc) => (
-                <option key={loc.slug} value={loc.slug}>
-                  {loc.name}
-                </option>
-              ))}
-            </select>
-            <p className="cq-composer-hint">Public posts with a location appear as Realm Moments for 24 hours.</p>
+          <div
+            className={`cq-composer-more-panel ${moreOpen ? "cq-composer-more-panel--open" : ""}`}
+            aria-hidden={!moreOpen}
+          >
+            <div className="cq-composer-more-panel-inner">
+              <div className="cq-composer-more-body">
+                <label htmlFor="field-note-location" className="cq-composer-label">
+                  Add to Realm Map
+                </label>
+                <select
+                  ref={locationSelectRef}
+                  id="field-note-location"
+                  value={locationId}
+                  onChange={(e) => setLocationId(e.target.value as RealmLocationId | "")}
+                  className="cq-composer-select"
+                  tabIndex={moreOpen ? 0 : -1}
+                >
+                  <option value="">No location</option>
+                  {campusLocations.map((loc) => (
+                    <option key={loc.slug} value={loc.slug}>
+                      {loc.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="cq-composer-hint">Public posts with a location appear as Realm Moments for 24 hours.</p>
 
-            <div className="cq-composer-rammarks">
-              <span className="cq-composer-label mb-0">RAMarks</span>
-              {ramMarks.map((r) => (
-                <span key={r.id} className="ram-mark flex items-center gap-1">
-                  #{r.tag}
-                  <button
-                    type="button"
-                    onClick={() => removeRamMark(r.tag)}
-                    className="cq-composer-rammark-remove"
-                    aria-label={`Remove ${r.tag}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-              {ramMarks.length < RAMMARK_MAX_PER_POST && (
-                <>
-                  <input
-                    type="text"
-                    value={ramMarkInput}
-                    onChange={(e) => setRamMarkInput(e.target.value.slice(0, RAMMARK_MAX_LENGTH))}
-                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRamMark())}
-                    placeholder={`#tag (max ${RAMMARK_MAX_LENGTH})`}
-                    className="cq-composer-input w-28 py-1"
-                    aria-label="Add a RAMark tag"
-                  />
-                  <button type="button" onClick={addRamMark} disabled={!canAddRamMark} className="cq-composer-btn-add">
-                    Add
-                  </button>
-                </>
-              )}
+                <div className="cq-composer-rammarks">
+                  <span className="cq-composer-label mb-0">RAMarks</span>
+                  {ramMarks.map((r) => (
+                    <span key={r.id} className="ram-mark flex items-center gap-1">
+                      #{r.tag}
+                      <button
+                        type="button"
+                        onClick={() => removeRamMark(r.tag)}
+                        className="cq-composer-rammark-remove"
+                        aria-label={`Remove ${r.tag}`}
+                        tabIndex={moreOpen ? 0 : -1}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  {ramMarks.length < RAMMARK_MAX_PER_POST && (
+                    <>
+                      <input
+                        type="text"
+                        value={ramMarkInput}
+                        onChange={(e) => setRamMarkInput(e.target.value.slice(0, RAMMARK_MAX_LENGTH))}
+                        onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addRamMark())}
+                        placeholder={`#tag (max ${RAMMARK_MAX_LENGTH})`}
+                        className="cq-composer-input w-28 py-1"
+                        aria-label="Add a RAMark tag"
+                        tabIndex={moreOpen ? 0 : -1}
+                      />
+                      <button
+                        type="button"
+                        onClick={addRamMark}
+                        disabled={!canAddRamMark}
+                        className="cq-composer-btn-add"
+                        tabIndex={moreOpen ? 0 : -1}
+                      >
+                        Add RAMark
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-          ) : null}
         </div>
 
         {showPreview ? (

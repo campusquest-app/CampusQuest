@@ -74,7 +74,6 @@ export function TheQuad({
   chromeSuppressed = false,
   canModeratePosts = false,
   onPostXpReward,
-  onLogQuest,
   showXpProgressBar = false,
 }: {
   character: Character;
@@ -94,7 +93,6 @@ export function TheQuad({
   chromeSuppressed?: boolean;
   canModeratePosts?: boolean;
   onPostXpReward?: (reward: QuadPostXpReward) => void;
-  onLogQuest?: () => void;
   /** When true (prefs loaded + enabled), show Level/XP/Streak strip in TopNav. */
   showXpProgressBar?: boolean;
 }) {
@@ -549,8 +547,6 @@ export function TheQuad({
         character={character}
         onPosted={() => refresh({ silent: true })}
         onXpReward={onPostXpReward}
-        onCreateMemory={() => setShowAddMemory(true)}
-        onLogQuest={onLogQuest}
       />
 
       {memoryGroup ? (

@@ -7762,6 +7762,11 @@ html[data-cq-scrolling] .cq-quad-create-fab {
   animation: cq-create-sheet-rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Single-option Create sheet — hug content height, no empty card body. */
+.cq-create-sheet--compact {
+  padding-bottom: calc(0.95rem + env(safe-area-inset-bottom, 0px));
+}
+
 @keyframes cq-create-sheet-rise {
   from {
     transform: translateY(18px);
@@ -7842,21 +7847,9 @@ html[data-cq-scrolling] .cq-quad-create-fab {
   color: #fff;
 }
 
-.cq-create-action--memory .cq-create-action-icon {
-  background: linear-gradient(145deg, #5cd4ff 0%, #0a9fe0 100%);
-  box-shadow: 0 6px 16px -6px rgba(41, 182, 246, 0.75);
-  color: #04141f;
-}
-
 .cq-create-action--post .cq-create-action-icon {
   background: linear-gradient(145deg, #8b7bff 0%, #5b3fe0 100%);
   box-shadow: 0 6px 16px -6px rgba(99, 80, 255, 0.7);
-}
-
-.cq-create-action--quest .cq-create-action-icon {
-  background: linear-gradient(145deg, #ffce6b 0%, #f59e0b 100%);
-  box-shadow: 0 6px 16px -6px rgba(245, 158, 11, 0.7);
-  color: #2a1c02;
 }
 
 .cq-create-action-text {
@@ -8223,6 +8216,11 @@ html[data-cq-scrolling] .cq-quad-create-fab {
     animation: none !important;
   }
 
+  .cq-composer-more-panel,
+  .cq-composer-more-chevron {
+    transition: none !important;
+  }
+
   .cq-composer-success-burst {
     display: none;
   }
@@ -8499,21 +8497,70 @@ html[data-cq-scrolling] .cq-quad-create-fab {
   padding-top: 0.5rem;
 }
 
-.cq-composer-more-summary {
-  cursor: pointer;
-  list-style: none;
-  font-size: 0.8rem;
+.cq-composer-more-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.7rem 0.85rem;
+  font-size: 0.84rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.6);
-  padding: 0.25rem 0;
+  color: rgba(255, 255, 255, 0.78);
+  text-align: left;
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
 }
 
-.cq-composer-more-summary::-webkit-details-marker {
-  display: none;
+.cq-composer-more-toggle:hover {
+  border-color: rgba(104, 171, 232, 0.4);
+  background: rgba(104, 171, 232, 0.1);
+  color: #fff;
+}
+
+.cq-composer-more-toggle[aria-expanded="true"] {
+  border-color: rgba(104, 171, 232, 0.45);
+  background: rgba(104, 171, 232, 0.12);
+  color: #fff;
+}
+
+.cq-composer-more-chevron {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  color: rgba(255, 255, 255, 0.55);
+  transition: transform 220ms ease;
+}
+
+.cq-composer-more-chevron--open {
+  transform: rotate(180deg);
+  color: rgba(140, 197, 245, 0.95);
+}
+
+/* Collapsed by default — no reserved empty space under the toggle. */
+.cq-composer-more-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms ease;
+}
+
+.cq-composer-more-panel--open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.cq-composer-more-panel-inner {
+  overflow: hidden;
+  min-height: 0;
 }
 
 .cq-composer-more-body {
-  padding-top: 0.5rem;
+  padding-top: 0.75rem;
 }
 
 .cq-composer-rammarks {

@@ -30,15 +30,11 @@ export function QuadCreatePostFab({
   character,
   onPosted,
   onXpReward,
-  onCreateMemory,
-  onLogQuest,
 }: {
   feedTab: QuadFeedTab;
   character: Character;
   onPosted: () => void;
   onXpReward?: (reward: QuadPostXpReward) => void;
-  onCreateMemory?: () => void;
-  onLogQuest?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("actions");
@@ -85,16 +81,6 @@ export function QuadCreatePostFab({
     setView("post");
   }, []);
 
-  const handleCaptureMemory = useCallback(() => {
-    handleClose();
-    onCreateMemory?.();
-  }, [handleClose, onCreateMemory]);
-
-  const handleLogQuest = useCallback(() => {
-    handleClose();
-    onLogQuest?.();
-  }, [handleClose, onLogQuest]);
-
   useEffect(() => {
     if (!open) return undefined;
     markCreatePostModalOpen(true);
@@ -126,12 +112,7 @@ export function QuadCreatePostFab({
   const modal =
     open && typeof document !== "undefined" ? (
       view === "actions" ? (
-        <QuadCreateActionSheet
-          onClose={handleClose}
-          onCaptureMemory={handleCaptureMemory}
-          onCreatePost={startPostFlow}
-          onLogQuest={onLogQuest ? handleLogQuest : undefined}
-        />
+        <QuadCreateActionSheet onClose={handleClose} onCreatePost={startPostFlow} />
       ) : (
         <div
           className="cq-composer-overlay"
