@@ -22,10 +22,9 @@ describe("appShellRoute", () => {
     expect(resolveProfileRoute({ onboarding_completed: true, role: "faculty_staff" })).toBe("app");
   });
 
-  it("routes users without a valid role to the role gate first", () => {
-    // New user: role selection comes before character setup.
-    expect(resolveProfileRoute({ onboarding_completed: false, role: null })).toBe("role_gate");
-    // Existing onboarded user with NULL/legacy-invalid role: one-time prompt.
+  it("routes new users without a role into combined character onboarding", () => {
+    expect(resolveProfileRoute({ onboarding_completed: false, role: null })).toBe("character_gate");
+    // Existing onboarded user with NULL/legacy-invalid role: standalone role prompt.
     expect(resolveProfileRoute({ onboarding_completed: true, role: null })).toBe("role_gate");
     expect(resolveProfileRoute({ onboarding_completed: true, role: "" })).toBe("role_gate");
     expect(resolveProfileRoute({ onboarding_completed: true, role: "banana" })).toBe("role_gate");
@@ -46,7 +45,7 @@ describe("appShellRoute", () => {
         is_test_user: true,
         qa_selected_role: null,
       }),
-    ).toBe("role_gate");
+    ).toBe("character_gate");
     expect(
       resolveProfileRoute({
         onboarding_completed: false,

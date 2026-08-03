@@ -182,7 +182,7 @@ export function DiceBearForgeControls({
     <>
       <ForgeSection icon="💇" title="Hairstyles">
         <OptionGrid>
-          {U.LORELEI_HAIR.map((h, i) => (
+          {U.LORELEI_HAIR.map((h) => (
             <button
               key={h.v}
               type="button"
@@ -191,7 +191,7 @@ export function DiceBearForgeControls({
                 jsonEq(o.hair, [h.v]) ? "border-uri-keaney bg-uri-keaney/25 text-white" : "border-white/12 bg-white/5 text-white/85 hover:border-uri-keaney/40"
               }`}
             >
-              {hairstyleNumberLabel(i)}
+              {h.label}
             </button>
           ))}
         </OptionGrid>
@@ -255,7 +255,7 @@ export function DiceBearForgeControls({
     <>
       <ForgeSection icon="💇" title="Hairstyles">
         <OptionGrid>
-          {U.PIXEL_HAIR.map((h, i) => (
+          {U.PIXEL_HAIR.map((h) => (
             <button
               key={h.v}
               type="button"
@@ -264,7 +264,7 @@ export function DiceBearForgeControls({
                 jsonEq(o.hair, [h.v]) ? "border-uri-keaney bg-uri-keaney/25 text-white" : "border-white/12 bg-white/5 text-white/85"
               }`}
             >
-              {hairstyleNumberLabel(i)}
+              {h.label}
             </button>
           ))}
         </OptionGrid>
@@ -338,7 +338,7 @@ export function DiceBearForgeControls({
     <>
       <ForgeSection icon="💇" title="Hairstyles">
         <OptionGrid>
-          {U.ADV_HAIR.map((h, i) => (
+          {U.ADV_HAIR.map((h) => (
             <button
               key={h.v}
               type="button"
@@ -347,7 +347,7 @@ export function DiceBearForgeControls({
                 jsonEq(o.hair, [h.v]) ? "border-uri-keaney bg-uri-keaney/25" : "border-white/12 bg-white/5"
               }`}
             >
-              {hairstyleNumberLabel(i)}
+              {h.label}
             </button>
           ))}
         </OptionGrid>
@@ -411,7 +411,7 @@ export function DiceBearForgeControls({
     <>
       <ForgeSection icon="💇" title="Hairstyles">
         <OptionGrid>
-          {U.MICAH_HAIR.map((h, i) => (
+          {U.MICAH_HAIR.map((h) => (
             <button
               key={h.v}
               type="button"
@@ -420,7 +420,7 @@ export function DiceBearForgeControls({
                 jsonEq(o.hair, [h.v]) ? "border-uri-keaney bg-uri-keaney/25" : "border-white/12 bg-white/5"
               }`}
             >
-              {hairstyleNumberLabel(i)}
+              {h.label}
             </button>
           ))}
         </OptionGrid>
@@ -490,7 +490,7 @@ export function DiceBearForgeControls({
     <>
       <ForgeSection icon="💇" title="Hairstyles">
         <OptionGrid>
-          {U.PEEPS_HEAD.map((h, i) => (
+          {U.PEEPS_HEAD.map((h) => (
             <button
               key={h.v}
               type="button"
@@ -499,7 +499,7 @@ export function DiceBearForgeControls({
                 jsonEq(o.head, [h.v]) ? "border-uri-keaney bg-uri-keaney/25" : "border-white/12 bg-white/5"
               }`}
             >
-              {hairstyleNumberLabel(i)}
+              {h.label}
             </button>
           ))}
         </OptionGrid>

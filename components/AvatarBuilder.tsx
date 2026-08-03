@@ -35,7 +35,7 @@ export function AvatarBuilder({
   value,
   onChange,
   compact = false,
-  showClassPresets = true,
+  showClassPresets = false,
   selectedClassId,
   onClassChange,
   selectedWeapon,
@@ -170,7 +170,7 @@ export function AvatarBuilder({
   );
 
   const classStrip =
-    showClassPresets && !compact ? (
+    showClassPresets ? (
       <section className="space-y-3 rounded-2xl border border-white/10 bg-uri-navy/80 px-4 py-4 sm:px-5 sm:py-5">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">Class starter looks</p>
@@ -291,6 +291,7 @@ export function AvatarBuilder({
             </div>
           )
         ) : null}
+        {classStrip}
         {controls}
       </div>
     );
@@ -303,8 +304,8 @@ export function AvatarBuilder({
       <section className="rounded-3xl border border-white/10 bg-uri-navy/90 px-4 py-5 sm:px-6 sm:py-6 space-y-5">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">Customize Your Look</p>
-            <h3 className="text-sm font-semibold text-white">Avatar details</h3>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-uri-keaney/80">Avatar Lab</p>
+            <h3 className="text-sm font-semibold text-white">Customize your look</h3>
           </div>
         </div>
         {controls}

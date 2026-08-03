@@ -1,43 +1,40 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Briefcase, Check, GraduationCap } from "lucide-react";
 import { replaceLocalCharacter } from "@/lib/store";
 import { getAccessToken } from "@/lib/client/apiSession";
 import {
   type AvatarConfig,
-  type AvatarManualOverrides,
-  applyClassToAvatarConfig,
   avatarConfigFromPreset,
   buildAvatarOnboardingSavePayload,
   canCompleteAvatarOnboarding,
-  clearOverrides,
   createDefaultAvatarConfig,
-  markAllAppearanceOverrides,
   parseStoredAvatarConfig,
   randomizeAvatarConfig,
-  resetAvatarConfigToStarter,
   serializeAvatarConfig,
 } from "@/lib/avatarConfig";
 import { AVATAR_LOOK_PRESETS } from "@/lib/avatarPresets";
-import {
-  CHARACTER_CLASSES,
-  getClassAvatarPreset,
-  getClassTitle,
-  type CharacterClassId,
-} from "@/lib/characterClasses";
+import { CHARACTER_CLASSES } from "@/lib/characterClasses";
 import { AvatarDisplay } from "./AvatarDisplay";
-import { AvatarLivePreview } from "@/components/avatar/AvatarLivePreview";
-import { AdvancedAvatarEditor } from "@/components/avatar/AdvancedAvatarEditor";
-import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
+import { ApiRequestError, fetchAuthed, patchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { CampusQuestLogo } from "@/components/CampusQuestLogo";
+import { hasValidRoleSelection, type SelectableRole } from "@/lib/roles";
 
 const USERNAME_REGEX = /^[a-z0-9_]+$/;
 const USERNAME_MAX = 25;
 const NAME_MAX = 40;
 
-type OnboardingStep = "starter" | "vibe" | "review";
+type OnboardingStep = "identity" | "avatar" | "ready";
+
+type AccountTypeResponse = {
+  profile: MeProfileRow;
+  role: string;
+  selectedRole: SelectableRole;
+  roleLabel: string;
+};
 
 function toUsername(value: string): string {
   return value
@@ -48,8 +45,28 @@ function toUsername(value: string): string {
     .slice(0, USERNAME_MAX);
 }
 
+const ROLE_OPTIONS: {
+  role: SelectableRole;
+  title: string;
+  description: string;
+  Icon: typeof GraduationCap;
+}[] = [
+  {
+    role: "student",
+    title: "Student",
+    description: "Discover events, join orgs, and explore CampusQuest.",
+    Icon: GraduationCap,
+  },
+  {
+    role: "faculty_staff",
+    title: "Faculty / Staff",
+    description: "Share opportunities and support students on campus.",
+    Icon: Briefcase,
+  },
+];
+
 function StepDots({ step }: { step: OnboardingStep }) {
-  const order: OnboardingStep[] = ["starter", "vibe", "review"];
+  const order: OnboardingStep[] = ["identity", "avatar", "ready"];
   return (
     <div className="flex items-center justify-center gap-2" aria-label="Onboarding progress">
       {order.map((id, i) => {
@@ -76,50 +93,42 @@ export function CharacterGate({
 }) {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
+  const [accountRole, setAccountRole] = useState<SelectableRole | null>(null);
+  const [needsRolePick, setNeedsRolePick] = useState(true);
   const [config, setConfig] = useState<AvatarConfig>(() => createDefaultAvatarConfig());
-  const [overrides, setOverrides] = useState<AvatarManualOverrides>(() => clearOverrides());
   const [selectedStarterId, setSelectedStarterId] = useState<string | null>(
     () => createDefaultAvatarConfig().presetId,
   );
-  const [step, setStep] = useState<OnboardingStep>("starter");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [step, setStep] = useState<OnboardingStep>("identity");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [identitySaving, setIdentitySaving] = useState(false);
   const saveLockRef = useRef(false);
 
   useEffect(() => {
     if (!prefillProfile) return;
     setName(prefillProfile.display_name?.trim() || "");
     setUsername(toUsername(prefillProfile.username ?? ""));
+    const hasRole = hasValidRoleSelection(prefillProfile);
+    setNeedsRolePick(!hasRole);
+    if (hasRole) {
+      const chosen =
+        prefillProfile.is_test_user === true || prefillProfile.role === "qa"
+          ? prefillProfile.qa_selected_role
+          : prefillProfile.role;
+      if (chosen === "student" || chosen === "faculty_staff") {
+        setAccountRole(chosen);
+      }
+    }
     const stored = parseStoredAvatarConfig(
       prefillProfile.avatar_custom_json,
       prefillProfile.character_class_id,
     );
     if (stored) {
       setConfig(stored);
-      setOverrides(clearOverrides());
-    } else if (
-      prefillProfile.character_class_id &&
-      CHARACTER_CLASSES.some((c) => c.id === prefillProfile.character_class_id)
-    ) {
-      setConfig(
-        applyClassToAvatarConfig(
-          createDefaultAvatarConfig(),
-          prefillProfile.character_class_id as CharacterClassId,
-          {},
-        ),
-      );
+      if (stored.presetId) setSelectedStarterId(stored.presetId);
     }
   }, [prefillProfile]);
-
-  const accountType =
-    prefillProfile?.is_test_user === true || prefillProfile?.role === "qa"
-      ? prefillProfile?.qa_selected_role
-      : prefillProfile?.role;
-  const roleWelcomeCopy =
-    accountType === "faculty_staff"
-      ? "You'll use this identity to share opportunities, create events, and support students across campus."
-      : "You'll use this identity to discover events, join organizations, take on quests, and earn XP.";
 
   const nameTrimmed = name.trim();
   const usernameNormalized = toUsername(username || nameTrimmed);
@@ -128,9 +137,11 @@ export function CharacterGate({
     usernameNormalized.length >= 3 &&
     usernameNormalized.length <= USERNAME_MAX &&
     USERNAME_REGEX.test(usernameNormalized);
+  const roleValid = !needsRolePick || accountRole != null;
+  const canContinueIdentity = nameValid && usernameValid && roleValid;
 
   const avatarJson = useMemo(() => serializeAvatarConfig(config), [config]);
-  const canSubmit = canCompleteAvatarOnboarding({
+  const canFinish = canCompleteAvatarOnboarding({
     displayName: nameTrimmed,
     username: usernameNormalized,
     config,
@@ -146,65 +157,54 @@ export function CharacterGate({
     [username],
   );
 
-  const handleUsernameChange = useCallback((value: string) => {
-    setUsername(toUsername(value));
-    setSubmitError(null);
-  }, []);
-
   const selectStarter = useCallback(
     (presetSeed: string) => {
       const preset = AVATAR_LOOK_PRESETS.find((p) => p.seed === presetSeed);
       if (!preset) return;
       setSelectedStarterId(preset.seed);
       setConfig(avatarConfigFromPreset(preset, config.classType));
-      setOverrides(clearOverrides());
       setSubmitError(null);
     },
     [config.classType],
   );
 
-  const selectVibe = useCallback(
-    (classId: CharacterClassId) => {
-      setConfig((prev) => applyClassToAvatarConfig(prev, classId, overrides));
-      setSubmitError(null);
-    },
-    [overrides],
-  );
-
   const handleRandomize = useCallback(() => {
     setConfig((prev) => randomizeAvatarConfig(prev));
-    setOverrides(markAllAppearanceOverrides());
+    setSelectedStarterId(null);
   }, []);
 
-  const handleReset = useCallback(() => {
-    const starterId = selectedStarterId;
-    if (starterId) {
-      const preset = AVATAR_LOOK_PRESETS.find((p) => p.seed === starterId);
-      if (preset) {
-        setConfig((prev) => avatarConfigFromPreset(preset, prev.classType));
-        setOverrides(clearOverrides());
-        return;
+  async function handleIdentityContinue() {
+    if (!canContinueIdentity || identitySaving) return;
+    setIdentitySaving(true);
+    setSubmitError(null);
+    try {
+      if (needsRolePick && accountRole) {
+        const result = await postAuthed<AccountTypeResponse, { role: SelectableRole }>(
+          "/api/me/account-type",
+          { role: accountRole },
+        );
+        if (!result?.profile) {
+          throw new Error("Your account type could not be confirmed. Please try again.");
+        }
+        setNeedsRolePick(false);
       }
+      setStep("avatar");
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 503) {
+        setSubmitError("Account types are not available yet. Please try again in a moment.");
+      } else {
+        setSubmitError(err instanceof Error ? err.message : "Something went wrong. Try again.");
+      }
+    } finally {
+      setIdentitySaving(false);
     }
-    setConfig((prev) => resetAvatarConfigToStarter({ ...prev, presetId: starterId }));
-    setOverrides(clearOverrides());
-  }, [selectedStarterId]);
-
-  const handleAdvancedChange = useCallback(
-    (next: { config: AvatarConfig; overrides: AvatarManualOverrides }) => {
-      setConfig(next.config);
-      setOverrides(next.overrides);
-      if (next.config.presetId) setSelectedStarterId(next.config.presetId);
-    },
-    [],
-  );
+  }
 
   async function handleEnterCampusQuest() {
-    if (!canSubmit || saveLockRef.current) return;
+    if (!canFinish || saveLockRef.current) return;
     saveLockRef.current = true;
     setSaving(true);
     setSubmitError(null);
-    // Capture current selections so a failed save never wipes UI state.
     const payloadConfig = config;
     const payloadName = nameTrimmed;
     const payloadUsername = usernameNormalized;
@@ -227,9 +227,9 @@ export function CharacterGate({
       resetUserSaveSyncAfterHydrate();
       onReady();
     } catch (err) {
-      // Preserve config/name/username on failure (state untouched above).
       if (err instanceof ApiRequestError && err.status === 409) {
         setSubmitError("That username is already taken. Pick another.");
+        setStep("identity");
       } else {
         setSubmitError(err instanceof Error ? err.message : "Something went wrong. Try again.");
       }
@@ -244,348 +244,262 @@ export function CharacterGate({
     );
   }
 
-  const stickyPreview = (
-    <AvatarLivePreview
-      config={config}
-      displayName={nameTrimmed || undefined}
-      username={usernameNormalized || undefined}
-      size={step === "review" ? "hero" : "default"}
-      className="cq-avatar-sticky-preview"
-    />
-  );
-
   return (
-    <section className="cq-avatar-onboarding" aria-label="Create your avatar" data-testid="character-gate">
+    <section className="cq-avatar-onboarding cq-avatar-onboarding--simple" aria-label="Create your avatar" data-testid="character-gate">
       <div className="cq-avatar-onboarding__shell">
         <header className="cq-avatar-onboarding__header">
           <CampusQuestLogo variant="drawer" className="mx-auto mb-3" priority />
           <StepDots step={step} />
-          <h1 className="mt-4 font-display text-2xl font-bold text-white sm:text-[1.75rem]">
-            Create Your Avatar
-          </h1>
-          <p className="mt-1 text-sm text-white/60">
-            Choose a starter look. You can customize everything later.
-          </p>
-          <p className="mt-1 text-xs text-white/40">{roleWelcomeCopy}</p>
         </header>
 
-        <div className="cq-avatar-onboarding__layout">
-          <aside className="cq-avatar-onboarding__preview-col" aria-label="Live avatar preview">
-            {stickyPreview}
-          </aside>
+        <div className="cq-avatar-onboarding__controls cq-avatar-onboarding__controls--solo">
+          {step === "identity" ? (
+            <div className="space-y-5" data-testid="step-identity">
+              <div className="text-center">
+                <h1 className="font-display text-2xl font-bold text-white">Welcome to CampusQuest</h1>
+                <p className="mt-1 text-sm text-white/60">A few quick details and you’re in.</p>
+              </div>
 
-          <div className="cq-avatar-onboarding__controls">
-            {step === "starter" ? (
-              <div className="space-y-4" data-testid="step-starter">
-                <div>
-                  <h2 className="text-lg font-semibold text-white">Choose a starter avatar</h2>
-                  <p className="text-sm text-white/55">Tap a look — your preview updates instantly.</p>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <label
+                    htmlFor="char-name"
+                    className="block text-xs font-semibold uppercase tracking-wider text-white/70"
+                  >
+                    Display name <span className="text-amber-400">*</span>
+                  </label>
+                  <input
+                    id="char-name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    placeholder="e.g. Alex"
+                    maxLength={NAME_MAX}
+                    autoComplete="name"
+                    className="cq-avatar-input"
+                    aria-required
+                  />
                 </div>
+                <div className="space-y-2">
+                  <label
+                    htmlFor="char-username"
+                    className="block text-xs font-semibold uppercase tracking-wider text-white/70"
+                  >
+                    Username <span className="text-amber-400">*</span>
+                  </label>
+                  <input
+                    id="char-username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => {
+                      setUsername(toUsername(e.target.value));
+                      setSubmitError(null);
+                    }}
+                    placeholder="e.g. alex_rhody"
+                    maxLength={USERNAME_MAX}
+                    autoComplete="username"
+                    className="cq-avatar-input font-mono text-sm"
+                    aria-required
+                  />
+                  <p className="text-xs text-white/45">
+                    You’ll appear as @{usernameNormalized || "username"}
+                  </p>
+                </div>
+              </div>
 
+              {needsRolePick ? (
+                <div className="space-y-2" role="radiogroup" aria-label="Student or Faculty / Staff">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-white/70">
+                    I am a… <span className="text-amber-400">*</span>
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {ROLE_OPTIONS.map(({ role, title, description, Icon }) => {
+                      const selected = accountRole === role;
+                      return (
+                        <button
+                          key={role}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => {
+                            setAccountRole(role);
+                            setSubmitError(null);
+                          }}
+                          className={`relative min-h-[44px] rounded-2xl border p-4 text-left transition-colors ${
+                            selected
+                              ? "border-uri-keaney bg-uri-keaney/15"
+                              : "border-white/15 bg-white/[0.04] hover:border-uri-keaney/40"
+                          }`}
+                        >
+                          {selected ? (
+                            <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-uri-keaney text-uri-navy">
+                              <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                            </span>
+                          ) : null}
+                          <span className="flex items-start gap-3">
+                            <Icon className="mt-0.5 h-5 w-5 shrink-0 text-uri-keaney" />
+                            <span>
+                              <span className="block font-semibold text-white">{title}</span>
+                              <span className="mt-0.5 block text-xs text-white/55">{description}</span>
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {submitError ? (
+                <p className="text-sm text-amber-400" role="alert">
+                  {submitError}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {step === "avatar" ? (
+            <div className="space-y-5" data-testid="step-avatar">
+              <div className="text-center">
+                <h1 className="font-display text-2xl font-bold text-white">Choose Your Avatar</h1>
+                <p className="mt-1 text-sm text-white/60">
+                  Pick a starter avatar. You can customize everything later.
+                </p>
+              </div>
+
+              <div className="flex justify-center">
                 <div
-                  className="cq-starter-avatar-grid"
-                  role="radiogroup"
-                  aria-label="Starter avatars"
+                  className="cq-simple-avatar-preview"
+                  data-testid="avatar-live-preview"
+                  key={avatarJson}
                 >
-                  {AVATAR_LOOK_PRESETS.map((preset) => {
-                    const selected = selectedStarterId === preset.seed;
-                    const preview = serializeAvatarConfig(
-                      avatarConfigFromPreset(preset, config.classType),
-                    );
-                    return (
-                      <button
-                        key={preset.seed}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        aria-label={preset.label}
-                        onClick={() => selectStarter(preset.seed)}
-                        className={`cq-starter-avatar-card ${
-                          selected ? "cq-starter-avatar-card--selected" : ""
-                        }`}
-                      >
-                        {selected ? (
-                          <span className="cq-starter-avatar-check" aria-hidden>
-                            ✓
-                          </span>
-                        ) : null}
-                        <div className="cq-starter-avatar-thumb">
-                          <AvatarDisplay avatar={preview} size={72} showProp={false} fitParent />
-                        </div>
-                        <span className="cq-starter-avatar-label">{preset.label}</span>
-                      </button>
-                    );
-                  })}
+                  <AvatarDisplay avatar={avatarJson} size={140} showProp={false} />
                 </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleRandomize}
-                    className="cq-avatar-btn cq-avatar-btn--gold min-h-[44px]"
-                  >
-                    Randomize
-                  </button>
-                  {!advancedOpen ? (
-                    <button
-                      type="button"
-                      onClick={() => setAdvancedOpen(true)}
-                      className="cq-avatar-btn cq-avatar-btn--ghost min-h-[44px]"
-                      data-testid="customize-more-open"
-                    >
-                      Customize More
-                    </button>
-                  ) : null}
-                </div>
-                <AdvancedAvatarEditor
-                  config={config}
-                  overrides={overrides}
-                  open={advancedOpen}
-                  onOpenChange={setAdvancedOpen}
-                  starterPresetId={selectedStarterId}
-                  onChange={handleAdvancedChange}
-                />
               </div>
-            ) : null}
 
-            {step === "vibe" ? (
-              <div className="space-y-4" data-testid="step-vibe">
-                <div>
-                  <h2 className="text-lg font-semibold text-white">Choose Your Campus Style</h2>
-                  <p className="text-sm text-white/55">
-                    Pick a vibe. Your avatar preview updates right away.
-                  </p>
-                </div>
-
-                <div className="cq-vibe-grid" role="radiogroup" aria-label="Campus style">
-                  {CHARACTER_CLASSES.map((cls) => {
-                    const selected = config.classType === cls.id;
-                    return (
-                      <button
-                        key={cls.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        aria-label={`${cls.outfitLabel}: ${cls.vibeDescription}`}
-                        onClick={() => selectVibe(cls.id)}
-                        className={`cq-vibe-card ${selected ? "cq-vibe-card--selected" : ""}`}
-                      >
-                        {selected ? (
-                          <span className="cq-starter-avatar-check" aria-hidden>
-                            ✓
-                          </span>
-                        ) : null}
-                        <div className="flex items-start gap-3">
-                          <span className="text-2xl" aria-hidden>
-                            {cls.icon}
-                          </span>
-                          <div className="min-w-0 flex-1 text-left">
-                            <p className="font-semibold text-white">{cls.outfitLabel}</p>
-                            <p className="text-xs text-white/55">{cls.vibeDescription}</p>
-                          </div>
-                          <div className="shrink-0 rounded-xl border border-white/10 bg-black/25 p-1">
-                            <AvatarDisplay
-                              avatar={
-                                selected
-                                  ? avatarJson
-                                  : getClassAvatarPreset(cls.id)
-                              }
-                              size={44}
-                              showProp={false}
-                            />
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleRandomize}
-                    className="cq-avatar-btn cq-avatar-btn--gold min-h-[44px]"
-                  >
-                    Randomize
-                  </button>
-                  {!advancedOpen ? (
+              <div
+                className="cq-simple-starter-grid"
+                role="radiogroup"
+                aria-label="Starter avatars"
+              >
+                {AVATAR_LOOK_PRESETS.map((preset) => {
+                  const selected = selectedStarterId === preset.seed;
+                  const preview = serializeAvatarConfig(
+                    avatarConfigFromPreset(preset, config.classType),
+                  );
+                  return (
                     <button
+                      key={preset.seed}
                       type="button"
-                      onClick={() => setAdvancedOpen(true)}
-                      className="cq-avatar-btn cq-avatar-btn--ghost min-h-[44px]"
-                      data-testid="customize-more-open"
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={preset.label}
+                      onClick={() => selectStarter(preset.seed)}
+                      className={`cq-simple-starter-card ${
+                        selected ? "cq-simple-starter-card--selected" : ""
+                      }`}
                     >
-                      Customize More
+                      {selected ? (
+                        <span className="cq-starter-avatar-check" aria-hidden>
+                          ✓
+                        </span>
+                      ) : null}
+                      <div className="cq-simple-starter-thumb">
+                        <AvatarDisplay avatar={preview} size={96} showProp={false} fitParent />
+                      </div>
+                      <span className="cq-simple-starter-label">{preset.label}</span>
                     </button>
-                  ) : null}
-                </div>
-                <AdvancedAvatarEditor
-                  config={config}
-                  overrides={overrides}
-                  open={advancedOpen}
-                  onOpenChange={setAdvancedOpen}
-                  starterPresetId={selectedStarterId}
-                  onChange={handleAdvancedChange}
-                />
+                  );
+                })}
               </div>
-            ) : null}
 
-            {step === "review" ? (
-              <div className="space-y-5" data-testid="step-review">
-                <div>
-                  <h2 className="text-lg font-semibold text-white">Looking good</h2>
-                  <p className="text-sm text-white/55">Confirm your identity and enter CampusQuest.</p>
-                </div>
-
-                <div className="rounded-2xl border border-white/12 bg-white/[0.04] p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-white/50">
-                      Campus style
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setStep("vibe")}
-                      className="text-xs font-semibold text-uri-keaney hover:underline min-h-[44px] px-2"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                  <p className="text-base font-semibold text-white">
-                    {CHARACTER_CLASSES.find((c) => c.id === config.classType)?.icon}{" "}
-                    {getClassTitle(config.classType)}
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="char-name"
-                      className="block text-xs font-semibold uppercase tracking-wider text-white/70"
-                    >
-                      Display name <span className="text-amber-400">*</span>
-                    </label>
-                    <input
-                      id="char-name"
-                      type="text"
-                      value={name}
-                      onChange={(e) => handleNameChange(e.target.value)}
-                      placeholder="e.g. Alex"
-                      maxLength={NAME_MAX}
-                      autoComplete="name"
-                      className="cq-avatar-input"
-                      aria-required
-                      aria-invalid={name.length > 0 && !nameValid}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="char-username"
-                      className="block text-xs font-semibold uppercase tracking-wider text-white/70"
-                    >
-                      Username <span className="text-amber-400">*</span>
-                    </label>
-                    <input
-                      id="char-username"
-                      type="text"
-                      value={username}
-                      onChange={(e) => handleUsernameChange(e.target.value)}
-                      placeholder="e.g. alex_rhody"
-                      maxLength={USERNAME_MAX}
-                      autoComplete="username"
-                      className="cq-avatar-input font-mono text-sm"
-                      aria-required
-                      aria-invalid={usernameNormalized.length > 0 && !usernameValid}
-                    />
-                    <p className="text-xs text-white/45">
-                      You’ll appear as @{usernameNormalized || "username"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleRandomize}
-                    className="cq-avatar-btn cq-avatar-btn--gold min-h-[44px]"
-                  >
-                    Randomize
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleReset}
-                    className="cq-avatar-btn cq-avatar-btn--ghost min-h-[44px]"
-                  >
-                    Reset
-                  </button>
-                  {!advancedOpen ? (
-                    <button
-                      type="button"
-                      onClick={() => setAdvancedOpen(true)}
-                      className="cq-avatar-btn cq-avatar-btn--ghost min-h-[44px]"
-                      data-testid="customize-more-open"
-                    >
-                      Customize More
-                    </button>
-                  ) : null}
-                </div>
-                <AdvancedAvatarEditor
-                  config={config}
-                  overrides={overrides}
-                  open={advancedOpen}
-                  onOpenChange={setAdvancedOpen}
-                  starterPresetId={selectedStarterId}
-                  onChange={handleAdvancedChange}
-                />
-
-                {submitError ? (
-                  <p className="text-sm text-amber-400" role="alert">
-                    {submitError}
-                  </p>
-                ) : null}
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleRandomize}
+                  className="cq-avatar-btn cq-avatar-btn--gold min-h-[48px] px-6"
+                >
+                  Randomize
+                </button>
               </div>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
+
+          {step === "ready" ? (
+            <div className="space-y-6 text-center" data-testid="step-ready">
+              <div className="flex justify-center">
+                <div className="cq-simple-avatar-preview cq-simple-avatar-preview--hero" key={avatarJson}>
+                  <AvatarDisplay avatar={avatarJson} size={160} showProp={false} />
+                </div>
+              </div>
+              <div>
+                <h1 className="font-display text-2xl font-bold text-white">You&apos;re Ready!</h1>
+                <p className="mx-auto mt-2 max-w-sm text-sm text-white/65">
+                  You can customize your avatar anytime from your profile.
+                </p>
+                <p className="mt-3 text-base font-semibold text-white">{nameTrimmed}</p>
+                <p className="font-mono text-sm text-uri-keaney/90">@{usernameNormalized}</p>
+              </div>
+              {submitError ? (
+                <p className="text-sm text-amber-400" role="alert">
+                  {submitError}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="cq-avatar-onboarding__actions">
-          <button
-            type="button"
-            disabled={step === "starter" || saving}
-            onClick={() => {
-              if (step === "review") setStep("vibe");
-              else if (step === "vibe") {
-                setAdvancedOpen(false);
-                setStep("starter");
-              }
-            }}
-            className="cq-avatar-btn cq-avatar-btn--ghost min-h-[48px] flex-1"
-          >
-            Back
-          </button>
-          {step === "review" ? (
+          {step !== "identity" ? (
             <button
               type="button"
-              disabled={!canSubmit || saving}
+              disabled={saving || identitySaving}
+              onClick={() => {
+                setSubmitError(null);
+                if (step === "ready") setStep("avatar");
+                else setStep("identity");
+              }}
+              className="cq-avatar-btn cq-avatar-btn--ghost min-h-[48px] flex-1"
+            >
+              Back
+            </button>
+          ) : (
+            <span className="flex-1" />
+          )}
+
+          {step === "identity" ? (
+            <button
+              type="button"
+              disabled={!canContinueIdentity || identitySaving}
+              onClick={() => void handleIdentityContinue()}
+              className="cq-avatar-btn cq-avatar-btn--primary min-h-[48px] flex-[1.4]"
+            >
+              {identitySaving ? "Saving…" : "Continue"}
+            </button>
+          ) : null}
+
+          {step === "avatar" ? (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => setStep("ready")}
+              className="cq-avatar-btn cq-avatar-btn--primary min-h-[48px] flex-[1.4]"
+            >
+              Continue
+            </button>
+          ) : null}
+
+          {step === "ready" ? (
+            <button
+              type="button"
+              disabled={!canFinish || saving}
               onClick={() => void handleEnterCampusQuest()}
               className="cq-avatar-btn cq-avatar-btn--primary min-h-[48px] flex-[1.4]"
               data-testid="enter-campusquest"
             >
               {saving ? "Saving…" : "Enter CampusQuest"}
             </button>
-          ) : (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => {
-                setAdvancedOpen(false);
-                if (step === "starter") setStep("vibe");
-                else setStep("review");
-              }}
-              className="cq-avatar-btn cq-avatar-btn--primary min-h-[48px] flex-[1.4]"
-            >
-              Continue
-            </button>
-          )}
+          ) : null}
         </div>
       </div>
     </section>

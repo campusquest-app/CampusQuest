@@ -94,8 +94,8 @@ export function CharacterCard({
                 type="button"
                 onClick={openEditModal}
                 className="absolute -bottom-0.5 left-0 flex h-7 w-7 items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney text-xs text-white shadow-md hover:bg-uri-keaney/90"
-                aria-label="Edit avatar"
-                title="Edit avatar"
+                aria-label="Open Avatar Lab"
+                title="Avatar Lab"
               >
                 ✏️
               </button>
@@ -106,14 +106,14 @@ export function CharacterCard({
                 onClick={(e) => e.target === e.currentTarget && setEditingAvatar(false)}
                 role="dialog"
                 aria-modal="true"
-                aria-label="Customize avatar"
+                aria-label="Avatar Lab"
               >
                 <div className="absolute inset-0 bg-black/85" aria-hidden onClick={() => setEditingAvatar(false)} />
                 <div className="relative z-10 flex max-h-[min(92dvh,100%)] w-full max-w-xl flex-col rounded-t-3xl border border-uri-keaney/30 bg-uri-navy shadow-xl shadow-black/50 sm:max-h-[88vh] sm:rounded-2xl lg:max-w-3xl">
                   <div className="shrink-0 border-b border-white/10 px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
-                    <h2 className="font-display text-lg font-bold text-white sm:text-xl">Customize Avatar</h2>
+                    <h2 className="font-display text-lg font-bold text-white sm:text-xl">Avatar Lab</h2>
                     <p className="mt-1 text-sm text-white/60">
-                      Choose your avatar style, background, and save your look.
+                      Customize presets, colors, hair, face, and more — then save your look.
                     </p>
                   </div>
                   <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
@@ -131,6 +131,23 @@ export function CharacterCard({
                         onChange={setEditingAvatarValue}
                         compact
                         hidePreview
+                        showClassPresets
+                        selectedClassId={
+                          character.classId === "gym" ||
+                          character.classId === "knight" ||
+                          character.classId === "mage" ||
+                          character.classId === "bard" ||
+                          character.classId === "rogue"
+                            ? character.classId
+                            : null
+                        }
+                        selectedWeapon={character.starterWeapon ?? null}
+                        onWeaponChange={(weaponId) => {
+                          updateCharacter({ starterWeapon: weaponId ?? undefined });
+                        }}
+                        onClassChange={(classId) => {
+                          if (classId) updateCharacter({ classId });
+                        }}
                         preview={{
                           displayName: character.name,
                           username: character.username,
@@ -196,6 +213,15 @@ export function CharacterCard({
               </p>
             )}
             <p className="mt-0.5 text-sm text-white/50">@{character.username}</p>
+            {!readOnly ? (
+              <button
+                type="button"
+                onClick={openEditModal}
+                className="mt-2 inline-flex min-h-[40px] items-center rounded-xl border border-uri-keaney/40 bg-uri-keaney/15 px-3 py-1.5 text-xs font-semibold text-uri-keaney hover:bg-uri-keaney/25"
+              >
+                Avatar Lab
+              </button>
+            ) : null}
             {equippedTitle ? (
               <p className="mt-1.5 font-display text-xs font-semibold uppercase tracking-wide text-uri-gold/90">
                 {equippedTitle}

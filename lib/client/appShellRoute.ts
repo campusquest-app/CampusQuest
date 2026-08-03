@@ -20,15 +20,17 @@ export function isProfileSetupComplete(profile: ProfileRouteInput): boolean {
 }
 
 /**
- * Account-type selection comes before everything else:
- * - new users hit it right after email verification (before character setup);
- * - existing users with a NULL/invalid role get the one-time prompt, then go
- *   straight back to the app (their onboarding stays complete);
- * - admins and internal testers never see it; QA re-tests it after each reset.
+ * Account-type + character setup routing:
+ * - New users without a role go straight to character onboarding (role is picked there).
+ * - Existing users who finished character setup but lack a role get the standalone role gate.
+ * - Admins / internal testers never see the role gate.
  */
 export function resolveProfileRoute(profile: ProfileRouteInput): ProfileRoute {
-  if (!hasValidRoleSelection(profile)) return "role_gate";
-  return isProfileSetupComplete(profile) ? "app" : "character_gate";
+  const setupComplete = isProfileSetupComplete(profile);
+  if (!hasValidRoleSelection(profile)) {
+    return setupComplete ? "role_gate" : "character_gate";
+  }
+  return setupComplete ? "app" : "character_gate";
 }
 
 export function resolveAppShellRoute(args: {
