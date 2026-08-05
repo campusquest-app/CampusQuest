@@ -43,6 +43,9 @@ import {
   type PinnedDmUserRow,
 } from "@/lib/client/pinnedDmUsersClient";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
+import { fetchQuadPostById } from "@/lib/client/quadPostsClient";
+import { ProfilePostDetail } from "@/components/profile/ProfilePostDetail";
+import type { FieldNote } from "@/lib/types";
 
 export type InboxSubTab = "messages" | "notifications";
 
@@ -174,8 +177,30 @@ export function Inbox({
   const [requestsExpanded, setRequestsExpanded] = useState(false);
   const [pinnedUsers, setPinnedUsers] = useState<PinnedDmUserRow[]>([]);
   const [pinBusyUserId, setPinBusyUserId] = useState<string | null>(null);
+  const [openedPost, setOpenedPost] = useState<FieldNote | null>(null);
+  const [openingPost, setOpeningPost] = useState(false);
   const conversationReadSnapshotRef = useRef<ConversationItem[] | null>(null);
   const pendingReadOptimisticRef = useRef<{ conversationId: string; badgeDelta: number } | null>(null);
+
+  const openQuadPostFromNotification = useCallback(
+    async (postId: string) => {
+      setOpeningPost(true);
+      setMessageError(null);
+      try {
+        const note = await fetchQuadPostById(postId, character.id);
+        if (!note) {
+          setMessageError("This post is no longer available.");
+          return;
+        }
+        setOpenedPost(note);
+      } catch {
+        setMessageError("This post is no longer available.");
+      } finally {
+        setOpeningPost(false);
+      }
+    },
+    [character.id],
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedMessageSearch(messageSearch), 200);
@@ -691,8 +716,33 @@ export function Inbox({
           theme="inbox"
           onUnreadCountChange={onUnreadCountChange}
           personalization={personalization}
+          onOpenQuadPost={(postId) => void openQuadPostFromNotification(postId)}
         />
       )}
+
+      {openedPost ? (
+        <ProfilePostDetail
+          note={openedPost}
+          currentUserId={character.id}
+          currentUser={{
+            id: character.id,
+            name: character.name,
+            username: character.username,
+            avatar: character.avatar,
+          }}
+          onClose={() => setOpenedPost(null)}
+          onNod={() => undefined}
+          onHype={() => undefined}
+          onVerify={() => undefined}
+          onAssist={() => undefined}
+        />
+      ) : null}
+
+      {openingPost ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[80] flex justify-center">
+          <span className="rounded-full bg-black/70 px-3 py-1.5 text-xs text-white/80">Opening post…</span>
+        </div>
+      ) : null}
 
       {newChatOpen ? (
         <InboxNewChatSheet

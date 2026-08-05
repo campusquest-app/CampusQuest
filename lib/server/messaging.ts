@@ -1271,7 +1271,50 @@ export async function listConversationMessages(args: {
     return sender ? { ...dto, sender } : dto;
   });
 
-  return { messages: mappedMessages, readSync };
+  // Re-resolve shared posts from the referenced post ID so edits/deletes
+  // surface live ("This post is no longer available.") without storing a copy.
+  const refreshed = await Promise.all(
+    mappedMessages.map(async (dto) => {
+      if (dto.type !== "shared_post" || !dto.sharedPostId) return dto;
+      try {
+        const fresh = await buildSharedPostPreview({
+          userClient,
+          viewerId: userId,
+          postId: dto.sharedPostId,
+          postType: dto.sharedPostType ?? "quad",
+          locationName: dto.sharedPostPreview?.locationName ?? null,
+        });
+        return {
+          ...dto,
+          sharedPostPreview: fresh,
+          metadata: {
+            ...dto.metadata,
+            sharedPostPreview: fresh,
+          },
+        };
+      } catch {
+        return {
+          ...dto,
+          sharedPostPreview: dto.sharedPostPreview
+            ? { ...dto.sharedPostPreview, unavailable: true }
+            : {
+                postId: dto.sharedPostId,
+                postType: (dto.sharedPostType ?? "quad") as "quad" | "memory",
+                authorId: "",
+                authorName: "Unknown",
+                authorUsername: "unknown",
+                authorAvatar: "🎓",
+                caption: "",
+                imageUrl: null,
+                locationName: null,
+                unavailable: true,
+              },
+        };
+      }
+    }),
+  );
+
+  return { messages: refreshed, readSync };
 }
 
 export async function setDirectMessageFavorite(args: {

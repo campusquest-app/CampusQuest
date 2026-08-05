@@ -94,10 +94,15 @@ function DmMessageBubbleRow({
   onRetryFailed: (message: DirectMessageDto) => void;
 }) {
   const favorited = Boolean(m.isFavorited);
+  const isTaggedSharedPost =
+    m.type === "shared_post" && m.metadata?.reason === "tagged_in_post";
   const showCaption =
     m.type === "text" ||
     (m.type === "image" && m.content.trim() && m.content.trim() !== "📷 Photo") ||
-    (m.type === "shared_post" && m.content.trim() && m.content.trim() !== "Shared a post");
+    (m.type === "shared_post" &&
+      !isTaggedSharedPost &&
+      m.content.trim() &&
+      m.content.trim() !== "Shared a post");
   const isSharedPost = m.type === "shared_post" && m.sharedPostPreview;
   const isImageOnly = m.type === "image" && m.imageUrl && !showCaption;
   const isAudioOnly = m.type === "audio" && m.imageUrl;
@@ -200,7 +205,12 @@ function DmMessageBubbleRow({
           </div>
         ) : isSharedPost ? (
           <div className={`cq-dm-bubble-enter ${bubbleClass} p-1.5`}>
-            <DmSharedPostCard preview={m.sharedPostPreview!} onOpen={() => onOpenSharedPost(m.sharedPostPreview!)} />
+            <DmSharedPostCard
+              preview={m.sharedPostPreview!}
+              reason={typeof m.metadata?.reason === "string" ? m.metadata.reason : null}
+              timestamp={m.createdAt}
+              onOpen={() => onOpenSharedPost(m.sharedPostPreview!)}
+            />
             {showCaption ? (
               <p className="mt-1.5 px-1 text-sm whitespace-pre-wrap break-words text-white">{m.content}</p>
             ) : null}

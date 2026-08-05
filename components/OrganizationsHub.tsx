@@ -23,6 +23,7 @@ import {
   orgBrowseFilterLabel,
   type OrgBrowseFilterId,
 } from "@/lib/organizationBrowseFilters";
+import { TaggedEntityPostsSection } from "@/components/quad/TaggedEntityPostsSection";
 
 type Organization = {
   id: string;
@@ -989,6 +990,11 @@ export function OrganizationsHub({
                   ))
                 )}
               </div>
+              <TaggedEntityPostsSection
+                entityType="organization"
+                entityId={activeOrg.id}
+                title="Community posts"
+              />
             </div>
           </OrgHubModalPanel>
         </OrgHubModalOverlay>

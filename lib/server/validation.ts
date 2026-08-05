@@ -659,6 +659,43 @@ export const postQuadPostSchema = z
     authorStreakDays: z.number().int().min(0).max(10_000).optional(),
     locationId: campusLocationSlugSchema.optional(),
     locationName: z.string().trim().max(80).optional(),
+    tags: z
+      .array(
+        z.object({
+          entityType: z.enum(["user", "organization", "event", "external_event"]),
+          entityId: uuidSchema,
+          displayLabel: z.string().trim().min(1).max(120).optional(),
+          subtitle: z.string().trim().max(200).nullable().optional(),
+          mentionSlug: z.string().trim().max(64).nullable().optional(),
+        }),
+      )
+      .max(20)
+      .optional(),
+    photoTags: z
+      .array(
+        z.object({
+          entityType: z.enum(["user", "organization", "event", "external_event"]),
+          entityId: uuidSchema,
+          mediaKey: z.string().trim().max(64).default("primary"),
+          positionX: z.number().min(0).max(1),
+          positionY: z.number().min(0).max(1),
+          displayLabel: z.string().trim().min(1).max(120).optional(),
+        }),
+      )
+      .max(40)
+      .optional(),
+    mentions: z
+      .array(
+        z.object({
+          entityType: z.enum(["user", "organization", "event", "external_event"]),
+          entityId: uuidSchema,
+          displayText: z.string().trim().min(1).max(80),
+          startIndex: z.number().int().min(0).max(300),
+          endIndex: z.number().int().min(0).max(300),
+        }),
+      )
+      .max(20)
+      .optional(),
   })
   .refine((data) => data.body.length > 0 || (typeof data.proofUrl === "string" && data.proofUrl.length > 0), {
     message: "Add a caption or a photo to post.",

@@ -68,6 +68,19 @@ export async function fetchMyQuadPosts(viewerId: string, limit = 40): Promise<Fi
   return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
 }
 
+export async function fetchTaggedPosts(
+  entityType: "user" | "organization" | "event" | "external_event",
+  entityId: string,
+  viewerId: string,
+  limit = 30,
+): Promise<FieldNote[]> {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  const data = await fetchAuthed<{ posts: QuadPostApiRow[] }>(
+    `/api/quad/tagged/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}?${qs.toString()}`,
+  );
+  return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
+}
+
 export async function fetchQuadPostById(postId: string, viewerId?: string): Promise<FieldNote | null> {
   if (!isPersistedQuadPostId(postId)) return null;
   const qs = new URLSearchParams({ postId, limit: "1" });
@@ -88,6 +101,28 @@ export async function createQuadPostRequest(
     authorStreakDays?: number;
     locationId?: string;
     locationName?: string;
+    tags?: {
+      entityType: "user" | "organization" | "event" | "external_event";
+      entityId: string;
+      displayLabel?: string;
+      subtitle?: string | null;
+      mentionSlug?: string | null;
+    }[];
+    photoTags?: {
+      entityType: "user" | "organization" | "event" | "external_event";
+      entityId: string;
+      mediaKey?: string;
+      positionX: number;
+      positionY: number;
+      displayLabel?: string;
+    }[];
+    mentions?: {
+      entityType: "user" | "organization" | "event" | "external_event";
+      entityId: string;
+      displayText: string;
+      startIndex: number;
+      endIndex: number;
+    }[];
   },
   viewerId?: string,
 ): Promise<CreateQuadPostResult> {

@@ -1,5 +1,5 @@
 import { resolveProfileAvatar } from "./avatarSource";
-import type { FieldNote, RamMark } from "./types";
+import type { FieldNote, FieldNoteMention, FieldNoteTag, RamMark } from "./types";
 
 export type QuadReactionType = "like" | "spark";
 
@@ -43,6 +43,8 @@ export type QuadPostApiRow = {
     avatar_custom_json?: string | null;
     avatar_url?: string | null;
   }>;
+  tags?: FieldNoteTag[];
+  mentions?: FieldNoteMention[];
 };
 
 export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): FieldNote {
@@ -92,5 +94,7 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
     locationName: row.location_name ?? undefined,
     isPersisted: true,
     commentCount: Math.max(0, row.comments_count ?? 0),
+    tags: row.tags ?? [],
+    mentions: row.mentions ?? [],
   };
 }

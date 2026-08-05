@@ -639,7 +639,11 @@ const GroupMessageBubble = memo(function GroupMessageBubble({
               </div>
             ) : isSharedPost ? (
               <div className={`cq-dm-bubble-enter ${bubbleClass} p-1.5`}>
-                <DmSharedPostCard preview={message.sharedPostPreview!} />
+                <DmSharedPostCard
+                  preview={message.sharedPostPreview!}
+                  reason={typeof message.metadata?.reason === "string" ? message.metadata.reason : null}
+                  timestamp={message.createdAt}
+                />
                 {showCaption ? (
                   <p className="mt-1.5 px-1 text-sm whitespace-pre-wrap break-words text-white">{message.content}</p>
                 ) : null}

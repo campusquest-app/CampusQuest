@@ -1,9 +1,10 @@
 "use client";
 
-export type ProfileTab = "posts" | "memories" | "collectibles" | "activity";
+export type ProfileTab = "posts" | "tagged" | "memories" | "collectibles" | "activity";
 
 const TABS: { id: ProfileTab; label: string }[] = [
   { id: "posts", label: "Posts" },
+  { id: "tagged", label: "Tagged" },
   { id: "memories", label: "Memories" },
   { id: "collectibles", label: "Codex" },
   { id: "activity", label: "Activity" },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { fetchAuthed, patchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import {
   avatarFromConnectionProfile,
   respondToConnectionRequest,
@@ -9,6 +9,7 @@ import {
 import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
+import { PendingTagsInbox } from "@/components/quad/PendingTagsInbox";
 
 type NotificationItem = {
   id: string;
@@ -34,12 +35,15 @@ export function NotificationsCenter({
   personalization: _personalization,
   embedded,
   theme = "default",
+  onOpenQuadPost,
 }: {
   onUnreadCountChange?: (count: number) => void;
   personalization?: { discoveryFocus?: string[] } | null;
   /** Render inside Inbox (no duplicate page chrome). */
   embedded?: boolean;
   theme?: "default" | "inbox";
+  /** Open a Quad post from a tag/like/comment notification (marks read first). */
+  onOpenQuadPost?: (postId: string, options?: { revealPhotoTags?: boolean }) => void;
 }) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,6 +51,7 @@ export function NotificationsCenter({
   const [markingAll, setMarkingAll] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
+  const [respondingTagKey, setRespondingTagKey] = useState<string | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
 
   const unreadCount = notifications.filter((notification) => !notification.readAt).length;
@@ -202,6 +207,43 @@ export function NotificationsCenter({
     }
   }
 
+  async function handleTagApprovalFromNotification(
+    notification: NotificationItem,
+    action: "approve" | "reject",
+  ) {
+    const postId = notification.relatedEntityId;
+    if (!postId) {
+      setError("This tag request is no longer available.");
+      return;
+    }
+    const key = `${notification.id}:${action}`;
+    setRespondingTagKey(key);
+    setError(null);
+    try {
+      // Resolve the pending tag for this post + viewer, then approve/reject.
+      const pending = await fetchAuthed<{ tags: { tagId: string; postId: string }[] }>("/api/me/pending-tags");
+      const match = (pending.tags ?? []).find((t) => t.postId === postId);
+      if (!match) {
+        setActionToast("This tag was already reviewed.");
+        setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
+        return;
+      }
+      await patchAuthed(`/api/me/pending-tags/${match.tagId}`, { action });
+      setActionToast(action === "approve" ? "Tag approved" : "Tag rejected");
+      await markRead(notification.id);
+      setNotifications((prev) => {
+        const next = prev.filter((n) => n.id !== notification.id);
+        onUnreadCountChange?.(next.filter((n) => !n.readAt).length);
+        return next;
+      });
+      emitSocialSync({ source: "inbox" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update tag.");
+    } finally {
+      setRespondingTagKey(null);
+    }
+  }
+
   const isInbox = embedded && theme === "inbox";
 
   const headerRow = isInbox ? (
@@ -284,6 +326,7 @@ export function NotificationsCenter({
         </div>
       ) : null}
       {headerRow}
+      <PendingTagsInbox embedded={Boolean(embedded || isInbox)} />
       {error ? (
         <ScreenDataState
           variant="error"
@@ -313,18 +356,63 @@ export function NotificationsCenter({
       <div className={listWrapClass} {...(isInbox ? { "data-cq-scroll-root": true } : {})}>
         {sortedNotifications.map((notification) => {
           const isFriendRequest = notification.type === "friend_request";
+          const isTagApproval = notification.type === "quad_post_tag_approval";
           const isActorSocial =
             isFriendRequest ||
+            isTagApproval ||
             notification.type === "quad_post_like" ||
-            notification.type === "quad_post_comment";
+            notification.type === "quad_post_comment" ||
+            notification.type === "quad_post_tag" ||
+            notification.type === "quad_post_mention";
           const requestId = notification.friendRequestId ?? notification.relatedEntityId;
           const actorAvatar = avatarFromConnectionProfile({
             avatarUrl: notification.actorAvatarUrl ?? null,
             avatarCustomJson: notification.actorAvatarCustomJson ?? null,
           });
 
+          const isQuadPostNotif =
+            notification.type === "quad_post_like" ||
+            notification.type === "quad_post_comment" ||
+            notification.type === "quad_post_tag" ||
+            notification.type === "quad_post_mention" ||
+            notification.type === "quad_post_tag_approval";
+          const canOpenPost =
+            Boolean(onOpenQuadPost) &&
+            isQuadPostNotif &&
+            notification.relatedEntityType === "quad_post" &&
+            Boolean(notification.relatedEntityId);
+
           return (
-            <article key={notification.id} className={itemClass(Boolean(notification.readAt))}>
+            <article
+              key={notification.id}
+              className={`${itemClass(Boolean(notification.readAt))}${canOpenPost ? " cursor-pointer" : ""}`}
+              role={canOpenPost ? "button" : undefined}
+              tabIndex={canOpenPost ? 0 : undefined}
+              onClick={
+                canOpenPost
+                  ? () => {
+                      void (async () => {
+                        if (!notification.readAt) await markRead(notification.id);
+                        onOpenQuadPost?.(notification.relatedEntityId!, {
+                          revealPhotoTags:
+                            notification.type === "quad_post_tag" ||
+                            notification.type === "quad_post_tag_approval",
+                        });
+                      })();
+                    }
+                  : undefined
+              }
+              onKeyDown={
+                canOpenPost
+                  ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        (event.currentTarget as HTMLElement).click();
+                      }
+                    }
+                  : undefined
+              }
+            >
               <div className="flex items-start gap-3">
                 {isActorSocial ? (
                   <div className={`shrink-0 overflow-hidden rounded-full bg-[#262626] ${isInbox ? "h-11 w-11" : "cq-avatar-slot w-10 h-10 border border-cq-border"}`}>
@@ -342,7 +430,10 @@ export function NotificationsCenter({
                       <button
                         type="button"
                         disabled={togglingId === notification.id}
-                        onClick={() => void toggleFavorite(notification.id, !notification.isFavorited)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void toggleFavorite(notification.id, !notification.isFavorited);
+                        }}
                         className={`p-2 rounded-lg text-sm transition-colors disabled:opacity-50 ${
                           notification.isFavorited
                             ? isInbox
@@ -361,7 +452,10 @@ export function NotificationsCenter({
                       {!notification.readAt && !isFriendRequest ? (
                         <button
                           type="button"
-                          onClick={() => void markRead(notification.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void markRead(notification.id);
+                          }}
                           className={`px-2.5 py-1 rounded-md text-[11px] font-semibold ${
                             isInbox
                               ? "text-[#0095f6]"
@@ -383,7 +477,10 @@ export function NotificationsCenter({
                       <button
                         type="button"
                         disabled={respondingRequestId === requestId}
-                        onClick={() => void handleFriendRequestAction(notification, "accept")}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleFriendRequestAction(notification, "accept");
+                        }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 ${
                           isInbox
                             ? "bg-[#0095f6] text-white"
@@ -395,7 +492,10 @@ export function NotificationsCenter({
                       <button
                         type="button"
                         disabled={respondingRequestId === requestId}
-                        onClick={() => void handleFriendRequestAction(notification, "decline")}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleFriendRequestAction(notification, "decline");
+                        }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 ${
                           isInbox
                             ? "bg-white/10 text-white"
@@ -403,6 +503,34 @@ export function NotificationsCenter({
                         }`}
                       >
                         Deny
+                      </button>
+                    </div>
+                  ) : null}
+                  {isTagApproval ? (
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={respondingTagKey?.startsWith(`${notification.id}:`)}
+                        onClick={() => void handleTagApprovalFromNotification(notification, "approve")}
+                        className={`min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 ${
+                          isInbox
+                            ? "bg-[#0095f6] text-white"
+                            : "bg-uri-keaney text-uri-navy hover:bg-uri-keaney/90"
+                        }`}
+                      >
+                        Approve tag
+                      </button>
+                      <button
+                        type="button"
+                        disabled={respondingTagKey?.startsWith(`${notification.id}:`)}
+                        onClick={() => void handleTagApprovalFromNotification(notification, "reject")}
+                        className={`min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 ${
+                          isInbox
+                            ? "bg-white/10 text-white"
+                            : "text-slate-700 border border-cq-border hover:bg-slate-100"
+                        }`}
+                      >
+                        Reject
                       </button>
                     </div>
                   ) : null}

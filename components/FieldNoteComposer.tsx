@@ -6,11 +6,13 @@ import {
   Image as ImageIcon,
   ChevronLeft,
   ChevronDown,
+  ChevronRight,
   X,
   Heart,
   MapPin,
   MessageCircle,
   Share2,
+  Tag,
 } from "lucide-react";
 import { normalizeRamMarkTag, prependRemoteQuadPost } from "@/lib/feedStore";
 import { createQuadPostRequest } from "@/lib/client/quadPostsClient";
@@ -24,6 +26,18 @@ import { FIELD_NOTE_MAX_CHARS, RAMMARK_MAX_LENGTH, RAMMARK_MAX_PER_POST } from "
 import type { RamMark } from "@/lib/types";
 import type { RealmLocationId } from "@/lib/realm/locations";
 import { useCampusLocations } from "@/lib/client/campusLocationsClient";
+import { TagPickerSheet } from "@/components/quad/TagPickerSheet";
+import { MentionAutocomplete } from "@/components/quad/MentionAutocomplete";
+import { PhotoTagEditor } from "@/components/quad/PhotoTagEditor";
+import {
+  detectActiveMention,
+  insertMentionAtCursor,
+  tagEntityKey,
+  type CaptionMentionDraft,
+  type ComposerTagSelection,
+  type PhotoTagDraft,
+} from "@/lib/postTags";
+import type { TagSearchResult } from "@/lib/client/tagSearchClient";
 
 export function FieldNoteComposer({
   character,
@@ -65,6 +79,13 @@ export function FieldNoteComposer({
   const [posted, setPosted] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [composerTags, setComposerTags] = useState<ComposerTagSelection[]>([]);
+  const [photoTags, setPhotoTags] = useState<PhotoTagDraft[]>([]);
+  const [captionMentions, setCaptionMentions] = useState<CaptionMentionDraft[]>([]);
+  const [tagSheetOpen, setTagSheetOpen] = useState(false);
+  const [photoTagEditorOpen, setPhotoTagEditorOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [cursor, setCursor] = useState(0);
   const photoFileRef = useRef<HTMLInputElement>(null);
   const cameraFileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -89,10 +110,52 @@ export function FieldNoteComposer({
   const bodyCount = body.length;
   const canPost = (body.trim().length > 0 || hasImage) && bodyCount <= FIELD_NOTE_MAX_CHARS;
 
-  const dirty = body.trim().length > 0 || hasImage || ramMarks.length > 0 || locationId !== "";
+  const dirty =
+    body.trim().length > 0 ||
+    hasImage ||
+    ramMarks.length > 0 ||
+    locationId !== "" ||
+    composerTags.length > 0 ||
+    photoTags.length > 0;
   useEffect(() => {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
+
+  function syncMentionQuery(text: string, nextCursor: number) {
+    const active = detectActiveMention(text, nextCursor);
+    setMentionQuery(active ? active.query : null);
+  }
+
+  function handleSelectMention(hit: TagSearchResult) {
+    const token =
+      hit.entityType === "user" ? hit.mentionSlug : hit.mentionSlug || hit.displayLabel.replace(/\s+/g, "_");
+    const inserted = insertMentionAtCursor({
+      text: body,
+      cursor,
+      mentionText: token,
+    });
+    if (!inserted) return;
+    setBody(inserted.text);
+    setCursor(inserted.cursor);
+    setCaptionMentions((prev) => {
+      const next = prev.filter((m) => !(m.startIndex === inserted.start && m.endIndex === inserted.end));
+      next.push({
+        entityType: hit.entityType,
+        entityId: hit.entityId,
+        displayText: inserted.text.slice(inserted.start, inserted.end),
+        startIndex: inserted.start,
+        endIndex: inserted.end,
+      });
+      return next;
+    });
+    setMentionQuery(null);
+    window.requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(inserted.cursor, inserted.cursor);
+    });
+  }
 
   const canAddRamMark =
     ramMarks.length < RAMMARK_MAX_PER_POST &&
@@ -129,6 +192,7 @@ export function FieldNoteComposer({
 
   function removeImage() {
     setProofUrl("");
+    setPhotoTags([]);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -158,6 +222,28 @@ export function FieldNoteComposer({
           ...(selectedLocation
             ? { locationId: selectedLocation.slug, locationName: selectedLocation.name }
             : {}),
+          tags: composerTags.map((t) => ({
+            entityType: t.entityType,
+            entityId: t.entityId,
+            displayLabel: t.displayLabel,
+            subtitle: t.subtitle ?? null,
+            mentionSlug: t.mentionSlug ?? null,
+          })),
+          photoTags: photoTags.map((t) => ({
+            entityType: t.entityType,
+            entityId: t.entityId,
+            mediaKey: t.mediaKey,
+            positionX: t.positionX,
+            positionY: t.positionY,
+            displayLabel: t.displayLabel,
+          })),
+          mentions: captionMentions.map((m) => ({
+            entityType: m.entityType,
+            entityId: m.entityId,
+            displayText: m.displayText,
+            startIndex: m.startIndex,
+            endIndex: m.endIndex,
+          })),
         },
         character.id,
       );
@@ -169,6 +255,9 @@ export function FieldNoteComposer({
       setRamMarks([]);
       setProofUrl("");
       setLocationId("");
+      setComposerTags([]);
+      setPhotoTags([]);
+      setCaptionMentions([]);
       if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
       }
@@ -256,17 +345,40 @@ export function FieldNoteComposer({
           </div>
         </div>
 
-        <textarea
-          ref={textareaRef}
-          id="field-note-body"
-          value={body}
-          onChange={(e) => setBody(e.target.value.slice(0, FIELD_NOTE_MAX_CHARS))}
-          placeholder="What's happening on campus?"
-          rows={4}
-          className="cq-composer-maintext"
-          aria-label="Post caption"
-          autoFocus
-        />
+        <div className="relative">
+          <MentionAutocomplete
+            open={mentionQuery != null}
+            query={mentionQuery ?? ""}
+            onSelect={handleSelectMention}
+          />
+          <textarea
+            ref={textareaRef}
+            id="field-note-body"
+            value={body}
+            onChange={(e) => {
+              const next = e.target.value.slice(0, FIELD_NOTE_MAX_CHARS);
+              const nextCursor = e.target.selectionStart ?? next.length;
+              setBody(next);
+              setCursor(nextCursor);
+              syncMentionQuery(next, nextCursor);
+            }}
+            onSelect={(e) => {
+              const nextCursor = e.currentTarget.selectionStart ?? 0;
+              setCursor(nextCursor);
+              syncMentionQuery(body, nextCursor);
+            }}
+            onKeyUp={(e) => {
+              const nextCursor = e.currentTarget.selectionStart ?? 0;
+              setCursor(nextCursor);
+              syncMentionQuery(body, nextCursor);
+            }}
+            placeholder="What's happening on campus?"
+            rows={4}
+            className="cq-composer-maintext"
+            aria-label="Post caption"
+            autoFocus
+          />
+        </div>
 
         <div className="cq-composer-meta-row">
           <span className={`cq-composer-counter ${bodyCount > FIELD_NOTE_MAX_CHARS ? "cq-composer-counter--over" : ""}`}>
@@ -293,6 +405,29 @@ export function FieldNoteComposer({
             >
               Replace
             </button>
+            <button
+              type="button"
+              onClick={() => setPhotoTagEditorOpen(true)}
+              className="absolute bottom-2 left-2 min-h-[40px] rounded-full bg-black/70 px-3 text-xs font-semibold text-white"
+            >
+              Tag photo{photoTags.length ? ` (${photoTags.length})` : ""}
+            </button>
+          </div>
+        ) : null}
+
+        {composerTags.length > 0 ? (
+          <div className="flex flex-wrap gap-2 px-1 pb-1" aria-label="Selected tags">
+            {composerTags.map((t) => (
+              <button
+                key={tagEntityKey(t)}
+                type="button"
+                onClick={() => setComposerTags((prev) => prev.filter((x) => tagEntityKey(x) !== tagEntityKey(t)))}
+                className="inline-flex min-h-[36px] items-center gap-1 rounded-full border border-uri-keaney/40 bg-uri-keaney/15 px-2.5 text-xs text-uri-keaney"
+              >
+                {t.displayLabel}
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ))}
           </div>
         ) : null}
 
@@ -365,6 +500,19 @@ export function FieldNoteComposer({
           >
             <div className="cq-composer-more-panel-inner">
               <div className="cq-composer-more-body">
+                <button
+                  type="button"
+                  className="mb-3 flex w-full min-h-[48px] items-center justify-between rounded-xl border border-white/12 bg-white/[0.04] px-3 text-left"
+                  onClick={() => setTagSheetOpen(true)}
+                  tabIndex={moreOpen ? 0 : -1}
+                >
+                  <span className="inline-flex items-center gap-2 text-sm text-white">
+                    <Tag className="h-4 w-4 text-uri-keaney" />
+                    Tag people, organizations, or events
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-white/45" />
+                </button>
+
                 <label htmlFor="field-note-location" className="cq-composer-label">
                   Add to Realm Map
                 </label>
@@ -475,6 +623,21 @@ export function FieldNoteComposer({
         {successMessage && !posted ? <p className="cq-composer-success">{successMessage}</p> : null}
         {error ? <p className="cq-composer-error" role="alert">{error}</p> : null}
       </div>
+
+      <TagPickerSheet
+        open={tagSheetOpen}
+        selected={composerTags}
+        onChange={setComposerTags}
+        onClose={() => setTagSheetOpen(false)}
+        onDone={() => setTagSheetOpen(false)}
+      />
+      <PhotoTagEditor
+        open={photoTagEditorOpen}
+        imageUrl={proofUrl}
+        tags={photoTags}
+        onChange={setPhotoTags}
+        onClose={() => setPhotoTagEditorOpen(false)}
+      />
 
       {posted ? (
         <div className="cq-composer-success-overlay" role="status" aria-live="polite">

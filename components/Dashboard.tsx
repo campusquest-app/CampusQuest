@@ -1090,6 +1090,7 @@ export function Dashboard() {
           }
           break;
         case "blocked-users":
+        case "tags-mentions":
         case "delete-account":
           // Handled inside AppSideDrawer sub-panels.
           break;

@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/server/supabase";
 
 type SupabaseClientLike = ReturnType<typeof createAdminClient>;
 
-export type DirectMessageType = "text" | "image" | "shared_post" | "audio";
+export type DirectMessageType = "text" | "image" | "shared_post" | "audio" | "system";
 export type SharedPostType = "quad" | "memory";
 
 export type SharedPostPreview = {
@@ -87,6 +87,9 @@ export function buildDirectMessagePreviewText(args: {
   }
   if (args.type === "shared_post") {
     return trimmed && trimmed !== "Shared a post" ? trimmed : "Shared a post";
+  }
+  if (args.type === "system") {
+    return trimmed || "System message";
   }
   return trimmed;
 }

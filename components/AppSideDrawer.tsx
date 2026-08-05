@@ -31,6 +31,7 @@ import { CampusQuestLogo } from "@/components/CampusQuestLogo";
 import { AppSettingsPanel, type SettingsActionId } from "@/components/AppSettingsPanel";
 import { AppHelpSupportPanel } from "@/components/AppHelpSupportPanel";
 import { BlockedUsersPanel } from "@/components/safety/BlockedUsersPanel";
+import { TagsMentionsSettingsPanel } from "@/components/safety/TagsMentionsSettingsPanel";
 import { DeleteAccountPanel } from "@/components/safety/DeleteAccountPanel";
 import { DRAWER_SNAP_MS } from "@/lib/client/drawerGeometry";
 import { setIsDrawerOpen } from "@/lib/client/appDrawerStore";
@@ -54,7 +55,7 @@ export type AppDrawerDestination =
   | "progress-hub"
   | "skills-lore";
 
-type DrawerPanel = "menu" | "settings" | "help" | "blocked-users" | "delete-account";
+type DrawerPanel = "menu" | "settings" | "help" | "blocked-users" | "tags-mentions" | "delete-account";
 
 type MenuItemId =
   | AppDrawerDestination
@@ -421,6 +422,10 @@ export function AppSideDrawer({
                   setPanel("blocked-users");
                   return;
                 }
+                if (action === "tags-mentions") {
+                  setPanel("tags-mentions");
+                  return;
+                }
                 if (action === "delete-account") {
                   setPanel("delete-account");
                   return;
@@ -438,6 +443,8 @@ export function AppSideDrawer({
             />
           ) : panel === "blocked-users" ? (
             <BlockedUsersPanel onBack={() => setPanel("settings")} />
+          ) : panel === "tags-mentions" ? (
+            <TagsMentionsSettingsPanel onBack={() => setPanel("settings")} />
           ) : panel === "delete-account" ? (
             <DeleteAccountPanel
               onBack={() => setPanel("settings")}

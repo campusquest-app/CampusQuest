@@ -10,6 +10,7 @@ import {
   Moon,
   QrCode,
   Shield,
+  Tag,
   Trash2,
   User,
   UserCircle,
@@ -25,6 +26,7 @@ export type SettingsActionId =
   | "notifications"
   | "privacy"
   | "blocked-users"
+  | "tags-mentions"
   | "delete-account"
   | "campus"
   | "qr-permissions"
@@ -71,6 +73,12 @@ const SETTINGS_SECTIONS: { title: string; rows: SettingsRow[] }[] = [
         label: "Blocked users",
         description: "Manage people you’ve blocked",
         icon: Ban,
+      },
+      {
+        id: "tags-mentions",
+        label: "Tags and mentions",
+        description: "Control who can tag or @mention you",
+        icon: Tag,
       },
       { id: "campus", label: "Campus / School", description: "School verification and campus access", icon: GraduationCap },
       { id: "qr-permissions", label: "Camera & QR permissions", description: "Camera access for CQ Scan", icon: QrCode },

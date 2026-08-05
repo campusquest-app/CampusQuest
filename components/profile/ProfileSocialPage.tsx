@@ -20,6 +20,7 @@ import type { CampusMemoryGroup } from "@/lib/types";
 import { ConnectionActionButton } from "@/components/ConnectionActionButton";
 import { ReportContentSheet } from "@/components/safety/ReportContentSheet";
 import { postAuthed } from "@/lib/client/dashboardApi";
+import { fetchTaggedPosts } from "@/lib/client/quadPostsClient";
 import type { ProfileRelationshipStatus } from "@/lib/client/userProfileViewClient";
 
 export function ProfileSocialPage({
@@ -105,6 +106,9 @@ export function ProfileSocialPage({
   const [connectionToast, setConnectionToast] = useState<string | null>(null);
   const [safetySheet, setSafetySheet] = useState<"report" | null>(null);
   const [blockBusy, setBlockBusy] = useState(false);
+  const [taggedPosts, setTaggedPosts] = useState<FieldNote[]>([]);
+  const [taggedLoading, setTaggedLoading] = useState(false);
+  const [taggedError, setTaggedError] = useState<string | null>(null);
 
   async function handleBlockUser() {
     if (blockBusy) return;
@@ -130,6 +134,27 @@ export function ProfileSocialPage({
     if (activeProfileTab) setTab(activeProfileTab);
   }, [activeProfileTab]);
 
+  const locked = !isOwner && !canViewPrivateContent;
+
+  const loadTagged = useCallback(async () => {
+    setTaggedLoading(true);
+    setTaggedError(null);
+    try {
+      const rows = await fetchTaggedPosts("user", character.id, viewer.id, 40);
+      setTaggedPosts(rows);
+    } catch (err) {
+      setTaggedError(err instanceof Error ? err.message : "Could not load tagged posts.");
+      setTaggedPosts([]);
+    } finally {
+      setTaggedLoading(false);
+    }
+  }, [character.id, viewer.id]);
+
+  useEffect(() => {
+    if (tab !== "tagged" || locked) return;
+    void loadTagged();
+  }, [tab, locked, loadTagged]);
+
   const handleProfileTabChange = useCallback(
     (next: ProfileTab) => {
       setTab(next);
@@ -139,8 +164,12 @@ export function ProfileSocialPage({
   );
 
   const activitiesCount = canViewPrivateContent ? getActivityLogs(character.id).length : 0;
-  const activePost = selectedPost ? posts.find((p) => p.id === selectedPost.id) ?? selectedPost : null;
-  const locked = !isOwner && !canViewPrivateContent;
+  const activePost =
+    selectedPost
+      ? posts.find((p) => p.id === selectedPost.id) ??
+        taggedPosts.find((p) => p.id === selectedPost.id) ??
+        selectedPost
+      : null;
   const displayPostCount = postCount ?? posts.length;
 
   return (
@@ -272,6 +301,15 @@ export function ProfileSocialPage({
                 loading={postsLoading}
                 error={postsError}
                 onRetry={onRetryPosts}
+                onSelectPost={setSelectedPost}
+              />
+            ) : null}
+            {tab === "tagged" ? (
+              <ProfilePostsGrid
+                posts={taggedPosts}
+                loading={taggedLoading}
+                error={taggedError}
+                onRetry={() => void loadTagged()}
                 onSelectPost={setSelectedPost}
               />
             ) : null}

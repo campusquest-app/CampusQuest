@@ -3,6 +3,7 @@
 import { ChevronLeft } from "lucide-react";
 import { ExternalEventLocationDetail } from "@/components/ExternalEventLocationDisplay";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
+import { TaggedEntityPostsSection } from "@/components/quad/TaggedEntityPostsSection";
 
 export type ExternalEventDetailData = {
   id: string;
@@ -120,6 +121,12 @@ export function ExternalEventDetailScreen({
               </div>
             </div>
           ) : null}
+
+          <TaggedEntityPostsSection
+            entityType="external_event"
+            entityId={event.id}
+            title="Campus activity"
+          />
 
           <p className="text-xs text-cyan-200/80">Source: URInvolved</p>
         </div>

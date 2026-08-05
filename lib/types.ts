@@ -252,6 +252,28 @@ export interface RamMark {
 /** Who can see this post: public = everyone on The Quad, friends = only you and your friends */
 export type QuadPostVisibility = "public" | "friends";
 
+/** Approved (or pending for author) entity tag attached to a FieldNote / Quad post. */
+export type FieldNoteTag = {
+  id: string;
+  entityType: "user" | "organization" | "event" | "external_event";
+  entityId: string;
+  tagSource: "composer" | "photo" | "mention" | string;
+  mediaKey?: string | null;
+  positionX?: number | null;
+  positionY?: number | null;
+  displayLabel: string;
+  status: "pending" | "approved" | "rejected" | "removed" | string;
+};
+
+/** Caption @mention span metadata. */
+export type FieldNoteMention = {
+  entityType: "user" | "organization" | "event" | "external_event";
+  entityId: string;
+  displayText: string;
+  startIndex: number;
+  endIndex: number;
+};
+
 export interface FieldNote {
   id: string;
   authorId: string;
@@ -295,6 +317,10 @@ export interface FieldNote {
   isPersisted?: boolean;
   /** Server-backed comment count from quad_posts.comments_count. */
   commentCount?: number;
+  /** Structured people/org/event tags on this post. */
+  tags?: FieldNoteTag[];
+  /** Caption @mention metadata. */
+  mentions?: FieldNoteMention[];
 }
 
 // For serialization we store nod/rally as arrays

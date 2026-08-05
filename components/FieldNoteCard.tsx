@@ -16,7 +16,7 @@ import {
 import type { FieldNote, QuadComment, StatKey } from "@/lib/types";
 import { isPersistedQuadPostId } from "@/lib/quadFieldNote";
 import { deleteQuadPostRequest, updateQuadPostRequest } from "@/lib/client/quadPostsClient";
-import { ApiRequestError } from "@/lib/client/dashboardApi";
+import { ApiRequestError, postAuthed } from "@/lib/client/dashboardApi";
 import { getDisplayCommentCount, removeRemoteQuadPost, replaceRemoteQuadPost } from "@/lib/feedStore";
 import { hydrateQuadPostCommentsSafe } from "@/lib/client/quadCommentsHydration";
 import type { QuadCommentActionResult } from "@/lib/client/quadCommentActions";
@@ -27,6 +27,11 @@ import { CampusQuestNodHeartPop } from "./CampusQuestNodHeartPop";
 import { FieldNoteEditModal } from "./FieldNoteEditModal";
 import { PostCommentsSheet } from "./posts/PostCommentsSheet";
 import { ReportPostSheet } from "./posts/ReportPostSheet";
+import { CaptionWithMentions } from "./quad/CaptionWithMentions";
+import { TaggedWithLine } from "./quad/TaggedWithLine";
+import { FeedPhotoTags } from "./quad/FeedPhotoTags";
+import { TagPickerSheet } from "./quad/TagPickerSheet";
+import type { CaptionMentionDraft, ComposerTagSelection } from "@/lib/postTags";
 
 function ReactionButton({
   active,
@@ -131,13 +136,25 @@ function streakBadge(days: number | undefined): string | null {
   return formatStreakBadge(days);
 }
 
-function FeedCaption({ body, tags }: { body: string; tags: string[] }) {
+function FeedCaption({
+  body,
+  tags,
+  mentions,
+}: {
+  body: string;
+  tags: string[];
+  mentions?: CaptionMentionDraft[] | null;
+}) {
   const trimmed = body.trim();
   if (!trimmed && tags.length === 0) return null;
 
   return (
     <p className="break-words text-[13px] leading-[1.45] text-white/88">
-      {trimmed ? <span className="whitespace-pre-wrap">{trimmed}</span> : null}
+      {trimmed ? (
+        <span className="whitespace-pre-wrap">
+          <CaptionWithMentions body={body} mentions={mentions} />
+        </span>
+      ) : null}
       {trimmed && tags.length > 0 ? " " : null}
       {tags.map((tag, index) => (
         <span key={`${tag}-${index}`} className="font-medium text-cyan-400/85">
@@ -226,6 +243,8 @@ function fieldNoteCardPropsAreEqual(prev: FieldNoteCardProps, next: FieldNoteCar
   if (getDisplayCommentCount(pn.id, pn) !== getDisplayCommentCount(nn.id, nn)) return false;
   if (pn.body !== nn.body) return false;
   if (pn.proofUrl !== nn.proofUrl) return false;
+  if ((pn.tags?.length ?? 0) !== (nn.tags?.length ?? 0)) return false;
+  if ((pn.mentions?.length ?? 0) !== (nn.mentions?.length ?? 0)) return false;
   if (pn.authorName !== nn.authorName) return false;
   if (pn.authorUsername !== nn.authorUsername) return false;
   if (pn.authorAvatar !== nn.authorAvatar) return false;
@@ -268,6 +287,10 @@ function FieldNoteCardInner({
   const [actionPending, setActionPending] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
+  const [showPhotoTags, setShowPhotoTags] = useState(false);
+  const [addTagsOpen, setAddTagsOpen] = useState(false);
+  const [editTagSelections, setEditTagSelections] = useState<ComposerTagSelection[]>([]);
+  const [localPhotoTagPos, setLocalPhotoTagPos] = useState<Record<string, { x: number; y: number }>>({});
   const lastImageTapAtRef = useRef(0);
   const nodPopTimerRef = useRef<number | null>(null);
   const menuAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -461,6 +484,20 @@ function FieldNoteCardInner({
                 Edit Post
               </button>
             ) : null}
+            {isOwner ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="cq-feed-post-menu-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setEditTagSelections([]);
+                  setAddTagsOpen(true);
+                }}
+              >
+                Add tags
+              </button>
+            ) : null}
             {canReportPost ? (
               <button
                 type="button"
@@ -584,7 +621,32 @@ function FieldNoteCardInner({
       return;
     }
     lastImageTapAtRef.current = now;
+    const hasPhotoTags = (note.tags ?? []).some(
+      (t) => t.tagSource === "photo" && t.status === "approved",
+    );
+    if (hasPhotoTags) {
+      window.setTimeout(() => {
+        if (lastImageTapAtRef.current === now) setShowPhotoTags((v) => !v);
+      }, 290);
+    }
   }
+
+  const photoTags = (note.tags ?? [])
+    .filter((t) => t.tagSource === "photo" && t.status === "approved" && t.positionX != null && t.positionY != null)
+    .map((t) => {
+      const override = localPhotoTagPos[t.id];
+      return override ? { ...t, positionX: override.x, positionY: override.y } : t;
+    });
+  const structuredTags = (note.tags ?? []).filter(
+    (t) => (t.tagSource === "composer" || t.tagSource === "photo") && t.status === "approved",
+  );
+  const captionMentions = (note.mentions ?? []).map((m) => ({
+    entityType: m.entityType,
+    entityId: m.entityId,
+    displayText: m.displayText,
+    startIndex: m.startIndex,
+    endIndex: m.endIndex,
+  }));
 
   const avatarFrameClass = `cq-avatar-slot flex-shrink-0 border ${
     isFeed
@@ -666,6 +728,17 @@ function FieldNoteCardInner({
             sizes="(min-width: 640px) 36rem, 100vw"
             className="quad-feed-media-img w-full max-w-full rounded-none"
           />
+          {photoTags.length > 0 ? (
+            <FeedPhotoTags
+              postId={note.id}
+              tags={photoTags}
+              visible={showPhotoTags}
+              canReposition={isOwner}
+              onRepositioned={(tagId, x, y) => {
+                setLocalPhotoTagPos((prev) => ({ ...prev, [tagId]: { x, y } }));
+              }}
+            />
+          ) : null}
           {showImageNodPop ? (
             <span className="pointer-events-none absolute left-1/2 top-1/2 z-[2] -translate-x-1/2 -translate-y-1/2">
               <CampusQuestNodHeartPop size="lg" />
@@ -838,12 +911,14 @@ function FieldNoteCardInner({
           ) : proofImgUrl ? (
             <div className="quad-feed-media-wrap carousel w-full" data-no-drawer-swipe="true">{proofBlock}</div>
           ) : null}
-          {(note.body.trim() || note.ramMarks.length > 0) && (
+          {(note.body.trim() || note.ramMarks.length > 0 || structuredTags.length > 0) && (
             <div className="cq-feed-post-caption px-3">
               <FeedCaption
                 body={note.body}
                 tags={note.ramMarks.map((r) => r.tag)}
+                mentions={captionMentions}
               />
+              {structuredTags.length > 0 ? <TaggedWithLine tags={structuredTags} /> : null}
             </div>
           )}
           <div className="cq-feed-post-engagement px-3">
@@ -892,7 +967,10 @@ function FieldNoteCardInner({
             </div>
             {ownerMenu}
             </div>
-            <p className="text-white/90 mt-1 whitespace-pre-wrap break-words">{note.body}</p>
+            <p className="text-white/90 mt-1 whitespace-pre-wrap break-words">
+              <CaptionWithMentions body={note.body} mentions={captionMentions} />
+            </p>
+            {structuredTags.length > 0 ? <TaggedWithLine tags={structuredTags} /> : null}
             {proofImgUrl && (
               <div className="mt-2 rounded-xl overflow-hidden border border-white/15 max-w-full">{proofBlock}</div>
             )}
@@ -933,6 +1011,39 @@ function FieldNoteCardInner({
         onSave={handleSaveEdit}
         saving={actionPending}
         error={editError}
+      />
+
+      <TagPickerSheet
+        open={addTagsOpen}
+        selected={editTagSelections}
+        onChange={setEditTagSelections}
+        onClose={() => setAddTagsOpen(false)}
+        onDone={() => {
+          void (async () => {
+            if (!editTagSelections.length) {
+              setAddTagsOpen(false);
+              return;
+            }
+            setActionPending(true);
+            try {
+              await postAuthed(`/api/quad/posts/${note.id}/tags`, {
+                tags: editTagSelections.map((t) => ({
+                  entityType: t.entityType,
+                  entityId: t.entityId,
+                  displayLabel: t.displayLabel,
+                  subtitle: t.subtitle ?? null,
+                  mentionSlug: t.mentionSlug ?? null,
+                })),
+              });
+              setAddTagsOpen(false);
+              showToast("Tags updated");
+            } catch (err) {
+              showToast(err instanceof Error ? err.message : "Could not add tags.");
+            } finally {
+              setActionPending(false);
+            }
+          })();
+        }}
       />
 
       {reportOpen ? (

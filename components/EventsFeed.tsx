@@ -16,6 +16,7 @@ import {
   matchesEventsSearch,
   matchesEventsTimeframe,
 } from "@/lib/client/eventsFeedFilters";
+import { TaggedEntityPostsSection } from "@/components/quad/TaggedEntityPostsSection";
 
 type EventItem = {
   id: string;
@@ -540,6 +541,11 @@ export function EventsFeed({
                 </button>
               ))}
             </div>
+            <TaggedEntityPostsSection
+              entityType="event"
+              entityId={activeDetail.event.id}
+              title="Campus activity"
+            />
           </div>
         </MobileSwipeBackSurface>
       ) : null}

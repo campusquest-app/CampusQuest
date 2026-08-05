@@ -11,7 +11,7 @@ export type DmFailedRetryPayload =
   | { kind: "image"; draft: DmPendingImageDraft; caption: string }
   | { kind: "audio"; blob: Blob; mimeType: string; durationMs: number; previewUrl: string };
 
-export type DirectMessageType = "text" | "image" | "shared_post" | "audio";
+export type DirectMessageType = "text" | "image" | "shared_post" | "audio" | "system";
 export type SharedPostType = "quad" | "memory";
 
 export type SharedPostPreview = {

@@ -19,7 +19,15 @@ import {
 import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { createRealmMomentForPost } from "@/lib/server/realmMoments";
 import { maybeAwardQuadPostCreationXp } from "@/lib/server/quadPostXp";
+import {
+  enrichQuadPostsWithTagsAndMentions,
+  persistPostTagsAndMentions,
+} from "@/lib/server/postTagService";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
+
+async function withTagsAndMentions(posts: QuadPostApiRow[]): Promise<QuadPostApiRow[]> {
+  return (await enrichQuadPostsWithTagsAndMentions(posts)) as QuadPostApiRow[];
+}
 
 function normalizeRamMarks(input: { id?: string; tag: string }[] | undefined): { id: string; tag: string }[] {
   if (!input?.length) return [];
@@ -51,7 +59,6 @@ export async function GET(request: Request) {
         .from("quad_posts")
         .select(QUAD_POSTS_WITH_PROFILE_SELECT)
         .eq("id", parsed.data)
-        .eq("visibility", "public")
         .maybeSingle();
       if (error) {
         logQuadPostError("get", error, { userId: auth.user.id, postId: parsed.data });
@@ -61,9 +68,22 @@ export async function GET(request: Request) {
         return ok({ posts: [] as QuadPostApiRow[] });
       }
       const post = data as unknown as QuadPostApiRow;
+      // Respect Public/Following (friends) visibility for deep links.
+      if (post.user_id !== auth.user.id && post.visibility === "friends") {
+        const { getAcceptedFriendUserIds } = await import("@/lib/server/friendProfileAccess");
+        const friendIds = await getAcceptedFriendUserIds({
+          userClient: auth.userClient,
+          userId: auth.user.id,
+        });
+        if (!friendIds.includes(post.user_id)) {
+          return ok({ posts: [] as QuadPostApiRow[] });
+        }
+      } else if (post.user_id !== auth.user.id && post.visibility !== "public") {
+        return ok({ posts: [] as QuadPostApiRow[] });
+      }
       const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, [post.id]);
       const enriched = enrichQuadPostsWithViewerReactions([post], viewerReactions);
-      return ok({ posts: enriched });
+      return ok({ posts: await withTagsAndMentions(enriched) });
     }
 
     if (feedParam === "friends") {
@@ -76,7 +96,7 @@ export async function GET(request: Request) {
       const postIds = posts.map((p) => p.id);
       const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
       const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
-      return ok({ posts: enriched });
+      return ok({ posts: await withTagsAndMentions(enriched) });
     }
 
     let query = auth.userClient.from("quad_posts").select(QUAD_POSTS_WITH_PROFILE_SELECT);
@@ -121,7 +141,7 @@ export async function GET(request: Request) {
     const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
     const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
 
-    return ok({ posts: enriched });
+    return ok({ posts: await withTagsAndMentions(enriched) });
   } catch (error) {
     return fail(error);
   }
@@ -172,6 +192,43 @@ export async function POST(request: Request) {
     }
 
     const post = created as unknown as QuadPostApiRow;
+
+    try {
+      const authorUsername =
+        (post as { profiles?: { username?: string | null } }).profiles?.username?.trim() ||
+        "Someone";
+      await persistPostTagsAndMentions({
+        postId: post.id,
+        authorId: auth.user.id,
+        authorUsername,
+        composerTags: (input.tags ?? []).map((t) => ({
+          entityType: t.entityType,
+          entityId: t.entityId,
+          displayLabel: t.displayLabel ?? t.entityType,
+          subtitle: t.subtitle ?? null,
+          mentionSlug: t.mentionSlug ?? null,
+        })),
+        photoTags: (input.photoTags ?? []).map((t) => ({
+          entityType: t.entityType,
+          entityId: t.entityId,
+          mediaKey: t.mediaKey || "primary",
+          positionX: t.positionX,
+          positionY: t.positionY,
+          displayLabel: t.displayLabel ?? t.entityType,
+        })),
+        mentions: (input.mentions ?? []).map((m) => ({
+          entityType: m.entityType,
+          entityId: m.entityId,
+          displayText: m.displayText,
+          startIndex: m.startIndex,
+          endIndex: m.endIndex,
+        })),
+      });
+    } catch (tagError) {
+      // Post already created — surface tag failure without deleting the post.
+      logQuadPostError("tags", tagError, { userId: auth.user.id, postId: post.id });
+    }
+
     const enriched = enrichQuadPostsWithViewerReactions([post], new Map());
 
     let realmMoment: { id: string; locationId: string; locationName: string; expiresAt: string } | null = null;
