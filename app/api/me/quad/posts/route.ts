@@ -7,6 +7,7 @@ import {
 } from "@/lib/server/quadReactions";
 import { logQuadPostError, QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
 import { enrichQuadPostsWithTagsAndMentions } from "@/lib/server/postTagService";
+import { enrichPostsWithCarouselMedia } from "@/lib/server/quadPostMedia";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 
 /** Current user's Quad posts (newest first) — for profile “Posts to the Quad”. */
@@ -34,8 +35,9 @@ export async function GET(request: Request) {
     const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
     const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
     const withTags = await enrichQuadPostsWithTagsAndMentions(enriched);
+    const withMedia = await enrichPostsWithCarouselMedia(withTags);
 
-    return ok({ posts: withTags });
+    return ok({ posts: withMedia });
   } catch (error) {
     return fail(error);
   }

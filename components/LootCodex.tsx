@@ -5,6 +5,7 @@ import { COSMETICS, getCosmeticById, type CosmeticItem, type CosmeticSlot, type 
 import type { Character } from "@/lib/types";
 import { getLootLogForCharacter, type LootDropEntry } from "@/lib/lootLog";
 import { describeCosmeticEquipEffect } from "@/lib/gameBuffs";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 const RARITY_LABELS: Record<LootRarity, string> = {
   common: "Common",
@@ -132,6 +133,11 @@ export function LootCodex({
       return c ? `${SLOT_LABEL[slot]}: ${c.icon} ${c.label}` : `${SLOT_LABEL[slot]}: (unknown)`;
     }).join(" · ");
   }, [equippedCosmetics]);
+
+  // Codex feature flag — keep hooks above; never flash UI while disabled.
+  if (!FEATURE_FLAGS.codex) {
+    return null;
+  }
 
   const discoveredCount = discoveredIds.size;
   const totalCount = COSMETICS.length;

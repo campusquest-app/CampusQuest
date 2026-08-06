@@ -35,6 +35,7 @@ import { TagsMentionsSettingsPanel } from "@/components/safety/TagsMentionsSetti
 import { DeleteAccountPanel } from "@/components/safety/DeleteAccountPanel";
 import { DRAWER_SNAP_MS } from "@/lib/client/drawerGeometry";
 import { setIsDrawerOpen } from "@/lib/client/appDrawerStore";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 export type AppDrawerDestination =
   | "friends"
@@ -95,11 +96,13 @@ const MAIN_NAV: MenuItem[] = [
 const PROGRESS_NAV: MenuItem[] = [
   { id: "scan", label: "CQ Scanner", icon: <QrCode className={ICON} aria-hidden /> },
   { id: "character-sheet", label: "Character", icon: <Sparkles className={ICON} aria-hidden /> },
+  // Manual Log entry is gated by FEATURE_FLAGS.manualLog in getProgressNav().
   { id: "manual-log", label: "Manual Log", icon: <ClipboardList className={ICON} aria-hidden /> },
   { id: "quest-board", label: "Quests", icon: <Target className={ICON} aria-hidden /> },
 ];
 
 const MINI_GAMES_NAV: MenuItem[] = [
+  // Boss Battle entry is gated by FEATURE_FLAGS.bossBattles in getMiniGamesNav().
   { id: "battle", label: "Boss Battle", icon: <Swords className={ICON} aria-hidden /> },
   { id: "mini-games", label: "Training Grounds", icon: <Gamepad2 className={ICON} aria-hidden /> },
 ];
@@ -115,12 +118,23 @@ const SETTINGS_NAV: MenuItem[] = [
   { id: "help", label: "Help / Support", icon: <HelpCircle className={ICON} aria-hidden /> },
 ];
 
-const FLAT_MENU_SECTIONS: MenuSection[] = [
-  { id: "main", title: "Main", items: MAIN_NAV },
-  { id: "progress", title: "Progress", items: PROGRESS_NAV },
-  { id: "campus", title: "Campus", items: CAMPUS_NAV },
-  { id: "settings", title: "Settings", items: SETTINGS_NAV },
-];
+function getProgressNav(): MenuItem[] {
+  return PROGRESS_NAV.filter((item) => item.id !== "manual-log" || FEATURE_FLAGS.manualLog);
+}
+
+function getMiniGamesNav(): MenuItem[] {
+  return MINI_GAMES_NAV.filter((item) => item.id !== "battle" || FEATURE_FLAGS.bossBattles);
+}
+
+function getFlatMenuSections(): MenuSection[] {
+  const progressItems = getProgressNav();
+  return [
+    { id: "main", title: "Main", items: MAIN_NAV },
+    ...(progressItems.length > 0 ? [{ id: "progress", title: "Progress", items: progressItems }] : []),
+    { id: "campus", title: "Campus", items: CAMPUS_NAV },
+    { id: "settings", title: "Settings", items: SETTINGS_NAV },
+  ];
+}
 
 const DRAWER_CLOSE_MS = 320;
 
@@ -302,6 +316,9 @@ export function AppSideDrawer({
   const panelPointerEvents = drawerTranslateX > -drawerWidth + 8 ? "auto" : "none";
 
   const handleItem = (id: MenuItemId) => {
+    if (id === "manual-log" && !FEATURE_FLAGS.manualLog) return;
+    if (id === "battle" && !FEATURE_FLAGS.bossBattles) return;
+    if (id === "collectibles" && !FEATURE_FLAGS.codex) return;
     if (id === "settings") {
       setPanel("settings");
       return;
@@ -365,35 +382,47 @@ export function AppSideDrawer({
               </div>
 
               <nav className="cq-drawer-nav flex-1 overflow-y-auto overscroll-y-contain px-3 pb-4" aria-label="Main">
-                {FLAT_MENU_SECTIONS.slice(0, 2).map((section, sectionIndex) => (
-                  <DrawerSection
-                    key={section.id}
-                    title={section.title}
-                    items={section.items}
-                    onSelect={handleItem}
-                    activeContext={ctx}
-                    isFirst={sectionIndex === 0}
-                  />
-                ))}
-                <DrawerCollapsibleSection
-                  title="Mini Games"
-                  items={MINI_GAMES_NAV}
-                  expanded={miniGamesExpanded}
-                  onToggle={() => setMiniGamesExpanded((open) => !open)}
-                  onSelect={handleItem}
-                  activeContext={ctx}
-                />
-                {FLAT_MENU_SECTIONS.slice(2).map((section) => (
-                  <DrawerSection
-                    key={section.id}
-                    title={section.title}
-                    items={section.items}
-                    onSelect={handleItem}
-                    badgeId="inbox"
-                    unread={unreadNotificationCount}
-                    activeContext={ctx}
-                  />
-                ))}
+                {(() => {
+                  const sections = getFlatMenuSections();
+                  const mainAndProgress = sections.filter((s) => s.id === "main" || s.id === "progress");
+                  const rest = sections.filter((s) => s.id !== "main" && s.id !== "progress");
+                  const miniGamesItems = getMiniGamesNav();
+                  return (
+                    <>
+                      {mainAndProgress.map((section, sectionIndex) => (
+                        <DrawerSection
+                          key={section.id}
+                          title={section.title}
+                          items={section.items}
+                          onSelect={handleItem}
+                          activeContext={ctx}
+                          isFirst={sectionIndex === 0}
+                        />
+                      ))}
+                      {miniGamesItems.length > 0 ? (
+                        <DrawerCollapsibleSection
+                          title="Mini Games"
+                          items={miniGamesItems}
+                          expanded={miniGamesExpanded}
+                          onToggle={() => setMiniGamesExpanded((open) => !open)}
+                          onSelect={handleItem}
+                          activeContext={ctx}
+                        />
+                      ) : null}
+                      {rest.map((section) => (
+                        <DrawerSection
+                          key={section.id}
+                          title={section.title}
+                          items={section.items}
+                          onSelect={handleItem}
+                          badgeId="inbox"
+                          unread={unreadNotificationCount}
+                          activeContext={ctx}
+                        />
+                      ))}
+                    </>
+                  );
+                })()}
               </nav>
 
               <div

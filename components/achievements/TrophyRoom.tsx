@@ -25,6 +25,7 @@ import { CodexDetailSheet } from "@/components/codex/CodexDetailSheet";
 import { achievementLabel, AchievementBadgeArt } from "@/components/achievements/AchievementBadgeArt";
 import { TorchBearerFounderRank } from "@/components/achievements/TorchBearerFounderRank";
 import { TORCH_BEARER_BADGE_ID } from "@/lib/torchBearerBadge";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 const RARE_COLLECTIBLE_RARITIES = new Set(["rare", "epic", "legendary", "mythic"]);
 
@@ -285,9 +286,11 @@ export function TrophyRoom({ character, onRefresh }: { character: Character; onR
       const at = view.earnedAt ? Date.parse(view.earnedAt) : Date.now();
       if (!Number.isNaN(at)) items.push({ kind: "achievement", view, at });
     }
-    for (const state of codexStates) {
-      if (state.discovered && state.entry.kind === "loot" && state.earnedAt) {
-        items.push({ kind: "collectible", state, at: state.earnedAt });
+    if (FEATURE_FLAGS.codex) {
+      for (const state of codexStates) {
+        if (state.discovered && state.entry.kind === "loot" && state.earnedAt) {
+          items.push({ kind: "collectible", state, at: state.earnedAt });
+        }
       }
     }
 
@@ -337,17 +340,23 @@ export function TrophyRoom({ character, onRefresh }: { character: Character; onR
           <h1 className="font-display text-2xl font-black tracking-tight text-white sm:text-[1.65rem]">
             {TROPHY_ROOM_TITLE}
           </h1>
-          <p className="mt-1.5 text-sm text-white/55">{TROPHY_ROOM_SUBTITLE}</p>
+          <p className="mt-1.5 text-sm text-white/55">
+            {FEATURE_FLAGS.codex ? TROPHY_ROOM_SUBTITLE : "Your achievements and milestones."}
+          </p>
           <p className="cq-trophy-inline-stats mt-4 text-sm font-medium text-white/75">
             <span className="tabular-nums">{trophyCount}</span> Trophies
             <span className="mx-2 text-white/25" aria-hidden>
               •
             </span>
             <span className="tabular-nums">{badgeCount}</span> Badges
-            <span className="mx-2 text-white/25" aria-hidden>
-              •
-            </span>
-            <span className="tabular-nums">{rareCollectibleCount}</span> Rare Items
+            {FEATURE_FLAGS.codex ? (
+              <>
+                <span className="mx-2 text-white/25" aria-hidden>
+                  •
+                </span>
+                <span className="tabular-nums">{rareCollectibleCount}</span> Rare Items
+              </>
+            ) : null}
           </p>
         </header>
 
@@ -465,28 +474,32 @@ export function TrophyRoom({ character, onRefresh }: { character: Character; onR
           </div>
         </section>
 
-        <div className="cq-trophy-divider mt-10" />
+        {FEATURE_FLAGS.codex ? (
+          <>
+            <div className="cq-trophy-divider mt-10" />
 
-        <section className="mt-10">
-          <SectionHeader
-            title="Collectibles"
-            count={`${collectibleStates.filter((s) => s.discovered).length} / ${collectibleStates.length}`}
-          />
-          {collectibleStates.length === 0 ? (
-            <p className="mt-4 text-sm text-white/45">Collectibles appear as you explore campus and win battles.</p>
-          ) : (
-            <div className="cq-trophy-collectibles-grid mt-5">
-              {collectibleStates.map((state) => (
-                <CodexCard
-                  key={state.entry.id}
-                  state={state}
-                  character={localCharacter}
-                  onSelect={() => setSelectedCollectible(state)}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+            <section className="mt-10">
+              <SectionHeader
+                title="Collectibles"
+                count={`${collectibleStates.filter((s) => s.discovered).length} / ${collectibleStates.length}`}
+              />
+              {collectibleStates.length === 0 ? (
+                <p className="mt-4 text-sm text-white/45">Collectibles appear as you explore campus and win battles.</p>
+              ) : (
+                <div className="cq-trophy-collectibles-grid mt-5">
+                  {collectibleStates.map((state) => (
+                    <CodexCard
+                      key={state.entry.id}
+                      state={state}
+                      character={localCharacter}
+                      onSelect={() => setSelectedCollectible(state)}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        ) : null}
       </div>
 
       {selectedAchievement ? (
@@ -500,7 +513,7 @@ export function TrophyRoom({ character, onRefresh }: { character: Character; onR
         />
       ) : null}
 
-      {selectedCollectible ? (
+      {FEATURE_FLAGS.codex && selectedCollectible ? (
         <CodexDetailSheet
           state={selectedCollectible}
           character={localCharacter}

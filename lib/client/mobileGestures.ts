@@ -50,7 +50,14 @@ const DRAWER_HORIZONTAL_SCROLL_SELECTOR = [
   ".tabs",
 ].join(", ");
 
-export const BOTTOM_NAV_SWIPE_TABS: AppBottomNavTab[] = ["quad", "realm", "leaderboards", "character"];
+/** Left → right dock order. Map (`realm`) is the centered primary action. */
+export const BOTTOM_NAV_SWIPE_TABS: AppBottomNavTab[] = [
+  "quad",
+  "inbox",
+  "realm",
+  "leaderboards",
+  "character",
+];
 
 export type SwipeNavDirection = "forward" | "back";
 

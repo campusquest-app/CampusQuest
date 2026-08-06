@@ -17,6 +17,7 @@ import {
   BEGINNER_CHAIN_QUEST_IDS,
   logTutorialGating,
 } from "@/lib/client/onboardingTutorialGating";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 type AppTab =
   | "quad"
@@ -214,51 +215,59 @@ export function FirstTimeJourney({
   }, [character.id, currentTab]);
 
   const logs = getActivityLogs(character.id);
-  const quests: BeginnerQuest[] = [
+  /** Keep chain completion in sync with visible quests while Boss Battles is hidden. */
+  const activeBeginnerChainIds = BEGINNER_CHAIN_QUEST_IDS.filter(
+    (id) => id !== "boss" || FEATURE_FLAGS.bossBattles,
+  );
+  const quests = [
     {
-      id: "profile",
+      id: "profile" as const,
       title: "Spawn Character",
       description: "Your identity is forged. Starter profile complete.",
       xp: 25,
       done: true,
     },
     {
-      id: "activity",
+      id: "activity" as const,
       title: "Complete First Quest",
       description: "Log any activity on Character to earn your first real XP.",
       xp: 40,
       done: logs.length > 0,
-      ctaTab: "character",
+      ctaTab: "character" as const,
       ctaLabel: "Go to Character",
     },
+    ...(FEATURE_FLAGS.bossBattles
+      ? [
+          {
+            id: "boss" as const,
+            title: "Target Your First Boss",
+            description: "Recruit or attack a boss to unlock raid progression.",
+            xp: 55,
+            done: getActiveBossId() != null,
+            ctaTab: "battle" as const,
+            ctaLabel: "Open Boss Battles",
+          },
+        ]
+      : []),
     {
-      id: "boss",
-      title: "Target Your First Boss",
-      description: "Recruit or attack a boss to unlock raid progression.",
-      xp: 55,
-      done: getActiveBossId() != null,
-      ctaTab: "battle",
-      ctaLabel: "Open Boss Battles",
-    },
-    {
-      id: "leaderboard",
+      id: "leaderboard" as const,
       title: "Scout The Rankings",
       description: "Visit Leaderboards to see how you stack up on campus.",
       xp: 35,
       done: visitedLeaderboard,
-      ctaTab: "leaderboards",
+      ctaTab: "leaderboards" as const,
       ctaLabel: "View Leaderboards",
     },
     {
-      id: "guild",
+      id: "guild" as const,
       title: "Choose Your Scholars Guild",
       description: "Pick a starter guild identity for your progression path.",
       xp: 45,
       done: !!character.scholarGuildId && character.scholarGuildId !== "undecided",
-      ctaTab: "character",
+      ctaTab: "character" as const,
       ctaLabel: "Open Character",
     },
-  ];
+  ] satisfies BeginnerQuest[];
 
   const completionPct = Math.round((quests.filter((q) => claimed.includes(q.id)).length / quests.length) * 100);
   const nextQuest = quests.find((q) => q.done && !claimed.includes(q.id)) ?? quests.find((q) => !q.done);
@@ -416,7 +425,7 @@ export function FirstTimeJourney({
       }));
       syncCharacterProgressFromBackend(character.id, result.player);
       onRefresh();
-      if (BEGINNER_CHAIN_QUEST_IDS.every((id) => id === quest.id || claimed.includes(id))) {
+      if (activeBeginnerChainIds.every((id) => id === quest.id || claimed.includes(id))) {
         setJustCompletedChainThisSession(true);
       }
       setShowReward({ xp: result.claim.xp_awarded, title: quest.title });
@@ -437,7 +446,7 @@ export function FirstTimeJourney({
         }));
         addXpToCharacter(character.id, quest.xp);
         onRefresh();
-        if (BEGINNER_CHAIN_QUEST_IDS.every((id) => id === quest.id || claimed.includes(id))) {
+        if (activeBeginnerChainIds.every((id) => id === quest.id || claimed.includes(id))) {
           setJustCompletedChainThisSession(true);
         }
         setShowReward({ xp: quest.xp, title: quest.title });
@@ -474,7 +483,9 @@ export function FirstTimeJourney({
               <div className="mt-3">
                 <h2 className="font-display text-2xl font-bold text-white">Level Up Your College Experience</h2>
                 <p className="mt-2 text-sm text-white/75">
-                  Log quests, defeat bosses, climb leaderboards, and lock in your daily streak momentum.
+                  {FEATURE_FLAGS.bossBattles
+                    ? "Log quests, defeat bosses, climb leaderboards, and lock in your daily streak momentum."
+                    : "Complete quests, climb leaderboards, and lock in your daily streak momentum."}
                 </p>
               </div>
             )}

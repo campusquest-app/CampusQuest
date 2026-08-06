@@ -295,7 +295,19 @@ export interface FieldNote {
   verifyByUserIds: Set<string>;
   assistByUserIds: Set<string>;
   createdAt: number;
-  proofUrl?: string; // optional proof image for bonus XP
+  proofUrl?: string; // optional proof image or video playback URL (cover)
+  /** image | video | none — cover media type */
+  mediaType?: "none" | "image" | "video";
+  /** Poster/thumbnail for video cover */
+  posterUrl?: string;
+  mediaDurationSeconds?: number;
+  mediaHasAudio?: boolean;
+  mediaWidth?: number;
+  mediaHeight?: number;
+  /** Ordered carousel slides (1–15). Empty/undefined = legacy single proofUrl. */
+  media?: import("./quadMedia").QuadCarouselMediaDto[];
+  mediaCount?: number;
+  coverMediaId?: string;
   /** public = show on Public Quad; friends = show only on Friends feed (you + your friends) */
   visibility?: QuadPostVisibility;
   /** Snapshot for feed badges (optional). */
@@ -321,6 +333,7 @@ export interface FieldNote {
   tags?: FieldNoteTag[];
   /** Caption @mention metadata. */
   mentions?: FieldNoteMention[];
+  mediaId?: string;
 }
 
 // For serialization we store nod/rally as arrays

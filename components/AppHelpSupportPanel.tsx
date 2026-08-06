@@ -17,6 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { textMatchesPostSearch } from "@/lib/postTerminology";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { DrawerSubPanelShell } from "./DrawerSubPanelShell";
 
 type HelpArticle = {
@@ -37,7 +38,7 @@ const HELP_ARTICLES: HelpArticle[] = [
     keywords: ["campus", "quad", "feed", "social", "start", "post", "posts", "field note", "field notes"],
     body: [
       "CampusQuest turns everyday campus moments into progression. Post on The Quad, complete quests, scan QR codes, and grow your character.",
-      "Your Character tab tracks XP, stats, streaks, and gear. The bottom nav keeps Quad, Scan, and Profile one tap away.",
+      "Your Profile tab tracks XP, stats, streaks, and gear. The bottom nav keeps Home, Messages, Map, Leaderboard, and Profile one tap away.",
       "Explore friends, guilds, events, and boss battles from the menu to find more ways to earn XP.",
     ],
   },
@@ -60,7 +61,7 @@ const HELP_ARTICLES: HelpArticle[] = [
     summary: "Scan official codes for rewards.",
     keywords: ["qr", "scan", "camera", "code", "gym"],
     body: [
-      "Tap Scan on the bottom nav to open CQ Scanner. Point your camera at an official CampusQuest QR code on campus.",
+      "Open CQ Scanner from Quest Board or other in-app scan entry points. Point your camera at an official CampusQuest QR code on campus.",
       "Valid scans grant XP and may log a linked activity automatically. Each code has rules — some can only be scanned once per day.",
       "If the camera is blocked, enable permissions in Settings → QR Scanner Permissions or your device settings.",
     ],
@@ -131,19 +132,51 @@ export function AppHelpSupportPanel({ onBack }: { onBack: () => void }) {
   const [query, setQuery] = useState("");
   const [activeArticleId, setActiveArticleId] = useState<string | null>(null);
 
+  const visibleArticles = useMemo(() => {
+    return HELP_ARTICLES.filter((article) => {
+      if (article.id === "boss-battles" && !FEATURE_FLAGS.bossBattles) return false;
+      return true;
+    }).map((article) => {
+      if (FEATURE_FLAGS.bossBattles) return article;
+      if (article.id === "how-campusquest") {
+        return {
+          ...article,
+          body: article.body.map((line) =>
+            line.includes("boss battles")
+              ? "Explore friends, guilds, and events from the menu to find more ways to earn XP."
+              : line,
+          ),
+        };
+      }
+      if (article.id === "how-xp" && !FEATURE_FLAGS.manualLog) {
+        return {
+          ...article,
+          body: article.body.map((line) =>
+            line.includes("logging activities")
+              ? "You earn XP by finishing quests, engaging on The Quad, and scanning official campus QR codes."
+              : line,
+          ),
+        };
+      }
+      return article;
+    });
+  }, []);
+
   const filtered = useMemo(() => {
     const q = query.trim();
-    if (!q) return HELP_ARTICLES;
-    return HELP_ARTICLES.filter(
+    if (!q) return visibleArticles;
+    return visibleArticles.filter(
       (a) =>
         textMatchesPostSearch(a.title, q) ||
         textMatchesPostSearch(a.summary, q) ||
         a.keywords.some((k) => textMatchesPostSearch(k, q) || k.includes(q.toLowerCase())) ||
         a.body.some((paragraph) => textMatchesPostSearch(paragraph, q)),
     );
-  }, [query]);
+  }, [query, visibleArticles]);
 
-  const activeArticle = activeArticleId ? HELP_ARTICLES.find((a) => a.id === activeArticleId) : null;
+  const activeArticle = activeArticleId
+    ? visibleArticles.find((a) => a.id === activeArticleId) ?? null
+    : null;
 
   if (activeArticle) {
     const Icon = activeArticle.icon;

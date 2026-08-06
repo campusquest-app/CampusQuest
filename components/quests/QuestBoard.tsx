@@ -10,6 +10,7 @@ import { xpProgressInLevel } from "@/lib/level";
 import { QUEST_BOARD_SUBTITLE, QUEST_BOARD_TITLE } from "@/lib/questBoardCatalog";
 import { ADMIN_QUEST_FILTER_OPTIONS, type AdminQuestFilter, type UserQuestBoardItem } from "@/lib/adminQuestTypes";
 import { buildDailyQuestBoardItems, filterQuestBoardItems } from "@/lib/questBoardDaily";
+import { filterQuestsForFeatureFlags } from "@/lib/featureFlags";
 import { completeAdminQuestRequest, fetchQuestBoardAdminItems } from "@/lib/client/questBoardClient";
 import { getAdventurerLabel } from "@/lib/questBoardEngine";
 import { queueQuestCelebration } from "@/lib/questBoardCelebration";
@@ -175,7 +176,10 @@ export function QuestBoard({
   }, [loadBoard]);
 
   const dailyItems = useMemo(() => buildDailyQuestBoardItems(localCharacter.id), [localCharacter.id, loading]);
-  const allItems = useMemo(() => [...dailyItems, ...adminItems], [dailyItems, adminItems]);
+  const allItems = useMemo(
+    () => filterQuestsForFeatureFlags([...dailyItems, ...adminItems]),
+    [dailyItems, adminItems],
+  );
   const filtered = useMemo(
     () => filterQuestBoardItems(allItems, filter, { userLat: userCoords?.lat, userLng: userCoords?.lng }),
     [allItems, filter, userCoords],

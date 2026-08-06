@@ -1,7 +1,8 @@
 "use client";
 
 import type { FieldNote } from "@/lib/types";
-import { getPostThumbnailUrl, isTextOnlyPost } from "./profilePostUtils";
+import { getPostThumbnailUrl, isCarouselPost, isTextOnlyPost, isVideoPost } from "./profilePostUtils";
+import { Images, Video } from "lucide-react";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
 
 function TextPostTile({ note }: { note: FieldNote }) {
@@ -88,8 +89,21 @@ export function ProfilePostsGrid({
             {thumb ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={thumb} alt="" className="h-full w-full object-cover transition duration-200 group-active:scale-[0.98]" loading="lazy" decoding="async" fetchPriority="low" />
+            ) : isVideoPost(note) ? (
+              <div className="flex h-full w-full items-center justify-center bg-black/40">
+                <Video className="h-8 w-8 text-white/80" aria-hidden />
+              </div>
             ) : isTextOnlyPost(note) ? (
               <TextPostTile note={note} />
+            ) : null}
+            {isCarouselPost(note) ? (
+              <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/55 p-1 text-white" aria-hidden>
+                <Images className="h-3.5 w-3.5" />
+              </span>
+            ) : isVideoPost(note) ? (
+              <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/55 p-1 text-white" aria-hidden>
+                <Video className="h-3.5 w-3.5" />
+              </span>
             ) : null}
             {(note.nodCount > 0 || note.hypeCount > 0) && thumb ? (
               <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-semibold text-white">

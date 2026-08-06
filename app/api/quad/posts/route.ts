@@ -23,10 +23,21 @@ import {
   enrichQuadPostsWithTagsAndMentions,
   persistPostTagsAndMentions,
 } from "@/lib/server/postTagService";
+import {
+  attachCarouselMediaToPost,
+  attachSingleVideoToPost,
+  enrichPostsWithCarouselMedia,
+  getReadyQuadMedia,
+} from "@/lib/server/quadPostMedia";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 
 async function withTagsAndMentions(posts: QuadPostApiRow[]): Promise<QuadPostApiRow[]> {
   return (await enrichQuadPostsWithTagsAndMentions(posts)) as QuadPostApiRow[];
+}
+
+async function finalizeFeedPosts(posts: QuadPostApiRow[]): Promise<QuadPostApiRow[]> {
+  const tagged = await withTagsAndMentions(posts);
+  return (await enrichPostsWithCarouselMedia(tagged)) as QuadPostApiRow[];
 }
 
 function normalizeRamMarks(input: { id?: string; tag: string }[] | undefined): { id: string; tag: string }[] {
@@ -83,7 +94,7 @@ export async function GET(request: Request) {
       }
       const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, [post.id]);
       const enriched = enrichQuadPostsWithViewerReactions([post], viewerReactions);
-      return ok({ posts: await withTagsAndMentions(enriched) });
+      return ok({ posts: await finalizeFeedPosts(enriched) });
     }
 
     if (feedParam === "friends") {
@@ -96,7 +107,7 @@ export async function GET(request: Request) {
       const postIds = posts.map((p) => p.id);
       const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
       const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
-      return ok({ posts: await withTagsAndMentions(enriched) });
+      return ok({ posts: await finalizeFeedPosts(enriched) });
     }
 
     let query = auth.userClient.from("quad_posts").select(QUAD_POSTS_WITH_PROFILE_SELECT);
@@ -141,7 +152,7 @@ export async function GET(request: Request) {
     const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
     const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
 
-    return ok({ posts: await withTagsAndMentions(enriched) });
+    return ok({ posts: await finalizeFeedPosts(enriched) });
   } catch (error) {
     return fail(error);
   }
@@ -154,7 +165,55 @@ export async function POST(request: Request) {
     const input = await readJson(request, postQuadPostSchema);
     touchUserActivityFromAuth(auth);
 
-    const proofUrl = await normalizeQuadPostProofUrl(input.proofUrl, auth.user.id);
+    const carouselItems =
+      input.mediaItems && input.mediaItems.length > 0
+        ? [...input.mediaItems].sort((a, b) => a.sortOrder - b.sortOrder)
+        : input.mediaId
+          ? [{ mediaId: input.mediaId, sortOrder: 0 }]
+          : null;
+
+    let proofUrl: string | null = null;
+    let posterUrl: string | null = null;
+    let mediaType: "none" | "image" | "video" = input.mediaType ?? (input.proofUrl ? "image" : "none");
+    let mediaDurationSeconds: number | null = null;
+    let mediaHasAudio = false;
+    let mediaWidth: number | null = null;
+    let mediaHeight: number | null = null;
+    let mediaMimeType: string | null = null;
+    let mediaFileSizeBytes: number | null = null;
+    let mediaStoragePath: string | null = null;
+    let mediaCount = 0;
+    let coverMediaId: string | null = null;
+
+    if (carouselItems) {
+      const coverId =
+        input.coverMediaId && carouselItems.some((i) => i.mediaId === input.coverMediaId)
+          ? input.coverMediaId
+          : carouselItems[0]!.mediaId;
+      const cover = await getReadyQuadMedia({ mediaId: coverId, userId: auth.user.id });
+      // Pre-validate every item before insert.
+      for (const item of carouselItems) {
+        await getReadyQuadMedia({ mediaId: item.mediaId, userId: auth.user.id });
+      }
+      proofUrl = cover.playbackUrl;
+      posterUrl = cover.mediaType === "video" ? cover.posterUrl : null;
+      mediaType = cover.mediaType;
+      mediaDurationSeconds = cover.mediaType === "video" ? cover.durationSeconds : null;
+      mediaHasAudio = cover.mediaType === "video" ? cover.hasAudio : false;
+      mediaWidth = cover.width;
+      mediaHeight = cover.height;
+      mediaMimeType = cover.mimeType;
+      mediaFileSizeBytes = cover.fileSizeBytes;
+      mediaStoragePath = cover.storagePath;
+      mediaCount = carouselItems.length;
+      coverMediaId = cover.id;
+    } else {
+      proofUrl = await normalizeQuadPostProofUrl(input.proofUrl, auth.user.id);
+      if (proofUrl) {
+        mediaType = "image";
+        mediaCount = 1;
+      }
+    }
 
     const ramMarks = normalizeRamMarks(input.ramMarks);
     const visibility = input.visibility ?? "public";
@@ -166,6 +225,18 @@ export async function POST(request: Request) {
       user_id: auth.user.id,
       body: input.body.trim().slice(0, 300),
       proof_url: proofUrl,
+      media_type: mediaType,
+      poster_url: mediaType === "video" ? posterUrl : null,
+      media_duration_seconds: mediaType === "video" ? mediaDurationSeconds : null,
+      media_has_audio: mediaType === "video" ? mediaHasAudio : false,
+      media_width: mediaWidth,
+      media_height: mediaHeight,
+      media_mime_type: mediaMimeType,
+      media_file_size_bytes: mediaFileSizeBytes,
+      media_storage_path: mediaStoragePath,
+      media_processing_status: "ready" as const,
+      media_count: mediaCount,
+      cover_media_id: coverMediaId,
       visibility,
       ram_marks: ramMarks,
       related_activity_id: input.relatedActivityId ?? null,
@@ -174,7 +245,6 @@ export async function POST(request: Request) {
       location_id: hasValidLocation ? locationId : null,
       location_name: hasValidLocation && locationName ? locationName.slice(0, 80) : null,
     };
-
     const { data: created, error: insErr } = await auth.userClient
       .from("quad_posts")
       .insert(insert)
@@ -192,6 +262,31 @@ export async function POST(request: Request) {
     }
 
     const post = created as unknown as QuadPostApiRow;
+
+    if (carouselItems) {
+      try {
+        if (carouselItems.length === 1 && mediaType === "video" && !input.mediaItems) {
+          await attachSingleVideoToPost({
+            mediaId: carouselItems[0]!.mediaId,
+            postId: post.id,
+            userId: auth.user.id,
+          });
+        } else {
+          await attachCarouselMediaToPost({
+            postId: post.id,
+            userId: auth.user.id,
+            items: carouselItems,
+            coverMediaId,
+          });
+        }
+      } catch (mediaErr) {
+        logQuadPostError("media_attach", mediaErr, { userId: auth.user.id, postId: post.id });
+        await auth.userClient.from("quad_posts").delete().eq("id", post.id).eq("user_id", auth.user.id);
+        throw mediaErr instanceof ApiError
+          ? mediaErr
+          : new ApiError(400, "Could not attach media to post.", "MEDIA_ATTACH_FAILED");
+      }
+    }
 
     try {
       const authorUsername =
@@ -230,6 +325,7 @@ export async function POST(request: Request) {
     }
 
     const enriched = enrichQuadPostsWithViewerReactions([post], new Map());
+    const [finalPost] = await finalizeFeedPosts(enriched);
 
     let realmMoment: { id: string; locationId: string; locationName: string; expiresAt: string } | null = null;
     if (shouldCreateRealmMoment({ visibility, locationId: hasValidLocation ? locationId : null })) {
@@ -247,7 +343,7 @@ export async function POST(request: Request) {
       postId: post.id,
     });
 
-    return ok({ post: enriched[0] ?? post, realmMoment, xpReward });
+    return ok({ post: finalPost ?? post, realmMoment, xpReward });
   } catch (error) {
     if (error instanceof ZodError) {
       const message = formatZodError(error);

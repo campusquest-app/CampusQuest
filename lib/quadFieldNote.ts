@@ -1,4 +1,5 @@
 import { resolveProfileAvatar } from "./avatarSource";
+import type { QuadCarouselMediaDto } from "./quadMedia";
 import type { FieldNote, FieldNoteMention, FieldNoteTag, RamMark } from "./types";
 
 export type QuadReactionType = "like" | "spark";
@@ -16,6 +17,13 @@ export type QuadPostApiRow = {
   user_id: string;
   body: string;
   proof_url: string | null;
+  media_type?: "none" | "image" | "video" | null;
+  poster_url?: string | null;
+  media_duration_seconds?: number | null;
+  media_has_audio?: boolean | null;
+  media_width?: number | null;
+  media_height?: number | null;
+  media_processing_status?: string | null;
   visibility: "public" | "friends";
   ram_marks: unknown;
   related_activity_id?: string | null;
@@ -45,6 +53,9 @@ export type QuadPostApiRow = {
   }>;
   tags?: FieldNoteTag[];
   mentions?: FieldNoteMention[];
+  media?: QuadCarouselMediaDto[];
+  media_count?: number | null;
+  cover_media_id?: string | null;
 };
 
 export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): FieldNote {
@@ -88,6 +99,18 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
     assistByUserIds: new Set(),
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     proofUrl: row.proof_url ?? undefined,
+    mediaType:
+      row.media_type === "video" || row.media_type === "image" || row.media_type === "none"
+        ? row.media_type
+        : row.proof_url
+          ? "image"
+          : "none",
+    posterUrl: row.poster_url ?? undefined,
+    mediaDurationSeconds:
+      row.media_duration_seconds != null ? Number(row.media_duration_seconds) : undefined,
+    mediaHasAudio: row.media_has_audio === true,
+    mediaWidth: row.media_width ?? undefined,
+    mediaHeight: row.media_height ?? undefined,
     visibility: row.visibility,
     authorStreakDays: row.author_streak_days ?? undefined,
     locationId: row.location_id ?? undefined,
@@ -96,5 +119,8 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
     commentCount: Math.max(0, row.comments_count ?? 0),
     tags: row.tags ?? [],
     mentions: row.mentions ?? [],
+    media: row.media ?? [],
+    mediaCount: row.media_count ?? row.media?.length ?? 0,
+    coverMediaId: row.cover_media_id ?? undefined,
   };
 }

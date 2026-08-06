@@ -19,6 +19,7 @@ import { AvatarBuilder } from "./AvatarBuilder";
 import { AchievementShowcaseModal } from "./achievements/AchievementShowcaseModal";
 import { EquipmentStrip } from "./EquipmentStrip";
 import { getEquippedTitleLabel } from "@/lib/achievementEngine";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 export function CharacterCard({
   character,
@@ -331,7 +332,7 @@ export function CharacterCard({
         </div>
       </section>
 
-      {!readOnly ? (
+      {!readOnly && FEATURE_FLAGS.equipment ? (
         <section className="px-3 py-4 sm:px-4">
           <EquipmentStrip character={character} onRefresh={onRefresh} />
         </section>

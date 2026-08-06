@@ -1,5 +1,7 @@
 "use client";
 
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
+
 export type ProfileTab = "posts" | "tagged" | "memories" | "collectibles" | "activity";
 
 const TABS: { id: ProfileTab; label: string }[] = [
@@ -10,6 +12,13 @@ const TABS: { id: ProfileTab; label: string }[] = [
   { id: "activity", label: "Activity" },
 ];
 
+/** Visible profile tabs after feature-flag gating (Codex = collectibles). */
+export function getVisibleProfileTabs(
+  flags: { codex: boolean } = FEATURE_FLAGS,
+): { id: ProfileTab; label: string }[] {
+  return TABS.filter((tab) => tab.id !== "collectibles" || flags.codex);
+}
+
 export function ProfileTabNav({
   active,
   onChange,
@@ -19,11 +28,12 @@ export function ProfileTabNav({
   onChange: (tab: ProfileTab) => void;
   locked?: boolean;
 }) {
-  const activeIndex = Math.max(0, TABS.findIndex((t) => t.id === active));
+  const visibleTabs = getVisibleProfileTabs();
+  const activeIndex = Math.max(0, visibleTabs.findIndex((t) => t.id === active));
 
   return (
     <nav className="cq-profile-tabs sticky top-0 z-10" aria-label="Profile sections">
-      {TABS.map((tab) => {
+      {visibleTabs.map((tab) => {
         const selected = active === tab.id;
         const isLockedTab = locked && tab.id !== "posts";
         return (
@@ -50,7 +60,7 @@ export function ProfileTabNav({
         className="cq-profile-tab-indicator"
         aria-hidden
         style={{
-          width: `${100 / TABS.length}%`,
+          width: `${100 / Math.max(visibleTabs.length, 1)}%`,
           transform: `translateX(${activeIndex * 100}%)`,
         }}
       />

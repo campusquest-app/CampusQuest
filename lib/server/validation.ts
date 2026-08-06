@@ -659,6 +659,33 @@ export const postQuadPostSchema = z
     authorStreakDays: z.number().int().min(0).max(10_000).optional(),
     locationId: campusLocationSlugSchema.optional(),
     locationName: z.string().trim().max(80).optional(),
+    mediaType: z.enum(["none", "image", "video"]).optional(),
+    mediaId: uuidSchema.optional(),
+    /** Ordered carousel items (preferred). Zero-based sortOrder. */
+    mediaItems: z
+      .array(
+        z.object({
+          mediaId: uuidSchema,
+          sortOrder: z.number().int().min(0).max(14),
+        }),
+      )
+      .min(1)
+      .max(15)
+      .optional(),
+    coverMediaId: uuidSchema.optional(),
+    publishIdempotencyKey: z.string().trim().min(8).max(80).optional(),
+    posterUrl: z
+      .string()
+      .trim()
+      .max(2048)
+      .refine((s) => !s || /^https?:\/\//i.test(s), "posterUrl must be http(s).")
+      .optional(),
+    mediaDurationSeconds: z.number().positive().max(180).optional(),
+    mediaHasAudio: z.boolean().optional(),
+    mediaWidth: z.number().int().positive().max(10_000).optional(),
+    mediaHeight: z.number().int().positive().max(10_000).optional(),
+    mediaMimeType: z.string().trim().max(80).optional(),
+    mediaFileSizeBytes: z.number().int().positive().optional(),
     tags: z
       .array(
         z.object({
@@ -697,11 +724,25 @@ export const postQuadPostSchema = z
       .max(20)
       .optional(),
   })
-  .refine((data) => data.body.length > 0 || (typeof data.proofUrl === "string" && data.proofUrl.length > 0), {
-    message: "Add a caption or a photo to post.",
-    path: ["body"],
-  });
-
+  .refine(
+    (data) =>
+      data.body.length > 0 ||
+      (typeof data.proofUrl === "string" && data.proofUrl.length > 0) ||
+      (Array.isArray(data.mediaItems) && data.mediaItems.length > 0) ||
+      Boolean(data.mediaId),
+    {
+      message: "Add a caption, photo, or video to post.",
+      path: ["body"],
+    },
+  )
+  .refine(
+    (data) =>
+      data.mediaType !== "video" ||
+      (typeof data.proofUrl === "string" && data.proofUrl.length > 0) ||
+      (Array.isArray(data.mediaItems) && data.mediaItems.length > 0) ||
+      Boolean(data.mediaId),
+    { message: "Video posts require uploaded media.", path: ["proofUrl"] },
+  );
 export const patchQuadPostSchema = z
   .object({
     body: z.string().trim().min(1).max(300).optional(),

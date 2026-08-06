@@ -17,7 +17,6 @@ import {
 import { normalizeRamMarkTag, prependRemoteQuadPost } from "@/lib/feedStore";
 import { createQuadPostRequest } from "@/lib/client/quadPostsClient";
 import type { QuadPostXpReward } from "@/lib/quadPostXp";
-import { readImageFileAsDataUrl } from "@/lib/client/readImageFile";
 import { ApiRequestError } from "@/lib/client/dashboardApi";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import type { Character } from "@/lib/types";
@@ -38,6 +37,56 @@ import {
   type PhotoTagDraft,
 } from "@/lib/postTags";
 import type { TagSearchResult } from "@/lib/client/tagSearchClient";
+import {
+  allCarouselItemsReady,
+  createCarouselItemFromFile,
+  filterNewFiles,
+  overallUploadProgress,
+  revokeCarouselItem,
+  runCarouselUploadQueue,
+  toPublishMediaItems,
+  type ComposerCarouselItem,
+} from "@/lib/client/quadMediaUploadQueue";
+import { ComposerCarouselEditor } from "@/components/posts/ComposerCarouselEditor";
+import { isAllowedImageMime, isAllowedVideoMime } from "@/lib/quadMedia";
+import { probeVideoFile } from "@/lib/client/probeVideoFile";
+
+function seedCarouselItems(args: {
+  initialCarousel?: { items: ComposerCarouselItem[]; coverClientId: string | null } | null;
+  initialImage?: string;
+  initialVideo?: { file: File; previewUrl: string; durationSeconds: number } | null;
+}): { items: ComposerCarouselItem[]; coverClientId: string | null } {
+  if (args.initialCarousel?.items?.length) {
+    return {
+      items: args.initialCarousel.items.map((i) => ({ ...i, stage: i.stage === "ready" ? "ready" : "waiting" })),
+      coverClientId: args.initialCarousel.coverClientId,
+    };
+  }
+  if (args.initialVideo) {
+    const item = createCarouselItemFromFile(args.initialVideo.file, "video");
+    revokeCarouselItem(item);
+    item.previewUrl = args.initialVideo.previewUrl;
+    item.durationSeconds = args.initialVideo.durationSeconds;
+    return { items: [item], coverClientId: item.clientId };
+  }
+  if (args.initialImage?.startsWith("data:image/")) {
+    // Convert data URL to a File for the upload queue.
+    const blob = dataUrlToBlob(args.initialImage);
+    const file = new File([blob], "photo.jpg", { type: blob.type || "image/jpeg" });
+    const item = createCarouselItemFromFile(file, "image");
+    return { items: [item], coverClientId: item.clientId };
+  }
+  return { items: [], coverClientId: null };
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, data] = dataUrl.split(",");
+  const mime = /data:(.*?);/.exec(header ?? "")?.[1] || "image/jpeg";
+  const binary = atob(data ?? "");
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
 
 export function FieldNoteComposer({
   character,
@@ -49,6 +98,8 @@ export function FieldNoteComposer({
   defaultVisibility = "public",
   initialBody = "",
   initialImage = "",
+  initialVideo = null,
+  initialCarousel = null,
   autoOpenPhotoPicker = false,
 }: {
   character: Character;
@@ -66,12 +117,24 @@ export function FieldNoteComposer({
   initialBody?: string;
   /** Pre-selected image (data URL) carried over from the media picker step. */
   initialImage?: string;
+  /** Pre-selected video from media picker (not uploaded yet). */
+  initialVideo?: { file: File; previewUrl: string; durationSeconds: number } | null;
+  /** Multi-media carousel from the picker step. */
+  initialCarousel?: { items: ComposerCarouselItem[]; coverClientId: string | null } | null;
   autoOpenPhotoPicker?: boolean;
 }) {
+  const seeded = seedCarouselItems({ initialCarousel, initialImage, initialVideo });
   const [body, setBody] = useState(initialBody);
   const [ramMarkInput, setRamMarkInput] = useState("");
   const [ramMarks, setRamMarks] = useState<RamMark[]>([]);
-  const [proofUrl, setProofUrl] = useState(initialImage);
+  const [carouselItems, setCarouselItems] = useState<ComposerCarouselItem[]>(seeded.items);
+  const [coverClientId, setCoverClientId] = useState<string | null>(seeded.coverClientId);
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const [previewMuted, setPreviewMuted] = useState(true);
+  const itemsRef = useRef(carouselItems);
+  itemsRef.current = carouselItems;
+  const postingLockRef = useRef(false);
+  const publishKeyRef = useRef(`pub-${crypto.randomUUID()}`);
   const [visibility, setVisibility] = useState<QuadPostVisibility>(defaultVisibility);
   const [locationId, setLocationId] = useState<RealmLocationId | "">("");
   const [error, setError] = useState<string | null>(null);
@@ -106,20 +169,44 @@ export function FieldNoteComposer({
     return () => window.clearTimeout(tid);
   }, [autoOpenPhotoPicker]);
 
-  const hasImage = proofUrl.trim().length > 0;
+  const hasMedia = carouselItems.length > 0;
+  const mediaReady = !hasMedia || allCarouselItemsReady(carouselItems);
   const bodyCount = body.length;
-  const canPost = (body.trim().length > 0 || hasImage) && bodyCount <= FIELD_NOTE_MAX_CHARS;
+  const canPost =
+    (body.trim().length > 0 || (hasMedia && mediaReady)) &&
+    bodyCount <= FIELD_NOTE_MAX_CHARS &&
+    !isSubmitting &&
+    !(hasMedia && !mediaReady);
 
   const dirty =
     body.trim().length > 0 ||
-    hasImage ||
+    hasMedia ||
     ramMarks.length > 0 ||
     locationId !== "" ||
     composerTags.length > 0 ||
     photoTags.length > 0;
+
+  useEffect(() => {
+    const waiting = carouselItems.some((i) => i.stage === "waiting");
+    if (!waiting) return;
+    void runCarouselUploadQueue(carouselItems, (clientId, next) => {
+      setCarouselItems((prev) => prev.map((item) => (item.clientId === clientId ? next : item)));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carouselItems.map((i) => `${i.clientId}:${i.stage}`).join("|")]);
+
   useEffect(() => {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    return () => {
+      // Revoke previews when composer unmounts after discard/post.
+      for (const item of itemsRef.current) {
+        if (item.stage !== "ready") revokeCarouselItem(item);
+      }
+    };
+  }, []);
 
   function syncMentionQuery(text: string, nextCursor: number) {
     const active = detectActiveMention(text, nextCursor);
@@ -177,30 +264,64 @@ export function FieldNoteComposer({
     setRamMarks((prev) => prev.filter((r) => r.tag !== tag));
   }, []);
 
-  async function readImageFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    try {
-      const dataUrl = await readImageFileAsDataUrl(file);
-      setProofUrl(dataUrl);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not read that image.");
+  async function appendComposerFiles(fileList: FileList | null) {
+    if (!fileList?.length) return;
+    const { accepted, rejectedReason } = filterNewFiles(carouselItems, Array.from(fileList));
+    if (rejectedReason && accepted.length === 0) {
+      setError(rejectedReason);
+      return;
     }
+    setError(rejectedReason ?? null);
+    const next: ComposerCarouselItem[] = [];
+    for (const file of accepted) {
+      const isVideo = file.type.startsWith("video/") || isAllowedVideoMime(file.type);
+      if (isVideo) {
+        try {
+          const probed = await probeVideoFile(file);
+          const item = createCarouselItemFromFile(probed.file, "video");
+          revokeCarouselItem(item);
+          item.previewUrl = probed.objectUrl;
+          item.durationSeconds = probed.durationSeconds;
+          next.push(item);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not read that video.");
+        }
+      } else if (file.type.startsWith("image/") || isAllowedImageMime(file.type)) {
+        next.push(createCarouselItemFromFile(file, "image"));
+      }
+    }
+    if (!next.length) return;
+    setCarouselItems((prev) => {
+      const merged = [...prev, ...next];
+      if (!coverClientId) setCoverClientId(merged[0]?.clientId ?? null);
+      setActiveMediaIndex(merged.length - 1);
+      return merged;
+    });
   }
 
-  function removeImage() {
-    setProofUrl("");
-    setPhotoTags([]);
+  function removeCarouselItem(clientId: string) {
+    setCarouselItems((prev) => {
+      const target = prev.find((i) => i.clientId === clientId);
+      if (target) revokeCarouselItem(target);
+      const next = prev.filter((i) => i.clientId !== clientId);
+      if (coverClientId === clientId) setCoverClientId(next[0]?.clientId ?? null);
+      setPhotoTags((tags) => tags.filter((t) => t.mediaKey !== clientId && t.mediaKey !== target?.mediaId));
+      setActiveMediaIndex((idx) => Math.max(0, Math.min(idx, next.length - 1)));
+      return next;
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (postingLockRef.current) return;
     setError(null);
     const trimmed = body.trim();
-    if (!trimmed && !hasImage) {
-      setError("Add a caption or a photo to post.");
+    if (!trimmed && !hasMedia) {
+      setError("Add a caption, photo, or video to post.");
+      return;
+    }
+    if (hasMedia && !mediaReady) {
+      setError("Wait for all photos and videos to finish uploading.");
       return;
     }
     if (trimmed.length > FIELD_NOTE_MAX_CHARS) {
@@ -209,13 +330,26 @@ export function FieldNoteComposer({
     }
     setError(null);
     setSuccessMessage(null);
+    postingLockRef.current = true;
     setIsSubmitting(true);
     try {
       const selectedLocation = campusLocations.find((l) => l.slug === locationId);
+      const published = hasMedia ? toPublishMediaItems(carouselItems) : [];
+      const cover =
+        published.find((m) => m.clientId === coverClientId) ?? published[0] ?? null;
       const { note, realmMoment, xpReward } = await createQuadPostRequest(
         {
           body: trimmed,
-          proofUrl: proofUrl.trim() || undefined,
+          proofUrl: cover?.playbackUrl,
+          mediaType: cover ? cover.mediaType : "none",
+          mediaItems:
+            published.length > 0
+              ? published.map((m) => ({ mediaId: m.mediaId, sortOrder: m.sortOrder }))
+              : undefined,
+          coverMediaId: cover?.mediaId,
+          publishIdempotencyKey: publishKeyRef.current,
+          mediaId: published.length === 1 ? published[0]!.mediaId : undefined,
+          posterUrl: cover?.mediaType === "video" ? cover.thumbnailUrl ?? undefined : undefined,
           visibility,
           ramMarks,
           authorStreakDays: character.streakDays ?? 0,
@@ -229,14 +363,22 @@ export function FieldNoteComposer({
             subtitle: t.subtitle ?? null,
             mentionSlug: t.mentionSlug ?? null,
           })),
-          photoTags: photoTags.map((t) => ({
-            entityType: t.entityType,
-            entityId: t.entityId,
-            mediaKey: t.mediaKey,
-            positionX: t.positionX,
-            positionY: t.positionY,
-            displayLabel: t.displayLabel,
-          })),
+          photoTags: !hasMedia
+            ? []
+            : photoTags.map((t) => {
+                const resolved =
+                  published.find((p) => p.clientId === t.mediaKey || p.mediaId === t.mediaKey)?.mediaId ||
+                  t.mediaKey ||
+                  "primary";
+                return {
+                  entityType: t.entityType,
+                  entityId: t.entityId,
+                  mediaKey: resolved,
+                  positionX: t.positionX,
+                  positionY: t.positionY,
+                  displayLabel: t.displayLabel,
+                };
+              }),
           mentions: captionMentions.map((m) => ({
             entityType: m.entityType,
             entityId: m.entityId,
@@ -253,7 +395,8 @@ export function FieldNoteComposer({
       }
       setBody("");
       setRamMarks([]);
-      setProofUrl("");
+      setCarouselItems([]);
+      setCoverClientId(null);
       setLocationId("");
       setComposerTags([]);
       setPhotoTags([]);
@@ -289,12 +432,14 @@ export function FieldNoteComposer({
       );
     } finally {
       setIsSubmitting(false);
+      postingLockRef.current = false;
     }
   }
 
   const previewName = character.name || "You";
   const previewUsername = character.username || "you";
-  const showPreview = body.trim().length > 0 || hasImage;
+  const showPreview = body.trim().length > 0 || hasMedia;
+  const uploadPct = overallUploadProgress(carouselItems);
 
   return (
     <form onSubmit={handleSubmit} className="cq-composer-sheet">
@@ -386,32 +531,48 @@ export function FieldNoteComposer({
           </span>
         </div>
 
-        {hasImage ? (
-          <div className="cq-composer-image-preview">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={proofUrl} alt="Selected media preview" />
-            <button
-              type="button"
-              onClick={removeImage}
-              className="cq-composer-image-remove"
-              aria-label="Remove image"
-            >
-              <X className="h-4 w-4" strokeWidth={2.5} />
-            </button>
-            <button
-              type="button"
-              onClick={() => photoFileRef.current?.click()}
-              className="cq-composer-image-replace"
-            >
-              Replace
-            </button>
-            <button
-              type="button"
-              onClick={() => setPhotoTagEditorOpen(true)}
-              className="absolute bottom-2 left-2 min-h-[40px] rounded-full bg-black/70 px-3 text-xs font-semibold text-white"
-            >
-              Tag photo{photoTags.length ? ` (${photoTags.length})` : ""}
-            </button>
+        {hasMedia ? (
+          <div className="space-y-2">
+            <ComposerCarouselEditor
+              items={carouselItems}
+              activeIndex={activeMediaIndex}
+              coverClientId={coverClientId}
+              previewMuted={previewMuted}
+              onSelectIndex={setActiveMediaIndex}
+              onReorder={(from, to) => {
+                setCarouselItems((prev) => {
+                  const next = [...prev];
+                  const [moved] = next.splice(from, 1);
+                  if (!moved) return prev;
+                  next.splice(to, 0, moved);
+                  return next;
+                });
+                setActiveMediaIndex(to);
+              }}
+              onRemove={removeCarouselItem}
+              onRetry={(clientId) => {
+                setCarouselItems((prev) =>
+                  prev.map((i) =>
+                    i.clientId === clientId ? { ...i, stage: "waiting", percent: 0, error: undefined } : i,
+                  ),
+                );
+              }}
+              onAddMore={(files) => void appendComposerFiles(files)}
+              onSetCover={setCoverClientId}
+              onTogglePreviewMute={() => setPreviewMuted((m) => !m)}
+            />
+            {!mediaReady ? (
+              <p className="text-center text-[11px] text-white/55">Uploading media… {uploadPct}%</p>
+            ) : null}
+            {carouselItems[activeMediaIndex]?.kind === "image" ? (
+              <button
+                type="button"
+                onClick={() => setPhotoTagEditorOpen(true)}
+                className="min-h-[40px] rounded-full bg-white/10 px-3 text-xs font-semibold text-white"
+              >
+                Tag photo{photoTags.length ? ` (${photoTags.length})` : ""}
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -435,17 +596,24 @@ export function FieldNoteComposer({
         <input
           ref={photoFileRef}
           type="file"
-          accept="image/*"
-          onChange={readImageFile}
+          accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v"
+          multiple
+          onChange={(e) => {
+            void appendComposerFiles(e.target.files);
+            e.target.value = "";
+          }}
           className="hidden"
-          aria-label="Choose photo from library"
+          aria-label="Choose photos or videos from library"
         />
         <input
           ref={cameraFileRef}
           type="file"
           accept="image/*"
           capture="environment"
-          onChange={readImageFile}
+          onChange={(e) => {
+            void appendComposerFiles(e.target.files);
+            e.target.value = "";
+          }}
           className="hidden"
           aria-label="Take a photo with the camera"
         />
@@ -464,10 +632,10 @@ export function FieldNoteComposer({
             type="button"
             onClick={() => photoFileRef.current?.click()}
             className="cq-composer-action"
-            aria-label="Add photo from library"
+            aria-label="Add photo or video from library"
           >
             <ImageIcon className="h-[20px] w-[20px]" strokeWidth={2} />
-            <span>Photo</span>
+            <span>Photo/Video</span>
           </button>
           <button
             type="button"
@@ -592,10 +760,19 @@ export function FieldNoteComposer({
                 </div>
               </div>
               {body.trim() ? <p className="cq-composer-preview-body">{body.trim()}</p> : null}
-              {hasImage ? (
+              {hasMedia && carouselItems[0] ? (
                 <div className="cq-composer-preview-media">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={proofUrl} alt="Post media preview" />
+                  {carouselItems[0].kind === "video" ? (
+                    <video src={carouselItems[0].previewUrl} muted playsInline className="w-full" />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={carouselItems[0].previewUrl} alt="Post media preview" />
+                  )}
+                  {carouselItems.length > 1 ? (
+                    <span className="absolute right-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+                      1/{carouselItems.length}
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
               {ramMarks.length > 0 ? (
@@ -633,9 +810,31 @@ export function FieldNoteComposer({
       />
       <PhotoTagEditor
         open={photoTagEditorOpen}
-        imageUrl={proofUrl}
-        tags={photoTags}
-        onChange={setPhotoTags}
+        imageUrl={carouselItems[activeMediaIndex]?.previewUrl || ""}
+        tags={photoTags.filter(
+          (t) =>
+            !t.mediaKey ||
+            t.mediaKey === "primary" ||
+            t.mediaKey === carouselItems[activeMediaIndex]?.clientId ||
+            t.mediaKey === carouselItems[activeMediaIndex]?.mediaId,
+        )}
+        onChange={(next) => {
+          const mediaKey =
+            carouselItems[activeMediaIndex]?.mediaId ||
+            carouselItems[activeMediaIndex]?.clientId ||
+            "primary";
+          const keyed = next.map((t) => ({ ...t, mediaKey }));
+          setPhotoTags((prev) => {
+            const others = prev.filter(
+              (t) =>
+                t.mediaKey &&
+                t.mediaKey !== mediaKey &&
+                t.mediaKey !== carouselItems[activeMediaIndex]?.clientId &&
+                t.mediaKey !== "primary",
+            );
+            return [...others, ...keyed];
+          });
+        }}
         onClose={() => setPhotoTagEditorOpen(false)}
       />
 

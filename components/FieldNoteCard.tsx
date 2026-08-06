@@ -31,7 +31,10 @@ import { CaptionWithMentions } from "./quad/CaptionWithMentions";
 import { TaggedWithLine } from "./quad/TaggedWithLine";
 import { FeedPhotoTags } from "./quad/FeedPhotoTags";
 import { TagPickerSheet } from "./quad/TagPickerSheet";
+import { QuadVideoPlayer } from "./quad/QuadVideoPlayer";
+import { QuadMediaCarousel } from "./quad/QuadMediaCarousel";
 import type { CaptionMentionDraft, ComposerTagSelection } from "@/lib/postTags";
+import { looksLikeVideoUrl } from "@/lib/quadVideo";
 
 function ReactionButton({
   active,
@@ -179,8 +182,10 @@ function FeedLocationChip({ name, onMedia = false }: { name: string; onMedia?: b
 function looksLikeImageProofUrl(url: string): boolean {
   const u = url.trim();
   if (!u) return false;
+  if (looksLikeVideoUrl(u)) return false;
   if (u.startsWith("data:image/")) return true;
-  if (/\/storage\/v1\/object\/public\/quad-post-images\//i.test(u)) return true;
+  if (/\/storage\/v1\/object\/public\/quad-post-images\/.+\.(jpe?g|png|gif|webp)/i.test(u)) return true;
+  if (/\/storage\/v1\/object\/public\/quad-post-images\//i.test(u) && !/\/quad-media\//i.test(u)) return true;
   // App-hosted proof assets (Quad seed images, etc.)
   if (/^\/[\w./-]+\.(jpe?g|png|gif|webp)(\?|#|$)/i.test(u)) return true;
   if (/\.(jpe?g|png|gif|webp)(\?|#|$|\/)/i.test(u)) return true;
@@ -308,7 +313,19 @@ function FieldNoteCardInner({
   const hasAssisted = note.assistByUserIds?.has(currentUserId) ?? false;
 
   const proofImgUrl = note.proofUrl?.trim();
-  const isImgUrl = proofImgUrl && looksLikeImageProofUrl(proofImgUrl);
+  const carouselMedia = note.media && note.media.length > 0 ? note.media : null;
+  const isCarousel = Boolean(carouselMedia && carouselMedia.length > 1);
+  const isVideo =
+    !isCarousel &&
+    (note.mediaType === "video" ||
+      Boolean(proofImgUrl && looksLikeVideoUrl(proofImgUrl)) ||
+      carouselMedia?.[0]?.mediaType === "video");
+  const isImgUrl =
+    !isVideo &&
+    !isCarousel &&
+    Boolean(
+      (proofImgUrl && looksLikeImageProofUrl(proofImgUrl)) || carouselMedia?.[0]?.mediaType === "image",
+    );
   const streak = streakBadge(note.authorStreakDays);
   const isFeed = variant === "feed";
 
@@ -709,8 +726,23 @@ function FieldNoteCardInner({
   );
 
   const proofBlock =
-    proofImgUrl &&
-    (isImgUrl ? (
+    carouselMedia && carouselMedia.length > 0 ? (
+      <QuadMediaCarousel
+        postId={note.id}
+        media={carouselMedia}
+        tags={note.tags}
+        isFeed={isFeed}
+      />
+    ) : proofImgUrl &&
+    (isVideo ? (
+      <QuadVideoPlayer
+        playerId={note.id}
+        src={proofImgUrl}
+        poster={note.posterUrl}
+        durationSeconds={note.mediaDurationSeconds}
+        autoplayWhenVisible={isFeed}
+      />
+    ) : isImgUrl ? (
       isFeed ? (
         <button
           type="button"
@@ -903,13 +935,11 @@ function FieldNoteCardInner({
             </div>
             {ownerMenu}
           </header>
-          {proofImgUrl && isImgUrl ? (
+          {proofBlock ? (
             <div className="quad-feed-media-wrap carousel w-full" data-no-drawer-swipe="true">
               {proofBlock}
               {note.locationName ? <FeedLocationChip name={note.locationName} onMedia /> : null}
             </div>
-          ) : proofImgUrl ? (
-            <div className="quad-feed-media-wrap carousel w-full" data-no-drawer-swipe="true">{proofBlock}</div>
           ) : null}
           {(note.body.trim() || note.ramMarks.length > 0 || structuredTags.length > 0) && (
             <div className="cq-feed-post-caption px-3">

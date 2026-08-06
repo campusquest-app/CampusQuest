@@ -14,8 +14,9 @@ import { Plus } from "lucide-react";
 import type { Character } from "@/lib/types";
 import type { QuadPostXpReward } from "@/lib/quadPostXp";
 import { FieldNoteComposer } from "@/components/FieldNoteComposer";
-import { PostMediaPicker } from "@/components/posts/PostMediaPicker";
+import { PostMediaPicker, type PickedMedia } from "@/components/posts/PostMediaPicker";
 import { QuadCreateActionSheet } from "@/components/QuadCreateActionSheet";
+import { revokeVideoObjectUrl } from "@/lib/client/probeVideoFile";
 
 type QuadFeedTab = "public" | "friends" | "trending";
 type Step = "media" | "compose";
@@ -39,17 +40,29 @@ export function QuadCreatePostFab({
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("actions");
   const [step, setStep] = useState<Step>("media");
-  const [pendingImage, setPendingImage] = useState("");
+  const [pendingMedia, setPendingMedia] = useState<PickedMedia>({ kind: "none" });
   const [tapBurst, setTapBurst] = useState(false);
   const dirtyRef = useRef(false);
 
   useRegisterImmersiveScreen(open);
 
+  function clearPendingMedia() {
+    if (pendingMedia.kind === "video") {
+      revokeVideoObjectUrl(pendingMedia.previewUrl);
+    }
+    if (pendingMedia.kind === "carousel") {
+      for (const item of pendingMedia.items) {
+        revokeVideoObjectUrl(item.previewUrl);
+      }
+    }
+    setPendingMedia({ kind: "none" });
+  }
+
   function handleFabTap() {
     setTapBurst(true);
     window.setTimeout(() => setTapBurst(false), 380);
     dirtyRef.current = false;
-    setPendingImage("");
+    clearPendingMedia();
     setStep("media");
     setView("actions");
     setOpen(true);
@@ -60,23 +73,32 @@ export function QuadCreatePostFab({
     setOpen(false);
     setView("actions");
     setStep("media");
-    setPendingImage("");
+    if (pendingMedia.kind === "video") {
+      revokeVideoObjectUrl(pendingMedia.previewUrl);
+    }
+    if (pendingMedia.kind === "carousel") {
+      // Ownership moves to composer after Next — only revoke if still on media step leftovers.
+    }
+    setPendingMedia({ kind: "none" });
     releaseModalViewportState();
     resetScrollChrome();
-  }, []);
+  }, [pendingMedia]);
 
-  // Outside click / backdrop / Escape: confirm only when composing with unsaved content.
   const requestClose = useCallback(() => {
-    if (view === "post" && (dirtyRef.current || pendingImage)) {
+    const hasMedia =
+      pendingMedia.kind === "carousel"
+        ? pendingMedia.items.length > 0
+        : pendingMedia.kind !== "none";
+    if (view === "post" && (dirtyRef.current || hasMedia)) {
       const confirmed = window.confirm("Discard this post? Your draft will be lost.");
       if (!confirmed) return;
     }
     handleClose();
-  }, [handleClose, pendingImage, view]);
+  }, [handleClose, pendingMedia, view]);
 
   const startPostFlow = useCallback(() => {
     dirtyRef.current = false;
-    setPendingImage("");
+    setPendingMedia({ kind: "none" });
     setStep("media");
     setView("post");
   }, []);
@@ -127,10 +149,9 @@ export function QuadCreatePostFab({
           >
             {step === "media" ? (
               <PostMediaPicker
-                initialImage={pendingImage}
                 onClose={requestClose}
-                onNext={(image) => {
-                  setPendingImage(image);
+                onNext={(media) => {
+                  setPendingMedia(media);
                   setStep("compose");
                 }}
               />
@@ -139,7 +160,24 @@ export function QuadCreatePostFab({
                 key={`${feedTab}-${open}-compose`}
                 character={character}
                 defaultVisibility={baseFeedType(feedTab)}
-                initialImage={pendingImage}
+                initialImage={pendingMedia.kind === "image" ? pendingMedia.dataUrl : ""}
+                initialVideo={
+                  pendingMedia.kind === "video"
+                    ? {
+                        file: pendingMedia.file,
+                        previewUrl: pendingMedia.previewUrl,
+                        durationSeconds: pendingMedia.durationSeconds,
+                      }
+                    : null
+                }
+                initialCarousel={
+                  pendingMedia.kind === "carousel"
+                    ? {
+                        items: pendingMedia.items,
+                        coverClientId: pendingMedia.coverClientId,
+                      }
+                    : null
+                }
                 onBack={() => setStep("media")}
                 onCancel={requestClose}
                 onDirtyChange={(d) => {

@@ -123,11 +123,23 @@ export async function createQuadPostRequest(
       startIndex: number;
       endIndex: number;
     }[];
+    mediaType?: "none" | "image" | "video";
+    mediaId?: string;
+    mediaItems?: { mediaId: string; sortOrder: number }[];
+    coverMediaId?: string;
+    publishIdempotencyKey?: string;
+    posterUrl?: string;
+    mediaDurationSeconds?: number;
+    mediaHasAudio?: boolean;
+    mediaWidth?: number;
+    mediaHeight?: number;
+    mediaMimeType?: string;
+    mediaFileSizeBytes?: number;
   },
   viewerId?: string,
 ): Promise<CreateQuadPostResult> {
   let proofUrl = payload.proofUrl?.trim();
-  if (proofUrl && isQuadPostProofDataUrl(proofUrl)) {
+  if (payload.mediaType !== "video" && proofUrl && isQuadPostProofDataUrl(proofUrl)) {
     proofUrl = await uploadQuadPostProofDataUrl(proofUrl);
   }
 

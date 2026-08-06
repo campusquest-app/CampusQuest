@@ -23,6 +23,9 @@ export type SharedPostPreview = {
   authorAvatar: string;
   caption: string;
   imageUrl: string | null;
+  mediaType?: "image" | "video" | "none" | null;
+  mediaCount?: number;
+  targetMediaId?: string | null;
   locationName: string | null;
   unavailable?: boolean;
   locked?: boolean;
@@ -64,6 +67,8 @@ export type SharePostTarget = {
   authorAvatar: string;
   caption: string;
   imageUrl?: string | null;
+  mediaType?: "image" | "video" | "none" | null;
+  mediaCount?: number;
   locationName?: string | null;
 };
 
@@ -86,7 +91,12 @@ export function buildShareTargetFromFieldNote(
     authorUsername: note.authorUsername,
     authorAvatar: note.authorAvatar,
     caption: note.body,
-    imageUrl: note.proofUrl?.trim() || null,
+    imageUrl:
+      note.mediaType === "video"
+        ? note.posterUrl?.trim() || null
+        : note.proofUrl?.trim() || null,
+    mediaType: note.mediaType === "video" ? "video" : note.proofUrl ? "image" : "none",
+    mediaCount: note.mediaCount ?? note.media?.length ?? (note.proofUrl ? 1 : 0),
     locationName: note.locationName ?? null,
   };
 }

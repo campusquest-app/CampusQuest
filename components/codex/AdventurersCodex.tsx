@@ -14,8 +14,10 @@ import {
 import { buildCodexStates, computeCodexStats } from "@/lib/codexState";
 import { CodexCard } from "@/components/codex/CodexCard";
 import { CodexDetailSheet } from "@/components/codex/CodexDetailSheet";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 export function AdventurersCodex({ character }: { character: Character }) {
+  // Codex feature flag — component retained for easy restore; never briefly flash while disabled.
   const [filter, setFilter] = useState<CodexFilter | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -28,6 +30,8 @@ export function AdventurersCodex({ character }: { character: Character }) {
   );
 
   const selected = selectedId ? states.find((s) => s.entry.id === selectedId) : null;
+
+  if (!FEATURE_FLAGS.codex) return null;
 
   return (
     <div className="cq-codex pb-6">

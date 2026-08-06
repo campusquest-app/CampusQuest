@@ -154,6 +154,7 @@ import type { CampusQuestQrActivityPayloadParsed } from "@/lib/qrCampusQuestActi
 import { AppSideDrawer, type AppDrawerDestination } from "@/components/AppSideDrawer";
 import type { SettingsActionId } from "@/components/AppSettingsPanel";
 import { AppBottomNav, type AppBottomNavTab } from "@/components/AppBottomNav";
+import { FEATURE_FLAGS, FEATURE_FLAG_FALLBACK_TAB, FEATURE_FLAG_PROFILE_FALLBACK } from "@/lib/featureFlags";
 import { MobileGestureLayerProvider } from "@/components/mobile/MobileGestureLayerProvider";
 import { DashboardTabSwipeShell } from "@/components/mobile/DashboardTabSwipeShell";
 import { type SwipeNavDirection } from "@/lib/client/mobileGestures";
@@ -326,10 +327,37 @@ export function Dashboard() {
 
   useEffect(() => {
     const t = searchParams.get("tab");
-    if (t && TAB_QUERY_VALUES.includes(t as Tab)) {
-      setTab(t as Tab);
+    if (!t || !TAB_QUERY_VALUES.includes(t as Tab)) return;
+    // Disabled features: replace deep links instead of briefly rendering the tab.
+    if (t === "manual-log" && !FEATURE_FLAGS.manualLog) {
+      setTab(FEATURE_FLAG_FALLBACK_TAB);
+      router.replace("/");
+      return;
     }
-  }, [searchParams]);
+    if (t === "battle" && !FEATURE_FLAGS.bossBattles) {
+      setTab(FEATURE_FLAG_FALLBACK_TAB);
+      router.replace("/");
+      return;
+    }
+    setTab(t as Tab);
+  }, [searchParams, router]);
+
+  useEffect(() => {
+    if (tab === "manual-log" && !FEATURE_FLAGS.manualLog) {
+      setTab(FEATURE_FLAG_FALLBACK_TAB);
+      return;
+    }
+    if (tab === "battle" && !FEATURE_FLAGS.bossBattles) {
+      setTab(FEATURE_FLAG_FALLBACK_TAB);
+      return;
+    }
+    // Codex lives on the Profile "collectibles" tab — bounce to Profile → Posts.
+    if (profileTab === "collectibles" && !FEATURE_FLAGS.codex) {
+      setTab(FEATURE_FLAG_PROFILE_FALLBACK.tab);
+      setCharacterPane(FEATURE_FLAG_PROFILE_FALLBACK.characterPane);
+      setProfileTab(FEATURE_FLAG_PROFILE_FALLBACK.profileTab);
+    }
+  }, [tab, profileTab]);
 
   useEffect(() => {
     if (tab === "realm") setRealmKeepAlive(true);
@@ -640,6 +668,10 @@ export function Dashboard() {
           navigateToTab("guilds");
           break;
         case "battle":
+          if (!FEATURE_FLAGS.bossBattles) {
+            setTab(FEATURE_FLAG_FALLBACK_TAB);
+            break;
+          }
           setTab("battle");
           break;
         case "inbox":
@@ -656,6 +688,10 @@ export function Dashboard() {
           setTab("quest-board");
           break;
         case "manual-log":
+          if (!FEATURE_FLAGS.manualLog) {
+            setTab(FEATURE_FLAG_FALLBACK_TAB);
+            break;
+          }
           setTab("manual-log");
           break;
         case "progress-hub":
@@ -673,6 +709,12 @@ export function Dashboard() {
           setProfileTab("posts");
           break;
         case "collectibles":
+          if (!FEATURE_FLAGS.codex) {
+            setTab(FEATURE_FLAG_PROFILE_FALLBACK.tab);
+            setCharacterPane(FEATURE_FLAG_PROFILE_FALLBACK.characterPane);
+            setProfileTab(FEATURE_FLAG_PROFILE_FALLBACK.profileTab);
+            break;
+          }
           setTab("character");
           setCharacterPane("profile");
           setProfileTab("collectibles");
@@ -696,7 +738,11 @@ export function Dashboard() {
   );
 
   const bottomNavActive: AppBottomNavTab | "other" =
-    tab === "quad" || tab === "realm" || tab === "leaderboards" || tab === "character"
+    tab === "quad" ||
+    tab === "inbox" ||
+    tab === "realm" ||
+    tab === "leaderboards" ||
+    tab === "character"
       ? tab
       : "other";
 
@@ -748,6 +794,7 @@ export function Dashboard() {
       setTabEnterDirection(direction);
       setTab(nextTab);
       if (nextTab === "quad") setQuadFeedTab("public");
+      if (nextTab === "inbox") setInboxSubTab("messages");
       if (nextTab === "character") {
         setCharacterPane("profile");
         setProfileTab("posts");
@@ -2427,7 +2474,7 @@ export function Dashboard() {
           />
         )}
 
-        {tab === "battle" && (
+        {FEATURE_FLAGS.bossBattles && tab === "battle" && (
           <div className="space-y-4 sm:space-y-5">
             <BossBattles character={character} onRefresh={refresh} />
           </div>
@@ -2449,7 +2496,7 @@ export function Dashboard() {
           />
         )}
 
-        {tab === "manual-log" && character && (
+        {FEATURE_FLAGS.manualLog && tab === "manual-log" && character && (
           <ManualLogScreen character={character} onLog={handleLog} onBack={() => setTab("quad")} />
         )}
 
@@ -2521,14 +2568,11 @@ export function Dashboard() {
             userAvatar={character?.avatar}
             avatarLoading={!character}
             unreadBadgeCount={unreadNotificationCount}
-            onOpenScanner={() => {
-              if (drawerBlocksNavigation) return;
-              openQrScanner();
-            }}
             onSelectTab={(t) => {
               if (drawerBlocksNavigation) return;
               setTab(t);
               if (t === "quad") setQuadFeedTab("public");
+              if (t === "inbox") setInboxSubTab("messages");
               if (t === "character") {
                 setCharacterPane("profile");
                 setProfileTab("posts");

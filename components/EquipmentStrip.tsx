@@ -1,6 +1,7 @@
 "use client";
 
 import type { Character } from "@/lib/types";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { COSMETICS } from "@/lib/cosmetics";
 import { aggregateBuffs, describeCosmeticEquipEffect } from "@/lib/gameBuffs";
 import { setEquippedCosmeticSlot } from "@/lib/store";
@@ -16,6 +17,9 @@ export function EquipmentStrip({
   onRefresh?: () => void;
   readOnly?: boolean;
 }) {
+  // Feature-flag gate: keep the module for easy restore, render nothing while hidden.
+  if (!FEATURE_FLAGS.equipment) return null;
+
   const unlocked = new Set(character.unlockedCosmetics ?? []);
   const eq = character.equippedCosmetics ?? {};
   const buffs = aggregateBuffs(character);

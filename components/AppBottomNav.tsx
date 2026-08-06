@@ -2,7 +2,7 @@
 
 import { forwardRef, useLayoutEffect, useRef, useState, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Home, Map, QrCode, Trophy } from "lucide-react";
+import { Home, Map, MessageCircle, Trophy } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { getCharacter, subscribeCharacterAvatar } from "@/lib/store";
 import { useIsDrawerOpen } from "@/lib/client/appDrawerStore";
@@ -19,11 +19,15 @@ export const CQ_BOTTOM_NAV_CLEARANCE =
 export const CQ_FLOATING_ACTION_BOTTOM =
   "calc(var(--cq-bottom-nav-h, 3.95rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 1.25rem)";
 
-export type AppBottomNavTab = "quad" | "realm" | "leaderboards" | "character";
+/** Primary dock destinations (left → right). Map is the centered primary action. */
+export type AppBottomNavTab = "quad" | "inbox" | "realm" | "leaderboards" | "character";
 
 const BOTTOM_NAV_AVATAR_PX = 28;
 
-const DOCK_TABS: AppBottomNavTab[] = ["quad", "realm", "leaderboards", "character"];
+/** Non-Map tabs that participate in the sliding active indicator. */
+const INDICATOR_TABS: AppBottomNavTab[] = ["quad", "inbox", "leaderboards", "character"];
+
+const DOCK_TABS: AppBottomNavTab[] = ["quad", "inbox", "realm", "leaderboards", "character"];
 
 function useLiveUserAvatar(fallback?: unknown): unknown {
   return useSyncExternalStore(
@@ -60,17 +64,15 @@ function shouldShowInitialsAvatar(avatar: unknown): boolean {
 export function AppBottomNav({
   activeTab,
   onSelectTab,
-  onOpenScanner,
   userAvatar,
   avatarLoading = false,
   unreadBadgeCount = 0,
 }: {
   activeTab: AppBottomNavTab | "other";
   onSelectTab: (tab: AppBottomNavTab) => void;
-  onOpenScanner: () => void;
   userAvatar?: unknown;
   avatarLoading?: boolean;
-  /** Unread messages / notifications — dot on Profile. */
+  /** Unread messages badge on Messages. */
   unreadBadgeCount?: number;
 }) {
   const navRef = useRef<HTMLElement | null>(null);
@@ -87,6 +89,9 @@ export function AppBottomNav({
     activeTab === "other" || !DOCK_TABS.includes(activeTab as AppBottomNavTab)
       ? null
       : (activeTab as AppBottomNavTab);
+
+  const indicatorTab =
+    resolvedActive && INDICATOR_TABS.includes(resolvedActive) ? resolvedActive : null;
 
   useLayoutEffect(() => {
     const el = navRef.current;
@@ -115,12 +120,12 @@ export function AppBottomNav({
   }, []);
 
   useLayoutEffect(() => {
-    if (!resolvedActive) {
+    if (!indicatorTab) {
       setIndicator(null);
       return undefined;
     }
     const rail = railRef.current;
-    const activeEl = itemRefs.current[resolvedActive];
+    const activeEl = itemRefs.current[indicatorTab];
     if (!rail || !activeEl) return undefined;
 
     const syncIndicator = (): void => {
@@ -143,12 +148,14 @@ export function AppBottomNav({
       ro?.disconnect();
       window.removeEventListener("resize", syncIndicator);
     };
-  }, [resolvedActive]);
+  }, [indicatorTab]);
 
   const guardNav = (action: () => void) => {
     if (drawerOpen) return;
     action();
   };
+
+  const mapActive = resolvedActive === "realm";
 
   return (
     <motion.nav
@@ -192,24 +199,35 @@ export function AppBottomNav({
 
         <DockItem
           ref={(node) => {
-            itemRefs.current.realm = node;
+            itemRefs.current.inbox = node;
           }}
-          label="Map"
-          active={resolvedActive === "realm"}
-          onClick={() => guardNav(() => onSelectTab("realm"))}
-          icon={<Map className="h-[26px] w-[26px]" strokeWidth={resolvedActive === "realm" ? 2.5 : 2} />}
+          label="Messages"
+          active={resolvedActive === "inbox"}
+          onClick={() => guardNav(() => onSelectTab("inbox"))}
+          badge={showBadge}
+          reserveBadge
+          icon={
+            <MessageCircle
+              className="h-[26px] w-[26px]"
+              strokeWidth={resolvedActive === "inbox" ? 2.5 : 2}
+              fill={resolvedActive === "inbox" ? "currentColor" : "none"}
+            />
+          }
         />
 
-        <div className="cq-dock-nav__scan-slot">
+        <div className="cq-dock-nav__map-slot">
           <button
             type="button"
-            onClick={() => guardNav(onOpenScanner)}
-            aria-label="Open CQ Scanner"
-            className="cq-dock-nav__scan-btn cq-scanner-fab cq-tap-press touch-manipulation"
+            onClick={() => guardNav(() => onSelectTab("realm"))}
+            aria-current={mapActive ? "page" : undefined}
+            aria-label={mapActive ? "Map, current page" : "Map"}
+            className={`cq-dock-nav__map-btn cq-map-fab cq-tap-press touch-manipulation${
+              mapActive ? " cq-dock-nav__map-btn--active" : ""
+            }`}
           >
-            <span className="cq-dock-nav__scan-ring cq-pulse-glow" aria-hidden />
-            <span className="cq-dock-nav__scan-ring cq-dock-nav__scan-ring--outer cq-pulse-glow" aria-hidden />
-            <QrCode className="relative z-[1] h-[24px] w-[24px]" strokeWidth={2.2} />
+            <span className="cq-dock-nav__map-ring cq-pulse-glow" aria-hidden />
+            <span className="cq-dock-nav__map-ring cq-dock-nav__map-ring--outer cq-pulse-glow" aria-hidden />
+            <Map className="relative z-[1] h-[24px] w-[24px]" strokeWidth={2.2} />
           </button>
         </div>
 
@@ -217,7 +235,7 @@ export function AppBottomNav({
           ref={(node) => {
             itemRefs.current.leaderboards = node;
           }}
-          label="Ranks"
+          label="Leaderboard"
           active={resolvedActive === "leaderboards"}
           onClick={() => guardNav(() => onSelectTab("leaderboards"))}
           icon={
@@ -240,7 +258,6 @@ export function AppBottomNav({
           initials={profileInitials(characterName)}
           useInitials={shouldShowInitialsAvatar(liveAvatar)}
           loading={avatarLoading}
-          showBadge={showBadge}
         />
       </div>
     </motion.nav>
@@ -253,11 +270,16 @@ const DockItem = forwardRef(function DockItem(
     active,
     onClick,
     icon,
+    badge = false,
+    reserveBadge = false,
   }: {
     label: string;
     active: boolean;
     onClick: () => void;
     icon: ReactNode;
+    badge?: boolean;
+    /** Keep layout stable when badge appears/disappears. */
+    reserveBadge?: boolean;
   },
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
@@ -267,10 +289,26 @@ const DockItem = forwardRef(function DockItem(
       type="button"
       onClick={onClick}
       aria-current={active ? "page" : undefined}
-      aria-label={label}
+      aria-label={
+        badge
+          ? active
+            ? `${label}, unread, current page`
+            : `${label}, unread`
+          : active
+            ? `${label}, current page`
+            : label
+      }
       className={`cq-dock-nav__item touch-manipulation cq-tap-press ${active ? "cq-dock-nav__item--active" : ""}`}
     >
-      <span className={`cq-dock-nav__icon-wrap ${active ? "cq-nav-glow" : ""}`}>{icon}</span>
+      <span className={`cq-dock-nav__icon-wrap ${active ? "cq-nav-glow" : ""}`}>
+        {icon}
+        {reserveBadge || badge ? (
+          <span
+            className={`cq-dock-nav__badge${badge ? "" : " cq-dock-nav__badge--hidden"}`}
+            aria-hidden
+          />
+        ) : null}
+      </span>
     </button>
   );
 });
@@ -284,7 +322,6 @@ const DockProfileItem = forwardRef(function DockProfileItem(
     initials,
     useInitials = false,
     loading,
-    showBadge = false,
   }: {
     label: string;
     active: boolean;
@@ -293,7 +330,6 @@ const DockProfileItem = forwardRef(function DockProfileItem(
     initials: string;
     useInitials?: boolean;
     loading?: boolean;
-    showBadge?: boolean;
   },
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
@@ -322,7 +358,6 @@ const DockProfileItem = forwardRef(function DockProfileItem(
             showProp={false}
           />
         )}
-        {showBadge ? <span className="cq-dock-nav__badge cq-dock-nav__badge--avatar" aria-hidden /> : null}
       </span>
     </button>
   );

@@ -1,43 +1,134 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Camera, ImagePlus, X } from "lucide-react";
-import { readImageFileAsDataUrl } from "@/lib/client/readImageFile";
+import { Camera, ImagePlus, Video, X } from "lucide-react";
+import {
+  QUAD_CAROUSEL_MAX_ITEMS,
+  carouselMaxItemsErrorMessage,
+  isAllowedImageMime,
+  isAllowedVideoMime,
+} from "@/lib/quadMedia";
+import { probeVideoFile, revokeVideoObjectUrl } from "@/lib/client/probeVideoFile";
+import {
+  createCarouselItemFromFile,
+  filterNewFiles,
+  revokeCarouselItem,
+  type ComposerCarouselItem,
+} from "@/lib/client/quadMediaUploadQueue";
+import { ComposerCarouselEditor } from "@/components/posts/ComposerCarouselEditor";
+
+export type PickedMedia =
+  | { kind: "none" }
+  | { kind: "carousel"; items: ComposerCarouselItem[]; coverClientId: string | null }
+  /** @deprecated single-image seed — converted to carousel by FAB */
+  | { kind: "image"; dataUrl: string }
+  /** @deprecated single-video seed */
+  | { kind: "video"; file: File; previewUrl: string; durationSeconds: number };
 
 /**
- * Step 1 of the create-post flow: an Instagram-style fullscreen media picker.
- * Web has no native gallery grid, so we reuse the existing file/camera inputs
- * and show a large live preview of the chosen image.
+ * Multi-select Photo/Video picker with carousel editor before compose.
  */
 export function PostMediaPicker({
-  initialImage = "",
   onClose,
   onNext,
 }: {
-  initialImage?: string;
   onClose: () => void;
-  /** Continue to the composer with the selected image (or "" for text-only). */
-  onNext: (image: string) => void;
+  onNext: (media: PickedMedia) => void;
 }) {
-  const [image, setImage] = useState(initialImage);
+  const [items, setItems] = useState<ComposerCarouselItem[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [coverClientId, setCoverClientId] = useState<string | null>(null);
+  const [previewMuted, setPreviewMuted] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const photoRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
+  const libraryRef = useRef<HTMLInputElement>(null);
+  const cameraPhotoRef = useRef<HTMLInputElement>(null);
+  const cameraVideoRef = useRef<HTMLInputElement>(null);
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    try {
-      const dataUrl = await readImageFileAsDataUrl(file);
-      setImage(dataUrl);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not read that image.");
-    }
+  function clearAll() {
+    for (const item of items) revokeCarouselItem(item);
+    setItems([]);
+    setActiveIndex(0);
+    setCoverClientId(null);
   }
 
-  const hasImage = image.trim().length > 0;
+  async function appendFiles(fileList: File[] | FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+    const { accepted, rejectedReason } = filterNewFiles(items, files);
+    if (rejectedReason && accepted.length === 0) {
+      setError(rejectedReason);
+      return;
+    }
+    setError(rejectedReason ?? null);
+
+    const nextItems: ComposerCarouselItem[] = [];
+    for (const file of accepted) {
+      const isVideo = file.type.startsWith("video/") || isAllowedVideoMime(file.type);
+      const isImage = file.type.startsWith("image/") || isAllowedImageMime(file.type);
+      if (!isVideo && !isImage) {
+        setError("This media format is not supported.");
+        continue;
+      }
+      if (isVideo) {
+        try {
+          const probed = await probeVideoFile(file);
+          const item = createCarouselItemFromFile(probed.file, "video");
+          revokeVideoObjectUrl(item.previewUrl);
+          item.previewUrl = probed.objectUrl;
+          item.durationSeconds = probed.durationSeconds;
+          item.width = probed.width;
+          item.height = probed.height;
+          item.hasAudio = probed.hasAudio;
+          nextItems.push(item);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not read that video.");
+        }
+      } else {
+        nextItems.push(createCarouselItemFromFile(file, "image"));
+      }
+    }
+    if (nextItems.length === 0) return;
+    setItems((prev) => {
+      const merged = [...prev, ...nextItems];
+      if (!coverClientId && merged[0]) setCoverClientId(merged[0].clientId);
+      setActiveIndex(merged.length - 1);
+      return merged;
+    });
+  }
+
+  function handleReorder(from: number, to: number) {
+    setItems((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      if (!moved) return prev;
+      next.splice(to, 0, moved);
+      setActiveIndex(to);
+      return next;
+    });
+  }
+
+  function handleRemove(clientId: string) {
+    setItems((prev) => {
+      const target = prev.find((i) => i.clientId === clientId);
+      if (target) revokeCarouselItem(target);
+      const next = prev.filter((i) => i.clientId !== clientId);
+      if (coverClientId === clientId) setCoverClientId(next[0]?.clientId ?? null);
+      setActiveIndex((idx) => Math.max(0, Math.min(idx, next.length - 1)));
+      return next;
+    });
+  }
+
+  function handleNext() {
+    if (items.length === 0) {
+      onNext({ kind: "none" });
+      return;
+    }
+    onNext({
+      kind: "carousel",
+      items,
+      coverClientId: coverClientId ?? items[0]?.clientId ?? null,
+    });
+  }
 
   return (
     <div className="cq-mediapicker">
@@ -46,36 +137,39 @@ export function PostMediaPicker({
           <X className="h-5 w-5" strokeWidth={2.2} />
         </button>
         <span className="cq-composer-head-title">New Post</span>
-        <button type="button" onClick={() => onNext(image)} className="cq-composer-head-post cq-composer-head-post--ready">
+        <button type="button" onClick={handleNext} className="cq-composer-head-post cq-composer-head-post--ready">
           Next
         </button>
       </header>
 
-      <div className="cq-mediapicker-stage">
-        {hasImage ? (
-          <div className="cq-mediapicker-preview">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={image} alt="Selected media preview" />
-            <button
-              type="button"
-              onClick={() => setImage("")}
-              className="cq-composer-image-remove"
-              aria-label="Remove image"
-            >
-              <X className="h-4 w-4" strokeWidth={2.5} />
-            </button>
-          </div>
+      <div className="cq-mediapicker-stage px-3">
+        {items.length > 0 ? (
+          <ComposerCarouselEditor
+            items={items}
+            activeIndex={activeIndex}
+            coverClientId={coverClientId}
+            previewMuted={previewMuted}
+            onSelectIndex={setActiveIndex}
+            onReorder={handleReorder}
+            onRemove={handleRemove}
+            onRetry={() => undefined}
+            onAddMore={(files) => void appendFiles(files)}
+            onSetCover={setCoverClientId}
+            onTogglePreviewMute={() => setPreviewMuted((m) => !m)}
+          />
         ) : (
           <button
             type="button"
-            onClick={() => photoRef.current?.click()}
+            onClick={() => libraryRef.current?.click()}
             className="cq-mediapicker-empty"
-            aria-label="Choose a photo"
+            aria-label="Choose photos or videos"
           >
             <span className="cq-mediapicker-empty-glow" aria-hidden />
             <ImagePlus className="h-12 w-12" strokeWidth={1.5} />
-            <p className="cq-mediapicker-empty-title">Add a photo</p>
-            <p className="cq-mediapicker-empty-sub">Tap to choose from your library</p>
+            <p className="cq-mediapicker-empty-title">Add photos and videos</p>
+            <p className="cq-mediapicker-empty-sub">
+              Up to {QUAD_CAROUSEL_MAX_ITEMS} · tap to choose from your library
+            </p>
           </button>
         )}
       </div>
@@ -84,40 +178,85 @@ export function PostMediaPicker({
         <p className="cq-composer-error px-4" role="alert">
           {error}
         </p>
-      ) : null}
+      ) : (
+        <p className="px-4 text-center text-xs text-white/45">{carouselMaxItemsErrorMessage()}</p>
+      )}
 
       <input
-        ref={photoRef}
+        ref={libraryRef}
         type="file"
-        accept="image/*"
-        onChange={handleFile}
+        accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v"
+        multiple
+        onChange={(e) => {
+          void appendFiles(e.target.files);
+          e.target.value = "";
+        }}
         className="hidden"
-        aria-label="Choose photo from library"
+        aria-label="Choose photos or videos from library"
       />
       <input
-        ref={cameraRef}
+        ref={cameraPhotoRef}
         type="file"
         accept="image/*"
         capture="environment"
-        onChange={handleFile}
+        onChange={(e) => {
+          void appendFiles(e.target.files);
+          e.target.value = "";
+        }}
         className="hidden"
-        aria-label="Take a photo with the camera"
+        aria-label="Take a photo"
+      />
+      <input
+        ref={cameraVideoRef}
+        type="file"
+        accept="video/*"
+        capture="environment"
+        onChange={(e) => {
+          void appendFiles(e.target.files);
+          e.target.value = "";
+        }}
+        className="hidden"
+        aria-label="Record a video"
       />
 
-      <div className="cq-mediapicker-tools">
-        <button type="button" onClick={() => cameraRef.current?.click()} className="cq-mediapicker-tool" aria-label="Open camera">
-          <Camera className="h-[22px] w-[22px]" strokeWidth={2} />
-          <span>Camera</span>
+      <div className="cq-mediapicker-actions">
+        <button
+          type="button"
+          onClick={() => cameraPhotoRef.current?.click()}
+          className="cq-mediapicker-action"
+          disabled={items.length >= QUAD_CAROUSEL_MAX_ITEMS}
+        >
+          <Camera className="h-5 w-5" />
+          <span>Photo</span>
         </button>
-        <button type="button" onClick={() => photoRef.current?.click()} className="cq-mediapicker-tool" aria-label="Choose photo">
-          <ImagePlus className="h-[22px] w-[22px]" strokeWidth={2} />
-          <span>{hasImage ? "Replace" : "Photos"}</span>
+        <button
+          type="button"
+          onClick={() => cameraVideoRef.current?.click()}
+          className="cq-mediapicker-action"
+          disabled={items.length >= QUAD_CAROUSEL_MAX_ITEMS}
+        >
+          <Video className="h-5 w-5" />
+          <span>Record</span>
         </button>
+        <button
+          type="button"
+          onClick={() => libraryRef.current?.click()}
+          className="cq-mediapicker-action"
+          disabled={items.length >= QUAD_CAROUSEL_MAX_ITEMS}
+        >
+          <ImagePlus className="h-5 w-5" />
+          <span>Photo/Video</span>
+        </button>
+        {items.length === 0 ? (
+          <button type="button" onClick={() => onNext({ kind: "none" })} className="cq-mediapicker-action">
+            <span>Text only</span>
+          </button>
+        ) : (
+          <button type="button" onClick={clearAll} className="cq-mediapicker-action">
+            <span>Clear</span>
+          </button>
+        )}
       </div>
-
-      <button type="button" onClick={() => onNext("")} className="cq-mediapicker-skip">
-        Continue without photo
-      </button>
     </div>
   );
 }

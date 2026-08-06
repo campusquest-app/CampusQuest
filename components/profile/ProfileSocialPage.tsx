@@ -22,6 +22,7 @@ import { ReportContentSheet } from "@/components/safety/ReportContentSheet";
 import { postAuthed } from "@/lib/client/dashboardApi";
 import { fetchTaggedPosts } from "@/lib/client/quadPostsClient";
 import type { ProfileRelationshipStatus } from "@/lib/client/userProfileViewClient";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 export function ProfileSocialPage({
   character,
@@ -134,6 +135,14 @@ export function ProfileSocialPage({
     if (activeProfileTab) setTab(activeProfileTab);
   }, [activeProfileTab]);
 
+  // Codex disabled: never leave the collectibles tab mounted.
+  useEffect(() => {
+    if (tab === "collectibles" && !FEATURE_FLAGS.codex) {
+      setTab("posts");
+      onProfileTabChange?.("posts");
+    }
+  }, [tab, onProfileTabChange]);
+
   const locked = !isOwner && !canViewPrivateContent;
 
   const loadTagged = useCallback(async () => {
@@ -157,6 +166,11 @@ export function ProfileSocialPage({
 
   const handleProfileTabChange = useCallback(
     (next: ProfileTab) => {
+      if (next === "collectibles" && !FEATURE_FLAGS.codex) {
+        setTab("posts");
+        onProfileTabChange?.("posts");
+        return;
+      }
       setTab(next);
       onProfileTabChange?.(next);
     },
@@ -322,7 +336,9 @@ export function ProfileSocialPage({
                 }}
               />
             ) : null}
-            {tab === "collectibles" ? <ProfileCollectiblesTab character={character} /> : null}
+            {tab === "collectibles" && FEATURE_FLAGS.codex ? (
+              <ProfileCollectiblesTab character={character} />
+            ) : null}
             {tab === "activity" ? <ProfileActivityTab character={character} isOwner={isOwner} /> : null}
           </div>
         </>

@@ -40,8 +40,18 @@ export function DmSharedPostCard({
       className="cq-dm-shared-post w-full max-w-[240px] overflow-hidden rounded-xl bg-black text-left transition active:opacity-90 disabled:cursor-default"
     >
       {preview.imageUrl && !unavailable ? (
-        <div className="aspect-square w-full overflow-hidden bg-[#1a1a1a]">
+        <div className="relative aspect-square w-full overflow-hidden bg-[#1a1a1a]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={preview.imageUrl} alt="" className="h-full w-full object-cover" />
+          {(preview.mediaCount ?? 0) > 1 ? (
+            <span className="absolute bottom-2 right-2 rounded bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+              Carousel
+            </span>
+          ) : preview.mediaType === "video" ? (
+            <span className="absolute bottom-2 right-2 rounded bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+              Video
+            </span>
+          ) : null}
         </div>
       ) : (
         <div className="flex aspect-square w-full items-center justify-center bg-[#1a1a1a] px-3 text-center text-xs text-white/45">

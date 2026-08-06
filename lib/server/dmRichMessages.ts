@@ -18,6 +18,9 @@ export type SharedPostPreview = {
   authorAvatar: string;
   caption: string;
   imageUrl: string | null;
+  mediaType?: "image" | "video" | "none" | null;
+  mediaCount?: number;
+  targetMediaId?: string | null;
   locationName: string | null;
   unavailable?: boolean;
   locked?: boolean;
@@ -365,6 +368,14 @@ export async function buildSharedPostPreview(args: {
     };
   }
 
+  const mediaType =
+    post.media_type === "video" || post.media_type === "image" ? post.media_type : post.proof_url ? "image" : "none";
+  const imageUrl =
+    mediaType === "video"
+      ? (post.poster_url?.trim() || null)
+      : (post.proof_url?.trim() || null);
+  const mediaCount = Number(post.media_count ?? (imageUrl ? 1 : 0));
+
   return {
     postId,
     postType,
@@ -373,7 +384,9 @@ export async function buildSharedPostPreview(args: {
     authorUsername,
     authorAvatar,
     caption: String(post.body ?? "").slice(0, 500),
-    imageUrl: post.proof_url?.trim() || null,
+    imageUrl,
+    mediaType,
+    mediaCount,
     locationName: args.locationName ?? post.location_name ?? null,
   };
 }
