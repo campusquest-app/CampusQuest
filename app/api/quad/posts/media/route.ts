@@ -29,6 +29,9 @@ export async function POST(request: Request) {
     if (!(file instanceof Blob)) {
       throw new ApiError(400, "No media file provided.", "MEDIA_MISSING");
     }
+    if (file.size <= 0) {
+      throw new ApiError(400, "Selected media file is empty.", "MEDIA_EMPTY");
+    }
 
     const fileName =
       typeof (file as File).name === "string" && (file as File).name.trim()
@@ -37,6 +40,9 @@ export async function POST(request: Request) {
     const kindHint = String(form.get("kind") ?? "").toLowerCase();
     const declaredMime = normalizeImageMime(file.type || "");
     const buffer = Buffer.from(await file.arrayBuffer());
+    if (buffer.length === 0) {
+      throw new ApiError(400, "Selected media file is empty.", "MEDIA_EMPTY");
+    }
     const sniffedImageMime = sniffImageMimeFromBuffer(buffer, fileName);
     const mime = declaredMime || sniffedImageMime || "";
 
@@ -48,6 +54,8 @@ export async function POST(request: Request) {
       resolvedMime: mime || null,
       fileName,
       bytes: buffer.length,
+      authenticated: true,
+      bucket: "quad-post-images",
     });
 
     const isVideo =
@@ -137,7 +145,15 @@ export async function POST(request: Request) {
       ? normalizeImageMime(mime)
       : sniffedImageMime && isUploadableImageMime(sniffedImageMime)
         ? sniffedImageMime
-        : "image/jpeg";
+        : null;
+
+    if (!resolvedImageMime) {
+      throw new ApiError(
+        400,
+        `This image format is not supported${mime ? ` (${mime})` : fileName ? ` (${fileName})` : ""}.`,
+        "IMAGE_FORMAT_UNSUPPORTED",
+      );
+    }
 
     const uploaded = await uploadQuadImageBuffer({
       buffer,

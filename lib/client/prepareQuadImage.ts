@@ -5,6 +5,7 @@ import { formatUploadStageError, logQuadUpload, logQuadUploadError } from "@/lib
 import {
   QUAD_IMAGE_MAX_BYTES,
   QUAD_IMAGE_UPLOAD_TARGET_BYTES,
+  extensionForImageMime,
   guessImageMimeFromName,
   isHeicLikeFile,
   isUploadableImageMime,
@@ -22,11 +23,20 @@ export type PreparedQuadImage = {
   uploadBytes: number;
 };
 
+function sanitizeUploadFileName(name: string, mime: string): string {
+  const ext = extensionForImageMime(mime);
+  const base = (name || "photo")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
+  return `${base || "photo"}.${ext}`;
+}
+
 /**
  * Prepare a gallery/camera image for `/api/quad/posts/media`.
- * - Detects MIME (including empty Android types via extension)
- * - Attempts HEIC decode via browser APIs
- * - Compresses/resizes; on compression failure, falls back to the original file
+ * Compresses when possible; on compression/thumbnail/resize failure, falls back
+ * to the original file (except unconverted HEIC).
  */
 export async function prepareQuadImage(file: File): Promise<PreparedQuadImage> {
   logQuadUpload("image_selection", {
@@ -35,6 +45,12 @@ export async function prepareQuadImage(file: File): Promise<PreparedQuadImage> {
     size: file.size,
     lastModified: file.lastModified,
   });
+
+  if (!file || file.size <= 0) {
+    const err = new Error("Selected image is empty.");
+    logQuadUploadError("file_meta", err);
+    throw err;
+  }
 
   if (!looksLikeImageFile(file)) {
     const err = new Error("This image format is not supported. Use JPG, PNG, WebP, or HEIC.");
@@ -63,11 +79,15 @@ export async function prepareQuadImage(file: File): Promise<PreparedQuadImage> {
       outBytes: compressed.blob.size,
     });
 
+    if (compressed.blob.size <= 0) {
+      throw new Error("Compressed image was empty.");
+    }
     if (compressed.blob.size > QUAD_IMAGE_MAX_BYTES) {
       throw new Error("This image is still too large after compression. Try a smaller photo.");
     }
 
-    const prepared = new File([compressed.blob], compressed.fileName, {
+    const safeName = sanitizeUploadFileName(compressed.fileName || file.name, compressed.type);
+    const prepared = new File([compressed.blob], safeName, {
       type: compressed.type,
       lastModified: Date.now(),
     });
@@ -76,6 +96,7 @@ export async function prepareQuadImage(file: File): Promise<PreparedQuadImage> {
       originalBytes: file.size,
       uploadBytes: prepared.size,
       mime: prepared.type,
+      filename: prepared.name,
     });
     return {
       file: prepared,
@@ -93,12 +114,14 @@ export async function prepareQuadImage(file: File): Promise<PreparedQuadImage> {
       size: file.size,
     });
 
-    // Requirement: if compression fails, retry using the original file.
+    // HEIC must convert client-side — uploading original HEIC will fail on the server.
     if (isHeicLikeFile(file) && !isUploadableImageMime(detectedMime)) {
       const heicError =
         error instanceof ImageCompressionError
           ? error
-          : new Error(formatUploadStageError("compression", error));
+          : new Error(
+              "This HEIC photo can’t be converted on this device. Export it as JPG in Photos, then try again.",
+            );
       throw heicError;
     }
 
@@ -114,19 +137,22 @@ export async function prepareQuadImage(file: File): Promise<PreparedQuadImage> {
     }
 
     const mime = isUploadableImageMime(detectedMime) ? detectedMime : "image/jpeg";
-    const fallback =
-      file.type === mime
-        ? file
-        : new File([file], file.name || `photo.${mime === "image/png" ? "png" : "jpg"}`, {
-            type: mime,
-            lastModified: file.lastModified,
-          });
+    const safeName = sanitizeUploadFileName(file.name, mime);
+    const fallback = new File([file], safeName, {
+      type: mime,
+      lastModified: file.lastModified,
+    });
+
+    if (fallback.size <= 0) {
+      throw new Error(formatUploadStageError("compression", error));
+    }
 
     logQuadUpload("prepare_complete", {
       compressed: false,
       originalBytes: file.size,
       uploadBytes: fallback.size,
       mime: fallback.type,
+      filename: fallback.name,
     });
 
     return {

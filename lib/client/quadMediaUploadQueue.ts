@@ -1,5 +1,6 @@
 "use client";
 
+import { waitForClientAccessToken } from "@/lib/client/apiSession";
 import { ApiRequestError } from "@/lib/client/dashboardApi";
 import { captureVideoPoster, probeVideoFile, revokeVideoObjectUrl } from "@/lib/client/probeVideoFile";
 import { prepareQuadImage } from "@/lib/client/prepareQuadImage";
@@ -7,12 +8,12 @@ import {
   formatUploadStageError,
   logQuadUpload,
   logQuadUploadError,
+  type QuadUploadStage,
 } from "@/lib/client/quadUploadLog";
 import { uploadFormDataWithProgress } from "@/lib/client/uploadImageWithProgress";
 import {
   QUAD_CAROUSEL_MAX_ITEMS,
   QUAD_UPLOAD_QUEUE_CONCURRENCY,
-  carouselMaxItemsErrorMessage,
   filterCarouselFiles,
   mediaFileFingerprint,
   resolveQuadPostTotalUploadBytes,
@@ -20,6 +21,7 @@ import {
 import { resolveQuadVideoMaxBytes } from "@/lib/quadVideo";
 
 const MAX_UPLOAD_ATTEMPTS = 3;
+const IS_DEV = process.env.NODE_ENV !== "production";
 
 export type CarouselItemStage =
   | "waiting"
@@ -41,8 +43,12 @@ export type ComposerCarouselItem = {
   height?: number;
   hasAudio?: boolean;
   stage: CarouselItemStage;
+  /** Real upload progress 0–100 when stage is uploading; otherwise stage marker. */
   percent: number;
   error?: string;
+  /** Dev-only diagnostic: stage + original error. */
+  diagnostic?: string;
+  failedStage?: QuadUploadStage;
   mediaId?: string;
   playbackUrl?: string;
   thumbnailUrl?: string | null;
@@ -79,6 +85,25 @@ export function createCarouselItemFromFile(file: File, kind: "image" | "video"):
   };
 }
 
+/** Reset a failed item so the queue restarts with a fresh storage identity. */
+export function resetCarouselItemForRetry(item: ComposerCarouselItem): ComposerCarouselItem {
+  item.abort?.abort();
+  return {
+    ...item,
+    abort: undefined,
+    stage: "waiting",
+    percent: 0,
+    error: undefined,
+    diagnostic: undefined,
+    failedStage: undefined,
+    mediaId: undefined,
+    playbackUrl: undefined,
+    thumbnailUrl: undefined,
+    // Fresh key → new server path (no reuse of a failed/partial media row).
+    idempotencyKey: `cq-${crypto.randomUUID()}`,
+  };
+}
+
 export function revokeCarouselItem(item: ComposerCarouselItem) {
   item.abort?.abort();
   revokeVideoObjectUrl(item.previewUrl);
@@ -96,6 +121,17 @@ export function filterNewFiles(existing: ComposerCarouselItem[], files: File[]):
   return { accepted: acceptedIndexes.map((i) => files[i]!), rejectedReason };
 }
 
+export function carouselHasBlockingMedia(items: ComposerCarouselItem[]): boolean {
+  return items.some(
+    (i) =>
+      i.stage === "waiting" ||
+      i.stage === "preparing" ||
+      i.stage === "uploading" ||
+      i.stage === "processing" ||
+      i.stage === "failed",
+  );
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -107,50 +143,85 @@ function isAbortError(error: unknown): boolean {
   );
 }
 
+function userFacingError(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  return "Upload failed. Please try again.";
+}
+
+function diagnosticFor(stage: QuadUploadStage, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const status = error instanceof ApiRequestError ? ` status=${error.status}` : "";
+  const code = error instanceof ApiRequestError && error.code ? ` code=${error.code}` : "";
+  return `stage=${stage}${status}${code}: ${message}`;
+}
+
 async function uploadOne(item: ComposerCarouselItem, onUpdate: (next: ComposerCarouselItem) => void): Promise<void> {
   const controller = new AbortController();
   let current: ComposerCarouselItem = {
     ...item,
     abort: controller,
     stage: "preparing",
-    percent: Math.max(item.percent, 2),
+    percent: 0,
     error: undefined,
+    diagnostic: undefined,
+    failedStage: undefined,
   };
   onUpdate(current);
 
   let lastError: unknown;
+  let lastStage: QuadUploadStage = "item_failed";
 
   for (let attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt += 1) {
     try {
       if (attempt > 1) {
+        lastStage = "upload_retry";
         logQuadUpload("upload_retry", {
           clientId: current.clientId,
           attempt,
           kind: current.kind,
           filename: current.file.name,
         });
-        current = { ...current, stage: "preparing", percent: 5, error: undefined, abort: controller };
+        current = {
+          ...current,
+          stage: "preparing",
+          percent: 0,
+          error: undefined,
+          diagnostic: undefined,
+          abort: controller,
+          // New path identity on each automatic retry too.
+          idempotencyKey: `cq-${crypto.randomUUID()}`,
+        };
         onUpdate(current);
         await sleep(400 * attempt);
       }
+
+      lastStage = "mime_detect";
+      const hasToken = await waitForClientAccessToken(800);
+      if (!hasToken) {
+        throw new Error("You need to be signed in to upload media.");
+      }
+      logQuadUpload("file_meta", {
+        clientId: current.clientId,
+        authenticated: true,
+        kind: current.kind,
+        filename: current.file.name,
+        mime: current.file.type,
+        size: current.file.size,
+        attempt,
+      });
 
       const form = new FormData();
       form.append("kind", current.kind);
       form.append("idempotencyKey", current.idempotencyKey);
 
       if (current.kind === "video") {
+        lastStage = "file_meta";
         const maxBytes = resolveQuadVideoMaxBytes(
           typeof process !== "undefined" ? process.env.NEXT_PUBLIC_QUAD_VIDEO_MAX_BYTES : undefined,
         );
-        if (current.file.size > maxBytes) {
-          throw new Error("This video file is too large.");
-        }
-        logQuadUpload("file_meta", {
-          kind: "video",
-          filename: current.file.name,
-          mime: current.file.type,
-          size: current.file.size,
-        });
+        if (current.file.size <= 0) throw new Error("Selected video is empty.");
+        if (current.file.size > maxBytes) throw new Error("This video file is too large.");
+
         const probed = await probeVideoFile(current.file);
         current = {
           ...current,
@@ -158,30 +229,45 @@ async function uploadOne(item: ComposerCarouselItem, onUpdate: (next: ComposerCa
           width: probed.width,
           height: probed.height,
           hasAudio: probed.hasAudio,
-          percent: 18,
         };
         onUpdate(current);
+        logQuadUpload("dimensions", {
+          width: probed.width,
+          height: probed.height,
+          durationSeconds: probed.durationSeconds,
+        });
+
+        if (!(probed.file instanceof Blob) || probed.file.size <= 0) {
+          throw new Error("Video file was empty after validation.");
+        }
         form.append("file", probed.file, probed.file.name || "video.mp4");
         form.append("durationSeconds", String(probed.durationSeconds));
         form.append("width", String(probed.width || 0));
         form.append("height", String(probed.height || 0));
         form.append("hasAudio", probed.hasAudio ? "true" : "false");
         try {
+          lastStage = "thumbnail";
           logQuadUpload("thumbnail", { clientId: current.clientId });
           const poster = await captureVideoPoster(probed.objectUrl);
-          form.append("poster", poster, "poster.jpg");
+          if (poster.size > 0) form.append("poster", poster, "poster.jpg");
         } catch (posterError) {
-          // Requirement: thumbnail/cover failure must not cancel the media upload.
+          // Thumbnail/cover failure must not cancel the media upload.
           logQuadUploadError("thumbnail", posterError, { clientId: current.clientId });
         }
         revokeVideoObjectUrl(probed.objectUrl);
       } else {
+        lastStage = "compression";
         const prepared = await prepareQuadImage(current.file);
+        if (!(prepared.file instanceof Blob) || prepared.file.size <= 0) {
+          throw new Error("Prepared image is empty.");
+        }
+        if (!prepared.file.type) {
+          throw new Error("Prepared image is missing a content type.");
+        }
         current = {
           ...current,
           width: prepared.width ?? current.width,
           height: prepared.height ?? current.height,
-          percent: 20,
         };
         onUpdate(current);
         form.append("file", prepared.file, prepared.file.name || "photo.jpg");
@@ -189,7 +275,8 @@ async function uploadOne(item: ComposerCarouselItem, onUpdate: (next: ComposerCa
         if (prepared.height) form.append("height", String(prepared.height));
       }
 
-      current = { ...current, stage: "uploading", percent: Math.max(current.percent, 25) };
+      lastStage = "upload_start";
+      current = { ...current, stage: "uploading", percent: 0 };
       onUpdate(current);
       logQuadUpload("upload_start", {
         clientId: current.clientId,
@@ -197,6 +284,7 @@ async function uploadOne(item: ComposerCarouselItem, onUpdate: (next: ComposerCa
         kind: current.kind,
         filename: current.file.name,
         size: current.file.size,
+        bucket: "quad-post-images",
       });
 
       const data = await uploadFormDataWithProgress<MediaUploadResult>({
@@ -204,7 +292,7 @@ async function uploadOne(item: ComposerCarouselItem, onUpdate: (next: ComposerCa
         form,
         signal: controller.signal,
         onProgress: (fraction) => {
-          const percent = Math.round(25 + fraction * 60);
+          const percent = Math.round(fraction * 100);
           current = { ...current, stage: "uploading", percent };
           onUpdate(current);
           logQuadUpload("upload_progress", {
@@ -215,7 +303,8 @@ async function uploadOne(item: ComposerCarouselItem, onUpdate: (next: ComposerCa
         },
       });
 
-      current = { ...current, stage: "processing", percent: 90 };
+      lastStage = "supabase_response";
+      current = { ...current, stage: "processing", percent: 100 };
       onUpdate(current);
       logQuadUpload("supabase_response", {
         clientId: current.clientId,
@@ -228,6 +317,7 @@ async function uploadOne(item: ComposerCarouselItem, onUpdate: (next: ComposerCa
         throw new Error("Upload succeeded but the server did not return a media id.");
       }
 
+      lastStage = "upload_complete";
       current = {
         ...current,
         stage: "ready",
@@ -237,6 +327,8 @@ async function uploadOne(item: ComposerCarouselItem, onUpdate: (next: ComposerCa
         thumbnailUrl: data.thumbnailUrl ?? data.posterUrl ?? null,
         abort: undefined,
         error: undefined,
+        diagnostic: undefined,
+        failedStage: undefined,
       };
       onUpdate(current);
       logQuadUpload("upload_complete", { clientId: current.clientId, mediaId: data.mediaId });
@@ -244,10 +336,18 @@ async function uploadOne(item: ComposerCarouselItem, onUpdate: (next: ComposerCa
     } catch (error) {
       lastError = error;
       if (isAbortError(error)) {
-        onUpdate({ ...current, stage: "waiting", percent: 0, abort: undefined, error: undefined });
+        // Do not treat abort as a sticky failure — leave waiting so UI can restart if still mounted.
+        onUpdate({
+          ...current,
+          stage: "waiting",
+          percent: 0,
+          abort: undefined,
+          error: undefined,
+          diagnostic: undefined,
+        });
         return;
       }
-      logQuadUploadError("item_failed", error, {
+      logQuadUploadError(lastStage, error, {
         clientId: current.clientId,
         attempt,
         kind: current.kind,
@@ -255,28 +355,27 @@ async function uploadOne(item: ComposerCarouselItem, onUpdate: (next: ComposerCa
         size: current.file.size,
         mime: current.file.type,
       });
-      // Non-retryable auth errors stop immediately.
       if (error instanceof ApiRequestError && (error.status === 401 || error.status === 403)) {
         break;
       }
     }
   }
 
-  const message =
-    lastError instanceof Error && lastError.message.trim()
-      ? lastError.message.trim()
-      : formatUploadStageError("item_failed", lastError);
+  const message = userFacingError(lastError);
+  const diagnostic = diagnosticFor(lastStage, lastError);
   onUpdate({
     ...current,
     stage: "failed",
-    // Keep last progress so the UI does not snap back to a blank 0% forever.
-    percent: Math.max(current.percent, 5),
-    error: message,
+    // Never leave the UI stuck implying a permanent 0% blank state with no reason.
+    percent: Math.max(current.percent, current.stage === "uploading" ? current.percent : 0),
+    error: IS_DEV ? `${message} (${diagnostic})` : message,
+    diagnostic,
+    failedStage: lastStage,
     abort: undefined,
   });
 }
 
-/** Process waiting/failed-retry items with limited concurrency. One failure never cancels others. */
+/** Process waiting items with limited concurrency. One failure never cancels others. */
 export async function runCarouselUploadQueue(
   items: ComposerCarouselItem[],
   onUpdate: (clientId: string, next: ComposerCarouselItem) => void,
@@ -293,6 +392,8 @@ export async function runCarouselUploadQueue(
           ...item,
           stage: "failed",
           error: "This post’s media is too large.",
+          diagnostic: "stage=file_meta: post total upload bytes exceeded",
+          failedStage: "file_meta",
         });
       }
     }
@@ -301,7 +402,7 @@ export async function runCarouselUploadQueue(
 
   const pending = items.filter((i) => {
     if (opts?.onlyClientIds && !opts.onlyClientIds.has(i.clientId)) return false;
-    return i.stage === "waiting" || i.stage === "failed";
+    return i.stage === "waiting";
   });
 
   let index = 0;

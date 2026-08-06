@@ -39,9 +39,11 @@ import {
 import type { TagSearchResult } from "@/lib/client/tagSearchClient";
 import {
   allCarouselItemsReady,
+  carouselHasBlockingMedia,
   createCarouselItemFromFile,
   filterNewFiles,
   overallUploadProgress,
+  resetCarouselItemForRetry,
   revokeCarouselItem,
   runCarouselUploadQueue,
   toPublishMediaItems,
@@ -175,12 +177,13 @@ export function FieldNoteComposer({
 
   const hasMedia = carouselItems.length > 0;
   const mediaReady = !hasMedia || allCarouselItemsReady(carouselItems);
+  const mediaBlocking = hasMedia && carouselHasBlockingMedia(carouselItems);
   const bodyCount = body.length;
   const canPost =
     (body.trim().length > 0 || (hasMedia && mediaReady)) &&
     bodyCount <= FIELD_NOTE_MAX_CHARS &&
     !isSubmitting &&
-    !(hasMedia && !mediaReady);
+    !mediaBlocking;
 
   const dirty =
     body.trim().length > 0 ||
@@ -581,9 +584,7 @@ export function FieldNoteComposer({
               onRemove={removeCarouselItem}
               onRetry={(clientId) => {
                 setCarouselItems((prev) =>
-                  prev.map((i) =>
-                    i.clientId === clientId ? { ...i, stage: "waiting", percent: 0, error: undefined } : i,
-                  ),
+                  prev.map((i) => (i.clientId === clientId ? resetCarouselItemForRetry(i) : i)),
                 );
               }}
               onAddMore={(files) => void appendComposerFiles(files)}
@@ -591,7 +592,19 @@ export function FieldNoteComposer({
               onTogglePreviewMute={() => setPreviewMuted((m) => !m)}
             />
             {!mediaReady ? (
-              <p className="text-center text-[11px] text-white/55">Uploading media… {uploadPct}%</p>
+              <p className="text-center text-[11px] text-white/55">
+                {carouselItems.some((i) => i.stage === "failed")
+                  ? "Fix or remove failed media before posting."
+                  : carouselItems.some((i) => i.stage === "uploading")
+                    ? `Uploading… ${uploadPct}%`
+                    : "Processing media…"}
+              </p>
+            ) : null}
+            {process.env.NODE_ENV !== "production" &&
+            carouselItems.some((i) => i.stage === "failed" && i.diagnostic) ? (
+              <p className="break-words px-1 text-[10px] text-amber-300/90" role="status">
+                Dev: {carouselItems.find((i) => i.stage === "failed")?.diagnostic}
+              </p>
             ) : null}
             {carouselItems[activeMediaIndex]?.kind === "image" ? (
               <button

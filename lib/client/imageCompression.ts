@@ -3,10 +3,11 @@
 /**
  * Client-side image compression for uploads.
  *
- * Resizes to a max longest-edge, re-encodes as WebP (or JPEG fallback) at ~85%
- * quality, and strips EXIF/orientation metadata (canvas re-encode discards it).
- * Decoding uses createImageBitmap so the heavy work stays off the main thread
- * where supported, and OffscreenCanvas is used for encoding when available.
+ * Mobile-safe path:
+ * 1. Decode with HTMLImageElement (widest Safari/PWA/Android support)
+ * 2. Optionally try createImageBitmap if <img> fails
+ * 3. Draw to a standard <canvas> (avoid OffscreenCanvas on mobile)
+ * 4. Encode via canvas.toBlob as JPEG (or WebP when clearly supported)
  */
 
 const ACCEPTED_TYPES = [
@@ -38,10 +39,13 @@ export type CompressedImage = {
 };
 
 export function isAcceptedImageType(file: File): boolean {
-  const type = (file.type || "").toLowerCase();
+  const type = (file.type || "").toLowerCase().replace("image/jpg", "image/jpeg");
   if (type) return ACCEPTED_TYPES.includes(type);
-  // Some platforms omit the MIME type; fall back to the file extension.
   return ACCEPTED_EXT.test(file.name);
+}
+
+function isHeicLike(file: File): boolean {
+  return /\.(heic|heif)$/i.test(file.name) || /image\/hei[cf]/i.test(file.type);
 }
 
 let cachedWebpSupport: boolean | null = null;
@@ -52,26 +56,11 @@ function supportsWebpEncode(): boolean {
     canvas.width = 1;
     canvas.height = 1;
     cachedWebpSupport = canvas.toDataURL("image/webp").startsWith("data:image/webp");
-  } catch {
+  } catch (error) {
+    console.warn("[cq][image-compression] webp probe failed", error);
     cachedWebpSupport = false;
   }
   return cachedWebpSupport;
-}
-
-async function decodeImage(file: File): Promise<ImageBitmap | HTMLImageElement> {
-  if (typeof createImageBitmap === "function") {
-    try {
-      return await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions);
-    } catch (error) {
-      console.warn("[cq][image-compression] createImageBitmap failed; falling back to <img>", {
-        name: file.name,
-        type: file.type,
-        message: error instanceof Error ? error.message : String(error),
-      });
-      // Fall through to <img> decode (e. g. Safari without the orientation option).
-    }
-  }
-  return await decodeWithImageElement(file);
 }
 
 function decodeWithImageElement(file: File): Promise<HTMLImageElement> {
@@ -84,10 +73,56 @@ function decodeWithImageElement(file: File): Promise<HTMLImageElement> {
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new ImageCompressionError("That image appears to be corrupted."));
+      reject(
+        new ImageCompressionError(
+          isHeicLike(file)
+            ? "This HEIC photo can’t be decoded on this device. Export it as JPG in Photos, then try again."
+            : "That image appears to be corrupted.",
+        ),
+      );
     };
     img.src = url;
   });
+}
+
+async function decodeWithImageBitmap(file: File): Promise<ImageBitmap> {
+  if (typeof createImageBitmap !== "function") {
+    throw new ImageCompressionError("createImageBitmap is not available.");
+  }
+  try {
+    return await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions);
+  } catch (orientedError) {
+    console.warn("[cq][image-compression] createImageBitmap(orientation) failed", orientedError);
+    return await createImageBitmap(file);
+  }
+}
+
+/** Prefer HTMLImageElement; fall back to createImageBitmap only if needed. */
+async function decodeImage(file: File): Promise<ImageBitmap | HTMLImageElement> {
+  try {
+    return await decodeWithImageElement(file);
+  } catch (imgError) {
+    console.warn("[cq][image-compression] HTMLImageElement decode failed; trying createImageBitmap", {
+      name: file.name,
+      type: file.type,
+      message: imgError instanceof Error ? imgError.message : String(imgError),
+    });
+    try {
+      return await decodeWithImageBitmap(file);
+    } catch (bitmapError) {
+      console.error("[cq][image-compression] all decode paths failed", bitmapError);
+      if (isHeicLike(file)) {
+        throw new ImageCompressionError(
+          "This HEIC photo can’t be converted on this device. Export it as JPG in Photos, then try again.",
+        );
+      }
+      throw imgError instanceof ImageCompressionError
+        ? imgError
+        : new ImageCompressionError(
+            bitmapError instanceof Error ? bitmapError.message : "That image could not be decoded.",
+          );
+    }
+  }
 }
 
 function fitWithin(width: number, height: number, maxEdge: number): { width: number; height: number } {
@@ -97,16 +132,9 @@ function fitWithin(width: number, height: number, maxEdge: number): { width: num
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
-async function encodeCanvas(
-  canvas: HTMLCanvasElement | OffscreenCanvas,
-  type: string,
-  quality: number,
-): Promise<Blob> {
-  if (typeof OffscreenCanvas !== "undefined" && canvas instanceof OffscreenCanvas) {
-    return await canvas.convertToBlob({ type, quality });
-  }
-  return await new Promise<Blob>((resolve, reject) => {
-    (canvas as HTMLCanvasElement).toBlob(
+function encodeHtmlCanvas(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new ImageCompressionError("Image encoding failed."))),
       type,
       quality,
@@ -114,7 +142,12 @@ async function encodeCanvas(
   });
 }
 
-/** Compress + resize an image File. Always succeeds for valid raster images of any size. */
+function sanitizeBaseName(name: string): string {
+  const base = name.replace(/\.[^.]+$/, "").trim() || "photo";
+  return base.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "photo";
+}
+
+/** Compress + resize an image File using mobile-safe canvas APIs. */
 export async function compressImageFile(
   file: File,
   options?: {
@@ -132,22 +165,15 @@ export async function compressImageFile(
   let quality = options?.quality ?? DEFAULT_QUALITY;
   const targetMaxBytes = options?.targetMaxBytes;
 
-  let source: ImageBitmap | HTMLImageElement;
-  try {
-    source = await decodeImage(file);
-  } catch (error) {
-    const isHeic = /\.(heic|heif)$/i.test(file.name) || /image\/hei[cf]/i.test(file.type);
-    if (isHeic) {
-      throw new ImageCompressionError(
-        "This HEIC photo can’t be decoded on this device. Open it in Photos and export as JPG, then try again.",
-      );
-    }
-    throw error instanceof ImageCompressionError
-      ? error
-      : new ImageCompressionError(
-          error instanceof Error ? error.message : "That image could not be decoded.",
-        );
-  }
+  console.info("[cq][image-compression] start", {
+    name: file.name,
+    type: file.type,
+    size: file.size,
+    maxEdge,
+    targetMaxBytes: targetMaxBytes ?? null,
+  });
+
+  const source = await decodeImage(file);
   const srcWidth = "width" in source ? source.width : 0;
   const srcHeight = "height" in source ? source.height : 0;
 
@@ -158,39 +184,36 @@ export async function compressImageFile(
 
   const { width, height } = fitWithin(srcWidth, srcHeight, maxEdge);
 
-  let canvas: HTMLCanvasElement | OffscreenCanvas;
-  if (typeof OffscreenCanvas !== "undefined") {
-    canvas = new OffscreenCanvas(width, height);
-  } else {
-    canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-  }
-
-  const ctx = canvas.getContext("2d") as
-    | CanvasRenderingContext2D
-    | OffscreenCanvasRenderingContext2D
-    | null;
+  // Always use HTMLCanvasElement — OffscreenCanvas is unreliable in some iOS PWAs.
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
   if (!ctx) {
     if ("close" in source) source.close();
     throw new ImageCompressionError("Image processing is not supported on this device.");
   }
 
-  ctx.drawImage(source as CanvasImageSource, 0, 0, width, height);
-  // Release the full-resolution decode promptly to keep memory low.
+  try {
+    ctx.drawImage(source as CanvasImageSource, 0, 0, width, height);
+  } catch (drawError) {
+    if ("close" in source) source.close();
+    throw new ImageCompressionError(
+      drawError instanceof Error ? drawError.message : "Could not draw image to canvas.",
+    );
+  }
   if ("close" in source) source.close();
 
-  // Prefer JPEG for quad uploads — broader compatibility and predictable size.
-  const outType: "image/webp" | "image/jpeg" =
-    supportsWebpEncode() && (file.type === "image/webp" || file.type === "image/png")
-      ? "image/webp"
-      : "image/jpeg";
+  const prefersWebp =
+    supportsWebpEncode() &&
+    (file.type === "image/webp" || file.type === "image/png" || /\.(webp|png)$/i.test(file.name));
+  const outType: "image/webp" | "image/jpeg" = prefersWebp ? "image/webp" : "image/jpeg";
 
-  let blob = await encodeCanvas(canvas, outType, quality);
+  let blob = await encodeHtmlCanvas(canvas, outType, quality);
   if (targetMaxBytes && blob.size > targetMaxBytes) {
     for (const q of [0.75, 0.65, 0.55, 0.45]) {
       quality = q;
-      blob = await encodeCanvas(canvas, "image/jpeg", quality);
+      blob = await encodeHtmlCanvas(canvas, "image/jpeg", quality);
       if (blob.size <= targetMaxBytes) break;
     }
   }
@@ -199,9 +222,17 @@ export async function compressImageFile(
     throw new ImageCompressionError("Image encoding failed.");
   }
 
-  const baseName = file.name.replace(/\.[^.]+$/, "").trim() || "photo";
   const finalType = blob.type === "image/webp" ? "image/webp" : "image/jpeg";
   const ext = finalType === "image/webp" ? "webp" : "jpg";
+  const fileName = `${sanitizeBaseName(file.name)}.${ext}`;
 
-  return { blob, type: finalType, width, height, fileName: `${baseName}.${ext}` };
+  console.info("[cq][image-compression] complete", {
+    width,
+    height,
+    outType: finalType,
+    outBytes: blob.size,
+    fileName,
+  });
+
+  return { blob, type: finalType, width, height, fileName };
 }

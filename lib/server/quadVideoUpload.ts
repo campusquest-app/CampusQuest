@@ -82,12 +82,14 @@ export async function uploadQuadVideoBuffer(args: {
   if (args.idempotencyKey) {
     const { data: existing } = await admin
       .from("quad_post_media")
-      .select("id, storage_path, playback_path, mime_type, file_size_bytes, duration_seconds, has_audio, width, height")
+      .select(
+        "id, storage_path, playback_path, mime_type, file_size_bytes, duration_seconds, has_audio, width, height, processing_status",
+      )
       .eq("uploader_id", args.userId)
       .eq("idempotency_key", args.idempotencyKey)
       .is("deleted_at", null)
       .maybeSingle();
-    if (existing?.storage_path) {
+    if (existing?.storage_path && existing.processing_status === "ready") {
       const { data: publicUrlData } = admin.storage
         .from(QUAD_MEDIA_BUCKET)
         .getPublicUrl(existing.playback_path || existing.storage_path);
@@ -107,7 +109,7 @@ export async function uploadQuadVideoBuffer(args: {
 
   const ext = extensionForVideoMime(mime);
   const mediaId = crypto.randomUUID();
-  const storagePath = `${args.userId}/quad-media/${mediaId}/original.${ext}`;
+  const storagePath = `${args.userId}/posts/${Date.now()}-${mediaId}.${ext}`;
 
   const { data: inserted, error: insErr } = await admin
     .from("quad_post_media")
@@ -144,7 +146,7 @@ export async function uploadQuadVideoBuffer(args: {
       .from("quad_post_media")
       .update({ processing_status: "failed", processing_error: uploadError.message })
       .eq("id", mediaId);
-    throw new ApiError(502, videoProcessErrorMessage(), "VIDEO_UPLOAD_FAILED");
+    throw new ApiError(502, `Storage upload failed: ${uploadError.message}`, "VIDEO_UPLOAD_FAILED");
   }
 
   const { error: readyErr } = await admin

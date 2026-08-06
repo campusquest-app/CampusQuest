@@ -11,7 +11,9 @@ export class ApiError extends Error {
 }
 
 export function ok<T>(data: T, status = 200) {
-  return NextResponse.json({ data }, { status });
+  // Include `ok: true` for clients that historically required `json.ok`
+  // (Quad media upload queue before upload hardening).
+  return NextResponse.json({ ok: true, data }, { status });
 }
 
 export function fail(error: unknown) {

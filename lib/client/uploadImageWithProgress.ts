@@ -86,6 +86,7 @@ export function uploadFormDataWithProgress<T = unknown>(args: {
       }
 
       if (xhr.status >= 200 && xhr.status < 300 && payload.data !== undefined) {
+        // Back-compat: older servers omitted `ok`; require data either way.
         args.onProgress?.(1);
         resolve(payload.data as T);
         return;

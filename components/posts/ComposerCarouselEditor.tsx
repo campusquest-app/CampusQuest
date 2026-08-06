@@ -114,25 +114,36 @@ export function ComposerCarouselEditor({
           <Trash2 className="h-4 w-4" />
         </button>
 
-        <div className="absolute left-2 bottom-14 rounded bg-black/55 px-2 py-1 text-[11px] text-white">
+        <div className="absolute left-2 bottom-14 max-w-[85%] rounded bg-black/55 px-2 py-1 text-[11px] text-white">
           {active.stage === "ready"
             ? "Ready"
             : active.stage === "failed"
               ? active.error || "Failed"
               : active.stage === "waiting"
                 ? "Waiting"
-                : `${active.stage} ${active.percent}%`}
+                : active.stage === "preparing"
+                  ? "Processing…"
+                  : active.stage === "uploading"
+                    ? `Uploading ${active.percent}%`
+                    : active.stage === "processing"
+                      ? "Finishing…"
+                      : active.stage}
         </div>
       </div>
 
       {active.stage === "failed" ? (
-        <button
-          type="button"
-          onClick={() => onRetry(active.clientId)}
-          className="text-sm font-semibold text-uri-keaney"
-        >
-          Retry upload
-        </button>
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={() => onRetry(active.clientId)}
+            className="text-sm font-semibold text-uri-keaney"
+          >
+            Retry upload
+          </button>
+          {process.env.NODE_ENV !== "production" && active.diagnostic ? (
+            <p className="break-words text-[10px] text-amber-300/90">Dev: {active.diagnostic}</p>
+          ) : null}
+        </div>
       ) : null}
 
       <div className="flex items-center gap-2 overflow-x-auto pb-1" data-no-drawer-swipe="true">
@@ -171,7 +182,13 @@ export function ComposerCarouselEditor({
             ) : null}
             {item.stage !== "ready" ? (
               <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 text-[10px] font-semibold text-white">
-                {item.stage === "failed" ? "!" : `${item.percent}%`}
+                {item.stage === "failed"
+                  ? "!"
+                  : item.stage === "uploading"
+                    ? `${item.percent}%`
+                    : item.stage === "preparing" || item.stage === "processing"
+                      ? "…"
+                      : "•"}
               </span>
             ) : null}
           </div>

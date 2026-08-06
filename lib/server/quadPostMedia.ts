@@ -117,12 +117,14 @@ export async function uploadQuadImageBuffer(args: {
   if (args.idempotencyKey) {
     const { data: existing } = await admin
       .from("quad_post_media")
-      .select("id, storage_path, playback_path, thumbnail_path, mime_type, file_size_bytes, width, height")
+      .select(
+        "id, storage_path, playback_path, thumbnail_path, mime_type, file_size_bytes, width, height, processing_status",
+      )
       .eq("uploader_id", args.userId)
       .eq("idempotency_key", args.idempotencyKey)
       .is("deleted_at", null)
       .maybeSingle();
-    if (existing?.storage_path) {
+    if (existing?.storage_path && existing.processing_status === "ready") {
       const path = (existing.playback_path || existing.storage_path) as string;
       const { data: publicUrlData } = admin.storage.from(QUAD_MEDIA_BUCKET).getPublicUrl(path);
       let thumbnailUrl: string | null = null;
@@ -130,6 +132,10 @@ export async function uploadQuadImageBuffer(args: {
         thumbnailUrl = admin.storage.from(QUAD_MEDIA_BUCKET).getPublicUrl(existing.thumbnail_path as string)
           .data.publicUrl;
       }
+      console.info("[cq][quad-media][server] idempotent_hit", {
+        mediaId: existing.id,
+        storagePath: existing.storage_path,
+      });
       return {
         mediaId: existing.id as string,
         playbackUrl: publicUrlData.publicUrl,
@@ -145,7 +151,16 @@ export async function uploadQuadImageBuffer(args: {
 
   const ext = extensionForImageMime(mime);
   const mediaId = crypto.randomUUID();
-  const storagePath = `${args.userId}/quad-media/${mediaId}/original.${ext}`;
+  // Keep auth.uid() as the first folder segment for storage RLS compatibility.
+  const storagePath = `${args.userId}/posts/${Date.now()}-${mediaId}.${ext}`;
+
+  console.info("[cq][quad-media][server] database_insert", {
+    mediaId,
+    storagePath,
+    bucket: QUAD_MEDIA_BUCKET,
+    mime,
+    bytes: args.buffer.length,
+  });
 
   const { error: insErr } = await admin.from("quad_post_media").insert({
     id: mediaId,
@@ -172,6 +187,13 @@ export async function uploadQuadImageBuffer(args: {
     });
     throw new ApiError(400, `Media database insert failed: ${insErr.message}`, "IMAGE_MEDIA_INSERT_FAILED");
   }
+
+  console.info("[cq][quad-media][server] storage_upload_start", {
+    bucket: QUAD_MEDIA_BUCKET,
+    storagePath,
+    bytes: args.buffer.length,
+    contentType: mime,
+  });
 
   const { error: uploadError } = await admin.storage.from(QUAD_MEDIA_BUCKET).upload(storagePath, args.buffer, {
     contentType: mime,
