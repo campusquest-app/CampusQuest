@@ -126,7 +126,13 @@ export function classifyProfileSetupError(setupError: ApiError): ApiError {
     return new ApiError(409, "This username is already taken.", "USERNAME_TAKEN");
   }
 
-  if (code === "AUTH_USER_NOT_READY") {
+  // Transient readiness failures — surface the specific setup message (503).
+  if (
+    code === "AUTH_USER_NOT_READY" ||
+    code === "PROFILE_SETUP_PENDING" ||
+    code === "STATS_SETUP_PENDING" ||
+    code === "PLAYER_SETUP_PENDING"
+  ) {
     return setupError;
   }
 
@@ -134,9 +140,15 @@ export function classifyProfileSetupError(setupError: ApiError): ApiError {
     return new ApiError(409, "This username is already taken.", "USERNAME_TAKEN");
   }
 
+  // Dev-friendly diagnostics; production clients still get a recoverable message.
+  const detail =
+    process.env.NODE_ENV !== "production" && setupError.message
+      ? ` (${code || "SETUP_FAILED"}: ${setupError.message})`
+      : "";
+
   return new ApiError(
-    400,
-    "Your account was created, but profile setup is still finishing. Please sign in again shortly.",
+    503,
+    `We're still finishing your account setup. Please wait a moment and try signing in.${detail}`,
     "SIGNUP_PROFILE_SETUP_FAILED",
   );
 }

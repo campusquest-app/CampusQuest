@@ -28,10 +28,22 @@ describe("mapSigninError", () => {
     );
   });
 
-  it("maps a missing profile row to a profile message instead of 'Unable to connect'", () => {
+  it("maps a missing profile row to a finishing-setup message instead of 'Unable to connect'", () => {
     expect(mapSigninError(httpError(404, "Profile not found after setup.", "PROFILE_NOT_FOUND"))).toBe(
-      "We couldn't finish loading your profile. Please try signing in again in a moment.",
+      "We're finishing your account setup. Please wait a moment, then try signing in.",
     );
+  });
+
+  it("maps pending profile setup (503) to the finishing message", () => {
+    expect(
+      mapSigninError(
+        httpError(
+          503,
+          "We're still creating your profile. Please wait a moment and try signing in.",
+          "PROFILE_SETUP_PENDING",
+        ),
+      ),
+    ).toBe("We're still creating your profile. Please wait a moment and try signing in.");
   });
 
   it("does not leak raw server/config errors as 'Unable to connect'", () => {

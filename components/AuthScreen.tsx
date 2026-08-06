@@ -708,7 +708,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                   {successBanner ? <p className="cq-auth-success">{successBanner}</p> : null}
                   {notice ? <p className="cq-auth-notice">{notice}</p> : null}
                   <button type="submit" disabled={isSubmitting} className="cq-auth-btn-primary w-full">
-                    {isSubmitting ? "Creating Account..." : "Create Account"}
+                    {isSubmitting ? "Finishing account…" : "Create Account"}
                   </button>
                 </form>
                 <p className="cq-auth-switch-row">

@@ -125,6 +125,7 @@ export async function POST(request: Request) {
     }
 
     let player;
+    const setupStarted = Date.now();
     try {
       player = await ensurePlayerSetup({
         userId: authUser.id,
@@ -135,6 +136,7 @@ export async function POST(request: Request) {
         userId: authUser.id,
         profileId: player.profile.id,
         username: player.profile.username,
+        elapsedMs: Date.now() - setupStarted,
       });
     } catch (setupError) {
       if (setupError instanceof ApiError) {
@@ -142,6 +144,7 @@ export async function POST(request: Request) {
           userId: authUser.id,
           code: setupError.code ?? null,
           message: setupError.message,
+          elapsedMs: Date.now() - setupStarted,
         });
         return fail(setupError);
       }

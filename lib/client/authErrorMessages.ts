@@ -22,7 +22,21 @@ export const PROFILE_SETUP_CODES = new Set([
   "stats_setup_failed",
   "auth_user_not_ready",
   "signup_profile_setup_failed",
+  "profile_setup_pending",
+  "stats_setup_pending",
+  "player_setup_pending",
 ]);
+
+const PENDING_SETUP_MESSAGE =
+  "We're finishing your account setup. Please wait a moment, then try signing in.";
+
+function isPendingSetupError(error: HttpRequestError): boolean {
+  const code = (error.code ?? "").toLowerCase();
+  if (PROFILE_SETUP_CODES.has(code)) return true;
+  return /finishing your account|still creating your profile|still preparing your account|still finishing your account/i.test(
+    error.message,
+  );
+}
 
 export function mapSignupError(
   error: unknown,
@@ -35,6 +49,9 @@ export function mapSignupError(
       return {
         message: "Too many confirmation emails were sent. Please wait a few minutes before trying again.",
       };
+    }
+    if (isPendingSetupError(error)) {
+      return { message: error.message.trim() || PENDING_SETUP_MESSAGE };
     }
     if (error.message.trim()) {
       return { message: error.message };
@@ -54,6 +71,15 @@ export function mapSigninError(error: unknown): string {
   if (error instanceof HttpRequestError) {
     const raw = (error.message ?? "").toLowerCase();
     const code = (error.code ?? "").toLowerCase();
+
+    // Auth succeeded but profile/stats are still provisioning (includes 503).
+    if (isPendingSetupError(error)) {
+      // Prefer user-facing wait copy over raw server diagnostics like "Profile not found".
+      if (/finishing your account|still creating|still preparing|still finishing/i.test(error.message)) {
+        return error.message.trim();
+      }
+      return PENDING_SETUP_MESSAGE;
+    }
 
     // Genuine connectivity / Supabase outage.
     if (
@@ -80,9 +106,8 @@ export function mapSigninError(error: unknown): string {
     if (error.status === 429 || code === "email_rate_limit") {
       return "Too many confirmation emails were sent. Please wait a few minutes before trying again.";
     }
-    // Auth worked but the app profile row is missing / still provisioning.
-    if (error.status === 404 || PROFILE_SETUP_CODES.has(code)) {
-      return "We couldn't finish loading your profile. Please try signing in again in a moment.";
+    if (error.status === 404) {
+      return PENDING_SETUP_MESSAGE;
     }
     if (error.status >= 500) {
       return "Something went wrong on our end. Please try again.";
