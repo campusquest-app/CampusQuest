@@ -203,7 +203,7 @@ export function ComposerCarouselEditor({
       <input
         ref={addRef}
         type="file"
-        accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v"
+        accept="image/*,image/heic,image/heif,video/mp4,video/quicktime,video/webm,video/x-m4v,.heic,.heif"
         multiple
         className="hidden"
         onChange={(e) => {

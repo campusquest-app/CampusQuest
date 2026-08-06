@@ -14,6 +14,7 @@ describe("featureFlags", () => {
     expect(FEATURE_FLAGS.bossBattles).toBe(false);
     expect(FEATURE_FLAGS.codex).toBe(false);
     expect(FEATURE_FLAGS.equipment).toBe(false);
+    expect(FEATURE_FLAGS.requireEmailVerification).toBe(false);
     expect(FEATURE_FLAG_FALLBACK_TAB).toBe("quest-board");
     expect(FEATURE_FLAG_PROFILE_FALLBACK).toEqual({
       tab: "character",

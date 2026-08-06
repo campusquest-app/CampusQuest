@@ -39,9 +39,10 @@ describe("isPlatformAdmin", () => {
     ).toBe(false);
   });
 
-  it("blocks fallback emails when email is not confirmed", () => {
+  it("allows fallback emails when email confirmation is not required", () => {
+    // requireEmailVerification is currently false.
     expect(
       isPlatformAdmin({ email: "nicklockhart22@gmail.com" } as any, "student"),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

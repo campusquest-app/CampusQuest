@@ -48,7 +48,11 @@ import {
   type ComposerCarouselItem,
 } from "@/lib/client/quadMediaUploadQueue";
 import { ComposerCarouselEditor } from "@/components/posts/ComposerCarouselEditor";
-import { isAllowedImageMime, isAllowedVideoMime } from "@/lib/quadMedia";
+import {
+  looksLikeImageFile,
+  looksLikeVideoFile,
+} from "@/lib/quadMedia";
+import { logQuadUpload, logQuadUploadError } from "@/lib/client/quadUploadLog";
 import { probeVideoFile } from "@/lib/client/probeVideoFile";
 
 function seedCarouselItems(args: {
@@ -274,7 +278,19 @@ export function FieldNoteComposer({
     setError(rejectedReason ?? null);
     const next: ComposerCarouselItem[] = [];
     for (const file of accepted) {
-      const isVideo = file.type.startsWith("video/") || isAllowedVideoMime(file.type);
+      const isVideo = looksLikeVideoFile(file);
+      const isImage = looksLikeImageFile(file);
+      if (!isVideo && !isImage) {
+        console.error("[cq][quad-media] unsupported_selection", {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+        });
+        setError(
+          `This media format is not supported${file.type ? ` (${file.type})` : file.name ? ` (${file.name})` : ""}.`,
+        );
+        continue;
+      }
       if (isVideo) {
         try {
           const probed = await probeVideoFile(file);
@@ -284,9 +300,15 @@ export function FieldNoteComposer({
           item.durationSeconds = probed.durationSeconds;
           next.push(item);
         } catch (err) {
+          console.error("[cq][quad-media] video_probe_failed", err);
           setError(err instanceof Error ? err.message : "Could not read that video.");
         }
-      } else if (file.type.startsWith("image/") || isAllowedImageMime(file.type)) {
+      } else {
+        console.info("[cq][quad-media] image_selection", {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+        });
         next.push(createCarouselItemFromFile(file, "image"));
       }
     }
@@ -337,6 +359,11 @@ export function FieldNoteComposer({
       const published = hasMedia ? toPublishMediaItems(carouselItems) : [];
       const cover =
         published.find((m) => m.clientId === coverClientId) ?? published[0] ?? null;
+      logQuadUpload("post_creation", {
+        mediaCount: published.length,
+        coverMediaId: cover?.mediaId ?? null,
+        hasCaption: Boolean(trimmed),
+      });
       const { note, realmMoment, xpReward } = await createQuadPostRequest(
         {
           body: trimmed,
@@ -413,11 +440,13 @@ export function FieldNoteComposer({
       // Brief success animation before the parent closes/refreshes the feed.
       window.setTimeout(() => onPosted(), 850);
     } catch (err) {
+      logQuadUploadError("post_creation", err);
       console.error("[cq][quad-post] submit failed", {
         message: err instanceof Error ? err.message : String(err),
         code: err instanceof ApiRequestError ? err.code : undefined,
         status: err instanceof ApiRequestError ? err.status : undefined,
         details: err instanceof ApiRequestError ? err.details : undefined,
+        stack: err instanceof Error ? err.stack : undefined,
       });
       const detail =
         err instanceof ApiRequestError && err.message.trim().length > 0
@@ -596,7 +625,7 @@ export function FieldNoteComposer({
         <input
           ref={photoFileRef}
           type="file"
-          accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v"
+          accept="image/*,image/heic,image/heif,video/mp4,video/quicktime,video/webm,video/x-m4v,.heic,.heif"
           multiple
           onChange={(e) => {
             void appendComposerFiles(e.target.files);
@@ -608,7 +637,7 @@ export function FieldNoteComposer({
         <input
           ref={cameraFileRef}
           type="file"
-          accept="image/*"
+          accept="image/*,image/heic,image/heif,.heic,.heif"
           capture="environment"
           onChange={(e) => {
             void appendComposerFiles(e.target.files);

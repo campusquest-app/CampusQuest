@@ -9,8 +9,16 @@
  * where supported, and OffscreenCanvas is used for encoding when available.
  */
 
-const ACCEPTED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-const ACCEPTED_EXT = /\.(jpe?g|png|webp)$/i;
+const ACCEPTED_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/heic",
+  "image/heif",
+];
+const ACCEPTED_EXT = /\.(jpe?g|png|webp|gif|heic|heif)$/i;
 const DEFAULT_MAX_EDGE = 1080;
 const DEFAULT_QUALITY = 0.85;
 
@@ -54,8 +62,13 @@ async function decodeImage(file: File): Promise<ImageBitmap | HTMLImageElement> 
   if (typeof createImageBitmap === "function") {
     try {
       return await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions);
-    } catch {
-      // Fall through to <img> decode (e.g. Safari without the orientation option).
+    } catch (error) {
+      console.warn("[cq][image-compression] createImageBitmap failed; falling back to <img>", {
+        name: file.name,
+        type: file.type,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      // Fall through to <img> decode (e. g. Safari without the orientation option).
     }
   }
   return await decodeWithImageElement(file);
@@ -104,16 +117,37 @@ async function encodeCanvas(
 /** Compress + resize an image File. Always succeeds for valid raster images of any size. */
 export async function compressImageFile(
   file: File,
-  options?: { maxEdge?: number; quality?: number },
+  options?: {
+    maxEdge?: number;
+    quality?: number;
+    /** If set, re-encode at lower quality until under this size (best effort). */
+    targetMaxBytes?: number;
+  },
 ): Promise<CompressedImage> {
   if (!isAcceptedImageType(file)) {
-    throw new ImageCompressionError("Unsupported format. Please use JPG, PNG, or WebP.");
+    throw new ImageCompressionError("Unsupported format. Please use JPG, PNG, WebP, or HEIC.");
   }
 
   const maxEdge = options?.maxEdge ?? DEFAULT_MAX_EDGE;
-  const quality = options?.quality ?? DEFAULT_QUALITY;
+  let quality = options?.quality ?? DEFAULT_QUALITY;
+  const targetMaxBytes = options?.targetMaxBytes;
 
-  const source = await decodeImage(file);
+  let source: ImageBitmap | HTMLImageElement;
+  try {
+    source = await decodeImage(file);
+  } catch (error) {
+    const isHeic = /\.(heic|heif)$/i.test(file.name) || /image\/hei[cf]/i.test(file.type);
+    if (isHeic) {
+      throw new ImageCompressionError(
+        "This HEIC photo can’t be decoded on this device. Open it in Photos and export as JPG, then try again.",
+      );
+    }
+    throw error instanceof ImageCompressionError
+      ? error
+      : new ImageCompressionError(
+          error instanceof Error ? error.message : "That image could not be decoded.",
+        );
+  }
   const srcWidth = "width" in source ? source.width : 0;
   const srcHeight = "height" in source ? source.height : 0;
 
@@ -146,15 +180,28 @@ export async function compressImageFile(
   // Release the full-resolution decode promptly to keep memory low.
   if ("close" in source) source.close();
 
-  const outType: "image/webp" | "image/jpeg" = supportsWebpEncode() ? "image/webp" : "image/jpeg";
-  const blob = await encodeCanvas(canvas, outType, quality);
+  // Prefer JPEG for quad uploads — broader compatibility and predictable size.
+  const outType: "image/webp" | "image/jpeg" =
+    supportsWebpEncode() && (file.type === "image/webp" || file.type === "image/png")
+      ? "image/webp"
+      : "image/jpeg";
+
+  let blob = await encodeCanvas(canvas, outType, quality);
+  if (targetMaxBytes && blob.size > targetMaxBytes) {
+    for (const q of [0.75, 0.65, 0.55, 0.45]) {
+      quality = q;
+      blob = await encodeCanvas(canvas, "image/jpeg", quality);
+      if (blob.size <= targetMaxBytes) break;
+    }
+  }
 
   if (!blob || blob.size === 0) {
     throw new ImageCompressionError("Image encoding failed.");
   }
 
-  const baseName = file.name.replace(/\.[^.]+$/, "").trim() || "memory";
-  const ext = outType === "image/webp" ? "webp" : "jpg";
+  const baseName = file.name.replace(/\.[^.]+$/, "").trim() || "photo";
+  const finalType = blob.type === "image/webp" ? "image/webp" : "image/jpeg";
+  const ext = finalType === "image/webp" ? "webp" : "jpg";
 
-  return { blob, type: outType, width, height, fileName: `${baseName}.${ext}` };
+  return { blob, type: finalType, width, height, fileName: `${baseName}.${ext}` };
 }

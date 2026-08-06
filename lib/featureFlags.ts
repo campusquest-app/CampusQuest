@@ -15,6 +15,12 @@ export const FEATURE_FLAGS = {
   codex: false,
   /** Temporarily hidden — set `true` to restore Equipment UI entry points. */
   equipment: false,
+  /**
+   * When `false`, Supabase email confirmation is not required for campus
+   * access, admin checks, or school verification. Signup still auto-confirms
+   * when possible. Set `true` to restore confirm-email gating.
+   */
+  requireEmailVerification: false,
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;

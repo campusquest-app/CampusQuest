@@ -25,6 +25,7 @@ import { passwordMeetsRequirements } from "@/lib/passwordRequirements";
 import {
   AUTH_SESSION_EXPIRED_NOTICE_KEY,
 } from "@/lib/client/invalidateAuthSession";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 import {
   HttpRequestError,
@@ -379,7 +380,11 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         setPassword("");
         setConfirmPassword("");
         setSuccessBanner("Account Created!");
-        setNotice("Check your URI email to confirm your account before signing in.");
+        setNotice(
+          FEATURE_FLAGS.requireEmailVerification
+            ? "Check your URI email to confirm your account before signing in."
+            : "Sign in with your password to continue.",
+        );
         return;
       }
       setAccessToken(accessToken);
@@ -581,8 +586,13 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                   <button type="submit" disabled={isSubmitting} className="cq-auth-btn-primary w-full">
                     {isSubmitting ? "Signing In..." : "Sign In"}
                   </button>
-                  <p className="cq-auth-trust pt-1">Secure sign-in · Email verification supported</p>
-                  {error?.includes("confirm") || notice?.includes("Confirmation") ? (
+                  <p className="cq-auth-trust pt-1">
+                    {FEATURE_FLAGS.requireEmailVerification
+                      ? "Secure sign-in · Email verification supported"
+                      : "Secure sign-in"}
+                  </p>
+                  {FEATURE_FLAGS.requireEmailVerification &&
+                  (error?.includes("confirm") || notice?.includes("Confirmation")) ? (
                     <button
                       type="button"
                       onClick={() => void handleResendConfirmation()}

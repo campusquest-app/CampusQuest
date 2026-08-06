@@ -1,3 +1,4 @@
+import { isEmailVerifiedForCampus } from "@/lib/campusAccess";
 import { ApiError } from "@/lib/server/http";
 import { resolveCampusAccessIdentity, userIdHasCampusBypassAccess } from "@/lib/server/campusAccess";
 import { extractEmailDomain, getPilotSchoolConfig } from "@/lib/server/pilotMode";
@@ -21,10 +22,6 @@ export type SchoolVerificationState = {
   requiredPilotDomain: string | null;
   requiredPilotSchoolName: string;
 };
-
-function isVerifiedEmailUser(user: { email_confirmed_at?: string | null; confirmed_at?: string | null }) {
-  return Boolean(user.email_confirmed_at ?? user.confirmed_at);
-}
 
 /** Pilot-aligned scope for platform admins (eligible for campus APIs without `@uri.edu`). */
 export function syntheticPilotVerificationForPlatformAdmin(): SchoolVerificationState {
@@ -66,7 +63,7 @@ export async function ensureSchoolVerificationForUser(args: {
   const { userClient, user } = args;
   const pilot = getPilotSchoolConfig();
   const emailDomain = extractEmailDomain(user.email ?? null);
-  const isEmailVerified = isVerifiedEmailUser(user);
+  const isEmailVerified = isEmailVerifiedForCampus(user);
   const pilotDomainAllowed = !pilot.schoolDomain || emailDomain === pilot.schoolDomain;
   const shouldVerify = Boolean(emailDomain && isEmailVerified && pilotDomainAllowed);
   const nowIso = new Date().toISOString();

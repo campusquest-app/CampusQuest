@@ -6,10 +6,11 @@ import {
 } from "./campusAccess";
 
 describe("campusAccess", () => {
-  it("treats confirmed email as verified for campus", () => {
+  it("treats users as email-verified when confirmation is not required", () => {
     expect(isEmailVerifiedForCampus({ email_confirmed_at: "2026-01-01" })).toBe(true);
     expect(isEmailVerifiedForCampus({ confirmed_at: "2026-01-01" })).toBe(true);
-    expect(isEmailVerifiedForCampus({})).toBe(false);
+    // requireEmailVerification is currently off — unconfirmed users pass.
+    expect(isEmailVerifiedForCampus({})).toBe(true);
   });
 
   it("matches pilot school domain case-insensitively", () => {

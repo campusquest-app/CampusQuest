@@ -2,7 +2,8 @@ import { fail, ok, ApiError } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { isAllowedVideoMime, QUAD_VIDEO_MAX_DURATION_SECONDS } from "@/lib/quadVideo";
-import { isAllowedImageMime } from "@/lib/quadMedia";
+import { isUploadableImageMime, normalizeImageMime } from "@/lib/quadMedia";
+import { sniffImageMimeFromBuffer } from "@/lib/server/sniffImageMime";
 import {
   uploadQuadImageBuffer,
   uploadQuadPosterBuffer,
@@ -28,27 +29,64 @@ export async function POST(request: Request) {
     if (!(file instanceof Blob)) {
       throw new ApiError(400, "No media file provided.", "MEDIA_MISSING");
     }
-    const mime = (file.type || "").toLowerCase();
+
+    const fileName =
+      typeof (file as File).name === "string" && (file as File).name.trim()
+        ? (file as File).name.trim()
+        : null;
     const kindHint = String(form.get("kind") ?? "").toLowerCase();
+    const declaredMime = normalizeImageMime(file.type || "");
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const sniffedImageMime = sniffImageMimeFromBuffer(buffer, fileName);
+    const mime = declaredMime || sniffedImageMime || "";
+
+    console.info("[cq][quad-media][server] request", {
+      userId: auth.user.id,
+      kindHint,
+      declaredMime: file.type || null,
+      sniffedImageMime,
+      resolvedMime: mime || null,
+      fileName,
+      bytes: buffer.length,
+    });
+
     const isVideo =
       kindHint === "video" || mime.startsWith("video/") || isAllowedVideoMime(mime);
     const isImage =
-      kindHint === "image" || mime.startsWith("image/") || isAllowedImageMime(mime);
+      kindHint === "image" ||
+      mime.startsWith("image/") ||
+      Boolean(sniffedImageMime) ||
+      isUploadableImageMime(mime);
 
     if (!isVideo && !isImage) {
-      throw new ApiError(400, "This media format is not supported.", "MEDIA_FORMAT_UNSUPPORTED");
+      throw new ApiError(
+        400,
+        `This media format is not supported${mime ? ` (${mime})` : fileName ? ` (${fileName})` : ""}.`,
+        "MEDIA_FORMAT_UNSUPPORTED",
+      );
+    }
+
+    if (isImage && sniffedImageMime && (sniffedImageMime === "image/heic" || sniffedImageMime === "image/heif")) {
+      throw new ApiError(
+        400,
+        "HEIC photos must be converted to JPG on the device before upload.",
+        "IMAGE_HEIC_UNSUPPORTED_SERVER",
+      );
     }
 
     const width = form.get("width") != null ? Number(form.get("width")) : null;
     const height = form.get("height") != null ? Number(form.get("height")) : null;
     const idempotencyKey = String(form.get("idempotencyKey") ?? "").trim() || null;
-    const buffer = Buffer.from(await file.arrayBuffer());
 
     if (isVideo) {
       const durationSeconds = Number(form.get("durationSeconds"));
       const hasAudio = String(form.get("hasAudio") ?? "false") === "true";
       if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-        throw new ApiError(400, "We couldn’t process this video. Try another file.", "VIDEO_DURATION_INVALID");
+        throw new ApiError(
+          400,
+          "Video duration is missing or invalid. Try another file.",
+          "VIDEO_DURATION_INVALID",
+        );
       }
       if (durationSeconds > QUAD_VIDEO_MAX_DURATION_SECONDS + 0.5) {
         throw new ApiError(400, "Videos can be up to 3 minutes.", "VIDEO_TOO_LONG");
@@ -66,13 +104,18 @@ export async function POST(request: Request) {
       let posterUrl: string | null = null;
       const poster = form.get("poster");
       if (poster instanceof Blob && poster.size > 0) {
-        const result = await uploadQuadPosterBuffer({
-          buffer: Buffer.from(await poster.arrayBuffer()),
-          mime: (poster.type || "image/jpeg").toLowerCase(),
-          userId: auth.user.id,
-          mediaId: uploaded.mediaId,
-        });
-        posterUrl = result.posterUrl;
+        try {
+          const result = await uploadQuadPosterBuffer({
+            buffer: Buffer.from(await poster.arrayBuffer()),
+            mime: (poster.type || "image/jpeg").toLowerCase(),
+            userId: auth.user.id,
+            mediaId: uploaded.mediaId,
+          });
+          posterUrl = result.posterUrl;
+        } catch (posterError) {
+          // Thumbnail/cover failure must not cancel the video upload.
+          console.error("[cq][quad-media][server] poster_upload_failed", posterError);
+        }
       }
       return ok({
         mediaId: uploaded.mediaId,
@@ -90,9 +133,15 @@ export async function POST(request: Request) {
       });
     }
 
+    const resolvedImageMime = isUploadableImageMime(mime)
+      ? normalizeImageMime(mime)
+      : sniffedImageMime && isUploadableImageMime(sniffedImageMime)
+        ? sniffedImageMime
+        : "image/jpeg";
+
     const uploaded = await uploadQuadImageBuffer({
       buffer,
-      mime: isAllowedImageMime(mime) ? mime.replace("image/jpg", "image/jpeg") : "image/jpeg",
+      mime: resolvedImageMime,
       userId: auth.user.id,
       width: Number.isFinite(width as number) ? (width as number) : null,
       height: Number.isFinite(height as number) ? (height as number) : null,

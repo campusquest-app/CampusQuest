@@ -12,14 +12,15 @@ describe("userHasModerationAdminAccess", () => {
     process.env.MODERATION_ADMIN_EMAILS = prev;
   });
 
-  it("returns false when email is missing or unconfirmed", () => {
+  it("returns false when email is missing; unconfirmed is allowed while verification is off", () => {
+    // requireEmailVerification is currently false — list match is enough.
     expect(
       userHasModerationAdminAccess({
         email: "campusquest@campusquestapp.com",
         email_confirmed_at: null,
         confirmed_at: null,
       }),
-    ).toBe(false);
+    ).toBe(true);
 
     expect(
       userHasModerationAdminAccess({

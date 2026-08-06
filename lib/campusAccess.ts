@@ -3,6 +3,7 @@
  * Platform admins and internal testers always bypass pilot school domain requirements.
  */
 
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { normalizeEmail } from "@/lib/platformAdmin";
 import { isInternalAccount } from "@/lib/internalAccount";
 
@@ -17,6 +18,7 @@ export function isEmailVerifiedForCampus(user: {
   email_confirmed_at?: string | null;
   confirmed_at?: string | null;
 }): boolean {
+  if (!FEATURE_FLAGS.requireEmailVerification) return true;
   return Boolean(user.email_confirmed_at ?? user.confirmed_at);
 }
 

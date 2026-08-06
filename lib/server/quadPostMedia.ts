@@ -2,9 +2,10 @@ import { ApiError } from "@/lib/server/http";
 import { createAdminClient } from "@/lib/server/supabase";
 import {
   QUAD_CAROUSEL_MAX_ITEMS,
+  QUAD_IMAGE_MAX_BYTES,
   carouselMaxItemsErrorMessage,
   extensionForImageMime,
-  isAllowedImageMime,
+  isUploadableImageMime,
   resolveQuadPostTotalUploadBytes,
   type QuadCarouselMediaDto,
 } from "@/lib/quadMedia";
@@ -18,7 +19,7 @@ import {
 import { QUAD_VIDEO_MAX_DURATION_SECONDS, videoDurationErrorMessage } from "@/lib/quadVideo";
 
 const QUAD_MEDIA_BUCKET = "quad-post-images";
-const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_IMAGE_BYTES = QUAD_IMAGE_MAX_BYTES;
 
 export type ReadyQuadMedia = ReadyQuadVideoMedia & {
   mediaType: "image" | "video";
@@ -92,12 +93,25 @@ export async function uploadQuadImageBuffer(args: {
   mimeType: string;
 }> {
   const mime = args.mime.toLowerCase().trim().replace("image/jpg", "image/jpeg");
-  if (!isAllowedImageMime(mime)) {
+  if (!isUploadableImageMime(mime)) {
     throw new ApiError(400, "This image format is not supported.", "IMAGE_FORMAT_UNSUPPORTED");
   }
   if (args.buffer.length === 0 || args.buffer.length > MAX_IMAGE_BYTES) {
-    throw new ApiError(400, "This image file is too large.", "IMAGE_TOO_LARGE");
+    throw new ApiError(
+      400,
+      `This image file is too large (max ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB).`,
+      "IMAGE_TOO_LARGE",
+    );
   }
+
+  console.info("[cq][quad-media][server] image_upload_start", {
+    userId: args.userId,
+    mime,
+    bytes: args.buffer.length,
+    width: args.width ?? null,
+    height: args.height ?? null,
+    hasIdempotencyKey: Boolean(args.idempotencyKey),
+  });
 
   const admin = createAdminClient();
   if (args.idempotencyKey) {
@@ -151,19 +165,41 @@ export async function uploadQuadImageBuffer(args: {
     idempotency_key: args.idempotencyKey ?? null,
     sort_order: 0,
   });
-  if (insErr) throw new ApiError(400, insErr.message, "IMAGE_MEDIA_INSERT_FAILED");
+  if (insErr) {
+    console.error("[cq][quad-media][server] database_insert_failed", {
+      message: insErr.message,
+      code: (insErr as { code?: string }).code,
+    });
+    throw new ApiError(400, `Media database insert failed: ${insErr.message}`, "IMAGE_MEDIA_INSERT_FAILED");
+  }
 
   const { error: uploadError } = await admin.storage.from(QUAD_MEDIA_BUCKET).upload(storagePath, args.buffer, {
     contentType: mime,
     upsert: false,
   });
   if (uploadError) {
+    console.error("[cq][quad-media][server] supabase_upload_failed", {
+      bucket: QUAD_MEDIA_BUCKET,
+      storagePath,
+      message: uploadError.message,
+      name: (uploadError as { name?: string }).name,
+    });
     await admin
       .from("quad_post_media")
       .update({ processing_status: "failed", processing_error: uploadError.message })
       .eq("id", mediaId);
-    throw new ApiError(502, "We couldn’t process this image. Try another file.", "IMAGE_UPLOAD_FAILED");
+    throw new ApiError(
+      502,
+      `Storage upload failed: ${uploadError.message}`,
+      "IMAGE_UPLOAD_FAILED",
+    );
   }
+
+  console.info("[cq][quad-media][server] supabase_response_ok", {
+    mediaId,
+    storagePath,
+    bytes: args.buffer.length,
+  });
 
   await admin
     .from("quad_post_media")

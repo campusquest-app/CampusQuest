@@ -5,8 +5,8 @@ import { Camera, ImagePlus, Video, X } from "lucide-react";
 import {
   QUAD_CAROUSEL_MAX_ITEMS,
   carouselMaxItemsErrorMessage,
-  isAllowedImageMime,
-  isAllowedVideoMime,
+  looksLikeImageFile,
+  looksLikeVideoFile,
 } from "@/lib/quadMedia";
 import { probeVideoFile, revokeVideoObjectUrl } from "@/lib/client/probeVideoFile";
 import {
@@ -63,10 +63,17 @@ export function PostMediaPicker({
 
     const nextItems: ComposerCarouselItem[] = [];
     for (const file of accepted) {
-      const isVideo = file.type.startsWith("video/") || isAllowedVideoMime(file.type);
-      const isImage = file.type.startsWith("image/") || isAllowedImageMime(file.type);
+      const isVideo = looksLikeVideoFile(file);
+      const isImage = looksLikeImageFile(file);
       if (!isVideo && !isImage) {
-        setError("This media format is not supported.");
+        console.error("[cq][quad-media] unsupported_selection", {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+        });
+        setError(
+          `This media format is not supported${file.type ? ` (${file.type})` : file.name ? ` (${file.name})` : ""}.`,
+        );
         continue;
       }
       if (isVideo) {
@@ -81,9 +88,15 @@ export function PostMediaPicker({
           item.hasAudio = probed.hasAudio;
           nextItems.push(item);
         } catch (err) {
+          console.error("[cq][quad-media] video_probe_failed", err);
           setError(err instanceof Error ? err.message : "Could not read that video.");
         }
       } else {
+        console.info("[cq][quad-media] image_selection", {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+        });
         nextItems.push(createCarouselItemFromFile(file, "image"));
       }
     }
@@ -185,7 +198,7 @@ export function PostMediaPicker({
       <input
         ref={libraryRef}
         type="file"
-        accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v"
+        accept="image/*,image/heic,image/heif,video/mp4,video/quicktime,video/webm,video/x-m4v,.heic,.heif"
         multiple
         onChange={(e) => {
           void appendFiles(e.target.files);

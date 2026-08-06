@@ -3,9 +3,13 @@ import {
   QUAD_CAROUSEL_MAX_ITEMS,
   carouselMaxItemsErrorMessage,
   filterCarouselFiles,
+  isHeicLikeFile,
+  looksLikeImageFile,
+  looksLikeVideoFile,
   mediaFileFingerprint,
   resolveQuadPostTotalUploadBytes,
 } from "@/lib/quadMedia";
+import { sniffImageMimeFromBuffer } from "@/lib/server/sniffImageMime";
 
 describe("quad carousel media limits", () => {
   it("caps at 15 items", () => {
@@ -51,5 +55,44 @@ describe("quad carousel media limits", () => {
     const file = { name: "p.jpg", size: 3, lastModified: 123, type: "image/jpeg" };
     expect(mediaFileFingerprint(file)).toContain("p.jpg");
     expect(mediaFileFingerprint(file)).toBe(mediaFileFingerprint(file));
+  });
+
+  it("accepts Android gallery images with empty MIME via extension", () => {
+    expect(looksLikeImageFile({ name: "IMG_1234.jpg", type: "" })).toBe(true);
+    expect(looksLikeImageFile({ name: "photo.JPEG", type: "" })).toBe(true);
+    expect(looksLikeImageFile({ name: "shot.png", type: "" })).toBe(true);
+    expect(looksLikeImageFile({ name: "shot.webp", type: "" })).toBe(true);
+    expect(looksLikeImageFile({ name: "photo.heic", type: "" })).toBe(true);
+    expect(looksLikeImageFile({ name: "not-an-image.txt", type: "" })).toBe(false);
+    expect(looksLikeImageFile({ name: "x.bin", type: "image/jpeg" })).toBe(true);
+  });
+
+  it("detects HEIC and common video extensions without MIME", () => {
+    expect(isHeicLikeFile({ name: "IMG_0001.HEIC", type: "" })).toBe(true);
+    expect(looksLikeVideoFile({ name: "clip.mp4", type: "" })).toBe(true);
+    expect(looksLikeVideoFile({ name: "clip.MOV", type: "" })).toBe(true);
+    expect(looksLikeVideoFile({ name: "clip.webm", type: "" })).toBe(true);
+    expect(looksLikeVideoFile({ name: "photo.jpg", type: "" })).toBe(false);
+  });
+
+  it("sniffs JPEG/PNG/WebP and HEIC brands from magic bytes", () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+    expect(sniffImageMimeFromBuffer(jpeg)).toBe("image/jpeg");
+
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    expect(sniffImageMimeFromBuffer(png)).toBe("image/png");
+
+    const webp = Buffer.alloc(12);
+    webp.write("RIFF", 0);
+    webp.write("WEBP", 8);
+    expect(sniffImageMimeFromBuffer(webp)).toBe("image/webp");
+
+    const heic = Buffer.alloc(12);
+    heic.write("....", 0);
+    heic.write("ftyp", 4);
+    heic.write("heic", 8);
+    expect(sniffImageMimeFromBuffer(heic)).toBe("image/heic");
+
+    expect(sniffImageMimeFromBuffer(Buffer.from([0x00]), "camera.JPG")).toBe("image/jpeg");
   });
 });

@@ -411,22 +411,22 @@ export function Leaderboards({
             </h1>
             <p className="cq-screen-header__subtitle">Ranked by total XP · all time</p>
           </div>
-          <button
-            type="button"
+            <button
+              type="button"
             className="cq-lb-timeframe cq-lb-timeframe--active shrink-0"
             aria-label="Leaderboard timeframe: all time"
             aria-pressed="true"
           >
             <Clock className="h-3 w-3" aria-hidden strokeWidth={2.25} />
             All time
-          </button>
+            </button>
         </div>
       </header>
 
       <div className="cq-lb-filters" data-no-drawer-swipe="true" data-cq-gesture-block="all">
         <div className="cq-lb-filters-row" role="tablist" aria-label="Leaderboard category">
-          <button
-            type="button"
+                    <button
+                      type="button"
             role="tab"
             aria-selected={sortBy !== "guildLevel"}
             onClick={() => {
@@ -435,7 +435,7 @@ export function Leaderboards({
             className={`cq-lb-filter ${sortBy !== "guildLevel" ? "cq-lb-filter--active" : ""}`}
           >
             Scholars
-          </button>
+                    </button>
           <button
             type="button"
             role="tab"
@@ -445,29 +445,29 @@ export function Leaderboards({
           >
             Guilds
           </button>
-        </div>
+                                  </div>
 
         {sortBy !== "guildLevel" ? (
           <div className="cq-lb-scope-track" role="tablist" aria-label="Leaderboard scope">
-            <button
-              type="button"
+                        <button
+                          type="button"
               role="tab"
               aria-selected={xpTab === "campus"}
               onClick={() => setXpTab("campus")}
               className={`cq-lb-scope flex-1 ${xpTab === "campus" ? "cq-lb-scope--active" : ""}`}
             >
               Campus
-            </button>
-            <button
-              type="button"
+                        </button>
+                        <button
+                          type="button"
               role="tab"
               aria-selected={xpTab === "friends"}
               onClick={() => setXpTab("friends")}
               className={`cq-lb-scope flex-1 ${xpTab === "friends" ? "cq-lb-scope--active" : ""}`}
             >
               Friends
-            </button>
-          </div>
+                        </button>
+                    </div>
         ) : null}
       </div>
 
@@ -544,13 +544,13 @@ export function Leaderboards({
                 onRetry={() => void loadXpLeaderboards()}
                 compact
               />
-            ) : null}
+                      ) : null}
 
             {xpLoading ? (
               <div className="cq-lb-state" role="status" aria-live="polite">
                 <p className="text-white/70">Loading leaderboard…</p>
                 <XpLeaderboardSkeleton />
-              </div>
+                    </div>
             ) : xpFriendsDataMissing ? (
               <ScreenDataState
                 variant="error"
@@ -617,8 +617,8 @@ export function Leaderboards({
                           {...xpLeaderboardMetricProps("totalXp", row)}
                         />
                       ))}
-                    </ul>
-                  </div>
+        </ul>
+          </div>
                 ) : null}
 
               </div>
@@ -692,7 +692,7 @@ export function Leaderboards({
                 );
               })}
             </ul>
-            </div>
+          </div>
           </details>
           ) : null}
         </>
@@ -1121,8 +1121,8 @@ function LeaderboardRow({
         >
           {inner}
         </button>
-      </li>
-    );
+    </li>
+  );
   }
 
   return <li className={`${rowClass} flex items-center gap-3 p-3.5 min-h-[72px]`}>{inner}</li>;
