@@ -26,12 +26,14 @@ const LOCATION_ICONS: Partial<Record<CampusLocationId, LucideIcon>> = {
   "rec-center": Dumbbell,
   "engineering-hall": Cpu,
   "the-quad": Trees,
+  "dining-hall": UtensilsCrossed,
   "rams-den": UtensilsCrossed,
 };
 
-function countLabel(group: CampusMemoryGroup): string {
-  if (group.hasRecent) return `${group.count} live`;
-  return `${group.count} today`;
+/** Live count copy — only when recent/active memories exist. */
+function liveCountLabel(group: CampusMemoryGroup): string | null {
+  if (!group.hasRecent || group.count <= 0) return null;
+  return `${group.count} live`;
 }
 
 /** Tiny optional haptic tick so bubble taps feel physical on mobile. */
@@ -114,9 +116,10 @@ const MemoryTile = memo(function MemoryTile({
   // Live ring only pulses for fresh, not-yet-viewed memories.
   const live = recent && !viewed;
   const thumb = active ? tileThumbSrc(group) : null;
+  const liveLabel = group ? liveCountLabel(group) : null;
   const ariaLabel =
     active && group
-      ? `${tile.label}, ${countLabel(group)}${viewed ? ", viewed" : ""}`
+      ? `${tile.label}${liveLabel ? `, ${liveLabel}` : ""}${viewed ? ", viewed" : ""}`
       : `${tile.label}, add a Memory`;
 
   const handleClick = useCallback(() => {
@@ -154,7 +157,7 @@ const MemoryTile = memo(function MemoryTile({
         {live ? <span className="cq-memories-live-dot" aria-hidden /> : null}
       </span>
       <span className="cq-memories-tile-label">{tile.label}</span>
-      {active && group ? <span className="cq-memories-tile-count">{countLabel(group)}</span> : null}
+      {liveLabel ? <span className="cq-memories-tile-count">{liveLabel}</span> : null}
     </button>
   );
 });
@@ -249,27 +252,25 @@ export function CampusMemoriesRow({
     }
   }, [groups]);
 
-  // Build one tile per canonical campus location from the real memory counts,
-  // then order Instagram-style: locations with live memories first (keeping the
-  // original campus order within each group), inactive locations after.
+  // One tile per catalog location, in catalog sort order (Quad → Dining Hall →
+  // Union → …). Live cover/count state comes from real memory groups — never
+  // invent posts. Keep horizontal scroll order stable on mobile.
   const tiles = useMemo<RowTile[]>(() => {
     const byLocation = new Map<string, CampusMemoryGroup>();
     for (const group of groups) byLocation.set(group.locationId, group);
 
-    const base: RowTile[] = campusLocations.map((loc) => {
-      const group = byLocation.get(loc.slug) ?? null;
-      return {
-        locationId: loc.slug as CampusLocationId,
-        label: loc.shortLabel || loc.name,
-        Icon: LOCATION_ICONS[loc.slug as CampusLocationId] ?? MapPin,
-        group,
-        active: Boolean(group && group.count > 0),
-      };
-    });
-
-    const active = base.filter((tile) => tile.active);
-    const inactive = base.filter((tile) => !tile.active);
-    return [...active, ...inactive];
+    return [...campusLocations]
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+      .map((loc) => {
+        const group = byLocation.get(loc.slug) ?? null;
+        return {
+          locationId: loc.slug as CampusLocationId,
+          label: loc.shortLabel || loc.name,
+          Icon: LOCATION_ICONS[loc.slug as CampusLocationId] ?? MapPin,
+          group,
+          active: Boolean(group && group.count > 0),
+        };
+      });
   }, [groups, campusLocations]);
 
   const hasAnyMemories = tiles.some((tile) => tile.active);

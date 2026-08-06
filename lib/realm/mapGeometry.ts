@@ -32,6 +32,7 @@ export type RealmBuildingFootprint = {
 export const REALM_BUILDING_FOOTPRINTS: RealmBuildingFootprint[] = [
   { id: "library", cx: 44, cy: 46, w: 4.4, h: 3.4, rotate: -4 },
   { id: "the-quad", cx: 46, cy: 50, w: 5.8, h: 4.2 },
+  { id: "dining-hall", cx: 51, cy: 58, w: 4.2, h: 3.2, rotate: 1 },
   { id: "memorial-union", cx: 47, cy: 54, w: 4.8, h: 3.6, rotate: 2 },
   { id: "rams-den", cx: 49, cy: 56, w: 3.6, h: 2.8, rotate: -2 },
   { id: "rec-center", cx: 52, cy: 62, w: 5.2, h: 3.8, rotate: 3 },

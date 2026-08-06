@@ -96,6 +96,17 @@ const ALIAS_ENTRIES: AliasEntry[] = [
     realmLocationId: "rec-center",
   },
   {
+    aliases: [
+      "dining hall",
+      "hope dining hall",
+      "butterfield dining",
+      "butterfield dining hall",
+      "uri dining hall",
+      "campus dining",
+    ],
+    realmLocationId: "dining-hall",
+  },
+  {
     aliases: ["rams den", "ram's den"],
     realmLocationId: "rams-den",
   },

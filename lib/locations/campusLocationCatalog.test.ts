@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  campusLocationIdFromLegacyKey,
   clearCampusLocationCatalogCache,
   getCampusLocation,
   getCampusLocationCatalogSnapshot,
@@ -60,5 +61,18 @@ describe("campus location catalog marker safety", () => {
     expect(isCampusLocationCatalogStale()).toBe(true);
     setCampusLocationCatalogCache([customRow("custom-hall")]);
     expect(isCampusLocationCatalogStale()).toBe(false);
+  });
+
+  it("includes Dining Hall after The Quad and before Union in the builtin catalog", () => {
+    const slugs = getCampusLocationCatalogSnapshot().map((row) => row.slug);
+    const quad = slugs.indexOf("the-quad");
+    const dining = slugs.indexOf("dining-hall");
+    const union = slugs.indexOf("memorial-union");
+    expect(dining).toBeGreaterThan(-1);
+    expect(quad).toBeLessThan(dining);
+    expect(dining).toBeLessThan(union);
+    expect(getCampusLocation("dining-hall").name).toBe("Dining Hall");
+    expect(getCampusLocation("dining-hall").shortLabel).toBe("Dining Hall");
+    expect(campusLocationIdFromLegacyKey("dining_hall")).toBe("dining-hall");
   });
 });

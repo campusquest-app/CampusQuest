@@ -33,11 +33,11 @@ export type CampusLocationRegistryEntry = CampusLocationRecord & {
 
 const LEGACY_CAMPUS_KEY_BY_SLUG: Partial<Record<string, CampusLocationKey>> = {
   "the-quad": "quad",
+  "dining-hall": "dining_hall",
   library: "library",
   "memorial-union": "memorial_union",
   "rec-center": "mackal_rec_center",
   "engineering-hall": "academic_building",
-  "rams-den": "dining_hall",
 };
 
 const ID_BY_LEGACY_CAMPUS_KEY: Partial<Record<CampusLocationKey, string>> = {
@@ -46,7 +46,7 @@ const ID_BY_LEGACY_CAMPUS_KEY: Partial<Record<CampusLocationKey, string>> = {
   memorial_union: "memorial-union",
   mackal_rec_center: "rec-center",
   academic_building: "engineering-hall",
-  dining_hall: "rams-den",
+  dining_hall: "dining-hall",
   ryan_center: "rams-den",
 };
 

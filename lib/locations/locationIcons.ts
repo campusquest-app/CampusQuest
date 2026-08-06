@@ -12,6 +12,7 @@ export const LOCATION_ICON_SRC: Partial<Record<CampusLocationId, string>> = {
   "rec-center": "/icons/locations/rec-center.png",
   "engineering-hall": "/icons/locations/engineering-hall.png",
   "the-quad": "/icons/locations/the-quad.png",
+  "dining-hall": "/icons/locations/rams-den.png",
   "rams-den": "/icons/locations/rams-den.png",
 };
 

@@ -79,7 +79,7 @@ export const CAMPUS_KEY_TO_REALM: Partial<Record<CampusLocationKey, RealmLocatio
   memorial_union: "memorial-union",
   mackal_rec_center: "rec-center",
   academic_building: "engineering-hall",
-  dining_hall: "rams-den",
+  dining_hall: "dining-hall",
   ryan_center: "rams-den",
 };
 

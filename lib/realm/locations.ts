@@ -65,12 +65,13 @@ export interface RealmLocation {
 }
 
 export const REALM_LOCATION_OPTIONS: { id: RealmLocationId; name: string }[] = [
+  { id: "the-quad", name: "The Quad" },
+  { id: "dining-hall", name: "Dining Hall" },
   { id: "memorial-union", name: "Memorial Union" },
   { id: "library", name: "Library" },
   { id: "rec-center", name: "Rec Center" },
   { id: "engineering-hall", name: "Engineering Hall" },
   { id: "business-building", name: "Business Building" },
-  { id: "the-quad", name: "The Quad" },
   { id: "rams-den", name: "Rams Den" },
 ];
 
@@ -108,6 +109,32 @@ export const EMPTY_REALM_ACTIVITY = {
 
 /** Base campus landmark pins — quest/event counts come from the map API. */
 export const REALM_LOCATIONS: RealmLocation[] = [
+  {
+    id: "the-quad",
+    name: "The Quad",
+    fantasyName: "Central Kingdom Green",
+    flavorText: "The heart of the kingdom — every campus path leads here.",
+    markerEmoji: "✨",
+    shortLabel: "The Quad",
+    major: true,
+    x: 46,
+    y: 50,
+    ...EMPTY_REALM_ACTIVITY,
+    moments: [],
+  },
+  {
+    id: "dining-hall",
+    name: "Dining Hall",
+    fantasyName: "Feast Hall of the Realm",
+    flavorText: "Trays clatter and rumors travel faster than the dinner line.",
+    markerEmoji: "🍽",
+    shortLabel: "Dining Hall",
+    major: true,
+    x: 51,
+    y: 58,
+    ...EMPTY_REALM_ACTIVITY,
+    moments: [],
+  },
   {
     id: "memorial-union",
     name: "Memorial Union",
@@ -170,19 +197,6 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     major: false,
     x: 62,
     y: 42,
-    ...EMPTY_REALM_ACTIVITY,
-    moments: [],
-  },
-  {
-    id: "the-quad",
-    name: "The Quad",
-    fantasyName: "Central Kingdom Green",
-    flavorText: "The heart of the kingdom — every campus path leads here.",
-    markerEmoji: "✨",
-    shortLabel: "The Quad",
-    major: true,
-    x: 46,
-    y: 50,
     ...EMPTY_REALM_ACTIVITY,
     moments: [],
   },

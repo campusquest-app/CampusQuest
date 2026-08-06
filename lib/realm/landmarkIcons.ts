@@ -4,6 +4,7 @@ export type LandmarkIconId =
   | "library"
   | "memorial-union"
   | "the-quad"
+  | "dining-hall"
   | "rec-center"
   | "engineering-hall"
   | "business-building"
@@ -16,6 +17,7 @@ const LANDMARK_ICON_MAP: Record<string, LandmarkIconId> = {
   library: "library",
   "memorial-union": "memorial-union",
   "the-quad": "the-quad",
+  "dining-hall": "dining-hall",
   "rec-center": "rec-center",
   "engineering-hall": "engineering-hall",
   "business-building": "business-building",
