@@ -1,4 +1,11 @@
 import { isPasswordRequirementFailure } from "@/lib/passwordRequirements";
+import {
+  SIGNIN_USER_MESSAGES,
+  isAuthNetworkError,
+  isAuthRateLimitedError,
+  isExplicitEmailNotConfirmedError,
+  isInvalidCredentialsAuthError,
+} from "@/lib/authSignInErrors";
 
 /** Error thrown by the auth client when an API responds with a non-2xx status. */
 export class HttpRequestError extends Error {
@@ -59,69 +66,70 @@ export function mapSignupError(
     return { message: "Unable to create your account. Please try again." };
   }
   if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
-    return { message: "Unable to connect. Please try again." };
+    return { message: SIGNIN_USER_MESSAGES.network };
   }
   return { message: "Unable to create your account. Please try again." };
 }
 
 export function mapSigninError(error: unknown): string {
   if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
-    return "Unable to connect. Please try again.";
+    return SIGNIN_USER_MESSAGES.network;
   }
+
   if (error instanceof HttpRequestError) {
-    const raw = (error.message ?? "").toLowerCase();
-    const code = (error.code ?? "").toLowerCase();
+    const code = error.code ?? null;
+    const message = error.message ?? "";
+    const status = error.status;
 
     // Auth succeeded but profile/stats are still provisioning (includes 503).
     if (isPendingSetupError(error)) {
-      // Prefer user-facing wait copy over raw server diagnostics like "Profile not found".
       if (/finishing your account|still creating|still preparing|still finishing/i.test(error.message)) {
         return error.message.trim();
       }
       return PENDING_SETUP_MESSAGE;
     }
 
-    // Genuine connectivity / Supabase outage.
+    // Explicit email confirmation only — never via substring matches on credential copy.
+    if (isExplicitEmailNotConfirmedError({ code, message })) {
+      return SIGNIN_USER_MESSAGES.emailNotConfirmed;
+    }
+
+    if (isAuthRateLimitedError({ code, message, status })) {
+      return SIGNIN_USER_MESSAGES.rateLimited;
+    }
+
+    // Connectivity / Supabase outage (after pending-setup check).
     if (
-      error.status === 503 ||
-      code === "auth_service_unavailable" ||
-      raw.includes("unable to connect") ||
-      raw.includes("fetch failed") ||
-      raw.includes("network")
+      isAuthNetworkError({ code, message, status }) &&
+      !PROFILE_SETUP_CODES.has((code ?? "").toLowerCase())
     ) {
-      return "Unable to connect. Please try again.";
+      return SIGNIN_USER_MESSAGES.network;
     }
-    // Email confirmation must be checked before the generic 401 branch.
-    if (code === "email_not_confirmed" || raw.includes("confirm your email")) {
-      return "Please confirm your URI email before signing in.";
+
+    if (isInvalidCredentialsAuthError({ code, message, status })) {
+      return SIGNIN_USER_MESSAGES.invalidCredentials;
     }
-    if (
-      error.status === 401 ||
-      code === "invalid_credentials" ||
-      raw.includes("invalid email or password") ||
-      raw.includes("incorrect email or password")
-    ) {
-      return "Invalid email or password. If you just signed up, confirm your email first.";
-    }
-    if (error.status === 429 || code === "email_rate_limit") {
-      return "Too many confirmation emails were sent. Please wait a few minutes before trying again.";
-    }
-    if (error.status === 404) {
+
+    if (status === 404) {
       return PENDING_SETUP_MESSAGE;
     }
-    if (error.status >= 500) {
-      return "Something went wrong on our end. Please try again.";
+
+    if (status >= 500) {
+      return SIGNIN_USER_MESSAGES.server;
     }
+
+    return SIGNIN_USER_MESSAGES.generic;
   }
-  return "Unable to connect. Please try again.";
+
+  return SIGNIN_USER_MESSAGES.generic;
 }
 
-export function mapGenericError(error: unknown, fallback = "Unable to connect. Please try again."): string {
+export function mapGenericError(error: unknown, fallback = SIGNIN_USER_MESSAGES.network): string {
   if (error instanceof HttpRequestError) {
     return fallback;
   }
   if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
-    return "Unable to connect. Please try again.";
+    return SIGNIN_USER_MESSAGES.network;
   }
   return fallback;
 }

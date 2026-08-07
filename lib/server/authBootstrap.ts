@@ -261,8 +261,8 @@ export async function findAuthUserIdByEmail(email: string): Promise<string | nul
 
 /**
  * Supabase may require email confirmation before issuing a session.
- * CampusQuest signup already provisions profiles server-side; confirm the auth
- * user so the same credentials work on immediate sign-in.
+ * When email verification is off, confirm + sign-in. If the password is wrong,
+ * roll confirmation back so a failed guess never leaves the account confirmed.
  */
 export async function confirmEmailAndSignIn(args: {
   publicClient: PublicAuthClient;
@@ -270,7 +270,10 @@ export async function confirmEmailAndSignIn(args: {
   email: string;
   password: string;
   route: "signup" | "login";
-}): Promise<{ user: User; session: Session } | null> {
+}): Promise<
+  | { ok: true; user: User; session: Session }
+  | { ok: false; signInError: { message?: string; code?: string; status?: number } | null }
+> {
   const admin = createAdminClient();
   const { error: confirmError } = await admin.auth.admin.updateUserById(args.userId, {
     email_confirm: true,
@@ -280,7 +283,7 @@ export async function confirmEmailAndSignIn(args: {
       userId: args.userId,
       message: confirmError.message,
     });
-    return null;
+    return { ok: false, signInError: null };
   }
 
   const { data, error } = await args.publicClient.auth.signInWithPassword({
@@ -288,12 +291,22 @@ export async function confirmEmailAndSignIn(args: {
     password: args.password,
   });
   if (error || !data.user || !data.session) {
+    const { error: rollbackError } = await admin.auth.admin.updateUserById(args.userId, {
+      email_confirm: false,
+    });
     logAuthFlow(args.route, "post_confirm_sign_in_failed", {
       userId: args.userId,
       message: error?.message ?? "missing session",
       code: error?.code ?? null,
+      status: error?.status ?? null,
+      rolledBackConfirm: !rollbackError,
     });
-    return null;
+    return {
+      ok: false,
+      signInError: error
+        ? { message: error.message, code: error.code, status: error.status }
+        : { message: "missing session", code: "invalid_credentials", status: 400 },
+    };
   }
 
   logAuthFlow(args.route, "auto_confirm_sign_in_ok", {
@@ -302,5 +315,5 @@ export async function confirmEmailAndSignIn(args: {
     hasSession: true,
   });
 
-  return { user: data.user, session: data.session };
+  return { ok: true, user: data.user, session: data.session };
 }

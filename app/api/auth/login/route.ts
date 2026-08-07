@@ -1,5 +1,12 @@
 import { ZodError } from "zod";
 import { NextResponse } from "next/server";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
+import {
+  SIGNIN_USER_MESSAGES,
+  classifySupabaseSignInFailure,
+  isExplicitEmailNotConfirmedError,
+  type ClassifiedSignInFailure,
+} from "@/lib/authSignInErrors";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { confirmEmailAndSignIn, findAuthUserIdByEmail, logAuthError, logAuthFlow } from "@/lib/server/authBootstrap";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
@@ -9,60 +16,12 @@ import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { touchUserActivityById } from "@/lib/server/userActivity";
 import { authLoginSchema, readJson } from "@/lib/server/validation";
 
-const GENERIC_LOGIN_ERROR =
-  "Invalid email or password. If you just signed up, confirm your email first.";
-
-type SafeLoginFailure = {
-  status: number;
-  message: string;
-  code: string;
-};
-
-function classifyLoginFailure(error: unknown): SafeLoginFailure {
-  const rawMessage =
-    error && typeof error === "object" && "message" in error ? String((error as { message?: unknown }).message ?? "") : "";
-  const rawCode =
-    error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
-  const message = rawMessage.toLowerCase();
-  const code = rawCode.toLowerCase();
-
-  if (
-    code.includes("fetch") ||
-    message.includes("fetch failed") ||
-    message.includes("network") ||
-    message.includes("getaddrinfo") ||
-    message.includes("enotfound") ||
-    message.includes("failed to fetch")
-  ) {
-    return {
-      status: 503,
-      message: "Unable to connect. Please try again.",
-      code: "AUTH_SERVICE_UNAVAILABLE",
-    };
-  }
-
-  if (code.includes("email_not_confirmed") || message.includes("email not confirmed")) {
-    return {
-      status: 401,
-      message: "Please confirm your URI email before signing in.",
-      code: "EMAIL_NOT_CONFIRMED",
-    };
-  }
-
-  return {
-    status: 401,
-    message: GENERIC_LOGIN_ERROR,
-    code: "INVALID_CREDENTIALS",
-  };
-}
-
-function loginFail(failure: SafeLoginFailure, debug?: Record<string, unknown>) {
-  // Server-side faults (missing env, Supabase outage) must always be visible for
-  // triage; credential failures stay on the dev-only channel to avoid log noise.
+function loginFail(failure: ClassifiedSignInFailure, debug?: Record<string, unknown>) {
   const logFailure = failure.status >= 500 ? logAuthError : logAuthFlow;
   logFailure("login", "failed", {
     status: failure.status,
     code: failure.code,
+    // Sanitized user-facing message only — never passwords/tokens.
     message: failure.message,
     ...debug,
   });
@@ -88,18 +47,22 @@ export async function POST(request: Request) {
       emailConfirmed: Boolean(data.user?.email_confirmed_at ?? data.user?.confirmed_at),
       error: error?.message ?? null,
       code: error?.code ?? null,
+      status: error?.status ?? null,
     });
 
     let authUser = data.user;
     let authSession = data.session;
 
-    if ((error || !authUser || !authSession) && error) {
-      const failure = classifyLoginFailure(error);
-      const isUnconfirmed =
-        failure.message.toLowerCase().includes("confirm your email") ||
-        String(error.code ?? "").toLowerCase().includes("email_not_confirmed");
+    if (error && (!authUser || !authSession)) {
+      const failure = classifySupabaseSignInFailure(error);
+      const isUnconfirmed = isExplicitEmailNotConfirmedError({
+        code: error.code,
+        message: error.message,
+      });
 
-      if (isUnconfirmed) {
+      // Auto-confirm recovery only when the flag is off AND Supabase explicitly
+      // reported email_not_confirmed (never for invalid_credentials).
+      if (isUnconfirmed && !FEATURE_FLAGS.requireEmailVerification) {
         const userId = await findAuthUserIdByEmail(input.email);
         if (userId) {
           const recovered = await confirmEmailAndSignIn({
@@ -109,19 +72,46 @@ export async function POST(request: Request) {
             password: input.password,
             route: "login",
           });
-          if (recovered) {
+          if (recovered.ok) {
             authUser = recovered.user;
             authSession = recovered.session;
+          } else if (recovered.signInError) {
+            return loginFail(classifySupabaseSignInFailure(recovered.signInError), {
+              userId,
+              hasSession: false,
+              recoveryAttempted: true,
+            });
+          } else {
+            return loginFail(failure, {
+              userId,
+              hasSession: false,
+              recoveryAttempted: true,
+            });
           }
         }
+      }
+
+      if (!authUser || !authSession) {
+        return loginFail(failure, {
+          userId: authUser?.id ?? null,
+          hasSession: Boolean(authSession),
+        });
       }
     }
 
     if (!authUser || !authSession) {
-      return loginFail(classifyLoginFailure(error), {
-        userId: authUser?.id ?? data.user?.id ?? null,
-        hasSession: Boolean(authSession),
-      });
+      return loginFail(
+        {
+          status: 401,
+          message: SIGNIN_USER_MESSAGES.invalidCredentials,
+          code: "INVALID_CREDENTIALS",
+        },
+        {
+          userId: authUser?.id ?? null,
+          hasSession: Boolean(authSession),
+          reason: "missing_session_without_auth_error",
+        },
+      );
     }
 
     let player;
@@ -151,8 +141,6 @@ export async function POST(request: Request) {
       throw setupError;
     }
 
-    // QA test accounts (is_test_user = true) always restart onboarding on
-    // sign-in and never earn badges or count as active users.
     let torchBearer: Awaited<ReturnType<typeof tryAwardTorchBearerBadge>> = null;
     const qaOnboardingReset = await resetQaOnboardingOnLoginIfTestUser({
       ...player.profile,
@@ -199,6 +187,6 @@ export async function POST(request: Request) {
     if (error instanceof ApiError) {
       return fail(error);
     }
-    return loginFail(classifyLoginFailure(error));
+    return loginFail(classifySupabaseSignInFailure(error));
   }
 }

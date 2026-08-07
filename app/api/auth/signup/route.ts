@@ -98,7 +98,7 @@ export async function POST(request: Request) {
         password: input.password,
         route: "signup",
       });
-      if (confirmed) {
+      if (confirmed.ok) {
         sessionUser = confirmed.user;
         authSession = confirmed.session;
       } else {
