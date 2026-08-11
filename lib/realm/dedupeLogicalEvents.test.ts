@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MapEventPin } from "@/lib/mapLocationGroups";
 import {
   dedupeLogicalMapEvents,
+  getLogicalEventFallbackKey,
   getLogicalEventKey,
   mergeMapEventPins,
   normalizeEventTitle,
@@ -72,6 +73,17 @@ describe("dedupeLogicalEvents", () => {
     const a = pin({ id: "a", startsAt: "2026-07-10T23:00:00.000Z", sourceExternalId: "111" });
     const b = pin({ id: "b", startsAt: "2026-07-17T23:00:00.000Z", sourceExternalId: "222" });
     expect(dedupeLogicalMapEvents([a, b])).toHaveLength(2);
+  });
+
+  it("fallback keys match republished listings with different external ids", () => {
+    const original = pin({ sourceExternalId: "111", eventUrl: "https://urinvolved.uri.edu/event/111" });
+    const republished = pin({
+      id: "evt-2",
+      sourceExternalId: "999",
+      eventUrl: "https://urinvolved.uri.edu/event/999",
+    });
+    expect(getLogicalEventKey(original)).not.toBe(getLogicalEventKey(republished));
+    expect(getLogicalEventFallbackKey(original)).toBe(getLogicalEventFallbackKey(republished));
   });
 
   it("event count and marker count both equal one after dedupe", () => {

@@ -59,11 +59,15 @@ export async function fetchMeProfileAndStatsDeduped(): Promise<MeSessionSnapshot
   }
 
   if (inflight) {
-    console.log(`${LOG} profile+stats using in-flight duplicate (deduped)`);
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`${LOG} profile+stats using in-flight duplicate (deduped)`);
+    }
     return inflight;
   }
   const t0 = typeof performance !== "undefined" ? performance.now() : 0;
-  console.log(`${LOG} profile+stats fetch start`);
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`${LOG} profile+stats fetch start`);
+  }
 
   inflight = (async () => {
     try {
@@ -71,8 +75,10 @@ export async function fetchMeProfileAndStatsDeduped(): Promise<MeSessionSnapshot
         fetchAuthed<MeProfileRow>("/api/me/profile"),
         fetchAuthed<MeStatsRow>("/api/me/stats"),
       ]);
-      const ms = typeof performance !== "undefined" ? performance.now() - t0 : 0;
-      console.log(`${LOG} profile+stats parallel done ${Math.round(ms)}ms`);
+      if (process.env.NODE_ENV !== "production") {
+        const ms = typeof performance !== "undefined" ? performance.now() - t0 : 0;
+        console.log(`${LOG} profile+stats parallel done ${Math.round(ms)}ms`);
+      }
       return { userId: profile.id, profile, stats };
     } catch (err) {
       if (isMissingSessionError(err)) {

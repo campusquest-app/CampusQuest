@@ -14,7 +14,7 @@ import {
 } from "@/lib/server/urinvolved/eventLocation";
 import { parseUrinvolvedEventsRss, type ParsedUrinvolvedEvent } from "@/lib/server/urinvolved/parseRssEvents";
 import { getCampusLocations } from "@/lib/server/campusLocationsDb";
-import { getLogicalEventKey, isLogicalEventCancelled } from "@/lib/realm/dedupeLogicalEvents";
+import { getLogicalEventFallbackKey, isLogicalEventCancelled } from "@/lib/realm/dedupeLogicalEvents";
 import { resolveAndUpsertEventMapPlacement } from "@/lib/server/urinvolved/resolveAndUpsertEventMapPlacement";
 import { revalidatePath } from "next/cache";
 
@@ -107,24 +107,23 @@ async function findActiveLogicalDuplicateEvent(
     .gte("starts_at", windowStart)
     .lte("starts_at", windowEnd);
 
-  const incomingKey = getLogicalEventKey({
+  // Compare fallback fingerprints so republished listings with new external IDs still merge.
+  const incomingKey = getLogicalEventFallbackKey({
     title: event.title,
     startsAt: event.startsAt,
     organizationName: event.organizationName,
     locationName: event.locationName,
-    sourceExternalId: event.externalId,
     eventUrl: event.eventUrl,
   });
 
   for (const row of data ?? []) {
     if (String(row.external_id) === event.externalId) continue;
-    const rowKey = getLogicalEventKey({
+    const rowKey = getLogicalEventFallbackKey({
       title: String(row.title ?? ""),
       startsAt: (row.starts_at as string | null) ?? null,
       organizationName: (row.organization_name as string | null) ?? null,
       locationName: (row.location_name as string | null) ?? null,
       locationText: (row.venue_name as string | null) ?? (row.address as string | null) ?? null,
-      sourceExternalId: String(row.external_id),
       eventUrl: (row.event_url as string | null) ?? null,
       updatedAt: (row.updated_at as string | null) ?? null,
       tags: (row.tags as string[] | null) ?? null,

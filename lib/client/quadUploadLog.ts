@@ -32,7 +32,7 @@ function isDev(): boolean {
 }
 
 export function logQuadUpload(stage: QuadUploadStage, detail: Record<string, unknown> = {}): void {
-  if (!isDev() && stage === "upload_progress") return;
+  if (!isDev()) return;
   console.info(`${PREFIX} ${stage}`, detail);
 }
 

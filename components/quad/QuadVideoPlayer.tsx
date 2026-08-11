@@ -53,6 +53,11 @@ export function QuadVideoPlayer({
     if (!el) return;
     playerRegistry.set(playerId, el);
     return () => {
+      try {
+        el.pause();
+      } catch {
+        /* ignore */
+      }
       playerRegistry.delete(playerId);
       if (activePlayerId === playerId) activePlayerId = null;
     };

@@ -7,7 +7,7 @@ import { SpecialQuests } from "@/components/SpecialQuests";
 import { TOPNAV_CSS_VAR } from "@/components/TopNav";
 
 const questsPanelBoxClass =
-  "fixed left-3 right-3 z-[101] max-h-[calc(100vh-var(--cq-topnav-h,56px)-env(safe-area-inset-bottom,0px)-12px)] overflow-y-auto sm:left-1/2 sm:right-auto sm:w-[min(34rem,92vw)] sm:max-h-[min(70vh,calc(100vh-var(--cq-topnav-h,56px)-env(safe-area-inset-bottom,0px)-16px))] sm:-translate-x-1/2";
+  "fixed left-3 right-3 z-[101] max-h-[calc(100dvh-var(--cq-topnav-h,56px)-env(safe-area-inset-bottom,0px)-12px)] overflow-y-auto sm:left-1/2 sm:right-auto sm:w-[min(34rem,92vw)] sm:max-h-[min(70dvh,calc(100dvh-var(--cq-topnav-h,56px)-env(safe-area-inset-bottom,0px)-16px))] sm:-translate-x-1/2";
 
 function QuestDropdownChrome({ children }: { children: ReactNode }) {
   return (

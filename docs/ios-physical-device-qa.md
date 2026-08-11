@@ -1,64 +1,159 @@
 # Physical device release QA (iOS Capacitor)
 
-Run on a **physical iPhone** with a **Release** / TestFlight build when possible. Simulators cannot fully validate APNs or camera in all cases.
+Run on a **physical iPhone** with a **Release** / TestFlight build when possible. Simulators cannot fully validate APNs, camera, mic, or real GPS.
 
-## Preflight
+Mark each item: **PASS** / **FAIL** / **BLOCKED** and add a short note.
 
-- [ ] Bundle ID `com.nicklockhart.campusquest`
-- [ ] Version/build expected (currently 1.0 / 1 unless bumped)
-- [ ] Archive scheme = **Release** (not Debug / CAPACITOR_DEBUG)
-- [ ] App loads `https://campusquestapp.com` (not localhost)
-- [ ] No Expo / `/mobile` assets appear
+Device: _____________ iOS: _____________ Build: 1.0 (1) Tester: _____________ Date: _____________
 
-## First launch / auth
+---
 
-- [ ] LaunchScreen splash appears, then live app
-- [ ] Sign up / sign in works
-- [ ] QA account `qa_signup@campusquestapp.com` reaches main app without URI email
-- [ ] Legal consent can be accepted; Privacy/Terms/Guidelines open
+## Install / launch
 
-## Native chrome
+| Item | Result | Notes |
+|------|--------|-------|
+| Clean install | | |
+| First launch (splash → live app) | | |
+| Launch after force close | | |
+| Background → foreground | | |
+| Launch with network unavailable | | |
 
-- [ ] Status bar readable on dark UI
-- [ ] Safe areas OK under notch / Dynamic Island / home indicator
-- [ ] Keyboard does not permanently cover DM compose / auth fields
-- [ ] External Maps / URInvolved links leave the WebView (system browser / Maps)
+## Account
 
-## Permissions (grant + deny paths)
+| Item | Result | Notes |
+|------|--------|-------|
+| Create account | | |
+| URI email validation | | |
+| Verification email received | | |
+| Verify email → can sign in | | |
+| First login + onboarding | | |
+| Logout | | |
+| Login again | | |
+| Incorrect password (friendly message) | | |
+| Unverified account handling | | |
+| QA account `qa_signup@campusquestapp.com` reaches main app | | |
 
-- [ ] **Location when in use:** Realm map; deny leaves app usable
-- [ ] **Camera:** QR + media capture; deny shows a clear failure, no crash
-- [ ] **Microphone:** voice note / video; deny fails gracefully
-- [ ] **Photos:** library pick works; deny fails gracefully
-- [ ] **Notifications:** not prompted on cold launch; opt-in via Settings → Push notifications; denied state offers path to iOS Settings
+## Feed
 
-## Push (requires APNs + capability)
+| Item | Result | Notes |
+|------|--------|-------|
+| View posts | | |
+| Like / unlike | | |
+| Comments / replies | | |
+| Create text post | | |
+| Image post | | |
+| Multi-image post | | |
+| Video post | | |
+| Mixed-media post | | |
+| Delete own post | | |
+| Report post | | |
+| Block user from post/profile | | |
 
-- [ ] Enable push on device
-- [ ] Receive DM push while backgrounded
-- [ ] Tap DM push → opens that conversation (or Inbox messages)
-- [ ] Tap tag/comment push → opens the post when available
-- [ ] Tap event announcement → Events detail when event still listed
-- [ ] Logout disables device association (no pushes after logout)
+## Gestures
 
-## Product surfaces
+| Item | Result | Notes |
+|------|--------|-------|
+| Horizontal multi-image swipe (not stolen by tab swipe) | | |
+| Pinch-to-zoom on images | | |
+| Page tab swipe outside media | | |
+| Vertical scroll | | |
+| Pull-to-refresh (if present) | | |
 
-- [ ] The Quad feed loads; create a post with photo/video
-- [ ] Inbox messages + notifications
-- [ ] Share profile / share post uses share sheet on device
-- [ ] Light haptics on map marker / celebrations (if perceptible)
-- [ ] Offline: airplane mode shows load failure / offline shell without white crash
+## Messages
 
-## Safety
+| Item | Result | Notes |
+|------|--------|-------|
+| Conversation list | | |
+| Send message | | |
+| Receive message | | |
+| Unread count | | |
+| Push / notification → conversation | | |
+| Deleted conversation deep link falls back gracefully | | |
 
-- [ ] Report post / comment / message / profile / event / org
-- [ ] Block user; blocked user cannot message
-- [ ] Delete account on a **throwaway** account only
+## Map
 
-## Red flags (fail build)
+| Item | Result | Notes |
+|------|--------|-------|
+| First load | | |
+| Allow location | | |
+| Deny location (app still usable) | | |
+| Markers visible | | |
+| Marker selection | | |
+| Event details | | |
+| Walk To | | |
+| Return from navigation | | |
+| Bad / no network on map | | |
+| No obvious duplicate stacked pins for same building | | |
 
-- [ ] Localhost or staging URL in production build
-- [ ] Debug map pins / magic map env flags on
-- [ ] Developer-only admin tools visible to non-admin
-- [ ] Stripe/payment UI that does not exist in web product
-- [ ] Push permission spam on first open
+## Events
+
+| Item | Result | Notes |
+|------|--------|-------|
+| Open campus event | | |
+| Open external synced event | | |
+| Location shown | | |
+| RSVP if applicable | | |
+| Push → event detail | | |
+
+## Profile
+
+| Item | Result | Notes |
+|------|--------|-------|
+| Avatar / fallback when image missing | | |
+| Profile image | | |
+| Other user profile | | |
+| Edit profile | | |
+| Staff/faculty exclusion from student leaderboards (if applicable) | | |
+
+## Native integrations
+
+| Item | Result | Notes |
+|------|--------|-------|
+| Share sheet | | |
+| Haptic feedback | | |
+| External Browser / Maps handoff | | |
+| Camera | | |
+| Microphone | | |
+| Photo library | | |
+| Location | | |
+| Push settings → iOS Settings when denied | | |
+| Keyboard does not permanently cover inputs | | |
+| Status bar readable | | |
+| Safe areas (notch / home indicator) | | |
+
+## Privacy / safety
+
+| Item | Result | Notes |
+|------|--------|-------|
+| Account deletion (throwaway account only) | | |
+| Block user | | |
+| Unblock immediately after accidental block | | |
+| Report post/user | | |
+| Permission denial does not crash | | |
+
+## Stress
+
+| Item | Result | Notes |
+|------|--------|-------|
+| Rapidly switch tabs | | |
+| Repeatedly open/close map | | |
+| Repeated feed refresh | | |
+| 10+ minute session | | |
+| Background during media upload | | |
+| Network interruption mid-action | | |
+| Low connectivity | | |
+
+## Production env sanity (preflight)
+
+| Item | Result | Notes |
+|------|--------|-------|
+| App loads `https://campusquestapp.com` (not localhost) | | |
+| No Expo / `/mobile` UI | | |
+| `NEXT_PUBLIC_DEBUG_EVENT_PINS` off in Production | | |
+| `NEXT_PUBLIC_DEBUG_MAP_MAGIC` off in Production | | |
+| Archive scheme = Release | | |
+
+## Sign-off
+
+Overall: PASS / FAIL / BLOCKED  
+Blockers: _______________________________________________

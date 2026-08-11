@@ -79,10 +79,8 @@ export function isLogicalEventCancelled(event: LogicalEventFields): boolean {
   return isEventCancelled({ title: event.title, cancelled: event.cancelled });
 }
 
-export function getLogicalEventKey(event: LogicalEventFields): string {
-  const externalId = fieldExternalId(event);
-  if (externalId) return `external:${externalId}`;
-
+/** Title/org/location/start fingerprint — used when external IDs differ for the same listing. */
+export function getLogicalEventFallbackKey(event: LogicalEventFields): string {
   return [
     "fallback",
     normalizeEventTitle(event.title),
@@ -90,6 +88,12 @@ export function getLogicalEventKey(event: LogicalEventFields): string {
     fieldLocation(event),
     fieldStartIso(event),
   ].join("|");
+}
+
+export function getLogicalEventKey(event: LogicalEventFields): string {
+  const externalId = fieldExternalId(event);
+  if (externalId) return `external:${externalId}`;
+  return getLogicalEventFallbackKey(event);
 }
 
 function pickWinningFields<T extends LogicalEventFields>(a: T, b: T): T {

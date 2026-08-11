@@ -207,8 +207,11 @@ function externalEventCoordsMeta(match: {
 }): Omit<GroupBucket, "qrCodes" | "quests" | "events"> | null {
   if (!isValidCampusCoordinate(match.latitude, match.longitude)) return null;
   const map = geoToRealmMapPercent(match.latitude, match.longitude);
+  // Bucket by rounded coordinates so minor naming differences don't stack pins.
+  const latKey = match.latitude.toFixed(5);
+  const lngKey = match.longitude.toFixed(5);
   return {
-    groupKey: `ext-event:${match.locationName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    groupKey: `ext-event:${latKey},${lngKey}`,
     locationKey: "other",
     realmLocationId: null,
     locationName: match.locationName,

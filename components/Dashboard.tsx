@@ -393,7 +393,9 @@ export function Dashboard() {
       if (pilotCampusState.status === "loading") {
         const tokenForPeek = getAccessToken();
         const peekSnap = tokenForPeek ? peekSchoolVerificationSnapshot(tokenForPeek) : null;
-        if (peekSnap && pilotCampusFeaturesUnlocked(peekSnap)) {
+        // Never trust client-cached admin flags while the server snapshot is still loading.
+        const trustedPeek = peekSnap ? { ...peekSnap, platformAdminAccess: false } : null;
+        if (trustedPeek && pilotCampusFeaturesUnlocked(trustedPeek)) {
           return node;
         }
         if (!showCampusSlowNotice) {
@@ -465,10 +467,13 @@ export function Dashboard() {
     if (bootstrapStatus !== "authenticated" || !character) return;
     let cancelled = false;
     let unsubDeepLink: (() => void) | undefined;
-    void import("@/lib/client/capacitorNative").then(({ configureNativeChrome }) => {
-      if (!cancelled) void configureNativeChrome();
-    });
-    void import("@/lib/client/nativePush").then(async ({ syncNativePushIfAuthorized, subscribePushDeepLink }) => {
+    void import("@/lib/client/capacitorNative")
+      .then(({ configureNativeChrome }) => {
+        if (!cancelled) void configureNativeChrome();
+      })
+      .catch(() => undefined);
+    void import("@/lib/client/nativePush")
+      .then(async ({ syncNativePushIfAuthorized, subscribePushDeepLink }) => {
       if (cancelled) return;
       await syncNativePushIfAuthorized();
       if (cancelled) return;
@@ -524,7 +529,8 @@ export function Dashboard() {
         setTab("inbox");
         setInboxDeepLink({ nonce, preferSubTab: "notifications" });
       });
-    });
+    })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
       unsubDeepLink?.();
@@ -1321,8 +1327,9 @@ export function Dashboard() {
       const t0 = typeof performance !== "undefined" ? performance.now() : 0;
       try {
         const data = await fetchAuthed<{ notifications: unknown[]; unreadCount: number }>("/api/notifications?limit=1");
-        const ms = typeof performance !== "undefined" ? performance.now() - t0 : 0;
-        console.log("[cq:load] notifications", Math.round(ms), "ms");
+        if (process.env.NODE_ENV !== "production" && typeof performance !== "undefined") {
+          console.log("[cq:load] notifications", Math.round(performance.now() - t0), "ms");
+        }
         if (!cancelled) setUnreadNotificationCount(Number(data.unreadCount ?? 0));
       } catch {
         if (!cancelled) setUnreadNotificationCount(0);
@@ -1568,7 +1575,7 @@ export function Dashboard() {
           statsMerged = snap1.stats;
         }
 
-        if (typeof performance !== "undefined") {
+        if (process.env.NODE_ENV !== "production" && typeof performance !== "undefined") {
           console.log("[cq:load] bootstrap critical (profile+stats+LSPush)", Math.round(performance.now() - tCrit), "ms");
         }
 
@@ -1614,7 +1621,7 @@ export function Dashboard() {
                     major?: string | null;
                   } | null;
                 }>("/api/me/onboarding-preferences");
-                if (typeof performance !== "undefined") {
+                if (process.env.NODE_ENV !== "production" && typeof performance !== "undefined") {
                   console.log("[cq:load] onboarding-preferences deferred", Math.round(performance.now() - tp), "ms");
                 }
                 if (cancelled) return;

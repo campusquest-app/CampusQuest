@@ -449,7 +449,6 @@ function FieldNoteCardInner({
   }
 
   async function handleConfirmDelete() {
-    console.log("Deleting post", note.id);
     setActionPending(true);
     try {
       await deleteQuadPostRequest(note.id);
@@ -929,7 +928,12 @@ function FieldNoteCardInner({
             {ownerMenu}
           </header>
           {proofBlock ? (
-            <div className="quad-feed-media-wrap carousel w-full" data-no-drawer-swipe="true">
+            <div
+              className="quad-feed-media-wrap carousel w-full"
+              data-no-drawer-swipe="true"
+              data-cq-horizontal-scroll="true"
+              data-cq-gesture-block="swipe-tab"
+            >
               {proofBlock}
               {note.locationName ? <FeedLocationChip name={note.locationName} onMedia /> : null}
             </div>

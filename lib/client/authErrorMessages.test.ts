@@ -213,4 +213,17 @@ describe("mapSignupError", () => {
       message: "Too many confirmation emails were sent. Please wait a few minutes before trying again.",
     });
   });
+
+  it("does not leak raw Supabase/Postgres signup failures", () => {
+    expect(
+      mapSignupError(
+        httpError(500, 'duplicate key value violates unique constraint "profiles_pkey"', "PROFILE_SETUP_FAILED"),
+      ),
+    ).toEqual({
+      message: "We're finishing your account setup. Please wait a moment, then try signing in.",
+    });
+    expect(
+      mapSignupError(httpError(400, "JWT expired: supabase auth exception", "UNKNOWN")),
+    ).toEqual({ message: "Unable to create your account. Please try again." });
+  });
 });

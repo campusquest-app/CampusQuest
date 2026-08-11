@@ -190,6 +190,7 @@ export function Inbox({
   const [pinBusyUserId, setPinBusyUserId] = useState<string | null>(null);
   const [openedPost, setOpenedPost] = useState<FieldNote | null>(null);
   const [openingPost, setOpeningPost] = useState(false);
+  const [messagesLoadedOnce, setMessagesLoadedOnce] = useState(false);
   const conversationReadSnapshotRef = useRef<ConversationItem[] | null>(null);
   const pendingReadOptimisticRef = useRef<{ conversationId: string; badgeDelta: number } | null>(null);
   const handledDeepLinkNonceRef = useRef<number | null>(null);
@@ -231,7 +232,9 @@ export function Inbox({
     if (deepLink.conversationId) {
       const match = conversations.find((c) => c.conversationId === deepLink.conversationId);
       if (!match) {
-        // Conversations still loading — wait for next render.
+        if (!messagesLoadedOnce || messageLoading) return;
+        handledDeepLinkNonceRef.current = deepLink.nonce;
+        setMessageError("This conversation is no longer available.");
         return;
       }
       handledDeepLinkNonceRef.current = deepLink.nonce;
@@ -255,7 +258,15 @@ export function Inbox({
         avatar: match.otherUser.avatarUrl ?? "",
       });
     }
-  }, [deepLink, conversations, onSubTabChange, onOpenDm, openQuadPostFromNotification]);
+  }, [
+    deepLink,
+    conversations,
+    messagesLoadedOnce,
+    messageLoading,
+    onSubTabChange,
+    onOpenDm,
+    openQuadPostFromNotification,
+  ]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedMessageSearch(messageSearch), 200);
@@ -354,11 +365,15 @@ export function Inbox({
       const pinnedPayload = await fetchPinnedDmUsers();
       setPinnedUsers(pinnedPayload.filter((row) => row.pinnedUserId !== character.id));
     } catch (loadError) {
-      const message = loadError instanceof Error ? loadError.message : "Could not load messages.";
+      const message =
+        loadError instanceof Error && loadError.message.trim() && !/supabase|postgres|sqlstate/i.test(loadError.message)
+          ? loadError.message
+          : "Could not load messages.";
       setMessageError(message);
       setPinnedUsers([]);
     } finally {
       setMessageLoading(false);
+      setMessagesLoadedOnce(true);
     }
   }, [character.id]);
 

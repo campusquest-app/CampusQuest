@@ -131,6 +131,10 @@ export function isGestureTargetBlocked(
   kinds: Set<GestureBlockKind>,
 ): boolean {
   if (!(target instanceof Element)) return false;
+  // Align tab swipe with drawer ignore: carousels / horizontal scrollers own the gesture.
+  if (kinds.has("swipe-tab") && isHorizontalScrollGestureTarget(target)) {
+    return true;
+  }
   let node: Element | null = target;
   while (node) {
     const block = node.getAttribute("data-cq-gesture-block");

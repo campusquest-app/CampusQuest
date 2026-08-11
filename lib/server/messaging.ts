@@ -1651,16 +1651,8 @@ export async function blockUser(args: {
 export async function unblockUser(args: { userClient: SupabaseClientLike; userId: string; blockedUserId: string }) {
   const { userClient, userId, blockedUserId } = args;
   await assertAccountCanSocialize(userClient, userId);
-  const recentBlockCutoff = new Date(Date.now() - 30_000).toISOString();
-  const { data: recentlyTouched, error: recentlyTouchedError } = await userClient
-    .from("blocked_users")
-    .select("id")
-    .eq("blocker_id", userId)
-    .eq("blocked_id", blockedUserId)
-    .gte("updated_at", recentBlockCutoff)
-    .maybeSingle();
-  if (recentlyTouchedError) throw new ApiError(400, recentlyTouchedError.message, "UNBLOCK_SPAM_CHECK_FAILED");
-  if (recentlyTouched) throw new ApiError(429, ABUSE_RATE_LIMIT_MESSAGE, "ABUSE_RATE_LIMITED");
+  // Do not rate-limit unblock against the just-created block row — users must be able
+  // to reverse an accidental block immediately. Abuse controls remain on blockUser.
   const { error } = await userClient
     .from("blocked_users")
     .delete()

@@ -52,7 +52,12 @@ export function QuadMediaCarousel({
   }
 
   return (
-    <div className="relative w-full" data-no-drawer-swipe="true">
+    <div
+      className="relative w-full carousel"
+      data-no-drawer-swipe="true"
+      data-cq-horizontal-scroll="true"
+      data-cq-gesture-block="swipe-tab"
+    >
       <div
         ref={scrollerRef}
         className="flex w-full snap-x snap-mandatory overflow-x-auto scrollbar-none"
@@ -119,7 +124,21 @@ export function QuadMediaCarousel({
                     alt=""
                     loading={nearby ? "eager" : "lazy"}
                     className="max-h-[min(70vh,720px)] w-full object-contain"
+                    onError={(event) => {
+                      const img = event.currentTarget;
+                      img.onerror = null;
+                      img.style.display = "none";
+                      const fallback = img.parentElement?.querySelector("[data-media-fallback]");
+                      if (fallback instanceof HTMLElement) fallback.hidden = false;
+                    }}
                   />
+                  <div
+                    hidden
+                    data-media-fallback
+                    className="flex max-h-[min(70vh,720px)] min-h-[240px] w-full items-center justify-center bg-black text-sm text-white/50"
+                  >
+                    Media unavailable
+                  </div>
                 </button>
               )}
               {slideTags.length > 0 && tagsVisible ? (

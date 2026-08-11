@@ -45,6 +45,27 @@ function isPendingSetupError(error: HttpRequestError): boolean {
   );
 }
 
+/** Signup codes with intentional, user-safe server copy we may surface as-is. */
+const SAFE_SIGNUP_CODES = new Set([
+  "EMAIL_ALREADY_EXISTS",
+  "EMAIL_ALREADY_REGISTERED",
+  "INVALID_EMAIL",
+  "SCHOOL_EMAIL_REQUIRED",
+  "CAMPUS_EMAIL_REQUIRED",
+  "USERNAME_TAKEN",
+  "VALIDATION_ERROR",
+]);
+
+function isSafeUserFacingSignupMessage(message: string): boolean {
+  const m = message.trim();
+  if (!m || m.length > 180) return false;
+  // Block Postgres / stack / internal leakage patterns.
+  if (/postgres|supabase|sqlstate|permission denied|row-level|jwt|stack|exception|column |relation /i.test(m)) {
+    return false;
+  }
+  return true;
+}
+
 export function mapSignupError(
   error: unknown,
 ): { passwordRequirements: true } | { message: string } {
@@ -58,10 +79,14 @@ export function mapSignupError(
       };
     }
     if (isPendingSetupError(error)) {
-      return { message: error.message.trim() || PENDING_SETUP_MESSAGE };
+      return { message: PENDING_SETUP_MESSAGE };
     }
-    if (error.message.trim()) {
-      return { message: error.message };
+    const code = (error.code ?? "").toUpperCase();
+    if (SAFE_SIGNUP_CODES.has(code) && isSafeUserFacingSignupMessage(error.message)) {
+      return { message: error.message.trim() };
+    }
+    if (error.status >= 500) {
+      return { message: SIGNIN_USER_MESSAGES.server };
     }
     return { message: "Unable to create your account. Please try again." };
   }

@@ -56,6 +56,19 @@ describe("push notification type policy", () => {
       }).eventId,
     ).toBe("e1");
   });
+
+  it("ignores unrelated entity types for conversation/post/event ids", () => {
+    const payload = buildPushPayload({
+      type: "friend_request",
+      notificationId: "n4",
+      relatedEntityType: "connection_request",
+      relatedEntityId: "req-1",
+    });
+    expect(payload.conversationId).toBeNull();
+    expect(payload.postId).toBeNull();
+    expect(payload.eventId).toBeNull();
+    expect(payload.relatedEntityId).toBe("req-1");
+  });
 });
 
 describe("apns configuration", () => {
