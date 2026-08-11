@@ -615,19 +615,12 @@ function FieldNoteCardInner({
     }
     const url = typeof window !== "undefined" ? window.location.href : "";
     const text = note.body.slice(0, 200);
-    try {
-      if (typeof navigator !== "undefined" && navigator.share) {
-        await navigator.share({
-          title: `${note.authorName} on CampusQuest`,
-          text,
-          url,
-        });
-      } else if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(`${text}\n${url}`);
-      }
-    } catch {
-      /* user cancelled share */
-    }
+    const { nativeShare } = await import("@/lib/client/capacitorNative");
+    await nativeShare({
+      title: `${note.authorName} on CampusQuest`,
+      text,
+      url,
+    });
   }, [note, onSharePost]);
 
   function handleProofImageTap() {

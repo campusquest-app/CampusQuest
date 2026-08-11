@@ -26,3 +26,8 @@ yarn-error.log*
 
 # Supabase local metadata
 supabase/.temp
+
+# Capacitor iOS shell (deps live under /native; do not hoist to root)
+native/node_modules/
+native/ios/App/Pods/
+native/ios/DerivedData/

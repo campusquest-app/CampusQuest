@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+*.log
+ios/App/Pods/
+ios/App/Podfile.lock
+ios/capacitor-cordova-ios-plugins/
+ios/DerivedData/
+*.xcuserdata
+xcuserdata/
+.idea/
+dist/

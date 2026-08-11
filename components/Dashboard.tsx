@@ -36,7 +36,7 @@ import { UserProfileScreen } from "./UserProfileScreen";
 import { CharacterProfilePaneToggle } from "./profile/CharacterProfilePaneToggle";
 import type { ProfileTab } from "./profile/ProfileTabNav";
 import { DirectMessageThread } from "./DirectMessageThread";
-import { Inbox, type InboxSubTab } from "./Inbox";
+import { Inbox, type InboxDeepLink, type InboxSubTab } from "./Inbox";
 import { SharePostSheet } from "@/components/messages/SharePostSheet";
 import {
   buildShareTargetFromFieldNote,
@@ -229,6 +229,8 @@ export function Dashboard() {
   const [tab, setTab] = useState<Tab>("quad");
   const [quadFeedTab, setQuadFeedTab] = useState<QuadFeedTab>("public");
   const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
+  const [inboxDeepLink, setInboxDeepLink] = useState<InboxDeepLink | null>(null);
+  const pushDeepLinkNonceRef = useRef(0);
   const [characterPane, setCharacterPane] = useState<CharacterPane>("sheet");
   const [profileTab, setProfileTab] = useState<ProfileTab>("posts");
   const [tabEnterDirection, setTabEnterDirection] = useState<SwipeNavDirection | null>(null);
@@ -457,6 +459,77 @@ export function Dashboard() {
   useEffect(() => {
     tabRef.current = tab;
   }, [tab]);
+
+  // Native chrome + push: refresh token if already authorized; never OS-prompt on launch.
+  useEffect(() => {
+    if (bootstrapStatus !== "authenticated" || !character) return;
+    let cancelled = false;
+    let unsubDeepLink: (() => void) | undefined;
+    void import("@/lib/client/capacitorNative").then(({ configureNativeChrome }) => {
+      if (!cancelled) void configureNativeChrome();
+    });
+    void import("@/lib/client/nativePush").then(async ({ syncNativePushIfAuthorized, subscribePushDeepLink }) => {
+      if (cancelled) return;
+      await syncNativePushIfAuthorized();
+      if (cancelled) return;
+      unsubDeepLink = subscribePushDeepLink((link) => {
+        pushDeepLinkNonceRef.current += 1;
+        const nonce = pushDeepLinkNonceRef.current;
+        const postId =
+          link.postId ??
+          (link.relatedEntityType === "quad_post" ? link.relatedEntityId : undefined);
+        const conversationId =
+          link.conversationId ??
+          (link.relatedEntityType === "conversation" ? link.relatedEntityId : undefined);
+        const eventId =
+          link.eventId ??
+          (link.relatedEntityType === "event" ? link.relatedEntityId : undefined);
+
+        if (eventId) {
+          try {
+            window.sessionStorage.setItem("cq_open_event_id", eventId);
+          } catch {
+            /* ignore */
+          }
+          setTab("events");
+          return;
+        }
+
+        if (conversationId) {
+          setInboxSubTab("messages");
+          setTab("inbox");
+          setInboxDeepLink({
+            nonce,
+            conversationId,
+            preferSubTab: "messages",
+          });
+          return;
+        }
+
+        if (postId) {
+          setInboxSubTab("notifications");
+          setTab("inbox");
+          setInboxDeepLink({
+            nonce,
+            postId,
+            preferSubTab: "notifications",
+            revealPhotoTags:
+              link.type === "quad_post_tag" || link.type === "quad_post_tag_approval",
+          });
+          return;
+        }
+
+        // Friend requests / org moderation / other social → notifications tab.
+        setInboxSubTab("notifications");
+        setTab("inbox");
+        setInboxDeepLink({ nonce, preferSubTab: "notifications" });
+      });
+    });
+    return () => {
+      cancelled = true;
+      unsubDeepLink?.();
+    };
+  }, [bootstrapStatus, character]);
 
   useEffect(() => {
     friendViewUserIdRef.current = friendView?.character.id ?? null;
@@ -1066,6 +1139,12 @@ export function Dashboard() {
       }
     }
     // Explicit logout is the only place we tear down the persisted session.
+    try {
+      const { disableNativePushOnLogout } = await import("@/lib/client/nativePush");
+      await disableNativePushOnLogout();
+    } catch {
+      /* best-effort */
+    }
     await signOutSupabaseSession();
     clearAccessToken();
     invalidateMeSessionCache();
@@ -1138,6 +1217,7 @@ export function Dashboard() {
           break;
         case "blocked-users":
         case "tags-mentions":
+        case "push-notifications":
         case "delete-account":
           // Handled inside AppSideDrawer sub-panels.
           break;
@@ -2381,6 +2461,7 @@ export function Dashboard() {
             subTab={inboxSubTab}
             onSubTabChange={setInboxSubTab}
             onUnreadCountChange={setUnreadNotificationCount}
+            deepLink={inboxDeepLink}
           />,
         )}
 

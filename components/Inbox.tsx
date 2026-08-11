@@ -49,6 +49,15 @@ import type { FieldNote } from "@/lib/types";
 
 export type InboxSubTab = "messages" | "notifications";
 
+/** One-shot deep navigation into Inbox (push taps / in-app routing). */
+export type InboxDeepLink = {
+  nonce: number;
+  conversationId?: string;
+  postId?: string;
+  revealPhotoTags?: boolean;
+  preferSubTab?: InboxSubTab;
+};
+
 type DirectConversationItem = {
   type: "direct";
   conversationId: string;
@@ -152,6 +161,7 @@ export function Inbox({
   subTab,
   onSubTabChange,
   onUnreadCountChange,
+  deepLink = null,
 }: {
   character: Character;
   onBack: () => void;
@@ -160,6 +170,7 @@ export function Inbox({
   subTab: InboxSubTab;
   onSubTabChange: (tab: InboxSubTab) => void;
   onUnreadCountChange?: Dispatch<SetStateAction<number>>;
+  deepLink?: InboxDeepLink | null;
 }) {
   const [messageSearch, setMessageSearch] = useState("");
   const [dmWith, setDmWith] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
@@ -181,6 +192,7 @@ export function Inbox({
   const [openingPost, setOpeningPost] = useState(false);
   const conversationReadSnapshotRef = useRef<ConversationItem[] | null>(null);
   const pendingReadOptimisticRef = useRef<{ conversationId: string; badgeDelta: number } | null>(null);
+  const handledDeepLinkNonceRef = useRef<number | null>(null);
 
   const openQuadPostFromNotification = useCallback(
     async (postId: string) => {
@@ -201,6 +213,49 @@ export function Inbox({
     },
     [character.id],
   );
+
+  useEffect(() => {
+    if (!deepLink) return;
+    if (handledDeepLinkNonceRef.current === deepLink.nonce) return;
+
+    if (deepLink.preferSubTab) {
+      onSubTabChange(deepLink.preferSubTab);
+    }
+
+    if (deepLink.postId) {
+      handledDeepLinkNonceRef.current = deepLink.nonce;
+      void openQuadPostFromNotification(deepLink.postId);
+      return;
+    }
+
+    if (deepLink.conversationId) {
+      const match = conversations.find((c) => c.conversationId === deepLink.conversationId);
+      if (!match) {
+        // Conversations still loading — wait for next render.
+        return;
+      }
+      handledDeepLinkNonceRef.current = deepLink.nonce;
+      if (match.type === "group") {
+        setGroupWith(match.conversationId);
+        return;
+      }
+      if (onOpenDm) {
+        onOpenDm({
+          userId: match.otherUser.id,
+          username: match.otherUser.username,
+          name: match.otherUser.displayName,
+          avatar: match.otherUser.avatarUrl ?? "",
+        });
+        return;
+      }
+      setDmWith({
+        userId: match.otherUser.id,
+        username: match.otherUser.username,
+        name: match.otherUser.displayName,
+        avatar: match.otherUser.avatarUrl ?? "",
+      });
+    }
+  }, [deepLink, conversations, onSubTabChange, onOpenDm, openQuadPostFromNotification]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedMessageSearch(messageSearch), 200);

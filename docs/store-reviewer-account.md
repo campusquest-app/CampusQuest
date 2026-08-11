@@ -8,7 +8,7 @@ Do **not** publish these credentials in public marketing pages.
 | Field | Value |
 |--------|--------|
 | Email | `qa_signup@campusquestapp.com` (or `QA_TEST_ACCOUNT_EMAIL` in production secrets) |
-| Password | Set in production secrets as `QA_TEST_ACCOUNT_PASSWORD` |
+| Password | `[PASTE QA_TEST_ACCOUNT_PASSWORD HERE]` — stored only in production secrets / ASC |
 
 Exact email match only. Other `@campusquestapp.com` addresses do **not** bypass campus verification.
 

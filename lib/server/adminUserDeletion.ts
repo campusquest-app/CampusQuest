@@ -28,6 +28,8 @@ export const USER_DATA_DELETION_STEPS: DeletionStep[] = [
   { table: "direct_conversation_participants", columns: ["user_id"], description: "conversation memberships" },
   { table: "direct_conversations", columns: ["created_by"], description: "owned conversations" },
   { table: "notifications", columns: ["user_id"], description: "notifications" },
+  { table: "push_devices", columns: ["user_id"], description: "push devices" },
+  { table: "user_push_settings", columns: ["user_id"], description: "push settings" },
   { table: "quad_posts", columns: ["user_id"], description: "quad posts" },
   { table: "quad_comment_likes", columns: ["user_id"], description: "quad comment likes" },
   { table: "quad_post_comments", columns: ["user_id"], description: "quad comments" },

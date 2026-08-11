@@ -58,7 +58,9 @@ export function RealmDirectionsPanel({
       destination: destinationCoords,
       travelMode: "DRIVING",
     });
-    window.open(url, "_blank", "noopener,noreferrer");
+    void import("@/lib/client/capacitorNative").then(({ openExternalUrl }) => {
+      void openExternalUrl(url);
+    });
   };
 
   const handleOpenInRealmMap = () => {
@@ -119,7 +121,9 @@ export function RealmDirectionsPanel({
                     destination: destinationCoords,
                     travelMode: "WALKING",
                   });
-                  window.open(url, "_blank", "noopener,noreferrer");
+                  void import("@/lib/client/capacitorNative").then(({ openExternalUrl }) => {
+                    void openExternalUrl(url);
+                  });
                 }}
                 className="cq-realm-directions-retry touch-manipulation"
               >

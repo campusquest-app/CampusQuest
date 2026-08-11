@@ -1,4 +1,4 @@
-export const DEFAULT_POLICY_VERSION = "2026-05-12.1";
+export const DEFAULT_POLICY_VERSION = "2026-08-11.1";
 
 export const LEGAL_DOC_LINKS = {
   privacy: "/legal/privacy",

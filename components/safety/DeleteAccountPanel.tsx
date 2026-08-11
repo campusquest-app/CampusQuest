@@ -27,6 +27,12 @@ export function DeleteAccountPanel({
     setBusy(true);
     setError(null);
     try {
+      try {
+        const { disableNativePushOnLogout } = await import("@/lib/client/nativePush");
+        await disableNativePushOnLogout();
+      } catch {
+        /* FK cascade / admin deletion still remove device rows */
+      }
       await deleteOwnAccountRequest();
       try {
         await signOutSupabaseSession();

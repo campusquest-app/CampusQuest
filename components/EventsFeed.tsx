@@ -153,6 +153,27 @@ export function EventsFeed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (loading) return;
+    let targetId: string | null = null;
+    try {
+      targetId = window.sessionStorage.getItem("cq_open_event_id");
+      if (targetId) window.sessionStorage.removeItem("cq_open_event_id");
+    } catch {
+      targetId = null;
+    }
+    if (!targetId) return;
+    const campus = events.find((event) => event.id === targetId);
+    if (campus) {
+      setActiveDetail({ kind: "campus", event: campus });
+      return;
+    }
+    const external = externalEvents.find((event) => event.id === targetId);
+    if (external) {
+      setActiveDetail({ kind: "external", event: external });
+    }
+  }, [loading, events, externalEvents]);
+
   const categories = useMemo(
     () =>
       Array.from(new Set([...events, ...externalEvents].map((event) => event.category).filter(Boolean))).sort(),

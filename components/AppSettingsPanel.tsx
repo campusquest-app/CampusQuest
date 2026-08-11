@@ -24,6 +24,7 @@ export type SettingsActionId =
   | "account-type"
   | "profile-character"
   | "notifications"
+  | "push-notifications"
   | "privacy"
   | "blocked-users"
   | "tags-mentions"
@@ -49,7 +50,13 @@ const SETTINGS_SECTIONS: { title: string; rows: SettingsRow[] }[] = [
       { id: "account", label: "Account", description: "Name, username, sign-in", icon: User },
       { id: "account-type", label: "Account Type", description: "Student or Faculty / Staff", icon: IdCard },
       { id: "profile-character", label: "Profile & Character", description: "Avatar, stats, bio", icon: UserCircle },
-      { id: "notifications", label: "Notifications", description: "Alerts and inbox", icon: Bell },
+      { id: "notifications", label: "Inbox", description: "In-app alerts and activity", icon: Bell },
+      {
+        id: "push-notifications",
+        label: "Push notifications",
+        description: "Phone alerts for messages and social activity",
+        icon: Bell,
+      },
       {
         id: "delete-account",
         label: "Delete account",

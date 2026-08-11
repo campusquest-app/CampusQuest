@@ -32,6 +32,7 @@ import { AppSettingsPanel, type SettingsActionId } from "@/components/AppSetting
 import { AppHelpSupportPanel } from "@/components/AppHelpSupportPanel";
 import { BlockedUsersPanel } from "@/components/safety/BlockedUsersPanel";
 import { TagsMentionsSettingsPanel } from "@/components/safety/TagsMentionsSettingsPanel";
+import { PushNotificationsSettingsPanel } from "@/components/safety/PushNotificationsSettingsPanel";
 import { DeleteAccountPanel } from "@/components/safety/DeleteAccountPanel";
 import { DRAWER_SNAP_MS } from "@/lib/client/drawerGeometry";
 import { setIsDrawerOpen } from "@/lib/client/appDrawerStore";
@@ -56,7 +57,7 @@ export type AppDrawerDestination =
   | "progress-hub"
   | "skills-lore";
 
-type DrawerPanel = "menu" | "settings" | "help" | "blocked-users" | "tags-mentions" | "delete-account";
+type DrawerPanel = "menu" | "settings" | "help" | "blocked-users" | "tags-mentions" | "push-notifications" | "delete-account";
 
 type MenuItemId =
   | AppDrawerDestination
@@ -455,6 +456,10 @@ export function AppSideDrawer({
                   setPanel("tags-mentions");
                   return;
                 }
+                if (action === "push-notifications") {
+                  setPanel("push-notifications");
+                  return;
+                }
                 if (action === "delete-account") {
                   setPanel("delete-account");
                   return;
@@ -474,6 +479,8 @@ export function AppSideDrawer({
             <BlockedUsersPanel onBack={() => setPanel("settings")} />
           ) : panel === "tags-mentions" ? (
             <TagsMentionsSettingsPanel onBack={() => setPanel("settings")} />
+          ) : panel === "push-notifications" ? (
+            <PushNotificationsSettingsPanel onBack={() => setPanel("settings")} />
           ) : panel === "delete-account" ? (
             <DeleteAccountPanel
               onBack={() => setPanel("settings")}

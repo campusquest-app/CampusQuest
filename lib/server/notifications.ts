@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/server/http";
 import { logNotificationError, logNotificationInfo } from "@/lib/server/notificationDebug";
+import { enqueuePushForNotification } from "@/lib/server/pushDelivery";
 import { createAdminClient } from "@/lib/server/supabase";
 
 type SupabaseClientLike = ReturnType<typeof createAdminClient>;
@@ -249,6 +250,15 @@ export async function createNotification(args: {
         type: args.type,
         attemptColumns: Object.keys(row),
       });
+      enqueuePushForNotification({
+        notificationId: data.id,
+        userId: args.userId,
+        type: args.type,
+        title: args.title,
+        body: args.body,
+        relatedEntityType: args.relatedEntityType,
+        relatedEntityId: args.relatedEntityId,
+      });
       return data;
     }
 
@@ -299,9 +309,25 @@ export async function createNotificationsBulk(args: {
     related_entity_id: args.relatedEntityId ?? null,
     actor_id: null,
   }));
-  const { error } = await admin.from("notifications").insert(rows);
+  const { data, error } = await admin
+    .from("notifications")
+    .insert(rows)
+    .select("id, user_id, type, title, body, related_entity_type, related_entity_id");
   if (error) throw new ApiError(400, error.message, "NOTIFICATION_BULK_CREATE_FAILED");
-  return { created: rows.length };
+
+  for (const row of data ?? []) {
+    enqueuePushForNotification({
+      notificationId: row.id,
+      userId: row.user_id,
+      type: row.type,
+      title: row.title,
+      body: row.body,
+      relatedEntityType: row.related_entity_type,
+      relatedEntityId: row.related_entity_id,
+    });
+  }
+
+  return { created: (data ?? rows).length };
 }
 
 async function fetchNotificationsForUser(args: {

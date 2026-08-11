@@ -21,23 +21,15 @@ export function ProfileActionButtons({
 
   const handleShare = async () => {
     const url = typeof window !== "undefined" ? window.location.origin : "";
-    const shareData = {
+    const { nativeShare } = await import("@/lib/client/capacitorNative");
+    const result = await nativeShare({
       title: `${character.name} on CampusQuest`,
       text: `Check out @${character.username} (Level ${character.level}) on CampusQuest!`,
       url,
-    };
-    try {
-      if (typeof navigator !== "undefined" && navigator.share) {
-        await navigator.share(shareData);
-        return;
-      }
-      if (typeof navigator !== "undefined" && navigator.clipboard) {
-        await navigator.clipboard.writeText(`${shareData.text} ${url}`.trim());
-        setToast("Profile link copied");
-        window.setTimeout(() => setToast(null), 2200);
-      }
-    } catch {
-      /* user cancelled share — non-blocking */
+    });
+    if (result === "copied") {
+      setToast("Profile link copied");
+      window.setTimeout(() => setToast(null), 2200);
     }
   };
 
