@@ -51,6 +51,7 @@ export function RealmLocationSheet({
   onOpenMemoryGallery,
   questReloadToken = 0,
   onRefreshAll,
+  onPullRefreshAll,
   directionsEnabled = false,
   directionsDestination = null,
   directionsStatus = { status: "idle" },
@@ -72,7 +73,10 @@ export function RealmLocationSheet({
   onOpenMemoryViewer?: (group: CampusMemoryGroup, initialMemoryId?: string, includeExpired?: boolean) => void;
   onOpenMemoryGallery?: (locationId: CampusLocationId) => void;
   questReloadToken?: number;
+  /** Soft refresh on sheet open (no quest reload-token bump). */
   onRefreshAll?: () => void | Promise<void>;
+  /** Explicit pull-to-refresh (may bump quest reload token). */
+  onPullRefreshAll?: () => void | Promise<void>;
   directionsEnabled?: boolean;
   directionsDestination?: RealmDirectionsDestination | null;
   directionsStatus?: RealmDirectionsStatus;
@@ -107,7 +111,9 @@ export function RealmLocationSheet({
     if (!open) return;
     onRefreshMemories?.();
     void onRefreshAll?.();
-  }, [open, locationRefreshKey, onRefreshAll, onRefreshMemories]);
+    // Intentionally omit unstable callback identities that would re-fire while open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open + location identity only
+  }, [open, locationRefreshKey]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -203,7 +209,7 @@ export function RealmLocationSheet({
             className="cq-realm-archive-body cq-realm-archive-body--scroll cq-loc-scroll min-h-0 flex-1"
             onRefresh={async () => {
               onRefreshMemories?.();
-              await onRefreshAll?.();
+              await (onPullRefreshAll ?? onRefreshAll)?.();
             }}
           >
             <LocationHero

@@ -571,6 +571,13 @@ export function RealmMap({
     setQuestReloadToken((token) => token + 1);
   }, [loadCampusMemories, reloadMapGroups]);
 
+  /** Soft refresh when a sheet opens — map pins only. Do not bump questReloadToken
+   * (LocationQuestSection already loads on mount) and do not re-fetch campus
+   * memories here (open effect already calls onRefreshMemories once). */
+  const handleSoftRefreshLocationData = useCallback(async () => {
+    await reloadMapGroups();
+  }, [reloadMapGroups]);
+
   const handleReset = useCallback(() => {
     transformRef.current?.centerView(1, 420);
   }, []);
@@ -1240,7 +1247,8 @@ export function RealmMap({
           currentUserId={userId}
           onClose={closeSheet}
           onRefreshMemories={loadCampusMemories}
-          onRefreshAll={handleRefreshLocationData}
+          onRefreshAll={handleSoftRefreshLocationData}
+          onPullRefreshAll={handleRefreshLocationData}
           questReloadToken={questReloadToken}
           onAddMemory={handleAddMemory}
           onOpenMemoryViewer={handleOpenMemoryViewer}

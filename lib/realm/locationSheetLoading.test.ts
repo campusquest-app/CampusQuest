@@ -63,7 +63,6 @@ describe("locationSheetLoading", () => {
     });
 
     it("covers events+quests / events only / quests only / neither via render gate", () => {
-      // location with events handled by parent; quest list still gated on count
       expect(
         shouldRenderQuestList({ showSkeleton: false, initialLoading: false, questCount: 1 }),
       ).toBe(true);
@@ -74,17 +73,14 @@ describe("locationSheetLoading", () => {
   });
 
   describe("memories", () => {
-    it("shows memory skeletons only before first load", () => {
+    it("never shows memory skeleton cards (avoids empty flash to Add Your Memory)", () => {
       expect(
         shouldShowMemorySkeletons({
           initialLoading: true,
           loaded: false,
           memoryCount: 0,
         }),
-      ).toBe(true);
-    });
-
-    it("hides skeletons once loaded with zero memories", () => {
+      ).toBe(false);
       expect(
         shouldShowMemorySkeletons({
           initialLoading: false,
@@ -92,6 +88,16 @@ describe("locationSheetLoading", () => {
           memoryCount: 0,
         }),
       ).toBe(false);
+      expect(
+        shouldShowMemorySkeletons({
+          initialLoading: true,
+          loaded: false,
+          memoryCount: 3,
+        }),
+      ).toBe(false);
+    });
+
+    it("treats loaded zero memories as stable empty", () => {
       expect(
         isStableEmptyAfterLoad({
           loaded: true,
@@ -110,20 +116,10 @@ describe("locationSheetLoading", () => {
       expect(shouldShowMemorySkeletons(loadedEmpty)).toBe(false);
       expect(shouldShowMemorySkeletons({ ...loadedEmpty })).toBe(false);
     });
-
-    it("keeps skeletons off when memories already exist during refresh", () => {
-      expect(
-        shouldShowMemorySkeletons({
-          initialLoading: true,
-          loaded: false,
-          memoryCount: 3,
-        }),
-      ).toBe(false);
-    });
   });
 
   describe("location switches and reopen", () => {
-    it("treats a new location as initial loading again", () => {
+    it("allows quest skeleton again for a new location initial load", () => {
       expect(
         shouldShowQuestSkeleton({
           showSkeleton: true,
@@ -131,13 +127,16 @@ describe("locationSheetLoading", () => {
           questCount: 0,
         }),
       ).toBe(true);
+    });
+
+    it("keeps memory skeletons off across location switch loading", () => {
       expect(
         shouldShowMemorySkeletons({
           initialLoading: true,
           loaded: false,
           memoryCount: 0,
         }),
-      ).toBe(true);
+      ).toBe(false);
     });
 
     it("failed request that settles loading still counts as stable empty", () => {

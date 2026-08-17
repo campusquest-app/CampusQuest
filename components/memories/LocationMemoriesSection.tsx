@@ -59,6 +59,9 @@ export function LocationMemoriesSection({
   const [loaded, setLoaded] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const loadedForLocationRef = useRef<string | null>(null);
+  const requestIdRef = useRef(0);
+  const activeLocationRef = useRef(locationId);
+  activeLocationRef.current = locationId;
 
   const wheelCleanupRef = useRef<(() => void) | null>(null);
   const attachScroller = useCallback((node: HTMLDivElement | null) => {
@@ -77,38 +80,42 @@ export function LocationMemoriesSection({
     wheelCleanupRef.current = () => node.removeEventListener("wheel", onWheel);
   }, []);
 
-  const load = useCallback(
-    async (opts?: { background?: boolean }) => {
-      const background =
-        Boolean(opts?.background) || loadedForLocationRef.current === locationId;
-      if (!background) {
-        setInitialLoading(true);
-        setLoaded(false);
-      }
-      try {
-        const rows = await fetchCampusMemoriesByLocation(locationId);
-        setMemories(rows);
-      } catch {
-        if (!background) setMemories([]);
-      } finally {
-        loadedForLocationRef.current = locationId;
-        setLoaded(true);
-        setInitialLoading(false);
-      }
-    },
-    [locationId],
-  );
+  const load = useCallback(async (forLocationId: CampusLocationId, opts?: { background?: boolean }) => {
+    const background =
+      Boolean(opts?.background) || loadedForLocationRef.current === forLocationId;
+    if (!background) {
+      setInitialLoading(true);
+      setLoaded(false);
+    }
+    const requestId = ++requestIdRef.current;
+    try {
+      const rows = await fetchCampusMemoriesByLocation(forLocationId);
+      if (requestId !== requestIdRef.current) return;
+      if (activeLocationRef.current !== forLocationId) return;
+      setMemories(rows);
+    } catch {
+      if (requestId !== requestIdRef.current) return;
+      if (activeLocationRef.current !== forLocationId) return;
+      if (!background) setMemories([]);
+    } finally {
+      if (requestId !== requestIdRef.current) return;
+      if (activeLocationRef.current !== forLocationId) return;
+      loadedForLocationRef.current = forLocationId;
+      setLoaded(true);
+      setInitialLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadedForLocationRef.current = null;
     setMemories([]);
     setLoaded(false);
     setInitialLoading(true);
-    void load({ background: false });
+    void load(locationId, { background: false });
   }, [locationId, load]);
 
   useEffect(
-    () => subscribeCampusMemoriesChanged(() => void load({ background: true })),
+    () => subscribeCampusMemoriesChanged(() => void load(activeLocationRef.current, { background: true })),
     [load],
   );
 
@@ -133,14 +140,21 @@ export function LocationMemoriesSection({
     onOpenGallery(locationId);
   }, [locationId, onOpenGallery]);
 
+  // Only skeleton when we already expect cards (never flash skeleton → empty Add CTA).
+  // Empty locations keep a stable Add Your Memory card through the first fetch.
   const showMemorySkeletons = shouldShowMemorySkeletons({
     initialLoading,
     loaded,
     memoryCount: sortedMemories.length,
   });
+  const memoriesBusy = initialLoading && !loaded;
 
   return (
-    <section className="cq-loc-section cq-loc-memories" aria-label="Memories">
+    <section
+      className="cq-loc-section cq-loc-memories"
+      aria-label="Memories"
+      aria-busy={memoriesBusy || showMemorySkeletons}
+    >
       <div className="cq-loc-section-head">
         <h3 className="cq-loc-section-title">Memories</h3>
         {sortedMemories.length > 0 ? (

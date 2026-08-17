@@ -77,29 +77,40 @@ export function LocationQuestSection({
   const [initialLoading, setInitialLoading] = useState(true);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const loadedLocationRef = useRef<string | null>(null);
+  const requestIdRef = useRef(0);
+  const activeLocationRef = useRef(locationId);
+  activeLocationRef.current = locationId;
   // Ignore the reloadToken value present at mount — locationId effect already
   // performs the first fetch. Only react to later bumps (pull-to-refresh, etc.).
   const reloadTokenAtMountRef = useRef(reloadToken);
 
   const load = useCallback(
-    async (opts?: { background?: boolean }) => {
-      const background = Boolean(opts?.background) || loadedLocationRef.current === locationId;
+    async (forLocationId: CampusLocationId, opts?: { background?: boolean }) => {
+      const background =
+        Boolean(opts?.background) || loadedLocationRef.current === forLocationId;
       if (!background) {
         setInitialLoading(true);
         setLoaded(false);
       }
+      const requestId = ++requestIdRef.current;
       try {
-        const items = await fetchQuestBoardAdminItems({ locationId, filter: "active" });
+        const items = await fetchQuestBoardAdminItems({ locationId: forLocationId, filter: "active" });
+        if (requestId !== requestIdRef.current) return;
+        if (activeLocationRef.current !== forLocationId) return;
         setQuests(items.filter((item) => item.status !== "completed"));
       } catch {
+        if (requestId !== requestIdRef.current) return;
+        if (activeLocationRef.current !== forLocationId) return;
         if (!background) setQuests([]);
       } finally {
-        loadedLocationRef.current = locationId;
+        if (requestId !== requestIdRef.current) return;
+        if (activeLocationRef.current !== forLocationId) return;
+        loadedLocationRef.current = forLocationId;
         setLoaded(true);
         setInitialLoading(false);
       }
     },
-    [locationId],
+    [],
   );
 
   useEffect(() => {
@@ -107,15 +118,15 @@ export function LocationQuestSection({
     setQuests([]);
     setLoaded(false);
     setInitialLoading(true);
-    void load({ background: false });
+    void load(locationId, { background: false });
   }, [locationId, load]);
 
   useEffect(() => {
     if (reloadToken <= 0) return;
     if (reloadToken === reloadTokenAtMountRef.current) return;
     reloadTokenAtMountRef.current = reloadToken;
-    void load({ background: true });
-  }, [reloadToken, load]);
+    void load(locationId, { background: true });
+  }, [reloadToken, load, locationId]);
 
   const handleClaim = useCallback(
     async (item: UserQuestBoardItem) => {
@@ -123,12 +134,12 @@ export function LocationQuestSection({
       try {
         await completeAdminQuestRequest(item.id);
         await refreshPlayerSnapshotFromServer();
-        await load({ background: true });
+        await load(locationId, { background: true });
       } finally {
         setClaimingId(null);
       }
     },
-    [load],
+    [load, locationId],
   );
 
   const questCards = useMemo(

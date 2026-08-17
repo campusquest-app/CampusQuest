@@ -20,12 +20,18 @@ export function shouldRenderQuestList(args: {
   return args.questCount > 0;
 }
 
-export function shouldShowMemorySkeletons(args: {
+/**
+ * Never flash gray memory cards for the empty case — that mounts skeletons
+ * then swaps to "Add Your Memory" and looks like a layout flash.
+ * Keep the Add CTA mounted from first paint; cards appear when data arrives.
+ * Background refetch must also keep skeletons off (count preserved or empty).
+ */
+export function shouldShowMemorySkeletons(_args: {
   initialLoading: boolean;
   loaded: boolean;
   memoryCount: number;
 }): boolean {
-  return args.initialLoading && !args.loaded && args.memoryCount === 0;
+  return false;
 }
 
 /** After a successful load, empty must never look like "still loading". */

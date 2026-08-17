@@ -20513,6 +20513,12 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   gap: 0.7rem;
 }
 
+/* Author `display:flex` otherwise overrides the HTML `hidden` attribute and
+   leaves empty "What's Happening" chrome visible after a loaded-empty resolve. */
+.cq-loc-section[hidden] {
+  display: none !important;
+}
+
 .cq-loc-section-head {
   display: flex;
   align-items: center;

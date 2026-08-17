@@ -74,23 +74,27 @@ export function LocationActivitySection({
 
   // Keep LocationQuestSection mounted in one stable tree position so loading
   // state never remount-loops when the section hides after an empty result.
+  // CSS `.cq-loc-section[hidden] { display:none !important }` is required —
+  // `display:flex` on `.cq-loc-section` otherwise overrides the HTML hidden attr.
   return (
     <section
       className="cq-loc-section"
-      aria-labelledby="cq-loc-happening-title"
+      aria-labelledby={visibility.showSection ? "cq-loc-happening-title" : undefined}
       hidden={!visibility.showSection}
       aria-hidden={!visibility.showSection}
     >
-      <div className="cq-loc-section-head">
-        <h3 id="cq-loc-happening-title" className="cq-loc-section-title">
-          What&apos;s Happening
-        </h3>
-        {onSeeAll && !showAll && events.length > 4 ? (
-          <button type="button" className="cq-loc-section-link" onClick={onSeeAll}>
-            See all
-          </button>
-        ) : null}
-      </div>
+      {visibility.showSection ? (
+        <div className="cq-loc-section-head">
+          <h3 id="cq-loc-happening-title" className="cq-loc-section-title">
+            What&apos;s Happening
+          </h3>
+          {onSeeAll && !showAll && events.length > 4 ? (
+            <button type="button" className="cq-loc-section-link" onClick={onSeeAll}>
+              See all
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {locationId ? (
         <LocationQuestSection
@@ -104,7 +108,7 @@ export function LocationActivitySection({
         />
       ) : null}
 
-      {previewEvents.length > 0 ? (
+      {visibility.showSection && previewEvents.length > 0 ? (
         <ul className="cq-loc-activity-list">
           {previewEvents.map((event) => (
             <li key={event.id}>
