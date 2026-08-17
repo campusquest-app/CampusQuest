@@ -49,12 +49,17 @@ export function LocationUpcomingHighlight({
       <span className="cq-loc-highlight-copy">
         <span className="cq-loc-highlight-eyebrow">{eyebrow}</span>
         <span className="cq-loc-highlight-title">{event.title}</span>
+        {event.organizationName ? (
+          <span className="cq-loc-highlight-org">{event.organizationName}</span>
+        ) : null}
         <span className="cq-loc-highlight-when">{formatCampusEventWhen(event.startsAt, now)}</span>
       </span>
-      <span className="cq-loc-highlight-cta">
-        View Event
-        <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden />
-      </span>
+      {event.eventUrl ? (
+        <span className="cq-loc-highlight-cta">
+          View Event
+          <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.4} aria-hidden />
+        </span>
+      ) : null}
     </>
   );
 

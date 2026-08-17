@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, MapPin, MoreHorizontal } from "lucide-react";
+import { ChevronLeft, MapPin } from "lucide-react";
 import type { RealmLocation } from "@/lib/realm/locations";
 import { getRealmLocationHeroImage } from "@/lib/realm/locationHeroImages";
 import type { LocationMetaPill } from "@/lib/realm/locationDetailCopy";
@@ -10,15 +10,17 @@ export function LocationHero({
   displayName,
   description,
   pills,
+  fallbackImageUrl,
   onBack,
 }: {
   location: RealmLocation | null;
   displayName: string;
   description: string;
   pills: LocationMetaPill[];
+  fallbackImageUrl?: string | null;
   onBack: () => void;
 }) {
-  const heroImage = location ? getRealmLocationHeroImage(location.id) : null;
+  const heroImage = (location ? getRealmLocationHeroImage(location.id) : null) ?? fallbackImageUrl ?? null;
 
   return (
     <header className="cq-loc-hero cq-realm-hero-enter">
@@ -67,9 +69,6 @@ export function LocationHero({
                 {pill.label}
               </span>
             ))}
-            <span className="cq-loc-hero-pill cq-loc-hero-pill--more" aria-hidden>
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </span>
           </div>
         ) : null}
       </div>

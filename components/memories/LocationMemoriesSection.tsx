@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Heart } from "lucide-react";
+import { Camera, Heart, Play } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import type { CampusMemory, CampusMemoryGroup } from "@/lib/types";
 import type { CampusLocationId } from "@/lib/locations/registry";
@@ -137,6 +137,7 @@ export function LocationMemoriesSection({
               ))
             : sortedMemories.map((memory) => {
                 const showImage = memory.mediaType === "image" && isImageUrl(memory.mediaUrl);
+                const showVideo = memory.mediaType === "video" && isImageUrl(memory.mediaUrl);
                 const caption = memory.body?.trim() || `Memory by ${memory.displayName}`;
                 return (
                   <button
@@ -150,6 +151,13 @@ export function LocationMemoriesSection({
                       {showImage ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={memory.mediaUrl!} alt="" loading="lazy" decoding="async" />
+                      ) : showVideo ? (
+                        <>
+                          <video src={memory.mediaUrl!} preload="metadata" muted playsInline aria-hidden />
+                          <span className="cq-loc-memory-video-badge">
+                            <Play className="h-3.5 w-3.5" fill="currentColor" aria-hidden />
+                          </span>
+                        </>
                       ) : (
                         <span className="cq-loc-memory-media-fallback">{caption.slice(0, 40)}</span>
                       )}

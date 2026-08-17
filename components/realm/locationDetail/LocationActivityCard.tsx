@@ -3,7 +3,7 @@
 import { CalendarDays, ChevronRight, MapPin } from "lucide-react";
 import type { MapEventPin } from "@/lib/mapLocationGroups";
 import { getEventCountdownState, isEventCancelled } from "@/lib/realm/eventCountdown";
-import { formatCampusEventWhen } from "@/lib/realm/formatCampusEventWhen";
+import { formatCampusEventRange } from "@/lib/realm/formatCampusEventWhen";
 
 function categoryForEvent(event: MapEventPin, stateKind: string): { label: string; tone: string } {
   const raw = event.category?.trim().toLowerCase() ?? "";
@@ -14,6 +14,7 @@ function categoryForEvent(event: MapEventPin, stateKind: string): { label: strin
     return { label: "DEAL", tone: "green" };
   }
   if (stateKind === "live") return { label: "LIVE", tone: "blue" };
+  if (raw) return { label: raw.slice(0, 24).toUpperCase(), tone: "blue" };
   return { label: "EVENT", tone: "blue" };
 }
 
@@ -47,9 +48,12 @@ export function LocationActivityCard({
           {category.label}
         </span>
         <span className="cq-loc-activity-title">{event.title}</span>
+        {event.organizationName ? (
+          <span className="cq-loc-activity-org">{event.organizationName}</span>
+        ) : null}
         <span className="cq-loc-activity-meta">
           <CalendarDays className="h-3 w-3 shrink-0" aria-hidden />
-          {formatCampusEventWhen(event.startsAt, now)}
+          {formatCampusEventRange(event.startsAt, event.endsAt, now)}
         </span>
         {place ? (
           <span className="cq-loc-activity-meta">
@@ -60,7 +64,9 @@ export function LocationActivityCard({
         {cancelled ? <span className="cq-loc-activity-warn">Cancelled</span> : null}
       </span>
 
-      <ChevronRight className="cq-loc-activity-chevron h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden />
+      {event.eventUrl ? (
+        <ChevronRight className="cq-loc-activity-chevron h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden />
+      ) : null}
     </>
   );
 

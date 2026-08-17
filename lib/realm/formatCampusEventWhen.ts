@@ -24,3 +24,21 @@ export function formatCampusEventWhen(startsAt: string | null | undefined, now: 
     return time;
   }
 }
+
+/** Adds a same-day end time when one exists: "Today • 1:00 PM – 3:00 PM". */
+export function formatCampusEventRange(
+  startsAt: string | null | undefined,
+  endsAt: string | null | undefined,
+  now: Date = new Date(),
+): string {
+  const startLabel = formatCampusEventWhen(startsAt, now);
+  if (!startsAt || !endsAt) return startLabel;
+
+  const start = new Date(startsAt);
+  const end = new Date(endsAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || !isOnCampusDay(end, start)) {
+    return startLabel;
+  }
+
+  return `${startLabel} – ${formatCampusTime(end)}`;
+}

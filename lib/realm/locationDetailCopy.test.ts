@@ -6,7 +6,10 @@ import {
 import type { RealmLocation } from "@/lib/realm/locations";
 import { pickFeaturedEvent } from "@/components/realm/locationDetail/LocationUpcomingHighlight";
 import type { MapEventPin } from "@/lib/mapLocationGroups";
-import { formatCampusEventWhen } from "@/lib/realm/formatCampusEventWhen";
+import {
+  formatCampusEventRange,
+  formatCampusEventWhen,
+} from "@/lib/realm/formatCampusEventWhen";
 
 function loc(partial: Partial<RealmLocation> & Pick<RealmLocation, "id" | "name">): RealmLocation {
   return {
@@ -92,5 +95,16 @@ describe("formatCampusEventWhen", () => {
     const now = new Date("2026-08-17T16:00:00.000Z");
     expect(formatCampusEventWhen("2026-08-17T18:00:00.000Z", now)).toMatch(/^Today •/);
     expect(formatCampusEventWhen("2026-08-18T18:00:00.000Z", now)).toMatch(/^Tomorrow •/);
+  });
+
+  it("includes a same-day end time when available", () => {
+    const now = new Date("2026-08-17T16:00:00.000Z");
+    expect(
+      formatCampusEventRange(
+        "2026-08-17T17:00:00.000Z",
+        "2026-08-17T19:00:00.000Z",
+        now,
+      ),
+    ).toBe("Today • 1:00 PM – 3:00 PM");
   });
 });

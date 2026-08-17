@@ -22,7 +22,7 @@ function walkSubtitle(
       turnCount: undefined,
     });
   }
-  return null;
+  return "Get walking directions";
 }
 
 export function LocationPrimaryActions({

@@ -75,6 +75,8 @@ function catalogRowsToRealmLocations(rows: CampusLocationRecord[]): RealmLocatio
   return rows.map((row) => ({
     id: row.slug,
     name: row.name,
+    description: row.description,
+    category: row.category,
     fantasyName: row.fantasyName || row.name,
     flavorText: row.flavorText || row.description,
     markerEmoji: row.markerEmoji,
@@ -544,6 +546,10 @@ export function RealmMap({
       setActiveRouteDestination(null);
     }
   }, [cancelInFlightRoute, isRouteSheetOpen]);
+
+  useEffect(() => {
+    if (!isActive && sheetOpen) closeSheet();
+  }, [closeSheet, isActive, sheetOpen]);
 
   const handleAddMemory = useCallback((locationId: CampusLocationId) => {
     setAddMemoryLocationId(locationId);

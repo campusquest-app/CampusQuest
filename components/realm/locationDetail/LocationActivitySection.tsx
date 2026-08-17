@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { MapEventPin, GroupedMapLocation } from "@/lib/mapLocationGroups";
 import type { CampusLocationId } from "@/lib/locations/registry";
 import { LocationQuestSection } from "@/components/realm/LocationQuestSection";
@@ -31,9 +31,27 @@ export function LocationActivitySection({
   const previewEvents = showAll ? events : events.slice(0, 4);
   const hasEvents = previewEvents.length > 0;
   const hasQuests = questState.loading || questState.count > 0;
+  const handleQuestState = useCallback(
+    (next: { count: number; loading: boolean }) => {
+      setQuestState((current) =>
+        current.count === next.count && current.loading === next.loading ? current : next,
+      );
+      onQuestStateChange?.(next);
+    },
+    [onQuestStateChange],
+  );
 
-  if (!hasEvents && !hasQuests && !locationId) return null;
-  if (!hasEvents && !hasQuests) return null;
+  if (!hasEvents && !hasQuests) {
+    return locationId ? (
+      <LocationQuestSection
+        locationId={locationId}
+        mapContent={mapContent}
+        reloadToken={questReloadToken}
+        embedded
+        onStateChange={handleQuestState}
+      />
+    ) : null;
+  }
 
   return (
     <section className="cq-loc-section cq-realm-fade-in" aria-labelledby="cq-loc-happening-title">
@@ -54,12 +72,7 @@ export function LocationActivitySection({
           mapContent={mapContent}
           reloadToken={questReloadToken}
           embedded
-          onStateChange={(next) => {
-            setQuestState((current) =>
-              current.count === next.count && current.loading === next.loading ? current : next,
-            );
-            onQuestStateChange?.(next);
-          }}
+          onStateChange={handleQuestState}
         />
       ) : null}
 
