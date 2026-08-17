@@ -18473,22 +18473,7 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   filter: drop-shadow(0 0 8px rgba(245, 197, 66, 0.45));
 }
 
-/* Labels only after selection — keep the map readable at rest. */
-.realm-marker:not(.cq-realm-marker--state-selected):not(.cq-realm-marker--editor-selected) .marker-label,
-.realm-marker:not(.cq-realm-marker--state-selected):not(.cq-realm-marker--editor-selected) .cq-realm-marker-label,
-.cq-realm-marker:not(.cq-realm-marker--state-selected):not(.cq-realm-marker--editor-selected) .marker-label,
-.cq-realm-marker:not(.cq-realm-marker--state-selected):not(.cq-realm-marker--editor-selected) .cq-realm-marker-label {
-  opacity: 0;
-  pointer-events: none;
-  max-height: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  overflow: hidden;
-  box-shadow: none;
-}
-
-/* Zoom-out: shrink pins slightly; labels stay selection-only (rules above). */
+/* Zoom-out: shrink pins slightly; labels stay visible under every marker. */
 .realm-marker[data-zoom-tier="far"] .marker-pin-anchor {
   transform: scale(0.82);
   transform-origin: 50% 100%;
