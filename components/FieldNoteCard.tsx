@@ -4,7 +4,6 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type C
 import { createPortal } from "react-dom";
 import {
   Heart,
-  MapPin,
   MessageCircle,
   MoreHorizontal,
   Share2,
@@ -26,6 +25,8 @@ import { formatStreakBadge } from "@/lib/streakMessaging";
 import { CampusQuestNodHeartPop } from "./CampusQuestNodHeartPop";
 import { FieldNoteEditModal } from "./FieldNoteEditModal";
 import { PostCommentsSheet } from "./posts/PostCommentsSheet";
+import { LikedByRow } from "./posts/LikedByRow";
+import { PostLikersSheet } from "./posts/PostLikersSheet";
 import { ReportPostSheet } from "./posts/ReportPostSheet";
 import { CaptionWithMentions } from "./quad/CaptionWithMentions";
 import { TaggedWithLine } from "./quad/TaggedWithLine";
@@ -46,6 +47,7 @@ function ReactionButton({
   pulseClass,
   fillWhenActive,
   compact,
+  hideCount,
   disabled,
   pending,
 }: {
@@ -58,6 +60,7 @@ function ReactionButton({
   pulseClass?: string;
   fillWhenActive?: boolean;
   compact?: boolean;
+  hideCount?: boolean;
   disabled?: boolean;
   pending?: boolean;
 }) {
@@ -72,16 +75,16 @@ function ReactionButton({
         aria-busy={pending}
         disabled={disabled || pending}
         className={`cq-feed-reaction group inline-flex min-h-[44px] min-w-[2.5rem] items-center justify-center gap-0.5 rounded-lg px-1.5 py-2 transition-colors duration-150 active:scale-95 touch-manipulation disabled:cursor-not-allowed disabled:opacity-50 ${
-          active ? (fillWhenActive ? "text-violet-300" : "text-cyan-400") : "text-white/55 hover:text-white/80"
+          active ? (fillWhenActive ? "text-[#ff3040]" : "text-uri-keaney") : "text-white/90 hover:text-white"
         } ${pulseClass ?? ""}`}
       >
         <Icon
-          className={`h-[22px] w-[22px] transition-colors duration-150 ${
-            active && fillWhenActive ? "fill-violet-300/90" : ""
+          className={`h-[24px] w-[24px] transition-colors duration-150 ${
+            active && fillWhenActive ? "fill-[#ff3040]" : ""
           }`}
-          strokeWidth={active ? 2.45 : 2.1}
+          strokeWidth={active ? 2.45 : 2}
         />
-        {count != null && count > 0 ? (
+        {!hideCount && count != null && count > 0 ? (
           <span className="min-w-[0.65rem] text-[12px] font-semibold tabular-nums leading-none text-white/65">
             {count}
           </span>
@@ -143,38 +146,70 @@ function FeedCaption({
   body,
   tags,
   mentions,
+  username,
+  onUsernameClick,
 }: {
   body: string;
   tags: string[];
   mentions?: CaptionMentionDraft[] | null;
+  username?: string;
+  onUsernameClick?: () => void;
 }) {
   const trimmed = body.trim();
-  if (!trimmed && tags.length === 0) return null;
+  const [expanded, setExpanded] = useState(false);
+  if (!trimmed && tags.length === 0 && !username) return null;
+
+  const COLLAPSE_AT = 140;
+  const needsCollapse = trimmed.length > COLLAPSE_AT;
+  const visibleBody =
+    needsCollapse && !expanded ? `${trimmed.slice(0, COLLAPSE_AT).replace(/\s+\S*$/, "").trimEnd()}` : trimmed;
+
+  const usernameEl = username ? (
+    onUsernameClick ? (
+      <button
+        type="button"
+        onClick={onUsernameClick}
+        className="mr-1 font-semibold text-white transition hover:text-uri-keaney/90"
+      >
+        {username}
+      </button>
+    ) : (
+      <span className="mr-1 font-semibold text-white">{username}</span>
+    )
+  ) : null;
 
   return (
-    <p className="break-words text-[13px] leading-[1.45] text-white/88">
-      {trimmed ? (
+    <p className="break-words text-[13px] leading-[1.4] text-white/90">
+      {usernameEl}
+      {visibleBody ? (
         <span className="whitespace-pre-wrap">
-          <CaptionWithMentions body={body} mentions={mentions} />
+          <CaptionWithMentions
+            body={needsCollapse && !expanded ? visibleBody : body}
+            mentions={needsCollapse && !expanded ? undefined : mentions}
+          />
         </span>
       ) : null}
+      {needsCollapse && !expanded ? (
+        <>
+          {" "}
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="font-medium text-white/45 transition hover:text-white/60"
+          >
+            more
+          </button>
+        </>
+      ) : null}
       {trimmed && tags.length > 0 ? " " : null}
-      {tags.map((tag, index) => (
-        <span key={`${tag}-${index}`} className="font-medium text-cyan-400/85">
-          #{tag}
-          {index < tags.length - 1 ? " " : ""}
-        </span>
-      ))}
+      {(expanded || !needsCollapse) &&
+        tags.map((tag, index) => (
+          <span key={`${tag}-${index}`} className="font-medium text-uri-keaney/90">
+            #{tag}
+            {index < tags.length - 1 ? " " : ""}
+          </span>
+        ))}
     </p>
-  );
-}
-
-function FeedLocationChip({ name, onMedia = false }: { name: string; onMedia?: boolean }) {
-  return (
-    <span className={`cq-feed-location-chip ${onMedia ? "cq-feed-location-chip--on-media" : ""}`}>
-      <MapPin className="h-3 w-3 shrink-0" strokeWidth={2.25} aria-hidden />
-      <span className="truncate">{name}</span>
-    </span>
   );
 }
 
@@ -255,6 +290,12 @@ function fieldNoteCardPropsAreEqual(prev: FieldNoteCardProps, next: FieldNoteCar
   if (pn.authorAvatar !== nn.authorAvatar) return false;
   if (pn.locationName !== nn.locationName) return false;
   if (userHasReacted(pn, prev.currentUserId) !== userHasReacted(nn, next.currentUserId)) return false;
+  const prevPreview = pn.likedByPreview ?? [];
+  const nextPreview = nn.likedByPreview ?? [];
+  if (prevPreview.length !== nextPreview.length) return false;
+  for (let i = 0; i < prevPreview.length; i += 1) {
+    if (prevPreview[i]?.userId !== nextPreview[i]?.userId) return false;
+  }
 
   return true;
 }
@@ -281,6 +322,7 @@ function FieldNoteCardInner({
   canModeratePosts = false,
 }: FieldNoteCardProps) {
   const [commentsSheetOpen, setCommentsSheetOpen] = useState(false);
+  const [likersSheetOpen, setLikersSheetOpen] = useState(false);
   const [showImageNodPop, setShowImageNodPop] = useState(false);
   const [likePulse, setLikePulse] = useState(false);
   const [zapPulse, setZapPulse] = useState(false);
@@ -659,7 +701,7 @@ function FieldNoteCardInner({
 
   const avatarFrameClass = `cq-avatar-slot flex-shrink-0 border ${
     isFeed
-      ? "h-12 w-12 border-white/15 bg-cq-elevated/8"
+      ? "h-8 w-8 border-white/15 bg-cq-elevated/8"
       : "h-11 w-11 bg-cq-elevated border-white/15"
   } ${
     highlightStat === "strength"
@@ -685,12 +727,26 @@ function FieldNoteCardInner({
       className={`${avatarFrameClass} touch-manipulation transition hover:opacity-90`}
       aria-label={`View ${note.authorName}'s profile`}
     >
-      <AvatarDisplay avatar={note.authorAvatar} fitParent size={isFeed ? 48 : 44} />
+      <AvatarDisplay avatar={note.authorAvatar} fitParent size={isFeed ? 32 : 44} />
     </button>
   ) : (
     <div className={avatarFrameClass}>
-      <AvatarDisplay avatar={note.authorAvatar} fitParent size={isFeed ? 48 : 44} />
+      <AvatarDisplay avatar={note.authorAvatar} fitParent size={isFeed ? 32 : 44} />
     </div>
+  );
+
+  const authorUsernamePrimary = onViewAuthor ? (
+    <button
+      type="button"
+      onClick={handleViewAuthor}
+      className="truncate text-left text-[13px] font-semibold leading-tight tracking-tight text-white transition hover:text-uri-keaney/90"
+    >
+      {note.authorUsername}
+    </button>
+  ) : (
+    <span className="truncate text-[13px] font-semibold leading-tight tracking-tight text-white">
+      {note.authorUsername}
+    </span>
   );
 
   const authorNameEl = onViewAuthor ? (
@@ -796,54 +852,72 @@ function FieldNoteCardInner({
     <div
       className={
         isFeed
-          ? "cq-feed-actions-row flex items-center"
+          ? "cq-feed-actions-row flex w-full items-center justify-between"
           : "mt-3 flex flex-wrap items-center justify-between gap-1 border-t border-white/15 pt-3"
       }
     >
-      <div className={`flex items-center ${isFeed ? "gap-1" : "flex-wrap gap-0.5"}`}>
+      <div className={`flex items-center ${isFeed ? "-ml-1.5 gap-0" : "flex-wrap gap-0.5"}`}>
         <ReactionButton
           active={hasNodded}
           onClick={handleNod}
           icon={Heart}
-          count={note.nodCount}
+          count={isFeed ? undefined : note.nodCount}
           label={hasNodded ? "Unlike" : "Like"}
           pulseClass={likePulse ? "cq-reaction-heart-pop" : undefined}
           fillWhenActive
           compact={isFeed}
+          hideCount={isFeed}
           pending={likePending}
         />
         <ReactionButton
           active={commentsSheetOpen}
           onClick={() => setCommentsSheetOpen(true)}
           icon={MessageCircle}
-          count={displayCommentCount}
+          count={isFeed ? undefined : displayCommentCount}
           label="View comments"
           compact={isFeed}
+          hideCount={isFeed}
         />
         <ReactionButton
           onClick={() => void handleShare()}
           icon={Share2}
           label="Share post"
           compact={isFeed}
+          hideCount={isFeed}
         />
-        <ReactionButton
-          active={hasHyped}
-          onClick={handleHype}
-          icon={Zap}
-          count={hypeCount}
-          label={hasHyped ? "Unspark" : "Spark"}
-          title={hasHyped ? "Remove spark" : "Spark this post"}
-          pulseClass={zapPulse ? "cq-reaction-zap-pulse" : undefined}
-          fillWhenActive
-          compact={isFeed}
-        />
-        {sparkSent ? (
+        {!isFeed ? (
+          <ReactionButton
+            active={hasHyped}
+            onClick={handleHype}
+            icon={Zap}
+            count={hypeCount}
+            label={hasHyped ? "Unspark" : "Spark"}
+            title={hasHyped ? "Remove spark" : "Spark this post"}
+            pulseClass={zapPulse ? "cq-reaction-zap-pulse" : undefined}
+            fillWhenActive
+          />
+        ) : null}
+        {!isFeed && sparkSent ? (
           <span className="ml-1 text-[10px] font-medium text-violet-300/85" aria-live="polite">
             Spark sent
           </span>
         ) : null}
       </div>
-      {!isFeed ? (
+      {isFeed ? (
+        <div className="flex items-center -mr-1.5">
+          <ReactionButton
+            active={hasHyped}
+            onClick={handleHype}
+            icon={Zap}
+            label={hasHyped ? "Unspark" : "Spark"}
+            title={hasHyped ? "Remove spark" : "Spark this post"}
+            pulseClass={zapPulse ? "cq-reaction-zap-pulse" : undefined}
+            fillWhenActive
+            compact
+            hideCount
+          />
+        </div>
+      ) : (
         <div className="flex items-center gap-0.5">
           <ReactionButton
             active={hasVerified}
@@ -862,11 +936,12 @@ function FieldNoteCardInner({
             title="Assist — guild race points + author XP"
           />
         </div>
-      ) : null}
+      )}
     </div>
   );
 
   const previewComment = comments.length > 0 ? comments[comments.length - 1] : null;
+  const previewComments = comments.slice(-2);
 
   const feedCommentsSection =
     displayCommentCount > 0 ? (
@@ -874,22 +949,41 @@ function FieldNoteCardInner({
         <button
           type="button"
           onClick={() => setCommentsSheetOpen(true)}
-          className="text-[13px] font-medium text-white/50 transition hover:text-white/60"
+          className="text-[13px] text-white/45 transition hover:text-white/60"
         >
           View all {displayCommentCount} comment{displayCommentCount === 1 ? "" : "s"}
         </button>
-        {previewComment ? (
-          <button
-            type="button"
-            onClick={() => setCommentsSheetOpen(true)}
-            className="block w-full text-left text-[13px] leading-snug text-white/70"
-          >
-            <span className="font-semibold text-white">{previewComment.authorName}</span>{" "}
-            <span className="line-clamp-2 whitespace-pre-wrap">{previewComment.body}</span>
-          </button>
-        ) : null}
+        {displayCommentCount <= 2 && previewComments.length > 0
+          ? previewComments.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCommentsSheetOpen(true)}
+                className="block w-full text-left text-[13px] leading-snug text-white/75"
+              >
+                <span className="font-semibold text-white">{c.authorUsername || c.authorName}</span>{" "}
+                <span className="line-clamp-2 whitespace-pre-wrap">{c.body}</span>
+              </button>
+            ))
+          : previewComment ? (
+              <button
+                type="button"
+                onClick={() => setCommentsSheetOpen(true)}
+                className="block w-full text-left text-[13px] leading-snug text-white/75"
+              >
+                <span className="font-semibold text-white">
+                  {previewComment.authorUsername || previewComment.authorName}
+                </span>{" "}
+                <span className="line-clamp-2 whitespace-pre-wrap">{previewComment.body}</span>
+              </button>
+            ) : null}
       </div>
     ) : null;
+
+  const headerLocation =
+    note.locationName?.trim() ||
+    (structuredTags.find((t) => t.entityType === "organization" || t.entityType === "event")?.displayLabel ??
+      null);
 
   return (
     <article
@@ -906,27 +1000,25 @@ function FieldNoteCardInner({
       ) : null}
       {isFeed ? (
         <>
-          <header className="cq-feed-post-header flex items-center gap-2 px-3 pb-0.5 pt-1.5">
+          <header className="cq-feed-post-header flex items-center gap-2.5 px-3">
             {avatarFrame}
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                {authorNameEl}
+            <div className="min-w-0 flex-1 py-0.5">
+              <div className="flex min-w-0 items-center gap-1.5">
+                {authorUsernamePrimary}
                 {(note.verifyCount ?? 0) >= 2 ? (
-                  <span className="text-[10px] font-medium text-emerald-300/75">Verified</span>
+                  <span className="shrink-0 text-[10px] font-medium text-emerald-300/75">Verified</span>
                 ) : null}
                 {streak ? (
-                  <span className="text-[10px] font-medium text-uri-gold/85">{streak}</span>
+                  <span className="shrink-0 text-[10px] font-medium text-uri-gold/85">{streak}</span>
                 ) : null}
               </div>
-              <p className="mt-0.5 flex flex-wrap items-center gap-x-1 text-[11px] text-white/48">
-                {authorUsernameEl}
-                <span aria-hidden>·</span>
-                <span>{formatTime(note.createdAt)}</span>
-              </p>
-              {note.locationName && !isImgUrl ? <FeedLocationChip name={note.locationName} /> : null}
+              {headerLocation ? (
+                <p className="mt-0.5 truncate text-[11px] leading-tight text-white/45">{headerLocation}</p>
+              ) : null}
             </div>
             {ownerMenu}
           </header>
+
           {proofBlock ? (
             <div
               className="quad-feed-media-wrap carousel w-full"
@@ -935,12 +1027,28 @@ function FieldNoteCardInner({
               data-cq-gesture-block="swipe-tab"
             >
               {proofBlock}
-              {note.locationName ? <FeedLocationChip name={note.locationName} onMedia /> : null}
             </div>
           ) : null}
+
+          <div className="cq-feed-post-actions post-actions px-3" data-no-drawer-swipe="true">
+            {actionsRow}
+          </div>
+
+          {note.nodCount > 0 ? (
+            <div className="cq-feed-post-engagement px-3">
+              <LikedByRow
+                preview={note.likedByPreview ?? []}
+                likeCount={note.nodCount}
+                onOpenLikers={() => setLikersSheetOpen(true)}
+              />
+            </div>
+          ) : null}
+
           {(note.body.trim() || note.ramMarks.length > 0 || structuredTags.length > 0) && (
             <div className="cq-feed-post-caption px-3">
               <FeedCaption
+                username={note.authorUsername}
+                onUsernameClick={onViewAuthor ? handleViewAuthor : undefined}
                 body={note.body}
                 tags={note.ramMarks.map((r) => r.tag)}
                 mentions={captionMentions}
@@ -948,29 +1056,15 @@ function FieldNoteCardInner({
               {structuredTags.length > 0 ? <TaggedWithLine tags={structuredTags} /> : null}
             </div>
           )}
-          <div className="cq-feed-post-engagement px-3">
-            {(note.nodCount > 0 || displayCommentCount > 0) && (
-              <p className="cq-feed-engagement-summary text-[12px] text-white/50 tabular-nums">
-                {note.nodCount > 0 ? (
-                  <span>
-                    {note.nodCount.toLocaleString()} like{note.nodCount === 1 ? "" : "s"}
-                  </span>
-                ) : null}
-                {note.nodCount > 0 && displayCommentCount > 0 ? (
-                  <span className="mx-1.5 text-white/25">·</span>
-                ) : null}
-                {displayCommentCount > 0 ? (
-                  <span>
-                    {displayCommentCount.toLocaleString()} comment{displayCommentCount === 1 ? "" : "s"}
-                  </span>
-                ) : null}
-              </p>
-            )}
-          </div>
-          <div className="cq-feed-post-actions post-actions px-3" data-no-drawer-swipe="true">{actionsRow}</div>
-          <div className="cq-feed-post-comments px-3 pb-1.5 pt-0">
-            {feedCommentsSection}
-          </div>
+
+          <div className="cq-feed-post-comments px-3">{feedCommentsSection}</div>
+
+          <time
+            dateTime={new Date(note.createdAt).toISOString()}
+            className="cq-feed-post-timestamp block px-3 pb-1 text-[11px] uppercase tracking-wide text-white/35"
+          >
+            {formatTime(note.createdAt)}
+          </time>
         </>
       ) : (
         <div className="flex gap-3">
@@ -1027,6 +1121,14 @@ function FieldNoteCardInner({
           onViewAuthor={onViewAuthor}
         />
       ) : null}
+
+      <PostLikersSheet
+        open={likersSheetOpen}
+        postId={note.id}
+        likeCount={note.nodCount}
+        onClose={() => setLikersSheetOpen(false)}
+        onViewAuthor={onViewAuthor}
+      />
 
       <FieldNoteEditModal
         key={`${note.id}-${editOpen}`}

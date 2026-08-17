@@ -104,7 +104,7 @@ export function QuadMediaCarousel({
                   <img
                     src={item.thumbnailUrl}
                     alt=""
-                    className="max-h-[min(70vh,720px)] w-full object-contain bg-black"
+                    className="max-h-[min(65vh,36rem)] w-full object-cover bg-black object-center"
                   />
                 ) : (
                   <div className="flex max-h-[min(70vh,720px)] min-h-[240px] w-full items-center justify-center bg-black text-white/40">
@@ -123,7 +123,7 @@ export function QuadMediaCarousel({
                     src={item.url}
                     alt=""
                     loading={nearby ? "eager" : "lazy"}
-                    className="max-h-[min(70vh,720px)] w-full object-contain"
+                    className="max-h-[min(65vh,36rem)] w-full object-cover object-center"
                     onError={(event) => {
                       const img = event.currentTarget;
                       img.onerror = null;
@@ -155,24 +155,19 @@ export function QuadMediaCarousel({
       </div>
 
       {media.length > 1 ? (
-        <>
-          <div className="pointer-events-none absolute right-3 top-3 rounded bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white">
-            {index + 1}/{media.length}
-          </div>
-          <div className="flex items-center justify-center gap-1.5 py-2" aria-hidden>
-            {media.map((item, i) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`h-1.5 rounded-full transition ${
-                  i === index ? "w-4 bg-uri-keaney" : "w-1.5 bg-white/35"
-                }`}
-                aria-label={`Go to media ${i + 1}`}
-                onClick={() => setIndex(i)}
-              />
-            ))}
-          </div>
-        </>
+        <div className="flex items-center justify-center gap-1 py-2" aria-hidden>
+          {media.map((item, i) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`h-1.5 rounded-full transition ${
+                i === index ? "w-1.5 bg-uri-keaney" : "w-1.5 bg-white/30"
+              }`}
+              aria-label={`Go to media ${i + 1}`}
+              onClick={() => setIndex(i)}
+            />
+          ))}
+        </div>
       ) : null}
     </div>
   );

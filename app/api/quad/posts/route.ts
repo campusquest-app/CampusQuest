@@ -6,6 +6,7 @@ import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { postQuadPostSchema, readJson, uuidSchema } from "@/lib/server/validation";
 import { formatZodError } from "@/lib/server/zodErrors";
 import {
+  attachRecentLikersToPosts,
   enrichQuadPostsWithViewerReactions,
   fetchViewerReactionsForPosts,
 } from "@/lib/server/quadReactions";
@@ -35,9 +36,18 @@ async function withTagsAndMentions(posts: QuadPostApiRow[]): Promise<QuadPostApi
   return (await enrichQuadPostsWithTagsAndMentions(posts)) as QuadPostApiRow[];
 }
 
-async function finalizeFeedPosts(posts: QuadPostApiRow[]): Promise<QuadPostApiRow[]> {
+async function finalizeFeedPosts(
+  posts: QuadPostApiRow[],
+  args?: { userClient: Parameters<typeof attachRecentLikersToPosts>[0]["userClient"]; viewerId: string },
+): Promise<QuadPostApiRow[]> {
   const tagged = await withTagsAndMentions(posts);
-  return (await enrichPostsWithCarouselMedia(tagged)) as QuadPostApiRow[];
+  const withMedia = (await enrichPostsWithCarouselMedia(tagged)) as QuadPostApiRow[];
+  if (!args) return withMedia;
+  return attachRecentLikersToPosts({
+    userClient: args.userClient,
+    viewerId: args.viewerId,
+    posts: withMedia,
+  });
 }
 
 function normalizeRamMarks(input: { id?: string; tag: string }[] | undefined): { id: string; tag: string }[] {
@@ -94,7 +104,12 @@ export async function GET(request: Request) {
       }
       const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, [post.id]);
       const enriched = enrichQuadPostsWithViewerReactions([post], viewerReactions);
-      return ok({ posts: await finalizeFeedPosts(enriched) });
+      return ok({
+        posts: await finalizeFeedPosts(enriched, {
+          userClient: auth.userClient,
+          viewerId: auth.user.id,
+        }),
+      });
     }
 
     if (feedParam === "friends") {
@@ -107,7 +122,12 @@ export async function GET(request: Request) {
       const postIds = posts.map((p) => p.id);
       const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
       const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
-      return ok({ posts: await finalizeFeedPosts(enriched) });
+      return ok({
+        posts: await finalizeFeedPosts(enriched, {
+          userClient: auth.userClient,
+          viewerId: auth.user.id,
+        }),
+      });
     }
 
     let query = auth.userClient.from("quad_posts").select(QUAD_POSTS_WITH_PROFILE_SELECT);
@@ -152,7 +172,12 @@ export async function GET(request: Request) {
     const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
     const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
 
-    return ok({ posts: await finalizeFeedPosts(enriched) });
+    return ok({
+      posts: await finalizeFeedPosts(enriched, {
+        userClient: auth.userClient,
+        viewerId: auth.user.id,
+      }),
+    });
   } catch (error) {
     return fail(error);
   }
@@ -325,7 +350,10 @@ export async function POST(request: Request) {
     }
 
     const enriched = enrichQuadPostsWithViewerReactions([post], new Map());
-    const [finalPost] = await finalizeFeedPosts(enriched);
+    const [finalPost] = await finalizeFeedPosts(enriched, {
+      userClient: auth.userClient,
+      viewerId: auth.user.id,
+    });
 
     let realmMoment: { id: string; locationId: string; locationName: string; expiresAt: string } | null = null;
     if (shouldCreateRealmMoment({ visibility, locationId: hasValidLocation ? locationId : null })) {

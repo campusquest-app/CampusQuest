@@ -334,6 +334,8 @@ export interface FieldNote {
   /** Caption @mention metadata. */
   mentions?: FieldNoteMention[];
   mediaId?: string;
+  /** Up to 3 recent likers for Instagram-style "Liked by" (connections prioritized). */
+  likedByPreview?: import("./quadFieldNote").QuadPostLikerPreview[];
 }
 
 // For serialization we store nod/rally as arrays

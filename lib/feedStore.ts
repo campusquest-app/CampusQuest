@@ -3,10 +3,10 @@
 import type { FieldNote, RamMark, FieldNoteSerialized, QuadComment, QuadPostVisibility } from "./types";
 import { serializeDiceBearAvatar } from "./dicebearAvatar";
 import { getFriends } from "./friendsStore";
-import { addXpToCharacter, bumpQuadAssistForAuthor, getGuildIdsForCharacter } from "./store";
+import { addXpToCharacter, bumpQuadAssistForAuthor, getGuildIdsForCharacter, getCharacter } from "./store";
 import { recordGuildWeeklyRace } from "./guildWeeklyRace";
 import { FIELD_NOTE_MAX_CHARS, RAMMARK_MAX_LENGTH, RAMMARK_MAX_PER_POST, QUAD_COMMENT_MAX_CHARS } from "./types";
-import { isPersistedQuadPostId } from "./quadFieldNote";
+import { isPersistedQuadPostId, type QuadPostLikerPreview } from "./quadFieldNote";
 
 let feed: FieldNote[] = [];
 let comments: QuadComment[] = [];
@@ -34,6 +34,7 @@ export function mergeRemoteQuadPostsCache(posts: FieldNote[]): void {
     existing.vouchByUserIds = existing.hypeByUserIds;
     existing.isPersisted = serverPost.isPersisted ?? true;
     existing.commentCount = serverPost.commentCount;
+    existing.likedByPreview = serverPost.likedByPreview?.map((l) => ({ ...l }));
   }
   remoteQuadPostsCache = Array.from(byId.values());
 }
@@ -327,6 +328,7 @@ function cloneFieldNote(n: FieldNote): FieldNote {
     hypeByUserIds: new Set(n.hypeByUserIds ?? n.vouchByUserIds),
     verifyByUserIds: new Set(n.verifyByUserIds),
     assistByUserIds: new Set(n.assistByUserIds),
+    likedByPreview: n.likedByPreview?.map((l) => ({ ...l })),
   };
 }
 
@@ -503,7 +505,39 @@ export type ReactionSnapshot = {
   hypeCount: number;
   liked: boolean;
   sparked: boolean;
+  likedByPreview: QuadPostLikerPreview[];
 };
+
+function cloneLikedByPreview(preview: QuadPostLikerPreview[] | undefined): QuadPostLikerPreview[] {
+  return (preview ?? []).map((l) => ({ ...l }));
+}
+
+function selfLikerPreview(userId: string): QuadPostLikerPreview | null {
+  const character = getCharacter();
+  if (!character || character.id !== userId) return null;
+  return {
+    userId,
+    username: (character.username || "student").trim().toLowerCase() || "student",
+    displayName: (character.name || "Student").trim() || "Student",
+    avatar: character.avatar,
+    isConnection: false,
+  };
+}
+
+function applyOptimisticLikedByPreview(note: FieldNote, userId: string, liked: boolean): void {
+  const current = cloneLikedByPreview(note.likedByPreview);
+  if (!liked) {
+    note.likedByPreview = current.filter((l) => l.userId !== userId);
+    return;
+  }
+  const self = selfLikerPreview(userId);
+  if (!self) {
+    note.likedByPreview = current;
+    return;
+  }
+  const withoutSelf = current.filter((l) => l.userId !== userId);
+  note.likedByPreview = [self, ...withoutSelf].slice(0, 3);
+}
 
 export function snapshotReactionState(note: FieldNote, userId: string): ReactionSnapshot {
   migrateNote(note);
@@ -512,6 +546,7 @@ export function snapshotReactionState(note: FieldNote, userId: string): Reaction
     hypeCount: note.hypeCount,
     liked: note.nodByUserIds.has(userId),
     sparked: note.hypeByUserIds.has(userId),
+    likedByPreview: cloneLikedByPreview(note.likedByPreview),
   };
 }
 
@@ -525,6 +560,7 @@ export function restoreReactionState(note: FieldNote, userId: string, snapshot: 
   if (snapshot.sparked) note.hypeByUserIds.add(userId);
   else note.hypeByUserIds.delete(userId);
   note.vouchByUserIds = note.hypeByUserIds;
+  note.likedByPreview = cloneLikedByPreview(snapshot.likedByPreview);
 }
 
 export function optimisticToggleLike(note: FieldNote, userId: string): boolean {
@@ -532,10 +568,12 @@ export function optimisticToggleLike(note: FieldNote, userId: string): boolean {
   if (note.nodByUserIds.has(userId)) {
     note.nodByUserIds.delete(userId);
     note.nodCount = Math.max(0, note.nodCount - 1);
+    applyOptimisticLikedByPreview(note, userId, false);
     return false;
   }
   note.nodByUserIds.add(userId);
   note.nodCount += 1;
+  applyOptimisticLikedByPreview(note, userId, true);
   return true;
 }
 

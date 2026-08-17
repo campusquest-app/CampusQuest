@@ -219,6 +219,27 @@ export async function unlikeQuadPost(postId: string): Promise<QuadPostLikeResult
   return data.like;
 }
 
+export type QuadPostLikerDto = {
+  userId: string;
+  username: string;
+  displayName: string;
+  avatar: string;
+  isConnection: boolean;
+  likedAt: string | null;
+};
+
+export async function fetchQuadPostLikers(
+  postId: string,
+  limit = 60,
+): Promise<{ total: number; likers: QuadPostLikerDto[] }> {
+  if (!isPersistedQuadPostId(postId)) {
+    return { total: 0, likers: [] };
+  }
+  return fetchAuthed<{ total: number; likers: QuadPostLikerDto[] }>(
+    `/api/quad/posts/${postId}/likes?limit=${limit}`,
+  );
+}
+
 export async function toggleQuadPostReaction(
   postId: string,
   reactionType: QuadReactionType,

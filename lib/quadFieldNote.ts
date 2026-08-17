@@ -4,6 +4,14 @@ import type { FieldNote, FieldNoteMention, FieldNoteTag, RamMark } from "./types
 
 export type QuadReactionType = "like" | "spark";
 
+export type QuadPostLikerPreview = {
+  userId: string;
+  username: string;
+  displayName: string;
+  avatar: string;
+  isConnection: boolean;
+};
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -39,6 +47,7 @@ export type QuadPostApiRow = {
   viewer_reactions?: QuadReactionType[];
   like_count?: number;
   current_user_has_liked?: boolean;
+  recent_likers?: QuadPostLikerPreview[];
   comments_count?: number;
   profiles?: {
     display_name: string | null;
@@ -122,5 +131,6 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
     media: row.media ?? [],
     mediaCount: row.media_count ?? row.media?.length ?? 0,
     coverMediaId: row.cover_media_id ?? undefined,
+    likedByPreview: row.recent_likers ?? [],
   };
 }

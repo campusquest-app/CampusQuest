@@ -2,6 +2,7 @@ import { fail, ok, ApiError } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
 import {
+  attachRecentLikersToPosts,
   enrichQuadPostsWithViewerReactions,
   fetchViewerReactionsForPosts,
 } from "@/lib/server/quadReactions";
@@ -35,9 +36,14 @@ export async function GET(request: Request) {
     const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
     const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
     const withTags = await enrichQuadPostsWithTagsAndMentions(enriched);
-    const withMedia = await enrichPostsWithCarouselMedia(withTags);
+    const withMedia = (await enrichPostsWithCarouselMedia(withTags)) as QuadPostApiRow[];
+    const withLikers = await attachRecentLikersToPosts({
+      userClient: auth.userClient,
+      viewerId: auth.user.id,
+      posts: withMedia,
+    });
 
-    return ok({ posts: withMedia });
+    return ok({ posts: withLikers });
   } catch (error) {
     return fail(error);
   }

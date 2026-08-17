@@ -1,6 +1,6 @@
 import { fail, ok, ApiError } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
-import { setQuadPostLike } from "@/lib/server/quadReactions";
+import { listQuadPostLikers, setQuadPostLike } from "@/lib/server/quadReactions";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { uuidSchema } from "@/lib/server/validation";
 
@@ -11,6 +11,37 @@ async function parsePostId(context: { params: Promise<{ postId: string }> }): Pr
     throw new ApiError(400, "Invalid post id.", "INVALID_POST_ID");
   }
   return postIdParsed.data;
+}
+
+/** List users who liked a Quad post (connections first). */
+export async function GET(
+  request: Request,
+  context: { params: Promise<{ postId: string }> },
+) {
+  try {
+    const auth = await requireAuthUser(request);
+    const postId = await parsePostId(context);
+    const { searchParams } = new URL(request.url);
+    const limit = Math.min(100, Math.max(1, Math.floor(Number(searchParams.get("limit") || "60"))));
+
+    enforceRateLimit({
+      userId: auth.user.id,
+      routeKey: "quad:posts:likes:list",
+      limit: 60,
+      windowMs: 60_000,
+    });
+
+    const result = await listQuadPostLikers({
+      userClient: auth.userClient,
+      viewerId: auth.user.id,
+      postId,
+      limit,
+    });
+
+    return ok(result);
+  } catch (error) {
+    return fail(error);
+  }
 }
 
 /** Like a Quad post (idempotent — duplicate likes are ignored). */

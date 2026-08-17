@@ -430,3 +430,225 @@ export async function toggleQuadPostReaction(args: {
     currentUserHasSparked: state.sparked,
   };
 }
+
+export type QuadPostLikerRow = {
+  userId: string;
+  username: string;
+  displayName: string;
+  /** Resolved avatar payload for AvatarDisplay. */
+  avatar: string;
+  isConnection: boolean;
+  likedAt: string | null;
+};
+
+function mapLikerRow(args: {
+  userId: string;
+  username: string | null;
+  displayName: string | null;
+  avatar: string;
+  isConnection: boolean;
+  likedAt: string | null;
+}): QuadPostLikerRow {
+  return {
+    userId: args.userId,
+    username: (args.username ?? "student").trim().toLowerCase() || "student",
+    displayName: (args.displayName ?? "Student").trim() || "Student",
+    avatar: args.avatar,
+    isConnection: args.isConnection,
+    likedAt: args.likedAt,
+  };
+}
+
+/**
+ * Batch-load a small "Liked by" preview for feed posts.
+ * Connections/friends are prioritized into the top slots.
+ */
+export async function attachRecentLikersToPosts(args: {
+  userClient: SupabaseClientLike;
+  viewerId: string;
+  posts: QuadPostApiRow[];
+  previewLimit?: number;
+}): Promise<QuadPostApiRow[]> {
+  const { userClient, viewerId, posts } = args;
+  const previewLimit = Math.max(1, Math.min(5, args.previewLimit ?? 3));
+  if (posts.length === 0) return posts;
+
+  const postIds = posts.map((p) => p.id);
+  const { getAcceptedFriendUserIds } = await import("@/lib/server/friendProfileAccess");
+  const { resolveProfileAvatar } = await import("@/lib/avatarSource");
+
+  const friendIds = new Set(
+    await getAcceptedFriendUserIds({ userClient, userId: viewerId }).catch(() => [] as string[]),
+  );
+
+  const { data: likeRows, error } = await userClient
+    .from("post_likes")
+    .select("post_id, user_id, created_at")
+    .in("post_id", postIds)
+    .order("created_at", { ascending: false });
+
+  if (error && !isMissingTableError(error)) {
+    console.warn("[cq:likes] recent likers load failed", error.message);
+    return posts;
+  }
+
+  let rows = likeRows ?? [];
+  if (error && isMissingTableError(error)) {
+    const legacy = await userClient
+      .from("quad_post_reactions")
+      .select("post_id, user_id, created_at")
+      .eq("reaction_type", "like")
+      .in("post_id", postIds)
+      .order("created_at", { ascending: false });
+    rows = legacy.data ?? [];
+  }
+
+  const byPost = new Map<string, Array<{ userId: string; likedAt: string | null }>>();
+  for (const row of rows) {
+    const postId = String(row.post_id);
+    const list = byPost.get(postId) ?? [];
+    list.push({ userId: String(row.user_id), likedAt: (row.created_at as string | null) ?? null });
+    byPost.set(postId, list);
+  }
+
+  const neededUserIds = new Set<string>();
+  for (const list of Array.from(byPost.values())) {
+    const prioritized = [
+      ...list.filter((l) => friendIds.has(l.userId)),
+      ...list.filter((l) => !friendIds.has(l.userId)),
+    ];
+    for (const entry of prioritized.slice(0, previewLimit)) {
+      neededUserIds.add(entry.userId);
+    }
+  }
+
+  const profileMap = new Map<
+    string,
+    { username: string | null; display_name: string | null; avatar_url: string | null; avatar_custom_json: string | null }
+  >();
+  if (neededUserIds.size > 0) {
+    const { data: profiles } = await userClient
+      .from("profiles")
+      .select("id, username, display_name, avatar_url, avatar_custom_json")
+      .in("id", Array.from(neededUserIds));
+    for (const p of profiles ?? []) {
+      profileMap.set(String(p.id), {
+        username: p.username ?? null,
+        display_name: p.display_name ?? null,
+        avatar_url: p.avatar_url ?? null,
+        avatar_custom_json: p.avatar_custom_json ?? null,
+      });
+    }
+  }
+
+  return posts.map((post) => {
+    const list = byPost.get(post.id) ?? [];
+    const prioritized = [
+      ...list.filter((l) => friendIds.has(l.userId)),
+      ...list.filter((l) => !friendIds.has(l.userId)),
+    ];
+    // Dedupe while preserving priority order.
+    const seen = new Set<string>();
+    const unique = prioritized.filter((l) => {
+      if (seen.has(l.userId)) return false;
+      seen.add(l.userId);
+      return true;
+    });
+    const recent_likers = unique.slice(0, previewLimit).map((entry) => {
+      const profile = profileMap.get(entry.userId);
+      return {
+        userId: entry.userId,
+        username: (profile?.username ?? "student").trim().toLowerCase() || "student",
+        displayName: (profile?.display_name ?? "Student").trim() || "Student",
+        avatar: resolveProfileAvatar(profile ?? undefined),
+        isConnection: friendIds.has(entry.userId),
+      };
+    });
+    return { ...post, recent_likers };
+  });
+}
+
+/** Full liker list for the "Liked by" sheet. */
+export async function listQuadPostLikers(args: {
+  userClient: SupabaseClientLike;
+  viewerId: string;
+  postId: string;
+  limit?: number;
+}): Promise<{ total: number; likers: QuadPostLikerRow[] }> {
+  const { userClient, viewerId, postId } = args;
+  const limit = Math.max(1, Math.min(100, args.limit ?? 60));
+  const { getAcceptedFriendUserIds } = await import("@/lib/server/friendProfileAccess");
+  const { resolveProfileAvatar } = await import("@/lib/avatarSource");
+  const friendIds = new Set(
+    await getAcceptedFriendUserIds({ userClient, userId: viewerId }).catch(() => [] as string[]),
+  );
+
+  let likeRows: Array<{ user_id: string; created_at: string | null }> | null = null;
+  const primary = await userClient
+    .from("post_likes")
+    .select("user_id, created_at")
+    .eq("post_id", postId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (primary.error && isMissingTableError(primary.error)) {
+    const legacy = await userClient
+      .from("quad_post_reactions")
+      .select("user_id, created_at")
+      .eq("post_id", postId)
+      .eq("reaction_type", "like")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (legacy.error) {
+      throw new ApiError(400, legacy.error.message ?? "Could not load likes.", "POST_LIKERS_LOAD_FAILED");
+    }
+    likeRows = legacy.data ?? [];
+  } else if (primary.error) {
+    throw new ApiError(400, primary.error.message ?? "Could not load likes.", "POST_LIKERS_LOAD_FAILED");
+  } else {
+    likeRows = primary.data ?? [];
+  }
+
+  const userIds = Array.from(new Set((likeRows ?? []).map((r) => String(r.user_id))));
+  const profileMap = new Map<
+    string,
+    { username: string | null; display_name: string | null; avatar_url: string | null; avatar_custom_json: string | null }
+  >();
+  if (userIds.length > 0) {
+    const { data: profiles } = await userClient
+      .from("profiles")
+      .select("id, username, display_name, avatar_url, avatar_custom_json")
+      .in("id", userIds);
+    for (const p of profiles ?? []) {
+      profileMap.set(String(p.id), {
+        username: p.username ?? null,
+        display_name: p.display_name ?? null,
+        avatar_url: p.avatar_url ?? null,
+        avatar_custom_json: p.avatar_custom_json ?? null,
+      });
+    }
+  }
+
+  const likers = (likeRows ?? []).map((row) => {
+    const userId = String(row.user_id);
+    const profile = profileMap.get(userId);
+    return mapLikerRow({
+      userId,
+      username: profile?.username ?? null,
+      displayName: profile?.display_name ?? null,
+      avatar: resolveProfileAvatar(profile ?? undefined),
+      isConnection: friendIds.has(userId),
+      likedAt: row.created_at ?? null,
+    });
+  });
+
+  // Connections first, then original recency order.
+  likers.sort((a, b) => Number(b.isConnection) - Number(a.isConnection));
+
+  const { count } = await userClient
+    .from("post_likes")
+    .select("id", { count: "exact", head: true })
+    .eq("post_id", postId);
+
+  return { total: Math.max(count ?? likers.length, likers.length), likers };
+}
