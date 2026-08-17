@@ -34,6 +34,7 @@ import { FeedPhotoTags } from "./quad/FeedPhotoTags";
 import { TagPickerSheet } from "./quad/TagPickerSheet";
 import { QuadVideoPlayer } from "./quad/QuadVideoPlayer";
 import { QuadMediaCarousel } from "./quad/QuadMediaCarousel";
+import { ZoomableImage } from "./quad/ZoomableImage";
 import type { CaptionMentionDraft, ComposerTagSelection } from "@/lib/postTags";
 import { looksLikeVideoUrl } from "@/lib/quadVideo";
 
@@ -792,21 +793,22 @@ function FieldNoteCardInner({
       />
     ) : isImgUrl ? (
       isFeed ? (
-        <button
-          type="button"
+        <div
+          className="group relative block w-full"
+          data-no-drawer-swipe="true"
+          data-cq-gesture-block="swipe-tab"
           onDoubleClick={addNodFromImage}
           onTouchEnd={handleProofImageTap}
-          className="group relative block w-full cursor-pointer touch-manipulation"
           aria-label="Double tap image to nod"
         >
-          <img
+          <ZoomableImage
             src={proofImgUrl}
             alt=""
-            loading="lazy"
-            decoding="async"
-            fetchPriority="low"
-            sizes="(min-width: 640px) 36rem, 100vw"
-            className="quad-feed-media-img w-full max-w-full rounded-none"
+            enableDoubleTapZoom={false}
+            imgClassName="quad-feed-media-img w-full max-w-full rounded-none"
+            onClick={() => {
+              if (photoTags.length > 0) setShowPhotoTags((v) => !v);
+            }}
           />
           {photoTags.length > 0 ? (
             <FeedPhotoTags
@@ -824,7 +826,7 @@ function FieldNoteCardInner({
               <CampusQuestNodHeartPop size="lg" />
             </span>
           ) : null}
-        </button>
+        </div>
       ) : (
         <img
           src={proofImgUrl}

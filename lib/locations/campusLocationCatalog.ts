@@ -55,7 +55,7 @@ function fallbackFromRealmStatic(): CampusLocationRecord[] {
     id: loc.id,
     slug: loc.id,
     name: loc.name,
-    description: loc.flavorText,
+    description: `${loc.name} campus location.`,
     category: "landmark",
     latitude: REALM_LOCATION_GEO[loc.id]?.latitude ?? null,
     longitude: REALM_LOCATION_GEO[loc.id]?.longitude ?? null,
@@ -210,6 +210,8 @@ export function realmLocationsFromCatalog(): RealmLocation[] {
   return listCampusLocationRegistryEntries().map((row) => ({
     id: row.slug,
     name: row.name,
+    description: row.description,
+    category: row.category,
     fantasyName: row.fantasyName || row.name,
     flavorText: row.flavorText || row.description,
     markerEmoji: row.markerEmoji,

@@ -146,9 +146,11 @@ describe("resolveExternalEventPlacement map rendering", () => {
       registry: [WELDIN_REGISTRY],
     });
     expect(before.match?.kind).toBe("coords");
-    expect(after.match?.kind).toBe("coords");
-    if (before.match?.kind === "coords" && after.match?.kind === "coords") {
-      expect(after.match.latitude).not.toBe(before.match.latitude);
+    // Catalog landmark overrides attach as realm pins (not duplicate coords markers).
+    expect(after.match?.kind).toBe("realm");
+    if (before.match?.kind === "coords" && after.match?.kind === "realm") {
+      expect(after.match.realmLocationId).toBe("library");
+      expect(before.match.latitude).toBeCloseTo(41.4908, 3);
     }
   });
 });

@@ -11,6 +11,7 @@ import {
   type EventLocationMatch,
   type UriAliasTarget,
 } from "@/lib/server/urinvolved/mapEventLocationTypes";
+import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
 
 export { normalizeLocationName };
 
@@ -172,7 +173,7 @@ function resolveAliasToMatch(
       reason: "alias_catalog",
     };
   }
-  if (alias.target.latitude != null && alias.target.longitude != null) {
+  if (hasValidCoordinates(alias.target)) {
     return {
       match: {
         kind: "coords",

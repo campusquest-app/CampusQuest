@@ -1,22 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { Calendar, ChevronLeft, Sparkles, TrendingUp, X } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import type { RealmLocation } from "@/lib/realm/locations";
-import { formatRealmEventLabel, getRealmEventUrgency } from "@/lib/realm/locations";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
-import { emptyMapLocationContent, mapLocationActivityCount, mapLocationQuestCount } from "@/lib/mapLocationGroups";
-import {
-  getQuestCardKey,
-  getQuestCardScanPath,
-  getQuestCardTitle,
-  getQuestCardXp,
-  hasQrQuestCard,
-  mergeLocationQuestCards,
-  type LocationQuestCard,
-} from "@/lib/realm/locationQuestDedupe";
-import { RealmArchiveExperience } from "./RealmArchiveExperience";
+import { emptyMapLocationContent, mapLocationQuestCount } from "@/lib/mapLocationGroups";
 import { LocationMemoriesSection } from "@/components/memories/LocationMemoriesSection";
 import { CampusMemoryArchivePanel } from "@/components/memories/CampusMemoryArchivePanel";
 import type { CampusMemoryGroup, CampusMemoryLocationStats } from "@/lib/types";
@@ -25,40 +14,29 @@ import { useRegisterMobileDetailLayer } from "@/components/mobile/MobileGestureL
 import { useSwipeBack } from "@/lib/client/useSwipeBack";
 import { useSwipeDownDismiss } from "@/lib/client/useSwipeDownDismiss";
 import { SWIPE_TRANSITION_MS } from "@/lib/client/mobileGestures";
-import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { LocationQuestSection } from "@/components/realm/LocationQuestSection";
 import { RealmDirectionsPanel } from "@/components/realm/RealmDirectionsPanel";
 import { RealmLocationActionsBar } from "@/components/realm/RealmLocationActionsBar";
 import { getRealmLocationHeroImage } from "@/lib/realm/locationHeroImages";
 import type { RealmDirectionsDestination, RealmDirectionsStatus, RealmTravelMode } from "@/lib/realm/realmDirectionsTypes";
-import { countEventsToday, locationSheetTypeLabel, resolveLocationSheetType } from "@/lib/realm/resolveLocationSheetType";
+import { locationSheetTypeLabel, resolveLocationSheetType } from "@/lib/realm/resolveLocationSheetType";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 import { EventPinCard } from "@/components/realm/EventPinCard";
-import { hasEndedOrCancelledEvents, sortEventsForSheet } from "@/lib/realm/eventCountdown";
+import { sortEventsForSheet } from "@/lib/realm/eventCountdown";
 import { filterVisibleMapEvents } from "@/lib/realm/eventVisibility";
 import { useNow } from "@/lib/client/useNow";
-
-type SheetView = "archive" | "overview" | "quests" | "events";
-
-type ArchiveViewer = { id: string; name: string; username: string; avatar: string };
+import { buildLocationActivityStatus } from "@/lib/realm/locationActivityStatus";
 
 export function RealmLocationSheet({
   location,
   mapContent = null,
   open,
-  initialView = "archive",
-  memoriesLoaded = true,
   memoryStats = null,
   mapContentLoaded = true,
-  viewer = null,
   currentUserId = null,
-  onCreatePost,
   onClose,
-  onViewQuests,
   onRefreshMemories,
-  onViewProfile,
-  onSharePost,
   onAddMemory,
   onOpenMemoryViewer,
   onOpenMemoryGallery,
@@ -76,18 +54,11 @@ export function RealmLocationSheet({
   location: RealmLocation | null;
   mapContent?: GroupedMapLocation | null;
   open: boolean;
-  initialView?: SheetView;
-  memoriesLoaded?: boolean;
   memoryStats?: CampusMemoryLocationStats | null;
   mapContentLoaded?: boolean;
-  viewer?: ArchiveViewer | null;
   currentUserId?: string | null;
-  onCreatePost?: () => void;
   onClose: () => void;
-  onViewQuests?: (location: RealmLocation) => void;
   onRefreshMemories?: () => void;
-  onViewProfile?: (userId: string) => void;
-  onSharePost?: (target: SharePostTarget) => void;
   onAddMemory?: (locationId: CampusLocationId) => void;
   onOpenMemoryViewer?: (group: CampusMemoryGroup, initialMemoryId?: string, includeExpired?: boolean) => void;
   onOpenMemoryGallery?: (locationId: CampusLocationId) => void;
@@ -102,9 +73,12 @@ export function RealmLocationSheet({
   onClearDirections?: () => void;
   onOpenInRealmMap?: () => void;
 }) {
-  const [view, setView] = useState<SheetView>("archive");
   const [mounted, setMounted] = useState(false);
+  const [archiveExpanded, setArchiveExpanded] = useState(false);
+  const [archiveAvailable, setArchiveAvailable] = useState(false);
+  const [loadedQuestState, setLoadedQuestState] = useState({ count: 0, loading: true });
   const panelRef = useRef<HTMLDivElement>(null);
+  const now = useNow(30_000);
 
   useRegisterImmersiveScreen(open);
   // Keep app tab-swipe navigation disabled while this sheet is up.
@@ -114,15 +88,13 @@ export function RealmLocationSheet({
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    if (!open) {
-      setView("archive");
-      return;
-    }
-    setView(initialView);
-  }, [open, initialView]);
-
   const locationRefreshKey = location?.id ?? mapContent?.groupKey ?? null;
+
+  useEffect(() => {
+    setArchiveExpanded(false);
+    setArchiveAvailable(false);
+    setLoadedQuestState({ count: 0, loading: Boolean(location?.id ?? mapContent?.realmLocationId) });
+  }, [locationRefreshKey, location?.id, mapContent?.realmLocationId]);
 
   useEffect(() => {
     if (!open) return;
@@ -141,18 +113,10 @@ export function RealmLocationSheet({
   }, [open]);
 
   function handleSwipeBack() {
-    if (view === "quests" || view === "events") {
-      setView("overview");
-      return;
-    }
-    if (view === "overview" && location) {
-      setView("archive");
-      return;
-    }
     onClose();
   }
 
-  // Edge swipe-back (horizontal) navigates sub-views / closes; pull-down (vertical) dismisses.
+  // Edge swipe-back and pull-down both dismiss the shared location detail.
   // `open && mounted` ensures the gesture effects (re)attach only once the panel
   // node is actually in the DOM (the component returns null until then).
   const gesturesEnabled = open && mounted;
@@ -188,38 +152,38 @@ export function RealmLocationSheet({
   const displayAddress = mapContent?.locationAddress ?? null;
   const locationId = location?.id ?? mapContent?.realmLocationId ?? null;
   const momentCount = memoryStats?.activeCount ?? location?.activeMomentCount ?? 0;
-  const archivedCount = memoryStats?.archivedCount ?? 0;
   const activeQuestCount = mapLocationQuestCount(content, locationId);
   const activeEventCount = content.events.length;
-  const eventsToday = countEventsToday(content);
   const sheetType = resolveLocationSheetType({
     activeQuestCount,
     activeEventCount,
     momentCount,
     hasQr: content.qrCodes.length > 0,
   });
-  const previewEventStartMs = content.events[0] ? Date.parse(content.events[0].startsAt) : Number.NaN;
-  const previewEventTimer =
-    activeEventCount > 0 && content.events[0] && Number.isFinite(previewEventStartMs)
-      ? {
-          status: (previewEventStartMs <= Date.now() ? "active" : "countdown") as "active" | "countdown",
-          label: content.events[0].title,
-          minutesUntilStart: Math.max(0, Math.round((previewEventStartMs - Date.now()) / 60_000)),
-        }
-      : { status: "countdown" as const, minutesUntilStart: 999, label: "No scheduled events" };
-  const urgency = getRealmEventUrgency(previewEventTimer);
-  const eventLabel = formatRealmEventLabel(previewEventTimer);
-  const activityLine = buildActivityLine({
-    activeQuests: activeQuestCount,
-    activeEvents: activeEventCount,
-    momentCount,
+  const displayQuestCount = Math.max(activeQuestCount, loadedQuestState.count);
+  const activityLoading =
+    !mapContentLoaded || Boolean(locationId && loadedQuestState.loading);
+  const activityStatus = buildLocationActivityStatus({
+    quests: displayQuestCount,
+    events: activeEventCount,
+    memories: momentCount,
+    loading: activityLoading,
   });
+  const sortedEvents = sortEventsForSheet(content.events, now);
+  const hasHappeningContent =
+    activeEventCount > 0 ||
+    displayQuestCount > 0 ||
+    activityLoading;
+  const heroDescription =
+    location?.description?.trim() ||
+    displayAddress?.trim() ||
+    `${displayName} campus location.`;
 
   return createPortal(
     <>
       <button
         type="button"
-        aria-label="Close location archive"
+        aria-label="Close location details"
         className="realm-sheet-backdrop fixed inset-0 bg-black/60 backdrop-blur-[3px]"
         style={{ opacity: backdropOpacity }}
         onClick={onClose}
@@ -238,51 +202,33 @@ export function RealmLocationSheet({
           <div className="cq-realm-sheet-grabber-wrap" aria-hidden>
             <div className="cq-realm-sheet-grabber" />
           </div>
-          {view === "archive" && location ? (
-            <>
-              <RealmArchiveHeader
+          <SharedLocationHero
                 location={location}
-                momentCount={momentCount}
-                archivedCount={archivedCount}
-                activeQuestCount={activeQuestCount}
-                activeEventCount={activeEventCount}
-                memoriesLoaded={memoriesLoaded}
-                mapContentLoaded={mapContentLoaded}
+                displayName={displayName}
+                description={heroDescription}
                 sheetType={sheetType}
                 onBack={onClose}
               />
 
-              <div className="cq-realm-archive-directions-wrap px-4">
+              <div className="cq-realm-location-primary px-4">
+                <p
+                  className={`cq-realm-location-status${
+                    activityLoading ? " cq-realm-location-status--loading" : ""
+                  }`}
+                  role="status"
+                >
+                  {activityStatus}
+                </p>
                 <RealmLocationActionsBar
-                  locationName={location.name}
-                  sheetType={sheetType}
-                  momentCount={momentCount}
-                  activeQuestCount={activeQuestCount}
-                  eventsToday={eventsToday}
                   directionsEnabled={directionsEnabled}
                   directionsDestination={directionsDestination}
                   directionsStatus={directionsStatus}
                   onRequestWalking={() => onRequestWalking?.()}
-                  onViewMemories={
-                    onOpenMemoryGallery
-                      ? () => onOpenMemoryGallery(location.id)
-                      : onOpenMemoryViewer
-                        ? () => {
-                            onOpenMemoryViewer({
-                              locationId: location.id,
-                              locationKey: location.id,
-                              locationName: location.name,
-                              count: momentCount,
-                              latestCreatedAt: new Date().toISOString(),
-                              latestPreview: null,
-                              latestMediaType: null,
-                              latestAuthorAvatar: null,
-                              hasRecent: momentCount > 0,
-                            });
-                          }
-                        : undefined
+                  onAddMemory={
+                    locationId && onAddMemory
+                      ? () => onAddMemory(locationId as CampusLocationId)
+                      : undefined
                   }
-                  onViewEvents={eventsToday > 0 ? () => setView("events") : undefined}
                 />
                 <RealmDirectionsPanel
                   destination={directionsDestination}
@@ -304,117 +250,95 @@ export function RealmLocationSheet({
                   await onRefreshAll?.();
                 }}
               >
-                {onAddMemory && onOpenMemoryViewer && onOpenMemoryGallery ? (
+                {hasHappeningContent ? (
+                  <section
+                    className="cq-realm-happening cq-realm-fade-in"
+                    aria-labelledby="realm-happening-title"
+                  >
+                    <h3 id="realm-happening-title" className="cq-realm-location-section-title">
+                      Happening Here
+                    </h3>
+
+                    {locationId ? (
+                      <LocationQuestSection
+                        locationId={locationId as CampusLocationId}
+                        mapContent={content}
+                        reloadToken={questReloadToken}
+                        embedded
+                        onStateChange={(next) => {
+                          setLoadedQuestState((current) =>
+                            current.count === next.count && current.loading === next.loading
+                              ? current
+                              : next,
+                          );
+                        }}
+                      />
+                    ) : null}
+
+                    {sortedEvents.length > 0 ? (
+                      <ul className="cq-realm-detail-list cq-realm-happening-events">
+                        {sortedEvents.map((event) => (
+                          <li key={event.id}>
+                            <EventPinCard event={event} now={now} locationName={displayName} />
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </section>
+                ) : null}
+
+                {locationId && onAddMemory && onOpenMemoryViewer && onOpenMemoryGallery ? (
                   <LocationMemoriesSection
-                    locationId={location.id}
-                    locationName={location.name}
+                    locationId={locationId as CampusLocationId}
+                    locationName={displayName}
                     onAddMemory={onAddMemory}
                     onOpenViewer={onOpenMemoryViewer}
                     onOpenGallery={onOpenMemoryGallery}
                   />
-                ) : (
-                  <RealmArchiveExperience
-                    location={location}
-                    moments={location.moments}
-                    loaded={memoriesLoaded}
-                    viewer={viewer}
-                    onCreatePost={onCreatePost}
-                    onViewProfile={onViewProfile}
-                    onSharePost={onSharePost}
-                  />
-                )}
+                ) : null}
 
-                <LocationQuestSection
-                  locationId={location.id}
-                  mapContent={content}
-                  reloadToken={questReloadToken}
-                />
-
-                <p className="cq-realm-archive-section-label cq-realm-archive-section-label--spaced">
-                  <span className="cq-realm-archive-section-label-icon" aria-hidden>
-                    ✦
-                  </span>
-                  Memory Archive
-                </p>
-                <CampusMemoryArchivePanel
-                  userId={currentUserId ?? undefined}
-                  priorityLocationId={location.id}
-                  locationOnly
-                  onOpenMemory={(memory) => {
-                    if (!onOpenMemoryViewer) return;
-                    onOpenMemoryViewer(
-                      {
-                        locationId: memory.locationId,
-                        locationKey: memory.locationKey,
-                        locationName: memory.locationName,
-                        count: 1,
-                        latestCreatedAt: memory.createdAt,
-                        latestPreview: memory.mediaUrl,
-                        latestMediaType: memory.mediaType,
-                        latestAuthorAvatar: memory.authorAvatar,
-                        hasRecent: false,
-                      },
-                      memory.id,
-                      true,
-                    );
-                  }}
-                />
-
-                <MapActivityPreview
-                  content={content}
-                  locationId={locationId}
-                  loaded={mapContentLoaded}
-                  urgency={urgency}
-                  eventLabel={eventLabel}
-                  onViewOverview={() => setView("overview")}
-                  onViewQuests={() => setView("quests")}
-                  onViewEvents={() => setView("events")}
-                  onAddMemory={onAddMemory ? () => onAddMemory(location.id) : undefined}
-                />
-
-                <footer className="cq-realm-archive-activity">
-                  <TrendingUp className="cq-realm-archive-activity-icon" aria-hidden />
-                  <p>{activityLine}</p>
-                </footer>
+                {locationId ? (
+                  <>
+                    {archiveAvailable ? (
+                      <section className="cq-realm-past-memories">
+                        <button
+                          type="button"
+                          className="cq-realm-past-memories-toggle"
+                          onClick={() => setArchiveExpanded((value) => !value)}
+                          aria-expanded={archiveExpanded}
+                        >
+                          {archiveExpanded ? "Hide past memories" : "View past memories"}
+                        </button>
+                      </section>
+                    ) : null}
+                    <CampusMemoryArchivePanel
+                      userId={currentUserId ?? undefined}
+                      priorityLocationId={locationId as CampusLocationId}
+                      locationOnly
+                      collapsed={!archiveExpanded}
+                      onAvailabilityChange={setArchiveAvailable}
+                      onOpenMemory={(memory) => {
+                        if (!onOpenMemoryViewer) return;
+                        onOpenMemoryViewer(
+                          {
+                            locationId: memory.locationId,
+                            locationKey: memory.locationKey,
+                            locationName: memory.locationName,
+                            count: 1,
+                            latestCreatedAt: memory.createdAt,
+                            latestPreview: memory.mediaUrl,
+                            latestMediaType: memory.mediaType,
+                            latestAuthorAvatar: memory.authorAvatar,
+                            hasRecent: false,
+                          },
+                          memory.id,
+                          true,
+                        );
+                      }}
+                    />
+                  </>
+                ) : null}
               </PullToRefresh>
-            </>
-          ) : view !== "archive" ? (
-            <RealmDetailView
-              view={view}
-              location={location}
-              displayName={displayName}
-              displayAddress={displayAddress}
-              content={content}
-              locationId={locationId}
-              loaded={mapContentLoaded}
-              urgency={urgency}
-              eventLabel={eventLabel}
-              momentCount={momentCount}
-              activeQuestCount={activeQuestCount}
-              activeEventCount={activeEventCount}
-              directionsEnabled={directionsEnabled}
-              directionsDestination={directionsDestination}
-              directionsStatus={directionsStatus}
-              activeTravelMode={activeTravelMode}
-              onRequestWalking={() => onRequestWalking?.()}
-              onRequestDriving={() => onRequestDriving?.()}
-              onClearDirections={() => onClearDirections?.()}
-              onOpenInRealmMap={() => onOpenInRealmMap?.()}
-              onBack={() => {
-                if (location) {
-                  setView(view === "overview" ? "archive" : "overview");
-                } else {
-                  onClose();
-                }
-              }}
-              onClose={onClose}
-              onViewQuests={() => {
-                if (location) onViewQuests?.(location);
-                setView("quests");
-              }}
-              onOpenArchive={() => setView("archive")}
-            />
-          ) : null}
         </div>
       </div>
     </>,
@@ -422,28 +346,20 @@ export function RealmLocationSheet({
   );
 }
 
-function RealmArchiveHeader({
+function SharedLocationHero({
   location,
-  momentCount,
-  archivedCount,
-  activeQuestCount,
-  activeEventCount,
-  memoriesLoaded,
-  mapContentLoaded,
+  displayName,
+  description,
   sheetType,
   onBack,
 }: {
-  location: RealmLocation;
-  momentCount: number;
-  archivedCount: number;
-  activeQuestCount: number;
-  activeEventCount: number;
-  memoriesLoaded: boolean;
-  mapContentLoaded: boolean;
+  location: RealmLocation | null;
+  displayName: string;
+  description: string;
   sheetType: ReturnType<typeof resolveLocationSheetType>;
   onBack: () => void;
 }) {
-  const heroImage = getRealmLocationHeroImage(location.id);
+  const heroImage = location ? getRealmLocationHeroImage(location.id) : null;
 
   return (
     <header className="cq-realm-location-hero cq-realm-hero-enter">
@@ -453,7 +369,7 @@ function RealmArchiveHeader({
           <img src={heroImage} alt="" className="cq-realm-location-hero-image" />
         ) : (
           <div className="cq-realm-location-hero-fallback">
-            <span className="text-4xl">{location.markerEmoji}</span>
+            <span className="text-4xl">{location?.markerEmoji ?? "📍"}</span>
           </div>
         )}
         <div className="cq-realm-location-hero-gradient" />
@@ -475,466 +391,22 @@ function RealmArchiveHeader({
       <div className="cq-realm-location-hero-content">
         <p className="cq-realm-location-hero-badge">
           <span className={`cq-realm-sheet-type cq-realm-sheet-type--${sheetType}`}>
-            {locationSheetTypeLabel(sheetType)}
+            {location?.category
+              ? formatLocationCategory(location.category)
+              : locationSheetTypeLabel(sheetType)}
           </span>
-          <span aria-hidden>{location.markerEmoji}</span>
-          <span>{location.fantasyName}</span>
         </p>
         <h2 id="realm-sheet-title" className="cq-realm-location-hero-title">
-          {location.name}
+          {displayName}
         </h2>
-        <p className="cq-realm-location-hero-flavor">{location.flavorText}</p>
-      </div>
-
-      <div className="cq-realm-location-stat-grid" role="list" aria-label="Location stats">
-        <LocationStatCell label="Live" count={momentCount} loading={!memoriesLoaded} />
-        <LocationStatCell label="Archived" count={archivedCount} loading={!memoriesLoaded} />
-        <LocationStatCell label="Quests" count={activeQuestCount} loading={!mapContentLoaded} />
-        <LocationStatCell label="Events" count={activeEventCount} loading={!mapContentLoaded} />
+        <p className="cq-realm-location-hero-flavor">{description}</p>
       </div>
     </header>
   );
 }
 
-function LocationStatCell({
-  label,
-  count,
-  loading,
-}: {
-  label: string;
-  count: number;
-  loading: boolean;
-}) {
-  return (
-    <div className="cq-realm-location-stat" role="listitem">
-      <span className={`cq-realm-location-stat-value${count > 0 ? " cq-realm-location-stat-value--accent" : ""}`}>
-        {loading ? "…" : count}
-      </span>
-      <span className="cq-realm-location-stat-label">{label}</span>
-    </div>
-  );
-}
-
-function StatChip({ emoji, label }: { emoji: string; label: string }) {
-  return (
-    <span className="cq-realm-archive-stat-chip" role="listitem">
-      <span aria-hidden>{emoji}</span>
-      <span>{label}</span>
-    </span>
-  );
-}
-
-function MapActivityPreview({
-  content,
-  locationId,
-  loaded,
-  urgency,
-  eventLabel,
-  onViewOverview,
-  onViewQuests,
-  onViewEvents,
-  onAddMemory,
-}: {
-  content: Pick<GroupedMapLocation, "qrCodes" | "quests" | "events">;
-  locationId?: string | null;
-  loaded: boolean;
-  urgency: ReturnType<typeof getRealmEventUrgency>;
-  eventLabel: string;
-  onViewOverview: () => void;
-  onViewQuests: () => void;
-  onViewEvents: () => void;
-  onAddMemory?: () => void;
-}) {
-  const questCards = mergeLocationQuestCards({
-    qrCodes: content.qrCodes,
-    mapQuests: content.quests,
-    boardQuests: [],
-    locationId,
-  });
-  const hasActivity = mapLocationActivityCount(content, locationId) > 0;
-  const previewQuest = questCards[0];
-  const previewEvent = content.events[0];
-
-  if (!loaded) {
-    return (
-      <section className="cq-realm-archive-secondary cq-realm-fade-in" aria-label="Quests and events">
-        <p className="cq-realm-archive-secondary-empty">Loading campus activities…</p>
-      </section>
-    );
-  }
-
-  if (!hasActivity) {
-    return (
-      <section className="cq-realm-archive-secondary cq-realm-location-quiet cq-realm-fade-in" aria-label="Quests and events">
-        <div className="cq-realm-location-quiet-card">
-          <Calendar className="cq-realm-location-quiet-icon" strokeWidth={1.75} aria-hidden />
-          <p className="cq-realm-location-quiet-title">No quests or events happening here right now.</p>
-          {onAddMemory ? (
-            <p className="cq-realm-location-quiet-copy">Be the first to create a memory at this location.</p>
-          ) : null}
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section className="cq-realm-archive-secondary" aria-label="Quests and events">
-      <div className="cq-realm-archive-secondary-head">
-        <h3 className="cq-realm-archive-secondary-title">Quests &amp; Events</h3>
-        <button type="button" className="cq-realm-archive-secondary-link" onClick={onViewOverview}>
-          See all
-        </button>
-      </div>
-
-      <div className="cq-realm-archive-secondary-grid">
-        <div className="cq-realm-archive-secondary-col space-y-2">
-          {previewQuest ? (
-            <button type="button" className="cq-realm-archive-quest-row w-full" onClick={onViewQuests}>
-              <span className="cq-realm-archive-quest-row-icon">
-                {hasQrQuestCard(previewQuest) ? (
-                  <span>📷</span>
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5" aria-hidden />
-                )}
-              </span>
-              <span className="cq-realm-archive-quest-row-body">
-                <span className="cq-realm-archive-quest-row-name">{getQuestCardTitle(previewQuest)}</span>
-                <span className="cq-realm-archive-quest-row-meta">
-                  {hasQrQuestCard(previewQuest)
-                    ? `QR · +${getQuestCardXp(previewQuest)} XP`
-                    : `+${getQuestCardXp(previewQuest)} XP`}
-                </span>
-              </span>
-            </button>
-          ) : null}
-        </div>
-
-        {previewEvent ? (
-          <button type="button" className="cq-realm-archive-event-chip" onClick={onViewEvents}>
-            <span className="cq-realm-archive-event-chip-label">
-              <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              <span className="min-w-0 truncate">{previewEvent.title}</span>
-            </span>
-            <span className={`cq-realm-archive-event-chip-badge cq-realm-archive-event-chip-badge--${urgency}`}>
-              {eventLabel}
-            </span>
-          </button>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-function RealmDetailView({
-  view,
-  location,
-  displayName,
-  displayAddress,
-  content,
-  locationId,
-  loaded,
-  urgency,
-  eventLabel,
-  momentCount,
-  activeQuestCount,
-  activeEventCount,
-  directionsEnabled,
-  directionsDestination,
-  directionsStatus,
-  activeTravelMode,
-  onRequestWalking,
-  onRequestDriving,
-  onClearDirections,
-  onOpenInRealmMap,
-  onBack,
-  onClose,
-  onViewQuests,
-  onOpenArchive,
-}: {
-  view: Exclude<SheetView, "archive">;
-  location: RealmLocation | null;
-  displayName: string;
-  displayAddress: string | null;
-  content: Pick<GroupedMapLocation, "qrCodes" | "quests" | "events">;
-  locationId?: string | null;
-  loaded: boolean;
-  urgency: ReturnType<typeof getRealmEventUrgency>;
-  eventLabel: string;
-  momentCount: number;
-  activeQuestCount: number;
-  activeEventCount: number;
-  directionsEnabled: boolean;
-  directionsDestination: RealmDirectionsDestination | null;
-  directionsStatus: RealmDirectionsStatus;
-  activeTravelMode: RealmTravelMode | null;
-  onRequestWalking: () => void;
-  onRequestDriving: () => void;
-  onClearDirections: () => void;
-  onOpenInRealmMap?: () => void;
-  onBack: () => void;
-  onClose: () => void;
-  onViewQuests: () => void;
-  onOpenArchive: () => void;
-}) {
-  const questCards = mergeLocationQuestCards({
-    qrCodes: content.qrCodes,
-    mapQuests: content.quests,
-    boardQuests: [],
-    locationId,
-  });
-
-  // Shared clock for every event card in the sheet (single timer).
-  const now = useNow(30_000);
-  const sortedEvents = sortEventsForSheet(content.events, now);
-  // "Active Events" only while everything listed is upcoming/live; once the
-  // list includes ended or cancelled events (still inside their 24h window),
-  // the section is just "Events".
-  const eventsSectionTitle = hasEndedOrCancelledEvents(content.events, now) ? "Events" : "Active Events";
-
-  return (
-    <div className="cq-realm-detail-scroll">
-      <header className="cq-realm-detail-header">
-        <div className="cq-realm-archive-toolbar-row">
-          <button type="button" onClick={onBack} className="cq-realm-archive-back-btn touch-manipulation">
-            <ChevronLeft className="h-4 w-4 shrink-0" strokeWidth={2.4} />
-            Back
-          </button>
-          <button type="button" onClick={onClose} className="cq-realm-detail-close" aria-label="Close">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="cq-realm-archive-identity cq-realm-archive-identity--compact">
-          {location ? (
-            <p className="cq-realm-archive-fantasy-banner">
-              <span aria-hidden>{location.markerEmoji}</span>
-              <span>{location.fantasyName}</span>
-            </p>
-          ) : null}
-          <h2 className="cq-realm-archive-location-name">{displayName}</h2>
-          {displayAddress ? <p className="cq-realm-archive-flavor">{displayAddress}</p> : null}
-        </div>
-
-        <div className="cq-realm-archive-stat-chips" role="list" aria-label="Location stats">
-          {location ? (
-            <StatChip emoji="📸" label={`${momentCount} ${momentCount === 1 ? "Memory" : "Memories"}`} />
-          ) : null}
-          <StatChip emoji="⚔️" label={`${activeQuestCount} ${activeQuestCount === 1 ? "Activity" : "Activities"}`} />
-          <StatChip emoji="📅" label={`${activeEventCount} ${activeEventCount === 1 ? "Event" : "Events"}`} />
-        </div>
-
-        <div className="cq-realm-archive-directions-wrap cq-realm-archive-directions-wrap--detail">
-          <RealmDirectionsPanel
-            destination={directionsDestination}
-            directionsEnabled={directionsEnabled}
-            directionsStatus={directionsStatus}
-            activeTravelMode={activeTravelMode}
-            onRequestWalking={onRequestWalking}
-            onRequestDriving={onRequestDriving}
-            onClearDirections={onClearDirections}
-            onOpenInRealmMap={onOpenInRealmMap}
-          />
-        </div>
-      </header>
-
-      {view === "overview" ? (
-        <div className="cq-realm-detail-body space-y-4">
-          {!loaded ? <EmptyPanel message="Loading campus activities…" /> : null}
-          {loaded && mapLocationActivityCount(content, locationId) === 0 ? (
-            <EmptyPanel message="No active QR codes, quests, or events at this location." />
-          ) : null}
-          {loaded ? (
-            <>
-              {questCards.length > 0 ? (
-                <section className="space-y-2">
-                  <h3 className="cq-realm-detail-title">Active Quests</h3>
-                  <ul className="cq-realm-detail-list">
-                    {questCards.map((card) => (
-                      <MergedQuestDetailRow key={getQuestCardKey(card)} card={card} onViewQuests={onViewQuests} />
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
-
-              {sortedEvents.length > 0 ? (
-                <section className="space-y-2">
-                  <h3 className="cq-realm-detail-title">{eventsSectionTitle}</h3>
-                  <ul className="cq-realm-detail-list">
-                    {sortedEvents.map((event) => (
-                      <li key={event.id}>
-                        <EventPinCard event={event} now={now} locationName={displayName} />
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
-            </>
-          ) : null}
-
-          {location ? (
-            <SheetActionButton onClick={onOpenArchive}>
-              {momentCount > 0 ? `Memory Archive (${momentCount})` : "Memory Archive"}
-            </SheetActionButton>
-          ) : null}
-        </div>
-      ) : null}
-
-      {view === "quests" ? (
-        <div className="cq-realm-detail-body">
-          <h3 className="cq-realm-detail-title">Active Quests &amp; QR</h3>
-          <p className="cq-realm-detail-subtitle">{displayName}</p>
-          {questCards.length === 0 ? (
-            <EmptyPanel message="No active quests or QR codes here right now." />
-          ) : (
-            <ul className="cq-realm-detail-list">
-              {questCards.map((card) => (
-                <MergedQuestDetailRow key={getQuestCardKey(card)} card={card} onViewQuests={onViewQuests} compact />
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : null}
-
-      {view === "events" ? (
-        <div className="cq-realm-detail-body">
-          <h3 className="cq-realm-detail-title">
-            {hasEndedOrCancelledEvents(content.events, now) ? "Events" : "Upcoming Events"}
-          </h3>
-          <p className="cq-realm-detail-subtitle">{displayName}</p>
-          {sortedEvents.length === 0 ? (
-            <EmptyPanel message="No upcoming events scheduled at this location." />
-          ) : (
-            <>
-              {sortedEvents.length >= 3 ? (
-                <div
-                  className="cq-event-pin-carousel"
-                  role="list"
-                  aria-label="Events at this location"
-                >
-                  {sortedEvents.map((event) => (
-                    <div key={`mini-${event.id}`} role="listitem" className="cq-event-pin-carousel-item">
-                      <EventPinCard event={event} now={now} locationName={displayName} compact />
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <ul className="cq-realm-detail-list">
-                {sortedEvents.map((event) => (
-                  <li key={event.id}>
-                    <EventPinCard event={event} now={now} locationName={displayName} />
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function MergedQuestDetailRow({
-  card,
-  onViewQuests,
-  compact = false,
-}: {
-  card: LocationQuestCard;
-  onViewQuests: () => void;
-  compact?: boolean;
-}) {
-  const scanPath = getQuestCardScanPath(card);
-  const showQr = hasQrQuestCard(card);
-  const title = getQuestCardTitle(card);
-  const xp = getQuestCardXp(card);
-  const expiresAt =
-    card.kind === "qr" ? card.qr.expiresAt : card.kind === "board" ? card.item.endsAt : null;
-  const difficulty = card.kind === "board" ? card.item.difficulty : null;
-  const completionMethod = card.kind === "board" ? card.item.completionMethod : null;
-  const icon = card.kind === "board" ? card.item.icon : null;
-
-  return (
-    <li className="cq-realm-detail-quest-card">
-      <span className="cq-realm-archive-quest-row-icon">
-        {showQr ? (
-          <span>📷</span>
-        ) : icon ? (
-          <span>{icon}</span>
-        ) : (
-          <Sparkles className="h-4 w-4" aria-hidden />
-        )}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="cq-realm-detail-quest-name">{title}</span>
-        <span className="cq-realm-archive-quest-row-meta capitalize">
-          {showQr ? `QR · +${xp} XP` : difficulty ? `${difficulty} · +${xp} XP` : `+${xp} XP`}
-        </span>
-        {!compact && completionMethod && !showQr ? (
-          <span className="block text-[11px] text-white/45 capitalize">
-            {completionMethod.replace(/_/g, " ")}
-          </span>
-        ) : null}
-        {!compact && expiresAt ? (
-          <span className="block text-[11px] text-white/45">Expires {new Date(expiresAt).toLocaleString()}</span>
-        ) : null}
-      </span>
-      {scanPath ? (
-        <a
-          href={scanPath}
-          className={
-            compact
-              ? "cq-realm-archive-quest-row-xp text-uri-gold"
-              : "inline-flex px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-uri-gold/35 text-uri-gold hover:bg-uri-gold/10"
-          }
-        >
-          Scan
-        </a>
-      ) : (
-        <button
-          type="button"
-          onClick={onViewQuests}
-          className="inline-flex px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-uri-keaney/35 text-uri-keaney hover:bg-uri-keaney/10"
-        >
-          View
-        </button>
-      )}
-    </li>
-  );
-}
-
-function EmptyPanel({ message }: { message: string }) {
-  return <div className="cq-realm-detail-empty">{message}</div>;
-}
-
-function SheetActionButton({
-  children,
-  onClick,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" onClick={onClick} className="cq-realm-detail-btn w-full">
-      {children}
-    </button>
-  );
-}
-
-function buildActivityLine(args: {
-  activeQuests: number;
-  activeEvents: number;
-  momentCount: number;
-}): string {
-  if (args.activeQuests > 0 && args.momentCount > 0) {
-    return "Rams are active here — quests running and fresh memories in the archive.";
-  }
-  if (args.activeQuests > 0) {
-    return "Quest energy is up. Log an activity or scan nearby to contribute.";
-  }
-  if (args.activeEvents > 0) {
-    return "Campus events are scheduled here. Check the event list for details.";
-  }
-  if (args.momentCount > 0) {
-    return "Students are posting from this spot. Drop a public post with this location to add yours.";
-  }
-  return "Quiet for now — be the first Ram to forge a memory here.";
+function formatLocationCategory(category: string): string {
+  const normalized = category.trim().replace(/[_-]+/g, " ");
+  if (!normalized) return "Location";
+  return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

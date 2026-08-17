@@ -162,7 +162,6 @@ export function RealmMap({
   const [draggingId, setDraggingId] = useState<RealmLocationId | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [savePending, setSavePending] = useState(false);
-  const [sheetInitialView, setSheetInitialView] = useState<"archive" | "overview" | "quests" | "events">("archive");
   const [memoriesLoaded, setMemoriesLoaded] = useState(false);
   const [memoriesLoadError, setMemoriesLoadError] = useState<string | null>(null);
   const [memoryStatsByLocation, setMemoryStatsByLocation] = useState<Record<string, CampusMemoryLocationStats>>({});
@@ -390,10 +389,7 @@ export function RealmMap({
   }, []);
 
   const openLocation = useCallback(
-    (
-      location: HydratedRealmLocation,
-      options?: { initialView?: "archive" | "overview" | "quests" | "events" },
-    ) => {
+    (location: HydratedRealmLocation) => {
       if (editMode) return;
       if (!markerTapGateRef.current.tryOpen(location.id)) return;
       try {
@@ -403,7 +399,6 @@ export function RealmMap({
         setSelectedLocation(location);
         setSelectedMapContent(normalizeGroupedMapContent(location.mapContent));
         setActiveMarkerId(location.id);
-        setSheetInitialView(options?.initialView ?? "archive");
         setSheetOpen(true);
         setMarkerNotice(null);
       } catch (exception) {
@@ -433,7 +428,6 @@ export function RealmMap({
         setSelectedLocation(null);
         setSelectedMapContent(normalizeGroupedMapContent(group));
         setActiveMarkerId(group.groupKey);
-        setSheetInitialView("overview");
         setSheetOpen(true);
         setMarkerNotice(null);
       } catch (exception) {
@@ -472,14 +466,13 @@ export function RealmMap({
             if (matchingGroup.realmLocationId) {
               const location = locations.find((l) => l.id === matchingGroup.realmLocationId);
               if (location) {
-                openLocation(location, { initialView: "events" });
+                openLocation(location);
                 return;
               }
             }
             setSelectedLocation(null);
             setSelectedMapContent(normalizeGroupedMapContent(matchingGroup));
             setActiveMarkerId(matchingGroup.groupKey);
-            setSheetInitialView("events");
             setSheetOpen(true);
             return;
           }
@@ -497,17 +490,10 @@ export function RealmMap({
           setSearchPin({ lat: result.lat, lng: result.lng, name: result.title });
         }
 
-        const view =
-          result.kind === "quest"
-            ? "quests"
-            : result.kind === "event"
-              ? "events"
-              : "archive";
-
         if (result.realmLocationId) {
           const location = locations.find((l) => l.id === result.realmLocationId);
           if (location) {
-            openLocation(location, { initialView: view });
+            openLocation(location);
             return;
           }
         }
@@ -524,7 +510,6 @@ export function RealmMap({
           setSelectedLocation(null);
           setSelectedMapContent(normalizeGroupedMapContent(group));
           setActiveMarkerId(group.groupKey);
-          setSheetInitialView(view === "archive" ? "overview" : view);
           setSheetOpen(true);
           return;
         }
@@ -532,7 +517,7 @@ export function RealmMap({
         if (result.markerId) {
           const location = locations.find((l) => l.id === result.markerId);
           if (location) {
-            openLocation(location, { initialView: view });
+            openLocation(location);
             return;
           }
         }
@@ -559,11 +544,6 @@ export function RealmMap({
       setActiveRouteDestination(null);
     }
   }, [cancelInFlightRoute, isRouteSheetOpen]);
-
-  const handleCreatePost = useCallback(() => {
-    closeSheet();
-    onCreatePost?.();
-  }, [closeSheet, onCreatePost]);
 
   const handleAddMemory = useCallback((locationId: CampusLocationId) => {
     setAddMemoryLocationId(locationId);
@@ -1249,20 +1229,13 @@ export function RealmMap({
           location={selectedLocation}
           mapContent={selectedMapContent}
           open={sheetOpen}
-          initialView={sheetInitialView}
-          memoriesLoaded={memoriesLoaded}
           memoryStats={selectedLocation ? memoryStatsByLocation[selectedLocation.id] ?? null : null}
           mapContentLoaded={mapGroupsLoaded}
-          viewer={viewer}
           currentUserId={userId}
           onClose={closeSheet}
-          onViewQuests={onViewQuests}
-          onCreatePost={handleCreatePost}
           onRefreshMemories={loadCampusMemories}
           onRefreshAll={handleRefreshLocationData}
           questReloadToken={questReloadToken}
-          onViewProfile={onViewProfile}
-          onSharePost={onSharePost}
           onAddMemory={handleAddMemory}
           onOpenMemoryViewer={handleOpenMemoryViewer}
           onOpenMemoryGallery={handleOpenMemoryGallery}

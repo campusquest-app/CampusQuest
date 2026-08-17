@@ -21,6 +21,7 @@ export const REALM_LOCATION_GEO: Record<string, { latitude: number; longitude: n
   "engineering-hall": { latitude: 41.4888, longitude: -71.5295 },
   "business-building": { latitude: 41.4892, longitude: -71.5282 },
   "rams-den": { latitude: 41.4862, longitude: -71.5318 },
+  "weldin-hall": { latitude: 41.4908, longitude: -71.5294 },
 };
 
 export function isRealmLocationId(value: string): value is RealmLocationId {

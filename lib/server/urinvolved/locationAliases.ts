@@ -1,6 +1,7 @@
 import type { RealmLocationId } from "@/lib/realm/locations";
-import { isCampusLocationId } from "@/lib/locations/campusLocationCatalog";
+import { isCampusLocationId, tryGetCampusLocation } from "@/lib/locations/campusLocationCatalog";
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
+import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
 
 export type LocationMatchSource = "venue" | "location_name" | "address" | "description";
 
@@ -34,6 +35,8 @@ const ALIAS_ENTRIES: AliasEntry[] = [
       "weldon",
     ],
     realmLocationId: "weldin-hall",
+    // Fallback when REALM_LOCATION_GEO / catalog rows are incomplete.
+    coordinates: { latitude: 41.4908, longitude: -71.5294 },
   },
   {
     aliases: ["memorial union", "mu", "uri memorial union", "memorial union building"],
@@ -148,7 +151,10 @@ const GLUED_CITY_PATTERN =
 
 export function hasCampusMapPin(realmLocationId: RealmLocationId | undefined): boolean {
   if (!realmLocationId) return false;
-  return isCampusLocationId(realmLocationId);
+  const geo = REALM_LOCATION_GEO[realmLocationId];
+  if (hasValidCoordinates(geo)) return true;
+  if (!isCampusLocationId(realmLocationId)) return false;
+  return hasValidCoordinates(tryGetCampusLocation(realmLocationId));
 }
 
 export function normalizeLocationName(value: string): string {
@@ -216,26 +222,42 @@ function findAliasEntry(value: string): AliasEntry | null {
 }
 
 function resolveEntryCoordinates(entry: AliasEntry, matchedBy?: LocationMatchSource): LocationMatch | null {
-  if (entry.realmLocationId && hasCampusMapPin(entry.realmLocationId)) {
+  if (entry.realmLocationId) {
     const geo = REALM_LOCATION_GEO[entry.realmLocationId];
-    return {
-      latitude: geo.latitude,
-      longitude: geo.longitude,
-      realmLocationId: entry.realmLocationId,
-      mapPinAvailable: true,
-      matchedBy,
-    };
+    if (hasValidCoordinates(geo)) {
+      return {
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        realmLocationId: entry.realmLocationId,
+        mapPinAvailable: true,
+        matchedBy,
+      };
+    }
+
+    // Catalog may include buildings that are not yet in REALM_LOCATION_GEO.
+    const catalogEntry = tryGetCampusLocation(entry.realmLocationId);
+    if (hasValidCoordinates(catalogEntry)) {
+      return {
+        latitude: catalogEntry.latitude,
+        longitude: catalogEntry.longitude,
+        realmLocationId: entry.realmLocationId,
+        mapPinAvailable: true,
+        matchedBy,
+      };
+    }
   }
 
-  if (entry.coordinates && !entry.realmLocationId) {
+  if (hasValidCoordinates(entry.coordinates)) {
     return {
       latitude: entry.coordinates.latitude,
       longitude: entry.coordinates.longitude,
-      mapPinAvailable: false,
+      realmLocationId: entry.realmLocationId,
+      mapPinAvailable: Boolean(entry.realmLocationId && hasCampusMapPin(entry.realmLocationId)),
       matchedBy,
     };
   }
 
+  // Alias recognized but no usable coordinates — caller still imports the event.
   return null;
 }
 
@@ -304,7 +326,7 @@ export function externalEventQualifiesForMap(args: {
   longitude: number | null;
   resolved: ResolvedCampusLocation;
 }): boolean {
-  if (args.latitude == null || args.longitude == null) return false;
+  if (!hasValidCoordinates({ latitude: args.latitude, longitude: args.longitude })) return false;
   if (args.resolved.mapPinAvailable) return true;
   if (args.resolved.locationMatch && !args.resolved.locationMatch.realmLocationId) return true;
   return false;

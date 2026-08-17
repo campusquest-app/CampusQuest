@@ -53,16 +53,27 @@ export function AdminUrinvolvedSection() {
     try {
       const data = await postAuthed<
         {
-          result: { success: boolean; events_created: number; events_updated: number; orgs_created: number; orgs_updated: number };
+          result: {
+            success: boolean;
+            events_fetched: number;
+            events_created: number;
+            events_updated: number;
+            events_failed: number;
+            events_unresolved_location: number;
+            events_map_matched: number;
+            orgs_created: number;
+            orgs_updated: number;
+          };
           status: SyncStatus;
         },
         Record<string, never>
       >("/api/internal/admin/urinvolved-sync", {});
       setStatus(data.status);
+      const imported = data.result.events_created + data.result.events_updated;
       setMessage(
         data.result.success
-          ? `Sync complete — ${data.result.events_created} created, ${data.result.events_updated} updated.`
-          : "Sync finished with errors.",
+          ? `Sync complete — fetched ${data.result.events_fetched}, imported ${imported} (${data.result.events_created} created, ${data.result.events_updated} updated), ${data.result.events_map_matched} map matches, ${data.result.events_unresolved_location} unresolved locations, ${data.result.events_failed} failed.`
+          : `Sync finished with errors — fetched ${data.result.events_fetched}, imported ${imported}, ${data.result.events_failed} failed.`,
       );
     } catch (syncError) {
       if (syncError instanceof ApiRequestError && syncError.status === 403) {

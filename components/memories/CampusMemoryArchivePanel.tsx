@@ -17,11 +17,15 @@ export function CampusMemoryArchivePanel({
   userId,
   priorityLocationId,
   locationOnly = false,
+  collapsed = false,
+  onAvailabilityChange,
   onOpenMemory,
 }: {
   userId?: string;
   priorityLocationId?: CampusLocationId;
   locationOnly?: boolean;
+  collapsed?: boolean;
+  onAvailabilityChange?: (available: boolean) => void;
   onOpenMemory: (memory: CampusMemory) => void;
 }) {
   const [sections, setSections] = useState<CampusMemoryArchiveSection[]>([]);
@@ -57,6 +61,15 @@ export function CampusMemoryArchivePanel({
     return [...priority, ...rest];
   }, [locationOnly, priorityLocationId, sections]);
 
+  useEffect(() => {
+    if (loading) return;
+    onAvailabilityChange?.(
+      !error && orderedSections.some((section) => section.memories.length > 0),
+    );
+  }, [error, loading, onAvailabilityChange, orderedSections]);
+
+  if (collapsed) return null;
+
   if (loading) {
     return (
       <div className="cq-memory-archive-grid cq-memory-archive-grid--loading cq-realm-fade-in" aria-busy="true">
@@ -73,11 +86,7 @@ export function CampusMemoryArchivePanel({
 
   if (orderedSections.length === 0) {
     if (locationOnly && priorityLocationId) {
-      return (
-        <p className="cq-memory-archive-empty cq-realm-fade-in">
-          No archived memories saved at this location yet.
-        </p>
-      );
+      return null;
     }
     return (
       <div className="cq-memory-archive-empty-card cq-realm-fade-in">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, MapPin, Sparkles } from "lucide-react";
+import { Camera } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import type { CampusMemory, CampusMemoryGroup } from "@/lib/types";
 import type { CampusLocationId } from "@/lib/locations/registry";
@@ -174,12 +174,16 @@ export function LocationMemoriesSection({
 
   if (sortedMemories.length === 0) {
     return (
-      <section className="cq-realm-memories-hero cq-realm-memories-hero--empty cq-realm-fade-in">
-        <div className="cq-realm-memories-empty-card">
-          <Sparkles className="cq-realm-memories-empty-icon" strokeWidth={1.75} aria-hidden />
-          <p className="cq-realm-memories-empty-title">No memories here yet</p>
-          <p className="cq-realm-memories-empty-copy">Be the first to leave your mark.</p>
-          <button type="button" className="cq-realm-memories-add-primary" onClick={() => onAddMemory(locationId)}>
+      <section
+        className="cq-realm-memories-hero cq-realm-memories-hero--empty cq-realm-fade-in"
+        aria-labelledby="location-memories-title"
+      >
+        <h3 id="location-memories-title" className="cq-realm-memories-hero-title">
+          Memories
+        </h3>
+        <div className="cq-realm-memories-empty-compact">
+          <p>No memories here yet.</p>
+          <button type="button" className="cq-realm-memories-empty-action" onClick={() => onAddMemory(locationId)}>
             <Camera className="h-4 w-4" strokeWidth={2.2} aria-hidden />
             Add Memory
           </button>
@@ -189,9 +193,9 @@ export function LocationMemoriesSection({
   }
 
   return (
-    <section className="cq-realm-memories-hero cq-realm-fade-in" aria-label="Campus Memories">
+    <section className="cq-realm-memories-hero cq-realm-fade-in" aria-label="Memories">
       <div className="cq-realm-memories-hero-head">
-        <h3 className="cq-realm-memories-hero-title">Campus Memories</h3>
+        <h3 className="cq-realm-memories-hero-title">Memories</h3>
         {sortedMemories.length > STORY_VIEW_ALL_THRESHOLD ? (
           <button type="button" className="cq-realm-memories-hero-link" onClick={openAll}>
             View All
@@ -247,17 +251,6 @@ export function LocationMemoriesSection({
             );
           })}
         </div>
-      </div>
-
-      <div className="cq-realm-memories-hero-actions">
-        <button type="button" className="cq-realm-memories-add-primary" onClick={() => onAddMemory(locationId)}>
-          <Camera className="h-4 w-4" strokeWidth={2.2} aria-hidden />
-          Add Memory
-        </button>
-        <button type="button" className="cq-realm-memories-view-secondary" onClick={openAll}>
-          <MapPin className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden />
-          View All
-        </button>
       </div>
       <p className="sr-only">Memories at {locationName}</p>
     </section>

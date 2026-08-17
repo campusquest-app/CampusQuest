@@ -82,9 +82,13 @@ function resolveGroupMeta(args: {
 
   if (canonicalId) {
     const entry = getCampusLocation(canonicalId);
+    const lat =
+      typeof entry.latitude === "number" && Number.isFinite(entry.latitude) ? entry.latitude : null;
+    const lng =
+      typeof entry.longitude === "number" && Number.isFinite(entry.longitude) ? entry.longitude : null;
     const coords = mapPercentForCoordinates({
-      lat: entry.latitude,
-      lng: entry.longitude,
+      lat,
+      lng,
       mapPinX: args.mapPinX ?? entry.mapX,
       mapPinY: args.mapPinY ?? entry.mapY,
     });
@@ -98,8 +102,8 @@ function resolveGroupMeta(args: {
       locationAddress: args.locationAddress ?? null,
       x: coords.x,
       y: coords.y,
-      lat: entry.latitude,
-      lng: entry.longitude,
+      lat,
+      lng,
       attachToLandmark: true,
     };
   }
@@ -205,7 +209,15 @@ function externalEventCoordsMeta(match: {
   latitude: number;
   longitude: number;
 }): Omit<GroupBucket, "qrCodes" | "quests" | "events"> | null {
-  if (!isValidCampusCoordinate(match.latitude, match.longitude)) return null;
+  if (
+    typeof match.latitude !== "number" ||
+    typeof match.longitude !== "number" ||
+    !Number.isFinite(match.latitude) ||
+    !Number.isFinite(match.longitude) ||
+    !isValidCampusCoordinate(match.latitude, match.longitude)
+  ) {
+    return null;
+  }
   const map = geoToRealmMapPercent(match.latitude, match.longitude);
   // Bucket by rounded coordinates so minor naming differences don't stack pins.
   const latKey = match.latitude.toFixed(5);
@@ -231,7 +243,15 @@ function externalEventPerIdMeta(match: {
   latitude: number;
   longitude: number;
 }): Omit<GroupBucket, "qrCodes" | "quests" | "events"> | null {
-  if (!isValidCampusCoordinate(match.latitude, match.longitude)) return null;
+  if (
+    typeof match.latitude !== "number" ||
+    typeof match.longitude !== "number" ||
+    !Number.isFinite(match.latitude) ||
+    !Number.isFinite(match.longitude) ||
+    !isValidCampusCoordinate(match.latitude, match.longitude)
+  ) {
+    return null;
+  }
   const map = geoToRealmMapPercent(match.latitude, match.longitude);
   return {
     groupKey: `ext-event:${match.externalEventId}`,

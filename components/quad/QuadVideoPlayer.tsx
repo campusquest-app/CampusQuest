@@ -158,6 +158,9 @@ export function QuadVideoPlayer({
       className={`relative w-full bg-black ${className}`}
       tabIndex={0}
       onKeyDown={onKeyDown}
+      data-cq-media-control="true"
+      data-cq-gesture-block="swipe-tab"
+      data-no-drawer-swipe="true"
     >
       <video
         ref={videoRef}

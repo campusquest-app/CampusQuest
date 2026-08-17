@@ -46,10 +46,14 @@ export function LocationQuestSection({
   locationId,
   mapContent,
   reloadToken = 0,
+  embedded = false,
+  onStateChange,
 }: {
   locationId: CampusLocationId;
   mapContent: Pick<GroupedMapLocation, "quests" | "qrCodes"> | null;
   reloadToken?: number;
+  embedded?: boolean;
+  onStateChange?: (state: { count: number; loading: boolean }) => void;
 }) {
   const [quests, setQuests] = useState<UserQuestBoardItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,14 +106,25 @@ export function LocationQuestSection({
     [locationId, mapContent?.qrCodes, mapContent?.quests, quests],
   );
 
-  const hasContent = loading || questCards.length > 0;
+  useEffect(() => {
+    onStateChange?.({ count: questCards.length, loading });
+  }, [loading, onStateChange, questCards.length]);
+
+  if (!loading && questCards.length === 0) return null;
 
   return (
-    <section className="cq-realm-location-quests cq-realm-fade-in" aria-label="Active quests">
-      <div className="cq-realm-location-quests-head">
-        <Sparkles className="h-4 w-4 text-uri-keaney" aria-hidden />
-        <h3 className="cq-realm-location-quests-title">Active Quests</h3>
-      </div>
+    <div
+      className={`cq-realm-location-quests cq-realm-fade-in${
+        embedded ? " cq-realm-location-quests--embedded" : ""
+      }`}
+      aria-label="Active quests"
+    >
+      {!embedded ? (
+        <div className="cq-realm-location-quests-head">
+          <Sparkles className="h-4 w-4 text-uri-keaney" aria-hidden />
+          <h3 className="cq-realm-location-quests-title">Active Quests</h3>
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="cq-realm-location-quests-list" aria-busy="true">
@@ -117,8 +132,6 @@ export function LocationQuestSection({
             <div key={index} className="cq-realm-location-quest-skeleton" />
           ))}
         </div>
-      ) : !hasContent ? (
-        <p className="cq-realm-location-quests-empty">No active quests here right now.</p>
       ) : (
         <div className="cq-realm-location-quests-list">
           {questCards.map((card) =>
@@ -137,6 +150,6 @@ export function LocationQuestSection({
           )}
         </div>
       )}
-    </section>
+    </div>
   );
 }

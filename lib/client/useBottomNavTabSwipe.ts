@@ -80,7 +80,14 @@ export function useBottomNavTabSwipe({
       if (event.touches.length !== 1) return;
       if (isInputFocused()) return;
       if (isGlobalTabSwipeBlocked()) return;
-      if (isGestureTargetBlocked(event.target, new Set<GestureBlockKind>(["swipe-tab", "all"]))) return;
+
+      const pathTargets = typeof event.composedPath === "function" ? event.composedPath() : [];
+      const blockedByPath = pathTargets.some((node) =>
+        isGestureTargetBlocked(node, new Set<GestureBlockKind>(["swipe-tab", "all"])),
+      );
+      if (blockedByPath || isGestureTargetBlocked(event.target, new Set<GestureBlockKind>(["swipe-tab", "all"]))) {
+        return;
+      }
 
       const touch = event.touches[0];
       if (activeTabRef.current === "quad" && touch.clientX <= SWIPE_BACK_EDGE_PX) {

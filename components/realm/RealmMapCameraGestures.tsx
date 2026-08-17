@@ -7,7 +7,13 @@ import { useMap } from "@vis.gl/react-google-maps";
  * Ensures Google Maps accepts native tilt/rotate gestures.
  * Never writes heading/tilt through setOptions (that resets VECTOR camera).
  */
-export function RealmMapCameraGestures({ enabled }: { enabled: boolean }) {
+export function RealmMapCameraGestures({
+  enabled,
+  touchMobile = false,
+}: {
+  enabled: boolean;
+  touchMobile?: boolean;
+}) {
   const map = useMap();
 
   useEffect(() => {
@@ -24,11 +30,11 @@ export function RealmMapCameraGestures({ enabled }: { enabled: boolean }) {
       rotateControl: true,
       tiltInteractionEnabled: true,
       headingInteractionEnabled: true,
-      zoomControl: true,
-      keyboardShortcuts: true,
+      zoomControl: !touchMobile,
+      keyboardShortcuts: !touchMobile,
       isFractionalZoomEnabled: true,
     });
-  }, [map, enabled]);
+  }, [map, enabled, touchMobile]);
 
   useEffect(() => {
     if (!map || !enabled) return undefined;

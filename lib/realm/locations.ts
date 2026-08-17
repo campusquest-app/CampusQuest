@@ -41,6 +41,10 @@ export interface RealmMoment {
 export interface RealmLocation {
   id: RealmLocationId;
   name: string;
+  /** Plain-language location description used by functional map details. */
+  description?: string;
+  /** Catalog category used for the optional location badge. */
+  category?: string;
   /** Fantasy landmark name — display flavor only, never used for logic. */
   fantasyName: string;
   /** One-line exploration flavor for the archive header — display only. */

@@ -16,14 +16,19 @@ import { parseUrinvolvedEventsRss, type ParsedUrinvolvedEvent } from "@/lib/serv
 import { getCampusLocations } from "@/lib/server/campusLocationsDb";
 import { getLogicalEventFallbackKey, isLogicalEventCancelled } from "@/lib/realm/dedupeLogicalEvents";
 import { resolveAndUpsertEventMapPlacement } from "@/lib/server/urinvolved/resolveAndUpsertEventMapPlacement";
+import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
 import { revalidatePath } from "next/cache";
 
 export const URINVOLVED_SOURCE = "urinvolved";
 
 export type UrinvolvedSyncSummary = {
   success: boolean;
+  events_fetched: number;
   events_created: number;
   events_updated: number;
+  events_failed: number;
+  events_unresolved_location: number;
+  events_map_matched: number;
   orgs_created: number;
   orgs_updated: number;
   errors: string[];
@@ -138,8 +143,12 @@ async function findActiveLogicalDuplicateEvent(
 export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "api"): Promise<UrinvolvedSyncSummary> {
   const admin = createAdminClient();
   const errors: string[] = [];
+  let eventsFetched = 0;
   let eventsCreated = 0;
   let eventsUpdated = 0;
+  let eventsFailed = 0;
+  let eventsUnresolvedLocation = 0;
+  let eventsMapMatched = 0;
   let orgsCreated = 0;
   let orgsUpdated = 0;
 
@@ -153,73 +162,117 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
     try {
       const rssXml = await fetchUrinvolvedEventsRss();
       const parsedEvents = parseUrinvolvedEventsRss(rssXml);
+      eventsFetched = parsedEvents.length;
       const catalog = (await getCampusLocations({ refreshCache: true })).map((row) => ({
         slug: row.slug,
         name: row.name,
       }));
 
       for (const event of parsedEvents) {
-        const logicalDuplicate = await findActiveLogicalDuplicateEvent(admin, event);
-        const canonicalExternalId = logicalDuplicate?.external_id ?? event.externalId;
+        try {
+          const logicalDuplicate = await findActiveLogicalDuplicateEvent(admin, event);
+          const canonicalExternalId = logicalDuplicate?.external_id ?? event.externalId;
 
-        const location = await resolveImportedEventLocation(event);
-        const cancelled = isLogicalEventCancelled({ title: event.title, tags: event.tags });
-        const row = {
-          source: URINVOLVED_SOURCE,
-          external_id: canonicalExternalId,
-          title: event.title.slice(0, 500),
-          description: event.description.slice(0, 5000) || null,
-          organization_name: event.organizationName,
-          venue_name: location.venueName,
-          address: location.address,
-          location_name: location.locationName,
-          starts_at: event.startsAt,
-          ends_at: event.endsAt,
-          image_url: event.imageUrl,
-          event_url: event.eventUrl,
-          category: event.category,
-          tags: cancelled ? Array.from(new Set([...event.tags, "cancelled"])) : event.tags,
-          latitude: location.locationMatch?.latitude ?? null,
-          longitude: location.locationMatch?.longitude ?? null,
-          is_active: true,
-          last_seen_at: now,
-          updated_at: now,
-        };
+          const location = await resolveImportedEventLocation(event);
+          const cancelled = isLogicalEventCancelled({ title: event.title, tags: event.tags });
+          const matched = hasValidCoordinates(location.locationMatch) ? location.locationMatch : null;
 
-        const { data: existing } = await admin
-          .from("external_events")
-          .select("id")
-          .eq("external_id", canonicalExternalId)
-          .maybeSingle();
+          if (!matched) {
+            eventsUnresolvedLocation += 1;
+            console.warn("[cq:urinvolved-sync] unresolved location", {
+              externalId: event.externalId,
+              title: event.title,
+              rawLocation: location.venueName || location.address || location.locationName || null,
+              stage: "resolveImportedEventLocation",
+              aliasMatched: location.aliasMatched,
+              mapPinAvailable: location.mapPinAvailable,
+            });
+          } else {
+            eventsMapMatched += 1;
+          }
 
-        const { data: upserted, error: upsertError } = await admin
-          .from("external_events")
-          .upsert(row, { onConflict: "external_id" })
-          .select("id")
-          .single();
-        if (upsertError) {
-          errors.push(`Event ${event.externalId}: ${upsertError.message}`);
-          continue;
-        }
-        if (existing) eventsUpdated += 1;
-        else eventsCreated += 1;
+          const row = {
+            source: URINVOLVED_SOURCE,
+            external_id: canonicalExternalId,
+            title: event.title.slice(0, 500),
+            description: event.description.slice(0, 5000) || null,
+            organization_name: event.organizationName,
+            venue_name: location.venueName,
+            address: location.address,
+            location_name: location.locationName,
+            starts_at: event.startsAt,
+            ends_at: event.endsAt,
+            image_url: event.imageUrl,
+            event_url: event.eventUrl,
+            category: event.category,
+            tags: cancelled ? Array.from(new Set([...event.tags, "cancelled"])) : event.tags,
+            latitude: matched?.latitude ?? null,
+            longitude: matched?.longitude ?? null,
+            is_active: true,
+            last_seen_at: now,
+            updated_at: now,
+          };
 
-        if (logicalDuplicate && logicalDuplicate.external_id !== event.externalId) {
-          await admin
+          const { data: existing } = await admin
             .from("external_events")
-            .update({ is_active: false, updated_at: now })
-            .eq("external_id", event.externalId);
-        }
+            .select("id")
+            .eq("external_id", canonicalExternalId)
+            .maybeSingle();
 
-        seenEventIds.push(canonicalExternalId);
+          const { data: upserted, error: upsertError } = await admin
+            .from("external_events")
+            .upsert(row, { onConflict: "external_id" })
+            .select("id")
+            .single();
+          if (upsertError) {
+            eventsFailed += 1;
+            errors.push(`Event ${event.externalId}: ${upsertError.message}`);
+            continue;
+          }
+          if (existing) eventsUpdated += 1;
+          else eventsCreated += 1;
 
-        const externalEventId = String(upserted?.id ?? existing?.id ?? "");
-        if (externalEventId) {
-          // Shared placement pipeline — never depends on opening the map.
-          await resolveAndUpsertEventMapPlacement(externalEventId, {
-            catalog,
-            revalidate: false,
+          if (logicalDuplicate && logicalDuplicate.external_id !== event.externalId) {
+            await admin
+              .from("external_events")
+              .update({ is_active: false, updated_at: now })
+              .eq("external_id", event.externalId);
+          }
+
+          seenEventIds.push(canonicalExternalId);
+
+          const externalEventId = String(upserted?.id ?? existing?.id ?? "");
+          if (externalEventId) {
+            try {
+              // Shared placement pipeline — never depends on opening the map.
+              await resolveAndUpsertEventMapPlacement(externalEventId, {
+                catalog,
+                revalidate: false,
+              });
+            } catch (placementError) {
+              const message =
+                placementError instanceof Error ? placementError.message : String(placementError);
+              console.warn("[cq:urinvolved-sync] placement failed", {
+                externalId: event.externalId,
+                title: event.title,
+                rawLocation: location.venueName || location.address || location.locationName || null,
+                stage: "resolveAndUpsertEventMapPlacement",
+                error: message,
+              });
+              // Event row already imported — placement failure must not abort or fail the sync.
+            }
+          }
+        } catch (eventError) {
+          eventsFailed += 1;
+          const message = eventError instanceof Error ? eventError.message : String(eventError);
+          console.warn("[cq:urinvolved-sync] event import failed", {
+            externalId: event.externalId,
+            title: event.title,
+            rawLocation: event.venueName || event.address || event.locationName || null,
+            stage: "import_event",
+            error: message,
           });
+          errors.push(`Event ${event.externalId}: ${message}`);
         }
       }
     } catch (eventError) {
@@ -300,14 +353,18 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
         .in("external_id", orgIdsToDeactivate);
     }
 
-    const success = errors.length === 0;
+    const imported = eventsCreated + eventsUpdated;
+    const totalFailure =
+      eventsFetched > 0 && imported === 0 && eventsFailed >= eventsFetched;
+    const success = !totalFailure;
+
     await finishSyncLog(admin, log.id, {
       status: success ? "success" : "failed",
       events_created: eventsCreated,
       events_updated: eventsUpdated,
       orgs_created: orgsCreated,
       orgs_updated: orgsUpdated,
-      error_message: errors.length > 0 ? errors.slice(0, 5).join(" | ") : null,
+      error_message: errors.length > 0 ? errors.slice(0, 8).join(" | ") : null,
     });
 
     try {
@@ -317,10 +374,26 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
       /* ignore outside Next request context */
     }
 
+    console.info("[cq:urinvolved-sync] complete", {
+      eventsFetched,
+      eventsCreated,
+      eventsUpdated,
+      eventsFailed,
+      eventsUnresolvedLocation,
+      eventsMapMatched,
+      orgsCreated,
+      orgsUpdated,
+      success,
+    });
+
     return {
       success,
+      events_fetched: eventsFetched,
       events_created: eventsCreated,
       events_updated: eventsUpdated,
+      events_failed: eventsFailed,
+      events_unresolved_location: eventsUnresolvedLocation,
+      events_map_matched: eventsMapMatched,
       orgs_created: orgsCreated,
       orgs_updated: orgsUpdated,
       errors,
@@ -338,8 +411,12 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
     });
     return {
       success: false,
+      events_fetched: eventsFetched,
       events_created: eventsCreated,
       events_updated: eventsUpdated,
+      events_failed: eventsFailed,
+      events_unresolved_location: eventsUnresolvedLocation,
+      events_map_matched: eventsMapMatched,
       orgs_created: orgsCreated,
       orgs_updated: orgsUpdated,
       errors: [message, ...errors],
@@ -410,7 +487,9 @@ export async function getUrinvolvedSyncStatus(): Promise<UrinvolvedSyncStatus> {
   const rows = logs ?? [];
   const lastAttemptedSync = rows[0]?.started_at ?? null;
   const lastSuccess = rows.find((row) => row.status === "success");
-  const lastFailed = rows.find((row) => row.status === "failed");
+  // Only surface an error when the most recent attempt failed — a later success recovers health.
+  const lastError =
+    rows[0]?.status === "failed" ? ((rows[0].error_message as string | null) ?? null) : null;
 
   let eventsWithVenueCount = 0;
   let eventsWithAddressCount = 0;
@@ -468,6 +547,6 @@ export async function getUrinvolvedSyncStatus(): Promise<UrinvolvedSyncStatus> {
     eventsMatchedByAddressCount,
     eventsMatchedByVenueOrNameCount,
     eventsNotOnMapNoPinCount,
-    lastError: lastFailed?.error_message ?? null,
+    lastError,
   };
 }

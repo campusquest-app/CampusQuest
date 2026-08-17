@@ -1,62 +1,26 @@
 "use client";
 
-import { Calendar, Camera, Footprints } from "lucide-react";
+import { Camera, Footprints } from "lucide-react";
 import type { RealmDirectionsDestination, RealmDirectionsStatus } from "@/lib/realm/realmDirectionsTypes";
 import { isDirectionsLoadingForDestination } from "@/lib/realm/routeUiHelpers";
-import {
-  locationSheetTypeLabel,
-  type RealmLocationSheetType,
-} from "@/lib/realm/resolveLocationSheetType";
 
 export function RealmLocationActionsBar({
-  locationName,
-  sheetType,
-  momentCount,
-  activeQuestCount,
-  eventsToday,
   directionsEnabled,
   directionsDestination,
   directionsStatus,
   onRequestWalking,
-  onViewMemories,
-  onViewEvents,
+  onAddMemory,
 }: {
-  locationName: string;
-  sheetType: RealmLocationSheetType;
-  momentCount: number;
-  activeQuestCount: number;
-  eventsToday: number;
   directionsEnabled: boolean;
   directionsDestination: RealmDirectionsDestination | null;
   directionsStatus: RealmDirectionsStatus;
   onRequestWalking?: () => void;
-  onViewMemories?: () => void;
-  onViewEvents?: () => void;
+  onAddMemory?: () => void;
 }) {
-  const walkReady = directionsStatus.status === "ready" ? directionsStatus : null;
   const walkLoading = isDirectionsLoadingForDestination(directionsDestination, directionsStatus);
 
   return (
     <div className="cq-realm-sheet-actions" role="region" aria-label="Location actions">
-      <div className="cq-realm-sheet-actions-head">
-        <span className={`cq-realm-sheet-type cq-realm-sheet-type--${sheetType}`}>
-          {locationSheetTypeLabel(sheetType)}
-        </span>
-        {walkReady ? (
-          <span className="cq-realm-sheet-walk-eta">
-            {walkReady.summary.durationText} walk · {walkReady.summary.distanceText}
-          </span>
-        ) : null}
-      </div>
-
-      <div className="cq-realm-sheet-actions-stats" aria-label="Location summary">
-        <span>{momentCount} memories</span>
-        <span aria-hidden>·</span>
-        <span>{activeQuestCount} quests</span>
-        <span aria-hidden>·</span>
-        <span>{eventsToday} events today</span>
-      </div>
-
       <div className="cq-realm-sheet-actions-grid">
         {directionsEnabled && directionsDestination && onRequestWalking ? (
           <button
@@ -66,29 +30,18 @@ export function RealmLocationActionsBar({
             aria-busy={walkLoading}
           >
             <Footprints className="h-4 w-4 shrink-0" aria-hidden />
-            {walkLoading ? "Finding route…" : `Walk to ${locationName}`}
+            {walkLoading ? "Finding route…" : "Walk Here"}
           </button>
         ) : null}
 
-        {onViewMemories ? (
+        {onAddMemory ? (
           <button
             type="button"
             className="cq-realm-sheet-action touch-manipulation"
-            onClick={onViewMemories}
+            onClick={onAddMemory}
           >
             <Camera className="h-4 w-4 shrink-0" aria-hidden />
-            View memories
-          </button>
-        ) : null}
-
-        {eventsToday > 0 && onViewEvents ? (
-          <button
-            type="button"
-            className="cq-realm-sheet-action touch-manipulation"
-            onClick={onViewEvents}
-          >
-            <Calendar className="h-4 w-4 shrink-0" aria-hidden />
-            View events
+            Add Memory
           </button>
         ) : null}
       </div>

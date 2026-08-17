@@ -85,7 +85,8 @@ export function isGlobalTabSwipeBlocked(): boolean {
     getIsDrawerOpen() ||
     root.hasAttribute("data-realm-map-panning") ||
     root.hasAttribute("data-cq-scanner-active") ||
-    root.hasAttribute("data-cq-tab-swipe-disabled")
+    root.hasAttribute("data-cq-tab-swipe-disabled") ||
+    root.hasAttribute("data-cq-media-gesture-lock")
   );
 }
 
@@ -99,17 +100,25 @@ export function isDrawerSwipeSuppressed(): boolean {
   return document.documentElement.hasAttribute(DRAWER_SWIPE_SUPPRESS_ATTR);
 }
 
+export function resolveGestureElement(target: EventTarget | null): Element | null {
+  if (target instanceof Element) return target;
+  if (target instanceof Node) return target.parentElement;
+  return null;
+}
+
 export function shouldIgnoreDrawerSwipe(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  return Boolean(target.closest(DRAWER_SWIPE_IGNORE_SELECTOR));
+  const el = resolveGestureElement(target);
+  if (!el) return false;
+  return Boolean(el.closest(DRAWER_SWIPE_IGNORE_SELECTOR));
 }
 
 /** Close swipe: allow backdrop and drawer chrome; block nav buttons inside drawer. */
 export function shouldIgnoreDrawerCloseSwipe(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  if (target.closest(".cq-drawer-backdrop, .cq-side-drawer")) {
+  const el = resolveGestureElement(target);
+  if (!el) return false;
+  if (el.closest(".cq-drawer-backdrop, .cq-side-drawer")) {
     return Boolean(
-      target.closest(
+      el.closest(
         ".cq-side-drawer button, .cq-side-drawer a, .cq-side-drawer input, .cq-side-drawer textarea, .cq-side-drawer select, .cq-side-drawer [role='button']",
       ),
     );
@@ -122,20 +131,22 @@ export function isInteractiveElement(target: EventTarget | null): boolean {
 }
 
 export function isHorizontalScrollGestureTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  return Boolean(target.closest(DRAWER_HORIZONTAL_SCROLL_SELECTOR));
+  const el = resolveGestureElement(target);
+  if (!el) return false;
+  return Boolean(el.closest(DRAWER_HORIZONTAL_SCROLL_SELECTOR));
 }
 
 export function isGestureTargetBlocked(
   target: EventTarget | null,
   kinds: Set<GestureBlockKind>,
 ): boolean {
-  if (!(target instanceof Element)) return false;
+  const start = resolveGestureElement(target);
+  if (!start) return false;
   // Align tab swipe with drawer ignore: carousels / horizontal scrollers own the gesture.
-  if (kinds.has("swipe-tab") && isHorizontalScrollGestureTarget(target)) {
+  if (kinds.has("swipe-tab") && isHorizontalScrollGestureTarget(start)) {
     return true;
   }
-  let node: Element | null = target;
+  let node: Element | null = start;
   while (node) {
     const block = node.getAttribute("data-cq-gesture-block");
     if (block === "all" || (block && kinds.has(block as GestureBlockKind))) {

@@ -12,10 +12,13 @@ import { isVectorMapRendering } from "@/lib/realm/googleMapPose";
 export function RealmMapVectorInit({
   vector3dEnabled,
   tilesLoaded,
+  touchMobile = false,
   onVectorRendering,
 }: {
   vector3dEnabled: boolean;
   tilesLoaded: boolean;
+  /** Hide desktop +/- zoom and keyboard shortcut UI on phones (pinch still works). */
+  touchMobile?: boolean;
   onVectorRendering?: (vector: boolean) => void;
 }) {
   const map = useMap();
@@ -33,11 +36,11 @@ export function RealmMapVectorInit({
       rotateControl: true,
       tiltInteractionEnabled: true,
       headingInteractionEnabled: true,
-      zoomControl: true,
+      zoomControl: !touchMobile,
       mapTypeControl: false,
       streetViewControl: false,
       fullscreenControl: false,
-      keyboardShortcuts: true,
+      keyboardShortcuts: !touchMobile,
       isFractionalZoomEnabled: true,
       clickableIcons: false,
       // Never pass heading/tilt here — setOptions with 0 resets the camera.
@@ -69,7 +72,7 @@ export function RealmMapVectorInit({
         "CampusQuest map is not using VECTOR rendering. Open Google Cloud Console > Google Maps Platform > Map Management > select the JavaScript Map ID > confirm Map type is Vector and Tilt and Rotation are enabled.",
       );
     }
-  }, [map, onVectorRendering, tilesLoaded, vector3dEnabled]);
+  }, [map, onVectorRendering, tilesLoaded, touchMobile, vector3dEnabled]);
 
   return null;
 }

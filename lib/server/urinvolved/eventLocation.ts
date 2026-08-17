@@ -6,6 +6,7 @@ import {
   type ResolvedCampusLocation,
 } from "@/lib/server/urinvolved/locationAliases";
 import type { UrinvolvedEventAddressRaw } from "@/lib/server/urinvolved/fetchSources";
+import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
 
 export function buildUrinvolvedAddressString(address: UrinvolvedEventAddressRaw | null | undefined): string | null {
   if (!address) return null;
@@ -73,7 +74,7 @@ export function classifyImportedEventLocation(input: {
   });
 
   const missingLocation = !venue && !address && (!locationName || locationName === "Location TBA");
-  const onMap = input.latitude != null && input.longitude != null;
+  const onMap = hasValidCoordinates({ latitude: input.latitude, longitude: input.longitude });
   const matchedWithoutMapPin = resolved.aliasMatched && !resolved.mapPinAvailable && !onMap;
 
   return {
