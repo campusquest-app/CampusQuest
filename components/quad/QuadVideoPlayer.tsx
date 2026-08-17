@@ -28,6 +28,7 @@ export function QuadVideoPlayer({
   autoplayWhenVisible = true,
   showMuteControl = true,
   className = "",
+  onError,
 }: {
   playerId: string;
   src: string;
@@ -37,6 +38,7 @@ export function QuadVideoPlayer({
   /** When false, hide speaker control (silent videos). */
   showMuteControl?: boolean;
   className?: string;
+  onError?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -179,6 +181,10 @@ export function QuadVideoPlayer({
         onWaiting={() => setLoading(true)}
         onPlaying={() => setLoading(false)}
         onLoadedData={() => setLoading(false)}
+        onError={() => {
+          setLoading(false);
+          onError?.();
+        }}
         onTimeUpdate={() => {
           const el = videoRef.current;
           if (!el || !el.duration) return;

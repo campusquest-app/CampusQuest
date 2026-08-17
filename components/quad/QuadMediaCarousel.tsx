@@ -1,7 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { QuadCarouselMediaDto } from "@/lib/quadMedia";
+import {
+  clampCarouselIndex,
+  filterRenderableCarouselMedia,
+} from "@/lib/quadMedia";
 import type { FieldNoteTag } from "@/lib/types";
 import { QuadVideoPlayer } from "@/components/quad/QuadVideoPlayer";
 import { FeedPhotoTags } from "@/components/quad/FeedPhotoTags";
@@ -28,8 +32,8 @@ type GestureState = {
  * media gesture lock) so global tab navigation cannot steal the gesture —
  * including at first/last slide edges.
  *
- * Does not use setPointerCapture for the whole surface so pinch-zoom on photos
- * can still receive its own pointer stream.
+ * Failed/missing media is dropped from the visible slide list (never shown as
+ * a full-height "Media unavailable" placeholder).
  */
 export function QuadMediaCarousel({
   postId,
@@ -48,14 +52,21 @@ export function QuadMediaCarousel({
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const { acquire, release } = useMediaGestureLock();
-  const [index, setIndex] = useState(Math.min(initialIndex, Math.max(0, media.length - 1)));
+  const mediaSignature = useMemo(() => media.map((item) => `${item.id}:${item.url}`).join("|"), [media]);
+  const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set());
+  const visibleMedia = useMemo(() => {
+    return filterRenderableCarouselMedia(media).filter((item) => !failedIds.has(item.id));
+  }, [media, failedIds]);
+  const [index, setIndex] = useState(() =>
+    clampCarouselIndex(initialIndex, filterRenderableCarouselMedia(media).length),
+  );
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [tagsVisible, setTagsVisible] = useState(false);
   const [slideScale, setSlideScale] = useState(1);
   const indexRef = useRef(index);
   const dragXRef = useRef(0);
-  const mediaLenRef = useRef(media.length);
+  const mediaLenRef = useRef(visibleMedia.length);
   const activePointersRef = useRef(new Set<number>());
   const gestureRef = useRef<GestureState>({
     pointerId: null,
@@ -72,13 +83,19 @@ export function QuadMediaCarousel({
     window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
 
   useEffect(() => {
+    // New media payload (different post / refreshed list) clears runtime failures.
+    setFailedIds(new Set());
+  }, [mediaSignature]);
+
+  useEffect(() => {
     indexRef.current = index;
     onIndexChange?.(index);
   }, [index, onIndexChange]);
 
   useEffect(() => {
-    mediaLenRef.current = media.length;
-  }, [media.length]);
+    mediaLenRef.current = visibleMedia.length;
+    setIndex((current) => clampCarouselIndex(current, visibleMedia.length));
+  }, [visibleMedia.length]);
 
   useEffect(() => {
     zoomedRef.current = slideScale > 1.01;
@@ -90,16 +107,31 @@ export function QuadMediaCarousel({
     }
   }, [slideScale]);
 
+  const markFailed = useCallback(
+    (mediaId: string) => {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[cq:quad-media] carousel item failed to load", { postId, mediaId });
+      }
+      setFailedIds((prev) => {
+        if (prev.has(mediaId)) return prev;
+        const next = new Set(prev);
+        next.add(mediaId);
+        return next;
+      });
+    },
+    [postId],
+  );
+
   const goTo = useCallback(
     (next: number) => {
-      const clamped = Math.max(0, Math.min(media.length - 1, next));
+      const clamped = clampCarouselIndex(next, mediaLenRef.current);
       setIndex(clamped);
       dragXRef.current = 0;
       setDragX(0);
       setDragging(false);
       setSlideScale(1);
     },
-    [media.length],
+    [],
   );
 
   const finishGesture = useCallback(() => {
@@ -227,10 +259,9 @@ export function QuadMediaCarousel({
   }, [finishGesture, release]);
 
   const onPointerDown = (event: React.PointerEvent) => {
-    if (media.length === 0 || event.button !== 0) return;
+    if (visibleMedia.length === 0 || event.button !== 0) return;
 
     activePointersRef.current.add(event.pointerId);
-    // Always lock global tab swipe for the lifetime of a media-originated gesture.
     acquire();
 
     const target = event.target as HTMLElement | null;
@@ -241,7 +272,6 @@ export function QuadMediaCarousel({
       !event.isPrimary ||
       activePointersRef.current.size > 1
     ) {
-      // Cancel any in-progress carousel drag once multi-touch / zoom / controls win.
       gestureRef.current.active = false;
       dragXRef.current = 0;
       setDragX(0);
@@ -266,7 +296,7 @@ export function QuadMediaCarousel({
     setDragX(0);
   };
 
-  if (media.length === 0) return null;
+  if (visibleMedia.length === 0) return null;
 
   return (
     <div
@@ -291,9 +321,9 @@ export function QuadMediaCarousel({
         }}
         role="region"
         aria-roledescription="carousel"
-        aria-label={`Post media, ${index + 1} of ${media.length}`}
+        aria-label={`Post media, ${index + 1} of ${visibleMedia.length}`}
       >
-        {media.map((item, i) => {
+        {visibleMedia.map((item, i) => {
           const active = i === index;
           const nearby = Math.abs(i - index) <= 1;
           const slideTags = tags.filter(
@@ -303,10 +333,10 @@ export function QuadMediaCarousel({
           );
           const label =
             item.mediaType === "video"
-              ? `Video ${i + 1} of ${media.length}${
+              ? `Video ${i + 1} of ${visibleMedia.length}${
                   item.durationSeconds ? `, ${formatVideoDuration(item.durationSeconds)}` : ""
                 }`
-              : `Photo ${i + 1} of ${media.length}`;
+              : `Photo ${i + 1} of ${visibleMedia.length}`;
 
           return (
             <div
@@ -324,6 +354,7 @@ export function QuadMediaCarousel({
                     durationSeconds={item.durationSeconds}
                     autoplayWhenVisible={isFeed && active}
                     showMuteControl={item.hasAudio !== false}
+                    onError={() => markFailed(item.id)}
                   />
                 ) : item.thumbnailUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -331,11 +362,18 @@ export function QuadMediaCarousel({
                     src={item.thumbnailUrl}
                     alt=""
                     className="max-h-[min(65vh,36rem)] w-full object-cover bg-black object-center"
+                    onError={() => markFailed(item.id)}
                   />
                 ) : (
-                  <div className="flex max-h-[min(70vh,720px)] min-h-[240px] w-full items-center justify-center bg-black text-white/40">
-                    Video
-                  </div>
+                  <QuadVideoPlayer
+                    playerId={`${postId}:${item.id}:lazy`}
+                    src={item.url}
+                    poster={item.thumbnailUrl}
+                    durationSeconds={item.durationSeconds}
+                    autoplayWhenVisible={false}
+                    showMuteControl={item.hasAudio !== false}
+                    onError={() => markFailed(item.id)}
+                  />
                 )
               ) : (
                 <ZoomableImage
@@ -350,22 +388,9 @@ export function QuadMediaCarousel({
                   onZoomChange={(s) => {
                     if (active) setSlideScale(s);
                   }}
-                  onError={(event) => {
-                    const img = event.currentTarget;
-                    img.onerror = null;
-                    img.style.display = "none";
-                    const fallback = img.closest(".cq-quad-media-slide")?.querySelector("[data-media-fallback]");
-                    if (fallback instanceof HTMLElement) fallback.hidden = false;
-                  }}
+                  onError={() => markFailed(item.id)}
                 />
               )}
-              <div
-                hidden
-                data-media-fallback
-                className="flex max-h-[min(70vh,720px)] min-h-[240px] w-full items-center justify-center bg-black text-sm text-white/50"
-              >
-                Media unavailable
-              </div>
               {slideTags.length > 0 && tagsVisible && active ? (
                 <FeedPhotoTags
                   postId={postId}
@@ -379,13 +404,13 @@ export function QuadMediaCarousel({
         })}
       </div>
 
-      {media.length > 1 ? (
+      {visibleMedia.length > 1 ? (
         <>
           <div className="cq-quad-media-counter" aria-hidden>
-            {index + 1}/{media.length}
+            {index + 1}/{visibleMedia.length}
           </div>
           <div className="flex items-center justify-center gap-1 py-2" aria-hidden>
-            {media.map((item, i) => (
+            {visibleMedia.map((item, i) => (
               <button
                 key={item.id}
                 type="button"

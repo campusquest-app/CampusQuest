@@ -138,6 +138,42 @@ export type QuadCarouselMediaDto = {
   processingStatus: "uploading" | "processing" | "ready" | "failed";
 };
 
+/** True when a carousel item has a usable http(s) playback URL and is ready. */
+export function isRenderableCarouselMedia(
+  item: Pick<QuadCarouselMediaDto, "url" | "processingStatus"> | null | undefined,
+): boolean {
+  if (!item) return false;
+  if (item.processingStatus && item.processingStatus !== "ready") return false;
+  const url = typeof item.url === "string" ? item.url.trim() : "";
+  return /^https?:\/\//i.test(url);
+}
+
+/** Drop null/empty/failed media before rendering carousel slides. */
+export function filterRenderableCarouselMedia(
+  items: Array<QuadCarouselMediaDto | null | undefined> | null | undefined,
+): QuadCarouselMediaDto[] {
+  if (!items?.length) return [];
+  return items.filter((item): item is QuadCarouselMediaDto => isRenderableCarouselMedia(item));
+}
+
+export function clampCarouselIndex(index: number, length: number): number {
+  if (length <= 0) return 0;
+  return Math.max(0, Math.min(index, length - 1));
+}
+
+/**
+ * Remove a failed media id from the visible list and keep the active index in range.
+ * Used when an image/video fires onError while the user is viewing a slide.
+ */
+export function removeFailedCarouselMedia(
+  items: QuadCarouselMediaDto[],
+  failedId: string,
+  currentIndex: number,
+): { items: QuadCarouselMediaDto[]; index: number } {
+  const next = items.filter((item) => item.id !== failedId);
+  return { items: next, index: clampCarouselIndex(currentIndex, next.length) };
+}
+
 /** Stable fingerprint to prevent accidental duplicate file picks. */
 export function mediaFileFingerprint(file: { name: string; size: number; lastModified: number; type: string }): string {
   return `${file.name}|${file.size}|${file.lastModified}|${file.type}`;

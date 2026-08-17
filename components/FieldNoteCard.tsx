@@ -34,6 +34,7 @@ import { FeedPhotoTags } from "./quad/FeedPhotoTags";
 import { TagPickerSheet } from "./quad/TagPickerSheet";
 import { QuadVideoPlayer } from "./quad/QuadVideoPlayer";
 import { QuadMediaCarousel } from "./quad/QuadMediaCarousel";
+import { filterRenderableCarouselMedia } from "@/lib/quadMedia";
 import { ZoomableImage } from "./quad/ZoomableImage";
 import type { CaptionMentionDraft, ComposerTagSelection } from "@/lib/postTags";
 import { looksLikeVideoUrl } from "@/lib/quadVideo";
@@ -356,18 +357,20 @@ function FieldNoteCardInner({
   const hasAssisted = note.assistByUserIds?.has(currentUserId) ?? false;
 
   const proofImgUrl = note.proofUrl?.trim();
-  const carouselMedia = note.media && note.media.length > 0 ? note.media : null;
-  const isCarousel = Boolean(carouselMedia && carouselMedia.length > 1);
+  const carouselMediaRaw = note.media && note.media.length > 0 ? note.media : null;
+  const carouselMedia = carouselMediaRaw ? filterRenderableCarouselMedia(carouselMediaRaw) : null;
+  const usableCarousel = carouselMedia && carouselMedia.length > 0 ? carouselMedia : null;
+  const isCarousel = Boolean(usableCarousel && usableCarousel.length > 1);
   const isVideo =
     !isCarousel &&
     (note.mediaType === "video" ||
       Boolean(proofImgUrl && looksLikeVideoUrl(proofImgUrl)) ||
-      carouselMedia?.[0]?.mediaType === "video");
+      usableCarousel?.[0]?.mediaType === "video");
   const isImgUrl =
     !isVideo &&
     !isCarousel &&
     Boolean(
-      (proofImgUrl && looksLikeImageProofUrl(proofImgUrl)) || carouselMedia?.[0]?.mediaType === "image",
+      (proofImgUrl && looksLikeImageProofUrl(proofImgUrl)) || usableCarousel?.[0]?.mediaType === "image",
     );
   const streak = streakBadge(note.authorStreakDays);
   const isFeed = variant === "feed";
@@ -775,10 +778,10 @@ function FieldNoteCardInner({
   );
 
   const proofBlock =
-    carouselMedia && carouselMedia.length > 0 ? (
+    usableCarousel && usableCarousel.length > 0 ? (
       <QuadMediaCarousel
         postId={note.id}
-        media={carouselMedia}
+        media={usableCarousel}
         tags={note.tags}
         isFeed={isFeed}
       />

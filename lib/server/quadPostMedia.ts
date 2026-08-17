@@ -356,20 +356,24 @@ export async function loadCarouselMediaForPosts(
 
   for (const row of data) {
     const postId = row.post_id as string;
-    const playbackPath = (row.playback_path as string) || (row.storage_path as string);
+    const playbackPath = ((row.playback_path as string) || (row.storage_path as string) || "").trim();
+    // Skip rows that would produce a public URL pointing at nothing.
+    if (!playbackPath) continue;
     const { data: play } = admin.storage.from(QUAD_MEDIA_BUCKET).getPublicUrl(playbackPath);
+    const publicUrl = play.publicUrl?.trim() ?? "";
+    if (!/^https?:\/\//i.test(publicUrl)) continue;
     let thumbnailUrl: string | null = null;
     if (row.thumbnail_path) {
       thumbnailUrl = admin.storage.from(QUAD_MEDIA_BUCKET).getPublicUrl(row.thumbnail_path as string).data
         .publicUrl;
     } else if (row.media_type === "image") {
-      thumbnailUrl = play.publicUrl;
+      thumbnailUrl = publicUrl;
     }
     const dto: QuadCarouselMediaDto = {
       id: row.id as string,
       mediaType: row.media_type === "video" ? "video" : "image",
       sortOrder: Number(row.sort_order ?? 0),
-      url: play.publicUrl,
+      url: publicUrl,
       thumbnailUrl,
       mimeType: (row.mime_type as string) || "application/octet-stream",
       fileSizeBytes: Number(row.file_size_bytes ?? 0),
