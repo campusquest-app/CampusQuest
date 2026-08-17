@@ -8,7 +8,6 @@ import {
   Landmark,
   MapPin,
   Plus,
-  Sparkles,
   Trees,
   UtensilsCrossed,
   type LucideIcon,
@@ -273,9 +272,6 @@ export function CampusMemoriesRow({
       });
   }, [groups, campusLocations]);
 
-  const hasAnyMemories = tiles.some((tile) => tile.active);
-  const showQuietHint = !hasAnyMemories && !locationsLoading && tiles.length > 0;
-
   // "Your Memory" — always the first item in the carousel, Instagram-style.
   const yourMemoryTile = (
     <button
@@ -334,12 +330,6 @@ export function CampusMemoriesRow({
           ))}
         </div>
       </div>
-      {showQuietHint ? (
-        <p className="cq-memories-row-hint">
-          <Sparkles className="cq-memories-row-hint-icon" aria-hidden />
-          No memories yet today
-        </p>
-      ) : null}
     </section>
   );
 }

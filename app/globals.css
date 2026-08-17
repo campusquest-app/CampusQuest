@@ -14757,26 +14757,6 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   }
 }
 
-/* Single subtle line under the row when campus is quiet today. */
-.cq-memories-row-hint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.3rem;
-  margin: 0.05rem 0 0;
-  padding: 0 24px;
-  font-size: 0.6875rem;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.42);
-}
-
-.cq-memories-row-hint-icon {
-  width: 0.7rem;
-  height: 0.7rem;
-  flex: 0 0 auto;
-  color: rgba(143, 220, 255, 0.7);
-}
-
 .cq-memories-empty {
   margin: 0.35rem 0 0;
   font-size: 0.6875rem;
