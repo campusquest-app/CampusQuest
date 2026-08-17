@@ -73,6 +73,8 @@ export function resolveMarkerIconKind(
       return "briefcase";
     case "the-quad":
       return "star";
+    case "butterfield-dining":
+    case "mainfare-dining":
     case "dining-hall":
     case "rams-den":
       return "utensils";

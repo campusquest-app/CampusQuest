@@ -62,10 +62,10 @@ export const CAMPUS_LOCATION_PRESETS: CampusLocationPreset[] = [
   },
   {
     key: "dining_hall",
-    label: "Dining Hall",
-    address: "50 Lower College Rd, Kingston, RI",
+    label: "Butterfield Dining Hall",
+    address: "Butterfield Rd, Kingston, RI",
     latitude: 41.4862,
-    longitude: -71.5318,
+    longitude: -71.5284,
   },
   {
     key: "dorm_residence",

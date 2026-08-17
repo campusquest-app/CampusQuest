@@ -70,7 +70,8 @@ export interface RealmLocation {
 
 export const REALM_LOCATION_OPTIONS: { id: RealmLocationId; name: string }[] = [
   { id: "the-quad", name: "The Quad" },
-  { id: "dining-hall", name: "Dining Hall" },
+  { id: "butterfield-dining", name: "Butterfield Dining Hall" },
+  { id: "mainfare-dining", name: "Mainfare Dining Hall" },
   { id: "memorial-union", name: "Memorial Union" },
   { id: "library", name: "Library" },
   { id: "rec-center", name: "Rec Center" },
@@ -127,15 +128,32 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     moments: [],
   },
   {
-    id: "dining-hall",
-    name: "Dining Hall",
-    fantasyName: "Feast Hall of the Realm",
-    flavorText: "Trays clatter and rumors travel faster than the dinner line.",
+    id: "butterfield-dining",
+    name: "Butterfield Dining Hall",
+    description: "All-you-care-to-eat dining on Butterfield Road — breakfast through dinner.",
+    category: "dining",
+    fantasyName: "Butterfield Dining Hall",
+    flavorText: "All-you-care-to-eat dining on Butterfield Road — breakfast through dinner.",
     markerEmoji: "🍽",
-    shortLabel: "Dining Hall",
+    shortLabel: "Butterfield",
     major: true,
     x: 51,
-    y: 58,
+    y: 57,
+    ...EMPTY_REALM_ACTIVITY,
+    moments: [],
+  },
+  {
+    id: "mainfare-dining",
+    name: "Mainfare Dining Hall",
+    description: "Hope Commons dining — Mainfare stations, late plates, and campus meals.",
+    category: "dining",
+    fantasyName: "Mainfare Dining Hall",
+    flavorText: "Hope Commons dining — Mainfare stations, late plates, and campus meals.",
+    markerEmoji: "🍽",
+    shortLabel: "Mainfare",
+    major: true,
+    x: 56,
+    y: 40,
     ...EMPTY_REALM_ACTIVITY,
     moments: [],
   },
@@ -218,3 +236,9 @@ export const REALM_LOCATIONS: RealmLocation[] = [
     moments: [],
   },
 ];
+
+/**
+ * Retired map landmarks kept for historical location_id resolution only.
+ * Never shown on the live map (isActive: false in catalog / DB).
+ */
+export const RETIRED_REALM_LOCATION_IDS = ["dining-hall"] as const;

@@ -20857,3 +20857,204 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   }
 }
 
+/* Location sheet — URI dining menus */
+.cq-dining-menu {
+  gap: 0.55rem;
+}
+
+.cq-dining-hall-toggle,
+.cq-dining-day-rail,
+.cq-dining-diet-rail {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cq-dining-hall-toggle::-webkit-scrollbar,
+.cq-dining-day-rail::-webkit-scrollbar,
+.cq-dining-diet-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-dining-chip {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(230, 238, 248, 0.88);
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.cq-dining-chip.is-active {
+  background: rgba(104, 171, 232, 0.22);
+  border-color: rgba(104, 171, 232, 0.55);
+  color: #fff;
+}
+
+.cq-dining-chip--quiet {
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.cq-dining-context {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: rgba(210, 225, 240, 0.78);
+}
+
+.cq-dining-meal-tabs {
+  display: flex;
+  gap: 0.15rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cq-dining-meal-tab {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: rgba(210, 225, 240, 0.7);
+  padding: 0.55rem 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 750;
+}
+
+.cq-dining-meal-tab.is-active {
+  color: #fff;
+  box-shadow: inset 0 -2px 0 #68abe8;
+}
+
+.cq-dining-stations {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.cq-dining-station-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(180, 205, 230, 0.75);
+}
+
+.cq-dining-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.cq-dining-item {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 0.4rem 0;
+  color: #fff;
+}
+
+.cq-dining-item-name {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 650;
+}
+
+.cq-dining-item-tags {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.6875rem;
+  color: rgba(180, 205, 230, 0.7);
+}
+
+.cq-dining-empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: rgba(210, 225, 240, 0.7);
+}
+
+.cq-dining-disclaimer {
+  margin: 0.25rem 0 0;
+  font-size: 0.65rem;
+  line-height: 1.35;
+  color: rgba(170, 190, 210, 0.55);
+}
+
+.cq-dining-updated {
+  font-size: 0.7rem;
+  color: rgba(180, 205, 230, 0.65);
+}
+
+.cq-dining-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.cq-dining-skeleton-line,
+.cq-dining-skeleton-block {
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cq-dining-skeleton-line {
+  height: 0.7rem;
+  width: 55%;
+}
+
+.cq-dining-skeleton-block {
+  height: 4.5rem;
+  width: 100%;
+}
+
+.cq-dining-detail {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+
+.cq-dining-detail-card {
+  margin-top: 0.5rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 0.9rem;
+  background: rgba(12, 22, 36, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.cq-dining-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.cq-dining-detail-head h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.cq-dining-detail-block {
+  margin: 0 0 0.55rem;
+  font-size: 0.8125rem;
+  color: rgba(230, 238, 248, 0.9);
+}
+
+.cq-dining-detail-block p {
+  margin: 0.15rem 0;
+}
+
+.cq-dining-ingredients {
+  margin-top: 0.35rem !important;
+  color: rgba(200, 215, 230, 0.75);
+}
+

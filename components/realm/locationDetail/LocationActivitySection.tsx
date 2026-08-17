@@ -1,10 +1,22 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { MapEventPin, GroupedMapLocation } from "@/lib/mapLocationGroups";
 import type { CampusLocationId } from "@/lib/locations/registry";
-import { LocationQuestSection } from "@/components/realm/LocationQuestSection";
+import {
+  LocationQuestSection,
+  type LocationQuestSectionState,
+} from "@/components/realm/LocationQuestSection";
 import { LocationActivityCard } from "./LocationActivityCard";
+import { shouldShowLocationActivitySection } from "@/lib/realm/locationActivityVisibility";
+
+function initialQuestState(locationId: CampusLocationId | null): LocationQuestSectionState {
+  return {
+    count: 0,
+    initialLoading: Boolean(locationId),
+    loaded: !locationId,
+  };
+}
 
 export function LocationActivitySection({
   events,
@@ -16,6 +28,7 @@ export function LocationActivitySection({
   onQuestStateChange,
   onSeeAll,
   showAll = false,
+  eventsLoaded = true,
 }: {
   events: MapEventPin[];
   now: Date;
@@ -23,38 +36,51 @@ export function LocationActivitySection({
   locationId: CampusLocationId | null;
   mapContent: Pick<GroupedMapLocation, "quests" | "qrCodes">;
   questReloadToken: number;
-  onQuestStateChange?: (next: { count: number; loading: boolean }) => void;
+  onQuestStateChange?: (next: LocationQuestSectionState) => void;
   onSeeAll?: () => void;
   showAll?: boolean;
+  eventsLoaded?: boolean;
 }) {
-  const [questState, setQuestState] = useState({ count: 0, loading: Boolean(locationId) });
-  const previewEvents = showAll ? events : events.slice(0, 4);
-  const hasEvents = previewEvents.length > 0;
-  const hasQuests = questState.loading || questState.count > 0;
+  const [questState, setQuestState] = useState(() => initialQuestState(locationId));
+
+  useEffect(() => {
+    setQuestState(initialQuestState(locationId));
+  }, [locationId]);
+
   const handleQuestState = useCallback(
-    (next: { count: number; loading: boolean }) => {
+    (next: LocationQuestSectionState) => {
       setQuestState((current) =>
-        current.count === next.count && current.loading === next.loading ? current : next,
+        current.count === next.count &&
+        current.initialLoading === next.initialLoading &&
+        current.loaded === next.loaded
+          ? current
+          : next,
       );
       onQuestStateChange?.(next);
     },
     [onQuestStateChange],
   );
 
-  if (!hasEvents && !hasQuests) {
-    return locationId ? (
-      <LocationQuestSection
-        locationId={locationId}
-        mapContent={mapContent}
-        reloadToken={questReloadToken}
-        embedded
-        onStateChange={handleQuestState}
-      />
-    ) : null;
-  }
+  const previewEvents = showAll ? events : events.slice(0, 4);
+  const mapHasQuestPins =
+    (mapContent.quests?.length ?? 0) + (mapContent.qrCodes?.length ?? 0) > 0;
+  const visibility = shouldShowLocationActivitySection({
+    eventCount: previewEvents.length,
+    questCount: questState.count,
+    eventsLoaded,
+    questsLoaded: questState.loaded,
+    mapHasQuestPins,
+  });
 
+  // Keep LocationQuestSection mounted in one stable tree position so loading
+  // state never remount-loops when the section hides after an empty result.
   return (
-    <section className="cq-loc-section cq-realm-fade-in" aria-labelledby="cq-loc-happening-title">
+    <section
+      className="cq-loc-section"
+      aria-labelledby="cq-loc-happening-title"
+      hidden={!visibility.showSection}
+      aria-hidden={!visibility.showSection}
+    >
       <div className="cq-loc-section-head">
         <h3 id="cq-loc-happening-title" className="cq-loc-section-title">
           What&apos;s Happening
@@ -68,15 +94,17 @@ export function LocationActivitySection({
 
       {locationId ? (
         <LocationQuestSection
+          key={locationId}
           locationId={locationId}
           mapContent={mapContent}
           reloadToken={questReloadToken}
           embedded
+          showSkeleton={visibility.showQuestSkeleton}
           onStateChange={handleQuestState}
         />
       ) : null}
 
-      {hasEvents ? (
+      {previewEvents.length > 0 ? (
         <ul className="cq-loc-activity-list">
           {previewEvents.map((event) => (
             <li key={event.id}>

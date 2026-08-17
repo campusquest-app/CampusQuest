@@ -8,6 +8,7 @@ import type { CampusLocationId } from "@/lib/locations/registry";
 import { getCampusLocationName, tryGetCampusLocation } from "@/lib/locations/registry";
 import { fetchCampusMemoriesByLocation } from "@/lib/client/campusMemoriesClient";
 import { subscribeCampusMemoriesChanged } from "@/lib/client/campusMemoriesSync";
+import { shouldShowMemorySkeletons } from "@/lib/realm/locationSheetLoading";
 
 function isImageUrl(value: string | null | undefined): boolean {
   return typeof value === "string" && /^https?:\/\//i.test(value);
@@ -55,7 +56,9 @@ export function LocationMemoriesSection({
   onAddMemory: (locationId: CampusLocationId) => void;
 }) {
   const [memories, setMemories] = useState<CampusMemory[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const loadedForLocationRef = useRef<string | null>(null);
 
   const wheelCleanupRef = useRef<(() => void) | null>(null);
   const attachScroller = useCallback((node: HTMLDivElement | null) => {
@@ -74,24 +77,40 @@ export function LocationMemoriesSection({
     wheelCleanupRef.current = () => node.removeEventListener("wheel", onWheel);
   }, []);
 
-  const load = useCallback(async () => {
-    try {
-      const rows = await fetchCampusMemoriesByLocation(locationId);
-      setMemories(rows);
-    } catch {
-      setMemories([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [locationId]);
+  const load = useCallback(
+    async (opts?: { background?: boolean }) => {
+      const background =
+        Boolean(opts?.background) || loadedForLocationRef.current === locationId;
+      if (!background) {
+        setInitialLoading(true);
+        setLoaded(false);
+      }
+      try {
+        const rows = await fetchCampusMemoriesByLocation(locationId);
+        setMemories(rows);
+      } catch {
+        if (!background) setMemories([]);
+      } finally {
+        loadedForLocationRef.current = locationId;
+        setLoaded(true);
+        setInitialLoading(false);
+      }
+    },
+    [locationId],
+  );
 
   useEffect(() => {
-    setLoading(true);
+    loadedForLocationRef.current = null;
     setMemories([]);
-    void load();
-  }, [load]);
+    setLoaded(false);
+    setInitialLoading(true);
+    void load({ background: false });
+  }, [locationId, load]);
 
-  useEffect(() => subscribeCampusMemoriesChanged(() => void load()), [load]);
+  useEffect(
+    () => subscribeCampusMemoriesChanged(() => void load({ background: true })),
+    [load],
+  );
 
   const sortedMemories = useMemo(
     () => [...memories].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
@@ -114,8 +133,14 @@ export function LocationMemoriesSection({
     onOpenGallery(locationId);
   }, [locationId, onOpenGallery]);
 
+  const showMemorySkeletons = shouldShowMemorySkeletons({
+    initialLoading,
+    loaded,
+    memoryCount: sortedMemories.length,
+  });
+
   return (
-    <section className="cq-loc-section cq-loc-memories cq-realm-fade-in" aria-label="Memories">
+    <section className="cq-loc-section cq-loc-memories" aria-label="Memories">
       <div className="cq-loc-section-head">
         <h3 className="cq-loc-section-title">Memories</h3>
         {sortedMemories.length > 0 ? (
@@ -131,8 +156,8 @@ export function LocationMemoriesSection({
         data-cq-horizontal-scroll="true"
       >
         <div className="cq-loc-memory-track">
-          {loading
-            ? Array.from({ length: 3 }).map((_, index) => (
+          {showMemorySkeletons
+            ? Array.from({ length: 2 }).map((_, index) => (
                 <div key={index} className="cq-loc-memory-card cq-loc-memory-card--skeleton" aria-hidden />
               ))
             : sortedMemories.map((memory) => {
@@ -182,6 +207,7 @@ export function LocationMemoriesSection({
                 );
               })}
 
+          {/* Always mounted so empty/loading states do not flash this CTA in/out. */}
           <button
             type="button"
             className="cq-loc-memory-card cq-loc-memory-card--add touch-manipulation"

@@ -34,6 +34,8 @@ import {
   LocationUpcomingHighlight,
   pickFeaturedEvent,
 } from "@/components/realm/locationDetail";
+import { LocationDiningMenuSection } from "@/components/realm/locationDetail/LocationDiningMenuSection";
+import { isDiningMapLocation } from "@/lib/dining/uriDiningLocations";
 
 export function RealmLocationSheet({
   location,
@@ -169,7 +171,9 @@ export function RealmLocationSheet({
     eventCount: sortedEvents.length,
     memoryCount: momentCount,
   });
-  const hasActivitySection = sortedEvents.length > 0 || Boolean(questLocationId) || !mapContentLoaded;
+  // Always mount when this location can show activity; visibility (incl. empty)
+  // is owned by LocationActivitySection so we never remount on load flips.
+  const hasActivitySection = sortedEvents.length > 0 || Boolean(questLocationId);
 
   return createPortal(
     <>
@@ -236,6 +240,10 @@ export function RealmLocationSheet({
                 onOpenInRealmMap={() => onOpenInRealmMap?.()}
               />
 
+              {locationId && isDiningMapLocation(locationId) ? (
+                <LocationDiningMenuSection campusQuestLocationId={locationId} />
+              ) : null}
+
               {hasActivitySection ? (
                 <LocationActivitySection
                   events={sortedEvents}
@@ -244,6 +252,7 @@ export function RealmLocationSheet({
                   locationId={questLocationId}
                   mapContent={content}
                   questReloadToken={questReloadToken}
+                  eventsLoaded={mapContentLoaded}
                   showAll={showAllEvents}
                   onSeeAll={
                     sortedEvents.length > 4 ? () => setShowAllEvents(true) : undefined

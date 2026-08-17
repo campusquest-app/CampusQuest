@@ -26,6 +26,8 @@ const LOCATION_ICONS: Partial<Record<CampusLocationId, LucideIcon>> = {
   "engineering-hall": Cpu,
   "the-quad": Trees,
   "dining-hall": UtensilsCrossed,
+  "butterfield-dining": UtensilsCrossed,
+  "mainfare-dining": UtensilsCrossed,
   "rams-den": UtensilsCrossed,
 };
 
@@ -251,8 +253,8 @@ export function CampusMemoriesRow({
     }
   }, [groups]);
 
-  // One tile per catalog location, in catalog sort order (Quad → Dining Hall →
-  // Union → …). Live cover/count state comes from real memory groups — never
+  // One tile per catalog location, in catalog sort order (Quad → Butterfield →
+  // Mainfare → Union → …). Live cover/count state comes from real memory groups — never
   // invent posts. Keep horizontal scroll order stable on mobile.
   const tiles = useMemo<RowTile[]>(() => {
     const byLocation = new Map<string, CampusMemoryGroup>();

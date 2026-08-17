@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import type { CampusLocationId } from "@/lib/locations/registry";
@@ -10,6 +10,10 @@ import { fetchQuestBoardAdminItems, completeAdminQuestRequest } from "@/lib/clie
 import { QuestCard } from "@/components/quests/QuestCard";
 import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
 import { mergeLocationQuestCards } from "@/lib/realm/locationQuestDedupe";
+import {
+  shouldRenderQuestList,
+  shouldShowQuestSkeleton,
+} from "@/lib/realm/locationSheetLoading";
 
 function QrQuestCard({ qr }: { qr: GroupedMapLocation["qrCodes"][number] }) {
   return (
@@ -42,44 +46,76 @@ function QrQuestCard({ qr }: { qr: GroupedMapLocation["qrCodes"][number] }) {
   );
 }
 
+export type LocationQuestSectionState = {
+  count: number;
+  /** True only during the first unresolved fetch for the current location. */
+  initialLoading: boolean;
+  loaded: boolean;
+};
+
 export function LocationQuestSection({
   locationId,
   mapContent,
   reloadToken = 0,
   embedded = false,
+  /** When true, fetch/report state but render nothing (parent owns layout). */
+  silent = false,
+  /** When false, never show skeleton cards (background refresh / empty-first paint). */
+  showSkeleton = true,
   onStateChange,
 }: {
   locationId: CampusLocationId;
   mapContent: Pick<GroupedMapLocation, "quests" | "qrCodes"> | null;
   reloadToken?: number;
   embedded?: boolean;
-  onStateChange?: (state: { count: number; loading: boolean }) => void;
+  silent?: boolean;
+  showSkeleton?: boolean;
+  onStateChange?: (state: LocationQuestSectionState) => void;
 }) {
   const [quests, setQuests] = useState<UserQuestBoardItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  const loadedLocationRef = useRef<string | null>(null);
+  // Ignore the reloadToken value present at mount — locationId effect already
+  // performs the first fetch. Only react to later bumps (pull-to-refresh, etc.).
+  const reloadTokenAtMountRef = useRef(reloadToken);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const items = await fetchQuestBoardAdminItems({ locationId, filter: "active" });
-      setQuests(items.filter((item) => item.status !== "completed"));
-    } catch {
-      setQuests([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [locationId]);
+  const load = useCallback(
+    async (opts?: { background?: boolean }) => {
+      const background = Boolean(opts?.background) || loadedLocationRef.current === locationId;
+      if (!background) {
+        setInitialLoading(true);
+        setLoaded(false);
+      }
+      try {
+        const items = await fetchQuestBoardAdminItems({ locationId, filter: "active" });
+        setQuests(items.filter((item) => item.status !== "completed"));
+      } catch {
+        if (!background) setQuests([]);
+      } finally {
+        loadedLocationRef.current = locationId;
+        setLoaded(true);
+        setInitialLoading(false);
+      }
+    },
+    [locationId],
+  );
 
   useEffect(() => {
-    void load();
-  }, [load, reloadToken]);
+    loadedLocationRef.current = null;
+    setQuests([]);
+    setLoaded(false);
+    setInitialLoading(true);
+    void load({ background: false });
+  }, [locationId, load]);
 
   useEffect(() => {
-    const onFocus = () => void load();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [load]);
+    if (reloadToken <= 0) return;
+    if (reloadToken === reloadTokenAtMountRef.current) return;
+    reloadTokenAtMountRef.current = reloadToken;
+    void load({ background: true });
+  }, [reloadToken, load]);
 
   const handleClaim = useCallback(
     async (item: UserQuestBoardItem) => {
@@ -87,7 +123,7 @@ export function LocationQuestSection({
       try {
         await completeAdminQuestRequest(item.id);
         await refreshPlayerSnapshotFromServer();
-        await load();
+        await load({ background: true });
       } finally {
         setClaimingId(null);
       }
@@ -107,17 +143,35 @@ export function LocationQuestSection({
   );
 
   useEffect(() => {
-    onStateChange?.({ count: questCards.length, loading });
-  }, [loading, onStateChange, questCards.length]);
+    onStateChange?.({
+      count: questCards.length,
+      initialLoading,
+      loaded,
+    });
+  }, [initialLoading, loaded, onStateChange, questCards.length]);
 
-  if (!loading && questCards.length === 0) return null;
+  if (silent) return null;
+
+  const showLoadingSkeleton = shouldShowQuestSkeleton({
+    showSkeleton,
+    initialLoading,
+    questCount: questCards.length,
+  });
+  if (
+    !shouldRenderQuestList({
+      showSkeleton,
+      initialLoading,
+      questCount: questCards.length,
+    })
+  ) {
+    return null;
+  }
 
   return (
     <div
-      className={`cq-realm-location-quests cq-realm-fade-in${
-        embedded ? " cq-realm-location-quests--embedded" : ""
-      }`}
+      className={`cq-realm-location-quests${embedded ? " cq-realm-location-quests--embedded" : ""}`}
       aria-label="Active quests"
+      aria-busy={showLoadingSkeleton}
     >
       {!embedded ? (
         <div className="cq-realm-location-quests-head">
@@ -126,7 +180,7 @@ export function LocationQuestSection({
         </div>
       ) : null}
 
-      {loading ? (
+      {showLoadingSkeleton ? (
         <div className="cq-realm-location-quests-list" aria-busy="true">
           {Array.from({ length: 2 }).map((_, index) => (
             <div key={index} className="cq-realm-location-quest-skeleton" />

@@ -100,14 +100,35 @@ const ALIAS_ENTRIES: AliasEntry[] = [
   },
   {
     aliases: [
-      "dining hall",
-      "hope dining hall",
+      "butterfield",
       "butterfield dining",
       "butterfield dining hall",
-      "uri dining hall",
-      "campus dining",
+      "butterfield hall",
+      "uri butterfield",
     ],
-    realmLocationId: "dining-hall",
+    addressAliases: [
+      "butterfield rd kingston ri",
+      "butterfield road",
+    ],
+    realmLocationId: "butterfield-dining",
+    coordinates: { latitude: 41.4862, longitude: -71.5284 },
+  },
+  {
+    aliases: [
+      "mainfare",
+      "mainfare dining",
+      "mainfare dining hall",
+      "hope commons",
+      "hope commons mainfare",
+      "hope dining hall",
+      "uri mainfare",
+    ],
+    realmLocationId: "mainfare-dining",
+    coordinates: { latitude: 41.4891, longitude: -71.5295 },
+  },
+  {
+    // Generic "dining hall" is ambiguous (Butterfield vs Mainfare) — do not force a pin.
+    aliases: ["dining hall", "uri dining hall", "campus dining"],
   },
   {
     aliases: ["rams den", "ram's den"],
@@ -191,11 +212,6 @@ export function normalizeAddressForMatching(value: string): string {
   return normalized.replace(/\s+/g, " ").trim();
 }
 
-function nameAliasMatches(normalized: string, alias: string): boolean {
-  if (!normalized || !alias) return false;
-  return normalized === alias || normalized.includes(alias) || alias.includes(normalized);
-}
-
 function addressAliasMatches(normalized: string, alias: string): boolean {
   if (!normalized || !alias) return false;
   if (normalized === alias) return true;
@@ -208,17 +224,36 @@ function findAliasEntry(value: string): AliasEntry | null {
   const normalizedName = normalizeLocationName(value);
   const normalizedAddress = normalizeAddressForMatching(value);
 
+  // Prefer exact name matches so short labels like "dining hall" do not bind to
+  // longer aliases such as "butterfield dining hall".
   for (const entry of ALIAS_ENTRIES) {
     for (const alias of entry.aliases) {
-      if (nameAliasMatches(normalizedName, alias)) return entry;
+      if (normalizedName === alias) return entry;
     }
+  }
+
+  for (const entry of ALIAS_ENTRIES) {
     for (const alias of entry.addressAliases ?? []) {
       const normalizedAlias = normalizeAddressForMatching(alias);
       if (addressAliasMatches(normalizedAddress, normalizedAlias)) return entry;
     }
   }
 
-  return null;
+  let best: { entry: AliasEntry; score: number } | null = null;
+  for (const entry of ALIAS_ENTRIES) {
+    for (const alias of entry.aliases) {
+      if (!normalizedName || !alias) continue;
+      if (normalizedName.includes(alias)) {
+        const score = 1000 + alias.length;
+        if (!best || score > best.score) best = { entry, score };
+      } else if (alias.includes(normalizedName) && normalizedName.length >= 5) {
+        const score = normalizedName.length;
+        if (!best || score > best.score) best = { entry, score };
+      }
+    }
+  }
+
+  return best?.entry ?? null;
 }
 
 function resolveEntryCoordinates(entry: AliasEntry, matchedBy?: LocationMatchSource): LocationMatch | null {

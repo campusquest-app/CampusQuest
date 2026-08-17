@@ -3,6 +3,8 @@ import type { RealmLocation, RealmLocationId } from "@/lib/realm/locations";
 /** Natural campus blurbs for location detail — not fantasy flavor. */
 const NATURAL_DESCRIPTIONS: Partial<Record<RealmLocationId, string>> = {
   "the-quad": "Open green space at the center of campus life.",
+  "butterfield-dining": "All-you-care-to-eat dining on Butterfield Road — breakfast through dinner.",
+  "mainfare-dining": "Hope Commons dining — Mainfare stations, late plates, and campus meals.",
   "dining-hall": "Grab a meal, meet friends, and fuel up between classes.",
   "memorial-union": "The heart of campus. Eat, relax, study, meet friends.",
   library: "Quiet floors, study rooms, and late-night focus energy.",
@@ -57,6 +59,8 @@ export function buildLocationMetaPills(args: {
   }
 
   if (
+    id === "butterfield-dining" ||
+    id === "mainfare-dining" ||
     id === "dining-hall" ||
     id === "rams-den" ||
     id === "memorial-union" ||

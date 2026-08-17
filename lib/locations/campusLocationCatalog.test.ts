@@ -5,10 +5,15 @@ import {
   getCampusLocation,
   getCampusLocationCatalogSnapshot,
   isCampusLocationCatalogStale,
+  listCampusLocationRegistryEntries,
+  realmLocationsFromCatalog,
   setCampusLocationCatalogCache,
   tryGetCampusLocation,
   type CampusLocationRecord,
 } from "@/lib/locations/campusLocationCatalog";
+import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
+import { matchCampusLocation } from "@/lib/server/urinvolved/locationAliases";
+import { resolveDiningLocationId } from "@/lib/dining/uriDiningLocations";
 
 function customRow(slug: string): CampusLocationRecord {
   return {
@@ -40,11 +45,9 @@ afterEach(() => {
 describe("campus location catalog marker safety", () => {
   it("keeps custom locations after TTL instead of dropping to builtins-only fallback", () => {
     setCampusLocationCatalogCache([customRow("custom-hall")]);
-    // Snapshot must keep custom rows even when consumers would previously fall back.
     const snapshot = getCampusLocationCatalogSnapshot();
     expect(snapshot.some((row) => row.slug === "custom-hall")).toBe(true);
     expect(getCampusLocation("custom-hall").name).toBe("Custom Hall");
-    // Clearing cache is the only way to drop to static builtins.
     clearCampusLocationCatalogCache();
     expect(getCampusLocationCatalogSnapshot().some((row) => row.slug === "custom-hall")).toBe(false);
   });
@@ -63,16 +66,60 @@ describe("campus location catalog marker safety", () => {
     expect(isCampusLocationCatalogStale()).toBe(false);
   });
 
-  it("includes Dining Hall after The Quad and before Union in the builtin catalog", () => {
-    const slugs = getCampusLocationCatalogSnapshot().map((row) => row.slug);
+  it("splits dining into Butterfield + Mainfare and hides generic Dining Hall", () => {
+    const active = listCampusLocationRegistryEntries(false);
+    const slugs = active.map((row) => row.slug);
+    expect(slugs).toContain("butterfield-dining");
+    expect(slugs).toContain("mainfare-dining");
+    expect(slugs).not.toContain("dining-hall");
+
     const quad = slugs.indexOf("the-quad");
-    const dining = slugs.indexOf("dining-hall");
+    const butterfield = slugs.indexOf("butterfield-dining");
+    const mainfare = slugs.indexOf("mainfare-dining");
     const union = slugs.indexOf("memorial-union");
-    expect(dining).toBeGreaterThan(-1);
-    expect(quad).toBeLessThan(dining);
-    expect(dining).toBeLessThan(union);
-    expect(getCampusLocation("dining-hall").name).toBe("Dining Hall");
-    expect(getCampusLocation("dining-hall").shortLabel).toBe("Dining Hall");
-    expect(campusLocationIdFromLegacyKey("dining_hall")).toBe("dining-hall");
+    expect(quad).toBeLessThan(butterfield);
+    expect(butterfield).toBeLessThan(mainfare);
+    expect(mainfare).toBeLessThan(union);
+
+    expect(getCampusLocation("butterfield-dining").name).toBe("Butterfield Dining Hall");
+    expect(getCampusLocation("mainfare-dining").name).toBe("Mainfare Dining Hall");
+    expect(campusLocationIdFromLegacyKey("dining_hall")).toBe("butterfield-dining");
+
+    const retired = listCampusLocationRegistryEntries(true).find((r) => r.slug === "dining-hall");
+    expect(retired?.isActive).toBe(false);
+  });
+
+  it("exposes distinct coordinates and Walk Here destinations", () => {
+    const bf = REALM_LOCATION_GEO["butterfield-dining"];
+    const mf = REALM_LOCATION_GEO["mainfare-dining"];
+    expect(bf).toEqual({ latitude: 41.4862, longitude: -71.5284 });
+    expect(mf).toEqual({ latitude: 41.4891, longitude: -71.5295 });
+    expect(bf.latitude).not.toEqual(mf.latitude);
+    expect(bf.longitude).not.toEqual(mf.longitude);
+
+    const mapPins = realmLocationsFromCatalog();
+    expect(mapPins.some((l) => l.id === "dining-hall")).toBe(false);
+    expect(mapPins.find((l) => l.id === "butterfield-dining")?.name).toBe("Butterfield Dining Hall");
+    expect(mapPins.find((l) => l.id === "mainfare-dining")?.name).toBe("Mainfare Dining Hall");
+  });
+});
+
+describe("dining event / search aliases", () => {
+  it("matches Butterfield and Mainfare / Hope Commons separately", () => {
+    expect(matchCampusLocation("Butterfield Dining Hall")?.realmLocationId).toBe("butterfield-dining");
+    expect(matchCampusLocation("Mainfare")?.realmLocationId).toBe("mainfare-dining");
+    expect(matchCampusLocation("Hope Commons")?.realmLocationId).toBe("mainfare-dining");
+    expect(matchCampusLocation("Hope Commons Mainfare")?.realmLocationId).toBe("mainfare-dining");
+  });
+
+  it("does not force generic Dining Hall onto an active pin", () => {
+    expect(matchCampusLocation("Dining Hall")).toBeNull();
+    expect(listCampusLocationRegistryEntries(false).some((r) => r.slug === "dining-hall")).toBe(false);
+  });
+
+  it("maps NetNutrition dining ids from CampusQuest slugs", () => {
+    expect(resolveDiningLocationId("butterfield-dining")).toBe("butterfield");
+    expect(resolveDiningLocationId("mainfare-dining")).toBe("mainfare");
+    expect(resolveDiningLocationId("dining-hall")).toBe("butterfield");
   });
 });

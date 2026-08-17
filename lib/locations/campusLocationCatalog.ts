@@ -33,7 +33,7 @@ export type CampusLocationRegistryEntry = CampusLocationRecord & {
 
 const LEGACY_CAMPUS_KEY_BY_SLUG: Partial<Record<string, CampusLocationKey>> = {
   "the-quad": "quad",
-  "dining-hall": "dining_hall",
+  "butterfield-dining": "dining_hall",
   library: "library",
   "memorial-union": "memorial_union",
   "rec-center": "mackal_rec_center",
@@ -46,17 +46,18 @@ const ID_BY_LEGACY_CAMPUS_KEY: Partial<Record<CampusLocationKey, string>> = {
   memorial_union: "memorial-union",
   mackal_rec_center: "rec-center",
   academic_building: "engineering-hall",
-  dining_hall: "dining-hall",
+  /** New quests/presets using dining_hall resolve to Butterfield (not Mainfare). */
+  dining_hall: "butterfield-dining",
   ryan_center: "rams-den",
 };
 
 function fallbackFromRealmStatic(): CampusLocationRecord[] {
-  return REALM_LOCATIONS.map((loc, index) => ({
+  const active = REALM_LOCATIONS.map((loc, index) => ({
     id: loc.id,
     slug: loc.id,
     name: loc.name,
-    description: `${loc.name} campus location.`,
-    category: "landmark",
+    description: loc.description ?? `${loc.name} campus location.`,
+    category: loc.category ?? "landmark",
     latitude: REALM_LOCATION_GEO[loc.id]?.latitude ?? null,
     longitude: REALM_LOCATION_GEO[loc.id]?.longitude ?? null,
     mapX: loc.x,
@@ -71,6 +72,30 @@ function fallbackFromRealmStatic(): CampusLocationRecord[] {
     isBuiltin: true,
     isActive: true,
   }));
+
+  // Preserve retired Dining Hall for historical location_id lookups only.
+  active.push({
+    id: "dining-hall",
+    slug: "dining-hall",
+    name: "Dining Hall (retired)",
+    description: "Retired generic dining location. Use Butterfield or Mainfare.",
+    category: "dining",
+    latitude: REALM_LOCATION_GEO["dining-hall"]?.latitude ?? null,
+    longitude: REALM_LOCATION_GEO["dining-hall"]?.longitude ?? null,
+    mapX: 51,
+    mapY: 58,
+    markerEmoji: "🍽",
+    shortLabel: "Dining Hall",
+    fantasyName: "Dining Hall",
+    flavorText: "Retired generic dining location.",
+    major: false,
+    legacyCampusKey: null,
+    sortOrder: 99,
+    isBuiltin: true,
+    isActive: false,
+  });
+
+  return active;
 }
 
 export const FALLBACK_CAMPUS_LOCATIONS: CampusLocationRecord[] = fallbackFromRealmStatic();

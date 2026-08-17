@@ -7,6 +7,8 @@ const REALM_LOCATION_HERO_IMAGES: Partial<Record<RealmLocationId, string>> = {
   "memorial-union": "/quad-feed/memorial-union.png",
   "the-quad": "/maps/uri-campus-map-fantasy.jpg",
   "dining-hall": "/quad-feed/coffee.jpg",
+  "butterfield-dining": "/quad-feed/coffee.jpg",
+  "mainfare-dining": "/quad-feed/coffee.jpg",
   "engineering-hall": "/quad-feed/group-study.jpg",
   "business-building": "/quad-feed/career.jpg",
   "rams-den": "/quad-feed/coffee.jpg",
