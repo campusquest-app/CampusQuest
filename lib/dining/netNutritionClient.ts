@@ -7,6 +7,9 @@ const BASE = "https://fss.dining.uri.edu/NetNutrition/URIDining";
 const USER_AGENT =
   "CampusQuestDiningBot/1.0 (+https://campusquest.app; URI menu cache; contact support)";
 
+/** Per-request ceiling so a bad upstream redirect/hang cannot wedge menu loading. */
+export const NET_NUTRITION_FETCH_TIMEOUT_MS = 20_000;
+
 export type NetNutritionPanel = { id?: string; html?: string };
 export type NetNutritionJson = {
   success?: boolean;
@@ -54,27 +57,78 @@ function getSetCookieHeaders(res: Response): string[] {
   return single ? [single] : [];
 }
 
+function isAbortError(error: unknown): boolean {
+  return (
+    (typeof DOMException !== "undefined" &&
+      error instanceof DOMException &&
+      error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+/**
+ * Fetch with a hard timeout. Composes with any caller-provided AbortSignal.
+ */
+export async function netNutritionFetch(
+  fetchImpl: typeof fetch,
+  url: string,
+  init?: RequestInit,
+  timeoutMs: number = NET_NUTRITION_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const parent = init?.signal;
+  if (parent) {
+    if (parent.aborted) controller.abort();
+    else parent.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetchImpl(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (isAbortError(error)) {
+      // Caller-cancelled (e.g. React effect cleanup) must stay an AbortError.
+      if (parent?.aborted) throw error;
+      throw new NetNutritionError(
+        `NetNutrition request timed out after ${timeoutMs}ms`,
+        504,
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Open a NetNutrition ASP.NET session.
+ *
+ * URI's entry URL responds with HTTP 302 to the *same* path (`/NetNutrition/URIDining`).
+ * Following redirects therefore loops forever (`redirect count exceeded`). Capture
+ * Set-Cookie from the 302 with `redirect: "manual"` instead.
+ */
 export async function createNetNutritionSession(
   fetchImpl: typeof fetch = fetch,
 ): Promise<NetNutritionSession> {
-  const res = await fetchImpl(BASE, {
+  const res = await netNutritionFetch(fetchImpl, BASE, {
     method: "GET",
-    redirect: "follow",
+    redirect: "manual",
     headers: {
       "User-Agent": USER_AGENT,
       Accept: "text/html,application/xhtml+xml",
     },
   });
-  if (!res.ok) {
+
+  const redirected = res.status >= 300 && res.status < 400;
+  if (!res.ok && !redirected) {
     throw new NetNutritionError(`Failed to open NetNutrition session (${res.status})`, res.status);
   }
+
   const cookieHeader = mergeSetCookies("", getSetCookieHeaders(res));
   if (!cookieHeader.includes("ASP.NET_SessionId")) {
     // Some runtimes collapse set-cookie; still try with whatever we got + tenant cookie.
-    const fallback = mergeSetCookies(
-      cookieHeader,
-      ["CBORD.netnutrition2=NNexternalID=URIDining"],
-    );
+    const fallback = mergeSetCookies(cookieHeader, [
+      "CBORD.netnutrition2=NNexternalID=URIDining",
+    ]);
     return { cookieHeader: fallback };
   }
   return {
@@ -94,7 +148,7 @@ async function postForm(
   const form = new URLSearchParams();
   for (const [k, v] of Object.entries(body)) form.set(k, String(v));
 
-  const res = await fetchImpl(url, {
+  const res = await netNutritionFetch(fetchImpl, url, {
     method: "POST",
     redirect: "manual",
     headers: {

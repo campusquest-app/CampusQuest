@@ -2647,10 +2647,24 @@ html[data-cq-bottom-nav-hidden] {
   overflow: hidden;
 }
 
+.quad-feed-media-wrap:has([data-cq-pinching="true"]),
+.cq-feed-post:has([data-cq-pinching="true"]) {
+  overflow: visible;
+  z-index: 35;
+  isolation: isolate;
+}
+
 .cq-quad-media-carousel {
   overflow: hidden;
   touch-action: pan-y;
   overscroll-behavior-x: none;
+}
+
+.cq-quad-media-carousel[data-cq-pinch-lock="true"],
+.cq-quad-media-carousel:has([data-cq-pinching="true"]) {
+  overflow: visible;
+  z-index: 40;
+  isolation: isolate;
 }
 
 .cq-quad-media-track {
@@ -2663,6 +2677,11 @@ html[data-cq-bottom-nav-hidden] {
   width: 100%;
   max-width: 100%;
   overflow: hidden;
+}
+
+.cq-quad-media-slide:has([data-cq-pinching="true"]) {
+  overflow: visible;
+  z-index: 45;
 }
 
 .cq-quad-media-counter {
@@ -2681,13 +2700,39 @@ html[data-cq-bottom-nav-hidden] {
   pointer-events: none;
 }
 
+.cq-temporary-pinch,
 .cq-zoomable-image {
   display: block;
+  position: relative;
   width: 100%;
   overflow: hidden;
   touch-action: pan-y;
   -webkit-user-select: none;
   user-select: none;
+}
+
+.cq-temporary-pinch--active,
+.cq-temporary-pinch[data-cq-pinching="true"],
+.cq-zoomable-image[data-cq-pinching="true"] {
+  overflow: visible;
+  z-index: 60;
+}
+
+.cq-temporary-pinch-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.cq-temporary-pinch-layer {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  transform-origin: center center;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 .cq-zoomable-image-img {
@@ -2697,7 +2742,13 @@ html[data-cq-bottom-nav-hidden] {
   pointer-events: auto;
   -webkit-user-drag: none;
   user-select: none;
-  will-change: transform;
+}
+
+/* While any feed media is pinched, prefer preventing page-level browser zoom
+   only on the media surface (touch-action:none already set). Do not change
+   the global viewport accessibility zoom setting. */
+html[data-cq-media-pinching] {
+  overscroll-behavior: none;
 }
 
 .quad-feed-media-wrap button {

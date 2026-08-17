@@ -287,7 +287,10 @@ export async function fetchAuthed<T>(path: string, options?: { signal?: AbortSig
       signal: options?.signal,
     });
   } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") {
+    const aborted =
+      (e instanceof DOMException && e.name === "AbortError") ||
+      (e instanceof Error && e.name === "AbortError");
+    if (aborted) {
       throw e;
     }
     throw new Error(IS_DEV ? `Backend request failed: ${path} could not be reached.` : "Could not reach the backend. Try again.");

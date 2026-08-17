@@ -11,6 +11,15 @@ import {
   uriTodayIso,
 } from "@/lib/dining/diningTime";
 import { resolveDiningLocationId } from "@/lib/dining/uriDiningLocations";
+import {
+  DINING_MENU_CLIENT_TIMEOUT_MS,
+  countDiningMenuItems,
+  diningMenuRequestKey,
+  isAbortError,
+  isDiningMenuEmpty,
+  shouldCommitDiningResponse,
+  shouldShowDiningSkeleton,
+} from "@/lib/dining/diningMenuClientState";
 
 type MenuItem = DiningMenuResponse["mealPeriods"][number]["stations"][number]["items"][number];
 
@@ -27,6 +36,8 @@ type NutritionPayload = {
   disclaimer: string;
 };
 
+const IS_DEV = process.env.NODE_ENV !== "production";
+
 function dietaryFilterOptions(menu: DiningMenuResponse | null): string[] {
   if (!menu) return [];
   const tags = new Set<string>();
@@ -40,13 +51,19 @@ function dietaryFilterOptions(menu: DiningMenuResponse | null): string[] {
   return Array.from(tags).sort();
 }
 
+function logDiningDev(payload: Record<string, unknown>) {
+  if (!IS_DEV) return;
+  console.info("[cq:dining-menu]", payload);
+}
+
 export function LocationDiningMenuSection({
   campusQuestLocationId,
 }: {
   campusQuestLocationId: string;
 }) {
-  const defaultHall = resolveDiningLocationId(campusQuestLocationId) ?? "butterfield";
-  const [hallId, setHallId] = useState<DiningLocationId>(defaultHall);
+  const resolvedHall =
+    resolveDiningLocationId(campusQuestLocationId) ?? ("butterfield" as DiningLocationId);
+  const [hallId, setHallId] = useState<DiningLocationId>(resolvedHall);
   const [today] = useState(() => uriTodayIso());
   const dayOptions = useMemo(() => upcomingIsoDates(today, 5), [today]);
   const [date, setDate] = useState(today);
@@ -64,16 +81,27 @@ export function LocationDiningMenuSection({
   const abortRef = useRef<AbortController | null>(null);
   const requestSeq = useRef(0);
   const loadedKeyRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    setHallId(resolveDiningLocationId(campusQuestLocationId) ?? "butterfield");
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    const next = resolveDiningLocationId(campusQuestLocationId) ?? "butterfield";
+    setHallId((current) => (current === next ? current : next));
   }, [campusQuestLocationId]);
 
   const load = useCallback(
     async (opts?: { background?: boolean }) => {
-      const key = `${hallId}:${date}`;
+      const key = diningMenuRequestKey(hallId, date);
       const cached = cacheRef.current.get(key);
-      const background = Boolean(opts?.background) || (cached != null && loadedKeyRef.current === key);
+      const background =
+        Boolean(opts?.background) || (cached != null && loadedKeyRef.current === key);
 
       if (cached && !opts?.background) {
         setMenu(cached);
@@ -91,40 +119,121 @@ export function LocationDiningMenuSection({
       const controller = new AbortController();
       abortRef.current = controller;
       const seq = ++requestSeq.current;
+      let timedOut = false;
+      const timeoutId = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, DINING_MENU_CLIENT_TIMEOUT_MS);
+
+      const path = `/api/dining/menu?${new URLSearchParams({ location: hallId, date })}`;
+      logDiningDev({
+        phase: "start",
+        campusQuestLocationId,
+        diningSourceId: hallId,
+        date,
+        path,
+        seq,
+        background,
+        hadCache: Boolean(cached),
+      });
 
       try {
-        const params = new URLSearchParams({ location: hallId, date });
-        const data = await fetchAuthed<DiningMenuResponse>(`/api/dining/menu?${params}`, {
+        const data = await fetchAuthed<DiningMenuResponse>(path, {
           signal: controller.signal,
         });
-        if (seq !== requestSeq.current) return;
+        if (!shouldCommitDiningResponse({ requestSeq: seq, activeSeq: requestSeq.current })) {
+          logDiningDev({ phase: "stale-ignore", seq, activeSeq: requestSeq.current, reason: "seq" });
+          return;
+        }
+        if (!mountedRef.current) return;
+
         cacheRef.current.set(key, data);
         setMenu(data);
         setLoaded(true);
         setInitialLoading(false);
         setError(null);
         loadedKeyRef.current = key;
+        logDiningDev({
+          phase: "success",
+          diningSourceId: hallId,
+          date,
+          path,
+          seq,
+          mealPeriods: data.mealPeriods.length,
+          itemCount: countDiningMenuItems(data),
+          stale: Boolean(data.stale),
+        });
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        if (seq !== requestSeq.current) return;
+        if (!shouldCommitDiningResponse({ requestSeq: seq, activeSeq: requestSeq.current })) {
+          logDiningDev({
+            phase: "stale-ignore",
+            seq,
+            activeSeq: requestSeq.current,
+            reason: isAbortError(err) ? "abort-stale" : "error-stale",
+          });
+          return;
+        }
+        if (!mountedRef.current) return;
+
+        if (isAbortError(err)) {
+          if (timedOut) {
+            if (cached) {
+              setMenu(cached);
+              setLoaded(true);
+              setInitialLoading(false);
+              setError(null);
+            } else {
+              setError("Menu unavailable right now");
+              setLoaded(true);
+              setInitialLoading(false);
+            }
+            logDiningDev({ phase: "timeout", diningSourceId: hallId, date, path, seq });
+          } else {
+            logDiningDev({ phase: "aborted", diningSourceId: hallId, date, path, seq });
+          }
+          return;
+        }
+
         if (cached) {
           setMenu(cached);
           setLoaded(true);
           setInitialLoading(false);
           setError(null);
+          logDiningDev({
+            phase: "error-cache-fallback",
+            diningSourceId: hallId,
+            date,
+            path,
+            seq,
+            message: err instanceof Error ? err.message : "error",
+          });
           return;
         }
         setError("Menu unavailable right now");
         setLoaded(true);
         setInitialLoading(false);
+        logDiningDev({
+          phase: "error",
+          diningSourceId: hallId,
+          date,
+          path,
+          seq,
+          message: err instanceof Error ? err.message : "error",
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     },
-    [date, hallId],
+    [campusQuestLocationId, date, hallId],
   );
 
   useEffect(() => {
     void load({ background: false });
-    return () => abortRef.current?.abort();
+    // Abort only the in-flight request for THIS effect identity; do not clear loading
+    // here — the successor load (or unmount mountedRef guard) owns settlement.
+    return () => {
+      abortRef.current?.abort();
+    };
   }, [load]);
 
   const availableMeals = useMemo(
@@ -172,8 +281,8 @@ export function LocationDiningMenuSection({
     }
   }, []);
 
-  const showSkeleton = initialLoading && !loaded && !menu;
-  const isEmptyDay = loaded && (!menu || menu.mealPeriods.length === 0);
+  const showSkeleton = shouldShowDiningSkeleton({ initialLoading, loaded, menu });
+  const isEmptyDay = isDiningMenuEmpty({ loaded, menu });
   const context = mealContextLabel(mealId, date === today);
 
   return (
@@ -217,8 +326,8 @@ export function LocationDiningMenuSection({
         </div>
       ) : null}
 
-      {!showSkeleton && isEmptyDay ? (
-        <p className="cq-dining-empty">Menu not posted yet</p>
+      {!showSkeleton && isEmptyDay && !error ? (
+        <p className="cq-dining-empty">Menu unavailable for this day</p>
       ) : null}
 
       {!showSkeleton && menu && availableMeals.length > 0 ? (
@@ -261,7 +370,7 @@ export function LocationDiningMenuSection({
           ) : null}
 
           {filteredStations.length === 0 ? (
-            <p className="cq-dining-empty">Menu not posted yet</p>
+            <p className="cq-dining-empty">Menu unavailable for this day</p>
           ) : (
             <div className="cq-dining-stations">
               {filteredStations.map((station) => (

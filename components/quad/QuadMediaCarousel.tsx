@@ -10,6 +10,7 @@ import type { FieldNoteTag } from "@/lib/types";
 import { QuadVideoPlayer } from "@/components/quad/QuadVideoPlayer";
 import { FeedPhotoTags } from "@/components/quad/FeedPhotoTags";
 import { ZoomableImage } from "@/components/quad/ZoomableImage";
+import { TemporaryPinchSurface } from "@/components/quad/TemporaryPinchSurface";
 import { formatVideoDuration } from "@/lib/quadMedia";
 import { useMediaGestureLock } from "@/lib/client/useMediaGestureLock";
 
@@ -64,6 +65,7 @@ export function QuadMediaCarousel({
   const [dragging, setDragging] = useState(false);
   const [tagsVisible, setTagsVisible] = useState(false);
   const [slideScale, setSlideScale] = useState(1);
+  const [pinchActive, setPinchActive] = useState(false);
   const indexRef = useRef(index);
   const dragXRef = useRef(0);
   const mediaLenRef = useRef(visibleMedia.length);
@@ -98,14 +100,19 @@ export function QuadMediaCarousel({
   }, [visibleMedia.length]);
 
   useEffect(() => {
-    zoomedRef.current = slideScale > 1.01;
-    if (slideScale > 1.01 && dragXRef.current !== 0) {
+    zoomedRef.current = pinchActive || slideScale > 1.01;
+    if (zoomedRef.current && dragXRef.current !== 0) {
       dragXRef.current = 0;
       setDragX(0);
       setDragging(false);
       gestureRef.current.active = false;
     }
-  }, [slideScale]);
+  }, [pinchActive, slideScale]);
+
+  const onMediaPinchActive = useCallback((active: boolean) => {
+    setPinchActive(active);
+    if (!active) setSlideScale(1);
+  }, []);
 
   const markFailed = useCallback(
     (mediaId: string) => {
@@ -130,6 +137,7 @@ export function QuadMediaCarousel({
       setDragX(0);
       setDragging(false);
       setSlideScale(1);
+      setPinchActive(false);
     },
     [],
   );
@@ -306,7 +314,8 @@ export function QuadMediaCarousel({
       data-cq-horizontal-scroll="true"
       data-cq-gesture-block="swipe-tab"
       data-cq-media-carousel="true"
-      style={{ touchAction: slideScale > 1.01 ? "none" : "pan-y" }}
+      style={{ touchAction: pinchActive || slideScale > 1.01 ? "none" : "pan-y" }}
+      data-cq-pinch-lock={pinchActive ? "true" : "false"}
       onPointerDown={onPointerDown}
     >
       <div
@@ -347,15 +356,26 @@ export function QuadMediaCarousel({
             >
               {item.mediaType === "video" ? (
                 nearby ? (
-                  <QuadVideoPlayer
-                    playerId={`${postId}:${item.id}`}
-                    src={item.url}
-                    poster={item.thumbnailUrl}
-                    durationSeconds={item.durationSeconds}
-                    autoplayWhenVisible={isFeed && active}
-                    showMuteControl={item.hasAudio !== false}
-                    onError={() => markFailed(item.id)}
-                  />
+                  <TemporaryPinchSurface
+                    interactive={active}
+                    lockGestures={false}
+                    onActiveChange={(activePinch) => {
+                      if (active) onMediaPinchActive(activePinch);
+                    }}
+                    onScaleChange={(s) => {
+                      if (active) setSlideScale(s);
+                    }}
+                  >
+                    <QuadVideoPlayer
+                      playerId={`${postId}:${item.id}`}
+                      src={item.url}
+                      poster={item.thumbnailUrl}
+                      durationSeconds={item.durationSeconds}
+                      autoplayWhenVisible={isFeed && active}
+                      showMuteControl={item.hasAudio !== false}
+                      onError={() => markFailed(item.id)}
+                    />
+                  </TemporaryPinchSurface>
                 ) : item.thumbnailUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -381,9 +401,13 @@ export function QuadMediaCarousel({
                   alt=""
                   interactive={active}
                   lockGestures={false}
+                  enableDoubleTapZoom={false}
                   imgClassName="max-h-[min(65vh,36rem)] w-full object-cover object-center"
                   onClick={() => {
                     if (active) setTagsVisible((v) => !v);
+                  }}
+                  onPinchActiveChange={(activePinch) => {
+                    if (active) onMediaPinchActive(activePinch);
                   }}
                   onZoomChange={(s) => {
                     if (active) setSlideScale(s);
