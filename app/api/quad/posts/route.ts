@@ -130,6 +130,35 @@ export async function GET(request: Request) {
       });
     }
 
+    const communityParam = searchParams.get("community")?.trim().toLowerCase();
+    if (feedParam === "community") {
+      const { isQuadCommunityChannel, listCommunityQuadPosts } = await import(
+        "@/lib/server/quadCommunityFeed"
+      );
+      if (!isQuadCommunityChannel(communityParam)) {
+        throw new ApiError(
+          400,
+          "community must be student_organizations, greek_life, or athletics.",
+          "INVALID_COMMUNITY_CHANNEL",
+        );
+      }
+      const posts = await listCommunityQuadPosts({
+        userClient: auth.userClient,
+        userId: auth.user.id,
+        channel: communityParam,
+        limit,
+      });
+      const postIds = posts.map((p) => p.id);
+      const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
+      const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
+      return ok({
+        posts: await finalizeFeedPosts(enriched, {
+          userClient: auth.userClient,
+          viewerId: auth.user.id,
+        }),
+      });
+    }
+
     let query = auth.userClient.from("quad_posts").select(QUAD_POSTS_WITH_PROFILE_SELECT);
 
     if (authorIdParam) {

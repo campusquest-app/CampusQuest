@@ -7,7 +7,7 @@ const XP_CAPS: Record<string, number> = {
   guild: 2500,
   manual: 10000,
   streak_bonus: 500,
-  quad_spark: 1,
+  quad_spark: 20,
   quad_post: 10,
   campus_memory_star: 1,
 };

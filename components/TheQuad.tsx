@@ -9,11 +9,12 @@ import {
   getCommentsByNoteId,
   mergeRemoteQuadPostsCache,
   cloneFeedNotesForDisplay,
+  getNoteForReaction,
   type QuadFeedType,
 } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
 import { submitQuadComment } from "@/lib/client/quadCommentActions";
-import { fetchQuadHomePosts, fetchQuadFriendsPosts } from "@/lib/client/quadPostsClient";
+import { fetchQuadHomePosts, fetchQuadFriendsPosts, fetchQuadCommunityPosts } from "@/lib/client/quadPostsClient";
 import { subscribeSocialSync } from "@/lib/client/socialSync";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { getCharacterById } from "@/lib/friendsStore";
@@ -35,8 +36,14 @@ import {
   hasClientAccessSession,
   isMissingSessionError,
 } from "@/lib/client/authSessionClient";
+import type { QuadCommunityChannel } from "@/lib/quadCommunityChannels";
+import { isQuadCommunityChannel, QUAD_COMMUNITY_FEED_LABELS } from "@/lib/quadCommunityChannels";
 
-export type QuadFeedTab = QuadFeedType | "trending";
+export type QuadFeedTab = QuadFeedType | "trending" | QuadCommunityChannel;
+
+function isCommunityFeedTab(tab: QuadFeedTab): tab is QuadCommunityChannel {
+  return isQuadCommunityChannel(tab);
+}
 
 /** Synced by ResizeObserver — feed content clears this fixed header height */
 export const QUAD_HEADER_CSS_VAR = "--cq-quad-header-h";
@@ -174,6 +181,26 @@ export function TheQuad({
         return;
       }
 
+      if (isCommunityFeedTab(feedTab)) {
+        try {
+          const remote = await fetchQuadCommunityPosts(character.id, feedTab, 80);
+          mergeRemoteQuadPostsCache(remote);
+          const list = remote.map(enrichNote);
+          setNotes(cloneFeedNotesForDisplay(list));
+          setFeedError(null);
+        } catch (err) {
+          if (isMissingSessionError(err)) {
+            handleSessionMissing();
+            return;
+          }
+          setNotes([]);
+          setFeedError("Could not load this community feed.");
+        }
+        await refreshPlayerSnapshotSafe();
+        onRefresh?.();
+        return;
+      }
+
       let homeFetchFailed = false;
       try {
         const remote = await fetchQuadHomePosts(character.id, 80);
@@ -288,11 +315,34 @@ export function TheQuad({
         body: "When you connect with classmates, their Quad posts show up here — newest first.",
       };
     }
-    if (feedTab === "trending") return { title: "No trending posts yet", body: "Nod, hype, and verify posts to push campus moments to the top." };
-    return { title: "No posts yet", body: "Tap + to share what’s happening on campus." };
+    if (feedTab === "trending") {
+      return {
+        title: "No trending posts yet",
+        body: "Like, Spark, and verify posts to push campus moments to the top.",
+      };
+    }
+    if (isCommunityFeedTab(feedTab)) {
+      const copy = QUAD_COMMUNITY_FEED_LABELS[feedTab];
+      return { title: copy.emptyTitle, body: copy.emptyBody };
+    }
+    return {
+      title: "No posts yet",
+      body: "Tap + to share what’s happening on campus. This Campus Feed stays open to the whole URI community.",
+    };
   }, [feedTab]);
 
   const syncNotesFromFeed = useCallback(() => {
+    if (feedTab === "friends" || isCommunityFeedTab(feedTab)) {
+      setNotes((prev) =>
+        cloneFeedNotesForDisplay(
+          prev.map((note) => {
+            const updated = getNoteForReaction(note.id);
+            return enrichNote(updated ?? note);
+          }),
+        ),
+      );
+      return;
+    }
     let list = getFeed(character.id, baseFeedType).map(enrichNote);
     if (feedTab === "trending") {
       list = [...list].sort((a, b) => {
@@ -462,7 +512,9 @@ export function TheQuad({
       ? "Loading Following feed…"
       : feedTab === "trending"
         ? "Loading trending posts…"
-        : "Loading The Quad…";
+        : isCommunityFeedTab(feedTab)
+          ? `Loading ${QUAD_COMMUNITY_FEED_LABELS[feedTab].label}…`
+          : "Loading Campus Feed…";
 
   return (
     <>

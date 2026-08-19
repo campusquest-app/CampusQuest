@@ -6,6 +6,7 @@ import {
 } from "@/lib/server/quadPostNotifications";
 import { createAdminClient } from "@/lib/server/supabase";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
+import { QUAD_SPARK_XP_AMOUNT } from "@/lib/quadSparkXp";
 
 export type QuadReactionType = "like" | "spark";
 
@@ -381,7 +382,7 @@ async function maybeAwardSparkXp(args: {
   await addXpInternal({
     userClient: admin,
     userId: postAuthorId,
-    amount: 1,
+    amount: QUAD_SPARK_XP_AMOUNT,
     sourceType: "quad_spark",
     sourceId: postId,
     note: "Spark on your Quad post",

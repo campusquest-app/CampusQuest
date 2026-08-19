@@ -17,8 +17,8 @@ import { FieldNoteComposer } from "@/components/FieldNoteComposer";
 import { PostMediaPicker, type PickedMedia } from "@/components/posts/PostMediaPicker";
 import { QuadCreateActionSheet } from "@/components/QuadCreateActionSheet";
 import { revokeVideoObjectUrl } from "@/lib/client/probeVideoFile";
+import type { QuadFeedTab } from "@/components/TheQuad";
 
-type QuadFeedTab = "public" | "friends" | "trending";
 type Step = "media" | "compose";
 type View = "actions" | "post";
 

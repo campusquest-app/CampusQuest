@@ -53,6 +53,20 @@ export async function fetchQuadFriendsPosts(viewerId: string, limit = 80): Promi
   return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
 }
 
+export async function fetchQuadCommunityPosts(
+  viewerId: string,
+  community: "student_organizations" | "greek_life" | "athletics",
+  limit = 80,
+): Promise<FieldNote[]> {
+  const qs = new URLSearchParams({
+    feed: "community",
+    community,
+    limit: String(limit),
+  });
+  const data = await fetchAuthed<{ posts: QuadPostApiRow[] }>(`/api/quad/posts?${qs.toString()}`);
+  return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
+}
+
 export async function fetchQuadPostsByAuthor(
   viewerId: string,
   authorId: string,

@@ -8,11 +8,14 @@ import type { QuadFeedTab } from "@/components/TheQuad";
 
 type FeedOption = { tab: QuadFeedTab; label: string; hint: string };
 
-/** Order mirrors the old inline tabs: The Quad (public) is the default home feed. */
+/** Order: Campus Feed first, then personalization, then dedicated communities. */
 const FEED_OPTIONS: FeedOption[] = [
-  { tab: "public", label: "The Quad", hint: "Everything happening on campus" },
+  { tab: "public", label: "Campus Feed", hint: "Everything happening across URI" },
   { tab: "trending", label: "For You", hint: "Trending moments, picked for you" },
   { tab: "friends", label: "Following", hint: "Posts from people you follow" },
+  { tab: "student_organizations", label: "Organizations", hint: "Student clubs and campus orgs" },
+  { tab: "greek_life", label: "Greek Life", hint: "Fraternity and sorority community" },
+  { tab: "athletics", label: "Athletics", hint: "Sports, club sports, and Rams" },
 ];
 
 /**

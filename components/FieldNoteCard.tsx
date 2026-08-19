@@ -866,29 +866,27 @@ function FieldNoteCardInner({
           active={hasNodded}
           onClick={handleNod}
           icon={Heart}
-          count={isFeed ? undefined : note.nodCount}
+          count={note.nodCount}
           label={hasNodded ? "Unlike" : "Like"}
           pulseClass={likePulse ? "cq-reaction-heart-pop" : undefined}
           fillWhenActive
           compact={isFeed}
-          hideCount={isFeed}
           pending={likePending}
         />
         <ReactionButton
           active={commentsSheetOpen}
           onClick={() => setCommentsSheetOpen(true)}
           icon={MessageCircle}
-          count={isFeed ? undefined : displayCommentCount}
+          count={displayCommentCount}
           label="View comments"
           compact={isFeed}
-          hideCount={isFeed}
         />
         <ReactionButton
           onClick={() => void handleShare()}
           icon={Share2}
           label="Share post"
           compact={isFeed}
-          hideCount={isFeed}
+          hideCount
         />
         {!isFeed ? (
           <ReactionButton
@@ -914,12 +912,12 @@ function FieldNoteCardInner({
             active={hasHyped}
             onClick={handleHype}
             icon={Zap}
+            count={hypeCount}
             label={hasHyped ? "Unspark" : "Spark"}
             title={hasHyped ? "Remove spark" : "Spark this post"}
             pulseClass={zapPulse ? "cq-reaction-zap-pulse" : undefined}
             fillWhenActive
             compact
-            hideCount
           />
         </div>
       ) : (
