@@ -175,10 +175,16 @@ export async function fetchUriDiningMenu(args: {
       }
     }
 
-    let hoursSummary: string | undefined;
+    let hours: DiningMenu["hours"] | undefined;
     try {
-      const hours = await fetchHoursMarkup(session, location.externalUnitOid, fetchImpl);
-      hoursSummary = parseHoursMarkup(hours.html).summary || undefined;
+      const hoursRes = await fetchHoursMarkup(session, location.externalUnitOid, fetchImpl);
+      const parsed = parseHoursMarkup(hoursRes.html);
+      if (parsed.summary || parsed.days.length > 0) {
+        hours = {
+          summary: parsed.summary || undefined,
+          days: parsed.days,
+        };
+      }
     } catch {
       // optional
     }
@@ -191,7 +197,7 @@ export async function fetchUriDiningMenu(args: {
       location,
       date: args.isoDate,
       mealPeriods,
-      hours: hoursSummary ? { summary: hoursSummary } : undefined,
+      hours,
       fetchedAt: new Date().toISOString(),
       source: "netnutrition",
     };

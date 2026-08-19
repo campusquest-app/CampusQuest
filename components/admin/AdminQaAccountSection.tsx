@@ -45,10 +45,9 @@ export function AdminQaAccountSection() {
       <div>
         <p className="font-semibold text-white">QA Onboarding Account</p>
         <p className="mt-1 text-xs text-white/55">
-          Permanent hidden test account for the sign-up experience. Resetting restores it to a
-          brand-new-user state (onboarding, avatar, profile, tutorial) without deleting it or
-          changing its password. It never earns XP and never appears in leaderboards, search, or
-          analytics.
+          Permanent hidden test account (`qa_signup@campusquestapp.com`) for the sign-up experience.
+          Resetting restores that test account only. It never touches `nicklockhart22@uri.edu`, admin
+          permissions, XP, or live student data.
         </p>
       </div>
       <button

@@ -94,6 +94,7 @@ import {
   ApiRequestError,
   fetchAuthed,
   fetchMeSchoolVerification,
+  isMissingSessionError,
   postAuthed,
   type MeSchoolVerificationResponse,
   SchoolVerificationHttpError,
@@ -138,6 +139,16 @@ import {
   resolveProfileRoute,
   type ProfileRoute,
 } from "@/lib/client/appShellRoute";
+import {
+  applyOnboardingQaReplayOverride,
+  completeOnboardingQaReplay,
+  syncOnboardingQaReplayFromAccessToken,
+} from "@/lib/client/onboardingQaSession";
+import {
+  isProfileInitializingError,
+  nextProfileReadyBackoffMs,
+  shouldContinueProfileReadyRetry,
+} from "@/lib/client/profileReadyRetry";
 import { RoleSelectionGate } from "@/components/RoleSelectionGate";
 import { AccountTypeModal } from "@/components/AccountTypeModal";
 import { buildQrXpSession } from "@/lib/client/buildQrXpSession";
@@ -226,6 +237,7 @@ export function Dashboard() {
   const [showPostLoginLoading, setShowPostLoginLoading] = useState(false);
   const [launchMinElapsed, setLaunchMinElapsed] = useState(false);
   const [profileRoute, setProfileRoute] = useState<ProfileRoute>("unknown");
+  const [qaReplayActive, setQaReplayActive] = useState(false);
   const [tab, setTab] = useState<Tab>("quad");
   const [quadFeedTab, setQuadFeedTab] = useState<QuadFeedTab>("public");
   const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
@@ -1164,6 +1176,7 @@ export function Dashboard() {
     setGatePrefillProfile(null);
     setOnboardingPreferences(null);
     setProfileRoute("unknown");
+    setQaReplayActive(false);
     setXpGainSession(null);
     setQrScannerOpen(false);
     setQrScannerEverOpened(false);
@@ -1225,6 +1238,7 @@ export function Dashboard() {
         case "tags-mentions":
         case "push-notifications":
         case "delete-account":
+        case "demographics":
           // Handled inside AppSideDrawer sub-panels.
           break;
         case "campus":
@@ -1541,7 +1555,30 @@ export function Dashboard() {
 
       try {
         const tCrit = typeof performance !== "undefined" ? performance.now() : 0;
-        const snap0 = await fetchMeProfileAndStatsDeduped();
+        const readyStarted = Date.now();
+        let snap0 = null as Awaited<ReturnType<typeof fetchMeProfileAndStatsDeduped>>;
+        let attempt = 0;
+        while (!cancelled) {
+          try {
+            snap0 = await fetchMeProfileAndStatsDeduped();
+            if (snap0?.profile && snap0?.stats) break;
+            throw new ApiRequestError("Profile not found.", 404, "PROFILE_NOT_FOUND");
+          } catch (readyError) {
+            if (isMissingSessionError(readyError)) throw readyError;
+            if (
+              !shouldContinueProfileReadyRetry({
+                startedAtMs: readyStarted,
+                nowMs: Date.now(),
+                error: readyError,
+              })
+            ) {
+              throw readyError;
+            }
+            attempt += 1;
+            await new Promise((resolve) => setTimeout(resolve, nextProfileReadyBackoffMs(attempt)));
+          }
+        }
+        if (cancelled) return;
         if (!snap0?.profile || !snap0?.stats) {
           if (!cancelled) {
             await failUnauthenticated({ invalidateToken: true });
@@ -1588,8 +1625,11 @@ export function Dashboard() {
           enabled: parseShowXpProgressBarFromProfile(profileMerged.show_xp_progress_bar),
         });
 
-        const onboardingDone = profileMerged.onboarding_completed === true;
-        const characterDone = profileMerged.onboarding_character_completed === true;
+        const qaReplay = syncOnboardingQaReplayFromAccessToken(getAccessToken()).replay;
+        setQaReplayActive(qaReplay);
+        const routingProfile = applyOnboardingQaReplayOverride(profileMerged, qaReplay);
+        const onboardingDone = routingProfile.onboarding_completed === true;
+        const characterDone = routingProfile.onboarding_character_completed === true;
 
         const commitSnap = () => {
           commitMeSessionSnapshot({
@@ -1643,7 +1683,11 @@ export function Dashboard() {
           });
         };
 
-        const routeDecision = resolveProfileRoute(profileMerged);
+        const routeDecision = resolveProfileRoute(routingProfile);
+
+        if (qaReplay) {
+          setGatePrefillProfile(profileMerged);
+        }
 
         if (onboardingDone || characterDone) {
           clearLegacyLocalMismatch();
@@ -1680,9 +1724,17 @@ export function Dashboard() {
 
         setProfileRoute(routeDecision);
         setBootstrapStatus("authenticated");
-      } catch {
+      } catch (bootstrapError) {
         if (!cancelled) {
-          await failUnauthenticated({ invalidateToken: true });
+          if (isProfileInitializingError(bootstrapError) && !isMissingSessionError(bootstrapError)) {
+            logBootstrapDecision({
+              sessionFound: true,
+              sessionValidated: false,
+              onboardingCompleted: profileSnap?.onboarding_completed ?? null,
+              route: "unauthenticated",
+            });
+          }
+          await failUnauthenticated({ invalidateToken: !isProfileInitializingError(bootstrapError) });
           logBootstrapDecision({
             sessionFound: true,
             sessionValidated: false,
@@ -1955,7 +2007,10 @@ export function Dashboard() {
     return (
       <CharacterGate
         prefillProfile={gatePrefillProfile}
+        preserveExistingProgress={qaReplayActive}
         onReady={() => {
+          completeOnboardingQaReplay(getAccessToken());
+          setQaReplayActive(false);
           refresh();
           setTab("quad");
           setBootstrapNonce((n) => n + 1);

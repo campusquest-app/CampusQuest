@@ -93,7 +93,10 @@ export const ADMIN_NAV: AdminNavItem[] = [
     id: "users",
     label: "Users",
     icon: "👤",
-    children: [{ id: "xp", label: "XP Management" }],
+    children: [
+      { id: "directory", label: "Student Directory" },
+      { id: "xp", label: "XP Management" },
+    ],
   },
   {
     id: "system",
@@ -102,6 +105,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     children: [
       { id: "preview", label: "Backend Preview" },
       { id: "tools", label: "Internal Tools" },
+      { id: "auth-qa", label: "Authentication QA" },
     ],
   },
 ];

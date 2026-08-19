@@ -188,9 +188,71 @@ export function parseNutritionLabelHtml(html: string): DiningNutrition {
   };
 }
 
-export function parseHoursMarkup(html: string): { summary: string } {
-  const text = stripTags(html);
-  return { summary: text.slice(0, 500) };
+export function parseHoursMarkup(html: string): {
+  summary: string;
+  days: Array<{
+    weekday: string;
+    closed: boolean;
+    openLabel?: string;
+    closeLabel?: string;
+    openMinutes?: number;
+    closeMinutes?: number;
+  }>;
+} {
+  const days: Array<{
+    weekday: string;
+    closed: boolean;
+    openLabel?: string;
+    closeLabel?: string;
+    openMinutes?: number;
+    closeMinutes?: number;
+  }> = [];
+
+  const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch: RegExpExecArray | null;
+  while ((rowMatch = rowRe.exec(html)) !== null) {
+    const cells = Array.from(rowMatch[1]!.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)).map((m) =>
+      stripTags(m[1] ?? ""),
+    );
+    if (cells.length < 2) continue;
+    const weekday = cells[0]!;
+    if (!/^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)$/i.test(weekday)) {
+      continue;
+    }
+    if (/closed/i.test(cells[1]!) || cells.length < 3) {
+      days.push({ weekday, closed: true });
+      continue;
+    }
+    const openLabel = cells[1]!;
+    const closeLabel = cells[2]!;
+    const openMinutes = parseClockLabel(openLabel);
+    const closeMinutes = parseClockLabel(closeLabel);
+    days.push({
+      weekday,
+      closed: false,
+      openLabel,
+      closeLabel,
+      openMinutes: openMinutes ?? undefined,
+      closeMinutes: closeMinutes ?? undefined,
+    });
+  }
+
+  const summary = stripTags(html).slice(0, 500);
+  return { summary, days };
+}
+
+function parseClockLabel(label: string): number | null {
+  const match = label.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return null;
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const meridiem = match[3]!.toUpperCase();
+  if (meridiem === "AM") {
+    if (hour === 12) hour = 0;
+  } else if (hour !== 12) {
+    hour += 12;
+  }
+  return hour * 60 + minute;
 }
 
 export function mealPeriodMeta(id: DiningMealPeriodId) {

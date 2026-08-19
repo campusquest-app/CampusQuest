@@ -5,6 +5,7 @@ import { useState } from "react";
 import { BackendDashboardPreview } from "@/components/BackendDashboardPreview";
 import { AdminBetaFoundersSection } from "@/components/admin/AdminBetaFoundersSection";
 import { AdminQaAccountSection } from "@/components/admin/AdminQaAccountSection";
+import { AdminAuthQaSection } from "@/components/admin/AdminAuthQaSection";
 import { AdminSectionIntro } from "@/components/admin/AdminUi";
 
 export function AdminSystemSection() {
@@ -33,6 +34,8 @@ export function AdminSystemSection() {
           <p className="mt-1 text-xs text-white/55">Focused moderation view for high-volume review sessions.</p>
         </Link>
       </div>
+
+      <AdminAuthQaSection />
 
       <AdminQaAccountSection />
 

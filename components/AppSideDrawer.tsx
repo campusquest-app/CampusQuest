@@ -34,6 +34,7 @@ import { BlockedUsersPanel } from "@/components/safety/BlockedUsersPanel";
 import { TagsMentionsSettingsPanel } from "@/components/safety/TagsMentionsSettingsPanel";
 import { PushNotificationsSettingsPanel } from "@/components/safety/PushNotificationsSettingsPanel";
 import { DeleteAccountPanel } from "@/components/safety/DeleteAccountPanel";
+import { DemographicsSettingsPanel } from "@/components/DemographicsSettingsPanel";
 import { DRAWER_SNAP_MS } from "@/lib/client/drawerGeometry";
 import { setIsDrawerOpen } from "@/lib/client/appDrawerStore";
 import { FEATURE_FLAGS } from "@/lib/featureFlags";
@@ -57,7 +58,15 @@ export type AppDrawerDestination =
   | "progress-hub"
   | "skills-lore";
 
-type DrawerPanel = "menu" | "settings" | "help" | "blocked-users" | "tags-mentions" | "push-notifications" | "delete-account";
+type DrawerPanel =
+  | "menu"
+  | "settings"
+  | "help"
+  | "blocked-users"
+  | "tags-mentions"
+  | "push-notifications"
+  | "delete-account"
+  | "demographics";
 
 type MenuItemId =
   | AppDrawerDestination
@@ -464,6 +473,10 @@ export function AppSideDrawer({
                   setPanel("delete-account");
                   return;
                 }
+                if (action === "demographics") {
+                  setPanel("demographics");
+                  return;
+                }
                 onSettingsAction(action);
                 if (action !== "sound" && action !== "appearance") {
                   onClose();
@@ -489,6 +502,8 @@ export function AppSideDrawer({
                 onAccountDeleted?.();
               }}
             />
+          ) : panel === "demographics" ? (
+            <DemographicsSettingsPanel onBack={() => setPanel("settings")} />
           ) : (
             <AppHelpSupportPanel onBack={() => setPanel("menu")} />
           )}

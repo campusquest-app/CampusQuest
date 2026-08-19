@@ -29,12 +29,26 @@ import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 import {
   HttpRequestError,
+  mapAuthEmailActionError,
   mapGenericError,
   mapSigninError,
   mapSignupError,
 } from "@/lib/client/authErrorMessages";
+import { AUTH_EMAIL_USER_MESSAGES } from "@/lib/authEmailDelivery";
+import {
+  canAttemptResend,
+  formatResendCooldownLabel,
+  readResendCooldownState,
+  remainingResendCooldownMs,
+  startResendCooldown,
+  writeResendCooldownState,
+} from "@/lib/client/authResendCooldown";
+import { mapAuthCallbackError, parseAuthCallbackParams } from "@/lib/client/authCallbackErrors";
+import { AuthEmailRecoveryCard } from "@/components/auth/AuthEmailRecoveryCard";
+import { syncOnboardingQaReplayFromAccessToken } from "@/lib/client/onboardingQaSession";
+import { isAllowedSignupEmail, SCHOOL_EMAIL_REQUIRED_MESSAGE } from "@/lib/signupEmailPolicy";
 
-type Mode = "signin" | "signup";
+type Mode = "welcome" | "signin" | "signup";
 type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } | string };
 const REMEMBER_EMAIL_KEY = "cq_auth_remember_email";
 const SIGNUP_COOLDOWN_MS = 3000;
@@ -99,7 +113,7 @@ const AUTH_PANEL_VARIANTS = {
 
 export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const reduceMotion = useReducedMotion();
-  const [mode, setMode] = useState<Mode>("signup");
+  const [mode, setMode] = useState<Mode>("welcome");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -112,6 +126,12 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
+  const [nowMs, setNowMs] = useState(() => (typeof Date !== "undefined" ? Date.now() : 0));
+  const [callbackRecovery, setCallbackRecovery] = useState(() => {
+    if (typeof window === "undefined") return null;
+    return mapAuthCallbackError(parseAuthCallbackParams({ search: window.location.search, hash: window.location.hash }));
+  });
+  const resendInFlightRef = useRef(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [showPostSignupOnboarding, setShowPostSignupOnboarding] = useState(false);
   const [needsConsent, setNeedsConsent] = useState(false);
@@ -146,6 +166,19 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     const saved = localStorage.getItem(REMEMBER_EMAIL_KEY);
     if (saved) setEmail(saved);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!callbackRecovery) return;
+    if (window.location.hash || window.location.search.includes("error")) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [callbackRecovery]);
 
   async function checkSafetyStatus(accessToken: string) {
     const payload = await fetchJson<{
@@ -300,11 +333,10 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         localStorage.removeItem(REMEMBER_EMAIL_KEY);
       }
       setAccessToken(accessToken);
-      // Persist the full session so the user stays logged in across app
-      // restarts; Supabase auto-refreshes the access token from here on.
       if (session?.refresh_token) {
         await persistSupabaseSession({ access_token: accessToken, refresh_token: session.refresh_token });
       }
+      syncOnboardingQaReplayFromAccessToken(accessToken);
       await completeAuthenticatedSession({ isSignup: false });
     } catch (signInError) {
       logAuthClientError("login", signInError);
@@ -345,6 +377,10 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     }
     if (!/^[a-z0-9_]{3,24}$/.test(u)) {
       setError("Username must be 3-24 characters (a-z, 0-9, _).");
+      return;
+    }
+    if (!isAllowedSignupEmail(eVal)) {
+      setError(SCHOOL_EMAIL_REQUIRED_MESSAGE);
       return;
     }
     if (!passwordMeetsRequirements(p)) {
@@ -430,9 +466,9 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: targetEmail }),
       });
-      setNotice("Password reset email sent. Check your inbox.");
+      setNotice(AUTH_EMAIL_USER_MESSAGES.resetAccepted);
     } catch (resetError) {
-      setNotice(mapGenericError(resetError));
+      setNotice(mapAuthEmailActionError(resetError));
     } finally {
       setIsResettingPassword(false);
     }
@@ -445,6 +481,14 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setNotice("Enter a valid email address.");
       return;
     }
+    if (resendInFlightRef.current || isResendingConfirmation) return;
+    const stored = readResendCooldownState();
+    if (!canAttemptResend({ email: targetEmail, nowMs: Date.now(), stored, inFlight: false })) {
+      const remaining = remainingResendCooldownMs({ email: targetEmail, nowMs: Date.now(), stored });
+      setNotice(formatResendCooldownLabel(remaining || 1000));
+      return;
+    }
+    resendInFlightRef.current = true;
     setIsResendingConfirmation(true);
     try {
       await fetchJson("/api/auth/resend-confirmation", {
@@ -452,10 +496,13 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: targetEmail }),
       });
-      setNotice("Confirmation email sent. Check your inbox.");
+      const next = startResendCooldown({ email: targetEmail, nowMs: Date.now() });
+      writeResendCooldownState(next);
+      setNotice(AUTH_EMAIL_USER_MESSAGES.accepted);
     } catch (resendError) {
-      setNotice(mapGenericError(resendError));
+      setNotice(mapAuthEmailActionError(resendError));
     } finally {
+      resendInFlightRef.current = false;
       setIsResendingConfirmation(false);
     }
   }
@@ -509,14 +556,124 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   }
 
   if (showPostSignupOnboarding && !isOnboardingTutorialDisabled()) {
-    return <AuthOnboardingFlow onComplete={onComplete} />;
+    return (
+      <AuthOnboardingFlow
+        onComplete={onComplete}
+        onRequestSignIn={() => {
+          clearAccessToken();
+          setShowPostSignupOnboarding(false);
+          switchMode("signin");
+        }}
+      />
+    );
+  }
+
+  const resendRemaining = remainingResendCooldownMs({
+    email,
+    nowMs,
+    stored: readResendCooldownState(),
+  });
+  const resendLocked = isResendingConfirmation || resendRemaining > 0;
+  const showResend =
+    FEATURE_FLAGS.requireEmailVerification ||
+    Boolean(error?.toLowerCase().includes("confirm")) ||
+    Boolean(notice?.toLowerCase().includes("confirm")) ||
+    Boolean(notice && notice === AUTH_EMAIL_USER_MESSAGES.accepted) ||
+    Boolean(successBanner === "Account Created!");
+
+  if (callbackRecovery) {
+    return (
+      <div className="cq-auth-shell min-h-[100dvh] flex flex-col items-center px-5 py-6">
+        <div className="cq-auth-inner cq-auth-enter w-full">
+          <AuthHeader />
+          <AuthEmailRecoveryCard
+            recovery={callbackRecovery}
+            email={email}
+            onEmailChange={setEmail}
+            onResend={() => void handleResendConfirmation()}
+            resendLabel={
+              isResendingConfirmation
+                ? "Sending..."
+                : resendRemaining > 0
+                  ? formatResendCooldownLabel(resendRemaining)
+                  : "Send a new verification email"
+            }
+            resendDisabled={resendLocked || !email.trim()}
+            notice={notice}
+          />
+          <p className="cq-auth-switch-row">
+            <button
+              type="button"
+              onClick={() => {
+                setCallbackRecovery(null);
+                setMode("signin");
+              }}
+              className="cq-auth-link"
+            >
+              Back to sign in
+            </button>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "welcome") {
+    return (
+      <div className="cq-onboard-shell cq-onboard-shell--dark">
+        <div className="cq-onboard-inner">
+          <div className="cq-onboard-hero text-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/brand/logo/campusquest-logo-official.png"
+              alt="CampusQuest"
+              className="cq-onboard-logo"
+              width={88}
+              height={88}
+              decoding="async"
+            />
+            <div className="cq-onboard-knight" aria-hidden>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/brand/knight/thumbs-up.png"
+                alt=""
+                className="cq-onboard-knight-img"
+                width={220}
+                height={220}
+                decoding="async"
+              />
+            </div>
+            <h1 className="cq-onboard-title-dark">
+              Welcome to <span className="cq-onboard-title-accent">CampusQuest</span>
+            </h1>
+            <p className="cq-onboard-sub-dark">
+              Your campus. Your community.
+              <br />
+              Your quest.
+            </p>
+            <button type="button" className="cq-onboard-btn-gold" onClick={() => switchMode("signup")}>
+              Let&apos;s Get Started
+            </button>
+            <p className="cq-onboard-footer-link">
+              Already have an account?{" "}
+              <button type="button" className="cq-onboard-text-link" onClick={() => switchMode("signin")}>
+                Sign in
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="cq-auth-shell min-h-[100dvh] flex flex-col items-center px-5 py-6">
       <div className="cq-auth-inner cq-auth-enter w-full">
         <AuthHeader />
-        <AuthModeSegment mode={mode} onChange={switchMode} />
+        <AuthModeSegment
+          mode={mode === "signin" ? "signin" : "signup"}
+          onChange={(next) => switchMode(next)}
+        />
 
         <div className="cq-auth-form-stage">
           <AnimatePresence mode="wait" initial={false} custom={mode}>
@@ -588,18 +745,21 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                   </button>
                   <p className="cq-auth-trust pt-1">
                     {FEATURE_FLAGS.requireEmailVerification
-                      ? "Secure sign-in · Email verification supported"
-                      : "Secure sign-in"}
+                    ? "Secure sign-in · Email verification supported"
+                    : "Secure sign-in"}
                   </p>
-                  {FEATURE_FLAGS.requireEmailVerification &&
-                  (error?.includes("confirm") || notice?.includes("Confirmation")) ? (
+                  {showResend ? (
                     <button
                       type="button"
                       onClick={() => void handleResendConfirmation()}
-                      disabled={isResendingConfirmation}
+                      disabled={resendLocked}
                       className="cq-auth-link w-full text-center"
                     >
-                      {isResendingConfirmation ? "Sending..." : "Resend verification email"}
+                      {isResendingConfirmation
+                        ? "Sending..."
+                        : resendRemaining > 0
+                          ? formatResendCooldownLabel(resendRemaining)
+                          : "Resend verification email"}
                     </button>
                   ) : null}
                 </form>

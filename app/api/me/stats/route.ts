@@ -2,6 +2,7 @@ import { fail, ok, ApiError } from "@/lib/server/http";
 import { logSecurityEvent } from "@/lib/server/profileSecurity";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
+import { ensurePlayerSetup } from "@/lib/server/playerSetup";
 
 export async function GET(request: Request) {
   try {
@@ -14,7 +15,17 @@ export async function GET(request: Request) {
       .single();
 
     if (error || !data) {
-      throw new ApiError(404, error?.message ?? "User stats not found.", "STATS_NOT_FOUND");
+      try {
+        const ready = await ensurePlayerSetup({
+          userId: auth.user.id,
+          email: auth.user.email,
+          displayName: (auth.user.user_metadata?.display_name as string | undefined) ?? undefined,
+        });
+        return ok(ready.stats);
+      } catch (setupError) {
+        if (setupError instanceof ApiError) throw setupError;
+        throw new ApiError(404, "User stats not found.", "STATS_NOT_FOUND");
+      }
     }
 
     return ok(data);

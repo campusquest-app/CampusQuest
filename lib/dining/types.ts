@@ -51,11 +51,22 @@ export type DiningMealPeriod = {
   stations: DiningStation[];
 };
 
+export type DiningDayHours = {
+  weekday: string;
+  closed: boolean;
+  openLabel?: string;
+  closeLabel?: string;
+  openMinutes?: number;
+  closeMinutes?: number;
+};
+
 export type DiningHallHours = {
   /** Free-text day rows from NetNutrition hours markup */
   summary?: string;
   openLabel?: string;
   closeLabel?: string;
+  /** Structured weekly hours parsed from NetNutrition table */
+  days?: DiningDayHours[];
 };
 
 export type DiningMenu = {

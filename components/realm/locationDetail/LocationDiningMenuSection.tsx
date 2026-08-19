@@ -2,11 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchAuthed } from "@/lib/client/dashboardApi";
+import { useNow } from "@/lib/client/useNow";
 import type { DiningLocationId, DiningMealPeriodId, DiningMenuResponse } from "@/lib/dining/types";
 import {
   formatDayChipLabel,
-  mealContextLabel,
-  selectDefaultMealPeriod,
   upcomingIsoDates,
   uriTodayIso,
 } from "@/lib/dining/diningTime";
@@ -20,6 +19,16 @@ import {
   shouldCommitDiningResponse,
   shouldShowDiningSkeleton,
 } from "@/lib/dining/diningMenuClientState";
+import {
+  buildFilteredStations,
+  dietFilterOptionsForMeal,
+  nextExpandedStationId,
+} from "@/lib/dining/diningMenuPresentation";
+import {
+  pickInitialSelectedMeal,
+  resolveDiningServiceStatus,
+  type DiningDayHours,
+} from "@/lib/dining/diningServiceStatus";
 
 type MenuItem = DiningMenuResponse["mealPeriods"][number]["stations"][number]["items"][number];
 
@@ -37,19 +46,6 @@ type NutritionPayload = {
 };
 
 const IS_DEV = process.env.NODE_ENV !== "production";
-
-function dietaryFilterOptions(menu: DiningMenuResponse | null): string[] {
-  if (!menu) return [];
-  const tags = new Set<string>();
-  for (const meal of menu.mealPeriods) {
-    for (const station of meal.stations) {
-      for (const item of station.items) {
-        for (const tag of item.dietaryTags ?? []) tags.add(tag);
-      }
-    }
-  }
-  return Array.from(tags).sort();
-}
 
 function logDiningDev(payload: Record<string, unknown>) {
   if (!IS_DEV) return;
@@ -71,8 +67,10 @@ export function LocationDiningMenuSection({
   const [loaded, setLoaded] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mealId, setMealId] = useState<DiningMealPeriodId | null>(null);
+  /** Menu the student is browsing (independent of live service status). */
+  const [selectedMeal, setSelectedMeal] = useState<DiningMealPeriodId | null>(null);
   const [dietFilter, setDietFilter] = useState<string | null>(null);
+  const [expandedStationId, setExpandedStationId] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [nutrition, setNutrition] = useState<NutritionPayload | null>(null);
   const [nutritionLoading, setNutritionLoading] = useState(false);
@@ -82,6 +80,10 @@ export function LocationDiningMenuSection({
   const requestSeq = useRef(0);
   const loadedKeyRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const userPickedMealRef = useRef(false);
+  const fetchCountRef = useRef(0);
+
+  const now = useNow(30_000);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -95,6 +97,12 @@ export function LocationDiningMenuSection({
     const next = resolveDiningLocationId(campusQuestLocationId) ?? "butterfield";
     setHallId((current) => (current === next ? current : next));
   }, [campusQuestLocationId]);
+
+  useEffect(() => {
+    userPickedMealRef.current = false;
+    setExpandedStationId(null);
+    setDietFilter(null);
+  }, [date, hallId]);
 
   const load = useCallback(
     async (opts?: { background?: boolean }) => {
@@ -119,6 +127,7 @@ export function LocationDiningMenuSection({
       const controller = new AbortController();
       abortRef.current = controller;
       const seq = ++requestSeq.current;
+      fetchCountRef.current += 1;
       let timedOut = false;
       const timeoutId = window.setTimeout(() => {
         timedOut = true;
@@ -229,8 +238,6 @@ export function LocationDiningMenuSection({
 
   useEffect(() => {
     void load({ background: false });
-    // Abort only the in-flight request for THIS effect identity; do not clear loading
-    // here — the successor load (or unmount mountedRef guard) owns settlement.
     return () => {
       abortRef.current?.abort();
     };
@@ -240,33 +247,70 @@ export function LocationDiningMenuSection({
     () => (menu?.mealPeriods ?? []).map((m) => m.id),
     [menu],
   );
+  const availableMealsKey = availableMeals.join(",");
+
+  const hoursDays = menu?.hours?.days as DiningDayHours[] | undefined;
+
+  const serviceStatus = useMemo(
+    () =>
+      resolveDiningServiceStatus({
+        now,
+        selectedIsoDate: date,
+        todayIsoDate: today,
+        hoursDays,
+        availableMealIds: availableMeals,
+        browsingMealId: selectedMeal,
+      }),
+    [now, date, today, hoursDays, availableMeals, selectedMeal],
+  );
 
   useEffect(() => {
-    if (!loaded) return;
-    setMealId((current) => {
-      if (current && availableMeals.includes(current)) return current;
-      return selectDefaultMealPeriod(availableMeals);
-    });
-  }, [availableMeals, loaded]);
+    if (!loaded || availableMeals.length === 0) return;
 
-  const activeMeal = menu?.mealPeriods.find((m) => m.id === mealId) ?? null;
-  const dietOptions = dietaryFilterOptions(menu);
+    if (userPickedMealRef.current) {
+      setSelectedMeal((current) =>
+        current && availableMeals.includes(current) ? current : availableMeals[0]!,
+      );
+      return;
+    }
 
-  const filteredStations = useMemo(() => {
-    if (!activeMeal) return [];
-    return activeMeal.stations
-      .map((station) => ({
-        ...station,
-        items: station.items.filter((item) => {
-          if (!dietFilter) return true;
-          return (item.dietaryTags ?? []).includes(dietFilter);
-        }),
-      }))
-      .filter((station) => station.items.length > 0);
-  }, [activeMeal, dietFilter]);
+    setSelectedMeal(
+      pickInitialSelectedMeal({
+        availableMealIds: availableMeals,
+        currentMealId: serviceStatus.currentMealId,
+        now,
+      }),
+    );
+    // Intentionally depend on meal availability + date/hall, not every clock tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- live status still drives first pick via currentMealId when user hasn't chosen
+  }, [loaded, availableMealsKey, date, hallId, serviceStatus.currentMealId]);
 
-  const openItem = useCallback(async (item: MenuItem) => {
-    setSelectedItem(item);
+  useEffect(() => {
+    setExpandedStationId(null);
+  }, [selectedMeal, dietFilter]);
+
+  const activeMeal = menu?.mealPeriods.find((m) => m.id === selectedMeal) ?? null;
+  const dietOptions = useMemo(() => dietFilterOptionsForMeal(activeMeal), [activeMeal]);
+  const filteredStations = useMemo(
+    () => buildFilteredStations({ meal: activeMeal, dietFilter }),
+    [activeMeal, dietFilter],
+  );
+
+  const openItem = useCallback(async (item: {
+    id: string;
+    name: string;
+    hasNutritionDetail: boolean;
+    externalDetailOid?: string;
+    labels: string[];
+  }) => {
+    const full: MenuItem = {
+      id: item.id,
+      name: item.name,
+      hasNutritionDetail: item.hasNutritionDetail,
+      externalDetailOid: item.externalDetailOid,
+      dietaryTags: item.labels,
+    };
+    setSelectedItem(full);
     setNutrition(null);
     if (!item.externalDetailOid) return;
     setNutritionLoading(true);
@@ -283,10 +327,13 @@ export function LocationDiningMenuSection({
 
   const showSkeleton = shouldShowDiningSkeleton({ initialLoading, loaded, menu });
   const isEmptyDay = isDiningMenuEmpty({ loaded, menu });
-  const context = mealContextLabel(mealId, date === today);
 
   return (
-    <section className="cq-loc-section cq-dining-menu" aria-label="Today's Menu">
+    <section
+      className="cq-loc-section cq-dining-menu"
+      aria-label="Today's Menu"
+      data-cq-dining-fetches={fetchCountRef.current}
+    >
       <div className="cq-loc-section-head">
         <h3 className="cq-loc-section-title">Today&apos;s Menu</h3>
         {menu?.stale ? (
@@ -307,7 +354,12 @@ export function LocationDiningMenuSection({
         ))}
       </div>
 
-      {context ? <p className="cq-dining-context">{context}</p> : null}
+      {!showSkeleton && (menu || loaded) ? (
+        <div className="cq-dining-status" aria-live="polite">
+          <p className="cq-dining-status-title">{serviceStatus.title}</p>
+          <p className="cq-dining-status-hours">{serviceStatus.subtitle}</p>
+        </div>
+      ) : null}
 
       {showSkeleton ? (
         <div className="cq-dining-skeleton" aria-busy="true">
@@ -338,66 +390,94 @@ export function LocationDiningMenuSection({
                 key={meal.id}
                 type="button"
                 role="tab"
-                aria-selected={mealId === meal.id}
-                className={`cq-dining-meal-tab${mealId === meal.id ? " is-active" : ""}`}
-                onClick={() => setMealId(meal.id)}
+                aria-selected={selectedMeal === meal.id}
+                className={`cq-dining-meal-tab${selectedMeal === meal.id ? " is-active" : ""}`}
+                onClick={() => {
+                  userPickedMealRef.current = true;
+                  setSelectedMeal(meal.id);
+                }}
               >
                 {meal.name}
               </button>
             ))}
           </div>
 
-          {dietOptions.length > 0 ? (
-            <div className="cq-dining-diet-rail" aria-label="Dietary filter">
+          <div className="cq-dining-diet-rail" aria-label="Dietary filter" data-cq-horizontal-scroll="true">
+            <button
+              type="button"
+              className={`cq-dining-chip cq-dining-chip--quiet${dietFilter == null ? " is-active" : ""}`}
+              onClick={() => setDietFilter(null)}
+            >
+              All
+            </button>
+            {dietOptions.map((tag) => (
               <button
+                key={tag}
                 type="button"
-                className={`cq-dining-chip cq-dining-chip--quiet${dietFilter == null ? " is-active" : ""}`}
-                onClick={() => setDietFilter(null)}
+                className={`cq-dining-chip cq-dining-chip--quiet${dietFilter === tag ? " is-active" : ""}`}
+                onClick={() => setDietFilter(tag)}
               >
-                All
+                {tag}
               </button>
-              {dietOptions.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  className={`cq-dining-chip cq-dining-chip--quiet${dietFilter === tag ? " is-active" : ""}`}
-                  onClick={() => setDietFilter(tag)}
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
-          ) : null}
+            ))}
+          </div>
 
           {filteredStations.length === 0 ? (
-            <p className="cq-dining-empty">Menu unavailable for this day</p>
+            <p className="cq-dining-empty">
+              {dietFilter ? `No ${dietFilter.toLowerCase()} items for this meal` : "Menu unavailable for this day"}
+            </p>
           ) : (
             <div className="cq-dining-stations">
-              {filteredStations.map((station) => (
-                <div key={station.id} className="cq-dining-station">
-                  <h4 className="cq-dining-station-title">{station.name}</h4>
-                  <ul className="cq-dining-item-list">
-                    {station.items.map((item) => (
-                      <li key={item.id}>
-                        <button
-                          type="button"
-                          className="cq-dining-item"
-                          onClick={() => void openItem(item)}
-                        >
-                          <span className="cq-dining-item-name">{item.name}</span>
-                          {(item.dietaryTags?.length || item.allergens?.length) ? (
-                            <span className="cq-dining-item-tags">
-                              {[...(item.dietaryTags ?? []), ...(item.allergens ?? [])]
-                                .slice(0, 3)
-                                .join(" · ")}
-                            </span>
-                          ) : null}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+              {filteredStations.map((station) => {
+                const open = expandedStationId === station.id;
+                return (
+                  <div
+                    key={station.id}
+                    className={`cq-dining-station${open ? " is-open" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="cq-dining-station-toggle"
+                      aria-expanded={open}
+                      onClick={() =>
+                        setExpandedStationId((current) =>
+                          nextExpandedStationId(current, station.id),
+                        )
+                      }
+                    >
+                      <span className="cq-dining-station-name">{station.name}</span>
+                      <span className="cq-dining-station-meta">
+                        {station.itemCount} {station.itemCount === 1 ? "item" : "items"}
+                        <span className="cq-dining-station-chevron" aria-hidden>
+                          ›
+                        </span>
+                      </span>
+                    </button>
+                    <div className={`cq-dining-station-panel${open ? " is-open" : ""}`}>
+                      <div className="cq-dining-station-panel-inner">
+                        <ul className="cq-dining-item-list">
+                          {station.items.map((item) => (
+                            <li key={item.id}>
+                              <button
+                                type="button"
+                                className="cq-dining-item"
+                                onClick={() => void openItem(item)}
+                              >
+                                <span className="cq-dining-item-name">{item.name}</span>
+                                {item.labels.length > 0 ? (
+                                  <span className="cq-dining-item-tags">
+                                    {item.labels.join(" · ")}
+                                  </span>
+                                ) : null}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -421,11 +501,11 @@ export function LocationDiningMenuSection({
                 Close
               </button>
             </div>
-            {selectedItem.allergens?.length ? (
+            {selectedItem.dietaryTags?.length ? (
               <p className="cq-dining-detail-block">
-                <strong>Contains</strong>
+                <strong>Tags</strong>
                 <br />
-                {selectedItem.allergens.join(", ")}
+                {selectedItem.dietaryTags.join(" · ")}
               </p>
             ) : null}
             {nutritionLoading ? <p className="cq-dining-empty">Loading nutrition…</p> : null}

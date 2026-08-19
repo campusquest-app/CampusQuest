@@ -9,6 +9,8 @@ import {
   resolveQaTestAccountEmail,
   PERMANENT_QA_SIGNUP_EMAIL,
 } from "@/lib/internalAccount";
+import { isProtectedAccountEmail } from "@/lib/server/protectedAccounts";
+import { isOnboardingQaEmail, logOnboardingQa } from "@/lib/onboardingQa";
 
 export {
   isInternalAccount,
@@ -65,6 +67,42 @@ export async function listHiddenUserIds(client?: ClientLike): Promise<Set<string
     // Hidden-user filtering must never break the surface that uses it.
     return new Set();
   }
+}
+
+/**
+ * Profiles excluded from university-facing engagement analytics.
+ * Uses existing profile flags/roles only — no hardcoded emails in analytics queries.
+ *
+ * Excludes: is_test_user, is_hidden, is_internal_tester, role qa|beta_internal.
+ * Throws on query failure so analytics never silently include test accounts.
+ */
+export async function listAnalyticsExcludedUserIds(client?: ClientLike): Promise<Set<string>> {
+  const supabase = client ?? createAdminClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .or(
+      "is_hidden.eq.true,is_test_user.eq.true,is_internal_tester.eq.true,role.eq.qa,role.eq.beta_internal",
+    );
+  if (error) {
+    // Older DBs without is_internal_tester: fall back to the public-surface exclusion set,
+    // but still fail closed if that also errors.
+    const fallback = await listHiddenUserIds(supabase);
+    if (fallback.size === 0) {
+      // Distinguish empty vs failure: re-query is_hidden strictly and require success.
+      const strict = await supabase.from("profiles").select("id").eq("is_hidden", true);
+      if (strict.error) {
+        throw new ApiError(
+          500,
+          `Could not load analytics exclusion set: ${error.message}`,
+          "ANALYTICS_EXCLUSION_FAILED",
+        );
+      }
+      return new Set((strict.data ?? []).map((row) => row.id as string));
+    }
+    return fallback;
+  }
+  return new Set((data ?? []).map((row) => row.id as string));
 }
 
 const IS_DEV = process.env.NODE_ENV !== "production";
@@ -188,6 +226,16 @@ export async function resetQaOnboardingState(userId: string): Promise<void> {
       403,
       "Onboarding reset is only allowed for QA test accounts (is_test_user = true).",
       "QA_RESET_NOT_TEST_USER",
+    );
+  }
+
+  const { data: authUser } = await admin.auth.admin.getUserById(userId);
+  const email = authUser?.user?.email ?? null;
+  if (isProtectedAccountEmail(email) || isOnboardingQaEmail(email)) {
+    throw new ApiError(
+      403,
+      "This account is protected and cannot have onboarding or profile data reset.",
+      "QA_RESET_PROTECTED_ACCOUNT",
     );
   }
 
@@ -320,6 +368,12 @@ export async function resetQaOnboardingOnLoginIfTestUser(profile: {
   is_internal_tester?: boolean | null;
   email?: string | null;
 }): Promise<boolean> {
+  if (isOnboardingQaEmail(profile.email) || isProtectedAccountEmail(profile.email)) {
+    logOnboardingQa("login reset skipped for protected/admin QA account", {
+      userId: profile.id,
+    });
+    return false;
+  }
   const isKnownQa = isKnownQaAccountEmail(profile.email);
   if (!isKnownQa && !isTestUserProfile(profile)) {
     return false;

@@ -23,6 +23,7 @@ export type SettingsActionId =
   | "account"
   | "account-type"
   | "profile-character"
+  | "demographics"
   | "notifications"
   | "push-notifications"
   | "privacy"
@@ -50,6 +51,12 @@ const SETTINGS_SECTIONS: { title: string; rows: SettingsRow[] }[] = [
       { id: "account", label: "Account", description: "Name, username, sign-in", icon: User },
       { id: "account-type", label: "Account Type", description: "Student or Faculty / Staff", icon: IdCard },
       { id: "profile-character", label: "Profile & Character", description: "Avatar, stats, bio", icon: UserCircle },
+      {
+        id: "demographics",
+        label: "Interests & Communities",
+        description: "Graduation year, interests, communities",
+        icon: GraduationCap,
+      },
       { id: "notifications", label: "Inbox", description: "In-app alerts and activity", icon: Bell },
       {
         id: "push-notifications",

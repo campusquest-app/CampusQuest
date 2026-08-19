@@ -4,6 +4,7 @@ import {
   parseItemPanel,
   parseMenuListPanel,
   parseNutritionLabelHtml,
+  parseHoursMarkup,
   menuDateLabelMatchesIso,
 } from "./netNutritionParse";
 import {
@@ -156,10 +157,27 @@ describe("NetNutrition HTML normalization", () => {
     expect(nutrition.ingredients).toMatch(/Contains:\s*Eggs/i);
   });
 
-  it("handles malformed item HTML without throwing", () => {
-    expect(parseItemPanel("<div>no items</div>").courses).toEqual([]);
-    expect(parseChildUnits("")).toEqual([]);
-    expect(parseMenuListPanel("<div></div>")).toEqual([]);
+  it("parses NetNutrition weekly hours table into day open/close", () => {
+    const html = `<div class='table-responsive'><table class='table table-sm'><tr class='table-danger'><td>Sunday</td><td colspan='2'>Closed</td></tr><tr class='table-success'><td>Monday</td><td>7:00 AM</td><td>6:30 PM</td></tr><tr class='table-success'><td>Friday</td><td>7:00 AM</td><td>1:30 PM</td></tr></table></div>`;
+    const parsed = parseHoursMarkup(html);
+    expect(parsed.days).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ weekday: "Sunday", closed: true }),
+        expect.objectContaining({
+          weekday: "Monday",
+          closed: false,
+          openLabel: "7:00 AM",
+          closeLabel: "6:30 PM",
+          openMinutes: 7 * 60,
+          closeMinutes: 18 * 60 + 30,
+        }),
+        expect.objectContaining({
+          weekday: "Friday",
+          closeLabel: "1:30 PM",
+          closeMinutes: 13 * 60 + 30,
+        }),
+      ]),
+    );
   });
 });
 

@@ -1,4 +1,5 @@
 import { isPasswordRequirementFailure } from "@/lib/passwordRequirements";
+import { AUTH_EMAIL_USER_MESSAGES } from "@/lib/authEmailDelivery";
 import {
   SIGNIN_USER_MESSAGES,
   isAuthNetworkError,
@@ -157,4 +158,25 @@ export function mapGenericError(error: unknown, fallback = SIGNIN_USER_MESSAGES.
     return SIGNIN_USER_MESSAGES.network;
   }
   return fallback;
+}
+
+/** User-safe copy for verification resend / password reset. Never leaks provider text. */
+export function mapAuthEmailActionError(error: unknown): string {
+  if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
+    return SIGNIN_USER_MESSAGES.network;
+  }
+  if (error instanceof HttpRequestError) {
+    const code = (error.code ?? "").toUpperCase();
+    if (error.status === 429 || code === "EMAIL_RATE_LIMIT" || code === "RATE_LIMITED") {
+      return AUTH_EMAIL_USER_MESSAGES.rateLimited;
+    }
+    if (code === "INVALID_EMAIL") {
+      return AUTH_EMAIL_USER_MESSAGES.invalidEmail;
+    }
+    if (code === "AUTH_LINK_EXPIRED") {
+      return "That link is no longer valid. Request a new email and try again.";
+    }
+    return AUTH_EMAIL_USER_MESSAGES.generic;
+  }
+  return AUTH_EMAIL_USER_MESSAGES.generic;
 }

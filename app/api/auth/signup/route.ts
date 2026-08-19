@@ -13,6 +13,9 @@ import { createPublicClient } from "@/lib/server/supabase";
 import { enforceKeyedRateLimit, getRequestClientIp } from "@/lib/server/security";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { authSignupSchema, readJson } from "@/lib/server/validation";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
+import { signupEmailRejectionReason } from "@/lib/signupEmailPolicy";
+import { logEmailVerification } from "@/lib/authEmailDelivery";
 
 export async function POST(request: Request) {
   try {
@@ -24,6 +27,11 @@ export async function POST(request: Request) {
     const input = await readJson(request, authSignupSchema);
     const clientIp = getRequestClientIp(request);
     const normalizedEmail = input.email.trim().toLowerCase();
+
+    const signupEmailError = signupEmailRejectionReason(normalizedEmail);
+    if (signupEmailError) {
+      throw new ApiError(400, signupEmailError, "SCHOOL_EMAIL_REQUIRED");
+    }
 
     enforceKeyedRateLimit({
       key: `ip:${clientIp}`,
@@ -90,7 +98,7 @@ export async function POST(request: Request) {
 
     let sessionUser = authUser;
     let authSession = provisioned.session;
-    if (!authSession) {
+    if (!authSession && !FEATURE_FLAGS.requireEmailVerification) {
       const confirmed = await confirmEmailAndSignIn({
         publicClient: supabase,
         userId: authUser.id,
@@ -107,6 +115,14 @@ export async function POST(request: Request) {
           reason: "email_confirmation_pending",
         });
       }
+    } else if (!authSession && FEATURE_FLAGS.requireEmailVerification) {
+      logEmailVerification("signup awaiting confirmation email", {
+        userId: authUser.id,
+      });
+      logAuthFlow("signup", "session_unavailable", {
+        userId: authUser.id,
+        reason: "email_confirmation_required",
+      });
     }
 
     const torchBearer = authSession

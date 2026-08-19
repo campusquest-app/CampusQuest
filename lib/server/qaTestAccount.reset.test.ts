@@ -52,6 +52,21 @@ describe("QA onboarding reset safety", () => {
     expect(admin.from).not.toHaveBeenCalled();
   });
 
+  it("does not reset the dedicated admin QA account even if someone flags it as a test user", async () => {
+    const admin = { from: vi.fn() };
+    vi.mocked(createAdminClient).mockReturnValue(admin as never);
+
+    const didReset = await resetQaOnboardingOnLoginIfTestUser({
+      id: "admin-1",
+      is_test_user: true,
+      role: "admin",
+      email: "nicklockhart22@uri.edu",
+    });
+
+    expect(didReset).toBe(false);
+    expect(admin.from).not.toHaveBeenCalled();
+  });
+
   it("refuses to wipe onboarding for a non-test user id", async () => {
     const maybeSingle = vi.fn().mockResolvedValue({
       data: { id: "student-1", is_test_user: false },

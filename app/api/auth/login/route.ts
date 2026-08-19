@@ -11,6 +11,8 @@ import { ApiError, fail, ok } from "@/lib/server/http";
 import { confirmEmailAndSignIn, findAuthUserIdByEmail, logAuthError, logAuthFlow } from "@/lib/server/authBootstrap";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
 import { resetQaOnboardingOnLoginIfTestUser } from "@/lib/server/qaTestAccount";
+import { isOnboardingQaEmail, logOnboardingQa } from "@/lib/onboardingQa";
+import { canEnterAuthenticatedApp, hasConfirmedEmail } from "@/lib/authAccess";
 import { createAdminClient, createPublicClient } from "@/lib/server/supabase";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { touchUserActivityById } from "@/lib/server/userActivity";
@@ -114,6 +116,22 @@ export async function POST(request: Request) {
       );
     }
 
+    const emailConfirmed = hasConfirmedEmail(authUser);
+    if (!canEnterAuthenticatedApp({ emailConfirmed })) {
+      return loginFail(
+        {
+          status: 401,
+          message: SIGNIN_USER_MESSAGES.emailNotConfirmed,
+          code: "EMAIL_NOT_CONFIRMED",
+        },
+        {
+          userId: authUser.id,
+          hasSession: Boolean(authSession),
+          emailConfirmed: false,
+        },
+      );
+    }
+
     let player;
     const setupStarted = Date.now();
     try {
@@ -170,6 +188,11 @@ export async function POST(request: Request) {
       profileId: player.profile.id,
     });
 
+    const onboardingQaReplay = isOnboardingQaEmail(authUser.email);
+    if (onboardingQaReplay) {
+      logOnboardingQa("login session eligible for replay", { userId: authUser.id });
+    }
+
     return ok({
       user: {
         id: authUser.id,
@@ -179,6 +202,7 @@ export async function POST(request: Request) {
       profile: player.profile,
       stats: player.stats,
       torchBearer,
+      onboardingQaReplay,
     });
   } catch (error) {
     if (error instanceof ZodError) {

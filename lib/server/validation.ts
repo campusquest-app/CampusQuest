@@ -511,12 +511,19 @@ export const organizationAdminModerationSchema = z.object({
 
 export const onboardingPreferencesSchema = z.object({
   schoolName: z.string().trim().min(2).max(120),
-  interests: z.array(z.string().trim().min(2).max(40)).min(1).max(8),
+  interests: z.array(z.string().trim().min(1).max(40)).min(3).max(15),
   discoveryFocus: z
     .array(z.enum(["events", "organizations", "meet_students"]))
     .min(1)
-    .max(3),
+    .max(3)
+    .optional(),
   major: z.union([z.literal(""), z.string().trim().min(2).max(120)]).optional(),
+  communities: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
+  institutionId: z.string().trim().min(2).max(32).optional(),
+  studentStatus: z.enum(["current_or_incoming", "not_student"]).optional(),
+  classYear: z.number().int().min(1900).max(3000).nullable().optional(),
+  onboardingVersion: z.number().int().min(1).max(100).optional(),
+  markOnboardingComplete: z.boolean().optional(),
 });
 
 export const patchMeProfileSchema = z
@@ -533,6 +540,9 @@ export const patchMeProfileSchema = z
     major: z.union([z.literal(""), z.string().trim().min(2).max(120)]).optional(),
     year: z.number().int().min(1900).max(3000).nullable().optional(),
     classYear: z.number().int().min(1900).max(3000).nullable().optional(),
+    studentStatus: z.enum(["current_or_incoming", "not_student"]).nullable().optional(),
+    institutionId: z.string().trim().min(2).max(32).nullable().optional(),
+    onboardingVersion: z.number().int().min(1).max(100).nullable().optional(),
     /** Serialized gameplay snapshot (equipment, extra counters); merged server-side. */
     gameStateJson: z.record(z.string(), z.unknown()).optional(),
     /** When true, server marks character onboarding saved (requires identity + avatar payload). */

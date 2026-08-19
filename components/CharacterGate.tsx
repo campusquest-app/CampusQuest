@@ -86,9 +86,12 @@ function StepDots({ step }: { step: OnboardingStep }) {
 
 export function CharacterGate({
   prefillProfile,
+  preserveExistingProgress = false,
   onReady,
 }: {
   prefillProfile?: MeProfileRow | null;
+  /** QA replay: walk the flow without wiping guild/XP/admin state. */
+  preserveExistingProgress?: boolean;
   onReady: () => void;
 }) {
   const [name, setName] = useState("");
@@ -178,7 +181,7 @@ export function CharacterGate({
     setIdentitySaving(true);
     setSubmitError(null);
     try {
-      if (needsRolePick && accountRole) {
+      if (needsRolePick && accountRole && !preserveExistingProgress) {
         const result = await postAuthed<AccountTypeResponse, { role: SelectableRole }>(
           "/api/me/account-type",
           { role: accountRole },
@@ -209,16 +212,26 @@ export function CharacterGate({
     const payloadName = nameTrimmed;
     const payloadUsername = usernameNormalized;
     try {
-      await patchAuthed<MeProfileRow, Record<string, unknown>>(
-        "/api/me/profile",
-        buildAvatarOnboardingSavePayload({
-          displayName: payloadName,
-          username: payloadUsername,
-          config: payloadConfig,
-          starterWeapon:
-            CHARACTER_CLASSES.find((c) => c.id === payloadConfig.classType)?.starterWeapon ?? null,
-        }),
-      );
+      const payload = preserveExistingProgress
+        ? {
+            displayName: payloadName,
+            username: payloadUsername,
+            avatarCustomJson: serializeAvatarConfig(payloadConfig),
+            characterClassId: payloadConfig.classType,
+            starterWeapon:
+              CHARACTER_CLASSES.find((c) => c.id === payloadConfig.classType)?.starterWeapon ?? null,
+            characterOnboardingComplete: true,
+            preserveIdentityCooldownTimestamps: true,
+          }
+        : buildAvatarOnboardingSavePayload({
+            displayName: payloadName,
+            username: payloadUsername,
+            config: payloadConfig,
+            starterWeapon:
+              CHARACTER_CLASSES.find((c) => c.id === payloadConfig.classType)?.starterWeapon ?? null,
+          });
+
+      await patchAuthed<MeProfileRow, Record<string, unknown>>("/api/me/profile", payload);
       const mergedProfile = await fetchAuthed<MeProfileRow>("/api/me/profile");
       const stats = await fetchAuthed<MeStatsRow>("/api/me/stats");
       replaceLocalCharacter(buildLocalCharacterFromServer(mergedProfile, stats), {
@@ -227,6 +240,10 @@ export function CharacterGate({
       resetUserSaveSyncAfterHydrate();
       onReady();
     } catch (err) {
+      if (preserveExistingProgress) {
+        onReady();
+        return;
+      }
       if (err instanceof ApiRequestError && err.status === 409) {
         setSubmitError("That username is already taken. Pick another.");
         setStep("identity");

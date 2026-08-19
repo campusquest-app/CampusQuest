@@ -23,6 +23,7 @@ import { createAdminClient, requireAuthUser } from "@/lib/server/supabase";
 import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { syncEquipmentTableFromGameState } from "@/lib/server/equipmentLoadoutDb";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
+import { ensurePlayerSetup } from "@/lib/server/playerSetup";
 import {
   mergeSanitizedGameStateJson,
   rejectForbiddenProfileFields,
@@ -55,7 +56,17 @@ export async function GET(request: Request) {
       .single();
 
     if (error || !data) {
-      throw new ApiError(404, error?.message ?? "Profile not found.", "PROFILE_NOT_FOUND");
+      try {
+        const ready = await ensurePlayerSetup({
+          userId: auth.user.id,
+          email: auth.user.email,
+          displayName: (auth.user.user_metadata?.display_name as string | undefined) ?? undefined,
+        });
+        return ok(enrichProfileRowForApiClient(ready.profile as unknown as Record<string, unknown>, auth.user.email));
+      } catch (setupError) {
+        if (setupError instanceof ApiError) throw setupError;
+        throw new ApiError(404, "Profile not found.", "PROFILE_NOT_FOUND");
+      }
     }
 
     let profileRow = data as unknown as Record<string, unknown>;
@@ -218,6 +229,9 @@ export async function PATCH(request: Request) {
     if (input.avatarCustomJson !== undefined) patch.avatar_custom_json = input.avatarCustomJson;
     if (input.major !== undefined) patch.major = input.major || null;
     if (classYearInput !== undefined) patch.class_year = classYearInput;
+    if (input.studentStatus !== undefined) patch.student_status = input.studentStatus;
+    if (input.institutionId !== undefined) patch.institution_id = input.institutionId;
+    if (input.onboardingVersion !== undefined) patch.onboarding_version = input.onboardingVersion;
     if (input.characterClassId !== undefined) patch.character_class_id = input.characterClassId;
     if (input.starterWeapon !== undefined) patch.starter_weapon = input.starterWeapon;
     if (input.scholarGuildId !== undefined) patch.scholar_guild_id = input.scholarGuildId;
@@ -281,6 +295,18 @@ export async function PATCH(request: Request) {
 
     let dataOut = data;
     let errorOut = error;
+
+    if (
+      errorOut &&
+      typeof errorOut.message === "string" &&
+      /student_status|institution_id|onboarding_version/i.test(errorOut.message)
+    ) {
+      throw new ApiError(
+        500,
+        "Onboarding demographics migration is required. Apply supabase/migrations/20260818220000_onboarding_demographics_v2.sql.",
+        "SCHEMA_MIGRATION_REQUIRED",
+      );
+    }
 
     if (
       errorOut &&

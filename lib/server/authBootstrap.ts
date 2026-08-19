@@ -1,7 +1,9 @@
 import type { Session, User } from "@supabase/supabase-js";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { ApiError } from "@/lib/server/http";
 import { isPasswordRequirementFailure } from "@/lib/passwordRequirements";
 import { createAdminClient, createPublicClient } from "@/lib/server/supabase";
+import { getAuthEmailRedirectUrl } from "@/lib/authRedirect";
 
 type PublicAuthClient = ReturnType<typeof createPublicClient>;
 
@@ -156,6 +158,8 @@ export function classifyProfileSetupError(setupError: ApiError): ApiError {
 /** When public signUp fails before creating a user, provision via admin API (no confirmation email). */
 export function shouldFallbackToAdminSignup(error: AuthSupabaseError, hasUser: boolean): boolean {
   if (hasUser) return false;
+  // Auto-confirming via admin create would fake verification.
+  if (FEATURE_FLAGS.requireEmailVerification) return false;
   return isRecoverableSignupAuthError(error);
 }
 
@@ -165,7 +169,10 @@ export async function provisionSignupAuthUser(args: {
   password: string;
   displayName?: string;
 }): Promise<{ user: User; session: Session | null; source: "sign_up" | "admin_create" }> {
-  const signUpOptions = args.displayName ? { data: { display_name: args.displayName } } : undefined;
+  const signUpOptions = {
+    ...(args.displayName ? { data: { display_name: args.displayName } } : {}),
+    emailRedirectTo: getAuthEmailRedirectUrl(),
+  };
 
   const { data, error } = await args.publicClient.auth.signUp({
     email: args.email,
