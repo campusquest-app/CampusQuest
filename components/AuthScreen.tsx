@@ -12,8 +12,6 @@ import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/
 import { LegalConsentScreen } from "@/components/LegalConsentScreen";
 import { AccountSafetyStatusScreen } from "@/components/AccountSafetyStatusScreen";
 import { SchoolVerificationScreen } from "@/components/SchoolVerificationScreen";
-import { AuthOnboardingFlow } from "@/components/auth/AuthOnboardingFlow";
-import { isOnboardingTutorialDisabled } from "@/lib/client/onboardingTutorialGating";
 import { dismissOnboardingTutorialOnServer } from "@/lib/client/dismissOnboardingTutorial";
 import { resetMobileViewportScale } from "@/lib/client/modalViewportCleanup";
 import { AuthPasswordRequirementsAlert } from "@/components/auth/AuthPasswordRequirementsAlert";
@@ -155,7 +153,6 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   });
   const resendInFlightRef = useRef(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
-  const [showPostSignupOnboarding, setShowPostSignupOnboarding] = useState(false);
   const [needsConsent, setNeedsConsent] = useState(false);
   const [consentVersion, setConsentVersion] = useState<string | null>(null);
   const [isConsentSubmitting, setIsConsentSubmitting] = useState(false);
@@ -270,11 +267,8 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     const verifiedForCampus = await checkSchoolVerification(token);
     if (!verifiedForCampus) return;
 
-    if (opts.isSignup && !isOnboardingTutorialDisabled()) {
-      setShowPostSignupOnboarding(true);
-      return;
-    }
-
+    // Demographic onboarding is an authenticated Dashboard routing gate
+    // (demographics → CharacterGate → app), not signup-only presentation.
     if (opts.isSignup) {
       void dismissOnboardingTutorialOnServer();
     }
@@ -595,19 +589,6 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
           switchMode("signin");
           setEmail("");
           setError(null);
-        }}
-      />
-    );
-  }
-
-  if (showPostSignupOnboarding && !isOnboardingTutorialDisabled()) {
-    return (
-      <AuthOnboardingFlow
-        onComplete={onComplete}
-        onRequestSignIn={() => {
-          clearAccessToken();
-          setShowPostSignupOnboarding(false);
-          switchMode("signin");
         }}
       />
     );

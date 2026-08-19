@@ -4,36 +4,63 @@ import type { ProfileRouteInput } from "@/lib/client/appShellRoute";
 
 export const ONBOARDING_QA_SESSION_STORAGE_KEY = "cq_onboarding_qa_session_v1";
 
-export type OnboardingQaSessionPhase = "pending" | "completed";
+export type OnboardingQaPhase = "pending" | "completed";
 
 export type OnboardingQaSessionRecord = {
   userId: string;
   sessionId: string;
-  phase: OnboardingQaSessionPhase;
+  /** @deprecated Legacy single-phase field — migrated to demographics/character phases. */
+  phase?: OnboardingQaPhase;
+  demographicsPhase: OnboardingQaPhase;
+  characterPhase: OnboardingQaPhase;
 };
 
 export type OnboardingQaDecision = {
   eligible: boolean;
+  /** Force CharacterGate replay for this login session. */
   replay: boolean;
+  /** Force demographic onboarding for this login session. */
+  demographicsReplay: boolean;
   activated: boolean;
   record: OnboardingQaSessionRecord | null;
 };
 
-function isRecord(value: unknown): value is OnboardingQaSessionRecord {
-  if (!value || typeof value !== "object") return false;
-  const row = value as Partial<OnboardingQaSessionRecord>;
-  return (
-    typeof row.userId === "string" &&
-    row.userId.length > 0 &&
-    typeof row.sessionId === "string" &&
-    row.sessionId.length > 0 &&
-    (row.phase === "pending" || row.phase === "completed")
-  );
+function normalizeRecord(value: unknown): OnboardingQaSessionRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Partial<OnboardingQaSessionRecord> & { phase?: OnboardingQaPhase };
+  if (typeof row.userId !== "string" || !row.userId) return null;
+  if (typeof row.sessionId !== "string" || !row.sessionId) return null;
+
+  // Migrate legacy { phase } records.
+  if (row.demographicsPhase !== "pending" && row.demographicsPhase !== "completed") {
+    const legacy = row.phase === "completed" ? "completed" : "pending";
+    return {
+      userId: row.userId,
+      sessionId: row.sessionId,
+      demographicsPhase: legacy,
+      characterPhase: legacy,
+    };
+  }
+  if (row.characterPhase !== "pending" && row.characterPhase !== "completed") {
+    return {
+      userId: row.userId,
+      sessionId: row.sessionId,
+      demographicsPhase: row.demographicsPhase,
+      characterPhase: row.demographicsPhase,
+    };
+  }
+  return {
+    userId: row.userId,
+    sessionId: row.sessionId,
+    demographicsPhase: row.demographicsPhase,
+    characterPhase: row.characterPhase,
+  };
 }
 
 /**
- * Pure session-level replay decision.
- * New auth session → pending replay. Same session after completion → skip.
+ * Pure session-level replay decision for the dedicated onboarding QA account.
+ * New auth session → both demographics + character pending.
+ * Completing each gate advances that phase only.
  */
 export function decideOnboardingQaReplay(args: {
   email?: string | null;
@@ -42,14 +69,21 @@ export function decideOnboardingQaReplay(args: {
   stored?: OnboardingQaSessionRecord | null;
 }): OnboardingQaDecision {
   if (!isOnboardingQaEmail(args.email) || !args.userId || !args.sessionId) {
-    return { eligible: false, replay: false, activated: false, record: null };
+    return {
+      eligible: false,
+      replay: false,
+      demographicsReplay: false,
+      activated: false,
+      record: null,
+    };
   }
 
-  const stored = args.stored;
+  const stored = args.stored ? normalizeRecord(args.stored) : null;
   if (stored && stored.userId === args.userId && stored.sessionId === args.sessionId) {
     return {
       eligible: true,
-      replay: stored.phase === "pending",
+      demographicsReplay: stored.demographicsPhase === "pending",
+      replay: stored.characterPhase === "pending",
       activated: false,
       record: stored,
     };
@@ -58,19 +92,53 @@ export function decideOnboardingQaReplay(args: {
   const record: OnboardingQaSessionRecord = {
     userId: args.userId,
     sessionId: args.sessionId,
-    phase: "pending",
+    demographicsPhase: "pending",
+    characterPhase: "pending",
   };
-  return { eligible: true, replay: true, activated: true, record };
+  return {
+    eligible: true,
+    demographicsReplay: true,
+    replay: true,
+    activated: true,
+    record,
+  };
 }
 
 export function markOnboardingQaRecordCompleted(
   record: OnboardingQaSessionRecord | null,
 ): OnboardingQaSessionRecord | null {
   if (!record) return null;
-  return { ...record, phase: "completed" };
+  return {
+    ...record,
+    demographicsPhase: "completed",
+    characterPhase: "completed",
+    phase: "completed",
+  };
 }
 
-/** Routing overlay only — never persist these false flags to the database. */
+export function markDemographicQaReplayCompleted(
+  record: OnboardingQaSessionRecord | null,
+): OnboardingQaSessionRecord | null {
+  if (!record) return null;
+  return {
+    ...record,
+    demographicsPhase: "completed",
+  };
+}
+
+export function markCharacterQaReplayCompleted(
+  record: OnboardingQaSessionRecord | null,
+): OnboardingQaSessionRecord | null {
+  if (!record) return null;
+  return {
+    ...record,
+    characterPhase: "completed",
+    demographicsPhase: "completed",
+    phase: "completed",
+  };
+}
+
+/** @deprecated Prefer force flags via decideOnboardingQaReplay — kept for older call sites. */
 export function applyOnboardingQaReplayOverride(
   profile: ProfileRouteInput,
   replay: boolean,
@@ -88,8 +156,7 @@ function readStoredRecord(): OnboardingQaSessionRecord | null {
   try {
     const raw = localStorage.getItem(ONBOARDING_QA_SESSION_STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    return isRecord(parsed) ? parsed : null;
+    return normalizeRecord(JSON.parse(raw) as unknown);
   } catch {
     return null;
   }
@@ -120,9 +187,28 @@ export function syncOnboardingQaReplayFromAccessToken(accessToken: string | null
   if (decision.activated) {
     logOnboardingQa("replay activated for authorized QA account", {
       userId: decision.record?.userId ?? null,
+      demographicsReplay: decision.demographicsReplay,
+      characterReplay: decision.replay,
     });
   }
   return decision;
+}
+
+export function completeDemographicQaReplay(accessToken: string | null): void {
+  const claims = readAccessTokenClaims(accessToken);
+  const current = decideOnboardingQaReplay({
+    email: claims?.email ?? null,
+    userId: claims?.sub ?? null,
+    sessionId: claims?.sessionId ?? null,
+    stored: readStoredRecord(),
+  });
+  const next = markDemographicQaReplayCompleted(current.record);
+  if (next) {
+    writeStoredRecord(next);
+    logOnboardingQa("demographic replay completed for this login session", {
+      userId: next.userId,
+    });
+  }
 }
 
 export function completeOnboardingQaReplay(accessToken: string | null): void {
@@ -133,10 +219,10 @@ export function completeOnboardingQaReplay(accessToken: string | null): void {
     sessionId: claims?.sessionId ?? null,
     stored: readStoredRecord(),
   });
-  const completed = markOnboardingQaRecordCompleted(current.record);
+  const completed = markCharacterQaReplayCompleted(current.record);
   if (completed) {
     writeStoredRecord(completed);
-    logOnboardingQa("replay completed for this login session", {
+    logOnboardingQa("character replay completed for this login session", {
       userId: completed.userId,
     });
   }

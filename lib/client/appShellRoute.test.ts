@@ -17,14 +17,39 @@ describe("appShellRoute", () => {
 
   it("resolves profile route from explicit completion flags once a role is chosen", () => {
     expect(resolveProfileRoute({ onboarding_completed: true, role: "student" })).toBe("app");
+    expect(
+      resolveProfileRoute(
+        {
+          onboarding_character_completed: null,
+          role: "student",
+          student_status: "current_or_incoming",
+          institution_id: "uri",
+          onboarding_version: 2,
+        },
+        { preferences: { interests: ["a", "b", "c"], institutionId: "uri" }, forceDemographicsQaReplay: false },
+      ),
+    ).toBe("character_gate");
+    // Without demographics prefs, incomplete new profiles hit demographics first.
     expect(resolveProfileRoute({ onboarding_character_completed: null, role: "student" })).toBe(
-      "character_gate",
+      "demographics_gate",
     );
     expect(resolveProfileRoute({ onboarding_completed: true, role: "faculty_staff" })).toBe("app");
   });
 
-  it("routes new users without a role into combined character onboarding", () => {
-    expect(resolveProfileRoute({ onboarding_completed: false, role: null })).toBe("character_gate");
+  it("routes new users without a role into demographics before character onboarding", () => {
+    expect(resolveProfileRoute({ onboarding_completed: false, role: null })).toBe("demographics_gate");
+    expect(
+      resolveProfileRoute(
+        {
+          onboarding_completed: false,
+          role: null,
+          student_status: "current_or_incoming",
+          institution_id: "uri",
+          onboarding_version: 2,
+        },
+        { preferences: { interests: ["a", "b", "c"] } },
+      ),
+    ).toBe("character_gate");
     // Existing onboarded user with NULL/legacy-invalid role: standalone role prompt.
     expect(resolveProfileRoute({ onboarding_completed: true, role: null })).toBe("role_gate");
     expect(resolveProfileRoute({ onboarding_completed: true, role: "" })).toBe("role_gate");
@@ -35,7 +60,19 @@ describe("appShellRoute", () => {
     expect(resolveProfileRoute({ onboarding_completed: true, role: "admin" })).toBe("app");
     expect(resolveProfileRoute({ onboarding_completed: true, role: "super_admin" })).toBe("app");
     expect(resolveProfileRoute({ onboarding_completed: true, role: "beta_internal" })).toBe("app");
-    expect(resolveProfileRoute({ onboarding_completed: false, role: "admin" })).toBe("character_gate");
+    expect(resolveProfileRoute({ onboarding_completed: false, role: "admin" })).toBe("demographics_gate");
+    expect(
+      resolveProfileRoute(
+        {
+          onboarding_completed: false,
+          role: "admin",
+          student_status: "current_or_incoming",
+          institution_id: "uri",
+          onboarding_version: 2,
+        },
+        { preferences: { interests: ["a", "b", "c"] } },
+      ),
+    ).toBe("character_gate");
   });
 
   it("routes QA accounts by their separate test selection, keeping role = qa", () => {
@@ -46,14 +83,20 @@ describe("appShellRoute", () => {
         is_test_user: true,
         qa_selected_role: null,
       }),
-    ).toBe("character_gate");
+    ).toBe("demographics_gate");
     expect(
-      resolveProfileRoute({
-        onboarding_completed: false,
-        role: "qa",
-        is_test_user: true,
-        qa_selected_role: "student",
-      }),
+      resolveProfileRoute(
+        {
+          onboarding_completed: false,
+          role: "qa",
+          is_test_user: true,
+          qa_selected_role: "student",
+          student_status: "current_or_incoming",
+          institution_id: "uri",
+          onboarding_version: 2,
+        },
+        { preferences: { interests: ["a", "b", "c"] } },
+      ),
     ).toBe("character_gate");
     expect(
       resolveProfileRoute({
@@ -125,6 +168,27 @@ describe("appShellRoute", () => {
         hasCharacter: false,
       }),
     ).toBe("onboarding");
+  });
+
+  it("routes demographics gate to the demographics shell", () => {
+    expect(
+      resolveAppShellRoute({
+        bootstrapStatus: "authenticated",
+        profileRoute: "demographics_gate",
+        showPostLoginLoading: false,
+        hasCharacter: false,
+      }),
+    ).toBe("demographics");
+  });
+
+  it("is ready for demographics without a hydrated character", () => {
+    expect(
+      isAppShellDecisionReady({
+        bootstrapStatus: "authenticated",
+        profileRoute: "demographics_gate",
+        hasCharacter: false,
+      }),
+    ).toBe(true);
   });
 
   it("shows the role-selection screen when the profile route requires it", () => {

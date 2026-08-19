@@ -3,6 +3,8 @@ import { canEnterAuthenticatedApp, hasConfirmedEmail } from "@/lib/authAccess";
 import {
   applyOnboardingQaReplayOverride,
   decideOnboardingQaReplay,
+  markCharacterQaReplayCompleted,
+  markDemographicQaReplayCompleted,
   markOnboardingQaRecordCompleted,
 } from "@/lib/client/onboardingQaSession";
 import { resolveProfileRoute } from "@/lib/client/appShellRoute";
@@ -15,6 +17,7 @@ import { AUTH_EMAIL_USER_MESSAGES, classifyAuthEmailProviderError } from "@/lib/
 import { mapAuthEmailActionError, HttpRequestError } from "@/lib/client/authErrorMessages";
 import { readAccessTokenClaims } from "@/lib/client/jwtClaims";
 import { isPlatformAdmin } from "@/lib/server/permissions";
+import { isInternalAccount } from "@/lib/internalAccount";
 
 function jwtFor(payload: Record<string, unknown>): string {
   const json = JSON.stringify(payload);
@@ -22,14 +25,30 @@ function jwtFor(payload: Record<string, unknown>): string {
   return `eyJhbGciOiJub25lIn0.${b64}.sig`;
 }
 
+const completeDemographics = {
+  student_status: "current_or_incoming" as const,
+  institution_id: "uri",
+  onboarding_version: 2,
+};
+
+const completePrefs = {
+  interests: ["athletics", "music", "tech"],
+  communities: [] as string[],
+  institutionId: "uri",
+};
+
 describe("normal and new student auth routing", () => {
   it("verified + onboarding complete student skips onboarding on login", () => {
     expect(
-      resolveProfileRoute({
-        onboarding_completed: true,
-        onboarding_character_completed: true,
-        role: "student",
-      }),
+      resolveProfileRoute(
+        {
+          onboarding_completed: true,
+          onboarding_character_completed: true,
+          role: "student",
+          onboarding_version: null,
+        },
+        { preferences: { interests: [] } },
+      ),
     ).toBe("app");
   });
 
@@ -39,14 +58,14 @@ describe("normal and new student auth routing", () => {
     expect(canEnterAuthenticatedApp({ emailConfirmed: true, requireEmailVerification: true })).toBe(true);
   });
 
-  it("newly verified student with incomplete profile sees onboarding", () => {
+  it("newly verified student with incomplete profile sees demographics before CharacterGate", () => {
     expect(
       resolveProfileRoute({
         onboarding_completed: false,
         onboarding_character_completed: false,
         role: null,
       }),
-    ).toBe("character_gate");
+    ).toBe("demographics_gate");
   });
 
   it("completed student still skips onboarding after a later login", () => {
@@ -67,26 +86,59 @@ describe("admin QA onboarding replay", () => {
     expect(isOnboardingQaEmail("qa_signup@campusquestapp.com")).toBe(false);
   });
 
-  it("shows onboarding on a new login session even when the profile is complete", () => {
+  it("shows demographics then CharacterGate on a new login session even when the profile is complete", () => {
     const decision = decideOnboardingQaReplay({
       email: ONBOARDING_QA_EMAIL,
       userId: "admin-1",
       sessionId: "session-a",
       stored: null,
     });
+    expect(decision.demographicsReplay).toBe(true);
     expect(decision.replay).toBe(true);
     expect(decision.activated).toBe(true);
 
     const routed = resolveProfileRoute(
-      applyOnboardingQaReplayOverride(
-        { onboarding_completed: true, onboarding_character_completed: true, role: "admin" },
-        decision.replay,
-      ),
+      {
+        onboarding_completed: true,
+        onboarding_character_completed: true,
+        role: "admin",
+        ...completeDemographics,
+      },
+      {
+        preferences: completePrefs,
+        forceDemographicsQaReplay: decision.demographicsReplay,
+        forceCharacterQaReplay: decision.replay,
+      },
     );
-    expect(routed).toBe("character_gate");
+    expect(routed).toBe("demographics_gate");
+
+    const afterDemos = markDemographicQaReplayCompleted(decision.record);
+    const mid = decideOnboardingQaReplay({
+      email: ONBOARDING_QA_EMAIL,
+      userId: "admin-1",
+      sessionId: "session-a",
+      stored: afterDemos,
+    });
+    expect(mid.demographicsReplay).toBe(false);
+    expect(mid.replay).toBe(true);
+    expect(
+      resolveProfileRoute(
+        {
+          onboarding_completed: true,
+          onboarding_character_completed: true,
+          role: "admin",
+          ...completeDemographics,
+        },
+        {
+          preferences: completePrefs,
+          forceDemographicsQaReplay: mid.demographicsReplay,
+          forceCharacterQaReplay: mid.replay,
+        },
+      ),
+    ).toBe("character_gate");
   });
 
-  it("does not restart onboarding after it is completed in the same session", () => {
+  it("does not restart onboarding after both phases are completed in the same session", () => {
     const pending = decideOnboardingQaReplay({
       email: ONBOARDING_QA_EMAIL,
       userId: "admin-1",
@@ -101,12 +153,20 @@ describe("admin QA onboarding replay", () => {
       stored: completed,
     });
     expect(again.replay).toBe(false);
+    expect(again.demographicsReplay).toBe(false);
     expect(
       resolveProfileRoute(
-        applyOnboardingQaReplayOverride(
-          { onboarding_completed: true, role: "super_admin" },
-          again.replay,
-        ),
+        {
+          onboarding_completed: true,
+          onboarding_character_completed: true,
+          role: "super_admin",
+          ...completeDemographics,
+        },
+        {
+          preferences: completePrefs,
+          forceDemographicsQaReplay: again.demographicsReplay,
+          forceCharacterQaReplay: again.replay,
+        },
       ),
     ).toBe("app");
   });
@@ -116,17 +176,31 @@ describe("admin QA onboarding replay", () => {
       email: ONBOARDING_QA_EMAIL,
       userId: "admin-1",
       sessionId: "session-a",
-      stored: { userId: "admin-1", sessionId: "session-a", phase: "completed" },
+      stored: {
+        userId: "admin-1",
+        sessionId: "session-a",
+        demographicsPhase: "completed",
+        characterPhase: "completed",
+        phase: "completed",
+      },
     });
     expect(previous.replay).toBe(false);
+    expect(previous.demographicsReplay).toBe(false);
 
     const nextLogin = decideOnboardingQaReplay({
       email: ONBOARDING_QA_EMAIL,
       userId: "admin-1",
       sessionId: "session-b",
-      stored: { userId: "admin-1", sessionId: "session-a", phase: "completed" },
+      stored: {
+        userId: "admin-1",
+        sessionId: "session-a",
+        demographicsPhase: "completed",
+        characterPhase: "completed",
+        phase: "completed",
+      },
     });
     expect(nextLogin.replay).toBe(true);
+    expect(nextLogin.demographicsReplay).toBe(true);
     expect(nextLogin.activated).toBe(true);
   });
 
@@ -139,6 +213,22 @@ describe("admin QA onboarding replay", () => {
     });
     expect(decision.eligible).toBe(false);
     expect(decision.replay).toBe(false);
+    expect(decision.demographicsReplay).toBe(false);
+  });
+
+  it("keeps QA accounts analytics-excluded via is_test_user / internal exclusion", () => {
+    expect(
+      isInternalAccount(
+        { email: ONBOARDING_QA_EMAIL },
+        { is_test_user: true, role: "admin" },
+      ),
+    ).toBe(true);
+    expect(
+      isInternalAccount(
+        { email: "student@uri.edu" },
+        { is_test_user: false, role: "student" },
+      ),
+    ).toBe(false);
   });
 });
 
@@ -153,6 +243,18 @@ describe("admin preservation", () => {
     expect(overlay.onboarding_completed).toBe(false);
     expect(profile.onboarding_completed).toBe(true);
     expect(profile.role).toBe("admin");
+  });
+
+  it("character-phase completion helper does not require wiping DB rows", () => {
+    const record = decideOnboardingQaReplay({
+      email: ONBOARDING_QA_EMAIL,
+      userId: "admin-1",
+      sessionId: "s1",
+      stored: null,
+    }).record;
+    const after = markCharacterQaReplayCompleted(markDemographicQaReplayCompleted(record));
+    expect(after?.demographicsPhase).toBe("completed");
+    expect(after?.characterPhase).toBe("completed");
   });
 
   it("admin authorization stays independent of onboarding_completed", () => {

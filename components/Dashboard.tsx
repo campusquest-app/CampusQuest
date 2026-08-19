@@ -140,10 +140,11 @@ import {
   type ProfileRoute,
 } from "@/lib/client/appShellRoute";
 import {
-  applyOnboardingQaReplayOverride,
+  completeDemographicQaReplay,
   completeOnboardingQaReplay,
   syncOnboardingQaReplayFromAccessToken,
 } from "@/lib/client/onboardingQaSession";
+import { AuthOnboardingFlow } from "@/components/auth/AuthOnboardingFlow";
 import {
   isProfileInitializingError,
   nextProfileReadyBackoffMs,
@@ -215,7 +216,7 @@ function logBootstrapDecision(info: {
   sessionFound: boolean;
   sessionValidated?: boolean;
   onboardingCompleted?: boolean | null;
-  route: "unauthenticated" | "role_gate" | "character_gate" | "app";
+  route: "unauthenticated" | "demographics_gate" | "role_gate" | "character_gate" | "app";
 }) {
   if (process.env.NODE_ENV === "production") return;
   console.info("[cq] bootstrap", {
@@ -1626,11 +1627,61 @@ export function Dashboard() {
           enabled: parseShowXpProgressBarFromProfile(profileMerged.show_xp_progress_bar),
         });
 
-        const qaReplay = syncOnboardingQaReplayFromAccessToken(getAccessToken()).replay;
+        const qaDecision = syncOnboardingQaReplayFromAccessToken(getAccessToken());
+        const qaReplay = qaDecision.replay;
+        const demographicsQaReplay = qaDecision.demographicsReplay;
         setQaReplayActive(qaReplay);
-        const routingProfile = applyOnboardingQaReplayOverride(profileMerged, qaReplay);
-        const onboardingDone = routingProfile.onboarding_completed === true;
-        const characterDone = routingProfile.onboarding_character_completed === true;
+
+        // Prefs are required for demographic routing (not deferred).
+        let prefsSnapshot: {
+          exists: boolean;
+          interests: string[];
+          communities: string[];
+          institutionId: string | null;
+          completedAt: string | null;
+          schoolName: string;
+          discoveryFocus: string[];
+          major: string | null;
+        } | null = null;
+        try {
+          const prefsResp = await fetchAuthed<{
+            exists: boolean;
+            preferences: {
+              schoolName: string;
+              interests: string[];
+              communities?: string[];
+              discoveryFocus: string[];
+              major?: string | null;
+              institutionId?: string | null;
+              completedAt?: string | null;
+            } | null;
+          }>("/api/me/onboarding-preferences");
+          if (prefsResp.preferences) {
+            prefsSnapshot = {
+              exists: prefsResp.exists,
+              schoolName: prefsResp.preferences.schoolName,
+              interests: prefsResp.preferences.interests,
+              communities: prefsResp.preferences.communities ?? [],
+              discoveryFocus: prefsResp.preferences.discoveryFocus,
+              major: prefsResp.preferences.major ?? null,
+              institutionId: prefsResp.preferences.institutionId ?? null,
+              completedAt: prefsResp.preferences.completedAt ?? null,
+            };
+            setOnboardingPreferences({
+              schoolName: prefsSnapshot.schoolName,
+              interests: prefsSnapshot.interests,
+              discoveryFocus: prefsSnapshot.discoveryFocus,
+              major: prefsSnapshot.major,
+            });
+          } else {
+            setOnboardingPreferences(null);
+          }
+        } catch {
+          setOnboardingPreferences(null);
+        }
+
+        const onboardingDone = profileMerged.onboarding_completed === true;
+        const characterDone = profileMerged.onboarding_character_completed === true;
 
         const commitSnap = () => {
           commitMeSessionSnapshot({
@@ -1647,59 +1698,47 @@ export function Dashboard() {
           }
         };
 
-        const scheduleDeferredOnboardingPrefs = () => {
-          scheduleNonCriticalWork(() => {
-            void (async () => {
-              if (cancelled) return;
-              const tp = typeof performance !== "undefined" ? performance.now() : 0;
-              try {
-                const prefsResp = await fetchAuthed<{
-                  exists: boolean;
-                  preferences: {
-                    schoolName: string;
-                    interests: string[];
-                    discoveryFocus: string[];
-                    major?: string | null;
-                  } | null;
-                }>("/api/me/onboarding-preferences");
-                if (process.env.NODE_ENV !== "production" && typeof performance !== "undefined") {
-                  console.log("[cq:load] onboarding-preferences deferred", Math.round(performance.now() - tp), "ms");
-                }
-                if (cancelled) return;
-                if (prefsResp.preferences) {
-                  setOnboardingPreferences({
-                    schoolName: prefsResp.preferences.schoolName,
-                    interests: prefsResp.preferences.interests,
-                    discoveryFocus: prefsResp.preferences.discoveryFocus,
-                    major: prefsResp.preferences.major ?? null,
-                  });
-                } else {
-                  setOnboardingPreferences(null);
-                }
-              } catch {
-                if (cancelled) return;
-                setOnboardingPreferences(null);
+        const routeDecision = resolveProfileRoute(profileMerged, {
+          preferences: prefsSnapshot
+            ? {
+                exists: prefsSnapshot.exists,
+                interests: prefsSnapshot.interests,
+                communities: prefsSnapshot.communities,
+                institutionId: prefsSnapshot.institutionId,
+                completedAt: prefsSnapshot.completedAt,
               }
-            })();
-          });
-        };
+            : { exists: false, interests: [], communities: [] },
+          forceDemographicsQaReplay: demographicsQaReplay,
+          forceCharacterQaReplay: qaReplay,
+        });
 
-        const routeDecision = resolveProfileRoute(routingProfile);
-
-        if (qaReplay) {
+        if (qaReplay || demographicsQaReplay) {
           setGatePrefillProfile(profileMerged);
         }
 
-        if (onboardingDone || characterDone) {
+        if (routeDecision === "demographics_gate") {
           clearLegacyLocalMismatch();
           commitSnap();
-          const merged = syncAchievementsAfterHydrate(buildLocalCharacterFromServer(profileMerged, statsMerged));
-          hydrateClientMirrorFromGameState(profileMerged.game_state_json ?? undefined, profileMerged.id);
-          replaceLocalCharacter(merged, { skipRemoteSync: true });
-          setCharacter(merged);
-          resetUserSaveSyncAfterHydrate();
-          setGatePrefillProfile(null);
-          setTab("quad");
+          setGatePrefillProfile(profileMerged);
+          setCharacter(null);
+          refresh();
+        } else if (onboardingDone || characterDone) {
+          if (!qaReplay) {
+            clearLegacyLocalMismatch();
+            commitSnap();
+            const merged = syncAchievementsAfterHydrate(buildLocalCharacterFromServer(profileMerged, statsMerged));
+            hydrateClientMirrorFromGameState(profileMerged.game_state_json ?? undefined, profileMerged.id);
+            replaceLocalCharacter(merged, { skipRemoteSync: true });
+            setCharacter(merged);
+            resetUserSaveSyncAfterHydrate();
+            setGatePrefillProfile(null);
+            setTab("quad");
+          } else {
+            clearLegacyLocalMismatch();
+            commitSnap();
+            setGatePrefillProfile(profileMerged);
+            refresh();
+          }
         } else {
           clearLegacyLocalMismatch();
           commitSnap();
@@ -1709,18 +1748,18 @@ export function Dashboard() {
 
         setRoleGateProfile(routeDecision === "role_gate" ? profileMerged : null);
 
-        scheduleDeferredOnboardingPrefs();
-
         logBootstrapDecision({
           sessionFound: true,
           sessionValidated: true,
           onboardingCompleted: profileMerged.onboarding_completed ?? null,
           route:
-            routeDecision === "role_gate"
-              ? "role_gate"
-              : routeDecision === "character_gate"
-                ? "character_gate"
-                : "app",
+            routeDecision === "demographics_gate"
+              ? "demographics_gate"
+              : routeDecision === "role_gate"
+                ? "role_gate"
+                : routeDecision === "character_gate"
+                  ? "character_gate"
+                  : "app",
         });
 
         setProfileRoute(routeDecision);
@@ -1997,6 +2036,32 @@ export function Dashboard() {
     );
   }
 
+  if (destinationRoute === "demographics") {
+    return (
+      <>
+        <AuthOnboardingFlow
+          onComplete={() => {
+            completeDemographicQaReplay(getAccessToken());
+            markPostLoginLoadingPending();
+            setShowPostLoginLoading(true);
+            setLaunchSplashOpen(true);
+            setBootstrapStatus("bootstrapping");
+            setProfileRoute("unknown");
+            setBootstrapNonce((n) => n + 1);
+          }}
+          onRequestSignIn={() => {
+            clearAccessToken();
+            setBootstrapStatus("unauthenticated");
+            setProfileRoute("unknown");
+            setCharacter(null);
+            setGatePrefillProfile(null);
+          }}
+        />
+        {launchSplashOverlay}
+      </>
+    );
+  }
+
   if (destinationRoute === "role_selection") {
     return (
       <>
@@ -2004,7 +2069,17 @@ export function Dashboard() {
           variant={roleGateProfile && isProfileSetupComplete(roleGateProfile) ? "existing_user" : "new_user"}
           onComplete={(updatedProfile) => {
             setRoleGateProfile(null);
-            const nextRoute = resolveProfileRoute(updatedProfile);
+            const nextRoute = resolveProfileRoute(updatedProfile, {
+              preferences: {
+                exists: Boolean(onboardingPreferences),
+                interests: onboardingPreferences?.interests ?? [],
+                communities: [],
+                institutionId: updatedProfile.institution_id ?? null,
+                completedAt: null,
+              },
+              forceDemographicsQaReplay: false,
+              forceCharacterQaReplay: false,
+            });
             if (nextRoute === "character_gate") {
               setGatePrefillProfile(updatedProfile);
             }

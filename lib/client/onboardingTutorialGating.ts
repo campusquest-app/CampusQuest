@@ -1,6 +1,10 @@
 import type { MeProfileRow } from "@/lib/client/profileCharacter";
 
-/** Product flag: guided onboarding / tutorial UI is disabled app-wide. */
+/**
+ * Beginner-chain / "New Player Protocol" tutorial overlays.
+ * Demographic onboarding is controlled separately by
+ * `DEMOGRAPHIC_ONBOARDING_ENABLED` in lib/onboarding/demographicOnboardingPolicy.ts.
+ */
 export const ONBOARDING_TUTORIAL_DISABLED = true;
 
 export function isOnboardingTutorialDisabled(): boolean {

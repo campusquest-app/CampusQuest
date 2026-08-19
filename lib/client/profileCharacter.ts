@@ -12,6 +12,9 @@ export type MeProfileRow = {
   bio?: string | null;
   major?: string | null;
   class_year?: number | null;
+  student_status?: string | null;
+  institution_id?: string | null;
+  onboarding_version?: number | null;
   game_state_json?: Record<string, unknown> | null;
   streak_days?: number | null;
   last_activity_date?: string | null;

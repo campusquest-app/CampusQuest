@@ -1,18 +1,42 @@
 import { hasValidRoleSelection } from "@/lib/roles";
+import {
+  isDemographicsRequired,
+  type DemographicPreferencesSnapshot,
+  type DemographicProfileSnapshot,
+} from "@/lib/onboarding/demographicOnboardingPolicy";
 
 export type BootstrapStatus = "bootstrapping" | "unauthenticated" | "authenticated";
 
-/** Resolved after profile fetch — never infer onboarding from a null character alone. */
-export type ProfileRoute = "unknown" | "role_gate" | "character_gate" | "app";
+/**
+ * Resolved after profile (+ demographics prefs) fetch.
+ * Order: demographics → character → role → app
+ */
+export type ProfileRoute =
+  | "unknown"
+  | "demographics_gate"
+  | "role_gate"
+  | "character_gate"
+  | "app";
 
-export type AppShellRoute = "loading" | "hydrating" | "auth" | "role_selection" | "onboarding" | "app";
+export type AppShellRoute =
+  | "loading"
+  | "hydrating"
+  | "auth"
+  | "demographics"
+  | "role_selection"
+  | "onboarding"
+  | "app";
 
-export type ProfileRouteInput = {
-  onboarding_completed?: boolean | null;
-  onboarding_character_completed?: boolean | null;
+export type ProfileRouteInput = DemographicProfileSnapshot & {
   role?: string | null;
   is_test_user?: boolean | null;
   qa_selected_role?: string | null;
+};
+
+export type ResolveProfileRouteOptions = {
+  preferences?: DemographicPreferencesSnapshot | null;
+  forceDemographicsQaReplay?: boolean;
+  forceCharacterQaReplay?: boolean;
 };
 
 export function isProfileSetupComplete(profile: ProfileRouteInput): boolean {
@@ -20,14 +44,37 @@ export function isProfileSetupComplete(profile: ProfileRouteInput): boolean {
 }
 
 /**
- * Account-type + character setup routing:
- * - New users without a role go straight to character onboarding (role is picked there).
- * - Existing users who finished character setup but lack a role get the standalone role gate.
- * - Admins / internal testers never see the role gate.
+ * Authenticated routing:
+ * 1) demographics (when required)
+ * 2) character setup
+ * 3) role gate (existing users missing role)
+ * 4) app
  */
-export function resolveProfileRoute(profile: ProfileRouteInput): ProfileRoute {
-  const setupComplete = isProfileSetupComplete(profile);
-  if (!hasValidRoleSelection(profile)) {
+export function resolveProfileRoute(
+  profile: ProfileRouteInput,
+  options?: ResolveProfileRouteOptions,
+): ProfileRoute {
+  if (
+    isDemographicsRequired({
+      profile,
+      preferences: options?.preferences,
+      forceQaReplay: options?.forceDemographicsQaReplay === true,
+    })
+  ) {
+    return "demographics_gate";
+  }
+
+  const routingProfile: ProfileRouteInput =
+    options?.forceCharacterQaReplay === true
+      ? {
+          ...profile,
+          onboarding_completed: false,
+          onboarding_character_completed: false,
+        }
+      : profile;
+
+  const setupComplete = isProfileSetupComplete(routingProfile);
+  if (!hasValidRoleSelection(routingProfile)) {
     return setupComplete ? "role_gate" : "character_gate";
   }
   return setupComplete ? "app" : "character_gate";
@@ -42,6 +89,9 @@ export function isAppShellDecisionReady(args: {
   if (args.bootstrapStatus === "bootstrapping") return false;
   if (args.bootstrapStatus === "unauthenticated") return true;
   if (args.profileRoute === "unknown") return false;
+  if (args.profileRoute === "demographics_gate") return true;
+  if (args.profileRoute === "character_gate") return true;
+  if (args.profileRoute === "role_gate") return true;
   if (args.profileRoute === "app" && !args.hasCharacter) return false;
   return true;
 }
@@ -56,6 +106,7 @@ export function resolveAppShellRoute(args: {
   if (args.bootstrapStatus === "bootstrapping") return "hydrating";
   if (args.bootstrapStatus === "unauthenticated") return "auth";
   if (args.profileRoute === "unknown") return "hydrating";
+  if (args.profileRoute === "demographics_gate") return "demographics";
   if (args.profileRoute === "role_gate") return "role_selection";
   if (args.profileRoute === "character_gate") return "onboarding";
   if (!args.hasCharacter) return "hydrating";
