@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isAppShellDecisionReady,
   isProfileSetupComplete,
   resolveAppShellRoute,
   resolveProfileRoute,
@@ -145,5 +146,50 @@ describe("appShellRoute", () => {
         hasCharacter: true,
       }),
     ).toBe("role_selection");
+  });
+
+  it("is ready only after a real auth/setup/app decision", () => {
+    expect(
+      isAppShellDecisionReady({
+        bootstrapStatus: "bootstrapping",
+        profileRoute: "unknown",
+        hasCharacter: false,
+      }),
+    ).toBe(false);
+    expect(
+      isAppShellDecisionReady({
+        bootstrapStatus: "unauthenticated",
+        profileRoute: "unknown",
+        hasCharacter: false,
+      }),
+    ).toBe(true);
+    expect(
+      isAppShellDecisionReady({
+        bootstrapStatus: "authenticated",
+        profileRoute: "unknown",
+        hasCharacter: false,
+      }),
+    ).toBe(false);
+    expect(
+      isAppShellDecisionReady({
+        bootstrapStatus: "authenticated",
+        profileRoute: "character_gate",
+        hasCharacter: false,
+      }),
+    ).toBe(true);
+    expect(
+      isAppShellDecisionReady({
+        bootstrapStatus: "authenticated",
+        profileRoute: "app",
+        hasCharacter: false,
+      }),
+    ).toBe(false);
+    expect(
+      isAppShellDecisionReady({
+        bootstrapStatus: "authenticated",
+        profileRoute: "app",
+        hasCharacter: true,
+      }),
+    ).toBe(true);
   });
 });

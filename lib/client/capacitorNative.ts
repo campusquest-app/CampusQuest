@@ -40,6 +40,9 @@ type CapacitorRuntime = {
     App?: {
       openUrl?: (opts: { url: string }) => Promise<void>;
     };
+    SplashScreen?: {
+      hide?: (opts?: { fadeOutDuration?: number }) => Promise<void>;
+    };
   };
 };
 
@@ -130,6 +133,17 @@ export async function nativeImpact(style: "light" | "medium" | "heavy" = "light"
     navigator.vibrate?.(style === "heavy" ? 28 : style === "medium" ? 18 : 10);
   } catch {
     /* ignore */
+  }
+}
+
+/** Hide the Capacitor launch splash once the web splash is painted. No-ops on web. */
+export async function hideNativeSplashScreen(): Promise<void> {
+  const cap = getCapacitor();
+  if (!cap?.isNativePlatform?.()) return;
+  try {
+    await cap.Plugins?.SplashScreen?.hide?.({ fadeOutDuration: 180 });
+  } catch {
+    /* plugin optional */
   }
 }
 

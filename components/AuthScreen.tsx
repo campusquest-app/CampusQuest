@@ -47,6 +47,8 @@ import { mapAuthCallbackError, parseAuthCallbackParams } from "@/lib/client/auth
 import { AuthEmailRecoveryCard } from "@/components/auth/AuthEmailRecoveryCard";
 import { syncOnboardingQaReplayFromAccessToken } from "@/lib/client/onboardingQaSession";
 import { isAllowedSignupEmail, SCHOOL_EMAIL_REQUIRED_MESSAGE } from "@/lib/signupEmailPolicy";
+import { CAMPUSQUEST_LOGO_SRC } from "@/lib/branding";
+import { BRAND_KNIGHT } from "@/lib/onboarding/taxonomy";
 
 type Mode = "welcome" | "signin" | "signup";
 type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } | string };
@@ -668,7 +670,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
           <div className="cq-onboard-hero text-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/brand/logo/campusquest-logo-official.png"
+              src={CAMPUSQUEST_LOGO_SRC}
               alt="CampusQuest"
               className="cq-onboard-logo"
               width={88}
@@ -678,7 +680,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
             <div className="cq-onboard-knight" aria-hidden>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/brand/knight/thumbs-up.png"
+                src={BRAND_KNIGHT.thumbsUp}
                 alt=""
                 className="cq-onboard-knight-img"
                 width={220}

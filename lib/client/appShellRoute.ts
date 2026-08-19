@@ -33,6 +33,19 @@ export function resolveProfileRoute(profile: ProfileRouteInput): ProfileRoute {
   return setupComplete ? "app" : "character_gate";
 }
 
+/** True when bootstrap can safely choose auth / setup / app — independent of splash UI. */
+export function isAppShellDecisionReady(args: {
+  bootstrapStatus: BootstrapStatus;
+  profileRoute: ProfileRoute;
+  hasCharacter: boolean;
+}): boolean {
+  if (args.bootstrapStatus === "bootstrapping") return false;
+  if (args.bootstrapStatus === "unauthenticated") return true;
+  if (args.profileRoute === "unknown") return false;
+  if (args.profileRoute === "app" && !args.hasCharacter) return false;
+  return true;
+}
+
 export function resolveAppShellRoute(args: {
   bootstrapStatus: BootstrapStatus;
   profileRoute: ProfileRoute;

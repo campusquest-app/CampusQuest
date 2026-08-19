@@ -107,7 +107,12 @@ export function normalizeCommunityIds(raw: string[]): CommunityId[] {
   return out;
 }
 
-export const BRAND_LOGO_OFFICIAL = "/brand/logo/campusquest-logo-official.png" as const;
+/**
+ * Official CQ logo for onboarding / splash.
+ * Use the existing transparent RGBA asset (`/campusquest-logo.png`), not
+ * `/brand/logo/campusquest-logo-official.png` (JPEG with opaque black fill).
+ */
+export { CAMPUSQUEST_LOGO_SRC as BRAND_LOGO_OFFICIAL } from "@/lib/branding";
 
 export const BRAND_KNIGHT = {
   thumbsUp: "/brand/knight/thumbs-up.png",

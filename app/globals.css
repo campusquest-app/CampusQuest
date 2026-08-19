@@ -21279,16 +21279,17 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-onboard-logo {
-  width: 5.5rem;
-  height: 5.5rem;
+  width: 5.25rem;
+  height: 5.25rem;
   object-fit: contain;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
 }
 
 .cq-onboard-knight {
-  width: min(220px, 58vw);
-  height: min(220px, 58vw);
-  margin: 0.25rem auto 0.75rem;
+  /* ~23% larger than prior 220px / 58vw; stays centered */
+  width: min(270px, 70vw);
+  height: min(270px, 70vw);
+  margin: 0.1rem auto 0.35rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -21307,7 +21308,7 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   letter-spacing: -0.02em;
   line-height: 1.2;
   color: #fff;
-  margin: 0.35rem 0 0;
+  margin: 0.15rem 0 0;
 }
 
 .cq-onboard-title-accent {
@@ -21322,25 +21323,59 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-onboard-sub-dark {
-  margin: 0.75rem 0 0;
+  margin: 0.65rem 0 0;
   font-size: 1rem;
   line-height: 1.45;
   color: rgba(255, 255, 255, 0.82);
 }
 
 .cq-onboard-btn-gold {
-  margin-top: 1.75rem;
+  margin-top: 1.5rem;
   width: 100%;
   max-width: 320px;
   border: none;
   border-radius: 999px;
-  padding: 0.95rem 1.25rem;
-  font-size: 1.05rem;
+  padding: 0.9rem 1.25rem;
+  font-size: 1.02rem;
   font-weight: 700;
   background: linear-gradient(180deg, #e4c04a 0%, #c5a028 100%);
   color: #041e42;
   box-shadow: 0 8px 20px rgba(197, 160, 40, 0.28);
   touch-action: manipulation;
+}
+
+/* Short iPhones: keep composition balanced without shrinking brand identity too hard */
+@media (max-height: 720px) {
+  .cq-onboard-logo {
+    width: 4.75rem;
+    height: 4.75rem;
+  }
+
+  .cq-onboard-knight {
+    width: min(240px, 62vw);
+    height: min(240px, 62vw);
+    margin: 0.05rem auto 0.25rem;
+  }
+
+  .cq-onboard-btn-gold {
+    margin-top: 1.2rem;
+    padding: 0.85rem 1.15rem;
+  }
+
+  .cq-onboard-footer-link {
+    margin-top: 1rem;
+  }
+}
+
+@media (max-height: 620px) {
+  .cq-onboard-knight {
+    width: min(210px, 54vw);
+    height: min(210px, 54vw);
+  }
+
+  .cq-onboard-sub-dark {
+    margin-top: 0.45rem;
+  }
 }
 
 .cq-onboard-btn-gold:active {
@@ -21640,5 +21675,262 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   }
   .cq-onboard-confetti {
     opacity: 0.35;
+  }
+}
+
+/* CampusQuest cold-launch splash — navy + official circular logo. CSS-only, one-shot. */
+.cq-launch-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  display: flex;
+  color-scheme: dark;
+  background-color: #041e42;
+  background-image: radial-gradient(
+    ellipse 58% 46% at 50% 46%,
+    rgba(8, 48, 96, 0.55) 0%,
+    rgba(4, 30, 66, 0) 72%
+  );
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+
+.cq-launch-splash-inner {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.cq-launch-stage {
+  position: relative;
+  display: flex;
+  width: 9.75rem;
+  height: 9.75rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.cq-launch-glow,
+.cq-launch-ring,
+.cq-launch-sweep,
+.cq-launch-speck {
+  pointer-events: none;
+  position: absolute;
+}
+
+.cq-launch-glow {
+  inset: -42%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(104, 171, 232, 0.26) 0%,
+    rgba(201, 162, 74, 0.08) 42%,
+    transparent 70%
+  );
+  opacity: 0.28;
+}
+
+.cq-launch-ring,
+.cq-launch-sweep,
+.cq-launch-speck {
+  opacity: 0;
+}
+
+.cq-launch-logo {
+  position: relative;
+  z-index: 2;
+  width: 7.5rem;
+  height: 7.5rem;
+  object-fit: contain;
+}
+
+.cq-launch-word {
+  position: absolute;
+  bottom: max(2.65rem, calc(env(safe-area-inset-bottom, 0px) + 1.35rem));
+  margin: 0;
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  line-height: 1;
+  color: #ffffff;
+  text-indent: 0.34em;
+}
+
+.cq-launch-splash--intro .cq-launch-logo {
+  animation: cq-launch-logo-in 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cq-launch-splash--intro .cq-launch-glow {
+  animation: cq-launch-glow 1.18s ease-out both;
+}
+
+.cq-launch-splash--intro .cq-launch-ring {
+  inset: -10%;
+  border-radius: 50%;
+  border: 1px solid rgba(104, 171, 232, 0.28);
+  box-shadow: 0 0 0 1px rgba(201, 162, 74, 0.08);
+  animation: cq-launch-ring 1.05s ease-out 0.16s both;
+}
+
+.cq-launch-splash--intro .cq-launch-sweep {
+  inset: -14%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 210deg,
+    transparent 0deg,
+    transparent 52deg,
+    rgba(104, 171, 232, 0.2) 78deg,
+    rgba(201, 162, 74, 0.28) 92deg,
+    rgba(104, 171, 232, 0.12) 108deg,
+    transparent 138deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 7px));
+  animation: cq-launch-sweep 1.02s ease-out 0.2s both;
+}
+
+.cq-launch-splash--intro .cq-launch-speck {
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  margin: -1px 0 0 -1px;
+  background: rgba(176, 214, 245, 0.8);
+  animation-name: cq-launch-speck;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+
+.cq-launch-splash--intro .cq-launch-speck--gold {
+  background: rgba(201, 162, 74, 0.72);
+}
+
+.cq-launch-splash--intro .cq-launch-word {
+  animation: cq-launch-word 0.5s ease-out 0.58s both;
+}
+
+.cq-launch-splash--reduced .cq-launch-logo,
+.cq-launch-splash--reduced .cq-launch-word {
+  animation: cq-launch-fade 0.35s ease-out both;
+}
+
+.cq-launch-splash--reduced .cq-launch-glow {
+  opacity: 0.22;
+}
+
+.cq-launch-splash--reduced .cq-launch-ring,
+.cq-launch-splash--reduced .cq-launch-sweep,
+.cq-launch-splash--reduced .cq-launch-speck {
+  display: none;
+}
+
+@keyframes cq-launch-logo-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cq-launch-glow {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  42% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.32;
+    transform: scale(1.03);
+  }
+}
+
+@keyframes cq-launch-ring {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  40% {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes cq-launch-sweep {
+  from {
+    opacity: 0;
+    transform: rotate(-26deg);
+  }
+  38% {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 0;
+    transform: rotate(42deg);
+  }
+}
+
+@keyframes cq-launch-speck {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.55);
+  }
+  22% {
+    opacity: 0.42;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--cq-speck-x), calc(var(--cq-speck-y) - 12px)) scale(1);
+  }
+}
+
+@keyframes cq-launch-word {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cq-launch-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-launch-splash--intro .cq-launch-logo,
+  .cq-launch-splash--intro .cq-launch-word {
+    animation: cq-launch-fade 0.35s ease-out both;
+  }
+
+  .cq-launch-splash--intro .cq-launch-glow {
+    animation: none;
+    opacity: 0.22;
+  }
+
+  .cq-launch-splash--intro .cq-launch-ring,
+  .cq-launch-splash--intro .cq-launch-sweep,
+  .cq-launch-splash--intro .cq-launch-speck {
+    display: none;
+    animation: none;
   }
 }

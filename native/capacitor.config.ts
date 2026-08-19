@@ -31,12 +31,12 @@ const config: CapacitorConfig = {
     scrollEnabled: true,
   },
   plugins: {
-    SplashScreen: {
-      launchAutoHide: true,
-      launchShowDuration: 0,
-      backgroundColor: "#07111f",
-      showSpinner: false,
-    },
+        SplashScreen: {
+          launchAutoHide: true,
+          launchShowDuration: 3000,
+          backgroundColor: "#041E42",
+          showSpinner: false,
+        },
     StatusBar: {
       style: "DARK",
       backgroundColor: "#07111f",

@@ -45,8 +45,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${display.variable} ${mono.variable}`}>
-      <body className="font-sans flex min-h-[100dvh] flex-col overflow-x-hidden bg-cq-app">
+    <html lang="en" className={`${display.variable} ${mono.variable}`} style={{ backgroundColor: "#041E42" }}>
+      <head>
+        <link rel="preload" href="/campusquest-logo.png" as="image" type="image/png" />
+      </head>
+      <body
+        className="font-sans flex min-h-[100dvh] flex-col overflow-x-hidden bg-uri-navy"
+        style={{ backgroundColor: "#041E42" }}
+      >
         <AppRootProviders>{children}</AppRootProviders>
       </body>
     </html>

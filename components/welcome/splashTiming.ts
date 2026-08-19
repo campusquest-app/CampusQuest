@@ -1,24 +1,10 @@
-/** Total time for progress to ease 0 → 100% (smooth cubic ease-in-out). */
-export const SPLASH_PROGRESS_MS = 5800;
+/** Launch splash fade-out only — does not gate routing. */
+export const SPLASH_LAUNCH_FADEOUT_MS = 280;
 
-/** Brief dwell at 100% so completion leap + FX read before fade. */
-export const SPLASH_COMPLETE_DWELL_MS = 680;
+/** Visual intro length (CSS). Never used to delay auth/routing. */
+export const SPLASH_LAUNCH_INTRO_MS = 1100;
 
-export const SPLASH_FADEOUT_MS = 800;
+/** Atmospheric specks around the logo. Unmounted when the splash exits. */
+export const LAUNCH_SPLASH_SPECK_COUNT = 12;
 
-/** App launch splash — shown once after sign-in while session bootstraps. */
-export const SPLASH_LAUNCH_MIN_VISIBLE_MS = 1000;
-
-export const SPLASH_LAUNCH_PROGRESS_MS = 1100;
-
-export const SPLASH_LAUNCH_COMPLETE_DWELL_MS = 120;
-
-export const SPLASH_LAUNCH_FADEOUT_MS = 480;
-
-export const SPLASH_LAUNCH_STATUS = "Entering CampusQuest…";
-
-/** Ease-in-out cubic — smooth start and finish, no abrupt jumps. */
-export function splashProgressEase(t: number): number {
-  const x = Math.max(0, Math.min(1, t));
-  return x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2;
-}
+export const SPLASH_LAUNCH_STATUS = "Loading CampusQuest";

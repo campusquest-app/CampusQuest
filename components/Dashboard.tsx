@@ -127,13 +127,13 @@ import { LOGOUT_BLOCKED_SAVE_MESSAGE, isServerBackedUserId, resetUserSaveSyncAft
 import { hydrateUserPersistenceFromServer } from "@/lib/client/hydrateUserPersistence";
 import { communityReminderStorageKey } from "./WelcomeBackCommunityReminder";
 import { WelcomeSplash } from "./WelcomeSplash";
-import { SPLASH_LAUNCH_MIN_VISIBLE_MS } from "@/components/welcome/splashTiming";
 import {
   clearPostLoginLoadingPending,
   markPostLoginLoadingPending,
   peekPostLoginLoadingPending,
 } from "@/lib/client/postLoginLoading";
 import {
+  isAppShellDecisionReady,
   isProfileSetupComplete,
   resolveAppShellRoute,
   resolveProfileRoute,
@@ -235,7 +235,7 @@ export function Dashboard() {
   const [character, setCharacter] = useState<Character | null>(null);
   const [mounted, setMounted] = useState(false);
   const [showPostLoginLoading, setShowPostLoginLoading] = useState(false);
-  const [launchMinElapsed, setLaunchMinElapsed] = useState(false);
+  const [launchSplashOpen, setLaunchSplashOpen] = useState(true);
   const [profileRoute, setProfileRoute] = useState<ProfileRoute>("unknown");
   const [qaReplayActive, setQaReplayActive] = useState(false);
   const [tab, setTab] = useState<Tab>("quad");
@@ -1188,6 +1188,12 @@ export function Dashboard() {
     setBootstrapNonce((n) => n + 1);
   }, []);
 
+  const completeLaunchSplash = useCallback(() => {
+    clearPostLoginLoadingPending();
+    setShowPostLoginLoading(false);
+    setLaunchSplashOpen(false);
+  }, []);
+
   const openLogoutConfirm = useCallback(() => {
     setLogoutConfirmError(null);
     setShowLogoutConfirm(true);
@@ -1299,14 +1305,9 @@ export function Dashboard() {
     setMusicMuted(isGameMusicMuted());
     if (peekPostLoginLoadingPending()) {
       setShowPostLoginLoading(true);
+      setLaunchSplashOpen(true);
     }
   }, []);
-
-  useEffect(() => {
-    if (!showPostLoginLoading) return;
-    const minTimer = window.setTimeout(() => setLaunchMinElapsed(true), SPLASH_LAUNCH_MIN_VISIBLE_MS);
-    return () => window.clearTimeout(minTimer);
-  }, [showPostLoginLoading]);
 
   useEffect(() => {
     if (qrScannerOpen) setQrScannerEverOpened(true);
@@ -1947,80 +1948,100 @@ export function Dashboard() {
     };
   }, [bossDefeatPhase]);
 
-  const launchReadyToDismiss =
-    showPostLoginLoading && mounted && bootstrapStatus !== "bootstrapping" && launchMinElapsed;
-
-  const appShellRoute = resolveAppShellRoute({
+  const decisionReady = isAppShellDecisionReady({
     bootstrapStatus,
     profileRoute,
-    showPostLoginLoading,
     hasCharacter: character != null,
   });
 
-  if (appShellRoute === "loading") {
+  const destinationRoute = resolveAppShellRoute({
+    bootstrapStatus,
+    profileRoute,
+    showPostLoginLoading: false,
+    hasCharacter: character != null,
+  });
+
+  const launchSplashOverlay = launchSplashOpen ? (
+    <WelcomeSplash
+      key="cq-launch-splash"
+      mode="launch"
+      readyToDismiss={decisionReady}
+      onComplete={completeLaunchSplash}
+    />
+  ) : null;
+
+  if (!decisionReady || destinationRoute === "hydrating") {
     return (
-      <WelcomeSplash
-        mode="launch"
-        readyToDismiss={launchReadyToDismiss}
-        onComplete={() => {
-          clearPostLoginLoadingPending();
-          setShowPostLoginLoading(false);
-        }}
-      />
+      <>
+        {null}
+        {launchSplashOverlay}
+      </>
     );
   }
 
-  if (appShellRoute === "hydrating") {
-    return null;
-  }
-
-  if (appShellRoute === "auth") {
+  if (destinationRoute === "auth") {
     return (
-      <AuthScreen
-        onComplete={() => {
-          markPostLoginLoadingPending();
-          setShowPostLoginLoading(true);
-          setLaunchMinElapsed(false);
-          setBootstrapNonce((n) => n + 1);
-        }}
-      />
+      <>
+        <AuthScreen
+          onComplete={() => {
+            markPostLoginLoadingPending();
+            setShowPostLoginLoading(true);
+            setLaunchSplashOpen(true);
+            setBootstrapStatus("bootstrapping");
+            setProfileRoute("unknown");
+            setBootstrapNonce((n) => n + 1);
+          }}
+        />
+        {launchSplashOverlay}
+      </>
     );
   }
 
-  if (appShellRoute === "role_selection") {
+  if (destinationRoute === "role_selection") {
     return (
-      <RoleSelectionGate
-        variant={roleGateProfile && isProfileSetupComplete(roleGateProfile) ? "existing_user" : "new_user"}
-        onComplete={(updatedProfile) => {
-          setRoleGateProfile(null);
-          const nextRoute = resolveProfileRoute(updatedProfile);
-          if (nextRoute === "character_gate") {
-            setGatePrefillProfile(updatedProfile);
-          }
-          setProfileRoute(nextRoute);
-        }}
-      />
+      <>
+        <RoleSelectionGate
+          variant={roleGateProfile && isProfileSetupComplete(roleGateProfile) ? "existing_user" : "new_user"}
+          onComplete={(updatedProfile) => {
+            setRoleGateProfile(null);
+            const nextRoute = resolveProfileRoute(updatedProfile);
+            if (nextRoute === "character_gate") {
+              setGatePrefillProfile(updatedProfile);
+            }
+            setProfileRoute(nextRoute);
+          }}
+        />
+        {launchSplashOverlay}
+      </>
     );
   }
 
-  if (appShellRoute === "onboarding") {
+  if (destinationRoute === "onboarding") {
     return (
-      <CharacterGate
-        prefillProfile={gatePrefillProfile}
-        preserveExistingProgress={qaReplayActive}
-        onReady={() => {
-          completeOnboardingQaReplay(getAccessToken());
-          setQaReplayActive(false);
-          refresh();
-          setTab("quad");
-          setBootstrapNonce((n) => n + 1);
-        }}
-      />
+      <>
+        <CharacterGate
+          prefillProfile={gatePrefillProfile}
+          preserveExistingProgress={qaReplayActive}
+          onReady={() => {
+            completeOnboardingQaReplay(getAccessToken());
+            setQaReplayActive(false);
+            refresh();
+            setTab("quad");
+            setBootstrapNonce((n) => n + 1);
+          }}
+        />
+        {launchSplashOverlay}
+      </>
     );
   }
 
   if (!character) {
-    return null;
+    return (
+      <>
+        {null}
+        {launchSplashOverlay}
+      </>
+    );
   }
 
   function presentLogResult(
@@ -2206,6 +2227,7 @@ export function Dashboard() {
   const tabFullBleed = tab === "quad" || tab === "character" || tab === "inbox" || tab === "realm";
 
   return (
+    <>
     <MobileGestureLayerProvider>
       <div className="cq-app-shell min-h-[100dvh]">
       <AppSideDrawer
@@ -2770,5 +2792,7 @@ export function Dashboard() {
       ) : null}
       </div>
     </MobileGestureLayerProvider>
+    {launchSplashOverlay}
+    </>
   );
 }
