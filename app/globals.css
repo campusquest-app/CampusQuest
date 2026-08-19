@@ -21135,6 +21135,12 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   color: rgba(180, 205, 230, 0.65);
 }
 
+.cq-dining-loading-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  color: rgba(210, 225, 240, 0.78);
+}
+
 .cq-dining-skeleton {
   display: flex;
   flex-direction: column;

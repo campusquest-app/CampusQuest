@@ -292,6 +292,14 @@ export function RealmMap({
     isAdmin,
   });
 
+  // After the map is interactive, warm today's dining menus in the background.
+  useEffect(() => {
+    if (!isActive || !uriMapLoaded) return;
+    void import("@/lib/dining/diningMenuSessionCache").then(({ scheduleDiningMenuPrefetch }) => {
+      scheduleDiningMenuPrefetch({ delayMs: 2_800 });
+    });
+  }, [isActive, uriMapLoaded]);
+
   const loadCampusMemories = useCallback(async (signal?: AbortSignal) => {
     setMemoriesLoadError(null);
     markRealmMapStep("data-fetch-start", { source: "memories" });

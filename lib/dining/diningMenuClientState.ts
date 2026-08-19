@@ -20,6 +20,26 @@ export function shouldShowDiningSkeleton(args: {
   return args.initialLoading && !args.loaded && !args.menu;
 }
 
+/** After this delay, replace an empty skeleton with a compact status line. */
+export const DINING_SLOW_LOADING_HINT_MS = 2_500;
+
+export function shouldShowDiningSlowLoadingHint(args: {
+  showSkeleton: boolean;
+  slowLoading: boolean;
+}): boolean {
+  return args.showSkeleton && args.slowLoading;
+}
+
+/**
+ * Soft refresh: keep rendered menu visible while a background/date fetch runs.
+ */
+export function shouldPreserveDiningMenuDuringLoad(args: {
+  hasMenu: boolean;
+  hasSessionCacheForTarget: boolean;
+}): boolean {
+  return args.hasMenu || args.hasSessionCacheForTarget;
+}
+
 export function isDiningMenuEmpty(args: {
   loaded: boolean;
   menu: DiningMenuResponse | null;

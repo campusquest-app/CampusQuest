@@ -32,15 +32,24 @@ import {
   parseNutritionLabelHtml,
 } from "./netNutritionParse";
 import {
-  getFreshCachedDiningMenu,
   getCachedDiningMenu,
+  getOrStartDiningMenuFetch,
+  hasDiningMenuInflight,
+  peekDiningMenuCache,
   setCachedDiningMenu,
   todayMenuTtlMs,
   upcomingMenuTtlMs,
+  diningCacheKey,
 } from "./diningCache";
 import { toNetNutritionDateParam, uriTodayIso } from "./diningTime";
 
 const STATION_CONCURRENCY = 3;
+const IS_DEV = process.env.NODE_ENV !== "production";
+
+function logDiningServer(payload: Record<string, unknown>) {
+  if (!IS_DEV) return;
+  console.info("[cq:dining-menu:server]", payload);
+}
 
 async function mapPool<T, R>(
   items: T[],
@@ -120,6 +129,8 @@ async function fetchStationMealsForDate(args: {
 
 /**
  * Fetch and normalize a full dining-hall menu for one date.
+ * Fresh cache → immediate. Stale cache → return immediately + background refresh.
+ * Concurrent callers share one upstream NetNutrition fetch.
  */
 export async function fetchUriDiningMenu(args: {
   locationId: DiningLocationId;
@@ -128,14 +139,74 @@ export async function fetchUriDiningMenu(args: {
   bypassCache?: boolean;
 }): Promise<DiningMenu> {
   const fetchImpl = args.fetchImpl ?? fetch;
-  const location = getDiningLocation(args.locationId);
   const today = uriTodayIso();
   const ttl = args.isoDate === today ? todayMenuTtlMs() : upcomingMenuTtlMs();
+  const key = diningCacheKey(args.locationId, args.isoDate);
+  const totalStarted = Date.now();
 
   if (!args.bypassCache) {
-    const fresh = getFreshCachedDiningMenu(args.locationId, args.isoDate);
-    if (fresh) return fresh;
+    const peek = peekDiningMenuCache(args.locationId, args.isoDate);
+    if (peek?.fresh) {
+      logDiningServer({
+        phase: "cache_hit",
+        key,
+        ageMs: peek.ageMs,
+        totalMs: Date.now() - totalStarted,
+      });
+      return { ...peek.menu, stale: false, source: "cache" };
+    }
+
+    if (peek && !peek.fresh) {
+      logDiningServer({
+        phase: "stale_cache_hit",
+        key,
+        ageMs: peek.ageMs,
+        totalMs: Date.now() - totalStarted,
+      });
+      // Stale-while-revalidate: never block the user on NetNutrition when we have data.
+      if (!hasDiningMenuInflight(key)) {
+        void getOrStartDiningMenuFetch(key, () =>
+          fetchUriDiningMenuUpstream({
+            locationId: args.locationId,
+            isoDate: args.isoDate,
+            fetchImpl,
+            ttl,
+            key,
+          }),
+        ).catch((error) => {
+          logDiningServer({
+            phase: "background_refresh_failed",
+            key,
+            message: error instanceof Error ? error.message : "error",
+          });
+        });
+      }
+      return { ...peek.menu, stale: true, source: "cache" };
+    }
   }
+
+  logDiningServer({ phase: "cache_miss", key });
+  return getOrStartDiningMenuFetch(key, () =>
+    fetchUriDiningMenuUpstream({
+      locationId: args.locationId,
+      isoDate: args.isoDate,
+      fetchImpl,
+      ttl,
+      key,
+    }),
+  );
+}
+
+async function fetchUriDiningMenuUpstream(args: {
+  locationId: DiningLocationId;
+  isoDate: string;
+  fetchImpl: typeof fetch;
+  ttl: number;
+  key: string;
+}): Promise<DiningMenu> {
+  const { locationId, isoDate, fetchImpl, ttl, key } = args;
+  const location = getDiningLocation(locationId);
+  const upstreamStarted = Date.now();
 
   try {
     let session = await createNetNutritionSession(fetchImpl);
@@ -163,7 +234,7 @@ export async function fetchUriDiningMenu(args: {
       return fetchStationMealsForDate({
         session: parentSel.session,
         station,
-        isoDate: args.isoDate,
+        isoDate,
         fetchImpl,
       });
     });
@@ -195,7 +266,7 @@ export async function fetchUriDiningMenu(args: {
 
     const menu: DiningMenu = {
       location,
-      date: args.isoDate,
+      date: isoDate,
       mealPeriods,
       hours,
       fetchedAt: new Date().toISOString(),
@@ -203,9 +274,22 @@ export async function fetchUriDiningMenu(args: {
     };
 
     setCachedDiningMenu(menu, ttl);
+    logDiningServer({
+      phase: "upstream_ok",
+      key,
+      upstreamMs: Date.now() - upstreamStarted,
+      mealPeriods: mealPeriods.length,
+    });
     return menu;
   } catch (error) {
-    const stale = getCachedDiningMenu(args.locationId, args.isoDate);
+    const stale = getCachedDiningMenu(locationId, isoDate);
+    logDiningServer({
+      phase: "upstream_failed",
+      key,
+      upstreamMs: Date.now() - upstreamStarted,
+      fallback: Boolean(stale),
+      message: error instanceof Error ? error.message : "error",
+    });
     if (stale) return { ...stale, stale: true, source: "cache" };
     throw error;
   }
@@ -244,6 +328,7 @@ export async function getDiningMenuForRequest(args: {
   dateParam: string | null;
   fetchImpl?: typeof fetch;
 }): Promise<DiningMenuResponse> {
+  const started = Date.now();
   const locationId = resolveDiningLocationId(args.locationParam);
   if (!locationId) {
     throw new NetNutritionError("Unknown dining location", 400);
@@ -258,6 +343,13 @@ export async function getDiningMenuForRequest(args: {
     locationId,
     isoDate,
     fetchImpl: args.fetchImpl,
+  });
+  logDiningServer({
+    phase: "api_response",
+    key: diningCacheKey(locationId, isoDate),
+    totalMs: Date.now() - started,
+    stale: Boolean(menu.stale),
+    source: menu.source,
   });
   return toDiningMenuResponse(menu);
 }
