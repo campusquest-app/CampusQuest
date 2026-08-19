@@ -4,7 +4,7 @@ import {
   buildOrganizationUrl,
   fetchAllUrinvolvedOrganizations,
   fetchUrinvolvedEventDetail,
-  fetchUrinvolvedEventsRss,
+  fetchUpcomingUrinvolvedDiscoveryEvents,
   stripHtmlToText,
 } from "@/lib/server/urinvolved/fetchSources";
 import {
@@ -12,11 +12,16 @@ import {
   classifyImportedEventLocation,
   resolveUrinvolvedEventLocation,
 } from "@/lib/server/urinvolved/eventLocation";
-import { parseUrinvolvedEventsRss, type ParsedUrinvolvedEvent } from "@/lib/server/urinvolved/parseRssEvents";
+import { parseUrinvolvedDiscoveryEvents } from "@/lib/server/urinvolved/parseDiscoveryEvents";
+import { type ParsedUrinvolvedEvent } from "@/lib/server/urinvolved/parseRssEvents";
 import { getCampusLocations } from "@/lib/server/campusLocationsDb";
 import { getLogicalEventFallbackKey, isLogicalEventCancelled } from "@/lib/realm/dedupeLogicalEvents";
 import { resolveAndUpsertEventMapPlacement } from "@/lib/server/urinvolved/resolveAndUpsertEventMapPlacement";
 import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
+import {
+  decideSoftDeactivateMissingEvents,
+  idsMissingFromSeen,
+} from "@/lib/server/urinvolved/syncSafety";
 import { revalidatePath } from "next/cache";
 
 export const URINVOLVED_SOURCE = "urinvolved";
@@ -33,11 +38,16 @@ export type UrinvolvedSyncSummary = {
   orgs_updated: number;
   errors: string[];
   syncLogId?: string;
+  skipped?: boolean;
+  skip_reason?: string | null;
 };
 
 type SyncLogRow = {
   id: string;
 };
+
+/** In-process mutex so concurrent cron/manual/api callers share one sync. */
+let syncInFlight: Promise<UrinvolvedSyncSummary> | null = null;
 
 async function startSyncLog(admin: ReturnType<typeof createAdminClient>, syncType: string) {
   const { data, error } = await admin
@@ -85,7 +95,7 @@ async function resolveImportedEventLocation(event: ParsedUrinvolvedEvent) {
       address = buildUrinvolvedAddressString(detail.address) || address;
     }
   } catch {
-    /* RSS-only fallback */
+    /* discovery/RSS-only fallback */
   }
 
   return resolveUrinvolvedEventLocation({ venueName, address });
@@ -140,7 +150,32 @@ async function findActiveLogicalDuplicateEvent(
   return null;
 }
 
+async function hasRecentRunningSync(admin: ReturnType<typeof createAdminClient>): Promise<boolean> {
+  const cutoff = new Date(Date.now() - 10 * 60_000).toISOString();
+  const { data } = await admin
+    .from("sync_logs")
+    .select("id")
+    .eq("source", URINVOLVED_SOURCE)
+    .eq("status", "running")
+    .gte("started_at", cutoff)
+    .limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
 export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "api"): Promise<UrinvolvedSyncSummary> {
+  if (syncInFlight) {
+    return syncInFlight;
+  }
+
+  syncInFlight = runUrinvolvedSyncExclusive(syncType).finally(() => {
+    syncInFlight = null;
+  });
+  return syncInFlight;
+}
+
+async function runUrinvolvedSyncExclusive(
+  syncType: "cron" | "manual" | "api",
+): Promise<UrinvolvedSyncSummary> {
   const admin = createAdminClient();
   const errors: string[] = [];
   let eventsFetched = 0;
@@ -151,6 +186,26 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
   let eventsMapMatched = 0;
   let orgsCreated = 0;
   let orgsUpdated = 0;
+  let eventsFetchAttempted = false;
+  let eventsFetchSucceeded = false;
+  let orgsFetchSucceeded = false;
+
+  if (await hasRecentRunningSync(admin)) {
+    return {
+      success: false,
+      events_fetched: 0,
+      events_created: 0,
+      events_updated: 0,
+      events_failed: 0,
+      events_unresolved_location: 0,
+      events_map_matched: 0,
+      orgs_created: 0,
+      orgs_updated: 0,
+      errors: ["URInvolved sync already in progress."],
+      skipped: true,
+      skip_reason: "already_running",
+    };
+  }
 
   const log = await startSyncLog(admin, syncType);
   const now = new Date().toISOString();
@@ -158,11 +213,14 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
   const seenOrgIds: string[] = [];
 
   try {
-    // --- Events (official RSS feed) ---
+    // --- Events (discovery search — full upcoming catalog; not the 24h RSS window) ---
     try {
-      const rssXml = await fetchUrinvolvedEventsRss();
-      const parsedEvents = parseUrinvolvedEventsRss(rssXml);
+      eventsFetchAttempted = true;
+      const discovery = await fetchUpcomingUrinvolvedDiscoveryEvents();
+      const parsedEvents = parseUrinvolvedDiscoveryEvents(discovery.raw);
       eventsFetched = parsedEvents.length;
+      eventsFetchSucceeded = true;
+
       const catalog = (await getCampusLocations({ refreshCache: true })).map((row) => ({
         slug: row.slug,
         name: row.name,
@@ -276,12 +334,14 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
         }
       }
     } catch (eventError) {
+      eventsFetchSucceeded = false;
       errors.push(eventError instanceof Error ? eventError.message : String(eventError));
     }
 
     // --- Organizations (public discovery search API) ---
     try {
       const orgs = await fetchAllUrinvolvedOrganizations();
+      orgsFetchSucceeded = true;
       for (const org of orgs) {
         if (!org.Id || !org.Name?.trim()) continue;
         seenOrgIds.push(org.Id);
@@ -319,43 +379,62 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
         else orgsCreated += 1;
       }
     } catch (orgError) {
+      orgsFetchSucceeded = false;
       errors.push(orgError instanceof Error ? orgError.message : String(orgError));
     }
 
-    // Deactivate items missing from this sync (soft-hide, never delete).
-    const { data: activeEventRows } = await admin
-      .from("external_events")
-      .select("external_id")
-      .eq("source", URINVOLVED_SOURCE)
-      .eq("is_active", true);
-    const eventIdsToDeactivate = (activeEventRows ?? [])
-      .map((row) => row.external_id as string)
-      .filter((id) => !seenEventIds.includes(id));
-    if (eventIdsToDeactivate.length > 0) {
-      await admin
+    // Soft-hide missing items only after a successful upstream catalog fetch.
+    // Never wipe stored events because RSS/discovery failed or returned a partial window.
+    const eventDeactivate = decideSoftDeactivateMissingEvents({
+      fetchAttempted: eventsFetchAttempted,
+      fetchSucceeded: eventsFetchSucceeded,
+      eventsFetched,
+    });
+    if (eventDeactivate.shouldDeactivate) {
+      const { data: activeEventRows } = await admin
         .from("external_events")
-        .update({ is_active: false, updated_at: now })
-        .in("external_id", eventIdsToDeactivate);
+        .select("external_id")
+        .eq("source", URINVOLVED_SOURCE)
+        .eq("is_active", true);
+      const eventIdsToDeactivate = idsMissingFromSeen(
+        (activeEventRows ?? []).map((row) => row.external_id as string),
+        seenEventIds,
+      );
+      if (eventIdsToDeactivate.length > 0) {
+        await admin
+          .from("external_events")
+          .update({ is_active: false, updated_at: now })
+          .in("external_id", eventIdsToDeactivate);
+      }
+    } else if (!eventsFetchSucceeded && eventsFetchAttempted) {
+      console.warn("[cq:urinvolved-sync] preserving existing events after upstream failure", {
+        reason: eventDeactivate.reason,
+        errors: errors.slice(0, 3),
+      });
     }
 
-    const { data: activeOrgRows } = await admin
-      .from("external_organizations")
-      .select("external_id")
-      .eq("source", URINVOLVED_SOURCE)
-      .eq("is_active", true);
-    const orgIdsToDeactivate = (activeOrgRows ?? [])
-      .map((row) => row.external_id as string)
-      .filter((id) => !seenOrgIds.includes(id));
-    if (orgIdsToDeactivate.length > 0) {
-      await admin
+    if (orgsFetchSucceeded) {
+      const { data: activeOrgRows } = await admin
         .from("external_organizations")
-        .update({ is_active: false, updated_at: now })
-        .in("external_id", orgIdsToDeactivate);
+        .select("external_id")
+        .eq("source", URINVOLVED_SOURCE)
+        .eq("is_active", true);
+      const orgIdsToDeactivate = idsMissingFromSeen(
+        (activeOrgRows ?? []).map((row) => row.external_id as string),
+        seenOrgIds,
+      );
+      if (orgIdsToDeactivate.length > 0) {
+        await admin
+          .from("external_organizations")
+          .update({ is_active: false, updated_at: now })
+          .in("external_id", orgIdsToDeactivate);
+      }
     }
 
     const imported = eventsCreated + eventsUpdated;
     const totalFailure =
-      eventsFetched > 0 && imported === 0 && eventsFailed >= eventsFetched;
+      !eventsFetchSucceeded ||
+      (eventsFetched > 0 && imported === 0 && eventsFailed >= eventsFetched);
     const success = !totalFailure;
 
     await finishSyncLog(admin, log.id, {
@@ -383,6 +462,7 @@ export async function runUrinvolvedSync(syncType: "cron" | "manual" | "api" = "a
       eventsMapMatched,
       orgsCreated,
       orgsUpdated,
+      eventsFetchSucceeded,
       success,
     });
 

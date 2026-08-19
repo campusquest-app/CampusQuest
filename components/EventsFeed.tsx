@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import {
   ExternalEventLocationDisplay,
@@ -108,20 +108,33 @@ export function EventsFeed({
   const [activeDetail, setActiveDetail] = useState<FeedEvent | null>(null);
   const [rsvping, setRsvping] = useState<string | null>(null);
   const [reporting, setReporting] = useState<string | null>(null);
+  const loadGenerationRef = useRef(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
 
   async function loadEvents() {
+    // Abort in-flight work so a slower response cannot overwrite a newer refresh.
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    const generation = ++loadGenerationRef.current;
+
     setLoading(true);
     setError(null);
     setExternalLoadWarning(null);
+    const bust = `_=${Date.now()}`;
     try {
       const [campusResult, externalResult] = await Promise.allSettled([
-        fetchAuthed<{ events: EventItem[] }>("/api/events"),
-        fetchAuthed<{ events: ExternalEventItem[] }>("/api/external/events"),
+        fetchAuthed<{ events: EventItem[] }>(`/api/events?${bust}`, { signal: controller.signal }),
+        fetchAuthed<{ events: ExternalEventItem[] }>(`/api/external/events?${bust}`, {
+          signal: controller.signal,
+        }),
       ]);
+
+      if (generation !== loadGenerationRef.current) return;
 
       if (campusResult.status === "fulfilled") {
         setEvents(campusResult.value.events ?? []);
-      } else {
+      } else if (!controller.signal.aborted) {
         setEvents([]);
         setError(
           campusResult.reason instanceof Error ? campusResult.reason.message : "Could not load events.",
@@ -130,7 +143,7 @@ export function EventsFeed({
 
       if (externalResult.status === "fulfilled") {
         setExternalEvents(externalResult.value.events ?? []);
-      } else {
+      } else if (!controller.signal.aborted) {
         setExternalEvents([]);
         const message =
           externalResult.reason instanceof Error
@@ -142,14 +155,25 @@ export function EventsFeed({
         }
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Could not load events.");
+      if (generation !== loadGenerationRef.current) return;
+      const aborted =
+        (loadError instanceof DOMException && loadError.name === "AbortError") ||
+        (loadError instanceof Error && loadError.name === "AbortError");
+      if (!aborted) {
+        setError(loadError instanceof Error ? loadError.message : "Could not load events.");
+      }
     } finally {
-      setLoading(false);
+      if (generation === loadGenerationRef.current) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
     void loadEvents();
+    return () => {
+      loadAbortRef.current?.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

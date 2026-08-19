@@ -1,9 +1,14 @@
+import type { UrinvolvedDiscoveryEventRaw } from "@/lib/server/urinvolved/parseDiscoveryEvents";
+
 const URINVOLVED_EVENTS_RSS = "https://urinvolved.uri.edu/events.rss";
 const URINVOLVED_EVENT_DETAIL = "https://urinvolved.uri.edu/api/discovery/event/";
+const URINVOLVED_EVENTS_SEARCH = "https://urinvolved.uri.edu/api/discovery/event/search";
 const URINVOLVED_ORGS_SEARCH =
   "https://urinvolved.uri.edu/api/discovery/search/organizations";
 const CAMPUSLABS_IMAGE_BASE = "https://se-images.campuslabs.com/clink/images/";
 const FETCH_TIMEOUT_MS = 30_000;
+const EVENTS_SEARCH_PAGE_SIZE = 50;
+const EVENTS_SEARCH_MAX_PAGES = 40;
 
 export type UrinvolvedOrganizationRaw = {
   Id: string;
@@ -64,6 +69,52 @@ export async function fetchUrinvolvedEventsRss(): Promise<string> {
     throw new Error(`URInvolved events RSS failed (${response.status}).`);
   }
   return response.text();
+}
+
+/**
+ * Full upcoming public event catalog via Campus Labs discovery search.
+ * Prefer this over events.rss — the RSS feed is a rolling ~24h window and
+ * routinely returns 0 items even when many future events exist.
+ */
+export async function fetchUpcomingUrinvolvedDiscoveryEvents(options?: {
+  endsAfter?: Date;
+}): Promise<{
+  raw: UrinvolvedDiscoveryEventRaw[];
+  httpStatus: number;
+  totalCount: number;
+}> {
+  const endsAfter = (options?.endsAfter ?? new Date()).toISOString();
+  const all: UrinvolvedDiscoveryEventRaw[] = [];
+  let skip = 0;
+  let total = Infinity;
+  let lastStatus = 200;
+
+  for (let page = 0; page < EVENTS_SEARCH_MAX_PAGES && skip < total; page += 1) {
+    const url = new URL(URINVOLVED_EVENTS_SEARCH);
+    url.searchParams.set("take", String(EVENTS_SEARCH_PAGE_SIZE));
+    url.searchParams.set("skip", String(skip));
+    url.searchParams.set("orderByAsc", "startsOn");
+    url.searchParams.set("endsAfter", endsAfter);
+
+    const response = await fetchWithTimeout(url.toString());
+    lastStatus = response.status;
+    if (!response.ok) {
+      throw new Error(`URInvolved events discovery search failed (${response.status}).`);
+    }
+
+    const payload = (await response.json()) as {
+      "@odata.count"?: number;
+      value?: UrinvolvedDiscoveryEventRaw[];
+    };
+    const batch = payload.value ?? [];
+    total = payload["@odata.count"] ?? skip + batch.length;
+    all.push(...batch);
+    if (batch.length === 0) break;
+    skip += batch.length;
+    if (batch.length < EVENTS_SEARCH_PAGE_SIZE) break;
+  }
+
+  return { raw: all, httpStatus: lastStatus, totalCount: total === Infinity ? all.length : total };
 }
 
 export async function fetchUrinvolvedEventDetail(externalId: string): Promise<UrinvolvedEventDetailRaw | null> {
