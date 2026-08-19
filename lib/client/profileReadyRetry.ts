@@ -8,6 +8,7 @@ const PENDING_CODES = new Set<string>([
   "profile_setup_pending",
   "stats_setup_pending",
   "auth_user_not_ready",
+  "auth_created_setup_pending",
   "signup_profile_setup_failed",
 ]);
 

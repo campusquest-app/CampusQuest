@@ -19,8 +19,9 @@ describe("playerSetup backoff helpers", () => {
     expect(nextBackoffMs(10)).toBe(2000);
   });
 
-  it("budgets at least 10 seconds for setup", () => {
-    expect(PLAYER_SETUP_TIMEOUT_MS).toBeGreaterThanOrEqual(10_000);
+  it("budgets under typical serverless limits so signup can return recovery", () => {
+    expect(PLAYER_SETUP_TIMEOUT_MS).toBeGreaterThanOrEqual(5_000);
+    expect(PLAYER_SETUP_TIMEOUT_MS).toBeLessThanOrEqual(8_000);
   });
 
   it("detects foreign-key races against auth.users", () => {
@@ -56,6 +57,21 @@ describe("classifyProfileSetupError", () => {
     );
     expect(err.code).toBe("USERNAME_TAKEN");
   });
+
+  it("maps permanent setup failures after auth to AUTH_CREATED_SETUP_PENDING", () => {
+    const err = classifyProfileSetupError(
+      new ApiError(400, "column student_status does not exist", "PROFILE_SETUP_FAILED"),
+    );
+    expect(err.code).toBe("AUTH_CREATED_SETUP_PENDING");
+    expect(err.message.toLowerCase()).toContain("finishing");
+  });
+
+  it("does not treat profiles_pkey duplicates as USERNAME_TAKEN", () => {
+    const err = classifyProfileSetupError(
+      new ApiError(400, 'duplicate key value violates unique constraint "profiles_pkey"', "PROFILE_SETUP_FAILED"),
+    );
+    expect(err.code).toBe("AUTH_CREATED_SETUP_PENDING");
+  });
 });
 
 describe("auth error message mapping", () => {
@@ -70,6 +86,7 @@ describe("auth error message mapping", () => {
       ),
     );
     expect("message" in mapped && mapped.message.toLowerCase()).toContain("finishing");
+    expect("recoverSignIn" in mapped && mapped.recoverSignIn).toBe(true);
     expect("message" in mapped && mapped.message.toLowerCase()).not.toContain("not available yet");
   });
 

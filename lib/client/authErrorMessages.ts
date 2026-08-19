@@ -30,6 +30,7 @@ export const PROFILE_SETUP_CODES = new Set([
   "stats_setup_failed",
   "auth_user_not_ready",
   "signup_profile_setup_failed",
+  "auth_created_setup_pending",
   "profile_setup_pending",
   "stats_setup_pending",
   "player_setup_pending",
@@ -37,6 +38,18 @@ export const PROFILE_SETUP_CODES = new Set([
 
 const PENDING_SETUP_MESSAGE =
   "We're finishing your account setup. Please wait a moment, then try signing in.";
+
+const RECOVER_SIGN_IN_CODES = new Set([
+  "AUTH_CREATED_SETUP_PENDING",
+  "SIGNUP_PROFILE_SETUP_FAILED",
+  "AUTH_USER_NOT_READY",
+  "PROFILE_SETUP_PENDING",
+  "STATS_SETUP_PENDING",
+  "PLAYER_SETUP_PENDING",
+  "EMAIL_ALREADY_EXISTS",
+  "EMAIL_ALREADY_REGISTERED",
+  "SIGNUP_VERIFICATION_REQUIRED",
+]);
 
 function isPendingSetupError(error: HttpRequestError): boolean {
   const code = (error.code ?? "").toLowerCase();
@@ -67,9 +80,16 @@ function isSafeUserFacingSignupMessage(message: string): boolean {
   return true;
 }
 
-export function mapSignupError(
-  error: unknown,
-): { passwordRequirements: true } | { message: string } {
+export type SignupErrorMapped =
+  | { passwordRequirements: true }
+  | {
+      message: string;
+      /** Auth already exists / setup pending — leave Create Account for Sign In. */
+      recoverSignIn?: boolean;
+      verificationRequired?: boolean;
+    };
+
+export function mapSignupError(error: unknown): SignupErrorMapped {
   if (error instanceof HttpRequestError) {
     if (error.code === "PASSWORD_REQUIREMENTS" || isPasswordRequirementFailure(error.message, error.code)) {
       return { passwordRequirements: true };
@@ -79,12 +99,22 @@ export function mapSignupError(
         message: "Too many confirmation emails were sent. Please wait a few minutes before trying again.",
       };
     }
-    if (isPendingSetupError(error)) {
-      return { message: PENDING_SETUP_MESSAGE };
-    }
     const code = (error.code ?? "").toUpperCase();
+    if (code === "SIGNUP_VERIFICATION_REQUIRED" || code === "EMAIL_NOT_CONFIRMED") {
+      return {
+        message: "Check your URI email to confirm your account before signing in.",
+        recoverSignIn: true,
+        verificationRequired: true,
+      };
+    }
+    if (isPendingSetupError(error) || code === "AUTH_CREATED_SETUP_PENDING") {
+      return { message: PENDING_SETUP_MESSAGE, recoverSignIn: true };
+    }
     if (SAFE_SIGNUP_CODES.has(code) && isSafeUserFacingSignupMessage(error.message)) {
-      return { message: error.message.trim() };
+      const recoverSignIn = RECOVER_SIGN_IN_CODES.has(code);
+      return recoverSignIn
+        ? { message: error.message.trim(), recoverSignIn: true }
+        : { message: error.message.trim() };
     }
     if (error.status >= 500) {
       return { message: SIGNIN_USER_MESSAGES.server };
@@ -93,6 +123,12 @@ export function mapSignupError(
   }
   if (error instanceof Error && error.message.startsWith("NETWORK_ERROR:")) {
     return { message: SIGNIN_USER_MESSAGES.network };
+  }
+  if (error instanceof Error && error.message.startsWith("REQUEST_TIMEOUT:")) {
+    return {
+      message: PENDING_SETUP_MESSAGE,
+      recoverSignIn: true,
+    };
   }
   return { message: "Unable to create your account. Please try again." };
 }

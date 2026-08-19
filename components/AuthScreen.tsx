@@ -52,6 +52,19 @@ type Mode = "welcome" | "signin" | "signup";
 type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } | string };
 const REMEMBER_EMAIL_KEY = "cq_auth_remember_email";
 const SIGNUP_COOLDOWN_MS = 3000;
+/** Bound auth API waits so Create Account / Sign In cannot spin forever. */
+const AUTH_REQUEST_TIMEOUT_MS = 20_000;
+
+type SignupLifecycleUi =
+  | "idle"
+  | "submitting"
+  | "auth_created"
+  | "verification_required"
+  | "initializing"
+  | "onboarding"
+  | "complete"
+  | "recover_sign_in"
+  | "failed";
 
 const IS_DEV =
   typeof process !== "undefined" && process.env.NODE_ENV !== "production";
@@ -74,11 +87,18 @@ function logAuthClientError(context: string, error: unknown): void {
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), AUTH_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch(path, init);
-  } catch {
+    response = await fetch(path, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(`REQUEST_TIMEOUT:${path}`);
+    }
     throw new Error(`NETWORK_ERROR:${path}`);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
   const payload = (await response.json().catch(() => ({}))) as ApiResponse<T>;
   if (!response.ok) {
@@ -150,6 +170,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const signupLockedRef = useRef(false);
   const lastSignupAttemptRef = useRef(0);
   const loginLockedRef = useRef(false);
+  const [signupLifecycle, setSignupLifecycle] = useState<SignupLifecycleUi>("idle");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -399,10 +420,12 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     signupLockedRef.current = true;
     lastSignupAttemptRef.current = now;
     setIsSubmitting(true);
+    setSignupLifecycle("submitting");
     try {
       const payload = await fetchJson<{
         session?: { access_token?: string; refresh_token?: string };
         user?: { id?: string };
+        lifecycle?: string;
       }>("/api/auth/signup", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -410,39 +433,59 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       });
       const session = payload?.data?.session;
       const accessToken = session?.access_token;
+      const lifecycle = payload?.data?.lifecycle;
       if (!accessToken) {
+        const needsVerification =
+          lifecycle === "verification_required" || FEATURE_FLAGS.requireEmailVerification;
+        setSignupLifecycle(needsVerification ? "verification_required" : "recover_sign_in");
         setMode("signin");
         setEmail(eVal);
         setPassword("");
         setConfirmPassword("");
         setSuccessBanner("Account Created!");
         setNotice(
-          FEATURE_FLAGS.requireEmailVerification
+          needsVerification
             ? "Check your URI email to confirm your account before signing in."
             : "Sign in with your password to continue.",
         );
         return;
       }
+      setSignupLifecycle("auth_created");
       setAccessToken(accessToken);
       if (session?.refresh_token) {
         await persistSupabaseSession({ access_token: accessToken, refresh_token: session.refresh_token });
       }
       setSuccessBanner("Account Created!");
+      setSignupLifecycle("onboarding");
       await completeAuthenticatedSession({ isSignup: true });
+      setSignupLifecycle("complete");
     } catch (signUpError) {
       logAuthClientError("signup", signUpError);
       if (signUpError instanceof SchoolVerificationHttpError) {
         if (signUpError.status === 401) clearAccessToken();
+        setSignupLifecycle("failed");
         setError(signUpError.message);
         return;
       }
       const mapped = mapSignupError(signUpError);
       if ("passwordRequirements" in mapped) {
+        setSignupLifecycle("failed");
         setShowPasswordRequirementsError(true);
         setError(null);
         return;
       }
       setShowPasswordRequirementsError(false);
+      if (mapped.recoverSignIn) {
+        setSignupLifecycle(mapped.verificationRequired ? "verification_required" : "recover_sign_in");
+        setMode("signin");
+        setEmail(eVal);
+        setPassword("");
+        setConfirmPassword("");
+        setError(null);
+        setNotice(mapped.message);
+        return;
+      }
+      setSignupLifecycle("failed");
       setError(mapped.message);
     } finally {
       setIsSubmitting(false);
@@ -784,7 +827,11 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                 exit={reduceMotion ? undefined : "exit"}
                 transition={{ type: "spring", stiffness: 380, damping: 34 }}
               >
-                <form onSubmit={handleSignUp} className="space-y-4">
+                <form
+                  onSubmit={handleSignUp}
+                  className="space-y-4"
+                  data-signup-lifecycle={signupLifecycle}
+                >
                   <div>
                     <label htmlFor="auth-email-signup" className="cq-auth-label">
                       Email Address

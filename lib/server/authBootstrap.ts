@@ -124,11 +124,15 @@ export function classifyProfileSetupError(setupError: ApiError): ApiError {
   const msg = (setupError.message ?? "").toLowerCase();
   const code = setupError.code ?? "";
 
-  if (msg.includes("username") || msg.includes("duplicate") || msg.includes("unique")) {
+  // Only username uniqueness — not generic duplicate/pkey races on profiles.id.
+  if (
+    msg.includes("username") &&
+    (msg.includes("duplicate") || msg.includes("unique") || msg.includes("already"))
+  ) {
     return new ApiError(409, "This username is already taken.", "USERNAME_TAKEN");
   }
 
-  // Transient readiness failures — surface the specific setup message (503).
+  // Transient readiness failures — keep specific pending codes for recovery UX.
   if (
     code === "AUTH_USER_NOT_READY" ||
     code === "PROFILE_SETUP_PENDING" ||
@@ -142,16 +146,12 @@ export function classifyProfileSetupError(setupError: ApiError): ApiError {
     return new ApiError(409, "This username is already taken.", "USERNAME_TAKEN");
   }
 
-  // Dev-friendly diagnostics; production clients still get a recoverable message.
-  const detail =
-    process.env.NODE_ENV !== "production" && setupError.message
-      ? ` (${code || "SETUP_FAILED"}: ${setupError.message})`
-      : "";
-
+  // Auth already succeeded upstream — surface a recoverable pending code so the
+  // client moves to sign-in instead of trapping Create Account.
   return new ApiError(
     503,
-    `We're still finishing your account setup. Please wait a moment and try signing in.${detail}`,
-    "SIGNUP_PROFILE_SETUP_FAILED",
+    "We're finishing your account setup. Please wait a moment, then try signing in.",
+    "AUTH_CREATED_SETUP_PENDING",
   );
 }
 

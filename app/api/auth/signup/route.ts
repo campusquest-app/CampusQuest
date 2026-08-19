@@ -16,6 +16,13 @@ import { authSignupSchema, readJson } from "@/lib/server/validation";
 import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { signupEmailRejectionReason } from "@/lib/signupEmailPolicy";
 import { logEmailVerification } from "@/lib/authEmailDelivery";
+import {
+  isEmailAlreadyExistsError,
+  recoverExistingSignupEmail,
+  SIGNUP_AUTH_CREATED_SETUP_PENDING,
+  SIGNUP_VERIFICATION_REQUIRED,
+  toAuthCreatedSetupPendingError,
+} from "@/lib/server/signupRecovery";
 
 export async function POST(request: Request) {
   try {
@@ -52,12 +59,62 @@ export async function POST(request: Request) {
 
     const supabase = createPublicClient();
 
-    const provisioned = await provisionSignupAuthUser({
-      publicClient: supabase,
-      email: normalizedEmail,
-      password: input.password,
-      displayName: input.displayName,
-    });
+    let provisioned;
+    try {
+      provisioned = await provisionSignupAuthUser({
+        publicClient: supabase,
+        email: normalizedEmail,
+        password: input.password,
+        displayName: input.displayName,
+      });
+    } catch (provisionError) {
+      if (isEmailAlreadyExistsError(provisionError)) {
+        const recovered = await recoverExistingSignupEmail({
+          publicClient: supabase,
+          email: normalizedEmail,
+          password: input.password,
+          displayName: input.displayName,
+          username: input.username,
+        });
+        if (recovered.kind === "ready") {
+          const torchBearer = await tryAwardTorchBearerBadge({
+            userId: recovered.user.id,
+            user: recovered.user,
+            email: recovered.user.email,
+          });
+          return ok(
+            {
+              user: { id: recovered.user.id, email: recovered.user.email },
+              session: recovered.session,
+              profile: recovered.profile,
+              stats: recovered.stats,
+              torchBearer,
+              lifecycle: "complete",
+              recovered: true,
+              recoverySource: recovered.source,
+            },
+            200,
+          );
+        }
+        if (recovered.kind === "verification_required") {
+          return ok(
+            {
+              user: { id: recovered.userId, email: recovered.email },
+              session: null,
+              profile: null,
+              stats: null,
+              torchBearer: null,
+              lifecycle: "verification_required",
+              recovered: true,
+            },
+            200,
+          );
+        }
+        throw recovered.error;
+      }
+      throw provisionError;
+    }
+
     const authUser = provisioned.user;
 
     logAuthFlow("signup", "auth_sign_up", {
@@ -66,6 +123,7 @@ export async function POST(request: Request) {
       hasSession: Boolean(provisioned.session),
       emailConfirmed: Boolean(authUser.email_confirmed_at ?? authUser.confirmed_at),
       source: provisioned.source,
+      lifecycle: "auth_created",
     });
 
     let player;
@@ -82,6 +140,7 @@ export async function POST(request: Request) {
         profileId: player.profile.id,
         username: player.profile.username,
         elapsedMs: Date.now() - setupStarted,
+        lifecycle: "initializing",
       });
     } catch (setupError) {
       if (setupError instanceof ApiError) {
@@ -91,7 +150,9 @@ export async function POST(request: Request) {
           message: setupError.message,
           elapsedMs: Date.now() - setupStarted,
         });
-        throw classifyProfileSetupError(setupError);
+        // Auth user exists — never strand Create Account. Prefer recoverable sign-in.
+        const classified = classifyProfileSetupError(setupError);
+        throw toAuthCreatedSetupPendingError(classified);
       }
       throw setupError;
     }
@@ -122,6 +183,7 @@ export async function POST(request: Request) {
       logAuthFlow("signup", "session_unavailable", {
         userId: authUser.id,
         reason: "email_confirmation_required",
+        lifecycle: "verification_required",
       });
     }
 
@@ -143,6 +205,11 @@ export async function POST(request: Request) {
         profile: player.profile,
         stats: player.stats,
         torchBearer,
+        lifecycle: authSession
+          ? "complete"
+          : FEATURE_FLAGS.requireEmailVerification
+            ? "verification_required"
+            : "recover_sign_in",
       },
       201,
     );
@@ -159,6 +226,8 @@ export async function POST(request: Request) {
         status: error.status,
         code: error.code ?? null,
         message: error.message,
+        authCreatedPending: error.code === SIGNUP_AUTH_CREATED_SETUP_PENDING,
+        verificationRequired: error.code === SIGNUP_VERIFICATION_REQUIRED,
       });
     } else {
       logAuthError("signup", "unexpected_error", {

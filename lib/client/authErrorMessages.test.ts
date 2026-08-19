@@ -199,7 +199,10 @@ describe("mapSignupError", () => {
       mapSignupError(
         httpError(409, "An account with this email already exists. Try signing in instead.", "EMAIL_ALREADY_EXISTS"),
       ),
-    ).toEqual({ message: "An account with this email already exists. Try signing in instead." });
+    ).toEqual({
+      message: "An account with this email already exists. Try signing in instead.",
+      recoverSignIn: true,
+    });
   });
 
   it("maps network failures to a connection message", () => {
@@ -221,9 +224,25 @@ describe("mapSignupError", () => {
       ),
     ).toEqual({
       message: "We're finishing your account setup. Please wait a moment, then try signing in.",
+      recoverSignIn: true,
     });
     expect(
       mapSignupError(httpError(400, "JWT expired: supabase auth exception", "UNKNOWN")),
     ).toEqual({ message: "Unable to create your account. Please try again." });
+  });
+
+  it("moves AUTH_CREATED_SETUP_PENDING off Create Account via recoverSignIn", () => {
+    expect(
+      mapSignupError(
+        httpError(
+          503,
+          "We're finishing your account setup. Please wait a moment, then try signing in.",
+          "AUTH_CREATED_SETUP_PENDING",
+        ),
+      ),
+    ).toEqual({
+      message: "We're finishing your account setup. Please wait a moment, then try signing in.",
+      recoverSignIn: true,
+    });
   });
 });

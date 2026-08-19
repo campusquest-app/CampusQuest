@@ -6,8 +6,11 @@ import {
   QA_ACCOUNT_PROFILE_FLAGS,
 } from "@/lib/internalAccount";
 
-/** Total budget for auth/profile/stats to become ready after signup. */
-export const PLAYER_SETUP_TIMEOUT_MS = 10_000;
+/** Total budget for auth/profile/stats readiness after signup/login.
+ * Kept under typical serverless request limits so we can return a recoverable
+ * AUTH_CREATED_SETUP_PENDING response instead of being killed mid-setup.
+ */
+export const PLAYER_SETUP_TIMEOUT_MS = 6_500;
 
 const SETUP_LOG_PREFIX = "[cq:player-setup]";
 
