@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronLeft, Lock, Mail, Search } from "lucide-react";
+import { Check, ChevronLeft, GraduationCap, Lock, Mail, Search, User } from "lucide-react";
 import { patchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { getAccessToken } from "@/lib/client/apiSession";
 import { readAccessTokenClaims } from "@/lib/client/jwtClaims";
@@ -27,6 +27,11 @@ import {
   type InterestId,
   type StudentStatusId,
 } from "@/lib/onboarding/taxonomy";
+import {
+  OnboardingAmbient,
+  OnboardingMagicRing,
+  type OnboardingAmbientDensity,
+} from "@/components/onboarding/OnboardingAmbient";
 
 type Step =
   | "welcome"
@@ -76,6 +81,13 @@ function progressIndex(step: Step): number {
   return map[step];
 }
 
+function ambientForStep(step: Step): { density: OnboardingAmbientDensity; campusHaze: boolean } {
+  if (step === "welcome") return { density: "normal", campusHaze: true };
+  if (step === "success") return { density: "celebrate", campusHaze: false };
+  if (step === "email_verification") return { density: "calm", campusHaze: false };
+  return { density: "normal", campusHaze: false };
+}
+
 function readDraft(): Partial<DraftState> | null {
   if (typeof window === "undefined") return null;
   try {
@@ -103,11 +115,22 @@ function clearDraft() {
   }
 }
 
-function KnightArt({ src, alt }: { src: string; alt: string }) {
+function KnightStage({
+  src,
+  size = "md",
+  ring = "md",
+}: {
+  src: string;
+  size?: "sm" | "md" | "lg";
+  ring?: "sm" | "md" | "lg" | "none";
+}) {
   return (
-    <div className="cq-onboard-knight" aria-hidden={alt === ""}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} className="cq-onboard-knight-img" width={220} height={220} decoding="async" />
+    <div className={`cq-onboard-knight-stage cq-onboard-knight-stage--${size}`} aria-hidden="true">
+      {ring !== "none" ? <OnboardingMagicRing size={ring === "lg" ? "lg" : ring === "sm" ? "sm" : "md"} /> : null}
+      <div className="cq-onboard-knight">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt="" className="cq-onboard-knight-img" width={240} height={240} decoding="async" />
+      </div>
     </div>
   );
 }
@@ -115,10 +138,18 @@ function KnightArt({ src, alt }: { src: string; alt: string }) {
 function ProgressDots({ active }: { active: number }) {
   if (active < 0) return null;
   return (
-    <div className="cq-onboard-progress" role="progressbar" aria-valuemin={1} aria-valuemax={5} aria-valuenow={active + 1}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <span key={i} className={`cq-onboard-dot ${i === active ? "cq-onboard-dot--active" : ""}`} />
-      ))}
+    <div
+      className="cq-onboard-progress"
+      role="progressbar"
+      aria-valuemin={1}
+      aria-valuemax={5}
+      aria-valuenow={active + 1}
+      aria-label="Onboarding progress"
+    >
+      {Array.from({ length: 5 }).map((_, i) => {
+        const state = i < active ? "done" : i === active ? "active" : "todo";
+        return <span key={i} className={`cq-onboard-dot cq-onboard-dot--${state}`} />;
+      })}
     </div>
   );
 }
@@ -146,6 +177,7 @@ export function AuthOnboardingFlow({
   const [notice, setNotice] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [isResending, setIsResending] = useState(false);
+  const [sparkInterestId, setSparkInterestId] = useState<InterestId | null>(null);
   const submitLock = useRef(false);
   const yearOptions = graduationYearOptions();
 
@@ -171,16 +203,16 @@ export function AuthOnboardingFlow({
     return () => window.clearInterval(id);
   }, []);
 
-  // Preload next knight assets
+  // Preload next knight assets (official paths only)
   useEffect(() => {
     const next: Record<Step, string | null> = {
       welcome: BRAND_KNIGHT.welcoming,
       student_status: BRAND_KNIGHT.heroic,
       graduation_year: BRAND_KNIGHT.pointing,
       school: BRAND_KNIGHT.presenting,
-      interests: BRAND_KNIGHT.pointing,
-      communities: BRAND_KNIGHT.welcoming,
-      email_verification: BRAND_KNIGHT.thumbsUp,
+      interests: BRAND_KNIGHT.presentingRight,
+      communities: BRAND_KNIGHT.thumbsUp,
+      email_verification: BRAND_KNIGHT.heroic,
       success: null,
     };
     const src = next[step];
@@ -188,6 +220,12 @@ export function AuthOnboardingFlow({
     const img = new Image();
     img.src = src;
   }, [step]);
+
+  useEffect(() => {
+    if (!sparkInterestId) return;
+    const t = window.setTimeout(() => setSparkInterestId(null), 420);
+    return () => window.clearTimeout(t);
+  }, [sparkInterestId]);
 
   function go(next: Step) {
     setError(null);
@@ -198,6 +236,7 @@ export function AuthOnboardingFlow({
     setInterests((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
       if (prev.length >= 15) return prev;
+      setSparkInterestId(id);
       return [...prev, id];
     });
   }
@@ -286,11 +325,14 @@ export function AuthOnboardingFlow({
     stored: readResendCooldownState(),
   });
 
-  const whiteShell = step !== "welcome" && step !== "success";
+  const ambient = ambientForStep(step);
+  const showBack = step !== "welcome" && step !== "success";
 
   return (
-    <div className={`cq-onboard-shell ${whiteShell ? "cq-onboard-shell--light" : "cq-onboard-shell--dark"}`}>
-      {whiteShell ? (
+    <div className="cq-onboard-shell cq-onboard-shell--light">
+      <OnboardingAmbient density={ambient.density} showCampusHaze={ambient.campusHaze} />
+
+      {showBack ? (
         <button
           type="button"
           className="cq-onboard-back"
@@ -309,25 +351,31 @@ export function AuthOnboardingFlow({
       <div className="cq-onboard-inner">
         {step === "welcome" ? (
           <div className="cq-onboard-hero text-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={BRAND_LOGO_OFFICIAL}
-              alt="CampusQuest"
-              className="cq-onboard-logo"
-              width={88}
-              height={88}
-              decoding="async"
-            />
-            <KnightArt src={BRAND_KNIGHT.thumbsUp} alt="" />
-            <h1 className="cq-onboard-title-dark">
+            <div className="cq-onboard-logo-wrap">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={BRAND_LOGO_OFFICIAL}
+                alt="CampusQuest"
+                className="cq-onboard-logo"
+                width={88}
+                height={88}
+                decoding="async"
+              />
+            </div>
+            <KnightStage src={BRAND_KNIGHT.thumbsUp} size="lg" ring="lg" />
+            <h1 className="cq-onboard-title">
               Welcome to <span className="cq-onboard-title-accent">CampusQuest</span>
             </h1>
-            <p className="cq-onboard-sub-dark">
+            <p className="cq-onboard-sub">
               Your campus. Your community.
               <br />
               Your quest.
             </p>
-            <button type="button" className="cq-onboard-btn-gold" onClick={() => go("student_status")}>
+            <button
+              type="button"
+              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-8"
+              onClick={() => go("student_status")}
+            >
               Let&apos;s Get Started
             </button>
             <p className="cq-onboard-footer-link">
@@ -349,30 +397,47 @@ export function AuthOnboardingFlow({
 
         {step === "student_status" ? (
           <div className="cq-onboard-step">
-            <KnightArt src={BRAND_KNIGHT.welcoming} alt="" />
+            <div className="cq-onboard-knight-with-bubble">
+              <KnightStage src={BRAND_KNIGHT.welcoming} size="lg" ring="lg" />
+              <p className="cq-onboard-speech" aria-hidden="true">
+                Let&apos;s begin your quest.
+              </p>
+            </div>
             <h2 className="cq-onboard-question">Are you a current or incoming college student?</h2>
             <div className="cq-onboard-stack mt-6">
-              {STUDENT_STATUS_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={`cq-onboard-choice ${studentStatus === opt.id ? "cq-onboard-choice--primary" : ""}`}
-                  onClick={() => {
-                    setStudentStatus(opt.id);
-                    go("graduation_year");
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
+              {STUDENT_STATUS_OPTIONS.map((opt) => {
+                const isYes = opt.id === "current_or_incoming";
+                const selected = studentStatus === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    className={`cq-onboard-choice cq-onboard-choice--icon ${
+                      selected ? "cq-onboard-choice--primary" : isYes ? "cq-onboard-choice--emphasized" : ""
+                    }`}
+                    onClick={() => {
+                      setStudentStatus(opt.id);
+                      go("graduation_year");
+                    }}
+                  >
+                    {isYes ? (
+                      <GraduationCap className="h-5 w-5 shrink-0" aria-hidden />
+                    ) : (
+                      <User className="h-5 w-5 shrink-0" aria-hidden />
+                    )}
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         ) : null}
 
         {step === "graduation_year" ? (
           <div className="cq-onboard-step">
-            <KnightArt src={BRAND_KNIGHT.heroic} alt="" />
+            <KnightStage src={BRAND_KNIGHT.heroic} size="md" ring="md" />
             <h2 className="cq-onboard-question">When do you graduate?</h2>
+            <p className="cq-onboard-support">This helps us personalize your experience.</p>
             <div className="cq-onboard-stack mt-5">
               {yearOptions.map((opt) => {
                 const selected =
@@ -404,7 +469,7 @@ export function AuthOnboardingFlow({
 
         {step === "school" ? (
           <div className="cq-onboard-step">
-            <KnightArt src={BRAND_KNIGHT.pointing} alt="" />
+            <KnightStage src={BRAND_KNIGHT.pointing} size="md" ring="md" />
             <h2 className="cq-onboard-question">What school do you go to?</h2>
             <div className="cq-onboard-search" aria-hidden>
               <Search className="h-4 w-4 text-slate-400" />
@@ -422,6 +487,7 @@ export function AuthOnboardingFlow({
                 <span className="block font-semibold text-slate-900">{INSTITUTIONS.uri.name}</span>
                 <span className="block text-sm text-slate-500">{INSTITUTIONS.uri.city}</span>
               </span>
+              <Check className="ml-auto h-5 w-5 shrink-0 text-white" aria-hidden />
             </button>
             <p className="cq-onboard-muted-link mt-4">Can&apos;t find your school?</p>
           </div>
@@ -429,18 +495,21 @@ export function AuthOnboardingFlow({
 
         {step === "interests" ? (
           <div className="cq-onboard-step">
-            <KnightArt src={BRAND_KNIGHT.presenting} alt="" />
+            <KnightStage src={BRAND_KNIGHT.presenting} size="sm" ring="sm" />
             <h2 className="cq-onboard-question">What are you interested in?</h2>
             <p className="cq-onboard-support">Pick at least {MIN_INTERESTS} to personalize your feed.</p>
             <div className="cq-onboard-chip-grid" role="group" aria-label="Interests">
               {INTEREST_OPTIONS.map((opt) => {
                 const selected = interests.includes(opt.id);
+                const spark = sparkInterestId === opt.id;
                 return (
                   <button
                     key={opt.id}
                     type="button"
                     aria-pressed={selected}
-                    className={`cq-onboard-chip ${selected ? "cq-onboard-chip--selected" : ""}`}
+                    className={`cq-onboard-chip ${selected ? "cq-onboard-chip--selected" : ""} ${
+                      spark ? "cq-onboard-chip--spark" : ""
+                    }`}
                     onClick={() => toggleInterest(opt.id)}
                   >
                     {selected ? <Check className="h-3.5 w-3.5" aria-hidden /> : null}
@@ -452,7 +521,7 @@ export function AuthOnboardingFlow({
             <button
               type="button"
               disabled={interests.length < MIN_INTERESTS}
-              className="cq-onboard-btn-primary mt-6 disabled:opacity-40"
+              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-40"
               onClick={() => go("communities")}
             >
               Continue
@@ -462,7 +531,7 @@ export function AuthOnboardingFlow({
 
         {step === "communities" ? (
           <div className="cq-onboard-step">
-            <KnightArt src={BRAND_KNIGHT.pointing} alt="" />
+            <KnightStage src={BRAND_KNIGHT.presentingRight} size="sm" ring="sm" />
             <h2 className="cq-onboard-question">Find your communities.</h2>
             <p className="cq-onboard-support">Choose any that apply to you.</p>
             <div className="cq-onboard-community-grid" role="group" aria-label="Communities">
@@ -486,7 +555,11 @@ export function AuthOnboardingFlow({
               <button type="button" className="cq-onboard-text-btn" onClick={() => go("email_verification")}>
                 Skip
               </button>
-              <button type="button" className="cq-onboard-btn-primary cq-onboard-btn-primary--inline" onClick={() => go("email_verification")}>
+              <button
+                type="button"
+                className="cq-onboard-btn-primary cq-onboard-btn-primary--inline cq-onboard-btn-primary--glow"
+                onClick={() => go("email_verification")}
+              >
                 Continue
               </button>
             </div>
@@ -495,7 +568,7 @@ export function AuthOnboardingFlow({
 
         {step === "email_verification" ? (
           <div className="cq-onboard-step">
-            <KnightArt src={BRAND_KNIGHT.welcoming} alt="" />
+            <KnightStage src={BRAND_KNIGHT.thumbsUp} size="md" ring="lg" />
             <h2 className="cq-onboard-question">One more step!</h2>
             <p className="cq-onboard-support">
               Verify your URI email to unlock your full CampusQuest experience.
@@ -520,7 +593,7 @@ export function AuthOnboardingFlow({
             ) : (
               <button
                 type="button"
-                className="cq-onboard-btn-primary mt-5 disabled:opacity-50"
+                className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-5 disabled:opacity-50"
                 disabled={isResending || resendRemaining > 0 || !userEmail}
                 onClick={() => void sendVerificationEmail()}
               >
@@ -550,28 +623,29 @@ export function AuthOnboardingFlow({
 
         {step === "success" ? (
           <div className="cq-onboard-hero text-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={BRAND_LOGO_OFFICIAL}
-              alt="CampusQuest"
-              className="cq-onboard-logo"
-              width={88}
-              height={88}
-              decoding="async"
-            />
-            <div className="cq-onboard-confetti" aria-hidden />
-            <KnightArt src={BRAND_KNIGHT.thumbsUp} alt="" />
-            <h1 className="cq-onboard-title-gold">Preferences saved!</h1>
-            <p className="cq-onboard-sub-dark font-semibold">Next: create your character.</p>
-            <p className="cq-onboard-sub-dark mt-2">
-              Then explore campus,
+            <div className="cq-onboard-logo-wrap cq-onboard-logo-wrap--celebrate">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={BRAND_LOGO_OFFICIAL}
+                alt="CampusQuest"
+                className="cq-onboard-logo"
+                width={88}
+                height={88}
+                decoding="async"
+              />
+            </div>
+            <KnightStage src={BRAND_KNIGHT.heroic} size="lg" ring="lg" />
+            <h1 className="cq-onboard-title cq-onboard-title--celebrate">Preferences saved!</h1>
+            <p className="cq-onboard-sub cq-onboard-sub--strong">Your CampusQuest is taking shape.</p>
+            <p className="cq-onboard-sub mt-2">
+              Next: create your character.
               <br />
-              connect, and level up.
+              Then explore campus, connect, and level up.
             </p>
             {error ? <p className="cq-onboard-error mt-4">{error}</p> : null}
             <button
               type="button"
-              className="cq-onboard-btn-gold mt-8 disabled:opacity-60"
+              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-8 disabled:opacity-60"
               disabled={submitting}
               onClick={() => void finishAndExplore()}
             >
