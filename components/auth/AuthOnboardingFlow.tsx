@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronLeft, GraduationCap, Lock, Mail, Search, User } from "lucide-react";
-import { patchAuthed, postAuthed } from "@/lib/client/dashboardApi";
-import { getAccessToken } from "@/lib/client/apiSession";
+import { patchAuthed, postAuthed, fetchAuthed } from "@/lib/client/dashboardApi";
+import { getAccessToken, setAccessToken } from "@/lib/client/apiSession";
 import { readAccessTokenClaims } from "@/lib/client/jwtClaims";
 import {
   remainingResendCooldownMs,
@@ -13,6 +13,15 @@ import {
   formatResendCooldownLabel,
 } from "@/lib/client/authResendCooldown";
 import { FEATURE_FLAGS } from "@/lib/featureFlags";
+import { isOnboardingQaEmail } from "@/lib/onboardingQa";
+import {
+  clearVerificationQaCycleRecord,
+  rememberVerificationQaCycle,
+  resolveContinueBlockedForVerification,
+  resolveEmailVerifiedForOnboardingUi,
+  resolveStoredVerificationQaCycleId,
+} from "@/lib/client/verificationQaCycle";
+import { supabaseClient } from "@/lib/supabase/client";
 import { graduationYearOptions } from "@/lib/onboarding/graduationYear";
 import {
   BRAND_KNIGHT,
@@ -178,13 +187,32 @@ export function AuthOnboardingFlow({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [isResending, setIsResending] = useState(false);
   const [sparkInterestId, setSparkInterestId] = useState<InterestId | null>(null);
+  const [qaCyclePending, setQaCyclePending] = useState(false);
+  const [qaAuthoritativeConfirmed, setQaAuthoritativeConfirmed] = useState<boolean | null>(null);
+  const [qaCycleStarting, setQaCycleStarting] = useState(false);
   const submitLock = useRef(false);
+  const qaStatusInFlight = useRef(false);
   const yearOptions = graduationYearOptions();
 
   const claims = readAccessTokenClaims(getAccessToken());
   const userEmail = claims?.email ?? "";
-  const emailConfirmed =
-    claims?.emailConfirmed === true || (!FEATURE_FLAGS.requireEmailVerification && Boolean(claims?.sub));
+  const userId = claims?.sub ?? null;
+  const isQaAccount = isOnboardingQaEmail(userEmail);
+  const claimConfirmed = claims?.emailConfirmed === true;
+  const emailConfirmedAuthoritative =
+    isQaAccount && qaAuthoritativeConfirmed !== null ? qaAuthoritativeConfirmed : claimConfirmed;
+  const emailConfirmed = resolveEmailVerifiedForOnboardingUi({
+    email: userEmail,
+    emailConfirmedAuthoritative,
+    requireEmailVerification: FEATURE_FLAGS.requireEmailVerification,
+    hasSession: Boolean(claims?.sub),
+    qaCyclePending,
+  });
+  const continueBlocked = resolveContinueBlockedForVerification({
+    emailConfirmedAuthoritative,
+    requireEmailVerification: FEATURE_FLAGS.requireEmailVerification,
+    qaCyclePending,
+  });
 
   useEffect(() => {
     writeDraft({
@@ -226,6 +254,86 @@ export function AuthOnboardingFlow({
     const t = window.setTimeout(() => setSparkInterestId(null), 420);
     return () => window.clearTimeout(t);
   }, [sparkInterestId]);
+
+  async function refreshAuthoritativeVerificationStatus() {
+    if (!isQaAccount || qaStatusInFlight.current) return;
+    qaStatusInFlight.current = true;
+    try {
+      const view = await fetchAuthed<{
+        emailConfirmed: boolean;
+        cyclePending: boolean;
+        cycle: { cycleId: string } | null;
+      }>("/api/auth/qa/verification-cycle");
+      setQaAuthoritativeConfirmed(view.emailConfirmed);
+      setQaCyclePending(view.cyclePending);
+      if (view.cyclePending && view.cycle?.cycleId && userId) {
+        rememberVerificationQaCycle(userId, view.cycle.cycleId);
+      }
+      if (!view.cyclePending && view.emailConfirmed) {
+        clearVerificationQaCycleRecord();
+      }
+      // Prefer Auth JWT after a successful verify / cycle start.
+      const { data } = await supabaseClient.auth.refreshSession();
+      if (data.session?.access_token) {
+        setAccessToken(data.session.access_token);
+      }
+    } catch {
+      // Non-QA or transient — keep claim-based fallback.
+    } finally {
+      qaStatusInFlight.current = false;
+    }
+  }
+
+  // Load QA cycle status on the verification step only (GET — never auto-starts / re-sends).
+  useEffect(() => {
+    if (step !== "email_verification" || !isQaAccount) return;
+    void refreshAuthoritativeVerificationStatus();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshAuthoritativeVerificationStatus();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    const poll = window.setInterval(() => {
+      if (qaCyclePending) void refreshAuthoritativeVerificationStatus();
+    }, 4000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(poll);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional step/account gate
+  }, [step, isQaAccount, qaCyclePending, userId]);
+
+  async function startVerificationQaCycle(forceNew: boolean) {
+    if (!isQaAccount || !userId || qaCycleStarting) return;
+    setQaCycleStarting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const storedCycleId = resolveStoredVerificationQaCycleId(userId);
+      const result = await postAuthed<
+        {
+          cycleId: string;
+          emailSent: boolean;
+          alreadySent: boolean;
+          message: string;
+        },
+        { cycleId?: string; forceNew?: boolean }
+      >("/api/auth/qa/verification-cycle", forceNew ? { forceNew: true } : { cycleId: storedCycleId ?? undefined });
+      rememberVerificationQaCycle(userId, result.cycleId);
+      setQaCyclePending(true);
+      setQaAuthoritativeConfirmed(false);
+      setNotice(result.message || "Check your URI email.");
+      const { data } = await supabaseClient.auth.refreshSession();
+      if (data.session?.access_token) {
+        setAccessToken(data.session.access_token);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start verification QA cycle.");
+    } finally {
+      setQaCycleStarting(false);
+    }
+  }
 
   function go(next: Step) {
     setError(null);
@@ -279,7 +387,7 @@ export function AuthOnboardingFlow({
       setError("Please complete your onboarding selections.");
       return;
     }
-    if (FEATURE_FLAGS.requireEmailVerification && !emailConfirmed) {
+    if (continueBlocked) {
       setError("Verify your URI email before continuing.");
       go("email_verification");
       return;
@@ -586,11 +694,26 @@ export function AuthOnboardingFlow({
                 aria-readonly="true"
               />
             </div>
-            {emailConfirmed ? (
+            {emailConfirmed && !qaCyclePending ? (
               <p className="cq-onboard-success-note mt-3" role="status">
-                Your email is verified.
+                Email verified.
               </p>
             ) : (
+              <p className="cq-onboard-notice mt-3" role="status">
+                Check your URI email.
+              </p>
+            )}
+            {isQaAccount && !qaCyclePending ? (
+              <button
+                type="button"
+                className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-5 disabled:opacity-50"
+                disabled={qaCycleStarting}
+                onClick={() => void startVerificationQaCycle(true)}
+              >
+                {qaCycleStarting ? "Starting…" : "Start verification QA cycle"}
+              </button>
+            ) : null}
+            {!emailConfirmed ? (
               <button
                 type="button"
                 className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-5 disabled:opacity-50"
@@ -601,15 +724,17 @@ export function AuthOnboardingFlow({
                   ? "Sending…"
                   : resendRemaining > 0
                     ? formatResendCooldownLabel(resendRemaining)
-                    : "Send Verification Email"}
+                    : qaCyclePending
+                      ? "Resend verification email"
+                      : "Send Verification Email"}
               </button>
-            )}
+            ) : null}
             {notice ? <p className="cq-onboard-notice mt-3">{notice}</p> : null}
             {error ? <p className="cq-onboard-error mt-3">{error}</p> : null}
             <button
               type="button"
               className="cq-onboard-btn-primary mt-6 disabled:opacity-50"
-              disabled={FEATURE_FLAGS.requireEmailVerification && !emailConfirmed}
+              disabled={continueBlocked}
               onClick={() => go("success")}
             >
               Continue

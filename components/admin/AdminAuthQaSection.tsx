@@ -36,6 +36,7 @@ type AuthQaStatus = {
   onboardingQa: {
     email: string;
     mode: string;
+    verificationCycle: string;
   };
 };
 
@@ -117,6 +118,27 @@ export function AdminAuthQaSection() {
     }
   }
 
+  async function startVerificationQaCycle() {
+    setBusy("verification_qa_cycle");
+    setError(null);
+    setMessage(null);
+    try {
+      const data = await postAuthed<
+        { cycleId: string; emailSent: boolean; alreadySent: boolean; message: string },
+        { forceNew: boolean }
+      >("/api/auth/qa/verification-cycle", { forceNew: true });
+      setMessage(
+        data.emailSent
+          ? data.message
+          : `${data.message} (idempotent — no duplicate send)`,
+      );
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : "Could not start verification QA cycle.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section className="space-y-4">
       <AdminSectionIntro
@@ -156,9 +178,27 @@ export function AdminAuthQaSection() {
             <p className="text-xs text-white/60">
               Onboarding QA: {status.onboardingQa.email} — {status.onboardingQa.mode}
             </p>
+            <p className="text-xs text-white/55">{status.onboardingQa.verificationCycle}</p>
           </div>
         </div>
       ) : null}
+
+      <div className="cq-admin-panel p-4 space-y-3">
+        <p className="font-semibold text-white">Repeatable verification QA cycle</p>
+        <p className="text-xs text-white/55">
+          For the allowlisted QA account only (must be signed in as that account). Resets Auth
+          confirmation, sends exactly one Resend email for the new cycle, and leaves profile / XP /
+          admin role untouched. Remounts and refreshes do not send another email.
+        </p>
+        <button
+          type="button"
+          onClick={() => void startVerificationQaCycle()}
+          disabled={Boolean(busy)}
+          className="rounded-xl bg-uri-keaney px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {busy === "verification_qa_cycle" ? "Starting…" : "Start verification QA cycle"}
+        </button>
+      </div>
 
       <div className="cq-admin-panel p-4 space-y-3">
         <p className="font-semibold text-white">Account diagnostic</p>
@@ -237,10 +277,11 @@ export function AdminAuthQaSection() {
       <div className="cq-admin-panel p-4 space-y-2 text-xs text-white/50">
         <p className="font-semibold text-white/70">Manual checks this panel does not automate</p>
         <ul className="list-disc pl-4 space-y-1">
+          <li>Use Start verification QA cycle while signed in as the allowlisted QA account, then open the Resend email and confirm Continue stays blocked until the real callback succeeds.</li>
           <li>Open the email on iOS Safari and confirm the deep link returns to CampusQuest.</li>
           <li>Click an expired or already-used link and confirm the recovery screen appears.</li>
           <li>Duplicate-click the same valid link and confirm the second click is handled safely.</li>
-          <li>Turn on <code>requireEmailVerification</code> to test unconfirmed signup → real Resend delivery → callback.</li>
+          <li>Turn on <code>requireEmailVerification</code> to test unconfirmed signup → real Resend delivery → callback for normal users.</li>
         </ul>
       </div>
     </section>

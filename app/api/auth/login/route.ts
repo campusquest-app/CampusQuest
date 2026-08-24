@@ -17,6 +17,7 @@ import { createAdminClient, createPublicClient } from "@/lib/server/supabase";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { touchUserActivityById } from "@/lib/server/userActivity";
 import { authLoginSchema, readJson } from "@/lib/server/validation";
+import { userHasPendingVerificationQaCycle } from "@/lib/server/verificationQaCycle";
 
 function loginFail(failure: ClassifiedSignInFailure, debug?: Record<string, unknown>) {
   const logFailure = failure.status >= 500 ? logAuthError : logAuthFlow;
@@ -64,9 +65,24 @@ export async function POST(request: Request) {
 
       // Auto-confirm recovery only when the flag is off AND Supabase explicitly
       // reported email_not_confirmed (never for invalid_credentials).
+      // Skip while a verification QA cycle is pending — auto-confirm would fake it.
       if (isUnconfirmed && !FEATURE_FLAGS.requireEmailVerification) {
         const userId = await findAuthUserIdByEmail(input.email);
         if (userId) {
+          if (await userHasPendingVerificationQaCycle(userId)) {
+            return loginFail(
+              {
+                status: 401,
+                message: SIGNIN_USER_MESSAGES.emailNotConfirmed,
+                code: "EMAIL_NOT_CONFIRMED",
+              },
+              {
+                userId,
+                hasSession: false,
+                verificationQaCyclePending: true,
+              },
+            );
+          }
           const recovered = await confirmEmailAndSignIn({
             publicClient: supabase,
             userId,

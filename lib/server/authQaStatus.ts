@@ -48,6 +48,8 @@ export function buildAuthQaStatus() {
     onboardingQa: {
       email: ONBOARDING_QA_EMAIL,
       mode: "session-level replay — does not reset XP, admin role, or account data",
+      verificationCycle:
+        "Allowlisted self-only cycle: unconfirm Auth email → one Resend via Supabase SMTP → real /auth/callback",
     },
   };
 }
