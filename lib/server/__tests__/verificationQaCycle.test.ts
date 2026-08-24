@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import type { User } from "@supabase/supabase-js";
-import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { ONBOARDING_QA_EMAIL } from "@/lib/onboardingQa";
 import {
   buildPendingCycleMeta,
@@ -8,10 +7,12 @@ import {
   isEmailVerifiedForOnboardingUi,
   mergeVerificationQaAppMetadata,
   parseVerificationQaCycleMeta,
+  resolveVerificationStatusLabel,
   shouldBlockContinueForVerification,
   shouldReusePendingCycleEmail,
   shouldSkipAutoConfirmForVerificationQa,
   VERIFICATION_QA_APP_META_KEY,
+  VERIFICATION_QA_UI_COPY,
 } from "@/lib/verificationQaCycle";
 import {
   assertVerificationQaCaller,
@@ -93,25 +94,27 @@ describe("verification QA allowlist + UI gates", () => {
     );
   });
 
-  it("blocks Continue before authoritative verification during a pending QA cycle", () => {
+  it("does not block Continue for a QA delivery test when verification is not required", () => {
     expect(
       shouldBlockContinueForVerification({
         emailConfirmedAuthoritative: false,
-        requireEmailVerification: FEATURE_FLAGS.requireEmailVerification,
-        qaCyclePending: true,
-      }),
-    ).toBe(true);
-    expect(
-      isEmailVerifiedForOnboardingUi({
-        emailConfirmedAuthoritative: false,
         requireEmailVerification: false,
-        hasSession: true,
         qaCyclePending: true,
       }),
     ).toBe(false);
   });
 
-  it("does not treat feature-flag bypass as verified while a QA cycle is pending", () => {
+  it("still blocks Continue for normal users when verification is required and unconfirmed", () => {
+    expect(
+      shouldBlockContinueForVerification({
+        emailConfirmedAuthoritative: false,
+        requireEmailVerification: true,
+        qaCyclePending: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps feature-flag session bypass for verified UI when a delivery test is pending", () => {
     expect(
       isEmailVerifiedForOnboardingUi({
         emailConfirmedAuthoritative: false,
@@ -119,7 +122,7 @@ describe("verification QA allowlist + UI gates", () => {
         hasSession: true,
         qaCyclePending: true,
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isEmailVerifiedForOnboardingUi({
         emailConfirmedAuthoritative: true,
@@ -146,6 +149,28 @@ describe("verification QA allowlist + UI gates", () => {
         qaCyclePending: false,
       }),
     ).toBe(true);
+  });
+
+  it("separates QA already-verified status copy from normal verification copy", () => {
+    expect(
+      resolveVerificationStatusLabel({
+        isQaAccount: true,
+        qaAccountAlreadyVerified: true,
+        emailConfirmedForUi: true,
+      }),
+    ).toEqual({
+      kind: "qa_already_verified",
+      label: VERIFICATION_QA_UI_COPY.statusAlreadyVerified,
+    });
+    expect(
+      resolveVerificationStatusLabel({
+        isQaAccount: false,
+        qaAccountAlreadyVerified: false,
+        emailConfirmedForUi: false,
+      }),
+    ).toEqual({ kind: "needs_verification", label: "Check your URI email." });
+    expect(VERIFICATION_QA_UI_COPY.sendTestButton).toBe("Send test verification email");
+    expect(VERIFICATION_QA_UI_COPY.sentSuccess).toMatch(/newest email/i);
   });
 });
 

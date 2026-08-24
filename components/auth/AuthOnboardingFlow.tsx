@@ -19,8 +19,12 @@ import {
   rememberVerificationQaCycle,
   resolveContinueBlockedForVerification,
   resolveEmailVerifiedForOnboardingUi,
-  resolveStoredVerificationQaCycleId,
 } from "@/lib/client/verificationQaCycle";
+import {
+  resolveVerificationStatusLabel,
+  VERIFICATION_QA_UI_COPY,
+  type VerificationQaTestUiState,
+} from "@/lib/verificationQaCycle";
 import { supabaseClient } from "@/lib/supabase/client";
 import { graduationYearOptions } from "@/lib/onboarding/graduationYear";
 import {
@@ -189,9 +193,13 @@ export function AuthOnboardingFlow({
   const [sparkInterestId, setSparkInterestId] = useState<InterestId | null>(null);
   const [qaCyclePending, setQaCyclePending] = useState(false);
   const [qaAuthoritativeConfirmed, setQaAuthoritativeConfirmed] = useState<boolean | null>(null);
-  const [qaCycleStarting, setQaCycleStarting] = useState(false);
+  /** Sticky: once Auth reports verified for the QA account, keep onboarding status/Continue stable during delivery tests. */
+  const [qaAccountAlreadyVerified, setQaAccountAlreadyVerified] = useState(false);
+  const [qaTestUiState, setQaTestUiState] = useState<VerificationQaTestUiState>("idle");
+  const [qaTestNotice, setQaTestNotice] = useState<string | null>(null);
   const submitLock = useRef(false);
   const qaStatusInFlight = useRef(false);
+  const qaSendLock = useRef(false);
   const yearOptions = graduationYearOptions();
 
   const claims = readAccessTokenClaims(getAccessToken());
@@ -201,18 +209,22 @@ export function AuthOnboardingFlow({
   const claimConfirmed = claims?.emailConfirmed === true;
   const emailConfirmedAuthoritative =
     isQaAccount && qaAuthoritativeConfirmed !== null ? qaAuthoritativeConfirmed : claimConfirmed;
-  const emailConfirmed = resolveEmailVerifiedForOnboardingUi({
+  const emailConfirmedForUi = resolveEmailVerifiedForOnboardingUi({
     email: userEmail,
-    emailConfirmedAuthoritative,
+    emailConfirmedAuthoritative: isQaAccount && qaAccountAlreadyVerified ? true : emailConfirmedAuthoritative,
     requireEmailVerification: FEATURE_FLAGS.requireEmailVerification,
     hasSession: Boolean(claims?.sub),
-    qaCyclePending,
   });
   const continueBlocked = resolveContinueBlockedForVerification({
-    emailConfirmedAuthoritative,
+    emailConfirmedAuthoritative: isQaAccount && qaAccountAlreadyVerified ? true : emailConfirmedAuthoritative,
     requireEmailVerification: FEATURE_FLAGS.requireEmailVerification,
-    qaCyclePending,
   });
+  const verificationStatus = resolveVerificationStatusLabel({
+    isQaAccount,
+    qaAccountAlreadyVerified,
+    emailConfirmedForUi,
+  });
+  const qaSending = qaTestUiState === "sending";
 
   useEffect(() => {
     writeDraft({
@@ -266,13 +278,15 @@ export function AuthOnboardingFlow({
       }>("/api/auth/qa/verification-cycle");
       setQaAuthoritativeConfirmed(view.emailConfirmed);
       setQaCyclePending(view.cyclePending);
+      if (view.emailConfirmed) {
+        setQaAccountAlreadyVerified(true);
+      }
       if (view.cyclePending && view.cycle?.cycleId && userId) {
         rememberVerificationQaCycle(userId, view.cycle.cycleId);
       }
       if (!view.cyclePending && view.emailConfirmed) {
         clearVerificationQaCycleRecord();
       }
-      // Prefer Auth JWT after a successful verify / cycle start.
       const { data } = await supabaseClient.auth.refreshSession();
       if (data.session?.access_token) {
         setAccessToken(data.session.access_token);
@@ -283,6 +297,12 @@ export function AuthOnboardingFlow({
       qaStatusInFlight.current = false;
     }
   }
+
+  // Seed QA verified baseline from JWT before the status GET returns.
+  useEffect(() => {
+    if (!isQaAccount) return;
+    if (claimConfirmed) setQaAccountAlreadyVerified(true);
+  }, [isQaAccount, claimConfirmed]);
 
   // Load QA cycle status on the verification step only (GET — never auto-starts / re-sends).
   useEffect(() => {
@@ -304,13 +324,14 @@ export function AuthOnboardingFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional step/account gate
   }, [step, isQaAccount, qaCyclePending, userId]);
 
-  async function startVerificationQaCycle(forceNew: boolean) {
-    if (!isQaAccount || !userId || qaCycleStarting) return;
-    setQaCycleStarting(true);
+  async function sendQaTestVerificationEmail() {
+    if (!isQaAccount || !userId || qaSendLock.current) return;
+    qaSendLock.current = true;
+    setQaTestUiState("sending");
     setError(null);
+    setQaTestNotice(null);
     setNotice(null);
     try {
-      const storedCycleId = resolveStoredVerificationQaCycleId(userId);
       const result = await postAuthed<
         {
           cycleId: string;
@@ -318,20 +339,23 @@ export function AuthOnboardingFlow({
           alreadySent: boolean;
           message: string;
         },
-        { cycleId?: string; forceNew?: boolean }
-      >("/api/auth/qa/verification-cycle", forceNew ? { forceNew: true } : { cycleId: storedCycleId ?? undefined });
+        { forceNew: boolean }
+      >("/api/auth/qa/verification-cycle", { forceNew: true });
       rememberVerificationQaCycle(userId, result.cycleId);
       setQaCyclePending(true);
-      setQaAuthoritativeConfirmed(false);
-      setNotice(result.message || "Check your URI email.");
+      // Keep onboarding status/Continue on the verified baseline — delivery test is separate.
+      setQaTestUiState("sent");
+      setQaTestNotice(VERIFICATION_QA_UI_COPY.sentSuccess);
       const { data } = await supabaseClient.auth.refreshSession();
       if (data.session?.access_token) {
         setAccessToken(data.session.access_token);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start verification QA cycle.");
+      setQaTestUiState("failed");
+      setError(err instanceof Error ? err.message : VERIFICATION_QA_UI_COPY.sendFailedFallback);
     } finally {
-      setQaCycleStarting(false);
+      qaSendLock.current = false;
+      setQaTestUiState((prev) => (prev === "sending" ? "idle" : prev));
     }
   }
 
@@ -694,29 +718,33 @@ export function AuthOnboardingFlow({
                 aria-readonly="true"
               />
             </div>
-            {emailConfirmed && !qaCyclePending ? (
-              <p className="cq-onboard-success-note mt-3" role="status">
-                Email verified.
-              </p>
-            ) : (
-              <p className="cq-onboard-notice mt-3" role="status">
-                Check your URI email.
-              </p>
-            )}
-            {isQaAccount && !qaCyclePending ? (
+
+            <p
+              className={
+                verificationStatus.kind === "needs_verification"
+                  ? "cq-onboard-notice mt-3"
+                  : "cq-onboard-success-note mt-3"
+              }
+              role="status"
+            >
+              {verificationStatus.label}
+            </p>
+
+            {/* Primary action: Continue when verified / allowed */}
+            <button
+              type="button"
+              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50"
+              disabled={continueBlocked}
+              onClick={() => go("success")}
+            >
+              Continue
+            </button>
+
+            {/* Normal users who still need verification — never QA controls */}
+            {!isQaAccount && !emailConfirmedForUi ? (
               <button
                 type="button"
-                className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-5 disabled:opacity-50"
-                disabled={qaCycleStarting}
-                onClick={() => void startVerificationQaCycle(true)}
-              >
-                {qaCycleStarting ? "Starting…" : "Start verification QA cycle"}
-              </button>
-            ) : null}
-            {!emailConfirmed ? (
-              <button
-                type="button"
-                className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-5 disabled:opacity-50"
+                className="cq-onboard-btn-primary mt-4 disabled:opacity-50"
                 disabled={isResending || resendRemaining > 0 || !userEmail}
                 onClick={() => void sendVerificationEmail()}
               >
@@ -724,21 +752,32 @@ export function AuthOnboardingFlow({
                   ? "Sending…"
                   : resendRemaining > 0
                     ? formatResendCooldownLabel(resendRemaining)
-                    : qaCyclePending
-                      ? "Resend verification email"
-                      : "Send Verification Email"}
+                    : "Send Verification Email"}
               </button>
             ) : null}
-            {notice ? <p className="cq-onboard-notice mt-3">{notice}</p> : null}
+
+            {/* Allowlisted QA only: secondary delivery test, separate from verification status */}
+            {isQaAccount && qaAccountAlreadyVerified ? (
+              <div className="mt-6">
+                <button
+                  type="button"
+                  className="cq-onboard-text-btn disabled:opacity-50"
+                  disabled={qaSending}
+                  onClick={() => void sendQaTestVerificationEmail()}
+                >
+                  {qaSending ? VERIFICATION_QA_UI_COPY.sending : VERIFICATION_QA_UI_COPY.sendTestButton}
+                </button>
+                {qaTestNotice ? (
+                  <p className="cq-onboard-notice mt-3" role="status">
+                    {qaTestNotice}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {notice && !isQaAccount ? <p className="cq-onboard-notice mt-3">{notice}</p> : null}
             {error ? <p className="cq-onboard-error mt-3">{error}</p> : null}
-            <button
-              type="button"
-              className="cq-onboard-btn-primary mt-6 disabled:opacity-50"
-              disabled={continueBlocked}
-              onClick={() => go("success")}
-            >
-              Continue
-            </button>
+
             <p className="cq-onboard-privacy mt-8">
               <Lock className="inline h-3.5 w-3.5" aria-hidden /> Your email stays private to CampusQuest account
               security.

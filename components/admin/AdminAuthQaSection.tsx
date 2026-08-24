@@ -205,7 +205,7 @@ export function AdminAuthQaSection() {
           disabled={Boolean(busy)}
           className="rounded-xl bg-uri-keaney px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {busy === "verification_qa_cycle" ? "Starting…" : "Start verification QA cycle"}
+          {busy === "verification_qa_cycle" ? "Sending test email..." : "Send test verification email"}
         </button>
       </div>
 
@@ -286,7 +286,7 @@ export function AdminAuthQaSection() {
       <div className="cq-admin-panel p-4 space-y-2 text-xs text-white/50">
         <p className="font-semibold text-white/70">Manual checks this panel does not automate</p>
         <ul className="list-disc pl-4 space-y-1">
-          <li>Use Start verification QA cycle while signed in as the allowlisted QA account, then open the Resend email and confirm Continue stays blocked until the real callback succeeds.</li>
+          <li>Use Send test verification email while signed in as the allowlisted QA account, then open the newest Resend message to exercise /auth/callback. Continue stays available because the account is already verified.</li>
           <li>Open the email on iOS Safari and confirm the deep link returns to CampusQuest.</li>
           <li>Click an expired or already-used link and confirm the recovery screen appears.</li>
           <li>Duplicate-click the same valid link and confirm the second click is handled safely.</li>

@@ -3,7 +3,6 @@
  * Never stores tokens, Resend keys, or service-role credentials.
  */
 
-import { isOnboardingQaEmail } from "@/lib/onboardingQa";
 import {
   isEmailVerifiedForOnboardingUi,
   shouldBlockContinueForVerification,
@@ -63,21 +62,22 @@ export function resolveEmailVerifiedForOnboardingUi(args: {
   emailConfirmedAuthoritative: boolean;
   requireEmailVerification: boolean;
   hasSession: boolean;
-  qaCyclePending: boolean;
+  qaCyclePending?: boolean;
 }): boolean {
-  const qaCyclePending = isOnboardingQaEmail(args.email) ? args.qaCyclePending : false;
   return isEmailVerifiedForOnboardingUi({
     emailConfirmedAuthoritative: args.emailConfirmedAuthoritative,
     requireEmailVerification: args.requireEmailVerification,
     hasSession: args.hasSession,
-    qaCyclePending,
   });
 }
 
 export function resolveContinueBlockedForVerification(args: {
   emailConfirmedAuthoritative: boolean;
   requireEmailVerification: boolean;
-  qaCyclePending: boolean;
+  qaCyclePending?: boolean;
 }): boolean {
-  return shouldBlockContinueForVerification(args);
+  return shouldBlockContinueForVerification({
+    emailConfirmedAuthoritative: args.emailConfirmedAuthoritative,
+    requireEmailVerification: args.requireEmailVerification,
+  });
 }

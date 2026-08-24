@@ -61,31 +61,59 @@ export function shouldSkipAutoConfirmForVerificationQa(appMetadata: unknown): bo
 }
 
 /**
- * UI gate: during an active QA cycle, only authoritative auth confirmation counts.
- * Normal users keep feature-flag behavior.
+ * UI gate for onboarding “email verified” display.
+ * QA delivery tests must not flip a verified account into “needs verification” copy —
+ * callers should pass a sticky verified baseline for allowlisted QA accounts.
  */
 export function isEmailVerifiedForOnboardingUi(args: {
   emailConfirmedAuthoritative: boolean;
   requireEmailVerification: boolean;
   hasSession: boolean;
-  qaCyclePending: boolean;
+  /** @deprecated Ignored — delivery tests must not rewrite verified UI status. */
+  qaCyclePending?: boolean;
 }): boolean {
-  if (args.qaCyclePending) {
-    return args.emailConfirmedAuthoritative;
-  }
   if (args.emailConfirmedAuthoritative) return true;
   if (!args.requireEmailVerification && args.hasSession) return true;
   return false;
 }
 
+/**
+ * Continue gate for onboarding verification.
+ * QA delivery/test emails must not block Continue — only real verification requirements do.
+ */
 export function shouldBlockContinueForVerification(args: {
   emailConfirmedAuthoritative: boolean;
   requireEmailVerification: boolean;
-  qaCyclePending: boolean;
+  /** @deprecated Ignored — QA test sends must not gate Continue. */
+  qaCyclePending?: boolean;
 }): boolean {
-  if (args.qaCyclePending) return !args.emailConfirmedAuthoritative;
   if (!args.requireEmailVerification) return false;
   return !args.emailConfirmedAuthoritative;
+}
+
+/** Fixed copy for the allowlisted verification delivery test (onboarding UI). */
+export const VERIFICATION_QA_UI_COPY = {
+  statusAlreadyVerified: "Verification status: Already verified",
+  sendTestButton: "Send test verification email",
+  sending: "Sending test email...",
+  sentSuccess: "Test email sent. Open the newest email to test the verification link.",
+  sendFailedFallback: "Could not send the test verification email. Please try again.",
+} as const;
+
+export type VerificationQaTestUiState = "idle" | "sending" | "sent" | "failed";
+
+export function resolveVerificationStatusLabel(args: {
+  isQaAccount: boolean;
+  qaAccountAlreadyVerified: boolean;
+  emailConfirmedForUi: boolean;
+}): { kind: "qa_already_verified" | "verified" | "needs_verification"; label: string } {
+  if (args.isQaAccount && args.qaAccountAlreadyVerified) {
+    return { kind: "qa_already_verified", label: VERIFICATION_QA_UI_COPY.statusAlreadyVerified };
+  }
+  if (args.emailConfirmedForUi) {
+    return { kind: "verified", label: "Email verified." };
+  }
+  return { kind: "needs_verification", label: "Check your URI email." };
 }
 
 export function buildPendingCycleMeta(args: {
