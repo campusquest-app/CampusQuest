@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Briefcase, Check, GraduationCap } from "lucide-react";
 import { replaceLocalCharacter } from "@/lib/store";
 import { getAccessToken } from "@/lib/client/apiSession";
 import {
@@ -17,56 +16,16 @@ import {
 import { AVATAR_LOOK_PRESETS } from "@/lib/avatarPresets";
 import { CHARACTER_CLASSES } from "@/lib/characterClasses";
 import { AvatarDisplay } from "./AvatarDisplay";
-import { ApiRequestError, fetchAuthed, patchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
 import { resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
+import { resolveCharacterGateIdentity } from "@/lib/client/characterGateIdentity";
 import { CampusQuestLogo } from "@/components/CampusQuestLogo";
-import { hasValidRoleSelection, type SelectableRole } from "@/lib/roles";
 
-const USERNAME_REGEX = /^[a-z0-9_]+$/;
-const USERNAME_MAX = 25;
-const NAME_MAX = 40;
-
-type OnboardingStep = "identity" | "avatar" | "ready";
-
-type AccountTypeResponse = {
-  profile: MeProfileRow;
-  role: string;
-  selectedRole: SelectableRole;
-  roleLabel: string;
-};
-
-function toUsername(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "")
-    .slice(0, USERNAME_MAX);
-}
-
-const ROLE_OPTIONS: {
-  role: SelectableRole;
-  title: string;
-  description: string;
-  Icon: typeof GraduationCap;
-}[] = [
-  {
-    role: "student",
-    title: "Student",
-    description: "Discover events, join orgs, and explore CampusQuest.",
-    Icon: GraduationCap,
-  },
-  {
-    role: "faculty_staff",
-    title: "Faculty / Staff",
-    description: "Share opportunities and support students on campus.",
-    Icon: Briefcase,
-  },
-];
+type OnboardingStep = "avatar" | "ready";
 
 function StepDots({ step }: { step: OnboardingStep }) {
-  const order: OnboardingStep[] = ["identity", "avatar", "ready"];
+  const order: OnboardingStep[] = ["avatar", "ready"];
   return (
     <div className="flex items-center justify-center gap-2" aria-label="Onboarding progress">
       {order.map((id, i) => {
@@ -84,6 +43,11 @@ function StepDots({ step }: { step: OnboardingStep }) {
   );
 }
 
+/**
+ * Character / avatar onboarding.
+ * Username is collected only at signup; display name is collected in DisplayNameGate
+ * before demographics. Role selection is handled by RoleSelectionGate.
+ */
 export function CharacterGate({
   prefillProfile,
   preserveExistingProgress = false,
@@ -94,35 +58,21 @@ export function CharacterGate({
   preserveExistingProgress?: boolean;
   onReady: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
-  const [accountRole, setAccountRole] = useState<SelectableRole | null>(null);
-  const [needsRolePick, setNeedsRolePick] = useState(true);
+  const [profile, setProfile] = useState<MeProfileRow | null>(prefillProfile ?? null);
   const [config, setConfig] = useState<AvatarConfig>(() => createDefaultAvatarConfig());
   const [selectedStarterId, setSelectedStarterId] = useState<string | null>(
     () => createDefaultAvatarConfig().presetId,
   );
-  const [step, setStep] = useState<OnboardingStep>("identity");
+  const [step, setStep] = useState<OnboardingStep>("avatar");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [identitySaving, setIdentitySaving] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(!prefillProfile);
   const saveLockRef = useRef(false);
 
   useEffect(() => {
     if (!prefillProfile) return;
-    setName(prefillProfile.display_name?.trim() || "");
-    setUsername(toUsername(prefillProfile.username ?? ""));
-    const hasRole = hasValidRoleSelection(prefillProfile);
-    setNeedsRolePick(!hasRole);
-    if (hasRole) {
-      const chosen =
-        prefillProfile.is_test_user === true || prefillProfile.role === "qa"
-          ? prefillProfile.qa_selected_role
-          : prefillProfile.role;
-      if (chosen === "student" || chosen === "faculty_staff") {
-        setAccountRole(chosen);
-      }
-    }
+    setProfile(prefillProfile);
+    setLoadingProfile(false);
     const stored = parseStoredAvatarConfig(
       prefillProfile.avatar_custom_json,
       prefillProfile.character_class_id,
@@ -133,32 +83,43 @@ export function CharacterGate({
     }
   }, [prefillProfile]);
 
-  const nameTrimmed = name.trim();
-  const usernameNormalized = toUsername(username || nameTrimmed);
-  const nameValid = nameTrimmed.length >= 1 && nameTrimmed.length <= NAME_MAX;
-  const usernameValid =
-    usernameNormalized.length >= 3 &&
-    usernameNormalized.length <= USERNAME_MAX &&
-    USERNAME_REGEX.test(usernameNormalized);
-  const roleValid = !needsRolePick || accountRole != null;
-  const canContinueIdentity = nameValid && usernameValid && roleValid;
+  useEffect(() => {
+    if (prefillProfile) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const row = await fetchAuthed<MeProfileRow>("/api/me/profile");
+        if (cancelled) return;
+        setProfile(row);
+        const stored = parseStoredAvatarConfig(row.avatar_custom_json, row.character_class_id);
+        if (stored) {
+          setConfig(stored);
+          if (stored.presetId) setSelectedStarterId(stored.presetId);
+        }
+      } catch {
+        if (!cancelled) {
+          setSubmitError("Could not load your profile. Refresh and try again.");
+        }
+      } finally {
+        if (!cancelled) setLoadingProfile(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [prefillProfile]);
 
+  const identity = resolveCharacterGateIdentity(profile ?? {});
   const avatarJson = useMemo(() => serializeAvatarConfig(config), [config]);
-  const canFinish = canCompleteAvatarOnboarding({
-    displayName: nameTrimmed,
-    username: usernameNormalized,
-    config,
-  });
-
-  const handleNameChange = useCallback(
-    (value: string) => {
-      const next = value.slice(0, NAME_MAX);
-      setName(next);
-      setSubmitError(null);
-      if (!username) setUsername(toUsername(next));
-    },
-    [username],
-  );
+  const canFinish =
+    !loadingProfile &&
+    identity.usernameValid &&
+    identity.displayNameValid &&
+    canCompleteAvatarOnboarding({
+      displayName: identity.displayName,
+      username: identity.username,
+      config,
+    });
 
   const selectStarter = useCallback(
     (presetSeed: string) => {
@@ -176,41 +137,14 @@ export function CharacterGate({
     setSelectedStarterId(null);
   }, []);
 
-  async function handleIdentityContinue() {
-    if (!canContinueIdentity || identitySaving) return;
-    setIdentitySaving(true);
-    setSubmitError(null);
-    try {
-      if (needsRolePick && accountRole && !preserveExistingProgress) {
-        const result = await postAuthed<AccountTypeResponse, { role: SelectableRole }>(
-          "/api/me/account-type",
-          { role: accountRole },
-        );
-        if (!result?.profile) {
-          throw new Error("Your account type could not be confirmed. Please try again.");
-        }
-        setNeedsRolePick(false);
-      }
-      setStep("avatar");
-    } catch (err) {
-      if (err instanceof ApiRequestError && err.status === 503) {
-        setSubmitError("Account types are not available yet. Please try again in a moment.");
-      } else {
-        setSubmitError(err instanceof Error ? err.message : "Something went wrong. Try again.");
-      }
-    } finally {
-      setIdentitySaving(false);
-    }
-  }
-
   async function handleEnterCampusQuest() {
     if (!canFinish || saveLockRef.current) return;
     saveLockRef.current = true;
     setSaving(true);
     setSubmitError(null);
     const payloadConfig = config;
-    const payloadName = nameTrimmed;
-    const payloadUsername = usernameNormalized;
+    const payloadName = identity.displayName;
+    const payloadUsername = identity.username;
     try {
       const payload = preserveExistingProgress
         ? {
@@ -245,8 +179,8 @@ export function CharacterGate({
         return;
       }
       if (err instanceof ApiRequestError && err.status === 409) {
-        setSubmitError("That username is already taken. Pick another.");
-        setStep("identity");
+        // Should be rare: username is signup-owned. Surface error without reopening a username form.
+        setSubmitError("Your signup username could not be confirmed. Sign out and try again, or contact support.");
       } else {
         setSubmitError(err instanceof Error ? err.message : "Something went wrong. Try again.");
       }
@@ -270,111 +204,6 @@ export function CharacterGate({
         </header>
 
         <div className="cq-avatar-onboarding__controls cq-avatar-onboarding__controls--solo">
-          {step === "identity" ? (
-            <div className="space-y-5" data-testid="step-identity">
-              <div className="text-center">
-                <h1 className="font-display text-2xl font-bold text-white">Welcome to CampusQuest</h1>
-                <p className="mt-1 text-sm text-white/60">A few quick details and you’re in.</p>
-              </div>
-
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <label
-                    htmlFor="char-name"
-                    className="block text-xs font-semibold uppercase tracking-wider text-white/70"
-                  >
-                    Display name <span className="text-amber-400">*</span>
-                  </label>
-                  <input
-                    id="char-name"
-                    type="text"
-                    value={name}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    placeholder="e.g. Alex"
-                    maxLength={NAME_MAX}
-                    autoComplete="name"
-                    className="cq-avatar-input"
-                    aria-required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label
-                    htmlFor="char-username"
-                    className="block text-xs font-semibold uppercase tracking-wider text-white/70"
-                  >
-                    Username <span className="text-amber-400">*</span>
-                  </label>
-                  <input
-                    id="char-username"
-                    type="text"
-                    value={username}
-                    onChange={(e) => {
-                      setUsername(toUsername(e.target.value));
-                      setSubmitError(null);
-                    }}
-                    placeholder="e.g. alex_rhody"
-                    maxLength={USERNAME_MAX}
-                    autoComplete="username"
-                    className="cq-avatar-input font-mono text-sm"
-                    aria-required
-                  />
-                  <p className="text-xs text-white/45">
-                    You’ll appear as @{usernameNormalized || "username"}
-                  </p>
-                </div>
-              </div>
-
-              {needsRolePick ? (
-                <div className="space-y-2" role="radiogroup" aria-label="Student or Faculty / Staff">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-white/70">
-                    I am a… <span className="text-amber-400">*</span>
-                  </p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {ROLE_OPTIONS.map(({ role, title, description, Icon }) => {
-                      const selected = accountRole === role;
-                      return (
-                        <button
-                          key={role}
-                          type="button"
-                          role="radio"
-                          aria-checked={selected}
-                          onClick={() => {
-                            setAccountRole(role);
-                            setSubmitError(null);
-                          }}
-                          className={`relative min-h-[44px] rounded-2xl border p-4 text-left transition-colors ${
-                            selected
-                              ? "border-uri-keaney bg-uri-keaney/15"
-                              : "border-white/15 bg-white/[0.04] hover:border-uri-keaney/40"
-                          }`}
-                        >
-                          {selected ? (
-                            <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-uri-keaney text-uri-navy">
-                              <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                            </span>
-                          ) : null}
-                          <span className="flex items-start gap-3">
-                            <Icon className="mt-0.5 h-5 w-5 shrink-0 text-uri-keaney" />
-                            <span>
-                              <span className="block font-semibold text-white">{title}</span>
-                              <span className="mt-0.5 block text-xs text-white/55">{description}</span>
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-
-              {submitError ? (
-                <p className="text-sm text-amber-400" role="alert">
-                  {submitError}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
           {step === "avatar" ? (
             <div className="space-y-5" data-testid="step-avatar">
               <div className="text-center">
@@ -382,6 +211,9 @@ export function CharacterGate({
                 <p className="mt-1 text-sm text-white/60">
                   Pick a starter avatar. You can customize everything later.
                 </p>
+                {identity.usernameValid ? (
+                  <p className="mt-2 font-mono text-sm text-uri-keaney/90">@{identity.username}</p>
+                ) : null}
               </div>
 
               <div className="flex justify-center">
@@ -439,6 +271,12 @@ export function CharacterGate({
                   Randomize
                 </button>
               </div>
+
+              {submitError ? (
+                <p className="text-sm text-amber-400" role="alert">
+                  {submitError}
+                </p>
+              ) : null}
             </div>
           ) : null}
 
@@ -454,8 +292,8 @@ export function CharacterGate({
                 <p className="mx-auto mt-2 max-w-sm text-sm text-white/65">
                   You can customize your avatar anytime from your profile.
                 </p>
-                <p className="mt-3 text-base font-semibold text-white">{nameTrimmed}</p>
-                <p className="font-mono text-sm text-uri-keaney/90">@{usernameNormalized}</p>
+                <p className="mt-3 text-base font-semibold text-white">{identity.displayName}</p>
+                <p className="font-mono text-sm text-uri-keaney/90">@{identity.username}</p>
               </div>
               {submitError ? (
                 <p className="text-sm text-amber-400" role="alert">
@@ -467,14 +305,13 @@ export function CharacterGate({
         </div>
 
         <div className="cq-avatar-onboarding__actions">
-          {step !== "identity" ? (
+          {step === "ready" ? (
             <button
               type="button"
-              disabled={saving || identitySaving}
+              disabled={saving}
               onClick={() => {
                 setSubmitError(null);
-                if (step === "ready") setStep("avatar");
-                else setStep("identity");
+                setStep("avatar");
               }}
               className="cq-avatar-btn cq-avatar-btn--ghost min-h-[48px] flex-1"
             >
@@ -484,21 +321,10 @@ export function CharacterGate({
             <span className="flex-1" />
           )}
 
-          {step === "identity" ? (
-            <button
-              type="button"
-              disabled={!canContinueIdentity || identitySaving}
-              onClick={() => void handleIdentityContinue()}
-              className="cq-avatar-btn cq-avatar-btn--primary min-h-[48px] flex-[1.4]"
-            >
-              {identitySaving ? "Saving…" : "Continue"}
-            </button>
-          ) : null}
-
           {step === "avatar" ? (
             <button
               type="button"
-              disabled={saving}
+              disabled={saving || loadingProfile || !identity.usernameValid}
               onClick={() => setStep("ready")}
               className="cq-avatar-btn cq-avatar-btn--primary min-h-[48px] flex-[1.4]"
             >

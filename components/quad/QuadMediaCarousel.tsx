@@ -5,6 +5,8 @@ import type { QuadCarouselMediaDto } from "@/lib/quadMedia";
 import {
   clampCarouselIndex,
   filterRenderableCarouselMedia,
+  QUAD_MEDIA_COUNTER_HIDE_MS,
+  resolveCarouselDotWindow,
 } from "@/lib/quadMedia";
 import type { FieldNoteTag } from "@/lib/types";
 import { QuadVideoPlayer } from "@/components/quad/QuadVideoPlayer";
@@ -17,6 +19,8 @@ import { useMediaGestureLock } from "@/lib/client/useMediaGestureLock";
 const AXIS_LOCK_PX = 10;
 const COMMIT_RATIO = 0.22;
 const COMMIT_PX = 56;
+
+const FEED_MEDIA_IMG_CLASS = "cq-quad-feed-media w-full object-contain object-center bg-black";
 
 type GestureState = {
   pointerId: number | null;
@@ -66,9 +70,11 @@ export function QuadMediaCarousel({
   const [tagsVisible, setTagsVisible] = useState(false);
   const [slideScale, setSlideScale] = useState(1);
   const [pinchActive, setPinchActive] = useState(false);
+  const [counterVisible, setCounterVisible] = useState(false);
   const indexRef = useRef(index);
   const dragXRef = useRef(0);
   const mediaLenRef = useRef(visibleMedia.length);
+  const counterTimerRef = useRef<number | null>(null);
   const activePointersRef = useRef(new Set<number>());
   const gestureRef = useRef<GestureState>({
     pointerId: null,
@@ -83,6 +89,27 @@ export function QuadMediaCarousel({
   const reduceMotion =
     typeof window !== "undefined" &&
     window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+
+  const clearCounterTimer = useCallback(() => {
+    if (counterTimerRef.current != null) {
+      window.clearTimeout(counterTimerRef.current);
+      counterTimerRef.current = null;
+    }
+  }, []);
+
+  const bumpCounter = useCallback(() => {
+    if (mediaLenRef.current <= 1) {
+      setCounterVisible(false);
+      clearCounterTimer();
+      return;
+    }
+    setCounterVisible(true);
+    clearCounterTimer();
+    counterTimerRef.current = window.setTimeout(() => {
+      setCounterVisible(false);
+      counterTimerRef.current = null;
+    }, QUAD_MEDIA_COUNTER_HIDE_MS);
+  }, [clearCounterTimer]);
 
   useEffect(() => {
     // New media payload (different post / refreshed list) clears runtime failures.
@@ -109,6 +136,39 @@ export function QuadMediaCarousel({
     }
   }, [pinchActive, slideScale]);
 
+  // Show / restart counter whenever the active slide changes (incl. initial).
+  useEffect(() => {
+    if (visibleMedia.length <= 1) {
+      setCounterVisible(false);
+      clearCounterTimer();
+      return;
+    }
+    bumpCounter();
+  }, [index, visibleMedia.length, bumpCounter, clearCounterTimer]);
+
+  // Reveal counter again as soon as a horizontal swipe is underway.
+  useEffect(() => {
+    if (dragging && visibleMedia.length > 1) bumpCounter();
+  }, [dragging, visibleMedia.length, bumpCounter]);
+
+  // Reveal when the post becomes substantially visible in the feed.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || visibleMedia.length <= 1) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting && entry.intersectionRatio >= 0.45)) {
+          bumpCounter();
+        }
+      },
+      { threshold: [0.45, 0.7] },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visibleMedia.length, bumpCounter, mediaSignature]);
+
+  useEffect(() => () => clearCounterTimer(), [clearCounterTimer]);
+
   const onMediaPinchActive = useCallback((active: boolean) => {
     setPinchActive(active);
     if (!active) setSlideScale(1);
@@ -129,18 +189,15 @@ export function QuadMediaCarousel({
     [postId],
   );
 
-  const goTo = useCallback(
-    (next: number) => {
-      const clamped = clampCarouselIndex(next, mediaLenRef.current);
-      setIndex(clamped);
-      dragXRef.current = 0;
-      setDragX(0);
-      setDragging(false);
-      setSlideScale(1);
-      setPinchActive(false);
-    },
-    [],
-  );
+  const goTo = useCallback((next: number) => {
+    const clamped = clampCarouselIndex(next, mediaLenRef.current);
+    setIndex(clamped);
+    dragXRef.current = 0;
+    setDragX(0);
+    setDragging(false);
+    setSlideScale(1);
+    setPinchActive(false);
+  }, []);
 
   const finishGesture = useCallback(() => {
     const state = gestureRef.current;
@@ -304,7 +361,14 @@ export function QuadMediaCarousel({
     setDragX(0);
   };
 
+  const dotState = useMemo(
+    () => resolveCarouselDotWindow(index, visibleMedia.length),
+    [index, visibleMedia.length],
+  );
+
   if (visibleMedia.length === 0) return null;
+
+  const multi = visibleMedia.length > 1;
 
   return (
     <div
@@ -373,6 +437,7 @@ export function QuadMediaCarousel({
                       durationSeconds={item.durationSeconds}
                       autoplayWhenVisible={isFeed && active}
                       showMuteControl={item.hasAudio !== false}
+                      className="cq-quad-feed-media-frame"
                       onError={() => markFailed(item.id)}
                     />
                   </TemporaryPinchSurface>
@@ -381,7 +446,7 @@ export function QuadMediaCarousel({
                   <img
                     src={item.thumbnailUrl}
                     alt=""
-                    className="max-h-[min(65vh,36rem)] w-full object-cover bg-black object-center"
+                    className={FEED_MEDIA_IMG_CLASS}
                     onError={() => markFailed(item.id)}
                   />
                 ) : (
@@ -392,6 +457,7 @@ export function QuadMediaCarousel({
                     durationSeconds={item.durationSeconds}
                     autoplayWhenVisible={false}
                     showMuteControl={item.hasAudio !== false}
+                    className="cq-quad-feed-media-frame"
                     onError={() => markFailed(item.id)}
                   />
                 )
@@ -402,7 +468,7 @@ export function QuadMediaCarousel({
                   interactive={active}
                   lockGestures={false}
                   enableDoubleTapZoom={false}
-                  imgClassName="max-h-[min(65vh,36rem)] w-full object-cover object-center"
+                  imgClassName={FEED_MEDIA_IMG_CLASS}
                   onClick={() => {
                     if (active) setTagsVisible((v) => !v);
                   }}
@@ -428,25 +494,32 @@ export function QuadMediaCarousel({
         })}
       </div>
 
-      {visibleMedia.length > 1 ? (
-        <>
-          <div className="cq-quad-media-counter" aria-hidden>
-            {index + 1}/{visibleMedia.length}
-          </div>
-          <div className="flex items-center justify-center gap-1 py-2" aria-hidden>
-            {visibleMedia.map((item, i) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`h-1.5 rounded-full transition ${
-                  i === index ? "w-1.5 bg-uri-keaney" : "w-1.5 bg-white/30"
+      {multi ? (
+        <div
+          className={`cq-quad-media-counter${counterVisible ? " cq-quad-media-counter--visible" : ""}`}
+          aria-hidden
+        >
+          {index + 1}/{visibleMedia.length}
+        </div>
+      ) : null}
+
+      {multi ? (
+        <div className="cq-quad-media-dots" aria-hidden="true">
+          {Array.from({ length: dotState.visibleCount }).map((_, i) => {
+            const active = i === dotState.activeDot;
+            const edgeShrink =
+              (dotState.shrinkLeading && i === 0 && !active) ||
+              (dotState.shrinkTrailing && i === dotState.visibleCount - 1 && !active);
+            return (
+              <span
+                key={i}
+                className={`cq-quad-media-dot${active ? " cq-quad-media-dot--active" : ""}${
+                  edgeShrink ? " cq-quad-media-dot--edge" : ""
                 }`}
-                aria-label={`Go to media ${i + 1}`}
-                onClick={() => goTo(i)}
               />
-            ))}
-          </div>
-        </>
+            );
+          })}
+        </div>
       ) : null}
     </div>
   );

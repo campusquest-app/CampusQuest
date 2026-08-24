@@ -559,9 +559,17 @@ export const patchMeProfileSchema = z
     showXpProgressBar: z.boolean().optional(),
     /** When true and caller is moderation-admin, skips cooldown enforcement and does not bump name-change timestamps (repairs/migrations via API only). Ignored for other users. */
     preserveIdentityCooldownTimestamps: z.literal(true).optional(),
+    /** Marks post-signup display-name setup complete (sets display_name_changed_at even if the name is unchanged). */
+    confirmDisplayNameSetup: z.literal(true).optional(),
   })
   .superRefine((val, ctx) => {
     const displayNameValue = val.displayName ?? val.display_name;
+    if (val.confirmDisplayNameSetup === true && !displayNameValue) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "displayName is required to confirm display name setup.",
+      });
+    }
     if (val.characterOnboardingComplete) {
       if (!displayNameValue) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "displayName is required to finish character setup." });

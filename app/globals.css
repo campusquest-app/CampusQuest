@@ -2513,7 +2513,7 @@ html[data-cq-bottom-nav-hidden] {
 .cq-feed-post-actions {
   position: relative;
   z-index: 1;
-  padding-top: 0.15rem;
+  padding-top: 0.1rem;
   padding-bottom: 0.1rem;
 }
 
@@ -2658,6 +2658,8 @@ html[data-cq-bottom-nav-hidden] {
   overflow: hidden;
   touch-action: pan-y;
   overscroll-behavior-x: none;
+  /* Feed media height budget: cap tall portrait panels so actions stay visible. */
+  --cq-feed-media-max-h: min(60vh, 520px);
 }
 
 .cq-quad-media-carousel[data-cq-pinch-lock="true"],
@@ -2677,11 +2679,34 @@ html[data-cq-bottom-nav-hidden] {
   width: 100%;
   max-width: 100%;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
 }
 
 .cq-quad-media-slide:has([data-cq-pinching="true"]) {
   overflow: visible;
   z-index: 45;
+}
+
+.cq-quad-feed-media,
+.cq-quad-media-slide .cq-quad-feed-media,
+.cq-quad-media-slide video,
+.cq-quad-feed-media-frame video {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  max-height: var(--cq-feed-media-max-h, min(60vh, 520px));
+  margin: 0 auto;
+  object-fit: contain;
+  object-position: center;
+  background: #000;
+}
+
+.cq-quad-feed-media-frame {
+  width: 100%;
+  max-height: var(--cq-feed-media-max-h, min(60vh, 520px));
 }
 
 .cq-quad-media-counter {
@@ -2698,6 +2723,57 @@ html[data-cq-bottom-nav-hidden] {
   line-height: 1;
   padding: 0.35rem 0.55rem;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.cq-quad-media-counter--visible {
+  opacity: 1;
+}
+
+.cq-quad-media-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+  padding: 0.45rem 0 0.2rem;
+  pointer-events: none;
+}
+
+.cq-quad-media-dot {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.55);
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+
+.cq-quad-media-dot--active {
+  background: var(--cq-accent, #68abe8);
+  box-shadow: 0 0 0 1px rgba(104, 171, 232, 0.25);
+  transform: scale(1.15);
+}
+
+.cq-quad-media-dot--edge {
+  transform: scale(0.72);
+  opacity: 0.7;
+}
+
+.cq-quad-media-dot--active.cq-quad-media-dot--edge {
+  transform: scale(1.15);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-quad-media-counter {
+    transition: none;
+  }
+  .cq-quad-media-dot {
+    transition: none;
+  }
 }
 
 .cq-temporary-pinch,
@@ -2767,17 +2843,31 @@ html[data-cq-media-pinching] {
   display: block;
   width: 100%;
   max-width: 100%;
-  max-height: min(65vh, 36rem);
+  max-height: min(60vh, 520px);
   margin: 0;
   padding: 0;
   border: none;
   border-radius: 0;
   box-shadow: none;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   vertical-align: top;
   background: rgba(0, 0, 0, 0.35);
   aspect-ratio: auto;
+}
+
+.cq-quad-video-el {
+  display: block;
+  width: 100%;
+  max-height: min(70vh, 720px);
+  background: #000;
+}
+
+.cq-quad-media-slide .cq-quad-video-el,
+.cq-quad-feed-media-frame .cq-quad-video-el,
+.quad-feed-media-wrap .cq-quad-video-el,
+.cq-feed-post .cq-quad-video-el {
+  max-height: var(--cq-feed-media-max-h, min(60vh, 520px));
 }
 
 /* Comment threads expand naturally — page scroll only (no nested scroll in feed cards) */
@@ -21244,9 +21334,9 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-onboard-shell--dark {
-  /* Legacy alias — flow now uses light shell throughout */
+  /* Auth welcome / logged-out navy shell — not the light demographic flow */
   background: var(--uri-navy, #041e42);
-  color: #fff;
+  color: #f8fafc;
 }
 
 /* Ambient layer */
@@ -21659,19 +21749,32 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   color: var(--cq-onboard-navy);
 }
 
-.cq-onboard-title-dark,
 .cq-onboard-title-gold {
-  /* Back-compat aliases */
   font-size: clamp(1.55rem, 5vw, 1.9rem);
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.2;
-  color: var(--cq-onboard-navy);
+  color: #b8860b;
   margin: 0.2rem 0 0;
 }
 
-.cq-onboard-title-gold {
-  color: #b8860b;
+/*
+ * Dark-navy welcome heading. Do not alias this to --cq-onboard-navy:
+ * that token is for the light demographic shell and disappears on #041E42.
+ */
+.cq-onboard-title-dark {
+  font-size: clamp(1.55rem, 5vw, 1.9rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: #f8fafc;
+  margin: 0.2rem 0 0;
+  text-align: center;
+}
+
+.cq-onboard-title-dark .cq-onboard-title-accent {
+  color: var(--cq-onboard-blue-mid);
+  font-weight: inherit;
 }
 
 .cq-onboard-sub,
@@ -21679,8 +21782,15 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   margin: 0.65rem 0 0;
   font-size: 1rem;
   line-height: 1.45;
-  color: var(--cq-onboard-muted);
   text-align: center;
+}
+
+.cq-onboard-sub {
+  color: var(--cq-onboard-muted);
+}
+
+.cq-onboard-sub-dark {
+  color: #c5d4e4;
 }
 
 .cq-onboard-sub--strong {
@@ -21768,6 +21878,10 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   text-align: center;
 }
 
+.cq-onboard-shell--dark .cq-onboard-footer-link {
+  color: #b7c5d6;
+}
+
 .cq-onboard-text-link {
   border: none;
   background: none;
@@ -21776,6 +21890,10 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
+}
+
+.cq-onboard-shell--dark .cq-onboard-text-link {
+  color: var(--cq-onboard-blue-mid);
 }
 
 .cq-onboard-step {

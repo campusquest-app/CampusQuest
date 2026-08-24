@@ -10,6 +10,7 @@ import {
   looksLikeVideoFile,
   mediaFileFingerprint,
   removeFailedCarouselMedia,
+  resolveCarouselDotWindow,
   resolveQuadPostTotalUploadBytes,
 } from "@/lib/quadMedia";
 import { sniffImageMimeFromBuffer } from "@/lib/server/sniffImageMime";
@@ -169,5 +170,45 @@ describe("filterRenderableCarouselMedia", () => {
     const after = removeFailedCarouselMedia(before, "b", 1);
     expect(after.items).toHaveLength(1);
     expect(clampCarouselIndex(after.index, after.items.length)).toBe(0);
+  });
+});
+
+describe("resolveCarouselDotWindow", () => {
+  it("shows one dot per item when total fits the window", () => {
+    expect(resolveCarouselDotWindow(0, 2)).toEqual({
+      visibleCount: 2,
+      activeDot: 0,
+      shrinkLeading: false,
+      shrinkTrailing: false,
+    });
+    expect(resolveCarouselDotWindow(4, 5)).toEqual({
+      visibleCount: 5,
+      activeDot: 4,
+      shrinkLeading: false,
+      shrinkTrailing: false,
+    });
+  });
+
+  it("slides a compact window for large carousels", () => {
+    expect(resolveCarouselDotWindow(0, 12).visibleCount).toBe(5);
+    expect(resolveCarouselDotWindow(0, 12).activeDot).toBe(0);
+    expect(resolveCarouselDotWindow(0, 12).shrinkTrailing).toBe(true);
+    expect(resolveCarouselDotWindow(0, 12).shrinkLeading).toBe(false);
+
+    const mid = resolveCarouselDotWindow(6, 12);
+    expect(mid.visibleCount).toBe(5);
+    expect(mid.activeDot).toBe(2);
+    expect(mid.shrinkLeading).toBe(true);
+    expect(mid.shrinkTrailing).toBe(true);
+
+    const end = resolveCarouselDotWindow(11, 12);
+    expect(end.activeDot).toBe(4);
+    expect(end.shrinkLeading).toBe(true);
+    expect(end.shrinkTrailing).toBe(false);
+  });
+
+  it("clamps an out-of-range active index", () => {
+    expect(resolveCarouselDotWindow(99, 3).activeDot).toBe(2);
+    expect(resolveCarouselDotWindow(-2, 3).activeDot).toBe(0);
   });
 });

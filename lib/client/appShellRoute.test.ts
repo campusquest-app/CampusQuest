@@ -25,19 +25,36 @@ describe("appShellRoute", () => {
           student_status: "current_or_incoming",
           institution_id: "uri",
           onboarding_version: 2,
+          display_name_changed_at: "2026-01-01T00:00:00.000Z",
         },
         { preferences: { interests: ["a", "b", "c"], institutionId: "uri" }, forceDemographicsQaReplay: false },
       ),
     ).toBe("character_gate");
-    // Without demographics prefs, incomplete new profiles hit demographics first.
+    // Brand-new incomplete profiles hit display name before demographics.
     expect(resolveProfileRoute({ onboarding_character_completed: null, role: "student" })).toBe(
-      "demographics_gate",
+      "display_name_gate",
     );
+    expect(
+      resolveProfileRoute(
+        { onboarding_character_completed: null, role: "student", display_name_changed_at: "2026-01-01T00:00:00.000Z" },
+        { preferences: { interests: [] } },
+      ),
+    ).toBe("demographics_gate");
     expect(resolveProfileRoute({ onboarding_completed: true, role: "faculty_staff" })).toBe("app");
   });
 
-  it("routes new users without a role into demographics before character onboarding", () => {
-    expect(resolveProfileRoute({ onboarding_completed: false, role: null })).toBe("demographics_gate");
+  it("routes new users through display name then demographics before character onboarding", () => {
+    expect(resolveProfileRoute({ onboarding_completed: false, role: null })).toBe("display_name_gate");
+    expect(
+      resolveProfileRoute(
+        {
+          onboarding_completed: false,
+          role: null,
+          display_name_changed_at: "2026-01-01T00:00:00.000Z",
+        },
+        { preferences: { interests: [] } },
+      ),
+    ).toBe("demographics_gate");
     expect(
       resolveProfileRoute(
         {
@@ -46,6 +63,7 @@ describe("appShellRoute", () => {
           student_status: "current_or_incoming",
           institution_id: "uri",
           onboarding_version: 2,
+          display_name_changed_at: "2026-01-01T00:00:00.000Z",
         },
         { preferences: { interests: ["a", "b", "c"] } },
       ),
@@ -60,7 +78,7 @@ describe("appShellRoute", () => {
     expect(resolveProfileRoute({ onboarding_completed: true, role: "admin" })).toBe("app");
     expect(resolveProfileRoute({ onboarding_completed: true, role: "super_admin" })).toBe("app");
     expect(resolveProfileRoute({ onboarding_completed: true, role: "beta_internal" })).toBe("app");
-    expect(resolveProfileRoute({ onboarding_completed: false, role: "admin" })).toBe("demographics_gate");
+    expect(resolveProfileRoute({ onboarding_completed: false, role: "admin" })).toBe("display_name_gate");
     expect(
       resolveProfileRoute(
         {
@@ -69,6 +87,7 @@ describe("appShellRoute", () => {
           student_status: "current_or_incoming",
           institution_id: "uri",
           onboarding_version: 2,
+          display_name_changed_at: "2026-01-01T00:00:00.000Z",
         },
         { preferences: { interests: ["a", "b", "c"] } },
       ),
@@ -83,7 +102,7 @@ describe("appShellRoute", () => {
         is_test_user: true,
         qa_selected_role: null,
       }),
-    ).toBe("demographics_gate");
+    ).toBe("display_name_gate");
     expect(
       resolveProfileRoute(
         {
@@ -94,6 +113,7 @@ describe("appShellRoute", () => {
           student_status: "current_or_incoming",
           institution_id: "uri",
           onboarding_version: 2,
+          display_name_changed_at: "2026-01-01T00:00:00.000Z",
         },
         { preferences: { interests: ["a", "b", "c"] } },
       ),

@@ -145,6 +145,7 @@ import {
   syncOnboardingQaReplayFromAccessToken,
 } from "@/lib/client/onboardingQaSession";
 import { AuthOnboardingFlow } from "@/components/auth/AuthOnboardingFlow";
+import { DisplayNameGate } from "@/components/DisplayNameGate";
 import {
   isProfileInitializingError,
   nextProfileReadyBackoffMs,
@@ -216,7 +217,7 @@ function logBootstrapDecision(info: {
   sessionFound: boolean;
   sessionValidated?: boolean;
   onboardingCompleted?: boolean | null;
-  route: "unauthenticated" | "demographics_gate" | "role_gate" | "character_gate" | "app";
+  route: "unauthenticated" | "display_name_gate" | "demographics_gate" | "role_gate" | "character_gate" | "app";
 }) {
   if (process.env.NODE_ENV === "production") return;
   console.info("[cq] bootstrap", {
@@ -1716,7 +1717,7 @@ export function Dashboard() {
           setGatePrefillProfile(profileMerged);
         }
 
-        if (routeDecision === "demographics_gate") {
+        if (routeDecision === "display_name_gate" || routeDecision === "demographics_gate") {
           clearLegacyLocalMismatch();
           commitSnap();
           setGatePrefillProfile(profileMerged);
@@ -1753,13 +1754,15 @@ export function Dashboard() {
           sessionValidated: true,
           onboardingCompleted: profileMerged.onboarding_completed ?? null,
           route:
-            routeDecision === "demographics_gate"
-              ? "demographics_gate"
-              : routeDecision === "role_gate"
-                ? "role_gate"
-                : routeDecision === "character_gate"
-                  ? "character_gate"
-                  : "app",
+            routeDecision === "display_name_gate"
+              ? "display_name_gate"
+              : routeDecision === "demographics_gate"
+                ? "demographics_gate"
+                : routeDecision === "role_gate"
+                  ? "role_gate"
+                  : routeDecision === "character_gate"
+                    ? "character_gate"
+                    : "app",
         });
 
         setProfileRoute(routeDecision);
@@ -2023,6 +2026,26 @@ export function Dashboard() {
       <>
         <AuthScreen
           onComplete={() => {
+            markPostLoginLoadingPending();
+            setShowPostLoginLoading(true);
+            setLaunchSplashOpen(true);
+            setBootstrapStatus("bootstrapping");
+            setProfileRoute("unknown");
+            setBootstrapNonce((n) => n + 1);
+          }}
+        />
+        {launchSplashOverlay}
+      </>
+    );
+  }
+
+  if (destinationRoute === "display_name") {
+    return (
+      <>
+        <DisplayNameGate
+          profile={gatePrefillProfile}
+          onComplete={(updatedProfile) => {
+            setGatePrefillProfile(updatedProfile);
             markPostLoginLoadingPending();
             setShowPostLoginLoading(true);
             setLaunchSplashOpen(true);

@@ -99,7 +99,7 @@ describe("demographic onboarding policy", () => {
 });
 
 describe("authenticated route order", () => {
-  it("new signup path: demographics → CharacterGate → app", () => {
+  it("new signup path: display name → demographics → CharacterGate → app", () => {
     const incomplete = {
       onboarding_completed: false,
       onboarding_character_completed: false,
@@ -109,12 +109,23 @@ describe("authenticated route order", () => {
       resolveProfileRoute(incomplete, {
         preferences: { interests: [] },
       }),
+    ).toBe("display_name_gate");
+
+    expect(
+      resolveProfileRoute(
+        {
+          ...incomplete,
+          display_name_changed_at: "2026-01-01T00:00:00.000Z",
+        },
+        { preferences: { interests: [] } },
+      ),
     ).toBe("demographics_gate");
 
     expect(
       resolveProfileRoute(
         {
           ...incomplete,
+          display_name_changed_at: "2026-01-01T00:00:00.000Z",
           student_status: "current_or_incoming",
           institution_id: "uri",
           onboarding_version: 2,
@@ -177,6 +188,7 @@ describe("authenticated route order", () => {
           student_status: "current_or_incoming",
           institution_id: "uri",
           onboarding_version: 2,
+          display_name_changed_at: "2026-01-01T00:00:00.000Z",
         },
         { preferences: { interests: ["a", "b", "c"], communities: [] } },
       ),
@@ -198,7 +210,7 @@ describe("authenticated route order", () => {
     ).toBe("app");
   });
 
-  it("incomplete existing user without character completion is gated to demographics", () => {
+  it("incomplete existing user without character completion is gated to demographics after display name", () => {
     expect(
       resolveProfileRoute(
         {
@@ -206,6 +218,7 @@ describe("authenticated route order", () => {
           onboarding_character_completed: false,
           role: "student",
           onboarding_version: null,
+          display_name_changed_at: "2026-01-01T00:00:00.000Z",
         },
         { preferences: { interests: ["a"], communities: [] } },
       ),
@@ -217,7 +230,11 @@ describe("authenticated route order", () => {
       resolveAppShellRoute({
         bootstrapStatus: "authenticated",
         profileRoute: resolveProfileRoute(
-          { onboarding_character_completed: false, role: null },
+          {
+            onboarding_character_completed: false,
+            role: null,
+            display_name_changed_at: "2026-01-01T00:00:00.000Z",
+          },
           { preferences: { interests: [] } },
         ),
         showPostLoginLoading: false,

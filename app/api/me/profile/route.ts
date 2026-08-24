@@ -249,7 +249,9 @@ export async function PATCH(request: Request) {
     }
 
     if (!preserveIdentityTimestamps) {
-      if (displayChanging) patch.display_name_changed_at = nowIso;
+      if (displayChanging || input.confirmDisplayNameSetup === true) {
+        patch.display_name_changed_at = nowIso;
+      }
       if (usernameChanging) patch.username_changed_at = nowIso;
     }
 

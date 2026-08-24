@@ -161,6 +161,50 @@ export function clampCarouselIndex(index: number, length: number): number {
   return Math.max(0, Math.min(index, length - 1));
 }
 
+/** Max dots shown under feed carousels (Instagram-style sliding window). */
+export const QUAD_CAROUSEL_DOT_WINDOW = 5;
+
+/**
+ * Compact carousel indicator window for large carousels.
+ * When total ≤ maxVisible, one dot per item. Otherwise a fixed-size window
+ * slides so the active item stays near the center.
+ */
+export function resolveCarouselDotWindow(
+  activeIndex: number,
+  total: number,
+  maxVisible: number = QUAD_CAROUSEL_DOT_WINDOW,
+): {
+  visibleCount: number;
+  activeDot: number;
+  shrinkLeading: boolean;
+  shrinkTrailing: boolean;
+} {
+  if (total <= 0) {
+    return { visibleCount: 0, activeDot: 0, shrinkLeading: false, shrinkTrailing: false };
+  }
+  const safeIndex = clampCarouselIndex(activeIndex, total);
+  if (total <= maxVisible) {
+    return {
+      visibleCount: total,
+      activeDot: safeIndex,
+      shrinkLeading: false,
+      shrinkTrailing: false,
+    };
+  }
+  const mid = Math.floor(maxVisible / 2);
+  let windowStart = safeIndex - mid;
+  windowStart = Math.max(0, Math.min(windowStart, total - maxVisible));
+  return {
+    visibleCount: maxVisible,
+    activeDot: safeIndex - windowStart,
+    shrinkLeading: windowStart > 0,
+    shrinkTrailing: windowStart + maxVisible < total,
+  };
+}
+
+/** Hide delay for the top-right media position counter (ms). */
+export const QUAD_MEDIA_COUNTER_HIDE_MS = 1800;
+
 /**
  * Remove a failed media id from the visible list and keep the active index in range.
  * Used when an image/video fires onError while the user is viewing a slide.

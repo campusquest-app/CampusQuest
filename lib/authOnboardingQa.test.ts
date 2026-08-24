@@ -58,12 +58,20 @@ describe("normal and new student auth routing", () => {
     expect(canEnterAuthenticatedApp({ emailConfirmed: true, requireEmailVerification: true })).toBe(true);
   });
 
-  it("newly verified student with incomplete profile sees demographics before CharacterGate", () => {
+  it("newly verified student with incomplete profile sees display name before demographics", () => {
     expect(
       resolveProfileRoute({
         onboarding_completed: false,
         onboarding_character_completed: false,
         role: null,
+      }),
+    ).toBe("display_name_gate");
+    expect(
+      resolveProfileRoute({
+        onboarding_completed: false,
+        onboarding_character_completed: false,
+        role: null,
+        display_name_changed_at: "2026-01-01T00:00:00.000Z",
       }),
     ).toBe("demographics_gate");
   });

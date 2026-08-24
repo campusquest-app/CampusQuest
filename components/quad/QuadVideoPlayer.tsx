@@ -171,7 +171,7 @@ export function QuadVideoPlayer({
         playsInline
         preload="metadata"
         muted={!unmuted}
-        className="max-h-[min(70vh,720px)] w-full object-contain focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-uri-keaney"
+        className="cq-quad-video-el w-full object-contain focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-uri-keaney"
         onClick={togglePlay}
         onPlay={() => {
           claimPlayback(playerId);
