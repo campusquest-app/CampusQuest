@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { AuthRedirectConfigError } from "@/lib/authRedirect";
 
 export class ApiError extends Error {
   constructor(
@@ -35,6 +36,19 @@ export function fail(error: unknown) {
     );
   }
 
+  if (error instanceof AuthRedirectConfigError) {
+    console.error("[cq][api] AuthRedirectConfigError", error.message);
+    return NextResponse.json(
+      {
+        error: {
+          message: error.message,
+          code: error.code,
+        },
+      },
+      { status: 500 },
+    );
+  }
+
   console.error("[cq][api] Unexpected error", error);
   if (error instanceof Error && error.stack) {
     console.error(error.stack);
@@ -55,4 +69,3 @@ export function fail(error: unknown) {
     { status: 500 },
   );
 }
-

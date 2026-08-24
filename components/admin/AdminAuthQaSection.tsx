@@ -19,9 +19,11 @@ type AuthQaStatus = {
     note: string;
   };
   redirects: {
-    siteUrl: string;
-    emailRedirectUrl: string;
+    siteUrl: string | null;
+    emailRedirectUrl: string | null;
     callbackPath: string;
+    configured: boolean;
+    configError: string | null;
   };
   resend: {
     clientCooldownMs: number;
@@ -165,8 +167,15 @@ export function AdminAuthQaSection() {
           </div>
           <div className="cq-admin-panel p-4 space-y-2">
             <p className="font-semibold text-white">Redirects & cooldowns</p>
-            <p className="text-xs text-white/60 break-all">Site URL: {status.redirects.siteUrl}</p>
-            <p className="text-xs text-white/60 break-all">Email redirect: {status.redirects.emailRedirectUrl}</p>
+            <p className="text-xs text-white/60 break-all">
+              Site URL: {status.redirects.siteUrl ?? "(not configured)"}
+            </p>
+            <p className="text-xs text-white/60 break-all">
+              Email redirect: {status.redirects.emailRedirectUrl ?? "(not configured)"}
+            </p>
+            {status.redirects.configError ? (
+              <p className="text-xs text-amber-300">{status.redirects.configError}</p>
+            ) : null}
             <p className="text-xs text-white/60">
               Resend cooldown: {Math.round(status.resend.clientCooldownMs / 1000)}s · server limit{" "}
               {status.resend.serverLimitPerWindow}/{status.resend.serverWindowMinutes}m
