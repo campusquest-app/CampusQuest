@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/server/supabase";
 import { resolveUrinvolvedEventLocation } from "@/lib/server/urinvolved/eventLocation";
 import { externalEventQualifiesForMap } from "@/lib/server/urinvolved/locationAliases";
 import { mapPositionForExternalEvent } from "@/lib/server/urinvolved/geoToMapPosition";
+import { getUrinvolvedSyncStatus } from "@/lib/server/urinvolved/sync";
+import { shouldServeStaleInactiveEvents } from "@/lib/server/urinvolved/syncSafety";
 
 export type ExternalEventItem = {
   id: string;
@@ -53,6 +55,37 @@ export type ExternalMapEventMarker = {
 
 const EXTERNAL_EVENTS_PAST_GRACE_MS = 2 * 60 * 60 * 1000;
 
+export type ExternalEventsFeedMeta = {
+  source: "active" | "stale_cache";
+  stale: boolean;
+  lastSuccessfulSync: string | null;
+  lastAttemptedSync: string | null;
+  lastError: string | null;
+};
+
+type ExternalEventRow = {
+  id: string;
+  source: string;
+  external_id: string;
+  title: string;
+  description: string | null;
+  organization_name: string | null;
+  venue_name: string | null;
+  address: string | null;
+  location_name: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  image_url: string | null;
+  event_url: string | null;
+  category: string | null;
+  tags: string[] | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+const EXTERNAL_EVENT_COLUMNS =
+  "id, source, external_id, title, description, organization_name, venue_name, address, location_name, starts_at, ends_at, image_url, event_url, category, tags, latitude, longitude";
+
 export async function listActiveExternalEvents(filters?: {
   category?: string;
   location?: string;
@@ -61,12 +94,25 @@ export async function listActiveExternalEvents(filters?: {
   timeframe?: "today" | "tomorrow" | "this_week" | "this_month";
   includePast?: boolean;
 }): Promise<ExternalEventItem[]> {
+  const feed = await listExternalEventsFeed(filters);
+  return feed.events;
+}
+
+export async function listExternalEventsFeed(filters?: {
+  category?: string;
+  location?: string;
+  organization?: string;
+  search?: string;
+  timeframe?: "today" | "tomorrow" | "this_week" | "this_month";
+  includePast?: boolean;
+}): Promise<{ events: ExternalEventItem[]; meta: ExternalEventsFeedMeta }> {
   const admin = createAdminClient();
+  const status = await getUrinvolvedSyncStatus();
+  let source: ExternalEventsFeedMeta["source"] = "active";
+
   let query = admin
     .from("external_events")
-    .select(
-      "id, source, external_id, title, description, organization_name, venue_name, address, location_name, starts_at, ends_at, image_url, event_url, category, tags, latitude, longitude",
-    )
+    .select(EXTERNAL_EVENT_COLUMNS)
     .eq("is_active", true)
     .eq("source", "urinvolved")
     .order("starts_at", { ascending: true, nullsFirst: false });
@@ -84,10 +130,41 @@ export async function listActiveExternalEvents(filters?: {
   const { data, error } = await query;
   if (error) throw new Error(error.message);
 
+  let rows = (data ?? []) as ExternalEventRow[];
   const pastCutoff = Date.now() - EXTERNAL_EVENTS_PAST_GRACE_MS;
+  const hasUpcomingActive = rows.some(
+    (row) => row.starts_at && new Date(row.starts_at).getTime() >= pastCutoff,
+  );
+
+  if (!hasUpcomingActive && shouldServeStaleInactiveEvents(status)) {
+    let staleQuery = admin
+      .from("external_events")
+      .select(EXTERNAL_EVENT_COLUMNS)
+      .eq("is_active", false)
+      .eq("source", "urinvolved")
+      .not("starts_at", "is", null)
+      .gte("starts_at", new Date(pastCutoff).toISOString())
+      .order("starts_at", { ascending: true, nullsFirst: false });
+    if (filters?.category?.trim()) {
+      staleQuery = staleQuery.ilike("category", `%${filters.category.trim()}%`);
+    }
+    if (filters?.location?.trim()) {
+      staleQuery = staleQuery.ilike("location_name", `%${filters.location.trim()}%`);
+    }
+    if (filters?.organization?.trim()) {
+      staleQuery = staleQuery.ilike("organization_name", `%${filters.organization.trim()}%`);
+    }
+    const stale = await staleQuery;
+    if (stale.error) throw new Error(stale.error.message);
+    if ((stale.data?.length ?? 0) > 0) {
+      rows = (stale.data ?? []) as ExternalEventRow[];
+      source = "stale_cache";
+    }
+  }
+
   const searchNeedle = filters?.search?.trim().toLowerCase() ?? "";
 
-  const mapped = (data ?? [])
+  const mapped = rows
     .filter((row) => {
       if (!filters?.includePast && row.starts_at && new Date(row.starts_at).getTime() < pastCutoff) {
         return false;
@@ -164,13 +241,22 @@ export async function listActiveExternalEvents(filters?: {
       imported: true as const,
     }));
 
-  return dedupeLogicalEventFields(
-    mapped.map((item) => ({
-      ...item,
-      sourceExternalId: item.externalId,
-      locationText: item.location,
-    })),
-  );
+  return {
+    events: dedupeLogicalEventFields(
+      mapped.map((item) => ({
+        ...item,
+        sourceExternalId: item.externalId,
+        locationText: item.location,
+      })),
+    ),
+    meta: {
+      source,
+      stale: source === "stale_cache" || Boolean(status.lastError),
+      lastSuccessfulSync: status.lastSuccessfulSync,
+      lastAttemptedSync: status.lastAttemptedSync,
+      lastError: status.lastError,
+    },
+  };
 }
 
 export async function listActiveExternalOrganizations(filters?: {

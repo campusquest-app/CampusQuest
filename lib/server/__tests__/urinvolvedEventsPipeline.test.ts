@@ -4,6 +4,7 @@ import {
   parseUrinvolvedDiscoveryEvents,
 } from "@/lib/server/urinvolved/parseDiscoveryEvents";
 import {
+  countUpcomingFromActiveRows,
   decideSoftDeactivateMissingEvents,
   idsMissingFromSeen,
 } from "@/lib/server/urinvolved/syncSafety";
@@ -102,8 +103,9 @@ describe("URInvolved soft-deactivate safety", () => {
         fetchAttempted: true,
         fetchSucceeded: false,
         eventsFetched: 0,
+        existingUpcomingActiveCount: 12,
       }),
-    ).toEqual({ shouldDeactivate: false, reason: "fetch_failed" });
+    ).toEqual({ shouldDeactivate: false, preservePreviousInventory: true, reason: "fetch_failed" });
   });
 
   it("does not deactivate when fetch was never attempted", () => {
@@ -112,29 +114,97 @@ describe("URInvolved soft-deactivate safety", () => {
         fetchAttempted: false,
         fetchSucceeded: false,
         eventsFetched: 0,
+        existingUpcomingActiveCount: 12,
       }),
-    ).toEqual({ shouldDeactivate: false, reason: "fetch_not_attempted" });
+    ).toEqual({ shouldDeactivate: false, preservePreviousInventory: true, reason: "fetch_not_attempted" });
   });
 
-  it("allows deactivate after successful catalog (including empty legitimate)", () => {
-    expect(
-      decideSoftDeactivateMissingEvents({
-        fetchAttempted: true,
-        fetchSucceeded: true,
-        eventsFetched: 12,
-      }).shouldDeactivate,
-    ).toBe(true);
+  it("does not deactivate a malformed payload", () => {
     expect(
       decideSoftDeactivateMissingEvents({
         fetchAttempted: true,
         fetchSucceeded: true,
         eventsFetched: 0,
+        existingUpcomingActiveCount: 8,
+        payloadValid: false,
       }),
-    ).toEqual({ shouldDeactivate: true, reason: "empty_legitimate_catalog" });
+    ).toEqual({ shouldDeactivate: false, preservePreviousInventory: true, reason: "malformed_payload" });
+  });
+
+  it("refuses to treat an empty catalog as legitimate when future events already exist", () => {
+    expect(
+      decideSoftDeactivateMissingEvents({
+        fetchAttempted: true,
+        fetchSucceeded: true,
+        eventsFetched: 0,
+        existingUpcomingActiveCount: 27,
+      }),
+    ).toEqual({
+      shouldDeactivate: false,
+      preservePreviousInventory: true,
+      reason: "suspicious_empty_catalog",
+    });
+  });
+
+  it("treats an empty catalog as suspicious when stored upcoming events were previously deactivated", () => {
+    expect(
+      decideSoftDeactivateMissingEvents({
+        fetchAttempted: true,
+        fetchSucceeded: true,
+        eventsFetched: 0,
+        existingUpcomingActiveCount: 0,
+        existingUpcomingStoredCount: 27,
+      }),
+    ).toEqual({
+      shouldDeactivate: false,
+      preservePreviousInventory: true,
+      reason: "suspicious_empty_catalog",
+    });
+  });
+
+  it("allows deactivate after a successful non-empty catalog", () => {
+    expect(
+      decideSoftDeactivateMissingEvents({
+        fetchAttempted: true,
+        fetchSucceeded: true,
+        eventsFetched: 12,
+        existingUpcomingActiveCount: 12,
+      }),
+    ).toEqual({ shouldDeactivate: true, preservePreviousInventory: false, reason: "successful_catalog" });
+  });
+
+  it("allows deactivate only when empty catalog is legitimate (no stored upcoming events)", () => {
+    expect(
+      decideSoftDeactivateMissingEvents({
+        fetchAttempted: true,
+        fetchSucceeded: true,
+        eventsFetched: 0,
+        existingUpcomingActiveCount: 0,
+      }),
+    ).toEqual({
+      shouldDeactivate: true,
+      preservePreviousInventory: false,
+      reason: "empty_legitimate_catalog",
+    });
   });
 
   it("preserves stored ids that were seen and only marks missing ones", () => {
     expect(idsMissingFromSeen(["a", "b", "c"], ["a", "c"])).toEqual(["b"]);
+  });
+
+  it("counts stored upcoming rows with a 2h past grace", () => {
+    const now = Date.parse("2026-08-24T16:00:00.000Z");
+    expect(
+      countUpcomingFromActiveRows(
+        [
+          { starts_at: "2026-08-24T15:00:00.000Z" },
+          { starts_at: "2026-08-24T13:00:00.000Z" },
+          { starts_at: "2026-09-08T14:00:00.000Z" },
+          { starts_at: null },
+        ],
+        now,
+      ),
+    ).toBe(2);
   });
 });
 

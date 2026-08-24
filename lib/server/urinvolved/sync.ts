@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/server/supabase";
 import {
+  URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE,
   buildOrganizationLogoUrl,
   buildOrganizationUrl,
   fetchAllUrinvolvedOrganizations,
@@ -21,6 +22,7 @@ import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
 import {
   decideSoftDeactivateMissingEvents,
   idsMissingFromSeen,
+  countUpcomingFromActiveRows,
 } from "@/lib/server/urinvolved/syncSafety";
 import { revalidatePath } from "next/cache";
 
@@ -188,7 +190,13 @@ async function runUrinvolvedSyncExclusive(
   let orgsUpdated = 0;
   let eventsFetchAttempted = false;
   let eventsFetchSucceeded = false;
+  let eventsPayloadValid = true;
+  let upstreamHttpStatus: number | null = null;
+  let upstreamReceived = 0;
+  let eventsDeactivated = 0;
+  let inventoryPreserved = false;
   let orgsFetchSucceeded = false;
+  const startedMs = Date.now();
 
   if (await hasRecentRunningSync(admin)) {
     return {
@@ -212,14 +220,32 @@ async function runUrinvolvedSyncExclusive(
   const seenEventIds: string[] = [];
   const seenOrgIds: string[] = [];
 
+  console.info("[cq:urinvolved-sync] started", {
+    syncType,
+    source: URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE,
+  });
+
   try {
     // --- Events (discovery search — full upcoming catalog; not the 24h RSS window) ---
     try {
       eventsFetchAttempted = true;
       const discovery = await fetchUpcomingUrinvolvedDiscoveryEvents();
+      upstreamHttpStatus = discovery.httpStatus;
+      upstreamReceived = discovery.raw.length;
       const parsedEvents = parseUrinvolvedDiscoveryEvents(discovery.raw);
+      if (discovery.raw.length > 0 && parsedEvents.length === 0) {
+        eventsPayloadValid = false;
+        throw new Error("URInvolved events discovery payload could not be parsed.");
+      }
       eventsFetched = parsedEvents.length;
       eventsFetchSucceeded = true;
+      console.info("[cq:urinvolved-sync] upstream", {
+        source: URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE,
+        httpStatus: discovery.httpStatus,
+        received: discovery.raw.length,
+        validated: parsedEvents.length,
+        totalCount: discovery.totalCount,
+      });
 
       const catalog = (await getCampusLocations({ refreshCache: true })).map((row) => ({
         slug: row.slug,
@@ -383,19 +409,26 @@ async function runUrinvolvedSyncExclusive(
       errors.push(orgError instanceof Error ? orgError.message : String(orgError));
     }
 
-    // Soft-hide missing items only after a successful upstream catalog fetch.
-    // Never wipe stored events because RSS/discovery failed or returned a partial window.
+    // Soft-hide missing items only after a verified non-empty catalog (or a
+    // truly empty campus with no stored upcoming events). Never wipe inventory
+    // from an unverified empty/failed/malformed upstream response.
+    const { data: storedEventRows } = await admin
+      .from("external_events")
+      .select("external_id, starts_at, is_active")
+      .eq("source", URINVOLVED_SOURCE);
+    const activeEventRows = (storedEventRows ?? []).filter((row) => row.is_active);
+    const existingUpcomingActiveCount = countUpcomingFromActiveRows(activeEventRows);
+    const existingUpcomingStoredCount = countUpcomingFromActiveRows(storedEventRows ?? []);
     const eventDeactivate = decideSoftDeactivateMissingEvents({
       fetchAttempted: eventsFetchAttempted,
       fetchSucceeded: eventsFetchSucceeded,
       eventsFetched,
+      existingUpcomingActiveCount,
+      existingUpcomingStoredCount,
+      payloadValid: eventsPayloadValid,
     });
+    inventoryPreserved = eventDeactivate.preservePreviousInventory;
     if (eventDeactivate.shouldDeactivate) {
-      const { data: activeEventRows } = await admin
-        .from("external_events")
-        .select("external_id")
-        .eq("source", URINVOLVED_SOURCE)
-        .eq("is_active", true);
       const eventIdsToDeactivate = idsMissingFromSeen(
         (activeEventRows ?? []).map((row) => row.external_id as string),
         seenEventIds,
@@ -405,10 +438,19 @@ async function runUrinvolvedSyncExclusive(
           .from("external_events")
           .update({ is_active: false, updated_at: now })
           .in("external_id", eventIdsToDeactivate);
+        eventsDeactivated = eventIdsToDeactivate.length;
       }
-    } else if (!eventsFetchSucceeded && eventsFetchAttempted) {
-      console.warn("[cq:urinvolved-sync] preserving existing events after upstream failure", {
+    } else if (inventoryPreserved) {
+      const reasonMessage =
+        eventDeactivate.reason === "suspicious_empty_catalog"
+          ? `Refusing to deactivate ${existingUpcomingActiveCount} stored upcoming events after an empty upstream catalog.`
+          : `Preserving stored events (${eventDeactivate.reason}).`;
+      errors.push(reasonMessage);
+      console.warn("[cq:urinvolved-sync] preserving existing events", {
         reason: eventDeactivate.reason,
+        existingUpcomingActiveCount,
+        eventsFetched,
+        upstreamHttpStatus,
         errors: errors.slice(0, 3),
       });
     }
@@ -434,8 +476,11 @@ async function runUrinvolvedSyncExclusive(
     const imported = eventsCreated + eventsUpdated;
     const totalFailure =
       !eventsFetchSucceeded ||
+      !eventsPayloadValid ||
+      inventoryPreserved ||
       (eventsFetched > 0 && imported === 0 && eventsFailed >= eventsFetched);
     const success = !totalFailure;
+    const durationMs = Date.now() - startedMs;
 
     await finishSyncLog(admin, log.id, {
       status: success ? "success" : "failed",
@@ -454,16 +499,18 @@ async function runUrinvolvedSyncExclusive(
     }
 
     console.info("[cq:urinvolved-sync] complete", {
-      eventsFetched,
-      eventsCreated,
-      eventsUpdated,
-      eventsFailed,
-      eventsUnresolvedLocation,
-      eventsMapMatched,
-      orgsCreated,
-      orgsUpdated,
-      eventsFetchSucceeded,
+      source: URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE,
+      httpStatus: upstreamHttpStatus,
+      received: upstreamReceived,
+      validated: eventsFetched,
+      inserted: eventsCreated,
+      updated: eventsUpdated,
+      deactivated: eventsDeactivated,
+      failed: eventsFailed,
+      durationMs,
       success,
+      inventoryPreserved,
+      failureReason: success ? null : errors[0] ?? "sync_failed",
     });
 
     return {
@@ -489,6 +536,20 @@ async function runUrinvolvedSyncExclusive(
       orgs_updated: orgsUpdated,
       error_message: message,
     });
+    console.warn("[cq:urinvolved-sync] complete", {
+      source: URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE,
+      httpStatus: upstreamHttpStatus,
+      received: upstreamReceived,
+      validated: eventsFetched,
+      inserted: eventsCreated,
+      updated: eventsUpdated,
+      deactivated: eventsDeactivated,
+      failed: eventsFailed,
+      durationMs: Date.now() - startedMs,
+      success: false,
+      inventoryPreserved: true,
+      failureReason: message,
+    });
     return {
       success: false,
       events_fetched: eventsFetched,
@@ -508,6 +569,7 @@ async function runUrinvolvedSyncExclusive(
 export type UrinvolvedSyncStatus = {
   lastSuccessfulSync: string | null;
   lastAttemptedSync: string | null;
+  lastSyncImportedCount: number;
   totalEventsCount: number;
   activeEventsCount: number;
   upcomingActiveEventsCount: number;
@@ -535,7 +597,7 @@ export async function getUrinvolvedSyncStatus(): Promise<UrinvolvedSyncStatus> {
   ] = await Promise.all([
     admin
       .from("sync_logs")
-      .select("status, started_at, finished_at, error_message")
+      .select("status, started_at, finished_at, error_message, events_created, events_updated")
       .eq("source", URINVOLVED_SOURCE)
       .order("started_at", { ascending: false })
       .limit(20),
@@ -566,6 +628,8 @@ export async function getUrinvolvedSyncStatus(): Promise<UrinvolvedSyncStatus> {
 
   const rows = logs ?? [];
   const lastAttemptedSync = rows[0]?.started_at ?? null;
+  const lastSyncImportedCount =
+    Number(rows[0]?.events_created ?? 0) + Number(rows[0]?.events_updated ?? 0);
   const lastSuccess = rows.find((row) => row.status === "success");
   // Only surface an error when the most recent attempt failed — a later success recovers health.
   const lastError =
@@ -616,6 +680,7 @@ export async function getUrinvolvedSyncStatus(): Promise<UrinvolvedSyncStatus> {
   return {
     lastSuccessfulSync: lastSuccess?.finished_at ?? lastSuccess?.started_at ?? null,
     lastAttemptedSync,
+    lastSyncImportedCount,
     totalEventsCount: totalEventsCount ?? 0,
     activeEventsCount: activeEventsCount ?? 0,
     upcomingActiveEventsCount: upcomingActiveEventsCount ?? 0,

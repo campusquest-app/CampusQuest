@@ -129,6 +129,22 @@ function createMemoryAdmin(seed: EventRow[]) {
   };
 }
 
+function storedEventsSelectResult(admin: ReturnType<typeof createMemoryAdmin>) {
+  const result = Promise.resolve({
+    data: Array.from(admin._events.values()).map((row) => ({
+      external_id: row.external_id,
+      starts_at: row.starts_at,
+      is_active: row.is_active,
+    })),
+    error: null,
+  });
+  const thenableEq = () => ({
+    eq: thenableEq,
+    then: result.then.bind(result),
+  });
+  return { eq: thenableEq };
+}
+
 describe("URInvolved sync preservation behavior (unit)", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -160,17 +176,8 @@ describe("URInvolved sync preservation behavior (unit)", () => {
         return {
           ...builder,
           select: (cols: string) => {
-            if (cols === "external_id") {
-              return {
-                eq: () => ({
-                  eq: async () => ({
-                    data: Array.from(admin._events.values())
-                      .filter((e) => e.is_active)
-                      .map((e) => ({ external_id: e.external_id })),
-                    error: null,
-                  }),
-                }),
-              };
+            if (cols.includes("starts_at") || cols.includes("is_active")) {
+              return storedEventsSelectResult(admin);
             }
             return builder.select(cols);
           },
@@ -185,6 +192,7 @@ describe("URInvolved sync preservation behavior (unit)", () => {
       createAdminClient: () => admin,
     }));
     vi.doMock("@/lib/server/urinvolved/fetchSources", () => ({
+      URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE: "discovery_search",
       fetchUpcomingUrinvolvedDiscoveryEvents: async () => {
         throw new Error("URInvolved events discovery search failed (503).");
       },
@@ -221,18 +229,6 @@ describe("URInvolved sync preservation behavior (unit)", () => {
         return {
           ...builder,
           select: (cols: string) => {
-            if (cols === "external_id") {
-              return {
-                eq: () => ({
-                  eq: async () => ({
-                    data: Array.from(admin._events.values())
-                      .filter((e) => e.is_active)
-                      .map((e) => ({ external_id: e.external_id })),
-                    error: null,
-                  }),
-                }),
-              };
-            }
             if (cols.includes("external_id") && cols.includes("title")) {
               // logical duplicate query
               return {
@@ -244,6 +240,9 @@ describe("URInvolved sync preservation behavior (unit)", () => {
                   }),
                 }),
               };
+            }
+            if (cols.includes("starts_at") || cols.includes("is_active")) {
+              return storedEventsSelectResult(admin);
             }
             return {
               eq: (_c: string, value: string) => ({
@@ -292,6 +291,7 @@ describe("URInvolved sync preservation behavior (unit)", () => {
       createAdminClient: () => admin,
     }));
     vi.doMock("@/lib/server/urinvolved/fetchSources", () => ({
+      URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE: "discovery_search",
       fetchUpcomingUrinvolvedDiscoveryEvents: async () => ({
         raw: [
           {
@@ -332,5 +332,187 @@ describe("URInvolved sync preservation behavior (unit)", () => {
     expect(result.events_fetched).toBe(1);
     expect(result.events_created + result.events_updated).toBe(1);
     expect(admin.listActiveExternalIds()).toContain("12487762");
+  });
+
+  it("does not deactivate existing events when upstream returns an empty catalog", async () => {
+    const admin = createMemoryAdmin([
+      {
+        external_id: "keep-me",
+        is_active: true,
+        title: "Already Synced Fair",
+        starts_at: "2026-09-08T14:00:00.000Z",
+      },
+    ]);
+    const originalFrom = admin.from.bind(admin);
+    admin.from = ((table: string) => {
+      const builder = originalFrom(table);
+      if (table === "external_events") {
+        return {
+          ...builder,
+          select: (cols: string) => {
+            if (cols.includes("starts_at") || cols.includes("is_active")) {
+              return storedEventsSelectResult(admin);
+            }
+            return builder.select(cols);
+          },
+          upsert: builder.upsert,
+          update: builder.update,
+        };
+      }
+      return builder;
+    }) as typeof admin.from;
+
+    vi.doMock("@/lib/server/supabase", () => ({
+      createAdminClient: () => admin,
+    }));
+    vi.doMock("@/lib/server/urinvolved/fetchSources", () => ({
+      URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE: "discovery_search",
+      fetchUpcomingUrinvolvedDiscoveryEvents: async () => ({
+        raw: [],
+        httpStatus: 200,
+        totalCount: 0,
+      }),
+      fetchAllUrinvolvedOrganizations: async () => [],
+      fetchUrinvolvedEventDetail: async () => null,
+      buildOrganizationLogoUrl: () => null,
+      buildOrganizationUrl: () => "https://urinvolved.uri.edu/organization/x",
+      stripHtmlToText: (html: string | null) => html ?? "",
+    }));
+    vi.doMock("@/lib/server/campusLocationsDb", () => ({
+      getCampusLocations: async () => [],
+    }));
+    vi.doMock("@/lib/server/urinvolved/resolveAndUpsertEventMapPlacement", () => ({
+      resolveAndUpsertEventMapPlacement: async () => null,
+    }));
+    vi.doMock("next/cache", () => ({
+      revalidatePath: () => undefined,
+    }));
+
+    const { runUrinvolvedSync } = await import("@/lib/server/urinvolved/sync");
+    const result = await runUrinvolvedSync("cron");
+
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => /empty upstream catalog/i.test(e))).toBe(true);
+    expect(admin.listActiveExternalIds()).toContain("keep-me");
+  });
+
+  it("does not deactivate existing events on upstream timeout", async () => {
+    const admin = createMemoryAdmin([
+      {
+        external_id: "keep-me",
+        is_active: true,
+        title: "Already Synced Fair",
+        starts_at: "2026-09-08T14:00:00.000Z",
+      },
+    ]);
+    const originalFrom = admin.from.bind(admin);
+    admin.from = ((table: string) => {
+      const builder = originalFrom(table);
+      if (table === "external_events") {
+        return {
+          ...builder,
+          select: (cols: string) => {
+            if (cols.includes("starts_at") || cols.includes("is_active")) {
+              return storedEventsSelectResult(admin);
+            }
+            return builder.select(cols);
+          },
+          upsert: builder.upsert,
+          update: builder.update,
+        };
+      }
+      return builder;
+    }) as typeof admin.from;
+
+    vi.doMock("@/lib/server/supabase", () => ({
+      createAdminClient: () => admin,
+    }));
+    vi.doMock("@/lib/server/urinvolved/fetchSources", () => ({
+      URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE: "discovery_search",
+      fetchUpcomingUrinvolvedDiscoveryEvents: async () => {
+        throw new Error("URInvolved events discovery search timed out.");
+      },
+      fetchAllUrinvolvedOrganizations: async () => [],
+      fetchUrinvolvedEventDetail: async () => null,
+      buildOrganizationLogoUrl: () => null,
+      buildOrganizationUrl: () => "https://urinvolved.uri.edu/organization/x",
+      stripHtmlToText: (html: string | null) => html ?? "",
+    }));
+    vi.doMock("@/lib/server/campusLocationsDb", () => ({
+      getCampusLocations: async () => [],
+    }));
+    vi.doMock("@/lib/server/urinvolved/resolveAndUpsertEventMapPlacement", () => ({
+      resolveAndUpsertEventMapPlacement: async () => null,
+    }));
+    vi.doMock("next/cache", () => ({
+      revalidatePath: () => undefined,
+    }));
+
+    const { runUrinvolvedSync } = await import("@/lib/server/urinvolved/sync");
+    const result = await runUrinvolvedSync("cron");
+
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => /timed out/i.test(e))).toBe(true);
+    expect(admin.listActiveExternalIds()).toContain("keep-me");
+  });
+
+  it("does not deactivate existing events on malformed upstream payload", async () => {
+    const admin = createMemoryAdmin([
+      {
+        external_id: "keep-me",
+        is_active: true,
+        title: "Already Synced Fair",
+        starts_at: "2026-09-08T14:00:00.000Z",
+      },
+    ]);
+    const originalFrom = admin.from.bind(admin);
+    admin.from = ((table: string) => {
+      const builder = originalFrom(table);
+      if (table === "external_events") {
+        return {
+          ...builder,
+          select: (cols: string) => {
+            if (cols.includes("starts_at") || cols.includes("is_active")) {
+              return storedEventsSelectResult(admin);
+            }
+            return builder.select(cols);
+          },
+          upsert: builder.upsert,
+          update: builder.update,
+        };
+      }
+      return builder;
+    }) as typeof admin.from;
+
+    vi.doMock("@/lib/server/supabase", () => ({
+      createAdminClient: () => admin,
+    }));
+    vi.doMock("@/lib/server/urinvolved/fetchSources", () => ({
+      URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE: "discovery_search",
+      fetchUpcomingUrinvolvedDiscoveryEvents: async () => {
+        throw new Error("URInvolved events discovery search returned a malformed payload.");
+      },
+      fetchAllUrinvolvedOrganizations: async () => [],
+      fetchUrinvolvedEventDetail: async () => null,
+      buildOrganizationLogoUrl: () => null,
+      buildOrganizationUrl: () => "https://urinvolved.uri.edu/organization/x",
+      stripHtmlToText: (html: string | null) => html ?? "",
+    }));
+    vi.doMock("@/lib/server/campusLocationsDb", () => ({
+      getCampusLocations: async () => [],
+    }));
+    vi.doMock("@/lib/server/urinvolved/resolveAndUpsertEventMapPlacement", () => ({
+      resolveAndUpsertEventMapPlacement: async () => null,
+    }));
+    vi.doMock("next/cache", () => ({
+      revalidatePath: () => undefined,
+    }));
+
+    const { runUrinvolvedSync } = await import("@/lib/server/urinvolved/sync");
+    const result = await runUrinvolvedSync("api");
+
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => /malformed/i.test(e))).toBe(true);
+    expect(admin.listActiveExternalIds()).toContain("keep-me");
   });
 });

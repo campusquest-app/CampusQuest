@@ -16,6 +16,7 @@ import {
   matchesEventsSearch,
   matchesEventsTimeframe,
 } from "@/lib/client/eventsFeedFilters";
+import { EVENTS_STALE_NOTICE, eventsEmptyStateCopy } from "@/lib/client/eventsFeedEmptyState";
 import { TaggedEntityPostsSection } from "@/components/quad/TaggedEntityPostsSection";
 
 type EventItem = {
@@ -104,6 +105,7 @@ export function EventsFeed({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [externalLoadWarning, setExternalLoadWarning] = useState<string | null>(null);
+  const [eventsStale, setEventsStale] = useState(false);
   const [filters, setFilters] = useState<Filters>(initialFilters);
   const [activeDetail, setActiveDetail] = useState<FeedEvent | null>(null);
   const [rsvping, setRsvping] = useState<string | null>(null);
@@ -125,7 +127,10 @@ export function EventsFeed({
     try {
       const [campusResult, externalResult] = await Promise.allSettled([
         fetchAuthed<{ events: EventItem[] }>(`/api/events?${bust}`, { signal: controller.signal }),
-        fetchAuthed<{ events: ExternalEventItem[] }>(`/api/external/events?${bust}`, {
+        fetchAuthed<{
+          events: ExternalEventItem[];
+          meta?: { stale?: boolean; source?: string };
+        }>(`/api/external/events?${bust}`, {
           signal: controller.signal,
         }),
       ]);
@@ -143,13 +148,15 @@ export function EventsFeed({
 
       if (externalResult.status === "fulfilled") {
         setExternalEvents(externalResult.value.events ?? []);
+        setEventsStale(Boolean(externalResult.value.meta?.stale));
+        setExternalLoadWarning(externalResult.value.meta?.stale ? EVENTS_STALE_NOTICE : null);
       } else if (!controller.signal.aborted) {
-        setExternalEvents([]);
         const message =
           externalResult.reason instanceof Error
             ? externalResult.reason.message
             : "Could not load URInvolved events.";
-        setExternalLoadWarning(message);
+        setEventsStale(true);
+        setExternalLoadWarning(EVENTS_STALE_NOTICE);
         if (campusResult.status !== "fulfilled") {
           setError(message);
         }
@@ -277,6 +284,11 @@ export function EventsFeed({
       return aTime - bTime;
     });
   }, [allFeedEvents, filters]);
+
+  const emptyCopy = eventsEmptyStateCopy({
+    hasLoadedEvents: events.length + externalEvents.length > 0,
+    isAdmin: showAdminSyncLink,
+  });
 
   async function handleRsvp(eventId: string, status: "going" | "interested" | "not_going") {
     setRsvping(eventId);
@@ -410,7 +422,7 @@ export function EventsFeed({
       ) : null}
       {externalLoadWarning && !error ? (
         <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-          URInvolved events could not be loaded. CampusQuest events may still appear below.
+          {eventsStale ? EVENTS_STALE_NOTICE : externalLoadWarning}
         </div>
       ) : null}
       {loading ? (
@@ -422,12 +434,10 @@ export function EventsFeed({
       {!loading && prioritizedEvents.length === 0 ? (
         <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center space-y-2">
           <p className="text-sm text-white/80 font-medium">
-            {events.length + externalEvents.length > 0 ? "No events match your filters." : "No events found yet."}
+            {emptyCopy.title}
           </p>
           <p className="text-xs text-white/50 max-w-md mx-auto leading-relaxed">
-            {events.length + externalEvents.length > 0
-              ? "Try clearing search or date filters to see more CampusQuest and URInvolved events."
-              : "CampusQuest could not load synced URInvolved events. Try refreshing or check the admin sync status."}
+            {emptyCopy.detail}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
             <button

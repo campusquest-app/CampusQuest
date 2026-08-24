@@ -1,5 +1,5 @@
 import { fail, ok } from "@/lib/server/http";
-import { listActiveExternalEvents } from "@/lib/server/externalContent";
+import { listExternalEventsFeed } from "@/lib/server/externalContent";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
 
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
       timeframeParam === "this_month"
         ? timeframeParam
         : undefined;
-    const events = await listActiveExternalEvents({
+    const feed = await listExternalEventsFeed({
       category: url.searchParams.get("category") ?? undefined,
       location: url.searchParams.get("location") ?? undefined,
       organization: url.searchParams.get("organization") ?? undefined,
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       timeframe,
       includePast: url.searchParams.get("includePast") === "true",
     });
-    return ok({ events });
+    return ok({ events: feed.events, meta: feed.meta });
   } catch (error) {
     return fail(error);
   }

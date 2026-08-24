@@ -1,6 +1,8 @@
 import type { UrinvolvedDiscoveryEventRaw } from "@/lib/server/urinvolved/parseDiscoveryEvents";
 
-const URINVOLVED_EVENTS_RSS = "https://urinvolved.uri.edu/events.rss";
+/** Legacy 24h RSS window — not authoritative and must never mutate inventory. */
+export const URINVOLVED_EVENTS_RSS = "https://urinvolved.uri.edu/events.rss";
+export const URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE = "discovery_search" as const;
 const URINVOLVED_EVENT_DETAIL = "https://urinvolved.uri.edu/api/discovery/event/";
 const URINVOLVED_EVENTS_SEARCH = "https://urinvolved.uri.edu/api/discovery/event/search";
 const URINVOLVED_ORGS_SEARCH =
@@ -64,11 +66,9 @@ async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Respon
 }
 
 export async function fetchUrinvolvedEventsRss(): Promise<string> {
-  const response = await fetchWithTimeout(URINVOLVED_EVENTS_RSS);
-  if (!response.ok) {
-    throw new Error(`URInvolved events RSS failed (${response.status}).`);
-  }
-  return response.text();
+  throw new Error(
+    "URInvolved RSS is not an authoritative event source and cannot drive inventory mutation.",
+  );
 }
 
 /**
@@ -96,17 +96,36 @@ export async function fetchUpcomingUrinvolvedDiscoveryEvents(options?: {
     url.searchParams.set("orderByAsc", "startsOn");
     url.searchParams.set("endsAfter", endsAfter);
 
-    const response = await fetchWithTimeout(url.toString());
+    let response: Response;
+    try {
+      response = await fetchWithTimeout(url.toString());
+    } catch (error) {
+      const aborted =
+        (error instanceof DOMException && error.name === "AbortError") ||
+        (error instanceof Error && error.name === "AbortError");
+      if (aborted) {
+        throw new Error("URInvolved events discovery search timed out.");
+      }
+      throw error;
+    }
     lastStatus = response.status;
     if (!response.ok) {
       throw new Error(`URInvolved events discovery search failed (${response.status}).`);
     }
 
-    const payload = (await response.json()) as {
-      "@odata.count"?: number;
-      value?: UrinvolvedDiscoveryEventRaw[];
-    };
-    const batch = payload.value ?? [];
+    let payload: { "@odata.count"?: number; value?: UrinvolvedDiscoveryEventRaw[] };
+    try {
+      payload = (await response.json()) as {
+        "@odata.count"?: number;
+        value?: UrinvolvedDiscoveryEventRaw[];
+      };
+    } catch {
+      throw new Error("URInvolved events discovery search returned a malformed payload.");
+    }
+    if (!payload || typeof payload !== "object" || !Array.isArray(payload.value)) {
+      throw new Error("URInvolved events discovery search returned a malformed payload.");
+    }
+    const batch = payload.value;
     total = payload["@odata.count"] ?? skip + batch.length;
     all.push(...batch);
     if (batch.length === 0) break;
