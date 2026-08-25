@@ -1,4 +1,4 @@
-import type { AppBottomNavTab } from "@/components/AppBottomNav";
+import { APP_BOTTOM_NAV_TABS, type AppBottomNavTab } from "@/lib/client/appBottomNavTabs";
 import { getIsDrawerOpen } from "@/lib/client/appDrawerStore";
 
 export const SWIPE_BACK_EDGE_PX = 28;
@@ -51,13 +51,7 @@ const DRAWER_HORIZONTAL_SCROLL_SELECTOR = [
 ].join(", ");
 
 /** Left → right dock order. Map (`realm`) is the centered primary action. */
-export const BOTTOM_NAV_SWIPE_TABS: AppBottomNavTab[] = [
-  "quad",
-  "inbox",
-  "realm",
-  "leaderboards",
-  "character",
-];
+export const BOTTOM_NAV_SWIPE_TABS: AppBottomNavTab[] = [...APP_BOTTOM_NAV_TABS];
 
 export type SwipeNavDirection = "forward" | "back";
 

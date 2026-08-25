@@ -5,7 +5,7 @@
 export const BOTTOM_NAV_TOP_LEVEL_TABS = new Set([
   "quad",
   "realm",
-  "leaderboards",
+  "events",
   "character",
   "friends",
   "inbox",

@@ -1,11 +1,18 @@
 "use client";
 
 import type { Character } from "@/lib/types";
+import { Trophy } from "lucide-react";
 import { StreakCard } from "./StreakCard";
 import { WeeklyRecapCard } from "./WeeklyRecapCard";
 import { RecentActivities } from "./RecentActivities";
 
-export function ProgressHubScreen({ character }: { character: Character }) {
+export function ProgressHubScreen({
+  character,
+  onOpenLeaderboard,
+}: {
+  character: Character;
+  onOpenLeaderboard?: () => void;
+}) {
   return (
     <div className="cq-tab-shell mx-auto w-full max-w-lg space-y-6 pb-8">
       <header className="cq-screen-header">
@@ -40,6 +47,25 @@ export function ProgressHubScreen({ character }: { character: Character }) {
           </div>
         </div>
       </div>
+
+      {onOpenLeaderboard ? (
+        <button
+          type="button"
+          onClick={onOpenLeaderboard}
+          className="card flex w-full items-center justify-between gap-3 p-4 text-left transition hover:bg-white/[0.04]"
+        >
+          <span className="flex min-w-0 items-center gap-3">
+            <Trophy className="h-5 w-5 shrink-0 text-uri-gold/90" strokeWidth={2.25} aria-hidden />
+            <span>
+              <span className="block font-display font-semibold text-white">Leaderboard</span>
+              <span className="block text-xs text-white/55">See how you rank by XP on campus.</span>
+            </span>
+          </span>
+          <span className="text-sm text-uri-keaney/90" aria-hidden>
+            →
+          </span>
+        </button>
+      ) : null}
 
       <StreakCard character={character} />
       <WeeklyRecapCard character={character} />

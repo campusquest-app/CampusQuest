@@ -46,6 +46,16 @@ import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
 import { EventsFeed } from "./EventsFeed";
 import { OrganizationsHub } from "./OrganizationsHub";
 import { TheRealm } from "./TheRealm";
+import {
+  clearPendingRealmArrival,
+  hasPendingRealmArrival,
+  markPendingRealmArrival,
+  readOptionalProfileTimestamp,
+  setRealmMapFocus,
+  shouldLandOnRealmFirstEntry,
+  shouldShowNavHints,
+  shouldShowRealmArrival,
+} from "@/lib/realm/firstEntry";
 import { STAT_KEYS, STAT_LABELS } from "@/lib/types";
 import { StatIcon } from "@/components/stats/StatIcon";
 import { getActivityById } from "@/lib/activities";
@@ -145,6 +155,8 @@ import {
   syncOnboardingQaReplayFromAccessToken,
 } from "@/lib/client/onboardingQaSession";
 import { AuthOnboardingFlow } from "@/components/auth/AuthOnboardingFlow";
+import { isCampusEmailVerificationRequired } from "@/lib/campusEmailVerification";
+import { isDemographicsRequired } from "@/lib/onboarding/demographicOnboardingPolicy";
 import { DisplayNameGate } from "@/components/DisplayNameGate";
 import {
   isProfileInitializingError,
@@ -306,11 +318,19 @@ export function Dashboard() {
   const [screenShake, setScreenShake] = useState(false);
   const [levelUpModal, setLevelUpModal] = useState<number | null>(null);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const preferRealmArrivalRef = useRef(false);
+  const [realmWelcomeSeenAt, setRealmWelcomeSeenAt] = useState<string | null | undefined>(undefined);
+  const [navHintsSeenAt, setNavHintsSeenAt] = useState<string | null | undefined>(undefined);
+  const [showRealmArrival, setShowRealmArrival] = useState(false);
   const [onboardingPreferences, setOnboardingPreferences] = useState<{
     schoolName: string;
     interests: string[];
+    communities: string[];
     discoveryFocus: string[];
     major?: string | null;
+    institutionId?: string | null;
+    studentStatus?: string | null;
+    classYear?: number | null;
   } | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("bootstrapping");
   const [bootstrapNonce, setBootstrapNonce] = useState(0);
@@ -731,6 +751,54 @@ export function Dashboard() {
     setTab(previous ?? "quad");
   }, []);
 
+  const persistRealmWelcomeSeen = useCallback(() => {
+    preferRealmArrivalRef.current = false;
+    clearPendingRealmArrival();
+    setShowRealmArrival(false);
+    setRealmWelcomeSeenAt((prev) => prev ?? new Date().toISOString());
+    void import("@/lib/client/dashboardApi").then(({ patchAuthed }) => {
+      void patchAuthed("/api/me/profile", { realmWelcomeSeen: true }).catch(() => {});
+    });
+  }, []);
+
+  const persistNavHintsSeen = useCallback(() => {
+    setNavHintsSeenAt((prev) => {
+      if (prev) return prev;
+      void import("@/lib/client/dashboardApi").then(({ patchAuthed }) => {
+        void patchAuthed("/api/me/profile", { navHintsSeen: true }).catch(() => {});
+      });
+      return new Date().toISOString();
+    });
+  }, []);
+
+  const openEventOnMap = useCallback((eventId: string, options?: { walk?: boolean }) => {
+    setRealmMapFocus({ eventId, source: "events", walk: options?.walk || undefined });
+    navigateToTab("realm");
+  }, [navigateToTab]);
+
+  const openOrganizationFromEvents = useCallback((organizationId: string) => {
+    try {
+      window.sessionStorage.setItem("cq_open_org_id", organizationId);
+    } catch {
+      /* ignore */
+    }
+    navigateToTab("organizations");
+  }, [navigateToTab]);
+
+  const openLocationOnMap = useCallback((locationId: string) => {
+    setRealmMapFocus({ locationId, source: "feed" });
+    navigateToTab("realm");
+  }, [navigateToTab]);
+
+  const openTaggedEvent = useCallback((eventId: string) => {
+    try {
+      window.sessionStorage.setItem("cq_open_event_id", eventId);
+    } catch {
+      /* ignore */
+    }
+    navigateToTab("events");
+  }, [navigateToTab]);
+
   const handleDrawerNavigate = useCallback(
     (dest: AppDrawerDestination | "mini-games" | "achievements" | "quest-board" | "settings" | "manual-log" | "progress-hub" | "skills-lore" | "collectibles" | "scan") => {
       switch (dest) {
@@ -746,10 +814,10 @@ export function Dashboard() {
           setQuadFeedTab("trending");
           break;
         case "leaderboards":
-          setTab("leaderboards");
+          navigateToTab("leaderboards");
           break;
         case "events":
-          navigateToTab("events");
+          setTab("events");
           break;
         case "realm":
           setTab("realm");
@@ -834,7 +902,7 @@ export function Dashboard() {
     tab === "quad" ||
     tab === "inbox" ||
     tab === "realm" ||
-    tab === "leaderboards" ||
+    tab === "events" ||
     tab === "character"
       ? tab
       : "other";
@@ -1438,7 +1506,14 @@ export function Dashboard() {
         await patchAuthed("/api/me/profile", {
           starterIntroSeenReset: true,
           beginnerChainCelebrationSeenReset: true,
+          realmWelcomeSeenReset: true,
+          navHintsSeenReset: true,
         });
+        preferRealmArrivalRef.current = false;
+        clearPendingRealmArrival();
+        setRealmWelcomeSeenAt(null);
+        setNavHintsSeenAt(null);
+        setShowRealmArrival(false);
       } catch {
         /* ignore */
       }
@@ -1671,8 +1746,12 @@ export function Dashboard() {
             setOnboardingPreferences({
               schoolName: prefsSnapshot.schoolName,
               interests: prefsSnapshot.interests,
+              communities: prefsSnapshot.communities ?? [],
               discoveryFocus: prefsSnapshot.discoveryFocus,
               major: prefsSnapshot.major,
+              institutionId: prefsSnapshot.institutionId ?? profileMerged.institution_id ?? null,
+              studentStatus: profileMerged.student_status ?? null,
+              classYear: profileMerged.class_year ?? null,
             });
           } else {
             setOnboardingPreferences(null);
@@ -1733,7 +1812,29 @@ export function Dashboard() {
             setCharacter(merged);
             resetUserSaveSyncAfterHydrate();
             setGatePrefillProfile(null);
-            setTab("quad");
+            const welcomeSeen = readOptionalProfileTimestamp(
+              profileMerged as Record<string, unknown>,
+              "realm_welcome_seen_at",
+            );
+            const hintsSeen = readOptionalProfileTimestamp(
+              profileMerged as Record<string, unknown>,
+              "nav_hints_seen_at",
+            );
+            setRealmWelcomeSeenAt(welcomeSeen);
+            setNavHintsSeenAt(hintsSeen);
+            const pending = preferRealmArrivalRef.current || hasPendingRealmArrival();
+            const landRealm = shouldLandOnRealmFirstEntry({
+              realmWelcomeSeenAt: welcomeSeen,
+              pending,
+            });
+            setShowRealmArrival(
+              shouldShowRealmArrival({
+                realmWelcomeSeenAt: welcomeSeen,
+                pending,
+                onboardingComplete: true,
+              }),
+            );
+            setTab(landRealm ? "realm" : "quad");
           } else {
             clearLegacyLocalMismatch();
             commitSnap();
@@ -2063,14 +2164,55 @@ export function Dashboard() {
     return (
       <>
         <AuthOnboardingFlow
-          onComplete={() => {
+          startAtEmailVerification={
+            isCampusEmailVerificationRequired(gatePrefillProfile ?? {}) &&
+            !isDemographicsRequired({
+              profile: gatePrefillProfile ?? {},
+              preferences: onboardingPreferences
+                ? {
+                    exists: true,
+                    interests: onboardingPreferences.interests ?? [],
+                    institutionId: gatePrefillProfile?.institution_id ?? null,
+                  }
+                : { exists: false, interests: [] },
+            })
+          }
+          onComplete={async () => {
             completeDemographicQaReplay(getAccessToken());
-            markPostLoginLoadingPending();
-            setShowPostLoginLoading(true);
-            setLaunchSplashOpen(true);
-            setBootstrapStatus("bootstrapping");
-            setProfileRoute("unknown");
-            setBootstrapNonce((n) => n + 1);
+            setLaunchSplashOpen(false);
+            setShowPostLoginLoading(false);
+            try {
+              const [updatedProfile, prefsPayload] = await Promise.all([
+                fetchAuthed<MeProfileRow>("/api/me/profile"),
+                fetchAuthed<{
+                  exists: boolean;
+                  preferences: {
+                    interests?: string[];
+                    communities?: string[];
+                    institutionId?: string | null;
+                    completedAt?: string | null;
+                  } | null;
+                }>("/api/me/onboarding-preferences"),
+              ]);
+              setGatePrefillProfile(updatedProfile);
+              const prefs = prefsPayload.preferences;
+              const nextRoute = resolveProfileRoute(updatedProfile, {
+                preferences: {
+                  exists: prefsPayload.exists,
+                  interests: prefs?.interests ?? [],
+                  communities: prefs?.communities ?? [],
+                  institutionId: prefs?.institutionId ?? updatedProfile.institution_id ?? null,
+                  completedAt: prefs?.completedAt ?? null,
+                },
+                forceDemographicsQaReplay: false,
+                forceCharacterQaReplay: qaReplayActive,
+              });
+              setProfileRoute(nextRoute);
+            } catch {
+              setBootstrapStatus("bootstrapping");
+              setProfileRoute("unknown");
+              setBootstrapNonce((n) => n + 1);
+            }
           }}
           onRequestSignIn={() => {
             clearAccessToken();
@@ -2123,8 +2265,11 @@ export function Dashboard() {
           onReady={() => {
             completeOnboardingQaReplay(getAccessToken());
             setQaReplayActive(false);
+            preferRealmArrivalRef.current = true;
+            markPendingRealmArrival();
+            setShowRealmArrival(true);
             refresh();
-            setTab("quad");
+            setTab("realm");
             setBootstrapNonce((n) => n + 1);
           }}
         />
@@ -2648,7 +2793,7 @@ export function Dashboard() {
         )}
 
         {tab === "quad" && (
-          <TheQuad
+            <TheQuad
             character={character}
             onRefresh={refresh}
             feedTab={quadFeedTab}
@@ -2664,6 +2809,10 @@ export function Dashboard() {
             canModeratePosts={moderationAdminNavVisible(pilotCampusState)}
             onPostXpReward={handleQuadPostXpReward}
             showXpProgressBar={shouldRenderXpProgressBar(xpProgressBarPref)}
+            personalization={onboardingPreferences}
+            showRecommendationDebug={moderationAdminNavVisible(pilotCampusState)}
+            onViewEvent={openTaggedEvent}
+            onViewOnMap={openLocationOnMap}
           />
         )}
 
@@ -2687,7 +2836,9 @@ export function Dashboard() {
             <EventsFeed
               personalization={onboardingPreferences}
               showAdminSyncLink={moderationAdminNavVisible(pilotCampusState)}
-              onBack={goBackTab}
+              showRecommendationDebug={moderationAdminNavVisible(pilotCampusState)}
+              onViewOnMap={openEventOnMap}
+              onOpenOrganization={openOrganizationFromEvents}
             />,
           )}
 
@@ -2696,7 +2847,18 @@ export function Dashboard() {
             {renderPilotCampusGate(
               <TheRealm
                 isActive={tab === "realm"}
-                onBack={() => setTab("quad")}
+                personalization={onboardingPreferences}
+                showArrival={showRealmArrival}
+                onArrivalExplore={() => {
+                  persistRealmWelcomeSeen();
+                  persistNavHintsSeen();
+                }}
+                onArrivalViewFeed={() => {
+                  persistRealmWelcomeSeen();
+                  persistNavHintsSeen();
+                  setTab("quad");
+                }}
+                onBack={() => goBackTab()}
                 onCreatePost={() => setTab("quad")}
                 onViewQuests={() => setTab("quest-board")}
                 onOpenOrganization={(organizationId) => {
@@ -2734,6 +2896,7 @@ export function Dashboard() {
             character={character}
             onRefresh={refreshAuthoritativeProfileInBackground}
             onViewProfile={openFriendView}
+            onBack={goBackTab}
           />
         )}
 
@@ -2756,6 +2919,7 @@ export function Dashboard() {
             character={character}
             onRefresh={refreshAuthoritativeProfileInBackground}
             onBack={() => setTab("quad")}
+            personalization={onboardingPreferences}
           />
         )}
 
@@ -2763,7 +2927,12 @@ export function Dashboard() {
           <ManualLogScreen character={character} onLog={handleLog} onBack={() => setTab("quad")} />
         )}
 
-        {tab === "progress-hub" && character && <ProgressHubScreen character={character} />}
+        {tab === "progress-hub" && character && (
+          <ProgressHubScreen
+            character={character}
+            onOpenLeaderboard={() => navigateToTab("leaderboards")}
+          />
+        )}
 
         {tab === "skills-lore" && character && (
           <SkillsLoreScreen character={character} onRefresh={refresh} />
@@ -2814,9 +2983,14 @@ export function Dashboard() {
                 platformAdminAccess={platformAdminNavVisible(pilotCampusState)}
                 activeProfileTab={profileTab}
                 onProfileTabChange={setProfileTab}
+                onOpenLeaderboard={() => navigateToTab("leaderboards")}
               />
             ) : (
-              <CharacterCard character={character} onRefresh={refresh} />
+              <CharacterCard
+                character={character}
+                onRefresh={refresh}
+                onOpenLeaderboard={() => navigateToTab("leaderboards")}
+              />
             )}
           </div>
         ) : null}
@@ -2831,8 +3005,10 @@ export function Dashboard() {
             userAvatar={character?.avatar}
             avatarLoading={!character}
             unreadBadgeCount={unreadNotificationCount}
+            showDockLabels={shouldShowNavHints(navHintsSeenAt)}
             onSelectTab={(t) => {
               if (drawerBlocksNavigation) return;
+              persistNavHintsSeen();
               setTab(t);
               if (t === "quad") setQuadFeedTab("public");
               if (t === "inbox") setInboxSubTab("messages");

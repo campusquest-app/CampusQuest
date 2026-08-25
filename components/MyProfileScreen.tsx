@@ -63,6 +63,7 @@ export function MyProfileScreen({
   onSharePost,
   activeProfileTab,
   onProfileTabChange,
+  onOpenLeaderboard,
 }: {
   character: Character;
   onLogout?: () => void | Promise<void>;
@@ -75,6 +76,7 @@ export function MyProfileScreen({
   onSharePost?: (note: FieldNote) => void;
   activeProfileTab?: ProfileTab;
   onProfileTabChange?: (tab: ProfileTab) => void;
+  onOpenLeaderboard?: () => void;
 }) {
   const isPlatformAdminUser = platformAdminAccess ?? moderationAdminAccess;
   const [posts, setPosts] = useState<FieldNote[]>([]);
@@ -501,6 +503,7 @@ export function MyProfileScreen({
         onSharePost={onSharePost}
         activeProfileTab={activeProfileTab}
         onProfileTabChange={onProfileTabChange}
+        onOpenLeaderboard={onOpenLeaderboard}
       />
 
       {friendsListOpen && typeof document !== "undefined" && createPortal(

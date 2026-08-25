@@ -99,13 +99,13 @@ const MAIN_NAV: MenuItem[] = [
   { id: "realm", label: "Map", icon: <Map className={ICON} aria-hidden /> },
   { id: "friends", label: "Friends", icon: <Users className={ICON} aria-hidden /> },
   { id: "guilds", label: "Guilds", icon: <Shield className={ICON} aria-hidden /> },
-  { id: "leaderboards", label: "Ranks", icon: <Trophy className={ICON} aria-hidden /> },
   { id: "profile", label: "Profile", icon: <User className={ICON} aria-hidden /> },
 ];
 
 const PROGRESS_NAV: MenuItem[] = [
   { id: "scan", label: "CQ Scanner", icon: <QrCode className={ICON} aria-hidden /> },
   { id: "character-sheet", label: "Character", icon: <Sparkles className={ICON} aria-hidden /> },
+  { id: "leaderboards", label: "Leaderboard", icon: <Trophy className={ICON} aria-hidden /> },
   // Manual Log entry is gated by FEATURE_FLAGS.manualLog in getProgressNav().
   { id: "manual-log", label: "Manual Log", icon: <ClipboardList className={ICON} aria-hidden /> },
   { id: "quest-board", label: "Quests", icon: <Target className={ICON} aria-hidden /> },

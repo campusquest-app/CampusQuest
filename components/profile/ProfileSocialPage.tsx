@@ -61,6 +61,7 @@ export function ProfileSocialPage({
   activeProfileTab,
   onProfileTabChange,
   canModeratePosts,
+  onOpenLeaderboard,
 }: {
   character: Character;
   viewer: Pick<Character, "id" | "name" | "username" | "avatar">;
@@ -98,6 +99,7 @@ export function ProfileSocialPage({
   activeProfileTab?: ProfileTab;
   onProfileTabChange?: (tab: ProfileTab) => void;
   canModeratePosts?: boolean;
+  onOpenLeaderboard?: () => void;
 }) {
   const [tab, setTab] = useState<ProfileTab>(activeProfileTab ?? "posts");
   const [selectedPost, setSelectedPost] = useState<FieldNote | null>(null);
@@ -232,7 +234,7 @@ export function ProfileSocialPage({
         ]}
       />
 
-      <ProfileXpCard character={character} />
+      <ProfileXpCard character={character} onOpenLeaderboard={isOwner ? onOpenLeaderboard : undefined} />
 
       {isOwner ? (
         <ProfileActionButtons

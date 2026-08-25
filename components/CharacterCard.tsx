@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { Trophy } from "lucide-react";
 import type { Character } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, MAX_STAT } from "@/lib/types";
 import { getCharacterStatBarFills, CHARACTER_STAT_BAR_MAX } from "@/lib/statBarDisplay";
@@ -25,10 +26,12 @@ export function CharacterCard({
   character,
   onRefresh,
   readOnly = false,
+  onOpenLeaderboard,
 }: {
   character: Character;
   onRefresh?: () => void;
   readOnly?: boolean;
+  onOpenLeaderboard?: () => void;
 }) {
   const [editingAvatar, setEditingAvatar] = useState(false);
   const [editingAvatarValue, setEditingAvatarValue] = useState(character.avatar);
@@ -256,13 +259,27 @@ export function CharacterCard({
 
       {!readOnly ? (
         <div className="border-b border-white/10 px-3 pb-4 sm:px-4">
-          <button
-            type="button"
-            onClick={() => setShowAchievementShowcase(true)}
-            className="cq-achievement-cta cq-pulse-glow cq-tap-press w-full rounded-xl border border-uri-gold/35 bg-uri-gold/10 px-4 py-2.5 text-sm font-semibold text-uri-gold transition-colors hover:bg-uri-gold/15"
-          >
-            Achievement Showcase
-          </button>
+          <div className={`grid gap-2 ${onOpenLeaderboard ? "grid-cols-2" : "grid-cols-1"}`}>
+            <button
+              type="button"
+              onClick={() => setShowAchievementShowcase(true)}
+              className="cq-achievement-cta cq-pulse-glow cq-tap-press w-full rounded-xl border border-uri-gold/35 bg-uri-gold/10 px-4 py-2.5 text-sm font-semibold text-uri-gold transition-colors hover:bg-uri-gold/15"
+            >
+              Achievement Showcase
+            </button>
+            {onOpenLeaderboard ? (
+              <button
+                type="button"
+                onClick={onOpenLeaderboard}
+                className="cq-tap-press w-full rounded-xl border border-uri-keaney/35 bg-uri-keaney/10 px-4 py-2.5 text-sm font-semibold text-uri-keaney transition-colors hover:bg-uri-keaney/15"
+              >
+                <span className="inline-flex items-center justify-center gap-1.5">
+                  <Trophy className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+                  Leaderboard
+                </span>
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

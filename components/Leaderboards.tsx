@@ -14,6 +14,7 @@ import { fetchAuthed } from "@/lib/client/dashboardApi";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { refreshPlayerSnapshotFromServer } from "@/lib/client/refreshPlayerSnapshot";
 import { PullToRefresh } from "@/components/PullToRefresh";
+import { BackButton } from "@/components/ui/BackButton";
 import type { Character } from "@/lib/types";
 import { UserAvatar } from "./UserAvatar";
 import { AchievementShowcaseStrip } from "./achievements/AchievementShowcaseStrip";
@@ -187,10 +188,12 @@ export function Leaderboards({
   character,
   onRefresh,
   onViewProfile,
+  onBack,
 }: {
   character: Character;
   onRefresh?: () => void;
   onViewProfile?: (userId: string) => void;
+  onBack?: () => void;
 }) {
   const [sortBy, setSortBy] = useState<SortBy>("totalXp");
   const [expandedGuildId, setExpandedGuildId] = useState<string | null>(null);
@@ -404,12 +407,15 @@ export function Leaderboards({
     <section className="cq-lb-shell cq-tab-shell">
       <header className="cq-lb-header cq-screen-header sticky top-0 z-10">
         <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex items-start gap-2">
+            {onBack ? <BackButton onClick={onBack} label="Back" /> : null}
+            <div className="min-w-0">
             <h1 className="cq-screen-header__title flex items-center gap-2">
               <Trophy className="h-5 w-5 text-uri-gold/90 shrink-0" aria-hidden strokeWidth={2.25} />
               Scholars Leaderboard
             </h1>
             <p className="cq-screen-header__subtitle">Ranked by total XP · all time</p>
+            </div>
           </div>
             <button
               type="button"

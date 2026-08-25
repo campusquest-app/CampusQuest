@@ -13,13 +13,13 @@ describe("shouldShowBottomNav", () => {
     expect(shouldShowBottomNav({ ...base, tab: "quad" })).toBe(true);
     expect(shouldShowBottomNav({ ...base, tab: "realm" })).toBe(true);
     expect(shouldShowBottomNav({ ...base, tab: "friends" })).toBe(true);
-    expect(shouldShowBottomNav({ ...base, tab: "leaderboards" })).toBe(true);
+    expect(shouldShowBottomNav({ ...base, tab: "events" })).toBe(true);
     expect(shouldShowBottomNav({ ...base, tab: "character" })).toBe(true);
     expect(shouldShowBottomNav({ ...base, tab: "inbox" })).toBe(true);
   });
 
   it("hides on secondary tabs", () => {
-    expect(shouldShowBottomNav({ ...base, tab: "events" })).toBe(false);
+    expect(shouldShowBottomNav({ ...base, tab: "leaderboards" })).toBe(false);
     expect(shouldShowBottomNav({ ...base, tab: "organizations" })).toBe(false);
     expect(shouldShowBottomNav({ ...base, tab: "guilds" })).toBe(false);
     expect(shouldShowBottomNav({ ...base, tab: "quest-board" })).toBe(false);

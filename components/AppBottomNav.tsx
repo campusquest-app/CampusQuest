@@ -2,11 +2,15 @@
 
 import { forwardRef, useLayoutEffect, useRef, useState, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Home, Map, MessageCircle, Trophy } from "lucide-react";
+import { Calendar, Home, Map, MessageCircle } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { getCharacter, subscribeCharacterAvatar } from "@/lib/store";
 import { useIsDrawerOpen } from "@/lib/client/appDrawerStore";
 import { DEFAULT_DISPLAY_AVATAR, normalizeAvatarInput } from "@/lib/resolveAvatarForDisplay";
+import { APP_BOTTOM_NAV_HINT_LABELS, APP_BOTTOM_NAV_TABS, type AppBottomNavTab } from "@/lib/client/appBottomNavTabs";
+
+export type { AppBottomNavTab } from "@/lib/client/appBottomNavTabs";
+export { APP_BOTTOM_NAV_TABS } from "@/lib/client/appBottomNavTabs";
 
 /** Synced by ResizeObserver on the dock element. */
 export const BOTTOM_NAV_CSS_VAR = "--cq-bottom-nav-h";
@@ -19,15 +23,12 @@ export const CQ_BOTTOM_NAV_CLEARANCE =
 export const CQ_FLOATING_ACTION_BOTTOM =
   "calc(var(--cq-bottom-nav-h, 3.95rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 1.25rem)";
 
-/** Primary dock destinations (left → right). Map is the centered primary action. */
-export type AppBottomNavTab = "quad" | "inbox" | "realm" | "leaderboards" | "character";
+/** Non-Map tabs that participate in the sliding active indicator. */
+const INDICATOR_TABS: AppBottomNavTab[] = ["quad", "inbox", "events", "character"];
+
+const DOCK_TABS: AppBottomNavTab[] = [...APP_BOTTOM_NAV_TABS];
 
 const BOTTOM_NAV_AVATAR_PX = 28;
-
-/** Non-Map tabs that participate in the sliding active indicator. */
-const INDICATOR_TABS: AppBottomNavTab[] = ["quad", "inbox", "leaderboards", "character"];
-
-const DOCK_TABS: AppBottomNavTab[] = ["quad", "inbox", "realm", "leaderboards", "character"];
 
 function useLiveUserAvatar(fallback?: unknown): unknown {
   return useSyncExternalStore(
@@ -67,6 +68,7 @@ export function AppBottomNav({
   userAvatar,
   avatarLoading = false,
   unreadBadgeCount = 0,
+  showDockLabels = false,
 }: {
   activeTab: AppBottomNavTab | "other";
   onSelectTab: (tab: AppBottomNavTab) => void;
@@ -74,6 +76,7 @@ export function AppBottomNav({
   avatarLoading?: boolean;
   /** Unread messages badge on Messages. */
   unreadBadgeCount?: number;
+  showDockLabels?: boolean;
 }) {
   const navRef = useRef<HTMLElement | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
@@ -185,7 +188,8 @@ export function AppBottomNav({
           ref={(node) => {
             itemRefs.current.quad = node;
           }}
-          label="Home"
+          label={APP_BOTTOM_NAV_HINT_LABELS.quad}
+          hint={showDockLabels}
           active={resolvedActive === "quad"}
           onClick={() => guardNav(() => onSelectTab("quad"))}
           icon={
@@ -201,7 +205,8 @@ export function AppBottomNav({
           ref={(node) => {
             itemRefs.current.inbox = node;
           }}
-          label="Messages"
+          label={APP_BOTTOM_NAV_HINT_LABELS.inbox}
+          hint={showDockLabels}
           active={resolvedActive === "inbox"}
           onClick={() => guardNav(() => onSelectTab("inbox"))}
           badge={showBadge}
@@ -220,7 +225,7 @@ export function AppBottomNav({
             type="button"
             onClick={() => guardNav(() => onSelectTab("realm"))}
             aria-current={mapActive ? "page" : undefined}
-            aria-label={mapActive ? "Map, current page" : "Map"}
+            aria-label={mapActive ? "Explore, current page" : "Explore"}
             className={`cq-dock-nav__map-btn cq-map-fab cq-tap-press touch-manipulation${
               mapActive ? " cq-dock-nav__map-btn--active" : ""
             }`}
@@ -228,21 +233,25 @@ export function AppBottomNav({
             <span className="cq-dock-nav__map-ring cq-pulse-glow" aria-hidden />
             <span className="cq-dock-nav__map-ring cq-dock-nav__map-ring--outer cq-pulse-glow" aria-hidden />
             <Map className="relative z-[1] h-[24px] w-[24px]" strokeWidth={2.2} />
+            {showDockLabels ? (
+              <span className="cq-dock-nav__hint cq-dock-nav__hint--map">{APP_BOTTOM_NAV_HINT_LABELS.realm}</span>
+            ) : null}
           </button>
         </div>
 
         <DockItem
           ref={(node) => {
-            itemRefs.current.leaderboards = node;
+            itemRefs.current.events = node;
           }}
-          label="Leaderboard"
-          active={resolvedActive === "leaderboards"}
-          onClick={() => guardNav(() => onSelectTab("leaderboards"))}
+          label={APP_BOTTOM_NAV_HINT_LABELS.events}
+          hint={showDockLabels}
+          active={resolvedActive === "events"}
+          onClick={() => guardNav(() => onSelectTab("events"))}
           icon={
-            <Trophy
+            <Calendar
               className="h-[26px] w-[26px]"
-              strokeWidth={resolvedActive === "leaderboards" ? 2.5 : 2}
-              fill={resolvedActive === "leaderboards" ? "currentColor" : "none"}
+              strokeWidth={resolvedActive === "events" ? 2.5 : 2}
+              fill={resolvedActive === "events" ? "currentColor" : "none"}
             />
           }
         />
@@ -251,7 +260,8 @@ export function AppBottomNav({
           ref={(node) => {
             itemRefs.current.character = node;
           }}
-          label="Profile"
+          label={APP_BOTTOM_NAV_HINT_LABELS.character}
+          hint={showDockLabels}
           active={resolvedActive === "character"}
           onClick={() => guardNav(() => onSelectTab("character"))}
           avatar={liveAvatar}
@@ -272,6 +282,7 @@ const DockItem = forwardRef(function DockItem(
     icon,
     badge = false,
     reserveBadge = false,
+    hint = false,
   }: {
     label: string;
     active: boolean;
@@ -280,6 +291,7 @@ const DockItem = forwardRef(function DockItem(
     badge?: boolean;
     /** Keep layout stable when badge appears/disappears. */
     reserveBadge?: boolean;
+    hint?: boolean;
   },
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
@@ -302,6 +314,7 @@ const DockItem = forwardRef(function DockItem(
     >
       <span className={`cq-dock-nav__icon-wrap ${active ? "cq-nav-glow" : ""}`}>
         {icon}
+        {hint ? <span className="cq-dock-nav__hint">{label}</span> : null}
         {reserveBadge || badge ? (
           <span
             className={`cq-dock-nav__badge${badge ? "" : " cq-dock-nav__badge--hidden"}`}
@@ -322,6 +335,7 @@ const DockProfileItem = forwardRef(function DockProfileItem(
     initials,
     useInitials = false,
     loading,
+    hint = false,
   }: {
     label: string;
     active: boolean;
@@ -330,6 +344,7 @@ const DockProfileItem = forwardRef(function DockProfileItem(
     initials: string;
     useInitials?: boolean;
     loading?: boolean;
+    hint?: boolean;
   },
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
@@ -359,6 +374,7 @@ const DockProfileItem = forwardRef(function DockProfileItem(
           />
         )}
       </span>
+      {hint ? <span className="cq-dock-nav__hint">{label}</span> : null}
     </button>
   );
 });

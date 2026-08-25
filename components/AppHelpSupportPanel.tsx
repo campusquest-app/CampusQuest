@@ -38,7 +38,7 @@ const HELP_ARTICLES: HelpArticle[] = [
     keywords: ["campus", "quad", "feed", "social", "start", "post", "posts", "field note", "field notes"],
     body: [
       "CampusQuest turns everyday campus moments into progression. Post on The Quad, complete quests, scan QR codes, and grow your character.",
-      "Your Profile tab tracks XP, stats, streaks, and gear. The bottom nav keeps Home, Messages, Map, Leaderboard, and Profile one tap away.",
+      "Your Profile tab tracks XP, stats, streaks, and gear. The bottom nav keeps Home, Messages, Map, Events, and Profile one tap away. Open Leaderboard from Profile or Progress.",
       "Explore friends, guilds, events, and boss battles from the menu to find more ways to earn XP.",
     ],
   },
