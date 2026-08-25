@@ -36,8 +36,10 @@ import {
   hasClientAccessSession,
   isMissingSessionError,
 } from "@/lib/client/authSessionClient";
-import type { QuadCommunityChannel } from "@/lib/quadCommunityChannels";
-import { isQuadCommunityChannel, QUAD_COMMUNITY_FEED_LABELS } from "@/lib/quadCommunityChannels";
+import { isQuadCommunityChannel, QUAD_COMMUNITY_FEED_LABELS, type QuadCommunityChannel } from "@/lib/quadCommunityChannels";
+import { isMarketFeedTab, type QuadFeedTab } from "@/lib/client/quadFeedOptions";
+import { TheMarketFeed } from "@/components/market/TheMarketFeed";
+import type { MarketplaceSeller } from "@/lib/marketplace/types";
 import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
 import {
   fieldNoteToRecommendationEntity,
@@ -45,7 +47,7 @@ import {
   recommendationTimeBucket,
 } from "@/lib/recommendations";
 
-export type QuadFeedTab = QuadFeedType | "trending" | QuadCommunityChannel;
+export type { QuadFeedTab };
 
 function isCommunityFeedTab(tab: QuadFeedTab): tab is QuadCommunityChannel {
   return isQuadCommunityChannel(tab);
@@ -91,6 +93,7 @@ export function TheQuad({
   personalization = null,
   onViewEvent,
   onViewOnMap,
+  onMessageSeller,
 }: {
   character: Character;
   onRefresh?: () => void;
@@ -121,6 +124,7 @@ export function TheQuad({
   } | null;
   onViewEvent?: (eventId: string) => void;
   onViewOnMap?: (locationId: string) => void;
+  onMessageSeller?: (seller: MarketplaceSeller) => void;
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
@@ -133,9 +137,15 @@ export function TheQuad({
   const [memoryViewerIncludeExpired, setMemoryViewerIncludeExpired] = useState(false);
   const [showAddMemory, setShowAddMemory] = useState(false);
   const [addMemoryLocationId, setAddMemoryLocationId] = useState<CampusLocationId>("the-quad");
+  const [marketSellOpen, setMarketSellOpen] = useState(false);
+  const [marketRefreshKey, setMarketRefreshKey] = useState(0);
   const showQuadChrome = !chromeSuppressed;
   const recProfile = useRecommendationProfile(personalization);
   const [reasonById, setReasonById] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!isMarketFeedTab(feedTab)) setMarketSellOpen(false);
+  }, [feedTab]);
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
@@ -207,6 +217,15 @@ export function TheQuad({
     }
 
     try {
+      if (isMarketFeedTab(feedTab)) {
+        setFeedLoading(false);
+        setNotes([]);
+        setFeedError(null);
+        setMarketRefreshKey((value) => value + 1);
+        onRefresh?.();
+        return;
+      }
+
       if (feedTab === "friends") {
         try {
           const remote = await fetchQuadFriendsPosts(character.id, 80);
@@ -572,7 +591,9 @@ export function TheQuad({
       : null;
 
   const feedLoadingLabel =
-    feedTab === "friends"
+    isMarketFeedTab(feedTab)
+      ? "Loading The Market…"
+      : feedTab === "friends"
       ? "Loading Following feed…"
       : feedTab === "trending"
         ? "Loading trending posts…"
@@ -593,7 +614,16 @@ export function TheQuad({
           className="cq-quad-feed-body w-full flex-1"
           style={{ paddingTop: showQuadChrome ? quadChromeStackPadding : "0px" }}
         >
-          {feedLoading ? (
+          {isMarketFeedTab(feedTab) ? (
+            <TheMarketFeed
+              viewerId={character.id}
+              sellOpen={marketSellOpen}
+              onSellOpenChange={setMarketSellOpen}
+              refreshKey={marketRefreshKey}
+              onMessageSeller={(seller) => onMessageSeller?.(seller)}
+              onSessionMissing={handleSessionMissing}
+            />
+          ) : feedLoading ? (
             <QuadFeedSkeleton label={feedLoadingLabel} />
           ) : feedError ? (
             <div className="px-[2.5vw] py-10 sm:px-[3vw]">
@@ -669,6 +699,7 @@ export function TheQuad({
         character={character}
         onPosted={() => refresh({ silent: true })}
         onXpReward={onPostXpReward}
+        onMarketSell={() => setMarketSellOpen(true)}
       />
 
       {memoryGroup ? (

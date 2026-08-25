@@ -27,6 +27,7 @@ import { ManualLogScreen } from "./ManualLogScreen";
 import { ProgressHubScreen } from "./ProgressHubScreen";
 import { SkillsLoreScreen } from "./SkillsLoreScreen";
 import { TheQuad, type QuadFeedTab } from "./TheQuad";
+import { readQuadFeedTabSession, writeQuadFeedTabSession } from "@/lib/client/quadFeedTabSession";
 import { BossBattles } from "./BossBattles";
 import { FindFriends } from "./FindFriends";
 import { GuildsScreen } from "./GuildsScreen";
@@ -253,7 +254,7 @@ export function Dashboard() {
   const [qaReplayActive, setQaReplayActive] = useState(false);
   const [demographicsQaReplayActive, setDemographicsQaReplayActive] = useState(false);
   const [tab, setTab] = useState<Tab>("quad");
-  const [quadFeedTab, setQuadFeedTab] = useState<QuadFeedTab>("public");
+  const [quadFeedTab, setQuadFeedTab] = useState<QuadFeedTab>(() => readQuadFeedTabSession() ?? "public");
   const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
   const [inboxDeepLink, setInboxDeepLink] = useState<InboxDeepLink | null>(null);
   const pushDeepLinkNonceRef = useRef(0);
@@ -301,6 +302,10 @@ export function Dashboard() {
     setInboxSubTab("messages");
     setTab("inbox");
   }, []);
+
+  useEffect(() => {
+    writeQuadFeedTabSession(quadFeedTab);
+  }, [quadFeedTab]);
   const [sharePostTarget, setSharePostTarget] = useState<SharePostTarget | null>(null);
   const [sharePostOpen, setSharePostOpen] = useState(false);
   const [friendView, setFriendView] = useState<{
@@ -2824,6 +2829,14 @@ export function Dashboard() {
             personalization={onboardingPreferences}
             onViewEvent={openTaggedEvent}
             onViewOnMap={openLocationOnMap}
+            onMessageSeller={(seller) =>
+              openDirectMessage({
+                userId: seller.id,
+                username: seller.username,
+                name: seller.displayName,
+                avatar: seller.avatarUrl ?? "",
+              })
+            }
           />
         )}
 

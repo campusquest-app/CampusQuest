@@ -34,7 +34,10 @@ export type CampusNotificationType =
   | "moderation_safety_update"
   | "organization_request_submitted"
   | "organization_request_approved"
-  | "organization_request_denied";
+  | "organization_request_denied"
+  | "marketplace_offer"
+  | "marketplace_offer_accepted"
+  | "marketplace_offer_declined";
 
 const NOTIFICATION_INSERT_SELECT = "id, user_id, type, title, body, created_at";
 

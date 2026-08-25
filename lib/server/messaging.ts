@@ -618,10 +618,66 @@ export async function getOrCreateDirectConversation(args: {
   const { userClient, userId, otherUserId } = args;
   const admin = createAdminClient();
   await assertAccountCanSocialize(userClient, userId);
+  await assertNotBlocked(userClient, userId, otherUserId);
+
+  const directKey = directKeyFor(userId, otherUserId);
+  const { data: existing } = await admin
+    .from("direct_conversations")
+    .select("id, direct_key, updated_at, created_at")
+    .eq("direct_key", directKey)
+    .maybeSingle();
+  if (existing) {
+    await admin.from("direct_conversation_participants").upsert(
+      [
+        { conversation_id: existing.id, user_id: userId },
+        { conversation_id: existing.id, user_id: otherUserId },
+      ],
+      { onConflict: "conversation_id,user_id" },
+    );
+    return existing;
+  }
+
   const relationship = await getRelationshipStatus({ userClient, userId, otherUserId });
   if (!relationship.canMessage) {
     throw new ApiError(403, "You can only message accepted CampusQuest connections.", "MESSAGE_NOT_ALLOWED");
   }
+
+  const { data: conversation, error: conversationError } = await admin
+    .from("direct_conversations")
+    .upsert({ direct_key: directKey, created_by: userId, type: "direct" }, { onConflict: "direct_key" })
+    .select("id, direct_key, updated_at, created_at")
+    .single();
+  if (conversationError || !conversation) {
+    throw new ApiError(400, conversationError?.message ?? "Could not create conversation.", "CONVERSATION_CREATE_FAILED");
+  }
+
+  const { error: participantError } = await admin.from("direct_conversation_participants").upsert(
+    [
+      { conversation_id: conversation.id, user_id: userId },
+      { conversation_id: conversation.id, user_id: otherUserId },
+    ],
+    { onConflict: "conversation_id,user_id" },
+  );
+  if (participantError) {
+    throw new ApiError(400, participantError.message, "CONVERSATION_PARTICIPANT_FAILED");
+  }
+
+  return conversation;
+}
+
+/** Marketplace Message Seller: same 1:1 thread as DMs, without requiring an accepted connection. */
+export async function getOrCreateMarketplaceConversation(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+  otherUserId: string;
+}) {
+  const { userClient, userId, otherUserId } = args;
+  const admin = createAdminClient();
+  await assertAccountCanSocialize(userClient, userId);
+  if (userId === otherUserId) {
+    throw new ApiError(400, "You cannot message yourself.", "MARKETPLACE_MESSAGE_SELF");
+  }
+  await assertNotBlocked(userClient, userId, otherUserId);
 
   const directKey = directKeyFor(userId, otherUserId);
   const { data: conversation, error: conversationError } = await admin

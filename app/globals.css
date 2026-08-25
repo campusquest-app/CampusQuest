@@ -2551,6 +2551,339 @@ html[data-cq-bottom-nav-hidden] {
   margin-bottom: 0.35rem;
 }
 
+.cq-market-feed {
+  padding: 0.35rem 0 1.25rem;
+}
+
+.cq-market-header {
+  padding: 0.15rem 0.85rem 0.7rem;
+}
+
+.cq-market-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.cq-market-subtitle {
+  margin: 0.2rem 0 0.7rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.cq-market-search {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.5rem;
+  padding: 0 0.75rem;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.cq-market-search input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 16px;
+  outline: none;
+}
+
+.cq-market-rail,
+.cq-market-biz-tabs {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 0.65rem 0 0.1rem;
+}
+
+.cq-market-rail::-webkit-scrollbar,
+.cq-market-biz-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-market-chip {
+  flex: 0 0 auto;
+  min-height: 2rem;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cq-market-chip--active,
+.cq-market-reason--active {
+  background: rgba(104, 171, 232, 0.18);
+  border-color: rgba(104, 171, 232, 0.45);
+  color: #fff;
+}
+
+.cq-market-card {
+  padding: 0.55rem 0 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cq-market-card--business {
+  background: linear-gradient(180deg, rgba(104, 171, 232, 0.08) 0%, transparent 42%);
+}
+
+.cq-market-card-header,
+.cq-market-card-identity,
+.cq-market-card-tools {
+  display: flex;
+  align-items: center;
+}
+
+.cq-market-card-header {
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.85rem 0.5rem;
+}
+
+.cq-market-card-identity {
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.cq-market-card-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.cq-market-card-name {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.cq-market-verified {
+  margin-left: 0.28rem;
+  color: #7dd3fc;
+  font-size: 0.78rem;
+}
+
+.cq-market-card-meta,
+.cq-market-card-meet,
+.cq-market-sheet-copy,
+.cq-market-sheet-note {
+  margin: 0.15rem 0 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.cq-market-icon-btn {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.cq-market-card-media {
+  position: relative;
+  background: #000;
+}
+
+.cq-market-sold-badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 12, 20, 0.55);
+  color: #fff;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  pointer-events: none;
+}
+
+.cq-market-card-body,
+.cq-market-form {
+  padding: 0.65rem 0.85rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.cq-market-card-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.cq-market-card-price {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: #7dd3fc;
+}
+
+.cq-market-card-copy {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.cq-market-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+}
+
+.cq-market-btn {
+  min-height: 2.5rem;
+  padding: 0 0.9rem;
+  border-radius: 0.8rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.cq-market-btn--primary {
+  background: #68abe8;
+  color: #082033;
+}
+
+.cq-market-btn--secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.cq-market-btn--block {
+  width: 100%;
+}
+
+.cq-market-input,
+.cq-market-textarea {
+  width: 100%;
+  min-height: 2.6rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font-size: 16px;
+  padding: 0.55rem 0.75rem;
+}
+
+.cq-market-textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.cq-market-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.cq-market-composer {
+  overflow-y: auto;
+  padding: 0.85rem 1rem calc(1.1rem + env(safe-area-inset-bottom, 0px));
+}
+
+.cq-market-photo-row {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+}
+
+.cq-market-photo-thumb {
+  width: 4.5rem;
+  height: 4.5rem;
+  object-fit: cover;
+  border-radius: 0.6rem;
+}
+
+.cq-market-error {
+  color: #fecaca;
+  font-size: 0.82rem;
+}
+
+.cq-market-notice {
+  margin: 0 0.85rem 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.75rem;
+  background: rgba(16, 185, 129, 0.15);
+  color: #d1fae5;
+  font-size: 0.82rem;
+}
+
+.cq-market-start-row {
+  padding: 0.75rem 0.85rem 1.5rem;
+}
+
+.cq-market-link {
+  color: #7dd3fc;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.cq-market-reason-list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+}
+
+.cq-market-reason {
+  width: 100%;
+  text-align: left;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.75rem;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.cq-market-confirm {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.88rem;
+}
+
+.cq-market-offer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #fff;
+}
+
+.cq-dm-market-chip {
+  margin: 0 0 0.35rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.55rem;
+  background: rgba(104, 171, 232, 0.16);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+@media (hover: hover) {
+  .cq-market-chip:hover,
+  .cq-market-reason:hover,
+  .cq-market-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
 .quad-feed-post,
 .cq-feed-post {
   position: relative;

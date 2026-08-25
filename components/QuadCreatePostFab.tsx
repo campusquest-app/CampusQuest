@@ -31,11 +31,13 @@ export function QuadCreatePostFab({
   character,
   onPosted,
   onXpReward,
+  onMarketSell,
 }: {
   feedTab: QuadFeedTab;
   character: Character;
   onPosted: () => void;
   onXpReward?: (reward: QuadPostXpReward) => void;
+  onMarketSell?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("actions");
@@ -59,6 +61,12 @@ export function QuadCreatePostFab({
   }
 
   function handleFabTap() {
+    if (feedTab === "market") {
+      setTapBurst(true);
+      window.setTimeout(() => setTapBurst(false), 380);
+      onMarketSell?.();
+      return;
+    }
     setTapBurst(true);
     window.setTimeout(() => setTapBurst(false), 380);
     dirtyRef.current = false;
@@ -125,7 +133,7 @@ export function QuadCreatePostFab({
       className={`cq-quad-create-fab group fixed z-[45] flex items-center justify-center rounded-full touch-manipulation ${
         tapBurst ? "cq-quad-create-fab--tap" : ""
       }`}
-      aria-label="Create post"
+      aria-label={feedTab === "market" ? "Sell on The Market" : "Create post"}
     >
       <Plus className="cq-quad-create-fab-icon transition-transform group-hover:scale-105" strokeWidth={2.5} />
     </button>

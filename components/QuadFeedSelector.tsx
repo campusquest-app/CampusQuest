@@ -4,19 +4,8 @@ import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { QUAD_FEED_OPTIONS } from "@/lib/client/quadFeedOptions";
 import type { QuadFeedTab } from "@/components/TheQuad";
-
-type FeedOption = { tab: QuadFeedTab; label: string; hint: string };
-
-/** Order: Campus Feed first, then personalization, then dedicated communities. */
-const FEED_OPTIONS: FeedOption[] = [
-  { tab: "public", label: "Campus Feed", hint: "Everything happening across URI" },
-  { tab: "trending", label: "For You", hint: "Trending moments, picked for you" },
-  { tab: "friends", label: "Following", hint: "Posts from people you follow" },
-  { tab: "student_organizations", label: "Organizations", hint: "Student clubs and campus orgs" },
-  { tab: "greek_life", label: "Greek Life", hint: "Fraternity and sorority community" },
-  { tab: "athletics", label: "Athletics", hint: "Sports, club sports, and Rams" },
-];
 
 /**
  * Premium glassmorphism dropdown anchored under the CampusQuest wordmark.
@@ -75,7 +64,7 @@ export function QuadFeedSelector({
                 : { type: "spring", stiffness: 460, damping: 28, mass: 0.7 }
             }
           >
-            {FEED_OPTIONS.map((opt) => {
+            {QUAD_FEED_OPTIONS.map((opt) => {
               const selected = opt.tab === value;
               return (
                 <button

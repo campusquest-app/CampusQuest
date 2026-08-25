@@ -28,6 +28,8 @@ export type ContentReportTargetType =
   | "event"
   | "organization"
   | "infringement"
+  | "marketplace_listing"
+  | "student_business"
   | "other";
 
 export function contentReportReasonLabel(reason: string): string {

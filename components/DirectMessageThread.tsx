@@ -234,7 +234,15 @@ function DmMessageBubbleRow({
               </div>
             ) : null}
             {showCaption ? (
-              <p className="text-[15px] leading-snug whitespace-pre-wrap break-words">{m.content}</p>
+              <>
+                {typeof m.metadata?.marketplaceTitle === "string" ? (
+                  <p className="cq-dm-market-chip">
+                    {String(m.metadata.marketplaceTitle)}
+                    {typeof m.metadata.marketplacePrice === "string" ? ` — ${String(m.metadata.marketplacePrice)}` : ""}
+                  </p>
+                ) : null}
+                <p className="text-[15px] leading-snug whitespace-pre-wrap break-words">{m.content}</p>
+              </>
             ) : null}
           </div>
         )}
