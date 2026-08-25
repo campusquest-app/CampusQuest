@@ -21,6 +21,21 @@ describe("events empty-state copy", () => {
     expect(copy.title).toBe("No events match your filters.");
   });
 
+  it("gives useful empty copy for For You, Today, and search", () => {
+    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, timeframe: "for_you" })).toMatchObject({
+      title: "No personalized events yet.",
+      action: "all",
+    });
+    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, timeframe: "today" })).toMatchObject({
+      title: "Nothing scheduled for today.",
+      action: "this_week",
+    });
+    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, hasSearch: true })).toMatchObject({
+      title: "No events match your search.",
+      action: "clear_search",
+    });
+  });
+
   it("lets admins keep a diagnostics hint", () => {
     const copy = eventsEmptyStateCopy({ hasLoadedEvents: false, isAdmin: true });
     expect(copy.detail.toLowerCase()).toContain("admin");
@@ -86,6 +101,16 @@ describe("legacy RSS cannot become authoritative", () => {
 describe("EventsFeed student vs admin controls", () => {
   const feedSrc = readFileSync(join(process.cwd(), "components/EventsFeed.tsx"), "utf8");
 
+  it("defaults Event Discovery to For You without hiding unmatched events", () => {
+    expect(feedSrc).toContain('timeframe: "for_you"');
+    expect(feedSrc).toContain('{ value: "for_you", label: "For You" }');
+    expect(feedSrc).toContain('{ value: "today", label: "Today" }');
+    expect(feedSrc).toContain('{ value: "this_week", label: "This Week" }');
+    expect(feedSrc).toContain('{ value: "all", label: "All" }');
+    expect(feedSrc).toContain("rankRecommendationEntities");
+    expect(feedSrc).toContain("without hiding the rest of campus");
+  });
+
   it("only renders Admin sync status when showAdminSyncLink is true", () => {
     expect(feedSrc).toContain("showAdminSyncLink = false");
     expect(feedSrc).toMatch(/\{showAdminSyncLink \? \([\s\S]*Admin sync status/);
@@ -94,6 +119,7 @@ describe("EventsFeed student vs admin controls", () => {
   it("does not clear already-loaded URInvolved events on a failed refresh", () => {
     expect(feedSrc).not.toMatch(/setExternalEvents\(\[\]\)/);
     expect(feedSrc).toContain("EVENTS_STALE_NOTICE");
+    expect(feedSrc).toContain("eventsSyncBanner");
   });
 
   it("does not mention admin sync status in student-facing empty copy", () => {
