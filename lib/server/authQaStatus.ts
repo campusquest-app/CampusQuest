@@ -30,9 +30,10 @@ export function buildAuthQaStatus() {
       missingEnvNames: missing,
     },
     emailProvider: {
-      integration: "Supabase Auth sends mail through the project's SMTP provider (Resend when configured in Supabase).",
-      smtpConfiguredInApp: false,
-      note: "SMTP credentials live in the Supabase project, not in CampusQuest. This panel never returns keys or passwords.",
+      integration:
+        "Campus 6-digit codes are sent with the CampusQuest Resend API (RESEND_API_KEY). Supabase Auth SMTP/Resend still handles login confirmation and password reset.",
+      smtpConfiguredInApp: Boolean(process.env.RESEND_API_KEY?.trim()),
+      note: "This panel never returns API keys or secrets.",
     },
     redirects,
     resend: {
@@ -49,7 +50,7 @@ export function buildAuthQaStatus() {
       email: ONBOARDING_QA_EMAIL,
       mode: "session-level replay — does not reset XP, admin role, or account data",
       verificationCycle:
-        "Allowlisted self-only: prefer signup confirmation resend when unconfirmed; if already confirmed (Admin unconfirm is a no-op on this GoTrue), send Supabase magic-link OTP via Resend → /auth/callback. Delivery is proven by Auth send timestamps — null error alone is not treated as sent.",
+        "Allowlisted self-only: reset campus_email_verified_at, send a fresh 6-digit Resend code, verify via /api/auth/email-verification/verify. Does not unconfirm or recreate the Supabase Auth user.",
     },
   };
 }

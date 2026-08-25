@@ -1,31 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronLeft, GraduationCap, Lock, Mail, Search, User } from "lucide-react";
+import { Check, ChevronLeft, GraduationCap, Lock, Search, User } from "lucide-react";
 import { patchAuthed, postAuthed, fetchAuthed } from "@/lib/client/dashboardApi";
-import { getAccessToken, setAccessToken } from "@/lib/client/apiSession";
+import { getAccessToken } from "@/lib/client/apiSession";
 import { readAccessTokenClaims } from "@/lib/client/jwtClaims";
-import {
-  remainingResendCooldownMs,
-  readResendCooldownState,
-  writeResendCooldownState,
-  startResendCooldown,
-  formatResendCooldownLabel,
-} from "@/lib/client/authResendCooldown";
-import { FEATURE_FLAGS } from "@/lib/featureFlags";
-import { isOnboardingQaEmail } from "@/lib/onboardingQa";
-import {
-  clearVerificationQaCycleRecord,
-  rememberVerificationQaCycle,
-  resolveContinueBlockedForVerification,
-  resolveEmailVerifiedForOnboardingUi,
-} from "@/lib/client/verificationQaCycle";
-import {
-  resolveVerificationStatusLabel,
-  VERIFICATION_QA_UI_COPY,
-  type VerificationQaTestUiState,
-} from "@/lib/verificationQaCycle";
-import { supabaseClient } from "@/lib/supabase/client";
+import { shouldShowCampusVerificationQaControls } from "@/lib/onboardingQa";
+import { CAMPUS_EMAIL_USER_MESSAGES } from "@/lib/campusEmailVerification";
+import { CampusEmailOtpInput } from "@/components/auth/CampusEmailOtpInput";
 import { graduationYearOptions } from "@/lib/onboarding/graduationYear";
 import {
   BRAND_KNIGHT,
@@ -36,38 +18,27 @@ import {
   MIN_INTERESTS,
   ONBOARDING_VERSION,
   STUDENT_STATUS_OPTIONS,
+  shouldAskGraduationYear,
   type CommunityId,
   type InterestId,
   type StudentStatusId,
 } from "@/lib/onboarding/taxonomy";
+import {
+  demographicProgress,
+  isDemographicOnboardingStep,
+  nextDemographicStep,
+  previousDemographicStep,
+  type DemographicOnboardingStep,
+} from "@/lib/onboarding/flow";
 import {
   OnboardingAmbient,
   OnboardingMagicRing,
   type OnboardingAmbientDensity,
 } from "@/components/onboarding/OnboardingAmbient";
 
-type Step =
-  | "welcome"
-  | "student_status"
-  | "graduation_year"
-  | "school"
-  | "interests"
-  | "communities"
-  | "email_verification"
-  | "success";
+type Step = DemographicOnboardingStep;
 
-const STEPS: Step[] = [
-  "welcome",
-  "student_status",
-  "graduation_year",
-  "school",
-  "interests",
-  "communities",
-  "email_verification",
-  "success",
-];
-
-const DRAFT_KEY = "cq_onboarding_v2_draft";
+const DRAFT_KEY = "cq_onboarding_v3_draft";
 
 type DraftState = {
   step: Step;
@@ -79,24 +50,8 @@ type DraftState = {
   communities: CommunityId[];
 };
 
-function progressIndex(step: Step): number {
-  // Dots 1–5 for screens 2–6 (student_status … communities); email keeps last dot
-  const map: Record<Step, number> = {
-    welcome: -1,
-    student_status: 0,
-    graduation_year: 1,
-    school: 2,
-    interests: 3,
-    communities: 4,
-    email_verification: 4,
-    success: -1,
-  };
-  return map[step];
-}
-
 function ambientForStep(step: Step): { density: OnboardingAmbientDensity; campusHaze: boolean } {
   if (step === "welcome") return { density: "normal", campusHaze: true };
-  if (step === "success") return { density: "celebrate", campusHaze: false };
   if (step === "email_verification") return { density: "calm", campusHaze: false };
   return { density: "normal", campusHaze: false };
 }
@@ -148,21 +103,31 @@ function KnightStage({
   );
 }
 
-function ProgressDots({ active }: { active: number }) {
-  if (active < 0) return null;
+function ProgressHeader({
+  label,
+  current,
+  total,
+}: {
+  label: string;
+  current: number;
+  total: number;
+}) {
   return (
-    <div
-      className="cq-onboard-progress"
-      role="progressbar"
-      aria-valuemin={1}
-      aria-valuemax={5}
-      aria-valuenow={active + 1}
-      aria-label="Onboarding progress"
-    >
-      {Array.from({ length: 5 }).map((_, i) => {
-        const state = i < active ? "done" : i === active ? "active" : "todo";
-        return <span key={i} className={`cq-onboard-dot cq-onboard-dot--${state}`} />;
-      })}
+    <div className="cq-onboard-progress-wrap">
+      <p className="cq-onboard-progress-label">{label}</p>
+      <div
+        className="cq-onboard-progress"
+        role="progressbar"
+        aria-valuemin={1}
+        aria-valuemax={total}
+        aria-valuenow={current}
+        aria-label={label}
+      >
+        {Array.from({ length: total }).map((_, i) => {
+          const state = i < current - 1 ? "done" : i === current - 1 ? "active" : "todo";
+          return <span key={i} className={`cq-onboard-dot cq-onboard-dot--${state}`} />;
+        })}
+      </div>
     </div>
   );
 }
@@ -170,14 +135,18 @@ function ProgressDots({ active }: { active: number }) {
 export function AuthOnboardingFlow({
   onComplete,
   onRequestSignIn,
+  startAtEmailVerification = false,
 }: {
-  onComplete: () => void;
+  onComplete: () => void | Promise<void>;
   onRequestSignIn?: () => void;
+  startAtEmailVerification?: boolean;
 }) {
   const draft = readDraft();
   const claimsBootstrap = readAccessTokenClaims(getAccessToken());
+  const draftStep = isDemographicOnboardingStep(draft?.step) ? draft.step : null;
   const [step, setStep] = useState<Step>(
-    (draft?.step as Step) ?? (claimsBootstrap?.sub ? "student_status" : "welcome"),
+    draftStep ??
+      (startAtEmailVerification ? "email_verification" : claimsBootstrap?.sub ? "student_status" : "welcome"),
   );
   const [studentStatus, setStudentStatus] = useState<StudentStatusId | null>(draft?.studentStatus ?? null);
   const [graduationYear, setGraduationYear] = useState<number | null>(draft?.graduationYear ?? null);
@@ -189,42 +158,33 @@ export function AuthOnboardingFlow({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [isResending, setIsResending] = useState(false);
   const [sparkInterestId, setSparkInterestId] = useState<InterestId | null>(null);
-  const [qaCyclePending, setQaCyclePending] = useState(false);
-  const [qaAuthoritativeConfirmed, setQaAuthoritativeConfirmed] = useState<boolean | null>(null);
-  /** Sticky: once Auth reports verified for the QA account, keep onboarding status/Continue stable during delivery tests. */
-  const [qaAccountAlreadyVerified, setQaAccountAlreadyVerified] = useState(false);
-  const [qaTestUiState, setQaTestUiState] = useState<VerificationQaTestUiState>("idle");
-  const [qaTestNotice, setQaTestNotice] = useState<string | null>(null);
+  const [campusVerified, setCampusVerified] = useState(false);
+  const [emailMasked, setEmailMasked] = useState("");
+  const [hasActiveChallenge, setHasActiveChallenge] = useState(false);
+  const [resendAvailableInSeconds, setResendAvailableInSeconds] = useState(0);
+  const [otpCode, setOtpCode] = useState("");
+  const [codeSending, setCodeSending] = useState(false);
+  const [codeVerifying, setCodeVerifying] = useState(false);
+  const [qaSending, setQaSending] = useState(false);
   const submitLock = useRef(false);
-  const qaStatusInFlight = useRef(false);
-  const qaSendLock = useRef(false);
+  const sendLock = useRef(false);
+  const verifyLock = useRef(false);
+  const statusInFlight = useRef(false);
   const yearOptions = graduationYearOptions();
 
   const claims = readAccessTokenClaims(getAccessToken());
   const userEmail = claims?.email ?? "";
-  const userId = claims?.sub ?? null;
-  const isQaAccount = isOnboardingQaEmail(userEmail);
-  const claimConfirmed = claims?.emailConfirmed === true;
-  const emailConfirmedAuthoritative =
-    isQaAccount && qaAuthoritativeConfirmed !== null ? qaAuthoritativeConfirmed : claimConfirmed;
-  const emailConfirmedForUi = resolveEmailVerifiedForOnboardingUi({
-    email: userEmail,
-    emailConfirmedAuthoritative: isQaAccount && qaAccountAlreadyVerified ? true : emailConfirmedAuthoritative,
-    requireEmailVerification: FEATURE_FLAGS.requireEmailVerification,
-    hasSession: Boolean(claims?.sub),
-  });
-  const continueBlocked = resolveContinueBlockedForVerification({
-    emailConfirmedAuthoritative: isQaAccount && qaAccountAlreadyVerified ? true : emailConfirmedAuthoritative,
-    requireEmailVerification: FEATURE_FLAGS.requireEmailVerification,
-  });
-  const verificationStatus = resolveVerificationStatusLabel({
-    isQaAccount,
-    qaAccountAlreadyVerified,
-    emailConfirmedForUi,
-  });
-  const qaSending = qaTestUiState === "sending";
+  const isQaAccount = shouldShowCampusVerificationQaControls(userEmail);
+  const continueBlocked = !campusVerified;
+  const resendLocked = resendAvailableInSeconds > 0 || codeSending;
+  const includeWelcome = !startAtEmailVerification && !claimsBootstrap?.sub;
+  const flowArgs = {
+    studentStatus,
+    includeWelcome,
+    emailOnly: startAtEmailVerification,
+  };
+  const progress = demographicProgress({ current: step, ...flowArgs });
 
   useEffect(() => {
     writeDraft({
@@ -243,17 +203,23 @@ export function AuthOnboardingFlow({
     return () => window.clearInterval(id);
   }, []);
 
-  // Preload next knight assets (official paths only)
+  useEffect(() => {
+    if (resendAvailableInSeconds <= 0) return;
+    const id = window.setTimeout(() => {
+      setResendAvailableInSeconds((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => window.clearTimeout(id);
+  }, [resendAvailableInSeconds, nowMs]);
+
   useEffect(() => {
     const next: Record<Step, string | null> = {
       welcome: BRAND_KNIGHT.welcoming,
       student_status: BRAND_KNIGHT.heroic,
-      graduation_year: BRAND_KNIGHT.pointing,
-      school: BRAND_KNIGHT.presenting,
-      interests: BRAND_KNIGHT.presentingRight,
-      communities: BRAND_KNIGHT.thumbsUp,
+      school: BRAND_KNIGHT.pointing,
       email_verification: BRAND_KNIGHT.heroic,
-      success: null,
+      graduation_year: BRAND_KNIGHT.pointing,
+      interests: BRAND_KNIGHT.presenting,
+      communities: BRAND_KNIGHT.presentingRight,
     };
     const src = next[step];
     if (!src) return;
@@ -267,108 +233,137 @@ export function AuthOnboardingFlow({
     return () => window.clearTimeout(t);
   }, [sparkInterestId]);
 
-  async function refreshAuthoritativeVerificationStatus() {
-    if (!isQaAccount || qaStatusInFlight.current) return;
-    qaStatusInFlight.current = true;
+  async function refreshCampusVerificationStatus() {
+    if (statusInFlight.current) return;
+    statusInFlight.current = true;
     try {
-      const view = await fetchAuthed<{
-        emailConfirmed: boolean;
-        cyclePending: boolean;
-        cycle: { cycleId: string } | null;
-      }>("/api/auth/qa/verification-cycle");
-      setQaAuthoritativeConfirmed(view.emailConfirmed);
-      setQaCyclePending(view.cyclePending);
-      if (view.emailConfirmed) {
-        setQaAccountAlreadyVerified(true);
-      }
-      if (view.cyclePending && view.cycle?.cycleId && userId) {
-        rememberVerificationQaCycle(userId, view.cycle.cycleId);
-      }
-      if (!view.cyclePending && view.emailConfirmed) {
-        clearVerificationQaCycleRecord();
-      }
-      const { data } = await supabaseClient.auth.refreshSession();
-      if (data.session?.access_token) {
-        setAccessToken(data.session.access_token);
-      }
+      const status = await fetchAuthed<{
+        verified: boolean;
+        verifiedAt: string | null;
+        emailMasked: string;
+        hasActiveChallenge: boolean;
+        expiresInSeconds: number;
+        resendAvailableInSeconds: number;
+      }>("/api/auth/email-verification/status");
+      setCampusVerified(status.verified);
+      setEmailMasked(status.emailMasked);
+      setHasActiveChallenge(status.hasActiveChallenge);
+      setResendAvailableInSeconds(status.resendAvailableInSeconds);
     } catch {
-      // Non-QA or transient — keep claim-based fallback.
+      // Keep last known status.
     } finally {
-      qaStatusInFlight.current = false;
+      statusInFlight.current = false;
     }
   }
 
-  // Seed QA verified baseline from JWT before the status GET returns.
   useEffect(() => {
-    if (!isQaAccount) return;
-    if (claimConfirmed) setQaAccountAlreadyVerified(true);
-  }, [isQaAccount, claimConfirmed]);
+    if (step !== "email_verification") return;
+    void refreshCampusVerificationStatus();
+  }, [step]);
 
-  // Load QA cycle status on the verification step only (GET — never auto-starts / re-sends).
-  useEffect(() => {
-    if (step !== "email_verification" || !isQaAccount) return;
-    void refreshAuthoritativeVerificationStatus();
-    const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        void refreshAuthoritativeVerificationStatus();
-      }
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    const poll = window.setInterval(() => {
-      if (qaCyclePending) void refreshAuthoritativeVerificationStatus();
-    }, 4000);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisible);
-      window.clearInterval(poll);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional step/account gate
-  }, [step, isQaAccount, qaCyclePending, userId]);
-
-  async function sendQaTestVerificationEmail() {
-    if (!isQaAccount || !userId || qaSendLock.current) return;
-    qaSendLock.current = true;
-    setQaTestUiState("sending");
+  async function sendCampusCode() {
+    if (sendLock.current || codeSending) return;
+    sendLock.current = true;
+    setCodeSending(true);
     setError(null);
-    setQaTestNotice(null);
     setNotice(null);
     try {
       const result = await postAuthed<
         {
-          cycleId: string;
-          emailSent: boolean;
-          alreadySent: boolean;
-          message: string;
+          alreadyVerified: boolean;
+          expiresInSeconds: number;
+          resendAvailableInSeconds: number;
+          emailMasked: string;
         },
-        { forceNew: boolean }
-      >("/api/auth/qa/verification-cycle", { forceNew: true });
-      rememberVerificationQaCycle(userId, result.cycleId);
-      // Only show the success copy when the server proved Supabase dispatched mail.
-      if (!result.emailSent) {
-        setQaTestUiState("failed");
-        setError(result.message || VERIFICATION_QA_UI_COPY.sendFailedFallback);
-        setQaTestNotice(null);
-        return;
-      }
-      setQaCyclePending(true);
-      // Keep onboarding status/Continue on the verified baseline — delivery test is separate.
-      setQaTestUiState("sent");
-      setQaTestNotice(VERIFICATION_QA_UI_COPY.sentSuccess);
-      const { data } = await supabaseClient.auth.refreshSession();
-      if (data.session?.access_token) {
-        setAccessToken(data.session.access_token);
+        { requested?: boolean }
+      >("/api/auth/email-verification/send", {});
+      setEmailMasked(result.emailMasked);
+      setResendAvailableInSeconds(result.resendAvailableInSeconds);
+      if (result.alreadyVerified) {
+        setCampusVerified(true);
+        setNotice(CAMPUS_EMAIL_USER_MESSAGES.alreadyVerified);
+      } else {
+        setHasActiveChallenge(true);
+        setCampusVerified(false);
+        setOtpCode("");
+        setNotice(CAMPUS_EMAIL_USER_MESSAGES.sent);
       }
     } catch (err) {
-      setQaTestUiState("failed");
-      setError(err instanceof Error ? err.message : VERIFICATION_QA_UI_COPY.sendFailedFallback);
+      setError(err instanceof Error ? err.message : CAMPUS_EMAIL_USER_MESSAGES.sendFailed);
     } finally {
-      qaSendLock.current = false;
-      setQaTestUiState((prev) => (prev === "sending" ? "idle" : prev));
+      sendLock.current = false;
+      setCodeSending(false);
+    }
+  }
+
+  async function verifyCampusCode(code: string) {
+    if (verifyLock.current || codeVerifying) return;
+    if (!/^\d{6}$/.test(code)) return;
+    verifyLock.current = true;
+    setCodeVerifying(true);
+    setError(null);
+    try {
+      const result = await postAuthed<{ verified: boolean; verifiedAt: string }, { code: string }>(
+        "/api/auth/email-verification/verify",
+        { code },
+      );
+      if (result.verified) {
+        setCampusVerified(true);
+        setHasActiveChallenge(false);
+        setOtpCode("");
+        setNotice(CAMPUS_EMAIL_USER_MESSAGES.alreadyVerified);
+      }
+    } catch (err) {
+      setCampusVerified(false);
+      setError(err instanceof Error ? err.message : CAMPUS_EMAIL_USER_MESSAGES.incorrect);
+    } finally {
+      verifyLock.current = false;
+      setCodeVerifying(false);
+    }
+  }
+
+  async function sendQaTestVerificationEmail() {
+    if (!isQaAccount || sendLock.current) return;
+    sendLock.current = true;
+    setQaSending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await postAuthed<{ emailSent: boolean; message: string }, { forceNew: boolean }>(
+        "/api/auth/qa/verification-cycle",
+        { forceNew: true },
+      );
+      setCampusVerified(false);
+      setHasActiveChallenge(true);
+      setOtpCode("");
+      setNotice("Test email sent. Open the newest email and enter the 6-digit code.");
+      setResendAvailableInSeconds(60);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : CAMPUS_EMAIL_USER_MESSAGES.sendFailed);
+    } finally {
+      sendLock.current = false;
+      setQaSending(false);
     }
   }
 
   function go(next: Step) {
     setError(null);
     setStep(next);
+  }
+
+  function proceedToEmailVerification() {
+    go("email_verification");
+    void sendCampusCode();
+  }
+
+  function goNextFrom(current: Step) {
+    const next = nextDemographicStep({ current, ...flowArgs });
+    if (next) go(next);
+  }
+
+  function goBack() {
+    const prev = previousDemographicStep({ current: step, ...flowArgs });
+    if (prev) go(prev);
   }
 
   function toggleInterest(id: InterestId) {
@@ -384,43 +379,15 @@ export function AuthOnboardingFlow({
     setCommunities((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  async function sendVerificationEmail() {
-    if (!userEmail || isResending) return;
-    const remaining = remainingResendCooldownMs({ email: userEmail, nowMs, stored: readResendCooldownState() });
-    if (remaining > 0) {
-      setNotice(`Please wait ${formatResendCooldownLabel(remaining)} before resending.`);
-      return;
-    }
-    setIsResending(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/auth/resend-confirmation", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: userEmail }),
-      });
-      const json = (await res.json().catch(() => null)) as { error?: { message?: string }; data?: unknown } | null;
-      if (!res.ok) {
-        throw new Error(json?.error?.message ?? "Could not send verification email.");
-      }
-      writeResendCooldownState(startResendCooldown({ email: userEmail, nowMs: Date.now() }));
-      setNotice("Verification email sent. Check your inbox.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send verification email.");
-    } finally {
-      setIsResending(false);
-    }
-  }
-
   async function finishAndExplore() {
     if (submitLock.current || submitting) return;
-    if (!studentStatus || interests.length < MIN_INTERESTS) {
-      setError("Please complete your onboarding selections.");
-      return;
-    }
     if (continueBlocked) {
       setError("Verify your URI email before continuing.");
       go("email_verification");
+      return;
+    }
+    if (!startAtEmailVerification && (!studentStatus || interests.length < MIN_INTERESTS)) {
+      setError("Please complete your onboarding selections.");
       return;
     }
 
@@ -428,26 +395,28 @@ export function AuthOnboardingFlow({
     setSubmitting(true);
     setError(null);
     try {
-      await patchAuthed("/api/me/profile", {
-        classYear: graduateOther ? null : graduationYear,
-        studentStatus,
-        institutionId,
-        onboardingVersion: ONBOARDING_VERSION,
-      });
-      await postAuthed("/api/me/onboarding-preferences", {
-        schoolName: INSTITUTIONS.uri.schoolName,
-        interests,
-        communities,
-        institutionId,
-        studentStatus,
-        classYear: graduateOther ? null : graduationYear,
-        discoveryFocus: ["events", "organizations", "meet_students"],
-        major: "",
-        onboardingVersion: ONBOARDING_VERSION,
-        markOnboardingComplete: false,
-      });
+      if (!startAtEmailVerification) {
+        await patchAuthed("/api/me/profile", {
+          classYear: graduateOther || !shouldAskGraduationYear(studentStatus) ? null : graduationYear,
+          studentStatus,
+          institutionId,
+          onboardingVersion: ONBOARDING_VERSION,
+        });
+        await postAuthed("/api/me/onboarding-preferences", {
+          schoolName: INSTITUTIONS.uri.schoolName,
+          interests,
+          communities,
+          institutionId,
+          studentStatus,
+          classYear: graduateOther || !shouldAskGraduationYear(studentStatus) ? null : graduationYear,
+          discoveryFocus: ["events", "organizations", "meet_students"],
+          major: "",
+          onboardingVersion: ONBOARDING_VERSION,
+          markOnboardingComplete: false,
+        });
+      }
       clearDraft();
-      onComplete();
+      await onComplete();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save. Your progress is kept — try again.");
     } finally {
@@ -458,34 +427,34 @@ export function AuthOnboardingFlow({
     }
   }
 
-  const resendRemaining = remainingResendCooldownMs({
-    email: userEmail,
-    nowMs,
-    stored: readResendCooldownState(),
-  });
+  async function continueAfterVerifiedEmail() {
+    if (!campusVerified) {
+      setError("Verify your URI email before continuing.");
+      return;
+    }
+    if (startAtEmailVerification) {
+      await finishAndExplore();
+      return;
+    }
+    goNextFrom("email_verification");
+  }
 
   const ambient = ambientForStep(step);
-  const showBack = step !== "welcome" && step !== "success";
+  const showBack = step !== "welcome" && !(startAtEmailVerification && step === "email_verification");
 
   return (
     <div className="cq-onboard-shell cq-onboard-shell--light">
       <OnboardingAmbient density={ambient.density} showCampusHaze={ambient.campusHaze} />
 
       {showBack ? (
-        <button
-          type="button"
-          className="cq-onboard-back"
-          aria-label="Back"
-          onClick={() => {
-            const idx = STEPS.indexOf(step);
-            if (idx > 0) go(STEPS[idx - 1]!);
-          }}
-        >
+        <button type="button" className="cq-onboard-back" aria-label="Back" onClick={goBack}>
           <ChevronLeft className="h-5 w-5" aria-hidden />
         </button>
       ) : null}
 
-      <ProgressDots active={progressIndex(step)} />
+      {progress ? (
+        <ProgressHeader label={progress.label} current={progress.current} total={progress.total} />
+      ) : null}
 
       <div className="cq-onboard-inner">
         {step === "welcome" ? (
@@ -515,7 +484,7 @@ export function AuthOnboardingFlow({
               className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-8"
               onClick={() => go("student_status")}
             >
-              Let&apos;s Get Started
+              Join CampusQuest
             </button>
             <p className="cq-onboard-footer-link">
               Already have an account?{" "}
@@ -525,7 +494,7 @@ export function AuthOnboardingFlow({
                 onClick={() => {
                   clearDraft();
                   onRequestSignIn?.();
-                  if (!onRequestSignIn) onComplete();
+                  if (!onRequestSignIn) void onComplete();
                 }}
               >
                 Sign in
@@ -542,27 +511,31 @@ export function AuthOnboardingFlow({
                 Let&apos;s begin your quest.
               </p>
             </div>
-            <h2 className="cq-onboard-question">Are you a current or incoming college student?</h2>
+            <h2 className="cq-onboard-question">Tell us about yourself</h2>
             <div className="cq-onboard-stack mt-6">
               {STUDENT_STATUS_OPTIONS.map((opt) => {
-                const isYes = opt.id === "current_or_incoming";
                 const selected = studentStatus === opt.id;
+                const faculty = opt.id === "faculty_staff";
                 return (
                   <button
                     key={opt.id}
                     type="button"
                     className={`cq-onboard-choice cq-onboard-choice--icon ${
-                      selected ? "cq-onboard-choice--primary" : isYes ? "cq-onboard-choice--emphasized" : ""
+                      selected ? "cq-onboard-choice--primary" : ""
                     }`}
                     onClick={() => {
                       setStudentStatus(opt.id);
-                      go("graduation_year");
+                      if (faculty) {
+                        setGraduationYear(null);
+                        setGraduateOther(true);
+                      }
+                      go("school");
                     }}
                   >
-                    {isYes ? (
-                      <GraduationCap className="h-5 w-5 shrink-0" aria-hidden />
-                    ) : (
+                    {faculty ? (
                       <User className="h-5 w-5 shrink-0" aria-hidden />
+                    ) : (
+                      <GraduationCap className="h-5 w-5 shrink-0" aria-hidden />
                     )}
                     <span>{opt.label}</span>
                   </button>
@@ -572,11 +545,133 @@ export function AuthOnboardingFlow({
           </div>
         ) : null}
 
+        {step === "school" ? (
+          <div className="cq-onboard-step">
+            <KnightStage src={BRAND_KNIGHT.pointing} size="md" ring="md" />
+            <h2 className="cq-onboard-question">Your campus</h2>
+            <p className="cq-onboard-support">URI is the campus currently live on CampusQuest.</p>
+            <div className="cq-onboard-search" aria-hidden>
+              <Search className="h-4 w-4 text-slate-400" />
+              <span>More campuses coming soon</span>
+            </div>
+            <button
+              type="button"
+              className="cq-onboard-school cq-onboard-school--selected"
+              onClick={() => proceedToEmailVerification()}
+            >
+              <span className="cq-onboard-school-mark" aria-hidden>
+                R
+              </span>
+              <span className="text-left">
+                <span className="block font-semibold text-slate-900">{INSTITUTIONS.uri.name}</span>
+                <span className="block text-sm text-slate-500">{INSTITUTIONS.uri.city}</span>
+              </span>
+              <Check className="ml-auto h-5 w-5 shrink-0 text-white" aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6"
+              onClick={() => proceedToEmailVerification()}
+            >
+              Continue
+            </button>
+          </div>
+        ) : null}
+
+        {step === "email_verification" ? (
+          <div className="cq-onboard-step">
+            <KnightStage src={BRAND_KNIGHT.thumbsUp} size="md" ring="lg" />
+            <h2 className="cq-onboard-question">
+              {campusVerified ? "URI email verified" : "Check your URI email"}
+            </h2>
+            <p className="cq-onboard-support">
+              {campusVerified
+                ? CAMPUS_EMAIL_USER_MESSAGES.alreadyVerified
+                : hasActiveChallenge
+                  ? `We sent a 6-digit verification code to ${emailMasked || "your URI email"}`
+                  : "We'll send a 6-digit verification code to your URI email."}
+            </p>
+
+            {!campusVerified ? (
+              <>
+                <CampusEmailOtpInput
+                  value={otpCode}
+                  disabled={codeVerifying || codeSending}
+                  onChange={(next) => {
+                    setOtpCode(next);
+                    setError(null);
+                  }}
+                  onComplete={(code) => void verifyCampusCode(code)}
+                />
+                <button
+                  type="button"
+                  className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50"
+                  disabled={codeVerifying || otpCode.length !== 6}
+                  onClick={() => void verifyCampusCode(otpCode)}
+                >
+                  {codeVerifying ? "Verifying…" : "Verify"}
+                </button>
+                <p className="cq-onboard-footer-link mt-4">
+                  Didn&apos;t get it?{" "}
+                  <button
+                    type="button"
+                    className="cq-onboard-text-link disabled:opacity-50"
+                    disabled={resendLocked}
+                    onClick={() => void sendCampusCode()}
+                  >
+                    {codeSending
+                      ? "Sending…"
+                      : resendAvailableInSeconds > 0
+                        ? CAMPUS_EMAIL_USER_MESSAGES.cooldown(resendAvailableInSeconds)
+                        : hasActiveChallenge
+                          ? "Resend code"
+                          : "Send code"}
+                  </button>
+                </p>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50"
+                disabled={submitting}
+                onClick={() => void continueAfterVerifiedEmail()}
+              >
+                {submitting ? "Saving…" : "Continue"}
+              </button>
+            )}
+
+            {isQaAccount ? (
+              <div className="mt-6">
+                <button
+                  type="button"
+                  className="cq-onboard-text-btn disabled:opacity-50"
+                  disabled={qaSending}
+                  onClick={() => void sendQaTestVerificationEmail()}
+                >
+                  {qaSending ? "Sending test email..." : "Send test verification email"}
+                </button>
+              </div>
+            ) : null}
+
+            {notice ? <p className="cq-onboard-notice mt-3">{notice}</p> : null}
+            {error ? <p className="cq-onboard-error mt-3">{error}</p> : null}
+
+            <p className="cq-onboard-privacy mt-8">
+              <Lock className="inline h-3.5 w-3.5" aria-hidden /> Your email stays private to CampusQuest account
+              security.
+            </p>
+          </div>
+        ) : null}
+
         {step === "graduation_year" ? (
           <div className="cq-onboard-step">
             <KnightStage src={BRAND_KNIGHT.heroic} size="md" ring="md" />
-            <h2 className="cq-onboard-question">When do you graduate?</h2>
-            <p className="cq-onboard-support">This helps us personalize your experience.</p>
+            <h2 className="cq-onboard-question">When do you expect to graduate?</h2>
+            <p className="cq-onboard-support">
+              {studentStatus === "graduate_student"
+                ? "Pick the year that fits, or Not sure if you don't have one."
+                : "Choose a year. Academic standing can change — this is just for personalization."}
+            </p>
             <div className="cq-onboard-stack mt-5">
               {yearOptions.map((opt) => {
                 const selected =
@@ -594,7 +689,7 @@ export function AuthOnboardingFlow({
                         setGraduateOther(false);
                         setGraduationYear(opt.year);
                       }
-                      go("school");
+                      go("interests");
                     }}
                   >
                     <span>{opt.label}</span>
@@ -606,37 +701,13 @@ export function AuthOnboardingFlow({
           </div>
         ) : null}
 
-        {step === "school" ? (
-          <div className="cq-onboard-step">
-            <KnightStage src={BRAND_KNIGHT.pointing} size="md" ring="md" />
-            <h2 className="cq-onboard-question">What school do you go to?</h2>
-            <div className="cq-onboard-search" aria-hidden>
-              <Search className="h-4 w-4 text-slate-400" />
-              <span>Search for your school.</span>
-            </div>
-            <button
-              type="button"
-              className="cq-onboard-school cq-onboard-school--selected"
-              onClick={() => go("interests")}
-            >
-              <span className="cq-onboard-school-mark" aria-hidden>
-                R
-              </span>
-              <span className="text-left">
-                <span className="block font-semibold text-slate-900">{INSTITUTIONS.uri.name}</span>
-                <span className="block text-sm text-slate-500">{INSTITUTIONS.uri.city}</span>
-              </span>
-              <Check className="ml-auto h-5 w-5 shrink-0 text-white" aria-hidden />
-            </button>
-            <p className="cq-onboard-muted-link mt-4">Can&apos;t find your school?</p>
-          </div>
-        ) : null}
-
         {step === "interests" ? (
           <div className="cq-onboard-step">
             <KnightStage src={BRAND_KNIGHT.presenting} size="sm" ring="sm" />
             <h2 className="cq-onboard-question">What are you interested in?</h2>
-            <p className="cq-onboard-support">Pick at least {MIN_INTERESTS} to personalize your feed.</p>
+            <p className="cq-onboard-support">
+              Pick {MIN_INTERESTS} or more. We&apos;ll personalize your feed, events, and campus recommendations.
+            </p>
             <div className="cq-onboard-chip-grid" role="group" aria-label="Interests">
               {INTEREST_OPTIONS.map((opt) => {
                 const selected = interests.includes(opt.id);
@@ -672,7 +743,9 @@ export function AuthOnboardingFlow({
           <div className="cq-onboard-step">
             <KnightStage src={BRAND_KNIGHT.presentingRight} size="sm" ring="sm" />
             <h2 className="cq-onboard-question">Find your communities.</h2>
-            <p className="cq-onboard-support">Choose any that apply to you.</p>
+            <p className="cq-onboard-support">
+              Choose any that apply. We&apos;ll surface relevant events, posts, and opportunities.
+            </p>
             <div className="cq-onboard-community-grid" role="group" aria-label="Communities">
               {COMMUNITY_OPTIONS.map((opt) => {
                 const selected = communities.includes(opt.id);
@@ -691,137 +764,24 @@ export function AuthOnboardingFlow({
               })}
             </div>
             <div className="cq-onboard-row-actions mt-6">
-              <button type="button" className="cq-onboard-text-btn" onClick={() => go("email_verification")}>
+              <button
+                type="button"
+                className="cq-onboard-text-btn disabled:opacity-50"
+                disabled={submitting}
+                onClick={() => void finishAndExplore()}
+              >
                 Skip
               </button>
               <button
                 type="button"
-                className="cq-onboard-btn-primary cq-onboard-btn-primary--inline cq-onboard-btn-primary--glow"
-                onClick={() => go("email_verification")}
+                className="cq-onboard-btn-primary cq-onboard-btn-primary--inline cq-onboard-btn-primary--glow disabled:opacity-50"
+                disabled={submitting}
+                onClick={() => void finishAndExplore()}
               >
-                Continue
+                {submitting ? "Saving…" : "Continue"}
               </button>
             </div>
-          </div>
-        ) : null}
-
-        {step === "email_verification" ? (
-          <div className="cq-onboard-step">
-            <KnightStage src={BRAND_KNIGHT.thumbsUp} size="md" ring="lg" />
-            <h2 className="cq-onboard-question">One more step!</h2>
-            <p className="cq-onboard-support">
-              Verify your URI email to unlock your full CampusQuest experience.
-            </p>
-            <label className="cq-onboard-field-label" htmlFor="cq-onboard-email">
-              Email
-            </label>
-            <div className="cq-onboard-input-wrap">
-              <Mail className="h-4 w-4 text-slate-400" aria-hidden />
-              <input
-                id="cq-onboard-email"
-                className="cq-onboard-input"
-                value={userEmail || "you@uri.edu"}
-                readOnly
-                aria-readonly="true"
-              />
-            </div>
-
-            <p
-              className={
-                verificationStatus.kind === "needs_verification"
-                  ? "cq-onboard-notice mt-3"
-                  : "cq-onboard-success-note mt-3"
-              }
-              role="status"
-            >
-              {verificationStatus.label}
-            </p>
-
-            {/* Primary action: Continue when verified / allowed */}
-            <button
-              type="button"
-              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50"
-              disabled={continueBlocked}
-              onClick={() => go("success")}
-            >
-              Continue
-            </button>
-
-            {/* Normal users who still need verification — never QA controls */}
-            {!isQaAccount && !emailConfirmedForUi ? (
-              <button
-                type="button"
-                className="cq-onboard-btn-primary mt-4 disabled:opacity-50"
-                disabled={isResending || resendRemaining > 0 || !userEmail}
-                onClick={() => void sendVerificationEmail()}
-              >
-                {isResending
-                  ? "Sending…"
-                  : resendRemaining > 0
-                    ? formatResendCooldownLabel(resendRemaining)
-                    : "Send Verification Email"}
-              </button>
-            ) : null}
-
-            {/* Allowlisted QA only: secondary delivery test, separate from verification status */}
-            {isQaAccount && qaAccountAlreadyVerified ? (
-              <div className="mt-6">
-                <button
-                  type="button"
-                  className="cq-onboard-text-btn disabled:opacity-50"
-                  disabled={qaSending}
-                  onClick={() => void sendQaTestVerificationEmail()}
-                >
-                  {qaSending ? VERIFICATION_QA_UI_COPY.sending : VERIFICATION_QA_UI_COPY.sendTestButton}
-                </button>
-                {qaTestNotice ? (
-                  <p className="cq-onboard-notice mt-3" role="status">
-                    {qaTestNotice}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-
-            {notice && !isQaAccount ? <p className="cq-onboard-notice mt-3">{notice}</p> : null}
             {error ? <p className="cq-onboard-error mt-3">{error}</p> : null}
-
-            <p className="cq-onboard-privacy mt-8">
-              <Lock className="inline h-3.5 w-3.5" aria-hidden /> Your email stays private to CampusQuest account
-              security.
-            </p>
-          </div>
-        ) : null}
-
-        {step === "success" ? (
-          <div className="cq-onboard-hero text-center">
-            <div className="cq-onboard-logo-wrap cq-onboard-logo-wrap--celebrate">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={BRAND_LOGO_OFFICIAL}
-                alt="CampusQuest"
-                className="cq-onboard-logo"
-                width={88}
-                height={88}
-                decoding="async"
-              />
-            </div>
-            <KnightStage src={BRAND_KNIGHT.heroic} size="lg" ring="lg" />
-            <h1 className="cq-onboard-title cq-onboard-title--celebrate">Preferences saved!</h1>
-            <p className="cq-onboard-sub cq-onboard-sub--strong">Your CampusQuest is taking shape.</p>
-            <p className="cq-onboard-sub mt-2">
-              Next: create your character.
-              <br />
-              Then explore campus, connect, and level up.
-            </p>
-            {error ? <p className="cq-onboard-error mt-4">{error}</p> : null}
-            <button
-              type="button"
-              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-8 disabled:opacity-60"
-              disabled={submitting}
-              onClick={() => void finishAndExplore()}
-            >
-              {submitting ? "Saving…" : "Continue"}
-            </button>
           </div>
         ) : null}
       </div>

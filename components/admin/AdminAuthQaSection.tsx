@@ -58,12 +58,31 @@ type DiagnosticPayload = {
   stats: { userId: string; level: number; totalXp: number } | null;
 };
 
+type QaChecklist = {
+  authenticated: boolean;
+  verificationStateReset: boolean;
+  codeGenerated: boolean;
+  emailDispatched: boolean;
+  codeSubmitted: boolean;
+  codeValidated: boolean;
+  verificationStored: boolean;
+  onboardingContinued: boolean;
+};
+
+type QaCycleView = {
+  campusEmailVerified: boolean;
+  campusEmailVerifiedAt: string | null;
+  authUserId: string;
+  checklist: QaChecklist;
+};
+
 export function AdminAuthQaSection() {
   const [status, setStatus] = useState<AuthQaStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [lookupEmail, setLookupEmail] = useState("");
   const [actionEmail, setActionEmail] = useState("");
   const [diagnostic, setDiagnostic] = useState<DiagnosticPayload | null>(null);
+  const [qaView, setQaView] = useState<QaCycleView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,8 +97,18 @@ export function AdminAuthQaSection() {
     }
   }, []);
 
+  async function loadQaView() {
+    try {
+      const data = await fetchAuthed<QaCycleView>("/api/auth/qa/verification-cycle");
+      setQaView(data);
+    } catch {
+      setQaView(null);
+    }
+  }
+
   useEffect(() => {
     void loadStatus();
+    void loadQaView();
   }, [loadStatus]);
 
   async function runDiagnostic() {
@@ -126,28 +155,11 @@ export function AdminAuthQaSection() {
     setMessage(null);
     try {
       const data = await postAuthed<
-        {
-          cycleId: string;
-          emailSent: boolean;
-          alreadySent: boolean;
-          message: string;
-          dispatchMethod?: string;
-        },
+        { emailSent: boolean; alreadySent: boolean; message: string },
         { forceNew: boolean }
       >("/api/auth/qa/verification-cycle", { forceNew: true });
-      if (!data.emailSent) {
-        setError(
-          data.alreadySent
-            ? `${data.message} (idempotent — no duplicate send)`
-            : data.message || "Supabase did not dispatch a test email.",
-        );
-        return;
-      }
-      setMessage(
-        data.dispatchMethod === "magiclink_otp"
-          ? `${data.message}`
-          : data.message || "Test email sent. Open the newest email to test the verification link.",
-      );
+      setMessage(data.message);
+      await loadQaView();
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Could not start verification QA cycle.");
     } finally {
@@ -207,13 +219,26 @@ export function AdminAuthQaSection() {
       ) : null}
 
       <div className="cq-admin-panel p-4 space-y-3">
-        <p className="font-semibold text-white">Repeatable verification QA cycle</p>
+        <p className="font-semibold text-white">Email Verification QA</p>
         <p className="text-xs text-white/55">
-          For the allowlisted QA account only (must be signed in as that account). Sends a real
-          Supabase Auth email through Resend. Already-confirmed accounts use a magic-link OTP
-          (signup confirmation resend is a silent no-op while confirmed). Remounts do not send
-          another email without forceNew.
+          Signed in as the allowlisted QA account only. Resets CampusQuest campus-email
+          verification (not the Supabase Auth user) and sends a real 6-digit code through Resend.
         </p>
+        {qaView ? (
+          <ul className="text-xs text-white/70 space-y-1 font-mono">
+            <li>Authenticated {qaView.checklist.authenticated ? "✓" : "–"}</li>
+            <li>Verification state reset {qaView.checklist.verificationStateReset ? "✓" : "–"}</li>
+            <li>Code generated {qaView.checklist.codeGenerated ? "✓" : "–"}</li>
+            <li>Email dispatched {qaView.checklist.emailDispatched ? "✓" : "–"}</li>
+            <li>Code submitted {qaView.checklist.codeSubmitted ? "✓" : "–"}</li>
+            <li>Code validated {qaView.checklist.codeValidated ? "✓" : "–"}</li>
+            <li>Verification stored {qaView.checklist.verificationStored ? "✓" : "–"}</li>
+            <li>Onboarding continued {qaView.checklist.onboardingContinued ? "✓" : "–"}</li>
+            <li>Auth UUID unchanged {qaView.authUserId ? "✓" : "–"}</li>
+          </ul>
+        ) : (
+          <p className="text-xs text-white/45">Sign in as the QA account to load this checklist.</p>
+        )}
         <button
           type="button"
           onClick={() => void startVerificationQaCycle()}
@@ -301,11 +326,9 @@ export function AdminAuthQaSection() {
       <div className="cq-admin-panel p-4 space-y-2 text-xs text-white/50">
         <p className="font-semibold text-white/70">Manual checks this panel does not automate</p>
         <ul className="list-disc pl-4 space-y-1">
-          <li>Use Send test verification email while signed in as the allowlisted QA account, then open the newest Resend message to exercise /auth/callback. Continue stays available because the account is already verified. If Supabase rate-limits you, wait ~60s and retry.</li>
-          <li>Open the email on iOS Safari and confirm the deep link returns to CampusQuest.</li>
-          <li>Click an expired or already-used link and confirm the recovery screen appears.</li>
-          <li>Duplicate-click the same valid link and confirm the second click is handled safely.</li>
-          <li>Turn on <code>requireEmailVerification</code> to test unconfirmed signup → real Resend delivery → callback for normal users.</li>
+          <li>Sign in as nicklockhart22@uri.edu, send a test 6-digit code, enter a wrong code, resend, then enter the newest code.</li>
+          <li>Confirm Continue stays blocked until the code verifies and campus_email_verified_at is stored.</li>
+          <li>Log out and back in — campus verification must remain saved. The Auth UUID must not change.</li>
         </ul>
       </div>
     </section>

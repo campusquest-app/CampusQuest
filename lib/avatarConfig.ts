@@ -278,6 +278,21 @@ export function applyClassToAvatarConfig(
   );
 }
 
+export function pickRandomStarterPreset(excludeSeed?: string | null): AvatarLookPreset {
+  const pool = AVATAR_LOOK_PRESETS.filter((preset) => preset.seed !== excludeSeed);
+  const list = pool.length > 0 ? pool : AVATAR_LOOK_PRESETS;
+  const index = Math.floor(Math.random() * list.length);
+  return list[index] ?? AVATAR_LOOK_PRESETS[0]!;
+}
+
+/** Selected starter card id that must match the live preview for this config. */
+export function starterPresetIdForConfig(config: Pick<AvatarConfig, "presetId" | "seed">): string | null {
+  if (config.presetId && AVATAR_LOOK_PRESETS.some((preset) => preset.seed === config.presetId)) {
+    return config.presetId;
+  }
+  return AVATAR_LOOK_PRESETS.find((preset) => preset.seed === config.seed)?.seed ?? null;
+}
+
 /** Full randomize — produces a complete valid config (clears starter preset link). */
 export function randomizeAvatarConfig(
   current: AvatarConfig,

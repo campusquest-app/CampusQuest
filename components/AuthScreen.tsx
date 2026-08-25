@@ -678,7 +678,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
               Your quest.
             </p>
             <button type="button" className="cq-onboard-btn-gold" onClick={() => switchMode("signup")}>
-              Let&apos;s Get Started
+              Join CampusQuest
             </button>
             <p className="cq-onboard-footer-link">
               Already have an account?{" "}

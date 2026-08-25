@@ -9,7 +9,6 @@ import {
 } from "@/lib/server/authBootstrap";
 import { ensurePlayerSetup } from "@/lib/server/playerSetup";
 import { createPublicClient } from "@/lib/server/supabase";
-import { userHasPendingVerificationQaCycle } from "@/lib/server/verificationQaCycle";
 
 export const SIGNUP_AUTH_CREATED_SETUP_PENDING = "AUTH_CREATED_SETUP_PENDING" as const;
 export const SIGNUP_VERIFICATION_REQUIRED = "SIGNUP_VERIFICATION_REQUIRED" as const;
@@ -118,10 +117,6 @@ export async function recoverExistingSignupEmail(args: {
   const userId = await findAuthUserIdByEmail(email);
 
   if (!FEATURE_FLAGS.requireEmailVerification && userId) {
-    if (await userHasPendingVerificationQaCycle(userId)) {
-      logAuthFlow("signup", "existing_email_verification_qa_pending", { userId });
-      return { kind: "verification_required", email, userId };
-    }
     const recovered = await confirmEmailAndSignIn({
       publicClient: args.publicClient,
       userId,

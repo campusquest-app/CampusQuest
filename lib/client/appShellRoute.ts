@@ -5,6 +5,7 @@ import {
   type DemographicProfileSnapshot,
 } from "@/lib/onboarding/demographicOnboardingPolicy";
 import { isDisplayNameSetupRequired } from "@/lib/onboarding/displayNameOnboardingPolicy";
+import { isCampusEmailVerificationRequired } from "@/lib/campusEmailVerification";
 
 export type BootstrapStatus = "bootstrapping" | "unauthenticated" | "authenticated";
 
@@ -72,6 +73,10 @@ export function resolveProfileRoute(
       forceQaReplay: options?.forceDemographicsQaReplay === true,
     })
   ) {
+    return "demographics_gate";
+  }
+
+  if (isCampusEmailVerificationRequired(profile)) {
     return "demographics_gate";
   }
 

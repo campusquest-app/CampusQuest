@@ -96,7 +96,7 @@ export const VERIFICATION_QA_UI_COPY = {
   statusAlreadyVerified: "Verification status: Already verified",
   sendTestButton: "Send test verification email",
   sending: "Sending test email...",
-  sentSuccess: "Test email sent. Open the newest email to test the verification link.",
+  sentSuccess: "Test email sent. Open the newest email and enter the 6-digit code.",
   sendFailedFallback: "Could not send the test verification email. Please try again.",
   rateLimited:
     "Supabase rate-limited this QA email. Wait about a minute, then try Send test verification email again.",

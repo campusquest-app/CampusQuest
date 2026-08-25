@@ -8,7 +8,7 @@ import {
   markOnboardingQaRecordCompleted,
 } from "@/lib/client/onboardingQaSession";
 import { resolveProfileRoute } from "@/lib/client/appShellRoute";
-import { isOnboardingQaEmail, ONBOARDING_QA_EMAIL } from "@/lib/onboardingQa";
+import { isOnboardingQaEmail, ONBOARDING_QA_EMAIL, shouldShowCampusVerificationQaControls } from "@/lib/onboardingQa";
 import { isAllowedSignupEmail, signupEmailRejectionReason } from "@/lib/signupEmailPolicy";
 import { canAttemptResend, remainingResendCooldownMs, startResendCooldown } from "@/lib/client/authResendCooldown";
 import { mapAuthCallbackError, parseAuthCallbackParams, shouldOfferVerificationResend } from "@/lib/client/authCallbackErrors";
@@ -92,6 +92,12 @@ describe("admin QA onboarding replay", () => {
     expect(isOnboardingQaEmail("NickLockhart22@uri.edu")).toBe(true);
     expect(isOnboardingQaEmail("student@uri.edu")).toBe(false);
     expect(isOnboardingQaEmail("qa_signup@campusquestapp.com")).toBe(false);
+  });
+
+  it("hides Send test verification email from normal users", () => {
+    expect(shouldShowCampusVerificationQaControls("student@uri.edu")).toBe(false);
+    expect(shouldShowCampusVerificationQaControls("freshman@uri.edu")).toBe(false);
+    expect(shouldShowCampusVerificationQaControls(ONBOARDING_QA_EMAIL)).toBe(true);
   });
 
   it("shows demographics then CharacterGate on a new login session even when the profile is complete", () => {

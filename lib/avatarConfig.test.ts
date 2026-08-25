@@ -8,9 +8,11 @@ import {
   createDefaultAvatarConfig,
   markOverride,
   patchAvatarConfigOptions,
+  pickRandomStarterPreset,
   randomizeAvatarConfig,
   resetAvatarConfigToStarter,
   serializeAvatarConfig,
+  starterPresetIdForConfig,
 } from "@/lib/avatarConfig";
 import { AVATAR_LOOK_PRESETS } from "@/lib/avatarPresets";
 import { parseDiceBearAvatar } from "@/lib/dicebearAvatar";
@@ -63,6 +65,20 @@ describe("AvatarConfig onboarding state", () => {
     const parsed = parseDiceBearAvatar(serializeAvatarConfig(randomized));
     expect(parsed).not.toBeNull();
     expect(parsed?.v).toBe(2);
+  });
+
+  it("Randomize on the starter screen picks a valid preset that matches the live preview", () => {
+    const first = pickRandomStarterPreset();
+    expect(AVATAR_LOOK_PRESETS.some((preset) => preset.seed === first.seed)).toBe(true);
+    const config = avatarConfigFromPreset(first, "knight");
+    expect(starterPresetIdForConfig(config)).toBe(first.seed);
+    expect(config.presetId).toBe(first.seed);
+    expect(config.seed).toBe(first.seed);
+    const next = pickRandomStarterPreset(first.seed);
+    expect(AVATAR_LOOK_PRESETS.some((preset) => preset.seed === next.seed)).toBe(true);
+    if (AVATAR_LOOK_PRESETS.length > 1) {
+      expect(next.seed).not.toBe(first.seed);
+    }
   });
 
   it("reset restores the selected starter preset", () => {
