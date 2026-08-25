@@ -62,6 +62,27 @@ export function formatEventDateTimeRange(
   return `${prefix} · ${startTime}–${dayPrefix(end, now)} · ${formatCampusTime(end)}`;
 }
 
+/** Date line for event detail: "Today" / "Mon, Sep 14". */
+export function formatEventDateLine(startsAt: string | null | undefined, now: Date = new Date()): string {
+  const start = parseInstant(startsAt);
+  if (!start) return "Date TBA";
+  return dayPrefix(start, now);
+}
+
+/** Time line for event detail: "7:00 PM–9:00 PM" / "7:00 PM". */
+export function formatEventTimeLine(
+  startsAt: string | null | undefined,
+  endsAt: string | null | undefined,
+): string | null {
+  const start = parseInstant(startsAt);
+  if (!start) return null;
+  const startTime = formatCampusTime(start);
+  const end = parseInstant(endsAt);
+  if (!end || end.getTime() <= start.getTime()) return startTime;
+  if (isOnCampusDay(end, start)) return `${startTime}–${formatCampusTime(end)}`;
+  return `${startTime}–${dayPrefix(end, start)} · ${formatCampusTime(end)}`;
+}
+
 export function eventDateTimeIso(startsAt: string | null | undefined): string | undefined {
   const start = parseInstant(startsAt);
   return start ? start.toISOString() : undefined;

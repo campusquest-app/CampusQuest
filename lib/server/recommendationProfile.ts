@@ -5,9 +5,7 @@ import {
   organizationToRecommendationEntity,
 } from "@/lib/recommendations/adapters";
 import { inferAffinitiesFromSignals, type RecommendationBehaviorSignal } from "@/lib/recommendations/profile";
-import { shouldExposeRecommendationDebug } from "@/lib/recommendations/debug";
 import type { UserRecommendationProfile } from "@/lib/recommendations/types";
-import { fetchProfileAccessFlags, isPlatformAdmin } from "@/lib/server/permissions";
 import { createAdminClient } from "@/lib/server/supabase";
 import type { User } from "@supabase/supabase-js";
 
@@ -178,11 +176,6 @@ export async function loadUserRecommendationProfile(args: {
   user: User;
 }): Promise<UserRecommendationProfile> {
   const userId = args.user.id;
-  const flags = await fetchProfileAccessFlags(args.userClient as any, userId, { email: args.user.email });
-  const includeDebug = shouldExposeRecommendationDebug({
-    isAdmin: isPlatformAdmin(args.user, flags.role),
-    isInternalTester: flags.isInternalTester,
-  });
 
   const [profileResult, prefsResult, rsvpSignals, orgBundle, checkInSignals] = await Promise.all([
     args.userClient
@@ -223,7 +216,8 @@ export async function loadUserRecommendationProfile(args: {
     ]),
     followedOrganizationIds: orgBundle.followedOrganizationIds,
     followedOrganizationNames: orgBundle.followedOrganizationNames,
-    includeDebug,
+    // Never ship score-breakdown debug to clients (admin or student). Ranking still runs.
+    includeDebug: false,
   };
 }
 

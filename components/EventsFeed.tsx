@@ -66,7 +66,6 @@ const TIMEFRAME_OPTIONS: Array<{ value: EventsFeedTimeframe; label: string }> = 
 export function EventsFeed({
   personalization,
   showAdminSyncLink = false,
-  showRecommendationDebug = false,
   onBack,
   onViewOnMap,
   onOpenOrganization,
@@ -81,7 +80,6 @@ export function EventsFeed({
     classYear?: number | null;
   } | null;
   showAdminSyncLink?: boolean;
-  showRecommendationDebug?: boolean;
   onBack?: () => void;
   onViewOnMap?: (eventId: string, options?: { walk?: boolean }) => void;
   onOpenOrganization?: (organizationId: string) => void;
@@ -97,7 +95,7 @@ export function EventsFeed({
   const [rsvping, setRsvping] = useState<string | null>(null);
   const loadGenerationRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
-  const recProfile = useRecommendationProfile(personalization, showRecommendationDebug);
+  const recProfile = useRecommendationProfile(personalization);
   const activeFilterCount = countActiveEventFilters(filters);
 
   async function loadEvents() {
@@ -410,26 +408,14 @@ export function EventsFeed({
       ? { kind: "campus" as const, event: events.find((event) => event.id === activeDetail.event.id) ?? activeDetail.event }
       : activeDetail;
 
-  if (liveDetail) {
-    return (
-      <EventDetailScreen
-        item={liveDetail}
-        recommendation={prioritizedEvents.find((row) => row.item.event.id === liveDetail.event.id)?.recommendation ?? null}
-        error={error}
-        interestedPending={rsvping === liveDetail.event.id}
-        onBack={() => setActiveDetail(null)}
-        onRetry={() => void loadEvents()}
-        onToggleInterested={liveDetail.kind === "campus" ? () => void handleInterested(liveDetail.event.id) : undefined}
-        onRsvpGoing={liveDetail.kind === "campus" ? () => void handleGoing(liveDetail.event.id) : undefined}
-        onViewOnMap={onViewOnMap ? () => onViewOnMap(liveDetail.event.id) : undefined}
-        onWalkHere={onViewOnMap ? () => onViewOnMap(liveDetail.event.id, { walk: true }) : undefined}
-        onOpenOrganization={onOpenOrganization}
-      />
-    );
-  }
-
   return (
-    <section className="space-y-4">
+    <>
+    {/* Keep the list mounted under the portaled detail so document scroll position is preserved. */}
+    <section
+      className={`space-y-4${liveDetail ? " pointer-events-none" : ""}`}
+      aria-hidden={liveDetail ? true : undefined}
+      inert={liveDetail ? true : undefined}
+    >
       {onBack ? <ScreenBackHeader title="Events" onBack={onBack} /> : null}
       <div className="card p-4 space-y-3">
         <h3 className="font-display font-semibold text-white">Event Discovery</h3>
@@ -549,7 +535,6 @@ export function EventsFeed({
             key={`${item.kind}-${item.event.id}`}
             item={item}
             recommendation={recommendation}
-            showRecommendationDebug={showRecommendationDebug}
             interestedPending={item.kind === "campus" && rsvping === item.event.id}
             onView={() => setActiveDetail(item)}
             onToggleInterested={item.kind === "campus" ? () => void handleInterested(item.event.id) : undefined}
@@ -574,5 +559,21 @@ export function EventsFeed({
         }
       />
     </section>
+    {liveDetail ? (
+      <EventDetailScreen
+        item={liveDetail}
+        recommendation={prioritizedEvents.find((row) => row.item.event.id === liveDetail.event.id)?.recommendation ?? null}
+        error={error}
+        interestedPending={rsvping === liveDetail.event.id}
+        onBack={() => setActiveDetail(null)}
+        onRetry={() => void loadEvents()}
+        onToggleInterested={liveDetail.kind === "campus" ? () => void handleInterested(liveDetail.event.id) : undefined}
+        onRsvpGoing={liveDetail.kind === "campus" ? () => void handleGoing(liveDetail.event.id) : undefined}
+        onViewOnMap={onViewOnMap ? () => onViewOnMap(liveDetail.event.id) : undefined}
+        onWalkHere={onViewOnMap ? () => onViewOnMap(liveDetail.event.id, { walk: true }) : undefined}
+        onOpenOrganization={onOpenOrganization}
+      />
+    ) : null}
+    </>
   );
 }

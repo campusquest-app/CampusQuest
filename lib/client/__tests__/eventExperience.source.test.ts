@@ -19,23 +19,38 @@ describe("Events experience source contracts", () => {
   });
 
   it("renders a complete in-app detail page with secondary URInvolved source", () => {
+    expect(detailSrc).toContain("createPortal");
+    expect(detailSrc).toContain("document.body");
+    expect(detailSrc).toContain('document.body.style.overflow = "hidden"');
+    expect(detailSrc).toContain("CQ_BOTTOM_NAV_CLEARANCE");
     expect(detailSrc).toContain("event.title");
     expect(detailSrc).toContain("flyer");
-    expect(detailSrc).toContain("formatEventDateTimeRange");
+    expect(detailSrc).toContain("formatEventDateLine");
+    expect(detailSrc).toContain("formatEventTimeLine");
     expect(detailSrc).toContain("Hosted by");
-    expect(detailSrc).toContain("About");
+    expect(detailSrc).toContain("About This Event");
+    expect(detailSrc).toContain("What You Need to Know");
     expect(detailSrc).toContain("Add to Calendar");
     expect(detailSrc).toContain("Share");
     expect(detailSrc).toContain("Interested");
     expect(detailSrc).toContain("View on Map");
     expect(detailSrc).toContain("Walk Here");
-    expect(detailSrc).toContain("View full listing on URInvolved");
+    expect(detailSrc).toContain("More Info on URInvolved");
+    expect(detailSrc).toContain("Read More");
+    expect(detailSrc).toContain("Event unavailable");
     expect(detailSrc).toContain("openExternalUrl");
     expect(detailSrc).toContain("nativeShare");
     expect(detailSrc).toContain("downloadEventIcs");
     expect(detailSrc).toContain("eventHasMappedLocation");
-    expect(detailSrc).not.toMatch(/className="block w-full[\s\S]*View on URInvolved/);
+    expect(detailSrc).not.toMatch(/top:\s*["']var\(--cq-topnav-h/);
+    expect(detailSrc).not.toContain("min-h-full");
     expect(detailSrc).not.toContain("toLocaleString");
+  });
+
+  it("keeps the events list mounted under the detail portal", () => {
+    expect(feedSrc).toContain("aria-hidden={liveDetail ? true : undefined}");
+    expect(feedSrc).toContain("<EventDetailScreen");
+    expect(feedSrc).not.toMatch(/if \(liveDetail\) \{\s*return \(/);
   });
 
   it("defaults discovery to For You and hides filters in a sheet", () => {

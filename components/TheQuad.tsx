@@ -41,7 +41,6 @@ import { isQuadCommunityChannel, QUAD_COMMUNITY_FEED_LABELS } from "@/lib/quadCo
 import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
 import {
   fieldNoteToRecommendationEntity,
-  formatRecommendationDebugLine,
   rankRecommendationEntities,
   recommendationTimeBucket,
 } from "@/lib/recommendations";
@@ -90,7 +89,6 @@ export function TheQuad({
   onPostXpReward,
   showXpProgressBar = false,
   personalization = null,
-  showRecommendationDebug = false,
   onViewEvent,
   onViewOnMap,
 }: {
@@ -121,7 +119,6 @@ export function TheQuad({
     studentStatus?: string | null;
     classYear?: number | null;
   } | null;
-  showRecommendationDebug?: boolean;
   onViewEvent?: (eventId: string) => void;
   onViewOnMap?: (locationId: string) => void;
 }) {
@@ -137,9 +134,8 @@ export function TheQuad({
   const [showAddMemory, setShowAddMemory] = useState(false);
   const [addMemoryLocationId, setAddMemoryLocationId] = useState<CampusLocationId>("the-quad");
   const showQuadChrome = !chromeSuppressed;
-  const recProfile = useRecommendationProfile(personalization, showRecommendationDebug);
+  const recProfile = useRecommendationProfile(personalization);
   const [reasonById, setReasonById] = useState<Record<string, string>>({});
-  const [debugById, setDebugById] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
@@ -157,7 +153,6 @@ export function TheQuad({
     (list: FieldNote[]): FieldNote[] => {
       if (feedTab !== "public") {
         setReasonById({});
-        setDebugById({});
         return list;
       }
       const ranked = rankRecommendationEntities({
@@ -169,19 +164,13 @@ export function TheQuad({
         exploreEvery: 4,
       });
       const reasons: Record<string, string> = {};
-      const debugLines: Record<string, string> = {};
       ranked.slice(0, 8).forEach((row) => {
         if (row.recommendation.reason) reasons[row.item.id] = row.recommendation.reason.label;
-        if (showRecommendationDebug) {
-          const line = formatRecommendationDebugLine(row.recommendation);
-          if (line) debugLines[row.item.id] = line;
-        }
       });
       setReasonById(reasons);
-      setDebugById(debugLines);
       return ranked.map((row) => row.item);
     },
-    [feedTab, recProfile, showRecommendationDebug],
+    [feedTab, recProfile],
   );
 
   const handleSessionMissing = useCallback(() => {
@@ -644,9 +633,6 @@ export function TheQuad({
                 <div key={note.id}>
                   {reasonById[note.id] ? (
                     <p className="px-1 pb-1 text-[11px] font-semibold text-uri-keaney/90">{reasonById[note.id]}</p>
-                  ) : null}
-                  {debugById[note.id] ? (
-                    <p className="px-1 pb-1 text-[10px] font-mono text-white/40">{debugById[note.id]}</p>
                   ) : null}
                   <FieldNoteCard
                   variant="feed"

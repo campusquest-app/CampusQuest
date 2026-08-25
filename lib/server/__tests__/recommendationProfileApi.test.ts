@@ -11,9 +11,10 @@ describe("recommendation profile API", () => {
     expect(routeSrc).toContain("loadUserRecommendationProfile");
   });
 
-  it("does not force debug metadata on for every caller", () => {
+  it("never ships recommendation score-breakdown debug to clients", () => {
     expect(routeSrc).not.toContain("includeDebug: true");
-    expect(loaderSrc).toContain("shouldExposeRecommendationDebug");
+    expect(loaderSrc).toContain("includeDebug: false");
+    expect(loaderSrc).not.toContain("shouldExposeRecommendationDebug");
   });
 
   it("loads preference and behavior signals in parallel", () => {

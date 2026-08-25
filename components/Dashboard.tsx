@@ -2810,7 +2810,6 @@ export function Dashboard() {
             onPostXpReward={handleQuadPostXpReward}
             showXpProgressBar={shouldRenderXpProgressBar(xpProgressBarPref)}
             personalization={onboardingPreferences}
-            showRecommendationDebug={moderationAdminNavVisible(pilotCampusState)}
             onViewEvent={openTaggedEvent}
             onViewOnMap={openLocationOnMap}
           />
@@ -2836,7 +2835,6 @@ export function Dashboard() {
             <EventsFeed
               personalization={onboardingPreferences}
               showAdminSyncLink={moderationAdminNavVisible(pilotCampusState)}
-              showRecommendationDebug={moderationAdminNavVisible(pilotCampusState)}
               onViewOnMap={openEventOnMap}
               onOpenOrganization={openOrganizationFromEvents}
             />,

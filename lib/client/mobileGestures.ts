@@ -37,6 +37,8 @@ export const DRAWER_SWIPE_IGNORE_SELECTOR = [
   ".cq-realm-map-canvas",
   ".gm-style",
   ".gm-style-moc",
+  ".cq-realm-foryou-rail",
+  ".cq-realm-foryou-rail__scroller",
 ].join(", ");
 
 const DRAWER_HORIZONTAL_SCROLL_SELECTOR = [
@@ -48,6 +50,8 @@ const DRAWER_HORIZONTAL_SCROLL_SELECTOR = [
   ".leaderboard-filter-row",
   ".carousel",
   ".tabs",
+  ".cq-realm-foryou-rail",
+  ".cq-realm-foryou-rail__scroller",
 ].join(", ");
 
 /** Left → right dock order. Map (`realm`) is the centered primary action. */

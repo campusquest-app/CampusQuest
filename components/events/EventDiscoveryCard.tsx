@@ -7,19 +7,16 @@ import { eventCardRecommendationReason } from "@/lib/client/eventDiscovery";
 import { campusEventHostLabel, type FeedEvent } from "@/lib/client/eventFeedTypes";
 import { isInterestedRsvp } from "@/lib/client/eventInterested";
 import type { RecommendationScore } from "@/lib/recommendations/types";
-import { formatRecommendationDebugLine } from "@/lib/recommendations";
 
 export function EventDiscoveryCard({
   item,
   recommendation,
-  showRecommendationDebug = false,
   interestedPending = false,
   onView,
   onToggleInterested,
 }: {
   item: FeedEvent;
   recommendation: RecommendationScore | null;
-  showRecommendationDebug?: boolean;
   interestedPending?: boolean;
   onView: () => void;
   onToggleInterested?: () => void;
@@ -73,9 +70,6 @@ export function EventDiscoveryCard({
           {[category, host].filter(Boolean).join(" · ")}
         </p>
         {summary ? <p className="cq-event-card-summary">{summary}</p> : null}
-        {showRecommendationDebug && recommendation && formatRecommendationDebugLine(recommendation) ? (
-          <p className="text-[10px] font-mono text-white/40">{formatRecommendationDebugLine(recommendation)}</p>
-        ) : null}
         <div className="cq-event-card-actions">
           {onToggleInterested ? (
             <button

@@ -18,12 +18,8 @@ export function useRecommendationProfile(
     studentStatus?: string | null;
     classYear?: number | null;
   } | null,
-  includeDebug = false,
 ): UserRecommendationProfile {
-  const seed = useMemo(
-    () => seedRecommendationProfile(personalization, includeDebug),
-    [personalization, includeDebug],
-  );
+  const seed = useMemo(() => seedRecommendationProfile(personalization), [personalization]);
   const [loaded, setLoaded] = useState<UserRecommendationProfile | null>(null);
 
   useEffect(() => {
@@ -36,13 +32,7 @@ export function useRecommendationProfile(
     };
   }, []);
 
-  return useMemo(() => {
-    const merged = combineRecommendationProfile(seed, loaded);
-    if (includeDebug && !merged.includeDebug) {
-      return { ...merged, includeDebug: true };
-    }
-    return merged;
-  }, [seed, loaded, includeDebug]);
+  return useMemo(() => combineRecommendationProfile(seed, loaded), [seed, loaded]);
 }
 
 export function recommendationProfileFromSeed(

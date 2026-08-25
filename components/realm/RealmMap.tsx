@@ -1295,7 +1295,16 @@ export function RealmMap({
               disabled: mapPanningDisabled,
               velocityDisabled: false,
               wheelPanning: false,
-              excluded: ["realm-pin", "realm-map-markers", "map-pin", "realm-external-event-pin", "realm-marker", "location-marker"],
+              excluded: [
+                "realm-pin",
+                "realm-map-markers",
+                "map-pin",
+                "realm-external-event-pin",
+                "realm-marker",
+                "location-marker",
+                "cq-realm-foryou-rail",
+                "cq-realm-foryou-card",
+              ],
             }}
             doubleClick={{ disabled: true }}
             alignmentAnimation={{ animationTime: 280, velocityAlignmentTime: 320 }}

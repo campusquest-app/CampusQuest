@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
+import { compactRecommendationSecondaryLine } from "@/lib/realm/forYouRailCopy";
 
 export function RealmForYouRail({
   items,
@@ -41,14 +42,23 @@ export function RealmForYouRail({
       <header className="cq-realm-foryou-rail__head">
         <p className="cq-realm-foryou-rail__title">Recommended around campus</p>
         {happeningTodayCount > 0 ? (
-          <p className="cq-realm-foryou-rail__meta">
-            {happeningTodayCount} happening today
-          </p>
+          <p className="cq-realm-foryou-rail__meta">{happeningTodayCount} happening today</p>
         ) : null}
       </header>
-      <div ref={scrollerRef} className="cq-realm-foryou-rail__scroller" role="list">
+      <div
+        ref={scrollerRef}
+        className="cq-realm-foryou-rail__scroller"
+        role="list"
+        data-no-drawer-swipe="true"
+        data-cq-gesture-block="all"
+        data-cq-horizontal-scroll="true"
+        onPointerDown={(event) => event.stopPropagation()}
+        onTouchStart={(event) => event.stopPropagation()}
+      >
         {items.map((item) => {
           const selected = item.id === selectedId;
+          const secondary = compactRecommendationSecondaryLine(item);
+          const kindLabel = item.kind === "event" ? "Event" : item.kind === "quest" ? "Quest" : "Place";
           return (
             <article
               key={item.id}
@@ -68,18 +78,10 @@ export function RealmForYouRail({
                 }
               }}
             >
-              <p className="cq-realm-foryou-card__kicker">{item.kind === "event" ? "Event" : item.kind === "quest" ? "Quest" : "Place"}</p>
+              <p className="cq-realm-foryou-card__kicker">{kindLabel}</p>
               <h3 className="cq-realm-foryou-card__title">{item.title}</h3>
-              <p className="cq-realm-foryou-card__meta">
-                {item.locationName}
-                {item.timeLabel ? ` · ${item.timeLabel}` : ""}
-              </p>
-              <p className="cq-realm-foryou-card__reason">
-                {item.reasonLabel ?? "Recommended for you"}
-              </p>
-              {item.relatedQuestName ? (
-                <p className="cq-realm-foryou-card__quest">Related quest: {item.relatedQuestName}</p>
-              ) : null}
+              {secondary ? <p className="cq-realm-foryou-card__meta">{secondary}</p> : null}
+              <p className="cq-realm-foryou-card__reason">{item.reasonLabel ?? "Recommended for you"}</p>
               <div className="cq-realm-foryou-card__actions">
                 <button
                   type="button"

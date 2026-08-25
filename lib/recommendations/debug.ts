@@ -1,4 +1,7 @@
-/** Popularity helpers. Callers must pass already-filtered public activity. */
+/**
+ * Helpers for recommendation popularity counts and offline/unit debug formatting.
+ * Score-breakdown strings must never be rendered in student-facing UI.
+ */
 
 import type { RecommendationScore } from "@/lib/recommendations/types";
 
@@ -16,6 +19,7 @@ export function publicPopularityCount<T extends { userId?: string | null }>(
   return count;
 }
 
+/** Policy helper for tests / future admin tools. Client profiles always ship includeDebug: false. */
 export function shouldExposeRecommendationDebug(args: {
   isAdmin: boolean;
   isInternalTester?: boolean;
@@ -23,6 +27,7 @@ export function shouldExposeRecommendationDebug(args: {
   return args.isAdmin === true || args.isInternalTester === true;
 }
 
+/** Formats an internal score breakdown. Returns null unless score.debug was explicitly attached. */
 export function formatRecommendationDebugLine(score: RecommendationScore): string | null {
   if (!score.debug) return null;
   return [

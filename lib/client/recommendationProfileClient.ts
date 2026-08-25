@@ -36,9 +36,9 @@ export async function fetchRecommendationProfile(): Promise<UserRecommendationPr
 
 export function seedRecommendationProfile(
   personalization?: Parameters<typeof profileFromPersonalization>[0],
-  includeDebug = false,
 ): UserRecommendationProfile {
-  return profileFromPersonalization({ ...personalization, includeDebug });
+  // Client seeds never enable score-breakdown debug — that metadata is not for UI.
+  return profileFromPersonalization({ ...personalization, includeDebug: false });
 }
 
 export function combineRecommendationProfile(
