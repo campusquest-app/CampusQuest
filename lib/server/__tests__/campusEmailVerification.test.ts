@@ -455,7 +455,7 @@ describe("routing + logout persistence", () => {
     ).toBe("app");
   });
 
-  it("routes explicit unverified users back to the verification onboarding gate", () => {
+  it("routes explicit unverified users back to the verification onboarding gate only when setup is incomplete", () => {
     expect(
       resolveProfileRoute({
         onboarding_completed: true,
@@ -463,6 +463,18 @@ describe("routing + logout persistence", () => {
         campus_email_verified_at: null,
         display_name_changed_at: "2026-01-01T00:00:00Z",
       }),
+    ).toBe("app");
+    expect(
+      resolveProfileRoute({
+        onboarding_completed: false,
+        onboarding_character_completed: false,
+        role: null,
+        student_status: "current_student",
+        institution_id: "uri",
+        onboarding_version: 2,
+        campus_email_verified_at: null,
+        display_name_changed_at: "2026-01-01T00:00:00Z",
+      }, { preferences: { interests: ["athletics", "music", "tech"] } }),
     ).toBe("demographics_gate");
   });
 

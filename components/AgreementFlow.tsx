@@ -4,124 +4,116 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DEFAULT_POLICY_VERSION } from "@/lib/legal/policy";
 import { LegalConsentScreen } from "@/components/LegalConsentScreen";
-import { getAccessToken } from "@/lib/client/apiSession";
-import { consentPayloadAllowsAppAccess, type LegalConsentPayload } from "@/lib/client/agreementAccess";
+import {
+  loadLegalConsentGate,
+  submitLegalConsentAccept,
+} from "@/lib/client/legalConsentClient";
+import { invalidateInvalidClientSession } from "@/lib/client/invalidateAuthSession";
 
-type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } };
-
-class HttpRequestError extends Error {
-  constructor(
-    message: string,
-    public readonly path: string,
-    public readonly status: number,
-    public readonly statusText: string,
-  ) {
-    super(message);
-  }
-}
-
-async function fetchJson<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
-  let response: Response;
-  try {
-    response = await fetch(path, init);
-  } catch {
-    throw new Error(`NETWORK_ERROR:${path}`);
-  }
-  const payload = (await response.json().catch(() => ({}))) as ApiResponse<T>;
-  if (!response.ok) {
-    throw new HttpRequestError(
-      payload?.error?.message ?? "Request failed.",
-      path,
-      response.status,
-      response.statusText || "Unknown",
-    );
-  }
-  return payload;
-}
+type GatePhase = "loading" | "consent" | "temporary_error" | "unauthenticated" | "done";
 
 /** Dedicated agreement gate at `/agreement` — canonical return target from legal document pages. */
 export function AgreementFlow() {
   const router = useRouter();
-  const [phase, setPhase] = useState<"checking" | "consent" | "done">("checking");
+  const [phase, setPhase] = useState<GatePhase>("loading");
   const [consentVersion, setConsentVersion] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadGeneration, setLoadGeneration] = useState(0);
+
+  const runStatusCheck = useCallback(async () => {
+    setPhase("loading");
+    setError(null);
+    const result = await loadLegalConsentGate();
+    if (result.kind === "unauthenticated") {
+      setPhase("unauthenticated");
+      router.replace("/");
+      return;
+    }
+    if (result.kind === "temporary_error") {
+      setError(result.message);
+      setConsentVersion(DEFAULT_POLICY_VERSION);
+      setPhase("temporary_error");
+      return;
+    }
+    setConsentVersion(result.data.currentPolicyVersion ?? DEFAULT_POLICY_VERSION);
+    if (result.kind === "complete") {
+      setPhase("done");
+      router.replace("/");
+      return;
+    }
+    setPhase("consent");
+  }, [router]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      const token = getAccessToken();
-      if (!token) {
-        router.replace("/");
-        return;
-      }
-      try {
-        const payload = await fetchJson<LegalConsentPayload & { currentPolicyVersion?: string }>(
-          "/api/legal/consent/status",
-          {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: "no-store",
-          },
-        );
-        if (cancelled) return;
-        const ver = (payload?.data?.currentPolicyVersion as string | undefined) ?? DEFAULT_POLICY_VERSION;
-        setConsentVersion(ver);
-        if (consentPayloadAllowsAppAccess(payload?.data)) {
-          setPhase("done");
-          router.replace("/");
-          return;
-        }
-        setPhase("consent");
-      } catch {
-        if (cancelled) return;
-        setError("Could not verify your agreement status. Please try again or sign in.");
-        setConsentVersion(DEFAULT_POLICY_VERSION);
-        setPhase("consent");
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+    void runStatusCheck();
+  }, [runStatusCheck, loadGeneration]);
 
   const handleContinue = useCallback(async () => {
     setIsSubmitting(true);
     setError(null);
     try {
-      const token = getAccessToken();
-      if (!token) {
-        throw new Error("Session expired. Please sign in again.");
+      const result = await submitLegalConsentAccept();
+      if (result.kind === "unauthenticated") {
+        setPhase("unauthenticated");
+        router.replace("/");
+        return;
       }
-      await fetchJson("/api/legal/consent/accept", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          acceptedTerms: true,
-          acceptedPrivacy: true,
-          acceptedGuidelines: true,
-          acceptedDataConsent: true,
-        }),
-      });
-      setPhase("done");
-      router.replace("/");
-    } catch (e) {
-      setError(e instanceof HttpRequestError ? e.message : "Could not save your agreement. Please try again.");
+      if (result.kind === "temporary_error") {
+        setError(result.message);
+        return;
+      }
+      if (result.kind === "complete") {
+        setPhase("done");
+        router.replace("/");
+        return;
+      }
+      setConsentVersion(result.data.currentPolicyVersion ?? DEFAULT_POLICY_VERSION);
+      setError("Your agreement is still required. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   }, [router]);
 
-  if (phase === "checking" || phase === "done") {
+  const handleSignOut = useCallback(async () => {
+    await invalidateInvalidClientSession({ reason: "agreement_gate_sign_out", notify: false });
+    router.replace("/");
+  }, [router]);
+
+  if (phase === "loading" || phase === "done" || phase === "unauthenticated") {
     return (
       <div className="min-h-[50vh] flex flex-col items-center justify-center gap-3 px-4" aria-busy="true">
         <span className="inline-block h-8 w-8 rounded-full border-2 border-uri-keaney/40 border-t-uri-keaney animate-spin" />
         <p className="text-sm text-white/70">Loading…</p>
+      </div>
+    );
+  }
+
+  if (phase === "temporary_error") {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center px-4 py-10 sm:py-14">
+        <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-950/75 backdrop-blur-xl shadow-2xl shadow-black/30 p-5 sm:p-8">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Before You Continue</h1>
+          <p className="mt-3 text-sm sm:text-base text-white/75 leading-relaxed">
+            {error ?? "Could not verify your agreement status. Please try again."}
+          </p>
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setLoadGeneration((n) => n + 1)}
+              className="rounded-xl bg-uri-keaney py-3.5 text-sm font-semibold text-white hover:bg-uri-keaney/90"
+            >
+              Try Again
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              className="rounded-xl border border-white/15 bg-white/[0.06] py-3.5 text-sm font-semibold text-white/90 hover:bg-white/[0.12]"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

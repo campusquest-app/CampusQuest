@@ -24,7 +24,7 @@ describe("appShellRoute", () => {
         campus_email_verified_at: null,
         display_name_changed_at: "2026-01-01T00:00:00.000Z",
       }),
-    ).toBe("demographics_gate");
+    ).toBe("app");
     expect(
       resolveProfileRoute(
         {

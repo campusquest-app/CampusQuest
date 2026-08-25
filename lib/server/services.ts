@@ -2,7 +2,12 @@ import { User } from "@supabase/supabase-js";
 import { DATA_CONSENT_VERSION } from "@/lib/legal/policy";
 import { ApiError } from "@/lib/server/http";
 import { processXpMilestoneCrossings } from "@/lib/server/xpMilestones";
-import { getActivePolicyVersion } from "@/lib/server/legalConsentStatus";
+import {
+  getLegalConsentStatus,
+  LEGAL_CONSENT_CORE_COLUMNS,
+  LEGAL_CONSENT_SELECT_WITH_DATA,
+} from "@/lib/server/legalConsentStatus";
+import { AGREEMENT_ERROR_CODES, isMissingRelationColumnError, logAgreementEvent } from "@/lib/server/legalConsentLog";
 import {
   calculateActivityXp,
   calculateBossDamage,
@@ -69,47 +74,131 @@ export async function acceptLegalConsent(args: {
   request: Request;
 }) {
   const { userClient, userId, request } = args;
-  const currentPolicyVersion = await getActivePolicyVersion(userClient);
+  const path = "/api/legal/consent/accept";
+  const existing = await getLegalConsentStatus({ userClient: userClient as any, userId, path });
+  if (existing.agreementComplete) {
+    if (!existing.acceptedDataConsent) {
+      const nowIso = new Date().toISOString();
+      const { error: dataConsentError } = await userClient
+        .from("user_legal_consents")
+        .update({
+          accepted_data_consent: true,
+          data_consent_version: DATA_CONSENT_VERSION,
+          data_consented_at: nowIso,
+        })
+        .eq("user_id", userId)
+        .eq("policy_version", existing.currentPolicyVersion);
+      if (dataConsentError && !isMissingRelationColumnError(dataConsentError)) {
+        logAgreementEvent(AGREEMENT_ERROR_CODES.ACCEPT_FAILED, {
+          path,
+          authenticated: true,
+          userId,
+          supabaseCode: dataConsentError.code ?? null,
+          supabaseMessage: dataConsentError.message,
+          extra: { reason: "data_consent_fill" },
+        });
+      }
+      if (!dataConsentError) {
+        return {
+          policyVersion: existing.currentPolicyVersion,
+          consentedAt: existing.latestConsentedAt ?? nowIso,
+          acceptedTerms: true,
+          acceptedPrivacy: true,
+          acceptedGuidelines: true,
+          acceptedDataConsent: true,
+          dataConsentVersion: DATA_CONSENT_VERSION,
+          dataConsentedAt: nowIso,
+        };
+      }
+    }
+    return {
+      policyVersion: existing.currentPolicyVersion,
+      consentedAt: existing.latestConsentedAt ?? new Date().toISOString(),
+      acceptedTerms: true,
+      acceptedPrivacy: true,
+      acceptedGuidelines: true,
+      acceptedDataConsent: existing.acceptedDataConsent,
+      dataConsentVersion: existing.dataConsentVersion ?? DATA_CONSENT_VERSION,
+      dataConsentedAt: existing.dataConsentedAt ?? existing.latestConsentedAt ?? new Date().toISOString(),
+    };
+  }
+
+  const currentPolicyVersion = existing.currentPolicyVersion;
   const ipAddress = getClientIp(request);
   const userAgent = request.headers.get("user-agent");
   const nowIso = new Date().toISOString();
 
-  const { data, error } = await userClient
-    .from("user_legal_consents")
-    .upsert(
-      {
-        user_id: userId,
-        policy_version: currentPolicyVersion,
-        accepted_terms: true,
-        accepted_privacy: true,
-        accepted_guidelines: true,
-        accepted_data_consent: true,
-        data_consent_version: DATA_CONSENT_VERSION,
-        data_consented_at: nowIso,
-        ip_address: ipAddress,
-        user_agent: userAgent,
-        consented_at: nowIso,
-      },
-      { onConflict: "user_id,policy_version" },
-    )
-    .select(
-      "policy_version, consented_at, accepted_terms, accepted_privacy, accepted_guidelines, accepted_data_consent, data_consent_version, data_consented_at",
-    )
-    .single();
+  const withDataConsent = {
+    user_id: userId,
+    policy_version: currentPolicyVersion,
+    accepted_terms: true,
+    accepted_privacy: true,
+    accepted_guidelines: true,
+    accepted_data_consent: true,
+    data_consent_version: DATA_CONSENT_VERSION,
+    data_consented_at: nowIso,
+    ip_address: ipAddress,
+    user_agent: userAgent,
+    consented_at: nowIso,
+  };
+  const coreOnly = {
+    user_id: userId,
+    policy_version: currentPolicyVersion,
+    accepted_terms: true,
+    accepted_privacy: true,
+    accepted_guidelines: true,
+    ip_address: ipAddress,
+    user_agent: userAgent,
+    consented_at: nowIso,
+  };
 
-  if (error || !data) {
-    throw new ApiError(400, error?.message ?? "Could not save legal consent.", "LEGAL_CONSENT_SAVE_FAILED");
+  let data: Record<string, unknown> | null = null;
+  let error: { message?: string; code?: string } | null = null;
+
+  const first = await userClient
+    .from("user_legal_consents")
+    .upsert(withDataConsent, { onConflict: "user_id,policy_version" })
+    .select(LEGAL_CONSENT_SELECT_WITH_DATA)
+    .single();
+  data = (first.data as Record<string, unknown> | null) ?? null;
+  error = first.error;
+
+  if (error && isMissingRelationColumnError(error)) {
+    const fallback = await userClient
+      .from("user_legal_consents")
+      .upsert(coreOnly, { onConflict: "user_id,policy_version" })
+      .select(LEGAL_CONSENT_CORE_COLUMNS)
+      .single();
+    data = (fallback.data as Record<string, unknown> | null) ?? null;
+    error = fallback.error;
   }
 
+  if (error || !data) {
+    logAgreementEvent(AGREEMENT_ERROR_CODES.ACCEPT_FAILED, {
+      path,
+      authenticated: true,
+      userId,
+      supabaseCode: error?.code ?? null,
+      supabaseMessage: error?.message ?? null,
+    });
+    throw new ApiError(
+      503,
+      error?.message ?? "Could not save legal consent.",
+      AGREEMENT_ERROR_CODES.ACCEPT_FAILED,
+    );
+  }
+
+  const row = data;
+
   return {
-    policyVersion: data.policy_version as string,
-    consentedAt: data.consented_at as string,
-    acceptedTerms: Boolean(data.accepted_terms),
-    acceptedPrivacy: Boolean(data.accepted_privacy),
-    acceptedGuidelines: Boolean(data.accepted_guidelines),
-    acceptedDataConsent: Boolean(data.accepted_data_consent),
-    dataConsentVersion: (data.data_consent_version as string | null | undefined) ?? DATA_CONSENT_VERSION,
-    dataConsentedAt: (data.data_consented_at as string | null | undefined) ?? nowIso,
+    policyVersion: String(row.policy_version ?? currentPolicyVersion),
+    consentedAt: String(row.consented_at ?? nowIso),
+    acceptedTerms: Boolean(row.accepted_terms),
+    acceptedPrivacy: Boolean(row.accepted_privacy),
+    acceptedGuidelines: Boolean(row.accepted_guidelines),
+    acceptedDataConsent: Boolean(row.accepted_data_consent),
+    dataConsentVersion: (typeof row.data_consent_version === "string" ? row.data_consent_version : null) ?? DATA_CONSENT_VERSION,
+    dataConsentedAt: (typeof row.data_consented_at === "string" ? row.data_consented_at : null) ?? nowIso,
   };
 }
 

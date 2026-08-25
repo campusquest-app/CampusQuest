@@ -2,12 +2,12 @@ import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { acceptLegalConsent } from "@/lib/server/services";
 import { enforceRateLimit } from "@/lib/server/security";
-import { requireAuthUser } from "@/lib/server/supabase";
+import { requireLegalConsentUser } from "@/lib/server/legalConsentAuth";
 import { legalConsentAcceptSchema, readJson } from "@/lib/server/validation";
 
 export async function POST(request: Request) {
   try {
-    const auth = await requireAuthUser(request as any);
+    const auth = await requireLegalConsentUser(request, "/api/legal/consent/accept");
     enforceRateLimit({ userId: auth.user.id, routeKey: "legal:consent-accept", limit: 10, windowMs: 60_000 });
     await readJson(request, legalConsentAcceptSchema);
     const consent = await acceptLegalConsent({

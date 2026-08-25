@@ -3,6 +3,7 @@
  * Separate from beginner-chain / tutorial overlays in onboardingTutorialGating.ts.
  */
 
+import { isCampusEmailVerificationRequired } from "@/lib/campusEmailVerification";
 import { MIN_INTERESTS, ONBOARDING_VERSION, isKnownStudentStatus } from "@/lib/onboarding/taxonomy";
 
 /** Product switch: demographic screens are a real authenticated routing gate. */
@@ -80,4 +81,27 @@ export function isDemographicsRequired(args: {
   }
   if (isDemographicsGrandfathered(args.profile)) return false;
   return true;
+}
+
+/**
+ * True only when demographic requirements are already satisfied and URI email
+ * is the remaining onboarding step. Never true during QA full replay, and
+ * never true merely because email is unverified.
+ */
+export function shouldStartOnboardingAtEmailVerification(args: {
+  profile: DemographicProfileSnapshot;
+  preferences?: DemographicPreferencesSnapshot | null;
+  forceQaReplay?: boolean;
+}): boolean {
+  if (args.forceQaReplay) return false;
+  if (
+    isDemographicsRequired({
+      profile: args.profile,
+      preferences: args.preferences,
+      forceQaReplay: false,
+    })
+  ) {
+    return false;
+  }
+  return isCampusEmailVerificationRequired(args.profile);
 }

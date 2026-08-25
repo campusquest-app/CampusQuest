@@ -99,7 +99,7 @@ import {
   initClientAuth,
   signOutSupabaseSession,
 } from "@/lib/client/supabaseSession";
-import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/agreementAccess";
+import { loadLegalConsentGate } from "@/lib/client/legalConsentClient";
 import {
   ApiRequestError,
   fetchAuthed,
@@ -155,8 +155,7 @@ import {
   syncOnboardingQaReplayFromAccessToken,
 } from "@/lib/client/onboardingQaSession";
 import { AuthOnboardingFlow } from "@/components/auth/AuthOnboardingFlow";
-import { isCampusEmailVerificationRequired } from "@/lib/campusEmailVerification";
-import { isDemographicsRequired } from "@/lib/onboarding/demographicOnboardingPolicy";
+import { shouldStartOnboardingAtEmailVerification } from "@/lib/onboarding/demographicOnboardingPolicy";
 import { DisplayNameGate } from "@/components/DisplayNameGate";
 import {
   isProfileInitializingError,
@@ -252,6 +251,7 @@ export function Dashboard() {
   const [launchSplashOpen, setLaunchSplashOpen] = useState(true);
   const [profileRoute, setProfileRoute] = useState<ProfileRoute>("unknown");
   const [qaReplayActive, setQaReplayActive] = useState(false);
+  const [demographicsQaReplayActive, setDemographicsQaReplayActive] = useState(false);
   const [tab, setTab] = useState<Tab>("quad");
   const [quadFeedTab, setQuadFeedTab] = useState<QuadFeedTab>("public");
   const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
@@ -1541,7 +1541,7 @@ export function Dashboard() {
     async function bootstrap() {
       await initClientAuth();
 
-      const tokenAtStart = getAccessToken();
+      let tokenAtStart = getAccessToken();
       const postLoginBoot = peekPostLoginLoadingPending();
 
       setBootstrapStatus("bootstrapping");
@@ -1592,36 +1592,34 @@ export function Dashboard() {
       }
 
       // Current Terms / Privacy / Community Guidelines must be accepted before any app data loads.
-      try {
-        const consentRes = await fetch("/api/legal/consent/status", {
-          headers: { Authorization: `Bearer ${tokenAtStart}` },
-          cache: "no-store",
-        });
-        const consentJson = (await consentRes.json()) as {
-          data?: LegalConsentPayload;
-          error?: { message?: string };
-        };
-
-        if (consentRes.status === 401) {
-          if (!cancelled) {
-            await failUnauthenticated({ invalidateToken: true });
-            logBootstrapDecision({
-              sessionFound: true,
-              sessionValidated: false,
-              onboardingCompleted: null,
-              route: "unauthenticated",
-            });
-            setBootstrapStatus("unauthenticated");
-          }
-          return;
+      const consentGate = await loadLegalConsentGate();
+      if (consentGate.kind === "unauthenticated") {
+        if (!cancelled) {
+          await failUnauthenticated({ invalidateToken: true });
+          logBootstrapDecision({
+            sessionFound: true,
+            sessionValidated: false,
+            onboardingCompleted: null,
+            route: "unauthenticated",
+          });
+          setBootstrapStatus("unauthenticated");
         }
-
-        if (!consentRes.ok || mustRedirectToAgreement(consentJson.data)) {
-          if (!cancelled) router.replace("/agreement");
-          return;
-        }
-      } catch {
+        return;
+      }
+      if (consentGate.kind === "temporary_error") {
         if (!cancelled) router.replace("/agreement");
+        return;
+      }
+      if (consentGate.kind === "required") {
+        if (!cancelled) router.replace("/agreement");
+        return;
+      }
+
+      tokenAtStart = getAccessToken();
+      if (!tokenAtStart) {
+        await failUnauthenticated({ invalidateToken: false });
+        logBootstrapDecision({ sessionFound: false, route: "unauthenticated" });
+        setBootstrapStatus("unauthenticated");
         return;
       }
 
@@ -1707,6 +1705,7 @@ export function Dashboard() {
         const qaReplay = qaDecision.replay;
         const demographicsQaReplay = qaDecision.demographicsReplay;
         setQaReplayActive(qaReplay);
+        setDemographicsQaReplayActive(demographicsQaReplay);
 
         // Prefs are required for demographic routing (not deferred).
         let prefsSnapshot: {
@@ -2164,19 +2163,32 @@ export function Dashboard() {
     return (
       <>
         <AuthOnboardingFlow
-          startAtEmailVerification={
-            isCampusEmailVerificationRequired(gatePrefillProfile ?? {}) &&
-            !isDemographicsRequired({
-              profile: gatePrefillProfile ?? {},
-              preferences: onboardingPreferences
-                ? {
-                    exists: true,
-                    interests: onboardingPreferences.interests ?? [],
-                    institutionId: gatePrefillProfile?.institution_id ?? null,
-                  }
-                : { exists: false, interests: [] },
-            })
+          forceFullReplay={demographicsQaReplayActive}
+          initialProfile={gatePrefillProfile}
+          initialPreferences={
+            onboardingPreferences
+              ? {
+                  exists: true,
+                  interests: onboardingPreferences.interests ?? [],
+                  communities: onboardingPreferences.communities ?? [],
+                  institutionId:
+                    onboardingPreferences.institutionId ?? gatePrefillProfile?.institution_id ?? null,
+                }
+              : { exists: false, interests: [] }
           }
+          startAtEmailVerification={shouldStartOnboardingAtEmailVerification({
+            profile: gatePrefillProfile ?? {},
+            preferences: onboardingPreferences
+              ? {
+                  exists: true,
+                  interests: onboardingPreferences.interests ?? [],
+                  communities: onboardingPreferences.communities ?? [],
+                  institutionId:
+                    onboardingPreferences.institutionId ?? gatePrefillProfile?.institution_id ?? null,
+                }
+              : { exists: false, interests: [] },
+            forceQaReplay: demographicsQaReplayActive,
+          })}
           onComplete={async () => {
             completeDemographicQaReplay(getAccessToken());
             setLaunchSplashOpen(false);

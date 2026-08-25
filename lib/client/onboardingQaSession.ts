@@ -1,3 +1,4 @@
+import { clearOnboardingDraft } from "@/lib/onboarding/draftStorage";
 import { isOnboardingQaEmail, logOnboardingQa } from "@/lib/onboardingQa";
 import { readAccessTokenClaims } from "@/lib/client/jwtClaims";
 import type { ProfileRouteInput } from "@/lib/client/appShellRoute";
@@ -185,6 +186,7 @@ export function syncOnboardingQaReplayFromAccessToken(accessToken: string | null
   });
   if (decision.record) writeStoredRecord(decision.record);
   if (decision.activated) {
+    clearOnboardingDraft(decision.record?.userId ?? claims?.sub ?? null);
     logOnboardingQa("replay activated for authorized QA account", {
       userId: decision.record?.userId ?? null,
       demographicsReplay: decision.demographicsReplay,

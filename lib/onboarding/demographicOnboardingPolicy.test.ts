@@ -4,6 +4,7 @@ import {
   isDemographicsComplete,
   isDemographicsGrandfathered,
   isDemographicsRequired,
+  shouldStartOnboardingAtEmailVerification,
 } from "@/lib/onboarding/demographicOnboardingPolicy";
 import { resolveAppShellRoute, resolveProfileRoute } from "@/lib/client/appShellRoute";
 import {
@@ -110,6 +111,53 @@ describe("demographic onboarding policy", () => {
       }),
     ).toBe(true);
   });
+
+  it("does not start at email verification when earlier demographics are incomplete", () => {
+    expect(
+      shouldStartOnboardingAtEmailVerification({
+        profile: { campus_email_verified_at: null },
+        preferences: { exists: false, interests: [] },
+      }),
+    ).toBe(false);
+    expect(
+      shouldStartOnboardingAtEmailVerification({
+        profile: {
+          student_status: "current_student",
+          institution_id: "uri",
+          campus_email_verified_at: null,
+        },
+        preferences: { exists: false, interests: ["athletics"] },
+      }),
+    ).toBe(false);
+  });
+
+  it("starts at email verification only when demographics are complete and email is still required", () => {
+    expect(
+      shouldStartOnboardingAtEmailVerification({
+        profile: {
+          student_status: "current_student",
+          institution_id: "uri",
+          campus_email_verified_at: null,
+          onboarding_character_completed: false,
+        },
+        preferences: { exists: true, interests: ["athletics", "music", "tech"] },
+      }),
+    ).toBe(true);
+  });
+
+  it("QA replay never starts ordinary onboarding at the OTP screen", () => {
+    expect(
+      shouldStartOnboardingAtEmailVerification({
+        profile: {
+          student_status: "current_student",
+          institution_id: "uri",
+          campus_email_verified_at: null,
+        },
+        preferences: { interests: ["athletics", "music", "tech"] },
+        forceQaReplay: true,
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("authenticated route order", () => {
@@ -143,6 +191,7 @@ describe("authenticated route order", () => {
           student_status: "current_or_incoming",
           institution_id: "uri",
           onboarding_version: 2,
+          campus_email_verified_at: "2026-08-25T00:00:00.000Z",
         },
         {
           preferences: { interests: ["athletics", "music", "tech"], communities: [] },
@@ -207,6 +256,36 @@ describe("authenticated route order", () => {
         { preferences: { interests: ["a", "b", "c"], communities: [] } },
       ),
     ).toBe("character_gate");
+  });
+
+  it("signup and sign-in use the same demographics gate for incomplete users", () => {
+    const incompleteAfterDisplayName = {
+      onboarding_completed: false,
+      onboarding_character_completed: false,
+      role: null as string | null,
+      display_name_changed_at: "2026-08-25T00:00:00.000Z",
+      campus_email_verified_at: null as string | null,
+    };
+    const prefs = { preferences: { exists: false, interests: [] as string[] } };
+    expect(resolveProfileRoute(incompleteAfterDisplayName, prefs)).toBe("demographics_gate");
+    expect(resolveProfileRoute({ ...incompleteAfterDisplayName }, prefs)).toBe("demographics_gate");
+  });
+
+  it("fully onboarded users skip onboarding on a later sign-in", () => {
+    expect(
+      resolveProfileRoute(
+        {
+          onboarding_character_completed: true,
+          onboarding_completed: true,
+          role: "student",
+          student_status: "current_student",
+          institution_id: "uri",
+          onboarding_version: 2,
+          campus_email_verified_at: "2026-08-25T00:00:00.000Z",
+        },
+        { preferences: { interests: ["athletics", "music", "tech"] } },
+      ),
+    ).toBe("app");
   });
 
   it("does not mass-force grandfathered existing users without demographics fields", () => {

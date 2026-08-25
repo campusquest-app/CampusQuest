@@ -8,7 +8,7 @@ import { fetchMeSchoolVerification, SchoolVerificationHttpError } from "@/lib/cl
 import { canAccessCampusFromSnapshot } from "@/lib/client/campusAccess";
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/client/apiSession";
 import { persistSupabaseSession } from "@/lib/client/supabaseSession";
-import { mustRedirectToAgreement, type LegalConsentPayload } from "@/lib/client/agreementAccess";
+import { loadLegalConsentGate, submitLegalConsentAccept } from "@/lib/client/legalConsentClient";
 import { LegalConsentScreen } from "@/components/LegalConsentScreen";
 import { AccountSafetyStatusScreen } from "@/components/AccountSafetyStatusScreen";
 import { SchoolVerificationScreen } from "@/components/SchoolVerificationScreen";
@@ -242,18 +242,17 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     return true;
   }
 
-  const checkConsentStatus = useCallback(async (accessToken: string) => {
-    const payload = await fetchJson<LegalConsentPayload & { currentPolicyVersion?: string }>(
-      "/api/legal/consent/status",
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        cache: "no-store",
-      },
-    );
-    const d = payload?.data;
-    const currentPolicyVersion = d?.currentPolicyVersion ?? DEFAULT_POLICY_VERSION;
+  const checkConsentStatus = useCallback(async () => {
+    const result = await loadLegalConsentGate();
+    if (result.kind === "unauthenticated") {
+      throw new Error("Session expired. Please sign in again.");
+    }
+    if (result.kind === "temporary_error") {
+      throw new Error(result.message);
+    }
+    const currentPolicyVersion = result.data.currentPolicyVersion ?? DEFAULT_POLICY_VERSION;
     setConsentVersion(currentPolicyVersion);
-    if (mustRedirectToAgreement(d)) {
+    if (result.kind === "required") {
       setNeedsConsent(true);
       return false;
     }
@@ -282,9 +281,10 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     if (!token) return;
     const canUseAccount = await checkSafetyStatus(token);
     if (!canUseAccount) return;
-    const canContinue = await checkConsentStatus(token);
+    const canContinue = await checkConsentStatus();
     if (!canContinue) return;
-    const verifiedForCampus = await checkSchoolVerification(token);
+    const sessionToken = getAccessToken() ?? token;
+    const verifiedForCampus = await checkSchoolVerification(sessionToken);
     if (!verifiedForCampus) return;
 
     // Demographic onboarding is an authenticated Dashboard routing gate
@@ -306,19 +306,20 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     setIsConsentSubmitting(true);
     setError(null);
     try {
+      const result = await submitLegalConsentAccept();
+      if (result.kind === "unauthenticated") {
+        clearAccessToken();
+        throw new Error("Session expired. Please sign in again.");
+      }
+      if (result.kind === "temporary_error") {
+        throw new Error(result.message);
+      }
+      if (result.kind === "required") {
+        throw new Error("Your agreement is still required. Please try again.");
+      }
+      setNeedsConsent(false);
       const token = getAccessToken();
       if (!token) throw new Error("Session expired. Please sign in again.");
-      await fetchJson("/api/legal/consent/accept", {
-        method: "POST",
-        headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          acceptedTerms: true,
-          acceptedPrivacy: true,
-          acceptedGuidelines: true,
-          acceptedDataConsent: true,
-        }),
-      });
-      setNeedsConsent(false);
       const verifiedForCampus = await checkSchoolVerification(token);
       if (verifiedForCampus) onComplete();
     } catch (consentError) {

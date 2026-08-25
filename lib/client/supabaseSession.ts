@@ -1,7 +1,7 @@
 "use client";
 
 import { supabaseClient } from "@/lib/supabase/client";
-import { clearAccessToken, setAccessToken } from "@/lib/client/apiSession";
+import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/client/apiSession";
 import {
   getClientAuthInitPromise,
   invalidateInvalidClientSession,
@@ -10,6 +10,10 @@ import {
   resetAuthCheckState,
   setClientAuthInitPromise,
 } from "@/lib/client/invalidateAuthSession";
+import { AGREEMENT_ERROR_CODES } from "@/lib/legal/agreementErrors";
+import { isAccessTokenExpired } from "@/lib/client/accessTokenExpiry";
+
+export { isAccessTokenExpired };
 
 /**
  * Bridges Supabase's persistent, auto-refreshing auth session with the app's
@@ -17,10 +21,16 @@ import {
  */
 
 let authSyncAttached = false;
+let sessionRefreshInFlight: Promise<RefreshClientSessionResult> | null = null;
 
 type PersistableSession = {
   access_token: string;
   refresh_token: string;
+};
+
+export type RefreshClientSessionResult = {
+  accessToken: string | null;
+  outcome: "ok" | "invalid" | "temporary";
 };
 
 const IS_DEV = process.env.NODE_ENV !== "production";
@@ -28,6 +38,73 @@ const IS_DEV = process.env.NODE_ENV !== "production";
 function logAuthDev(payload: Record<string, unknown>): void {
   if (!IS_DEV) return;
   console.info("[cq:auth]", payload);
+}
+
+export async function refreshClientSession(): Promise<RefreshClientSessionResult> {
+  if (typeof window === "undefined") return { accessToken: null, outcome: "invalid" };
+  if (sessionRefreshInFlight) return sessionRefreshInFlight;
+
+  sessionRefreshInFlight = (async () => {
+    try {
+      const { data, error } = await supabaseClient.auth.refreshSession();
+      if (error) {
+        logAuthDev({
+          phase: "refresh",
+          outcome: isInvalidAuthError(error) ? "invalid" : "temporary",
+          authError: error.message,
+        });
+        if (isInvalidAuthError(error)) {
+          return { accessToken: null, outcome: "invalid" as const };
+        }
+        console.warn("[cq][legal-consent]", {
+          category: AGREEMENT_ERROR_CODES.SESSION_REFRESH_FAILED,
+          path: "client:refreshSession",
+          authenticated: false,
+        });
+        return { accessToken: null, outcome: "temporary" as const };
+      }
+      const accessToken = data.session?.access_token ?? null;
+      if (!accessToken) return { accessToken: null, outcome: "invalid" as const };
+      setAccessToken(accessToken);
+      return { accessToken, outcome: "ok" as const };
+    } catch (error) {
+      if (isInvalidAuthError(error)) return { accessToken: null, outcome: "invalid" };
+      console.warn("[cq][legal-consent]", {
+        category: AGREEMENT_ERROR_CODES.SESSION_REFRESH_FAILED,
+        path: "client:refreshSession",
+        authenticated: false,
+      });
+      return { accessToken: null, outcome: "temporary" };
+    } finally {
+      sessionRefreshInFlight = null;
+    }
+  })();
+
+  return sessionRefreshInFlight;
+}
+
+/**
+ * Restore persisted auth, then refresh once if the mirrored Bearer token is expired.
+ * Temporary refresh failures keep the existing token so callers can retry.
+ */
+export async function ensureFreshAccessToken(): Promise<{
+  token: string | null;
+  outcome: "ready" | "missing" | "temporary";
+  refreshed: boolean;
+}> {
+  await initClientAuth();
+  let token = getAccessToken();
+  if (!token) return { token: null, outcome: "missing", refreshed: false };
+  if (!isAccessTokenExpired(token)) return { token, outcome: "ready", refreshed: false };
+
+  const refreshed = await refreshClientSession();
+  if (refreshed.outcome === "ok" && refreshed.accessToken) {
+    return { token: refreshed.accessToken, outcome: "ready", refreshed: true };
+  }
+  if (refreshed.outcome === "temporary") {
+    return { token, outcome: "temporary", refreshed: true };
+  }
+  return { token: null, outcome: "missing", refreshed: true };
 }
 
 /**

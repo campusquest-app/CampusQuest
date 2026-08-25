@@ -11,7 +11,7 @@ export type BootstrapStatus = "bootstrapping" | "unauthenticated" | "authenticat
 
 /**
  * Resolved after profile (+ demographics prefs) fetch.
- * Order: display name → demographics → character → role → app
+ * Order: display name → demographics → campus email (if setup incomplete) → character → role → app
  */
 export type ProfileRoute =
   | "unknown"
@@ -53,10 +53,15 @@ export function isProfileSetupComplete(profile: ProfileRouteInput): boolean {
 /**
  * Authenticated routing:
  * 1) display name (when required)
- * 2) demographics (when required)
- * 3) character setup
- * 4) role gate (existing users missing role)
- * 5) app
+ * 2) demographics (when required, including QA replay)
+ * 3) campus email verification when demographics are done and setup is not
+ * 4) character setup
+ * 5) role gate (existing users missing role)
+ * 6) app
+ *
+ * Email verification must not run before the demographics gate decides the
+ * user's current onboarding step. Completed character/app users are not
+ * pulled back into onboarding solely because email is unverified.
  */
 export function resolveProfileRoute(
   profile: ProfileRouteInput,
@@ -76,7 +81,7 @@ export function resolveProfileRoute(
     return "demographics_gate";
   }
 
-  if (isCampusEmailVerificationRequired(profile)) {
+  if (isCampusEmailVerificationRequired(profile) && !isProfileSetupComplete(profile)) {
     return "demographics_gate";
   }
 

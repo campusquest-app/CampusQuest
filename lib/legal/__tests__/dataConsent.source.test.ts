@@ -46,7 +46,9 @@ describe("Data & Personalization Consent source contracts", () => {
     expect(servicesSrc).toContain("accepted_data_consent: true");
     expect(servicesSrc).toContain("data_consent_version: DATA_CONSENT_VERSION");
     expect(servicesSrc).toContain("data_consented_at: nowIso");
+    expect(servicesSrc).toContain("if (existing.agreementComplete)");
     expect(statusSrc).toContain("acceptedTerms && acceptedPrivacyPolicy && acceptedGuidelines");
+    expect(statusSrc).toContain("LEGAL_CONSENT_CORE_COLUMNS");
     expect(statusSrc).not.toMatch(/agreementComplete = Boolean\(data\) && acceptedTerms && acceptedPrivacyPolicy && acceptedGuidelines && acceptedDataConsent/);
     expect(existsSync(migrationPath)).toBe(true);
   });
