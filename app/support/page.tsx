@@ -143,6 +143,9 @@ export default function SupportPage() {
         <Link className="rounded-full border border-white/15 px-3 py-1.5 text-white/80 hover:bg-white/[0.05]" href={LEGAL_DOC_LINKS.terms}>
           Terms of Service
         </Link>
+        <Link className="rounded-full border border-white/15 px-3 py-1.5 text-white/80 hover:bg-white/[0.05]" href={LEGAL_DOC_LINKS.dataConsent}>
+          Data & Personalization Consent
+        </Link>
         <Link className="rounded-full border border-white/15 px-3 py-1.5 text-white/80 hover:bg-white/[0.05]" href={LEGAL_DOC_LINKS.guidelines}>
           Community Guidelines
         </Link>

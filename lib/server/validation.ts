@@ -84,6 +84,7 @@ export const legalConsentAcceptSchema = z.object({
   acceptedTerms: z.literal(true),
   acceptedPrivacy: z.literal(true),
   acceptedGuidelines: z.literal(true),
+  acceptedDataConsent: z.literal(true).optional(),
 });
 
 export const legalPolicyVersionSchema = z.object({

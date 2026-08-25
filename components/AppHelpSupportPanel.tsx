@@ -126,6 +126,13 @@ const SUPPORT_LINKS: { id: string; label: string; description: string; icon: Luc
     icon: BookOpen,
     href: "/legal/community-guidelines",
   },
+  {
+    id: "data-consent",
+    label: "Data & Personalization Consent",
+    description: "How onboarding answers personalize CampusQuest",
+    icon: Shield,
+    href: "/legal/data-consent",
+  },
 ];
 
 export function AppHelpSupportPanel({ onBack }: { onBack: () => void }) {

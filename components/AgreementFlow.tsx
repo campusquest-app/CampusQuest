@@ -105,6 +105,7 @@ export function AgreementFlow() {
           acceptedTerms: true,
           acceptedPrivacy: true,
           acceptedGuidelines: true,
+          acceptedDataConsent: true,
         }),
       });
       setPhase("done");

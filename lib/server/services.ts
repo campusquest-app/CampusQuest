@@ -1,4 +1,5 @@
 import { User } from "@supabase/supabase-js";
+import { DATA_CONSENT_VERSION } from "@/lib/legal/policy";
 import { ApiError } from "@/lib/server/http";
 import { processXpMilestoneCrossings } from "@/lib/server/xpMilestones";
 import { getActivePolicyVersion } from "@/lib/server/legalConsentStatus";
@@ -82,13 +83,18 @@ export async function acceptLegalConsent(args: {
         accepted_terms: true,
         accepted_privacy: true,
         accepted_guidelines: true,
+        accepted_data_consent: true,
+        data_consent_version: DATA_CONSENT_VERSION,
+        data_consented_at: nowIso,
         ip_address: ipAddress,
         user_agent: userAgent,
         consented_at: nowIso,
       },
       { onConflict: "user_id,policy_version" },
     )
-    .select("policy_version, consented_at, accepted_terms, accepted_privacy, accepted_guidelines")
+    .select(
+      "policy_version, consented_at, accepted_terms, accepted_privacy, accepted_guidelines, accepted_data_consent, data_consent_version, data_consented_at",
+    )
     .single();
 
   if (error || !data) {
@@ -101,6 +107,9 @@ export async function acceptLegalConsent(args: {
     acceptedTerms: Boolean(data.accepted_terms),
     acceptedPrivacy: Boolean(data.accepted_privacy),
     acceptedGuidelines: Boolean(data.accepted_guidelines),
+    acceptedDataConsent: Boolean(data.accepted_data_consent),
+    dataConsentVersion: (data.data_consent_version as string | null | undefined) ?? DATA_CONSENT_VERSION,
+    dataConsentedAt: (data.data_consented_at as string | null | undefined) ?? nowIso,
   };
 }
 

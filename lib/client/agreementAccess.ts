@@ -6,6 +6,7 @@ export type LegalConsentPayload = {
   acceptedTerms?: boolean;
   acceptedPrivacyPolicy?: boolean;
   acceptedGuidelines?: boolean;
+  acceptedDataConsent?: boolean;
 };
 
 export function consentPayloadAllowsAppAccess(data: LegalConsentPayload | undefined): boolean {

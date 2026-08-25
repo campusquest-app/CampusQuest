@@ -5,7 +5,11 @@ import { ApiError } from "@/lib/server/http";
 /**
  * Supabase `public.user_legal_consents` stores acceptance per policy version:
  * - accepted_terms, accepted_privacy (privacy policy), accepted_guidelines
+ * - accepted_data_consent, data_consent_version, data_consented_at
  * - consented_at — timestamp when the row was recorded (policy acceptance time)
+ *
+ * App access still requires terms + privacy + guidelines only. Data consent is
+ * recorded for new accepts and does not force existing users through re-consent.
  */
 
 export async function getLegalConsentStatus(args: { userClient: SupabaseClient; userId: string }) {
@@ -14,7 +18,9 @@ export async function getLegalConsentStatus(args: { userClient: SupabaseClient; 
 
   const { data, error } = await userClient
     .from("user_legal_consents")
-    .select("policy_version, consented_at, accepted_terms, accepted_privacy, accepted_guidelines")
+    .select(
+      "policy_version, consented_at, accepted_terms, accepted_privacy, accepted_guidelines, accepted_data_consent, data_consent_version, data_consented_at",
+    )
     .eq("user_id", userId)
     .eq("policy_version", currentPolicyVersion)
     .maybeSingle();
@@ -27,6 +33,7 @@ export async function getLegalConsentStatus(args: { userClient: SupabaseClient; 
   /** DB column `accepted_privacy` — privacy policy acceptance */
   const acceptedPrivacyPolicy = Boolean(data?.accepted_privacy);
   const acceptedGuidelines = Boolean(data?.accepted_guidelines);
+  const acceptedDataConsent = Boolean(data?.accepted_data_consent);
 
   const agreementComplete = Boolean(data) && acceptedTerms && acceptedPrivacyPolicy && acceptedGuidelines;
 
@@ -41,6 +48,9 @@ export async function getLegalConsentStatus(args: { userClient: SupabaseClient; 
     acceptedTerms,
     acceptedPrivacyPolicy,
     acceptedGuidelines,
+    acceptedDataConsent,
+    dataConsentVersion: (data?.data_consent_version as string | null | undefined) ?? null,
+    dataConsentedAt: (data?.data_consented_at as string | null | undefined) ?? null,
   };
 }
 

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { LegalDocumentBackNav } from "@/components/LegalDocumentBackNav";
 
-/** Shared shell for legal/policy pages — back navigation restores onboarding consent when resumed from signup. */
+/** Shared shell for legal/policy pages — back uses history so signup drafts and Settings remain intact. */
 export default function LegalLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-uri-navy">

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { DEFAULT_POLICY_VERSION } from "@/lib/legal/policy";
+import { DEFAULT_POLICY_VERSION, LEGAL_DOC_LINKS } from "@/lib/legal/policy";
 import { fetchMeSchoolVerification, SchoolVerificationHttpError } from "@/lib/client/dashboardApi";
 import { canAccessCampusFromSnapshot } from "@/lib/client/campusAccess";
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/client/apiSession";
@@ -47,6 +47,7 @@ import { syncOnboardingQaReplayFromAccessToken } from "@/lib/client/onboardingQa
 import { isAllowedSignupEmail, SCHOOL_EMAIL_REQUIRED_MESSAGE } from "@/lib/signupEmailPolicy";
 import { CAMPUSQUEST_LOGO_SRC } from "@/lib/branding";
 import { BRAND_KNIGHT } from "@/lib/onboarding/taxonomy";
+import { clearAuthSignupDraft, readAuthSignupDraft, writeAuthSignupDraft } from "@/lib/client/authSignupDraft";
 
 type Mode = "welcome" | "signin" | "signup";
 type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } | string };
@@ -173,19 +174,38 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const draft = readAuthSignupDraft();
+    if (draft) {
+      setMode(draft.mode);
+      setEmail(draft.email);
+      setUsername(draft.username);
+      setPassword(draft.password);
+      setConfirmPassword(draft.confirmPassword);
+      setAcceptedTerms(draft.acceptedTerms);
+    }
     const expiredNotice = sessionStorage.getItem(AUTH_SESSION_EXPIRED_NOTICE_KEY);
     if (expiredNotice) {
       sessionStorage.removeItem(AUTH_SESSION_EXPIRED_NOTICE_KEY);
       setNotice(expiredNotice);
       setMode("signin");
     }
+    if (!draft?.email) {
+      const saved = localStorage.getItem(REMEMBER_EMAIL_KEY);
+      if (saved) setEmail(saved);
+    }
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = localStorage.getItem(REMEMBER_EMAIL_KEY);
-    if (saved) setEmail(saved);
-  }, []);
+    if (mode !== "signup" && mode !== "signin") return;
+    writeAuthSignupDraft({
+      mode,
+      email,
+      username,
+      password,
+      confirmPassword,
+      acceptedTerms,
+    });
+  }, [mode, email, username, password, confirmPassword, acceptedTerms]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 250);
@@ -277,6 +297,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     setSuccessBanner(opts.isSignup ? "Welcome to CampusQuest!" : "Welcome Back!");
     window.setTimeout(() => {
       resetMobileViewportScale();
+      clearAuthSignupDraft();
       onComplete();
     }, 700);
   }
@@ -290,7 +311,12 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       await fetchJson("/api/legal/consent/accept", {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ acceptedTerms: true, acceptedPrivacy: true, acceptedGuidelines: true }),
+        body: JSON.stringify({
+          acceptedTerms: true,
+          acceptedPrivacy: true,
+          acceptedGuidelines: true,
+          acceptedDataConsent: true,
+        }),
       });
       setNeedsConsent(false);
       const verifiedForCampus = await checkSchoolVerification(token);
@@ -409,7 +435,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       return;
     }
     if (!acceptedTerms) {
-      setError("Please accept the Terms of Service and Privacy Policy to continue.");
+      setError("Please accept the Terms of Service, Privacy Policy, and Data & Personalization Consent to continue.");
       return;
     }
 
@@ -875,24 +901,31 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                       className="cq-auth-input"
                     />
                   </div>
-                  <label className="cq-auth-terms">
+                  <div className="cq-auth-terms">
                     <input
+                      id="auth-signup-agreement"
                       type="checkbox"
                       checked={acceptedTerms}
                       onChange={(e) => setAcceptedTerms(e.target.checked)}
+                      aria-required="true"
+                      aria-labelledby="auth-signup-agreement-copy"
                     />
-                    <span>
-                      I agree to the{" "}
-                      <Link href="/legal/terms" className="cq-auth-link">
+                    <span id="auth-signup-agreement-copy">
+                      <label htmlFor="auth-signup-agreement">I agree to the </label>
+                      <Link href={LEGAL_DOC_LINKS.terms} className="cq-auth-link">
                         Terms of Service
-                      </Link>{" "}
-                      and{" "}
-                      <Link href="/legal/privacy" className="cq-auth-link">
+                      </Link>
+                      {", "}
+                      <Link href={LEGAL_DOC_LINKS.privacy} className="cq-auth-link">
                         Privacy Policy
+                      </Link>
+                      {", and "}
+                      <Link href={LEGAL_DOC_LINKS.dataConsent} className="cq-auth-link">
+                        Data & Personalization Consent
                       </Link>
                       .
                     </span>
-                  </label>
+                  </div>
                   {showPasswordRequirementsError ? <AuthPasswordRequirementsAlert /> : null}
                   {error ? <p className="cq-auth-error">{error}</p> : null}
                   {successBanner ? <p className="cq-auth-success">{successBanner}</p> : null}

@@ -11498,6 +11498,12 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   color: rgba(255, 255, 255, 0.55);
 }
 
+.cq-auth-terms label {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
 .cq-auth-terms input {
   margin-top: 0.125rem;
   height: 1rem;

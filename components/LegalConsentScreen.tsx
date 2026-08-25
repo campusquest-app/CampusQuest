@@ -38,7 +38,7 @@ export function LegalConsentScreen({ onContinue, isSubmitting = false, versionLa
           policies before using the platform.
         </p>
 
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Link href={LEGAL_DOC_LINKS.privacy} className={linkClass}>
             Privacy Policy
           </Link>
@@ -47,6 +47,9 @@ export function LegalConsentScreen({ onContinue, isSubmitting = false, versionLa
           </Link>
           <Link href={LEGAL_DOC_LINKS.guidelines} className={linkClass}>
             Community Guidelines
+          </Link>
+          <Link href={LEGAL_DOC_LINKS.dataConsent} className={linkClass}>
+            Data & Personalization Consent
           </Link>
         </div>
 
@@ -61,10 +64,10 @@ export function LegalConsentScreen({ onContinue, isSubmitting = false, versionLa
               aria-required="true"
             />
             <span className="text-xs sm:text-sm leading-relaxed text-white/80">
-              I have read and agree to the Privacy Policy, Terms of Service, and Community Guidelines. I understand
-              that violations of these policies may result in account suspension, removal from CampusQuest, and
-              possible referral to my university&apos;s student conduct process or applicable authorities when
-              necessary.
+              I have read and agree to the Privacy Policy, Terms of Service, Community Guidelines, and Data &
+              Personalization Consent. I understand that violations of these policies may result in account
+              suspension, removal from CampusQuest, and possible referral to my university&apos;s student conduct
+              process or applicable authorities when necessary.
             </span>
           </label>
         </div>
