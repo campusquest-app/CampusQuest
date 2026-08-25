@@ -36,7 +36,12 @@ export function isAuthEmailRateLimitError(error: AuthProviderError): boolean {
     return true;
   }
   const message = normalize(error.message);
-  return message.includes("rate limit") || message.includes("too many requests");
+  return (
+    message.includes("rate limit") ||
+    message.includes("too many requests") ||
+    message.includes("only request this after") ||
+    message.includes("for security purposes")
+  );
 }
 
 export function classifyAuthEmailProviderError(

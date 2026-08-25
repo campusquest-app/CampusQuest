@@ -342,6 +342,13 @@ export function AuthOnboardingFlow({
         { forceNew: boolean }
       >("/api/auth/qa/verification-cycle", { forceNew: true });
       rememberVerificationQaCycle(userId, result.cycleId);
+      // Only show the success copy when the server proved Supabase dispatched mail.
+      if (!result.emailSent) {
+        setQaTestUiState("failed");
+        setError(result.message || VERIFICATION_QA_UI_COPY.sendFailedFallback);
+        setQaTestNotice(null);
+        return;
+      }
       setQaCyclePending(true);
       // Keep onboarding status/Continue on the verified baseline — delivery test is separate.
       setQaTestUiState("sent");

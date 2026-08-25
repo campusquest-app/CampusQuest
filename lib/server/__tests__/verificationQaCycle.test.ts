@@ -16,6 +16,8 @@ import {
 } from "@/lib/verificationQaCycle";
 import {
   assertVerificationQaCaller,
+  didAuthEmailTimestampAdvance,
+  dispatchQaVerificationEmail,
   refreshVerificationQaCycleView,
   startVerificationQaCycle,
   type AdminUserOps,
@@ -24,6 +26,21 @@ import { ApiError } from "@/lib/server/http";
 import { mapAuthCallbackError, parseAuthCallbackParams } from "@/lib/client/authCallbackErrors";
 import { canAttemptResend, startResendCooldown } from "@/lib/client/authResendCooldown";
 import { buildAuthQaStatus } from "@/lib/server/authQaStatus";
+
+vi.mock("@/lib/server/supabase", () => ({
+  createPublicClient: vi.fn(),
+  createAdminClient: vi.fn(),
+}));
+
+vi.mock("@/lib/authRedirect", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/authRedirect")>();
+  return {
+    ...actual,
+    getAuthEmailRedirectUrl: () => "https://campusquestapp.com/auth/callback",
+  };
+});
+
+import { createPublicClient } from "@/lib/server/supabase";
 
 function makeUser(overrides: Partial<User> & { email: string }): User {
   const email = overrides.email;
@@ -40,12 +57,13 @@ function makeUser(overrides: Partial<User> & { email: string }): User {
   } as User;
 }
 
-function createMemoryAdminOps(initial: User): {
-  ops: AdminUserOps;
-  getUser: () => User;
-  profileTouches: number;
-} {
-  let current = initial;
+function createMemoryAdminOps(initial: User) {
+  let current = {
+    ...initial,
+    confirmation_sent_at:
+      (initial as { confirmation_sent_at?: string | null }).confirmation_sent_at ?? null,
+    recovery_sent_at: (initial as { recovery_sent_at?: string | null }).recovery_sent_at ?? null,
+  } as User & { confirmation_sent_at?: string | null; recovery_sent_at?: string | null };
   let profileTouches = 0;
   const ops: AdminUserOps = {
     async getUserById(userId) {
@@ -54,20 +72,17 @@ function createMemoryAdminOps(initial: User): {
     },
     async updateUserById(userId, attributes) {
       if (userId !== current.id) throw new ApiError(404, "missing", "AUTH_USER_NOT_FOUND");
+      // Mirror live GoTrue: email_confirm:false does NOT clear email_confirmed_at.
       current = {
         ...current,
         email_confirmed_at:
-          attributes.email_confirm === false
-            ? undefined
-            : attributes.email_confirm === true
-              ? current.email_confirmed_at ?? "2026-01-01T00:00:00Z"
-              : current.email_confirmed_at,
+          attributes.email_confirm === true
+            ? current.email_confirmed_at ?? "2026-01-01T00:00:00Z"
+            : current.email_confirmed_at,
         confirmed_at:
-          attributes.email_confirm === false
-            ? undefined
-            : attributes.email_confirm === true
-              ? current.confirmed_at ?? "2026-01-01T00:00:00Z"
-              : current.confirmed_at,
+          attributes.email_confirm === true
+            ? current.confirmed_at ?? "2026-01-01T00:00:00Z"
+            : current.confirmed_at,
         app_metadata: attributes.app_metadata
           ? { ...current.app_metadata, ...attributes.app_metadata }
           : current.app_metadata,
@@ -80,6 +95,19 @@ function createMemoryAdminOps(initial: User): {
     getUser: () => current,
     get profileTouches() {
       return profileTouches;
+    },
+    forceUnconfirm() {
+      current = {
+        ...current,
+        email_confirmed_at: undefined,
+        confirmed_at: undefined,
+      };
+    },
+    advanceConfirmationSentAt(iso: string) {
+      current = { ...current, confirmation_sent_at: iso };
+    },
+    advanceRecoverySentAt(iso: string) {
+      current = { ...current, recovery_sent_at: iso };
     },
   };
 }
@@ -196,10 +224,10 @@ describe("verification QA cycle start + idempotency", () => {
 
     expect(first.emailSent).toBe(true);
     expect(first.alreadySent).toBe(false);
-    expect(first.emailConfirmed).toBe(false);
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith(ONBOARDING_QA_EMAIL);
-    expect(memory.getUser().email_confirmed_at).toBeUndefined();
+    // Injected send path does not unconfirm; live Admin unconfirm is a no-op anyway.
+    expect(memory.getUser().email_confirmed_at).toBe("2026-01-01T00:00:00Z");
     expect(memory.getUser().app_metadata.keep_me).toBe(true);
     expect(memory.getUser().app_metadata[VERIFICATION_QA_APP_META_KEY]).toMatchObject({
       cycleId: "cycle-1",
@@ -395,5 +423,232 @@ describe("verification callback + secrets surface", () => {
     );
     expect(merged.keep).toBe(1);
     expect(merged[VERIFICATION_QA_APP_META_KEY]).toBeUndefined();
+  });
+});
+
+describe("didAuthEmailTimestampAdvance", () => {
+  it("detects when Supabase advanced an outbound email timestamp", () => {
+    expect(
+      didAuthEmailTimestampAdvance({
+        before: "2026-05-12T03:45:53.693056Z",
+        after: "2026-05-12T03:45:53.693056Z",
+      }),
+    ).toBe(false);
+    expect(
+      didAuthEmailTimestampAdvance({
+        before: "2026-05-12T03:45:53.693056Z",
+        after: "2026-08-24T23:50:16.763762Z",
+      }),
+    ).toBe(true);
+    expect(didAuthEmailTimestampAdvance({ before: null, after: "2026-08-24T23:50:16.763762Z" })).toBe(
+      true,
+    );
+    expect(didAuthEmailTimestampAdvance({ before: null, after: null })).toBe(false);
+  });
+});
+
+describe("dispatchQaVerificationEmail + start cycle delivery semantics", () => {
+  it("successful QA signup send when unconfirmed and confirmation_sent_at advances", async () => {
+    const memory = createMemoryAdminOps(
+      makeUser({
+        email: ONBOARDING_QA_EMAIL,
+        email_confirmed_at: undefined,
+        confirmation_sent_at: "2026-05-12T03:45:53.693056Z",
+      } as Partial<User> & { email: string }),
+    );
+    const resend = vi.fn(async () => {
+      memory.advanceConfirmationSentAt("2026-08-24T23:55:00.000Z");
+      return { data: { user: null, session: null }, error: null };
+    });
+    vi.mocked(createPublicClient).mockReturnValue({
+      auth: { resend, signInWithOtp: vi.fn() },
+    } as never);
+
+    const result = await dispatchQaVerificationEmail({
+      email: ONBOARDING_QA_EMAIL,
+      userId: "user-1",
+      adminOps: memory.ops,
+    });
+    expect(result).toEqual({ dispatched: true, method: "signup_resend" });
+    expect(resend).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats signup resend null-error + unchanged confirmation_sent_at as a failed no-op", async () => {
+    const memory = createMemoryAdminOps(
+      makeUser({
+        email: ONBOARDING_QA_EMAIL,
+        email_confirmed_at: undefined,
+        confirmation_sent_at: "2026-05-12T03:45:53.693056Z",
+      } as Partial<User> & { email: string }),
+    );
+    const resend = vi.fn(async () => ({ data: { user: null, session: null }, error: null }));
+    vi.mocked(createPublicClient).mockReturnValue({
+      auth: { resend, signInWithOtp: vi.fn() },
+    } as never);
+
+    await expect(
+      dispatchQaVerificationEmail({
+        email: ONBOARDING_QA_EMAIL,
+        userId: "user-1",
+        adminOps: memory.ops,
+      }),
+    ).rejects.toMatchObject({ code: "VERIFICATION_QA_SIGNUP_RESEND_NOOP" });
+  });
+
+  it("already-confirmed account falls back to magiclink OTP when recovery_sent_at advances", async () => {
+    const memory = createMemoryAdminOps(
+      makeUser({
+        email: ONBOARDING_QA_EMAIL,
+        email_confirmed_at: "2026-01-01T00:00:00Z",
+        recovery_sent_at: "2026-08-24T23:50:16.763762Z",
+      } as Partial<User> & { email: string }),
+    );
+    const signInWithOtp = vi.fn(async () => {
+      memory.advanceRecoverySentAt("2026-08-24T23:56:00.000Z");
+      return { data: { user: null, session: null }, error: null };
+    });
+    vi.mocked(createPublicClient).mockReturnValue({
+      auth: { resend: vi.fn(), signInWithOtp },
+    } as never);
+
+    const result = await dispatchQaVerificationEmail({
+      email: ONBOARDING_QA_EMAIL,
+      userId: "user-1",
+      adminOps: memory.ops,
+    });
+    expect(result).toEqual({ dispatched: true, method: "magiclink_otp" });
+    expect(signInWithOtp).toHaveBeenCalledTimes(1);
+    // Account remains confirmed — we do not weaken verification permanently.
+    expect(memory.getUser().email_confirmed_at).toBeTruthy();
+  });
+
+  it("surfaces Supabase rate limits with a QA-clear message", async () => {
+    const memory = createMemoryAdminOps(
+      makeUser({
+        email: ONBOARDING_QA_EMAIL,
+        email_confirmed_at: "2026-01-01T00:00:00Z",
+      }),
+    );
+    vi.mocked(createPublicClient).mockReturnValue({
+      auth: {
+        resend: vi.fn(),
+        signInWithOtp: vi.fn(async () => ({
+          data: { user: null, session: null },
+          error: {
+            message: "For security purposes, you can only request this after 38 seconds.",
+            code: "over_email_send_rate_limit",
+            status: 429,
+          },
+        })),
+      },
+    } as never);
+
+    await expect(
+      dispatchQaVerificationEmail({
+        email: ONBOARDING_QA_EMAIL,
+        userId: "user-1",
+        adminOps: memory.ops,
+      }),
+    ).rejects.toMatchObject({
+      code: "EMAIL_RATE_LIMIT",
+      status: 429,
+    });
+  });
+
+  it("propagates non-rate-limit Supabase resend errors without claiming sent", async () => {
+    const memory = createMemoryAdminOps(
+      makeUser({
+        email: ONBOARDING_QA_EMAIL,
+        email_confirmed_at: undefined,
+      }),
+    );
+    vi.mocked(createPublicClient).mockReturnValue({
+      auth: {
+        resend: vi.fn(async () => ({
+          data: { user: null, session: null },
+          error: { message: "smtp failed", code: "unexpected_failure", status: 500 },
+        })),
+        signInWithOtp: vi.fn(),
+      },
+    } as never);
+
+    await expect(
+      dispatchQaVerificationEmail({
+        email: ONBOARDING_QA_EMAIL,
+        userId: "user-1",
+        adminOps: memory.ops,
+      }),
+    ).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("startVerificationQaCycle does not mark emailSent when dispatch fails", async () => {
+    const memory = createMemoryAdminOps(
+      makeUser({
+        email: ONBOARDING_QA_EMAIL,
+        email_confirmed_at: "2026-01-01T00:00:00Z",
+      }),
+    );
+    await expect(
+      startVerificationQaCycle({
+        userId: "user-1",
+        authenticatedEmail: ONBOARDING_QA_EMAIL,
+        adminOps: memory.ops,
+        dispatchQaVerificationEmail: async () => {
+          throw new ApiError(409, "no send", "VERIFICATION_QA_SIGNUP_RESEND_NOOP");
+        },
+        newCycleId: () => "cycle-fail",
+      }),
+    ).rejects.toMatchObject({ code: "VERIFICATION_QA_SIGNUP_RESEND_NOOP" });
+
+    const meta = parseVerificationQaCycleMeta(memory.getUser().app_metadata);
+    // Pending metadata may exist, but initialEmailSentAt must stay null (not claimed sent).
+    expect(meta?.initialEmailSentAt ?? null).toBeNull();
+  });
+
+  it("startVerificationQaCycle returns emailSent true only after successful dispatch", async () => {
+    const memory = createMemoryAdminOps(
+      makeUser({
+        email: ONBOARDING_QA_EMAIL,
+        email_confirmed_at: "2026-01-01T00:00:00Z",
+      }),
+    );
+    const result = await startVerificationQaCycle({
+      userId: "user-1",
+      authenticatedEmail: ONBOARDING_QA_EMAIL,
+      adminOps: memory.ops,
+      dispatchQaVerificationEmail: async () => ({ dispatched: true, method: "magiclink_otp" }),
+      newCycleId: () => "cycle-ok",
+      now: new Date("2026-08-24T12:00:00Z"),
+    });
+    expect(result.emailSent).toBe(true);
+    expect(result.dispatchMethod).toBe("magiclink_otp");
+    expect(result.message).toMatch(/newest email/i);
+    expect(parseVerificationQaCycleMeta(memory.getUser().app_metadata)?.initialEmailSentAt).toBe(
+      "2026-08-24T12:00:00.000Z",
+    );
+  });
+
+  it("UI success copy must not be shown when emailSent is false (contract)", () => {
+    const apiResult = {
+      emailSent: false,
+      alreadySent: true,
+      message: "A verification message was already sent for this QA cycle.",
+    };
+    const notice =
+      apiResult.emailSent ? VERIFICATION_QA_UI_COPY.sentSuccess : null;
+    expect(notice).toBeNull();
+    expect(VERIFICATION_QA_UI_COPY.sentSuccess).toMatch(/Test email sent/i);
+  });
+
+  it("unauthorized users cannot access QA send", async () => {
+    const memory = createMemoryAdminOps(makeUser({ email: "student@uri.edu" }));
+    await expect(
+      startVerificationQaCycle({
+        userId: "user-1",
+        authenticatedEmail: "student@uri.edu",
+        adminOps: memory.ops,
+        dispatchQaVerificationEmail: async () => ({ dispatched: true, method: "signup_resend" }),
+      }),
+    ).rejects.toMatchObject({ code: "VERIFICATION_QA_FORBIDDEN" });
   });
 });

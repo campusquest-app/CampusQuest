@@ -49,7 +49,7 @@ export function buildAuthQaStatus() {
       email: ONBOARDING_QA_EMAIL,
       mode: "session-level replay — does not reset XP, admin role, or account data",
       verificationCycle:
-        "Allowlisted self-only cycle: unconfirm Auth email → one Resend via Supabase SMTP → real /auth/callback",
+        "Allowlisted self-only: prefer signup confirmation resend when unconfirmed; if already confirmed (Admin unconfirm is a no-op on this GoTrue), send Supabase magic-link OTP via Resend → /auth/callback. Delivery is proven by Auth send timestamps — null error alone is not treated as sent.",
     },
   };
 }

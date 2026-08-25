@@ -98,6 +98,8 @@ export const VERIFICATION_QA_UI_COPY = {
   sending: "Sending test email...",
   sentSuccess: "Test email sent. Open the newest email to test the verification link.",
   sendFailedFallback: "Could not send the test verification email. Please try again.",
+  rateLimited:
+    "Supabase rate-limited this QA email. Wait about a minute, then try Send test verification email again.",
 } as const;
 
 export type VerificationQaTestUiState = "idle" | "sending" | "sent" | "failed";

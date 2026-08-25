@@ -7,8 +7,8 @@ import { readJson } from "@/lib/server/validation";
 import {
   assertVerificationQaCaller,
   createDefaultAdminUserOps,
+  dispatchQaVerificationEmail,
   refreshVerificationQaCycleView,
-  sendConfirmationViaSupabaseResend,
   startVerificationQaCycle,
 } from "@/lib/server/verificationQaCycle";
 
@@ -69,9 +69,10 @@ export async function POST(request: Request) {
       authenticatedEmail: auth.user.email ?? "",
       requestedCycleId,
       adminOps,
-      sendConfirmationEmail: sendConfirmationViaSupabaseResend,
+      dispatchQaVerificationEmail,
     });
 
+    // Never report "sent" unless the server proved Auth advanced a send timestamp.
     return ok(result);
   } catch (error) {
     if (error instanceof ZodError) {

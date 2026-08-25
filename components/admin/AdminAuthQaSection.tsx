@@ -126,13 +126,27 @@ export function AdminAuthQaSection() {
     setMessage(null);
     try {
       const data = await postAuthed<
-        { cycleId: string; emailSent: boolean; alreadySent: boolean; message: string },
+        {
+          cycleId: string;
+          emailSent: boolean;
+          alreadySent: boolean;
+          message: string;
+          dispatchMethod?: string;
+        },
         { forceNew: boolean }
       >("/api/auth/qa/verification-cycle", { forceNew: true });
+      if (!data.emailSent) {
+        setError(
+          data.alreadySent
+            ? `${data.message} (idempotent — no duplicate send)`
+            : data.message || "Supabase did not dispatch a test email.",
+        );
+        return;
+      }
       setMessage(
-        data.emailSent
-          ? data.message
-          : `${data.message} (idempotent — no duplicate send)`,
+        data.dispatchMethod === "magiclink_otp"
+          ? `${data.message}`
+          : data.message || "Test email sent. Open the newest email to test the verification link.",
       );
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Could not start verification QA cycle.");
@@ -195,9 +209,10 @@ export function AdminAuthQaSection() {
       <div className="cq-admin-panel p-4 space-y-3">
         <p className="font-semibold text-white">Repeatable verification QA cycle</p>
         <p className="text-xs text-white/55">
-          For the allowlisted QA account only (must be signed in as that account). Resets Auth
-          confirmation, sends exactly one Resend email for the new cycle, and leaves profile / XP /
-          admin role untouched. Remounts and refreshes do not send another email.
+          For the allowlisted QA account only (must be signed in as that account). Sends a real
+          Supabase Auth email through Resend. Already-confirmed accounts use a magic-link OTP
+          (signup confirmation resend is a silent no-op while confirmed). Remounts do not send
+          another email without forceNew.
         </p>
         <button
           type="button"
@@ -286,7 +301,7 @@ export function AdminAuthQaSection() {
       <div className="cq-admin-panel p-4 space-y-2 text-xs text-white/50">
         <p className="font-semibold text-white/70">Manual checks this panel does not automate</p>
         <ul className="list-disc pl-4 space-y-1">
-          <li>Use Send test verification email while signed in as the allowlisted QA account, then open the newest Resend message to exercise /auth/callback. Continue stays available because the account is already verified.</li>
+          <li>Use Send test verification email while signed in as the allowlisted QA account, then open the newest Resend message to exercise /auth/callback. Continue stays available because the account is already verified. If Supabase rate-limits you, wait ~60s and retry.</li>
           <li>Open the email on iOS Safari and confirm the deep link returns to CampusQuest.</li>
           <li>Click an expired or already-used link and confirm the recovery screen appears.</li>
           <li>Duplicate-click the same valid link and confirm the second click is handled safely.</li>
