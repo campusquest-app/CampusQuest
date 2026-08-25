@@ -24,6 +24,12 @@ import {
   type OrgBrowseFilterId,
 } from "@/lib/organizationBrowseFilters";
 import { TaggedEntityPostsSection } from "@/components/quad/TaggedEntityPostsSection";
+import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
+import {
+  organizationToRecommendationEntity,
+  rankRecommendationEntities,
+  recommendationTimeBucket,
+} from "@/lib/recommendations";
 
 type Organization = {
   id: string;
@@ -176,7 +182,7 @@ type HubOrganization =
   | { kind: "campus"; organization: Organization; bucket: OrgBrowseFilterId }
   | { kind: "external"; organization: ExternalOrganization; bucket: OrgBrowseFilterId };
 
-type OrgSortMode = "az" | "za" | "recent" | "active";
+type OrgSortMode = "for_you" | "az" | "za" | "recent" | "active";
 
 type MyOrgCreationRequest = {
   id: string;
@@ -229,7 +235,13 @@ export function OrganizationsHub({
   personalization,
   onBack,
 }: {
-  personalization?: { schoolName?: string; interests?: string[]; discoveryFocus?: string[] } | null;
+  personalization?: {
+    schoolName?: string;
+    interests?: string[];
+    communities?: string[];
+    discoveryFocus?: string[];
+    institutionId?: string | null;
+  } | null;
   onBack?: () => void;
 }) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -243,7 +255,8 @@ export function OrganizationsHub({
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filterBucket, setFilterBucket] = useState<OrgBrowseFilterId>("all");
-  const [sortMode, setSortMode] = useState<OrgSortMode>("az");
+  const [sortMode, setSortMode] = useState<OrgSortMode>("for_you");
+  const recProfile = useRecommendationProfile(personalization);
   const [submitting, setSubmitting] = useState(false);
   const [reportingOrgId, setReportingOrgId] = useState<string | null>(null);
   const [form, setForm] = useState<RequestForm>(emptyRequestForm);
@@ -497,6 +510,26 @@ export function OrganizationsHub({
     const byName = (a: HubOrganization, b: HubOrganization) =>
       a.organization.name.localeCompare(b.organization.name);
 
+    if (sortMode === "for_you") {
+      return rankRecommendationEntities({
+        items: filtered,
+        toEntity: (item) =>
+          organizationToRecommendationEntity({
+            id: item.organization.id,
+            name: item.organization.name,
+            description: item.organization.description,
+            category: item.organization.category,
+            tags: item.kind === "external" ? item.organization.tags : [],
+            memberCount: item.kind === "campus" ? item.organization.memberCount : 0,
+            followerCount: item.kind === "campus" ? item.organization.followerCount : 0,
+          }),
+        profile: recProfile,
+        nowMs: recommendationTimeBucket(),
+        diversity: true,
+        exploreEvery: 5,
+      }).map((row) => row.item);
+    }
+
     return filtered.sort((a, b) => {
       if (sortMode === "za") return byName(b, a);
       if (sortMode === "recent") {
@@ -514,7 +547,7 @@ export function OrganizationsHub({
       }
       return byName(a, b);
     });
-  }, [mergedOrganizations, query, filterBucket, sortMode]);
+  }, [mergedOrganizations, query, filterBucket, sortMode, recProfile]);
 
   function requestStatusBlock(r: MyOrgCreationRequest) {
     if (r.status === "pending") {
@@ -609,6 +642,7 @@ export function OrganizationsHub({
                 onChange={(event) => setSortMode(event.target.value as OrgSortMode)}
                 className="w-full appearance-none rounded-lg border border-white/20 bg-black/25 px-3 py-1.5 pr-8 text-xs text-white focus:outline-none focus:ring-2 focus:ring-uri-keaney/40"
               >
+                <option value="for_you" className="bg-uri-navy text-white">For You</option>
                 <option value="az" className="bg-uri-navy text-white">A–Z</option>
                 <option value="za" className="bg-uri-navy text-white">Z–A</option>
                 {hasRecencyData ? (

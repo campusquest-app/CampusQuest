@@ -17,6 +17,12 @@ import { queueQuestCelebration } from "@/lib/questBoardCelebration";
 import { QuestCard } from "@/components/quests/QuestCard";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 import { ApiRequestError } from "@/lib/client/dashboardApi";
+import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
+import {
+  questToRecommendationEntity,
+  rankRecommendationEntities,
+  recommendationTimeBucket,
+} from "@/lib/recommendations";
 
 function QuestFilterNav({
   filter,
@@ -118,12 +124,20 @@ export function QuestBoard({
   character,
   onRefresh,
   onBack,
+  personalization,
 }: {
   character: Character;
   onRefresh?: () => void;
   onBack?: () => void;
+  personalization?: {
+    interests?: string[];
+    communities?: string[];
+    institutionId?: string | null;
+    studentStatus?: string | null;
+  } | null;
 }) {
   const [filter, setFilter] = useState<AdminQuestFilter>("all");
+  const recProfile = useRecommendationProfile(personalization);
   const [localCharacter, setLocalCharacter] = useState(character);
   const [adminItems, setAdminItems] = useState<UserQuestBoardItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,10 +194,16 @@ export function QuestBoard({
     () => filterQuestsForFeatureFlags([...dailyItems, ...adminItems]),
     [dailyItems, adminItems],
   );
-  const filtered = useMemo(
-    () => filterQuestBoardItems(allItems, filter, { userLat: userCoords?.lat, userLng: userCoords?.lng }),
-    [allItems, filter, userCoords],
-  );
+  const filtered = useMemo(() => {
+    const next = filterQuestBoardItems(allItems, filter, { userLat: userCoords?.lat, userLng: userCoords?.lng });
+    if (filter === "nearby") return next;
+    return rankRecommendationEntities({
+      items: next,
+      toEntity: questToRecommendationEntity,
+      profile: recProfile,
+      nowMs: recommendationTimeBucket(),
+    }).map((row) => row.item);
+  }, [allItems, filter, userCoords, recProfile]);
 
   const activeCount = allItems.filter((i) => i.status === "active" || i.status === "ready").length;
   const completedCount = allItems.filter((i) => i.status === "completed").length;

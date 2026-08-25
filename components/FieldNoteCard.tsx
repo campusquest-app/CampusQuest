@@ -256,6 +256,8 @@ type FieldNoteCardProps = {
   onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
   onSharePost?: (note: FieldNote) => void;
   canModeratePosts?: boolean;
+  onViewEvent?: (eventId: string) => void;
+  onViewOnMap?: (locationId: string) => void;
 };
 
 function userHasReacted(note: FieldNote, userId: string): boolean {
@@ -322,6 +324,8 @@ function FieldNoteCardInner({
   onViewAuthor,
   onSharePost,
   canModeratePosts = false,
+  onViewEvent,
+  onViewOnMap,
 }: FieldNoteCardProps) {
   const [commentsSheetOpen, setCommentsSheetOpen] = useState(false);
   const [likersSheetOpen, setLikersSheetOpen] = useState(false);
@@ -695,6 +699,30 @@ function FieldNoteCardInner({
   const structuredTags = (note.tags ?? []).filter(
     (t) => (t.tagSource === "composer" || t.tagSource === "photo") && t.status === "approved",
   );
+  const eventTag = structuredTags.find((tag) => tag.entityType === "event" || tag.entityType === "external_event");
+  const contextLinks =
+    onViewEvent || onViewOnMap ? (
+      <div className="cq-feed-context-links mt-1.5 flex flex-wrap gap-2">
+        {eventTag && onViewEvent ? (
+          <button
+            type="button"
+            className="min-h-[44px] rounded-lg px-2 text-xs font-semibold text-uri-keaney hover:underline"
+            onClick={() => onViewEvent(eventTag.entityId)}
+          >
+            View Event
+          </button>
+        ) : null}
+        {note.locationId && onViewOnMap ? (
+          <button
+            type="button"
+            className="min-h-[44px] rounded-lg px-2 text-xs font-semibold text-uri-keaney hover:underline"
+            onClick={() => onViewOnMap(note.locationId!)}
+          >
+            View on Map
+          </button>
+        ) : null}
+      </div>
+    ) : null;
   const captionMentions = (note.mentions ?? []).map((m) => ({
     entityType: m.entityType,
     entityId: m.entityId,
@@ -1057,6 +1085,7 @@ function FieldNoteCardInner({
                 mentions={captionMentions}
               />
               {structuredTags.length > 0 ? <TaggedWithLine tags={structuredTags} /> : null}
+              {contextLinks}
             </div>
           )}
 

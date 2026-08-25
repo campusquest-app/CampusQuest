@@ -38,6 +38,13 @@ import {
 } from "@/lib/client/authSessionClient";
 import type { QuadCommunityChannel } from "@/lib/quadCommunityChannels";
 import { isQuadCommunityChannel, QUAD_COMMUNITY_FEED_LABELS } from "@/lib/quadCommunityChannels";
+import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
+import {
+  fieldNoteToRecommendationEntity,
+  formatRecommendationDebugLine,
+  rankRecommendationEntities,
+  recommendationTimeBucket,
+} from "@/lib/recommendations";
 
 export type QuadFeedTab = QuadFeedType | "trending" | QuadCommunityChannel;
 
@@ -82,6 +89,10 @@ export function TheQuad({
   canModeratePosts = false,
   onPostXpReward,
   showXpProgressBar = false,
+  personalization = null,
+  showRecommendationDebug = false,
+  onViewEvent,
+  onViewOnMap,
 }: {
   character: Character;
   onRefresh?: () => void;
@@ -102,6 +113,17 @@ export function TheQuad({
   onPostXpReward?: (reward: QuadPostXpReward) => void;
   /** When true (prefs loaded + enabled), show Level/XP/Streak strip in TopNav. */
   showXpProgressBar?: boolean;
+  personalization?: {
+    schoolName?: string;
+    interests?: string[];
+    communities?: string[];
+    institutionId?: string | null;
+    studentStatus?: string | null;
+    classYear?: number | null;
+  } | null;
+  showRecommendationDebug?: boolean;
+  onViewEvent?: (eventId: string) => void;
+  onViewOnMap?: (locationId: string) => void;
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
@@ -115,6 +137,9 @@ export function TheQuad({
   const [showAddMemory, setShowAddMemory] = useState(false);
   const [addMemoryLocationId, setAddMemoryLocationId] = useState<CampusLocationId>("the-quad");
   const showQuadChrome = !chromeSuppressed;
+  const recProfile = useRecommendationProfile(personalization, showRecommendationDebug);
+  const [reasonById, setReasonById] = useState<Record<string, string>>({});
+  const [debugById, setDebugById] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
@@ -127,6 +152,37 @@ export function TheQuad({
   }, []);
 
   const baseFeedType: QuadFeedType = feedTab === "friends" ? "friends" : "public";
+
+  const applyCampusFeedRanking = useCallback(
+    (list: FieldNote[]): FieldNote[] => {
+      if (feedTab !== "public") {
+        setReasonById({});
+        setDebugById({});
+        return list;
+      }
+      const ranked = rankRecommendationEntities({
+        items: list,
+        toEntity: fieldNoteToRecommendationEntity,
+        profile: recProfile,
+        nowMs: recommendationTimeBucket(),
+        diversity: true,
+        exploreEvery: 4,
+      });
+      const reasons: Record<string, string> = {};
+      const debugLines: Record<string, string> = {};
+      ranked.slice(0, 8).forEach((row) => {
+        if (row.recommendation.reason) reasons[row.item.id] = row.recommendation.reason.label;
+        if (showRecommendationDebug) {
+          const line = formatRecommendationDebugLine(row.recommendation);
+          if (line) debugLines[row.item.id] = line;
+        }
+      });
+      setReasonById(reasons);
+      setDebugById(debugLines);
+      return ranked.map((row) => row.item);
+    },
+    [feedTab, recProfile, showRecommendationDebug],
+  );
 
   const handleSessionMissing = useCallback(() => {
     clearStaleAuthClientState();
@@ -219,6 +275,8 @@ export function TheQuad({
           const diff = trendingScore(b) - trendingScore(a);
           return diff !== 0 ? diff : b.createdAt - a.createdAt;
         });
+      } else if (feedTab === "public") {
+        list = applyCampusFeedRanking(list);
       }
       setNotes(cloneFeedNotesForDisplay(list));
       if (homeFetchFailed && list.length === 0) {
@@ -239,6 +297,7 @@ export function TheQuad({
     sessionReady,
     handleSessionMissing,
     refreshPlayerSnapshotSafe,
+    applyCampusFeedRanking,
   ]);
 
   const handlePullRefresh = useCallback(async () => {
@@ -343,12 +402,28 @@ export function TheQuad({
       );
       return;
     }
-    let list = getFeed(character.id, baseFeedType).map(enrichNote);
+    const list = getFeed(character.id, baseFeedType).map(enrichNote);
     if (feedTab === "trending") {
-      list = [...list].sort((a, b) => {
+      const trending = [...list].sort((a, b) => {
         const diff = trendingScore(b) - trendingScore(a);
         return diff !== 0 ? diff : b.createdAt - a.createdAt;
       });
+      setNotes(cloneFeedNotesForDisplay(trending));
+      return;
+    }
+    if (feedTab === "public") {
+      // Keep recommendation order stable across likes/comments; re-rank only on refresh.
+      setNotes((prev) => {
+        const byId = new Map(list.map((note) => [note.id, note]));
+        const kept = prev
+          .map((note) => byId.get(note.id))
+          .filter((note): note is FieldNote => Boolean(note));
+        const seen: Record<string, true> = {};
+        for (const note of kept) seen[note.id] = true;
+        const newcomers = list.filter((note) => !seen[note.id]);
+        return cloneFeedNotesForDisplay([...kept, ...newcomers]);
+      });
+      return;
     }
     setNotes(cloneFeedNotesForDisplay(list));
   }, [character.id, baseFeedType, feedTab]);
@@ -566,8 +641,14 @@ export function TheQuad({
                 </p>
               ) : null}
               {notes.map((note) => (
-                <FieldNoteCard
-                  key={note.id}
+                <div key={note.id}>
+                  {reasonById[note.id] ? (
+                    <p className="px-1 pb-1 text-[11px] font-semibold text-uri-keaney/90">{reasonById[note.id]}</p>
+                  ) : null}
+                  {debugById[note.id] ? (
+                    <p className="px-1 pb-1 text-[10px] font-mono text-white/40">{debugById[note.id]}</p>
+                  ) : null}
+                  <FieldNoteCard
                   variant="feed"
                   note={note}
                   currentUserId={character.id}
@@ -586,7 +667,10 @@ export function TheQuad({
                   onViewAuthor={onViewAuthor}
                   onSharePost={onSharePost}
                   currentUser={quadCurrentUser}
+                  onViewEvent={onViewEvent}
+                  onViewOnMap={onViewOnMap}
                 />
+                </div>
               ))}
             </div>
           )}
