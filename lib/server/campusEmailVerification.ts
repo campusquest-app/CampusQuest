@@ -233,6 +233,21 @@ function latestChallenge(rows: CampusEmailChallengeRow[]): CampusEmailChallengeR
   return rows[0] ?? null;
 }
 
+/** Cooldown anchors on successful Resend acceptance only — failed sends must not lock the UI. */
+function latestDispatchedChallenge(rows: CampusEmailChallengeRow[]): CampusEmailChallengeRow | null {
+  for (const row of rows) {
+    if (row.dispatched_at) return row;
+  }
+  return null;
+}
+
+function resendAvailableInSecondsFromRows(rows: CampusEmailChallengeRow[], nowMs: number): number {
+  const latestDispatched = latestDispatchedChallenge(rows);
+  if (!latestDispatched?.dispatched_at) return 0;
+  const resendAt = Date.parse(latestDispatched.dispatched_at) + CAMPUS_EMAIL_RESEND_COOLDOWN_SECONDS * 1000;
+  return secondsUntil(resendAt, nowMs);
+}
+
 function isOpen(row: CampusEmailChallengeRow, now: Date): boolean {
   return !row.consumed_at && !row.invalidated_at && Date.parse(row.expires_at) > now.getTime();
 }
@@ -249,8 +264,6 @@ export async function getCampusEmailVerificationStatus(args: {
   const rows = await args.store.listChallenges(args.userId);
   const latest = latestChallenge(rows);
   const active = latest && isOpen(latest, now) ? latest : null;
-  const latestCreatedMs = latest ? Date.parse(latest.created_at) : 0;
-  const resendAt = latestCreatedMs + CAMPUS_EMAIL_RESEND_COOLDOWN_SECONDS * 1000;
 
   return {
     verified: Boolean(verifiedAt),
@@ -258,7 +271,7 @@ export async function getCampusEmailVerificationStatus(args: {
     emailMasked: maskCampusEmail(email),
     hasActiveChallenge: Boolean(active),
     expiresInSeconds: active ? secondsUntil(Date.parse(active.expires_at), now.getTime()) : 0,
-    resendAvailableInSeconds: latest ? secondsUntil(resendAt, now.getTime()) : 0,
+    resendAvailableInSeconds: resendAvailableInSecondsFromRows(rows, now.getTime()),
     dispatched: Boolean(latest?.dispatched_at),
     submitted: Boolean(latest && (latest.attempts > 0 || latest.consumed_at)),
     consumed: Boolean(latest?.consumed_at),
@@ -306,17 +319,18 @@ export async function sendCampusEmailVerification(args: {
   }
 
   const rows = await args.store.listChallenges(args.userId);
-  const latest = latestChallenge(rows);
-  if (latest) {
-    const resendAt = Date.parse(latest.created_at) + CAMPUS_EMAIL_RESEND_COOLDOWN_SECONDS * 1000;
-    const wait = secondsUntil(resendAt, now.getTime());
-    if (wait > 0) {
-      throw cooldownError(wait);
-    }
+  const wait = resendAvailableInSecondsFromRows(rows, now.getTime());
+  if (wait > 0) {
+    throw cooldownError(wait);
   }
 
+  // Abuse guard: count successful dispatches in the window (failed Resend attempts do not burn cooldown,
+  // but repeated accepted sends still hit the cap). In-route IP/user limits still apply to all attempts.
   const windowStart = now.getTime() - CAMPUS_EMAIL_SEND_WINDOW_SECONDS * 1000;
-  const recentSends = rows.filter((row) => Date.parse(row.created_at) >= windowStart).length;
+  const recentSends = rows.filter((row) => {
+    if (!row.dispatched_at) return false;
+    return Date.parse(row.dispatched_at) >= windowStart;
+  }).length;
   if (recentSends >= CAMPUS_EMAIL_SEND_LIMIT) {
     throw new ApiError(429, CAMPUS_EMAIL_USER_MESSAGES.cooldown(60), "EMAIL_VERIFICATION_RATE_LIMIT");
   }

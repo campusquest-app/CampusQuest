@@ -2,7 +2,39 @@ import { ApiError } from "@/lib/server/http";
 import { logEmailVerification } from "@/lib/authEmailDelivery";
 import { CAMPUS_EMAIL_CODE_TTL_SECONDS } from "@/lib/campusEmailVerification";
 
-const DEFAULT_FROM = "CampusQuest <noreply@campusquestapp.com>";
+/**
+ * Default From for campus OTP via Resend.
+ * Must match a verified Resend domain. Production currently verifies
+ * `auth.campusquestapp.com` (not the apex `campusquestapp.com`).
+ * Override with RESEND_FROM_EMAIL / EMAIL_VERIFICATION_FROM — do not invent senders.
+ */
+const DEFAULT_FROM = "CampusQuest <noreply@auth.campusquestapp.com>";
+
+function recipientDomain(email: string): string {
+  const at = email.lastIndexOf("@");
+  return at >= 0 ? email.slice(at + 1).toLowerCase() : "unknown";
+}
+
+function summarizeResendErrorBody(raw: string): {
+  errorName: string | null;
+  errorMessage: string | null;
+  requestId: string | null;
+} {
+  try {
+    const parsed = JSON.parse(raw) as {
+      name?: unknown;
+      message?: unknown;
+      id?: unknown;
+    };
+    return {
+      errorName: typeof parsed.name === "string" ? parsed.name : null,
+      errorMessage: typeof parsed.message === "string" ? parsed.message.slice(0, 300) : null,
+      requestId: typeof parsed.id === "string" ? parsed.id : null,
+    };
+  } catch {
+    return { errorName: null, errorMessage: null, requestId: null };
+  }
+}
 
 export function getResendApiKey(env: Record<string, string | undefined> = process.env): string {
   const key = (env.RESEND_API_KEY ?? "").trim();
@@ -50,6 +82,8 @@ export async function sendCampusVerificationEmailViaResend(args: {
   const apiKey = getResendApiKey(env);
   const from = getCampusVerificationFromAddress(env);
   const fetchImpl = args.fetchImpl ?? fetch;
+  const keyConfigured = Boolean(apiKey);
+  const toDomain = recipientDomain(args.to);
 
   const response = await fetchImpl("https://api.resend.com/emails", {
     method: "POST",
@@ -66,8 +100,17 @@ export async function sendCampusVerificationEmailViaResend(args: {
   });
 
   if (!response.ok) {
-    logEmailVerification("campus code email send failed", {
-      status: response.status,
+    const raw = await response.text().catch(() => "");
+    const summary = summarizeResendErrorBody(raw);
+    // Always log failures (safe fields only) so production diagnosis is possible.
+    console.warn("[Email Verification] campus code email send failed", {
+      RESEND_API_KEY_configured: keyConfigured,
+      from,
+      recipientDomain: toDomain,
+      httpStatus: response.status,
+      resendErrorName: summary.errorName,
+      resendErrorMessage: summary.errorMessage,
+      resendRequestId: summary.requestId ?? response.headers.get("x-request-id"),
     });
     throw new ApiError(
       502,
@@ -76,5 +119,9 @@ export async function sendCampusVerificationEmailViaResend(args: {
     );
   }
 
-  logEmailVerification("campus code email accepted", {});
+  logEmailVerification("campus code email accepted", {
+    from,
+    recipientDomain: toDomain,
+    httpStatus: response.status,
+  });
 }

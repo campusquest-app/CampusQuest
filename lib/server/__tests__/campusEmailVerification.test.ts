@@ -349,6 +349,39 @@ describe("send + verify", () => {
     ).rejects.toMatchObject({ message: CAMPUS_EMAIL_USER_MESSAGES.invalidated });
   });
 
+  it("does not start resend cooldown when Resend delivery fails", async () => {
+    const store = createMemoryStore();
+    await expect(
+      sendCampusEmailVerification({
+        userId: "user-1",
+        email: "student@uri.edu",
+        store,
+        mailer: async () => {
+          throw new ApiError(502, CAMPUS_EMAIL_USER_MESSAGES.sendFailed, "EMAIL_VERIFICATION_SEND_FAILED");
+        },
+        secret: SECRET,
+        generateCode: () => "482913",
+        now: new Date("2026-08-25T12:00:00Z"),
+      }),
+    ).rejects.toMatchObject({ message: CAMPUS_EMAIL_USER_MESSAGES.sendFailed });
+
+    expect(store.rows[0]?.dispatched_at).toBeNull();
+    expect(store.rows[0]?.invalidated_at).toBeTruthy();
+
+    const retry = await sendCampusEmailVerification({
+      userId: "user-1",
+      email: "student@uri.edu",
+      store,
+      mailer: async () => undefined,
+      secret: SECRET,
+      generateCode: () => "731204",
+      now: new Date("2026-08-25T12:00:05Z"),
+    });
+    expect(retry.ok).toBe(true);
+    expect(retry.resendAvailableInSeconds).toBe(60);
+    expect(store.rows[0]?.dispatched_at).toBeTruthy();
+  });
+
   it("does not return the plaintext code from send", async () => {
     const store = createMemoryStore();
     const result = await sendCampusEmailVerification({

@@ -289,7 +289,10 @@ export function AuthOnboardingFlow({
         setNotice(CAMPUS_EMAIL_USER_MESSAGES.sent);
       }
     } catch (err) {
+      // Failed sends must not start the resend cooldown.
+      setResendAvailableInSeconds(0);
       setError(err instanceof Error ? err.message : CAMPUS_EMAIL_USER_MESSAGES.sendFailed);
+      void refreshCampusVerificationStatus();
     } finally {
       sendLock.current = false;
       setCodeSending(false);
@@ -339,6 +342,7 @@ export function AuthOnboardingFlow({
       setNotice("Test email sent. Open the newest email and enter the 6-digit code.");
       setResendAvailableInSeconds(60);
     } catch (err) {
+      setResendAvailableInSeconds(0);
       setError(err instanceof Error ? err.message : CAMPUS_EMAIL_USER_MESSAGES.sendFailed);
     } finally {
       sendLock.current = false;
