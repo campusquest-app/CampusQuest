@@ -1,12 +1,6 @@
 "use client";
 
-import type { MapMarkerFilter } from "@/components/realm/GoogleRealmMap";
-
-const FILTERS: { id: MapMarkerFilter; label: string; liveDot?: boolean }[] = [
-  { id: "all", label: "All" },
-  { id: "live", label: "Live Now", liveDot: true },
-  { id: "events", label: "Events" },
-];
+import { MAP_FILTER_PILLS, type MapMarkerFilter } from "@/lib/realm/mapMarkerFilters";
 
 export function RealmMapFilterPills({
   value,
@@ -29,7 +23,7 @@ export function RealmMapFilterPills({
       data-no-drawer-swipe="true"
       data-cq-gesture-block="swipe-tab"
     >
-      {FILTERS.map((filter) => {
+      {MAP_FILTER_PILLS.map((filter) => {
         const active = value === filter.id;
         return (
           <button
@@ -40,6 +34,7 @@ export function RealmMapFilterPills({
             className={`cq-realm-map-filter-chip touch-manipulation${
               active ? " cq-realm-map-filter-chip--active" : ""
             }${filter.liveDot ? " cq-realm-map-filter-chip--live" : ""}`}
+            aria-label={`${filter.label} map filter`}
             onClick={() => onChange(filter.id)}
           >
             {filter.liveDot ? (

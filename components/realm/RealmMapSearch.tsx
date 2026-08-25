@@ -36,6 +36,7 @@ export function RealmMapSearch({
   onSelect,
   disabled = false,
   onActiveChange,
+  recommendationScoreById,
 }: {
   buildings: MapSearchBuildingSource[];
   groups: GroupedMapLocation[];
@@ -43,6 +44,7 @@ export function RealmMapSearch({
   disabled?: boolean;
   /** True while the search field is focused or the results dropdown is open. */
   onActiveChange?: (active: boolean) => void;
+  recommendationScoreById?: Record<string, number>;
 }) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -109,11 +111,13 @@ export function RealmMapSearch({
 
   const results = useMemo(() => {
     try {
-      return searchMapCatalog(catalog, debouncedQuery, MAP_SEARCH_RESULT_LIMIT);
+      return searchMapCatalog(catalog, debouncedQuery, MAP_SEARCH_RESULT_LIMIT, {
+        recommendationScoreById,
+      });
     } catch {
       return [];
     }
-  }, [catalog, debouncedQuery]);
+  }, [catalog, debouncedQuery, recommendationScoreById]);
 
   const showDropdown = open && debouncedQuery.trim().length >= 1;
   const searchActive = focused || showDropdown;

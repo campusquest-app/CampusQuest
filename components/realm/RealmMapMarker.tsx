@@ -57,6 +57,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   discoveryLabel = null,
   color = "electric-blue",
   zoomTier = "near",
+  deemphasized = false,
 }: {
   variant: RealmMarkerVariant;
   label: string;
@@ -79,6 +80,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   color?: MarkerPaletteColor;
   /** Zoom-driven scale / label density. */
   zoomTier?: "far" | "mid" | "near";
+  deemphasized?: boolean;
 }) {
   const landmarkIcon = landmarkIconForId(landmarkId);
   const iconKind = useMemo(
@@ -118,7 +120,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   const showBadge = !editMode && badgeCount > 1;
   const showDiscovery = !editMode && discoveryMode != null;
   const showDiscoveryLabel = showDiscovery && Boolean(discoveryLabel);
-  const particles = particleCountForMarker(activityState, editMode, startingSoon);
+  const particles = deemphasized ? 0 : particleCountForMarker(activityState, editMode, startingSoon);
 
   return (
     <div
@@ -135,6 +137,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
         countdownCancelled,
         discoveryMode,
         startingSoon,
+        deemphasized,
       })}
       style={{
         opacity: revealOpacity,
@@ -168,7 +171,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
 
       <div className="marker-stack">
         <div className="marker-pin-anchor">
-          {!editMode ? (
+          {!editMode && !deemphasized ? (
             <MagicalMarkerGlow
               active={hasActivity || showEventMagic || showDiscovery || activityState === "idle"}
               selected={showSelectedPop}
@@ -227,6 +230,7 @@ function buildMarkerClassName(input: {
   countdownCancelled?: boolean;
   discoveryMode?: "nearest" | "spotlight" | null;
   startingSoon?: boolean;
+  deemphasized?: boolean;
 }): string {
   return [
     "realm-marker",
@@ -244,6 +248,7 @@ function buildMarkerClassName(input: {
     input.startingSoon ? "realm-marker--starting-soon" : "",
     input.discoveryMode === "nearest" ? "cq-realm-marker--discovery-nearest" : "",
     input.discoveryMode === "spotlight" ? "cq-realm-marker--discovery-spotlight" : "",
+    input.deemphasized ? "cq-realm-marker--deemphasized" : "",
   ]
     .filter(Boolean)
     .join(" ");

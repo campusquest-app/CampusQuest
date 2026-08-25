@@ -18,6 +18,10 @@ export function TheRealm({
   isAdmin = false,
   userRole = "student",
   isActive = true,
+  personalization = null,
+  showArrival = false,
+  onArrivalExplore,
+  onArrivalViewFeed,
 }: {
   onBack?: () => void;
   onCreatePost?: () => void;
@@ -30,6 +34,17 @@ export function TheRealm({
   isAdmin?: boolean;
   userRole?: string;
   isActive?: boolean;
+  personalization?: {
+    schoolName?: string | null;
+    institutionId?: string | null;
+    interests?: string[] | null;
+    communities?: string[] | null;
+    studentStatus?: string | null;
+    classYear?: number | null;
+  } | null;
+  showArrival?: boolean;
+  onArrivalExplore?: () => void;
+  onArrivalViewFeed?: () => void;
 }) {
   const [entered, setEntered] = useState(false);
 
@@ -70,6 +85,10 @@ export function TheRealm({
           userRole={userRole}
           immersive
           isActive={isActive}
+          personalization={personalization}
+          showArrival={showArrival}
+          onArrivalExplore={onArrivalExplore}
+          onArrivalViewFeed={onArrivalViewFeed}
         />
       </div>
     </div>

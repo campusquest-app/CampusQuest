@@ -52,6 +52,27 @@ import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 import { geoToRealmMapPercent, realmMapPercentToGeo } from "@/lib/realm/geoToMapPercent";
 import { GoogleRealmMap } from "./GoogleRealmMap";
+import { RealmForYouRail } from "./RealmForYouRail";
+import { RealmArrivalCard } from "./RealmArrivalCard";
+import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
+import { postAuthed } from "@/lib/client/dashboardApi";
+import type { MapMarkerFilter } from "@/lib/realm/mapMarkerFilters";
+import {
+  collectMapRecommendationSources,
+  findMapFocusForEvent,
+  findMapFocusForLocation,
+  forYouRecommendationLimit,
+  mapRecommendationCounts,
+  rankMapRecommendations,
+  recommendationScoreBySearchId,
+  recommendedMarkerIds,
+  type MapRecommendationItem,
+} from "@/lib/realm/mapRecommendations";
+import {
+  consumeRealmMapFocus,
+  peekRealmMapFocus,
+  campusArrivalName,
+} from "@/lib/realm/firstEntry";
 import type { RealmDirectionsLoadResult } from "./RealmDirectionsOverlay.types";
 import { logWalkRoute } from "@/lib/realm/walkRouteLog";
 import { RealmRouteSheet } from "./RealmRouteSheet";
@@ -137,6 +158,10 @@ export function RealmMap({
   userRole = "student",
   immersive = false,
   isActive = true,
+  personalization = null,
+  showArrival = false,
+  onArrivalExplore,
+  onArrivalViewFeed,
 }: {
   onViewQuests?: (location: RealmLocation) => void;
   onCreatePost?: () => void;
@@ -149,6 +174,17 @@ export function RealmMap({
   userRole?: string;
   immersive?: boolean;
   isActive?: boolean;
+  personalization?: {
+    schoolName?: string | null;
+    institutionId?: string | null;
+    interests?: string[] | null;
+    communities?: string[] | null;
+    studentStatus?: string | null;
+    classYear?: number | null;
+  } | null;
+  showArrival?: boolean;
+  onArrivalExplore?: () => void;
+  onArrivalViewFeed?: () => void;
 }) {
   const [selectedLocation, setSelectedLocation] = useState<HydratedRealmLocation | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -193,6 +229,12 @@ export function RealmMap({
   const [isRouteSheetOpen, setIsRouteSheetOpen] = useState(false);
   const [searchPin, setSearchPin] = useState<{ lat: number; lng: number; name: string } | null>(null);
   const [flyToForce, setFlyToForce] = useState(false);
+  const [markerFilter, setMarkerFilter] = useState<MapMarkerFilter>("for_you");
+  const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
+  const [railFocus, setRailFocus] = useState<{ lat: number; lng: number } | null>(null);
+  const recProfile = useRecommendationProfile(personalization);
+  const focusSeqRef = useRef(0);
+  const pendingWalkAfterFocusRef = useRef(false);
   const pendingRouteOpenRef = useRef(false);
   const routeRequestIdRef = useRef(0);
   const routeInFlightRef = useRef(false);
@@ -720,6 +762,74 @@ export function RealmMap({
     return out;
   }, [catalogRealmLocations, catalogRows, draftPositions]);
 
+  const recommendationLandmarks = useMemo(
+    () =>
+      locations.map((location) => ({
+        id: location.id,
+        name: location.name,
+        category: location.category ?? null,
+        major: location.major,
+        lat: geoPositions[location.id]?.lat ?? 0,
+        lng: geoPositions[location.id]?.lng ?? 0,
+        mapContent: location.mapContent,
+      })),
+    [locations, geoPositions],
+  );
+
+  const mapRecommendations = useMemo(() => {
+    if (typeof window === "undefined") {
+      return rankMapRecommendations({
+        landmarks: recommendationLandmarks,
+        groups: supplementaryPins,
+        profile: recProfile,
+        now: new Date(),
+        limit: 6,
+      });
+    }
+    return rankMapRecommendations({
+      landmarks: recommendationLandmarks,
+      groups: supplementaryPins,
+      profile: recProfile,
+      now: new Date(),
+      limit: forYouRecommendationLimit(window.innerWidth),
+    });
+  }, [recommendationLandmarks, supplementaryPins, recProfile]);
+
+  const forYouMarkerIds = useMemo(() => recommendedMarkerIds(mapRecommendations), [mapRecommendations]);
+  const searchRecScores = useMemo(() => recommendationScoreBySearchId(mapRecommendations), [mapRecommendations]);
+  const recCounts = useMemo(() => mapRecommendationCounts(mapRecommendations), [mapRecommendations]);
+  const happeningTodayCount = useMemo(
+    () => mapRecommendations.filter((item) => item.happeningToday).length,
+    [mapRecommendations],
+  );
+
+  const syncRecommendationForMarker = useCallback(
+    (markerId: string) => {
+      const match = mapRecommendations.find((item) => item.markerId === markerId);
+      setSelectedRecommendationId(match?.id ?? null);
+    },
+    [mapRecommendations],
+  );
+
+  const focusRecommendation = useCallback((item: MapRecommendationItem, openSheet: boolean) => {
+    setSelectedRecommendationId(item.id);
+    setActiveMarkerId(item.markerId);
+    setRailFocus({ lat: item.lat, lng: item.lng });
+    setFlyToForce(true);
+    setMarkerFilter("for_you");
+    if (!openSheet) return;
+
+    const location = locations.find((row) => row.id === item.markerId);
+    if (location) {
+      openLocation(location);
+      return;
+    }
+    const group = supplementaryPins.find((row) => row.groupKey === item.markerId);
+    if (group) {
+      openSupplementaryPin(group);
+    }
+  }, [locations, supplementaryPins, openLocation, openSupplementaryPin]);
+
   const handleTapLandmark = useCallback(
     (id: RealmLocationId) => {
       const resolved = resolveLandmarkTap({
@@ -743,9 +853,63 @@ export function RealmMap({
         return;
       }
       openLocation(location);
+      syncRecommendationForMarker(location.id);
     },
-    [locations, openLocation, reloadCatalog, reloadMapGroups, showMarkerNotice],
+    [locations, openLocation, reloadCatalog, reloadMapGroups, showMarkerNotice, syncRecommendationForMarker],
   );
+
+  useEffect(() => {
+    if (!isActive || !mapGroupsLoaded) return;
+    const seq = ++focusSeqRef.current;
+    const pending = peekRealmMapFocus();
+    if (!pending) return;
+
+    const sources = collectMapRecommendationSources({
+      landmarks: recommendationLandmarks,
+      groups: [...locations.map((row) => row.mapContent).filter((row): row is GroupedMapLocation => Boolean(row)), ...supplementaryPins],
+      now: new Date(),
+    });
+
+    if (pending.eventId) {
+      const found = findMapFocusForEvent(pending.eventId, sources);
+      if (!found) {
+        consumeRealmMapFocus();
+        showMarkerNotice("That event isn’t placed on the map yet.");
+        return;
+      }
+      if (seq !== focusSeqRef.current) return;
+      consumeRealmMapFocus();
+      pendingWalkAfterFocusRef.current = pending.walk === true;
+      setMarkerFilter((prev) => (prev === "live" ? prev : "for_you"));
+      setActiveMarkerId(found.markerId);
+      setRailFocus({ lat: found.lat, lng: found.lng });
+      setFlyToForce(true);
+      const location = locations.find((row) => row.id === found.markerId);
+      if (location) openLocation(location);
+      else {
+        const group = supplementaryPins.find((row) => row.groupKey === found.markerId);
+        if (group) openSupplementaryPin(group);
+      }
+      const rec = mapRecommendations.find((item) => item.eventId === pending.eventId || item.markerId === found.markerId);
+      setSelectedRecommendationId(rec?.id ?? null);
+      return;
+    }
+
+    if (pending.locationId) {
+      const found = findMapFocusForLocation(pending.locationId, recommendationLandmarks, supplementaryPins);
+      if (!found) {
+        consumeRealmMapFocus();
+        return;
+      }
+      if (seq !== focusSeqRef.current) return;
+      consumeRealmMapFocus();
+      setActiveMarkerId(found.markerId);
+      setRailFocus({ lat: found.lat, lng: found.lng });
+      setFlyToForce(true);
+      const location = locations.find((row) => row.id === found.markerId);
+      if (location) openLocation(location);
+    }
+  }, [isActive, mapGroupsLoaded, recommendationLandmarks, locations, supplementaryPins, mapRecommendations, openLocation, openSupplementaryPin, showMarkerNotice]);
 
   const editorDebug: RealmMarkerEditorDebug = useMemo(() => {
     const selectedCoords = editorSelectedId && draftPositions[editorSelectedId]
@@ -882,6 +1046,35 @@ export function RealmMap({
     requestDirections("WALKING", dest);
   }, [activeRouteDestination, editMode, requestDirections, selectedDestination, useGoogleMap]);
 
+  useEffect(() => {
+    if (!pendingWalkAfterFocusRef.current) return;
+    if (!selectedDestination) return;
+    pendingWalkAfterFocusRef.current = false;
+    startWalkingRoute();
+  }, [selectedDestination, startWalkingRoute]);
+
+  const walkToRecommendation = useCallback(
+    (item: MapRecommendationItem) => {
+      requestDirections("WALKING", {
+        id: item.markerId,
+        label: item.locationName,
+        lat: item.lat,
+        lng: item.lng,
+      });
+      pendingRouteOpenRef.current = true;
+      setSheetOpen(false);
+      setIsRouteSheetOpen(true);
+    },
+    [requestDirections],
+  );
+
+  const markRecommendationInterested = useCallback((item: MapRecommendationItem) => {
+    if (!item.eventId || !item.campusRsvp) return;
+    void postAuthed(`/api/events/${item.eventId}/rsvp`, { status: "interested" }).catch(() => {
+      showMarkerNotice("Could not save Interested.");
+    });
+  }, [showMarkerNotice]);
+
   const openRouteOnMap = useCallback(() => {
     const dest = selectedDestination ?? activeRouteDestination;
     if (!dest?.label || !useGoogleMap || editMode) {
@@ -999,7 +1192,9 @@ export function RealmMap({
   }, [editMode, directionsRequest, isRouteSheetOpen, sheetOpen, activeMarkerId, locations, geoPositions, supplementaryPins]);
 
   const flyToTarget = useMemo((): { lat: number; lng: number } | null => {
-    if (!sheetOpen || editMode || !activeMarkerId) return null;
+    if (editMode) return null;
+    if (railFocus) return railFocus;
+    if (!sheetOpen || !activeMarkerId) return null;
     const landmarkGeo = geoPositions[activeMarkerId as RealmLocationId];
     if (landmarkGeo) return landmarkGeo;
     const group = supplementaryPins.find((g) => g.groupKey === activeMarkerId);
@@ -1007,7 +1202,7 @@ export function RealmMap({
       return { lat: group.lat, lng: group.lng };
     }
     return null;
-  }, [sheetOpen, editMode, activeMarkerId, geoPositions, supplementaryPins]);
+  }, [sheetOpen, editMode, activeMarkerId, geoPositions, supplementaryPins, railFocus]);
 
   return (
     <>
@@ -1059,7 +1254,10 @@ export function RealmMap({
             editMode={editMode}
             editorSelectedId={editorSelectedId}
             onTapLandmark={handleTapLandmark}
-            onTapSupplementary={openSupplementaryPin}
+            onTapSupplementary={(group) => {
+              openSupplementaryPin(group);
+              syncRecommendationForMarker(group.groupKey);
+            }}
             onSelectEditorMarker={setEditorSelectedId}
             onMarkerGeoChange={updateMarkerGeoPosition}
             onMapReady={() => setUriMapLoaded(true)}
@@ -1067,9 +1265,14 @@ export function RealmMap({
             onDirectionsLoaded={handleDirectionsLoaded}
             onDirectionsError={handleDirectionsError}
             flyToTarget={flyToTarget}
-            flyToEnabled={sheetOpen && !editMode}
+            flyToEnabled={(sheetOpen || Boolean(railFocus)) && !editMode}
             flyToForce={flyToForce}
             routeSheetOpen={isRouteSheetOpen}
+            markerFilter={markerFilter}
+            onMarkerFilterChange={setMarkerFilter}
+            recommendedMarkerIds={forYouMarkerIds}
+            suppressLegacyWelcome={showArrival}
+            recommendationScoreById={searchRecScores}
             urinvolvedEditPins={urinvolvedEditPins}
             selectedUrinvolvedEventId={selectedUrinvolvedEventId}
             onSelectUrinvolvedEvent={setSelectedUrinvolvedEventId}
@@ -1232,6 +1435,35 @@ export function RealmMap({
           <p className="absolute right-3 top-3 z-[5] rounded-lg border border-amber-400/40 bg-black/60 px-2 py-1 text-[10px] text-amber-200">
             Google Maps key missing — showing classic Realm map
           </p>
+        ) : null}
+
+        {showArrival && !editMode ? (
+          <div className="cq-realm-arrival-slot">
+            <RealmArrivalCard
+              campusName={campusArrivalName(personalization?.schoolName, personalization?.institutionId)}
+              eventCount={recCounts.events}
+              placeCount={recCounts.places}
+              liveCount={recCounts.live}
+              dataReady={mapGroupsLoaded}
+              onExploreForYou={() => {
+                setMarkerFilter("for_you");
+                onArrivalExplore?.();
+              }}
+              onViewFeed={() => onArrivalViewFeed?.()}
+            />
+          </div>
+        ) : null}
+
+        {!showArrival && !editMode && markerFilter === "for_you" && mapRecommendations.length > 0 ? (
+          <RealmForYouRail
+            items={mapRecommendations}
+            selectedId={selectedRecommendationId}
+            happeningTodayCount={happeningTodayCount}
+            onSelect={(item) => focusRecommendation(item, false)}
+            onView={(item) => focusRecommendation(item, true)}
+            onWalkHere={useGoogleMap ? walkToRecommendation : undefined}
+            onInterested={markRecommendationInterested}
+          />
         ) : null}
       </div>
 

@@ -116,4 +116,19 @@ describe("searchMapCatalog", () => {
     expect(searchMapCatalog(catalog, "old")).toHaveLength(0);
     expect(searchMapCatalog(catalog, "past")).toHaveLength(0);
   });
+
+  it("keeps exact text matches ahead of recommendation boosts", () => {
+    const catalog = buildMapSearchCatalog({
+      buildings: [
+        { id: "library", name: "Library", shortLabel: "Lib", lat: 41.486, lng: -71.53 },
+        { id: "the-quad", name: "The Quad", shortLabel: "Quad", lat: 41.487, lng: -71.53 },
+      ],
+      groups,
+      now,
+    });
+    const results = searchMapCatalog(catalog, "library", 8, {
+      recommendationScoreById: { "the-quad": 200, library: 1 },
+    });
+    expect(results[0]?.id).toBe("library");
+  });
 });

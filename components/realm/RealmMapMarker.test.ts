@@ -121,6 +121,18 @@ describe("RealmMapMarker magical pin", () => {
     expect(html).not.toContain("cq-event-magic");
   });
 
+  it("deemphasizes optional markers without removing the pin", () => {
+    const html = render({
+      variant: "default",
+      label: "Library",
+      color: "electric-blue",
+      deemphasized: true,
+    });
+    expect(html).toContain("cq-realm-marker--deemphasized");
+    expect(html).toContain("marker-pin");
+    expect(html).not.toContain("marker-particles");
+  });
+
   it("intensifies selected state without dropping the pin shape", () => {
     const html = render({
       variant: "default",

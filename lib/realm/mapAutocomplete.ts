@@ -218,6 +218,7 @@ export function searchMapCatalog(
   catalog: Omit<MapSearchResult, "score">[],
   query: string,
   limit = MAP_SEARCH_RESULT_LIMIT,
+  options?: { recommendationScoreById?: Record<string, number> },
 ): MapSearchResult[] {
   const q = normalize(query);
   if (!q) return [];
@@ -229,11 +230,20 @@ export function searchMapCatalog(
     club: 4,
   };
 
+  const recScores = options?.recommendationScoreById ?? {};
+
   const scored = catalog
     .map((item) => {
       const score = scoreMapSearchMatch(q, item.title, item.subtitle);
       if (score <= 0) return null;
-      return { ...item, score: score + kindBoost[item.kind] };
+      const rec =
+        recScores[item.id] ??
+        recScores[item.markerId ?? ""] ??
+        recScores[item.groupKey ?? ""] ??
+        0;
+      // Text relevance stays dominant; personalization is a gentle tie-break.
+      const recBoost = rec > 0 ? Math.min(6, Math.round(rec / 20)) : 0;
+      return { ...item, score: score + kindBoost[item.kind] + recBoost };
     })
     .filter((item): item is MapSearchResult => item != null)
     .sort((a, b) => {
