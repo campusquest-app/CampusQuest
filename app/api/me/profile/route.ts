@@ -280,6 +280,18 @@ export async function PATCH(request: Request) {
       patch.starter_intro_seen_at = nowIso;
     }
 
+    if (input.realmWelcomeSeenReset === true && process.env.NODE_ENV !== "production") {
+      patch.realm_welcome_seen_at = null;
+    } else if (input.realmWelcomeSeen === true) {
+      patch.realm_welcome_seen_at = nowIso;
+    }
+
+    if (input.navHintsSeenReset === true && process.env.NODE_ENV !== "production") {
+      patch.nav_hints_seen_at = null;
+    } else if (input.navHintsSeen === true) {
+      patch.nav_hints_seen_at = nowIso;
+    }
+
     if (input.showXpProgressBar !== undefined) {
       patch.show_xp_progress_bar = input.showXpProgressBar;
     }

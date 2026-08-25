@@ -32,6 +32,20 @@ describe("demographic onboarding policy", () => {
         preferences: { interests: ["athletics", "music", "tech"], communities: [] },
       }),
     ).toBe(true);
+
+    expect(
+      isDemographicsComplete({
+        profile: { student_status: "current_student", institution_id: "uri" },
+        preferences: { interests: ["athletics", "music", "tech"], communities: [] },
+      }),
+    ).toBe(true);
+
+    expect(
+      isDemographicsComplete({
+        profile: { student_status: "faculty_staff", institution_id: "uri", class_year: null },
+        preferences: { interests: ["career", "academics", "clubs"], communities: [] },
+      }),
+    ).toBe(true);
   });
 
   it("allows empty communities as complete", () => {
@@ -208,6 +222,73 @@ describe("authenticated route order", () => {
     expect(
       resolveProfileRoute(existing, { preferences: { interests: [], communities: [] } }),
     ).toBe("app");
+  });
+
+  it("does not send completed users back through onboarding after the screen order change", () => {
+    expect(
+      resolveProfileRoute(
+        {
+          onboarding_character_completed: true,
+          onboarding_completed: true,
+          role: "student",
+          student_status: "current_or_incoming",
+          institution_id: "uri",
+          onboarding_version: 2,
+        },
+        { preferences: { interests: ["athletics", "music", "tech"] } },
+      ),
+    ).toBe("app");
+    expect(
+      resolveAppShellRoute({
+        bootstrapStatus: "authenticated",
+        profileRoute: "app",
+        showPostLoginLoading: false,
+        hasCharacter: true,
+      }),
+    ).toBe("app");
+  });
+
+  it("routes campus email verification after demographics are complete, then avatar — without a loop", () => {
+    const personalizationDone = {
+      onboarding_character_completed: false,
+      onboarding_completed: false,
+      role: null as string | null,
+      student_status: "incoming_student",
+      institution_id: "uri",
+      onboarding_version: 2,
+      display_name_changed_at: "2026-01-01T00:00:00.000Z",
+    };
+    const prefs = { preferences: { interests: ["athletics", "music", "tech"], communities: [] } };
+
+    expect(
+      resolveProfileRoute(
+        { ...personalizationDone, campus_email_verified_at: null },
+        prefs,
+      ),
+    ).toBe("demographics_gate");
+    expect(
+      resolveAppShellRoute({
+        bootstrapStatus: "authenticated",
+        profileRoute: "demographics_gate",
+        showPostLoginLoading: false,
+        hasCharacter: false,
+      }),
+    ).toBe("demographics");
+
+    expect(
+      resolveProfileRoute(
+        { ...personalizationDone, campus_email_verified_at: "2026-08-24T00:00:00.000Z" },
+        prefs,
+      ),
+    ).toBe("character_gate");
+    expect(
+      resolveAppShellRoute({
+        bootstrapStatus: "authenticated",
+        profileRoute: "character_gate",
+        showPostLoginLoading: false,
+        hasCharacter: false,
+      }),
+    ).toBe("onboarding");
   });
 
   it("incomplete existing user without character completion is gated to demographics after display name", () => {

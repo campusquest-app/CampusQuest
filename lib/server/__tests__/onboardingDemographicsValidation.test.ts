@@ -47,4 +47,35 @@ describe("onboarding preferences validation", () => {
     expect(parsed.studentStatus).toBe("current_or_incoming");
     expect(parsed.institutionId).toBe("uri");
   });
+
+  it("accepts the expanded user-type values without dropping legacy ones", () => {
+    expect(patchMeProfileSchema.parse({ studentStatus: "current_student" }).studentStatus).toBe(
+      "current_student",
+    );
+    expect(patchMeProfileSchema.parse({ studentStatus: "incoming_student" }).studentStatus).toBe(
+      "incoming_student",
+    );
+    expect(patchMeProfileSchema.parse({ studentStatus: "graduate_student" }).studentStatus).toBe(
+      "graduate_student",
+    );
+    expect(patchMeProfileSchema.parse({ studentStatus: "faculty_staff" }).studentStatus).toBe(
+      "faculty_staff",
+    );
+    expect(onboardingPreferencesSchema.parse({
+      schoolName: "University of Rhode Island",
+      interests: ["athletics", "music", "tech"],
+      studentStatus: "faculty_staff",
+      classYear: null,
+      communities: [],
+    }).studentStatus).toBe("faculty_staff");
+  });
+
+  it("allows empty communities on save", () => {
+    const parsed = onboardingPreferencesSchema.parse({
+      schoolName: "University of Rhode Island",
+      interests: ["athletics", "music", "tech"],
+      communities: [],
+    });
+    expect(parsed.communities).toEqual([]);
+  });
 });

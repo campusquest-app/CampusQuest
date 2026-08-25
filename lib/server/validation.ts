@@ -4,6 +4,7 @@ import { CAMPUS_LOCATION_IDS } from "@/lib/locations/registry";
 import { REALM_LOCATION_IDS } from "@/lib/realm/locationGeo";
 import { ORGANIZATION_REQUEST_CATEGORIES } from "@/lib/organizationRequestCategories";
 import { passwordMeetsRequirements } from "@/lib/passwordRequirements";
+import { STUDENT_STATUS_VALUES } from "@/lib/onboarding/taxonomy";
 
 export const uuidSchema = z.string().uuid();
 
@@ -520,7 +521,7 @@ export const onboardingPreferencesSchema = z.object({
   major: z.union([z.literal(""), z.string().trim().min(2).max(120)]).optional(),
   communities: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
   institutionId: z.string().trim().min(2).max(32).optional(),
-  studentStatus: z.enum(["current_or_incoming", "not_student"]).optional(),
+  studentStatus: z.enum(STUDENT_STATUS_VALUES).optional(),
   classYear: z.number().int().min(1900).max(3000).nullable().optional(),
   onboardingVersion: z.number().int().min(1).max(100).optional(),
   markOnboardingComplete: z.boolean().optional(),
@@ -540,7 +541,7 @@ export const patchMeProfileSchema = z
     major: z.union([z.literal(""), z.string().trim().min(2).max(120)]).optional(),
     year: z.number().int().min(1900).max(3000).nullable().optional(),
     classYear: z.number().int().min(1900).max(3000).nullable().optional(),
-    studentStatus: z.enum(["current_or_incoming", "not_student"]).nullable().optional(),
+    studentStatus: z.enum(STUDENT_STATUS_VALUES).nullable().optional(),
     institutionId: z.string().trim().min(2).max(32).nullable().optional(),
     onboardingVersion: z.number().int().min(1).max(100).nullable().optional(),
     /** Serialized gameplay snapshot (equipment, extra counters); merged server-side. */
@@ -555,6 +556,14 @@ export const patchMeProfileSchema = z
     starterIntroSeen: z.literal(true).optional(),
     /** Dev-only: clear persisted intro dismissal for onboarding QA. */
     starterIntroSeenReset: z.literal(true).optional(),
+    /** Persist first-entry Realm arrival dismissal (cross-device). */
+    realmWelcomeSeen: z.literal(true).optional(),
+    /** Dev-only: clear Realm arrival so QA can replay first entry. */
+    realmWelcomeSeenReset: z.literal(true).optional(),
+    /** Persist first-session dock label hints. */
+    navHintsSeen: z.literal(true).optional(),
+    /** Dev-only: clear dock hints for QA. */
+    navHintsSeenReset: z.literal(true).optional(),
     /** Display preference: Level/XP/Streak top nav bar. */
     showXpProgressBar: z.boolean().optional(),
     /** When true and caller is moderation-admin, skips cooldown enforcement and does not bump name-change timestamps (repairs/migrations via API only). Ignored for other users. */

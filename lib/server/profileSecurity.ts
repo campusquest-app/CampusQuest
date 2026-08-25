@@ -41,6 +41,8 @@ export const FORBIDDEN_PROFILE_MUTATION_FIELDS = [
   "isHidden",
   "qa_selected_role",
   "qaSelectedRole",
+  "campus_email_verified_at",
+  "campusEmailVerifiedAt",
   "created_at",
   "createdAt",
   "updated_at",
@@ -78,6 +80,10 @@ export const ALLOWED_PROFILE_GAMEPLAY_FIELDS = [
   "beginnerChainCelebrationSeenReset",
   "starterIntroSeen",
   "starterIntroSeenReset",
+  "realmWelcomeSeen",
+  "realmWelcomeSeenReset",
+  "navHintsSeen",
+  "navHintsSeenReset",
   "preserveIdentityCooldownTimestamps",
 ] as const;
 

@@ -15,6 +15,11 @@ export function isOnboardingQaEmail(email?: string | null): boolean {
   return normalizeEmail(email) === ONBOARDING_QA_EMAIL;
 }
 
+/** Client QA controls such as "Send test verification email". Never true for ordinary users. */
+export function shouldShowCampusVerificationQaControls(email?: string | null): boolean {
+  return isOnboardingQaEmail(email);
+}
+
 function onboardingQaLogsEnabled(): boolean {
   return process.env.NODE_ENV !== "production" || process.env.AUTH_QA_LOG === "1";
 }

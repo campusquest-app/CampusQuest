@@ -36,11 +36,11 @@ export function graduationYearOptions(now: Date = new Date()): Array<{
   const start = currentAcademicYearStart(now);
   const seniorYear = start + 1;
   return [
-    { year: seniorYear + 3, standing: "freshman", label: `${seniorYear + 3} (Freshman)` },
-    { year: seniorYear + 2, standing: "sophomore", label: `${seniorYear + 2} (Sophomore)` },
-    { year: seniorYear + 1, standing: "junior", label: `${seniorYear + 1} (Junior)` },
-    { year: seniorYear, standing: "senior", label: `${seniorYear} (Senior)` },
-    { year: null, standing: "graduate", label: "Graduate Student / Other" },
+    { year: seniorYear + 3, standing: "freshman", label: `${seniorYear + 3}` },
+    { year: seniorYear + 2, standing: "sophomore", label: `${seniorYear + 2}` },
+    { year: seniorYear + 1, standing: "junior", label: `${seniorYear + 1}` },
+    { year: seniorYear, standing: "senior", label: `${seniorYear}` },
+    { year: null, standing: "other", label: "Not sure / Other" },
   ];
 }
 

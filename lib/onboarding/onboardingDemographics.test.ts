@@ -7,6 +7,8 @@ import {
   normalizeInterestIds,
   normalizeCommunityIds,
   STUDENT_STATUS,
+  STUDENT_STATUS_OPTIONS,
+  shouldAskGraduationYear,
 } from "@/lib/onboarding/taxonomy";
 import {
   currentAcademicYearStart,
@@ -35,13 +37,55 @@ describe("onboarding taxonomy", () => {
     expect(COMMUNITY_OPTIONS.some((c) => c.id === "greek_life")).toBe(true);
   });
 
-  it("exposes stable student status enums", () => {
+  it("exposes stable student status enums including current UI choices and legacy values", () => {
     expect(STUDENT_STATUS.current_or_incoming).toBe("current_or_incoming");
     expect(STUDENT_STATUS.not_student).toBe("not_student");
+    expect(STUDENT_STATUS.current_student).toBe("current_student");
+    expect(STUDENT_STATUS.incoming_student).toBe("incoming_student");
+    expect(STUDENT_STATUS.graduate_student).toBe("graduate_student");
+    expect(STUDENT_STATUS.faculty_staff).toBe("faculty_staff");
+  });
+
+  it("keeps community identifiers stable while exposing internal kinds", () => {
+    expect(COMMUNITY_OPTIONS.map((c) => c.id)).toEqual([
+      "athletics",
+      "student_organizations",
+      "greek_life",
+      "talent_development",
+      "fine_arts",
+      "graduate_students",
+      "engineering",
+      "business",
+      "computer_science",
+      "international_students",
+      "health_sciences",
+      "other",
+    ]);
+    expect(COMMUNITY_OPTIONS.every((c) => Boolean(c.kind))).toBe(true);
+    expect(COMMUNITY_OPTIONS.find((c) => c.id === "engineering")?.kind).toBe("academic_area");
+    expect(COMMUNITY_OPTIONS.find((c) => c.id === "talent_development")?.kind).toBe("program");
   });
 
   it("pins onboarding version for persistence", () => {
     expect(ONBOARDING_VERSION).toBe(2);
+  });
+
+  it("shows the four current user-type labels without listing legacy database values", () => {
+    expect(STUDENT_STATUS_OPTIONS.map((o) => o.id)).toEqual([
+      "current_student",
+      "incoming_student",
+      "graduate_student",
+      "faculty_staff",
+    ]);
+    expect(STUDENT_STATUS_OPTIONS.some((o) => o.id === "current_or_incoming")).toBe(false);
+    expect(STUDENT_STATUS_OPTIONS.some((o) => o.id === "not_student")).toBe(false);
+  });
+
+  it("skips graduation year for faculty/staff only", () => {
+    expect(shouldAskGraduationYear("faculty_staff")).toBe(false);
+    expect(shouldAskGraduationYear("not_student")).toBe(false);
+    expect(shouldAskGraduationYear("graduate_student")).toBe(true);
+    expect(shouldAskGraduationYear("current_student")).toBe(true);
   });
 });
 
@@ -57,12 +101,12 @@ describe("graduation year / class standing", () => {
     expect(deriveClassStanding(null, now)).toBe("other");
   });
 
-  it("builds year options without hard-coding permanent class labels only", () => {
+  it("builds year options as plain years plus Not sure / Other", () => {
     const now = new Date("2026-10-15T12:00:00Z");
     const opts = graduationYearOptions(now);
     expect(opts.map((o) => o.year)).toEqual([2030, 2029, 2028, 2027, null]);
-    expect(opts[0]?.label).toContain("Freshman");
-    expect(opts[4]?.label).toContain("Graduate");
+    expect(opts.map((o) => o.label)).toEqual(["2030", "2029", "2028", "2027", "Not sure / Other"]);
+    expect(opts.some((o) => /freshman|sophomore|junior|senior/i.test(o.label))).toBe(false);
   });
 });
 

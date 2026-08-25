@@ -3,7 +3,7 @@
  * Separate from beginner-chain / tutorial overlays in onboardingTutorialGating.ts.
  */
 
-import { MIN_INTERESTS, ONBOARDING_VERSION, STUDENT_STATUS } from "@/lib/onboarding/taxonomy";
+import { MIN_INTERESTS, ONBOARDING_VERSION, isKnownStudentStatus } from "@/lib/onboarding/taxonomy";
 
 /** Product switch: demographic screens are a real authenticated routing gate. */
 export const DEMOGRAPHIC_ONBOARDING_ENABLED = true;
@@ -15,6 +15,7 @@ export type DemographicProfileSnapshot = {
   onboarding_version?: number | null;
   onboarding_completed?: boolean | null;
   onboarding_character_completed?: boolean | null;
+  campus_email_verified_at?: string | null;
   created_at?: string | null;
 };
 
@@ -40,10 +41,7 @@ export type DemographicCompletionInput = {
  */
 export function isDemographicsComplete(input: DemographicCompletionInput): boolean {
   const status = input.profile.student_status?.trim() ?? "";
-  if (!status) return false;
-  if (status !== STUDENT_STATUS.current_or_incoming && status !== STUDENT_STATUS.not_student) {
-    return false;
-  }
+  if (!isKnownStudentStatus(status)) return false;
 
   const institution =
     input.profile.institution_id?.trim() ||

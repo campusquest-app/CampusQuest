@@ -126,6 +126,8 @@ const PROFILE_ONBOARDING_RESET = {
   starter_weapon: null,
   scholar_guild_id: null,
   starter_intro_seen_at: null,
+  realm_welcome_seen_at: null,
+  nav_hints_seen_at: null,
   beginner_chain_completed_at: null,
   beginner_chain_celebration_seen_at: null,
   game_state_json: null,
@@ -140,11 +142,14 @@ const PROFILE_ONBOARDING_RESET = {
   // Role-selection test state: cleared so the QA account sees the "I am a..."
   // screen again. The protected role = 'qa' itself is never touched.
   qa_selected_role: null,
+  campus_email_verified_at: null,
 } as const;
 
 /** Columns that may not exist on older schemas — retried without on 42703. */
 const OPTIONAL_RESET_COLUMNS = [
   "starter_intro_seen_at",
+  "realm_welcome_seen_at",
+  "nav_hints_seen_at",
   "beginner_chain_completed_at",
   "beginner_chain_celebration_seen_at",
   "game_state_json",
@@ -156,6 +161,7 @@ const OPTIONAL_RESET_COLUMNS = [
   "major",
   "class_year",
   "qa_selected_role",
+  "campus_email_verified_at",
 ] as const;
 
 function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {

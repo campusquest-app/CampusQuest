@@ -23,6 +23,10 @@ export type MeProfileRow = {
   onboarding_character_completed?: boolean | null;
   /** Server: starter "New Player Protocol" overlay suppressed after first dismiss or backfill. */
   starter_intro_seen_at?: string | null;
+  /** Server: personalized first-entry Realm arrival dismissed or grandfathered. */
+  realm_welcome_seen_at?: string | null;
+  /** Server: first-session dock labels dismissed or grandfathered. */
+  nav_hints_seen_at?: string | null;
   /** When true, show Level/XP/Streak bar in the top nav. Default false. */
   show_xp_progress_bar?: boolean | null;
   beginner_chain_completed_at?: string | null;
@@ -39,6 +43,7 @@ export type MeProfileRow = {
   /** When display/username last changed — used for client-side cooldown UX. */
   display_name_changed_at?: string | null;
   username_changed_at?: string | null;
+  campus_email_verified_at?: string | null;
   /** Present for allowlisted emails: rolling 7‑day caps on renames. */
   weekly_identity_budget?: {
     max_per_week: number;
