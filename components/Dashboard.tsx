@@ -44,6 +44,9 @@ import {
   type SharePostTarget,
 } from "@/lib/client/dmMessagesClient";
 import { emitSocialSync, subscribeSocialSync } from "@/lib/client/socialSync";
+import { loadCampusIdentities, closeVerificationOnboarding, resetIdentityStore } from "@/lib/client/identityStore";
+import { useCampusIdentities } from "@/lib/client/useCampusIdentities";
+import { VerificationOnboarding } from "@/components/identity/VerificationOnboarding";
 import { EventsFeed } from "./EventsFeed";
 import { OrganizationsHub } from "./OrganizationsHub";
 import { TheRealm } from "./TheRealm";
@@ -254,6 +257,7 @@ export function Dashboard() {
   const [qaReplayActive, setQaReplayActive] = useState(false);
   const [demographicsQaReplayActive, setDemographicsQaReplayActive] = useState(false);
   const [tab, setTab] = useState<Tab>("quad");
+  const identityUi = useCampusIdentities();
   const [quadFeedTab, setQuadFeedTab] = useState<QuadFeedTab>(() => readQuadFeedTabSession() ?? "public");
   const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
   const [inboxDeepLink, setInboxDeepLink] = useState<InboxDeepLink | null>(null);
@@ -500,6 +504,11 @@ export function Dashboard() {
   useEffect(() => {
     tabRef.current = tab;
   }, [tab]);
+
+  useEffect(() => {
+    if (bootstrapStatus !== "authenticated" || !character?.id) return;
+    void loadCampusIdentities(character.id).catch(() => undefined);
+  }, [bootstrapStatus, character?.id]);
 
   // Native chrome + push: refresh token if already authorized; never OS-prompt on launch.
   useEffect(() => {
@@ -1239,6 +1248,7 @@ export function Dashboard() {
       /* best-effort */
     }
     await signOutSupabaseSession();
+    resetIdentityStore();
     clearAccessToken();
     invalidateMeSessionCache();
     resetMeSessionInflight();
@@ -3063,6 +3073,15 @@ export function Dashboard() {
         }}
         onShared={() => emitSocialSync({ source: "inbox" })}
       />
+
+      {character && identityUi.verificationOpen ? (
+        <VerificationOnboarding
+          applicant={identityUi.applicant}
+          userId={character.id}
+          presetType={identityUi.verificationPreset}
+          onClose={closeVerificationOnboarding}
+        />
+      ) : null}
 
       {character && qrScannerEverOpened ? (
         <QRScannerModalLazy

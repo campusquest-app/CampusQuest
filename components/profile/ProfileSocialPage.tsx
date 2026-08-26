@@ -62,6 +62,10 @@ export function ProfileSocialPage({
   onProfileTabChange,
   canModeratePosts,
   onOpenLeaderboard,
+  onSwitchIdentity,
+  identityVerified = false,
+  identitySubtitle,
+  showLevel = true,
 }: {
   character: Character;
   viewer: Pick<Character, "id" | "name" | "username" | "avatar">;
@@ -100,6 +104,10 @@ export function ProfileSocialPage({
   onProfileTabChange?: (tab: ProfileTab) => void;
   canModeratePosts?: boolean;
   onOpenLeaderboard?: () => void;
+  onSwitchIdentity?: () => void;
+  identityVerified?: boolean;
+  identitySubtitle?: string | null;
+  showLevel?: boolean;
 }) {
   const [tab, setTab] = useState<ProfileTab>(activeProfileTab ?? "posts");
   const [selectedPost, setSelectedPost] = useState<FieldNote | null>(null);
@@ -208,6 +216,10 @@ export function ProfileSocialPage({
         guildLabel={guildLabel}
         onEditBio={isOwner ? onEditBio : undefined}
         onOpenMenu={isOwner && (onEditIdentity || onEditBio || onLogout) ? () => setMenuOpen(true) : undefined}
+        onSwitchIdentity={isOwner ? onSwitchIdentity : undefined}
+        identityVerified={identityVerified}
+        identitySubtitle={identitySubtitle}
+        showLevel={showLevel}
       />
 
       <ProfileStatsRow
@@ -234,7 +246,9 @@ export function ProfileSocialPage({
         ]}
       />
 
-      <ProfileXpCard character={character} onOpenLeaderboard={isOwner ? onOpenLeaderboard : undefined} />
+      {showLevel ? (
+        <ProfileXpCard character={character} onOpenLeaderboard={isOwner ? onOpenLeaderboard : undefined} />
+      ) : null}
 
       {isOwner ? (
         <ProfileActionButtons

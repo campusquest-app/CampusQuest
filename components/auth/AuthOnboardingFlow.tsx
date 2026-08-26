@@ -42,9 +42,9 @@ import {
 import type { DemographicPreferencesSnapshot, DemographicProfileSnapshot } from "@/lib/onboarding/demographicOnboardingPolicy";
 import {
   OnboardingAmbient,
-  OnboardingMagicRing,
   type OnboardingAmbientDensity,
 } from "@/components/onboarding/OnboardingAmbient";
+import { KnightStage, OnboardingProgressHeader } from "@/components/onboarding/KnightStage";
 
 type Step = DemographicOnboardingStep;
 
@@ -53,55 +53,6 @@ function ambientForStep(step: Step): { density: OnboardingAmbientDensity; campus
   if (step === "success") return { density: "celebrate", campusHaze: false };
   if (step === "email_verification") return { density: "calm", campusHaze: false };
   return { density: "normal", campusHaze: false };
-}
-
-function KnightStage({
-  src,
-  size = "md",
-  ring = "md",
-}: {
-  src: string;
-  size?: "sm" | "md" | "lg";
-  ring?: "sm" | "md" | "lg" | "none";
-}) {
-  return (
-    <div className={`cq-onboard-knight-stage cq-onboard-knight-stage--${size}`} aria-hidden="true">
-      {ring !== "none" ? <OnboardingMagicRing size={ring === "lg" ? "lg" : ring === "sm" ? "sm" : "md"} /> : null}
-      <div className="cq-onboard-knight">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt="" className="cq-onboard-knight-img" width={240} height={240} decoding="async" />
-      </div>
-    </div>
-  );
-}
-
-function ProgressHeader({
-  label,
-  current,
-  total,
-}: {
-  label: string;
-  current: number;
-  total: number;
-}) {
-  return (
-    <div className="cq-onboard-progress-wrap">
-      <p className="cq-onboard-progress-label">{label}</p>
-      <div
-        className="cq-onboard-progress"
-        role="progressbar"
-        aria-valuemin={1}
-        aria-valuemax={total}
-        aria-valuenow={current}
-        aria-label={label}
-      >
-        {Array.from({ length: total }).map((_, i) => {
-          const state = i < current - 1 ? "done" : i === current - 1 ? "active" : "todo";
-          return <span key={i} className={`cq-onboard-dot cq-onboard-dot--${state}`} />;
-        })}
-      </div>
-    </div>
-  );
 }
 
 function isDomainMessage(message: string): boolean {
@@ -519,7 +470,7 @@ export function AuthOnboardingFlow({
       ) : null}
 
       {progress ? (
-        <ProgressHeader label={progress.label} current={progress.current} total={progress.total} />
+        <OnboardingProgressHeader label={progress.label} current={progress.current} total={progress.total} />
       ) : null}
 
       <div className="cq-onboard-inner">

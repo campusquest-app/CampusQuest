@@ -23,6 +23,7 @@ import {
 } from "@/lib/marketplace/policy";
 import type { MarketplaceBusiness, MarketplaceListing, MarketplaceOffer } from "@/lib/marketplace/types";
 import type { QuadCarouselMediaDto } from "@/lib/quadMedia";
+import { assertMarketplaceListingIdentity } from "@/lib/identity/policy";
 import { isCampusEmailVerified } from "@/lib/campusEmailVerification";
 import { getOrCreateMarketplaceConversation } from "@/lib/server/messaging";
 
@@ -89,6 +90,21 @@ async function isBusinessManager(userClient: UserClient, userId: string, busines
     .eq("user_id", userId)
     .maybeSingle();
   return data?.role === "owner" || data?.role === "admin";
+}
+
+async function getManagedBusiness(userClient: UserClient, userId: string, businessId: string) {
+  const manager = await isBusinessManager(userClient, userId, businessId);
+  const { data } = await userClient
+    .from("student_businesses")
+    .select("id, verification_status, status")
+    .eq("id", businessId)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    verificationStatus: data.verification_status === "verified" ? ("verified" as const) : ("unverified" as const),
+    status: data.status === "inactive" ? ("inactive" as const) : ("active" as const),
+    isManager: manager,
+  };
 }
 
 function mapMedia(rows: Array<Record<string, unknown>> | null | undefined): QuadCarouselMediaDto[] {
@@ -178,13 +194,14 @@ export async function listMarketplaceListings(args: {
   query?: string;
   businessId?: string;
   mine?: boolean;
+  campusFeed?: boolean;
 }): Promise<MarketplaceListing[]> {
   await assertAccountCanSocialize(args.userClient as never, args.userId);
   let q = args.userClient
     .from("marketplace_listings")
     .select(LISTING_SELECT)
     .order("created_at", { ascending: false })
-    .limit(80);
+    .limit(args.campusFeed ? 24 : 80);
 
   if (args.mine) {
     q = q.eq("seller_id", args.userId).neq("status", "removed");
@@ -196,10 +213,16 @@ export async function listMarketplaceListings(args: {
     if (category) q = q.eq("category", category);
     if (args.filter === "student_owned") q = q.not("business_id", "is", null);
     if (args.filter === "free") q = q.eq("price_cents", 0);
+    if (args.campusFeed) q = q.eq("show_in_campus_feed", true);
   }
 
   const { data, error } = await q;
-  if (error) throw new ApiError(400, error.message, "MARKETPLACE_LIST_FAILED");
+  if (error) {
+    if (args.campusFeed && /show_in_campus_feed/i.test(error.message ?? "")) {
+      return listMarketplaceListings({ ...args, campusFeed: false });
+    }
+    throw new ApiError(400, error.message, "MARKETPLACE_LIST_FAILED");
+  }
 
   const listingIds = (data ?? []).map((row: { id: string }) => row.id);
   const favoriteIds = new Set<string>();
@@ -282,12 +305,14 @@ export async function createMarketplaceListing(args: {
   if (args.input.listingKind === "item" && !args.input.condition) {
     throw new ApiError(400, "Choose a condition for this item.", "MARKETPLACE_CONDITION_REQUIRED");
   }
-  if (args.input.listingKind === "business_post" && !args.input.businessId) {
-    throw new ApiError(400, "Business posts require a Student Business.", "MARKETPLACE_BUSINESS_REQUIRED");
-  }
-  if (args.input.businessId) {
-    const manager = await isBusinessManager(args.userClient, args.userId, args.input.businessId);
-    if (!manager) throw new ApiError(403, "You cannot post for this business.", "MARKETPLACE_BUSINESS_FORBIDDEN");
+  const businessId = args.input.listingKind === "item" ? null : args.input.businessId ?? null;
+  const business = businessId ? await getManagedBusiness(args.userClient, args.userId, businessId) : null;
+  const identityGate = assertMarketplaceListingIdentity({
+    listingKind: args.input.listingKind,
+    business,
+  });
+  if (!identityGate.ok) {
+    throw new ApiError(403, identityGate.message, identityGate.code);
   }
 
   const priceCents =
@@ -296,8 +321,9 @@ export async function createMarketplaceListing(args: {
     .from("marketplace_listings")
     .insert({
       seller_id: args.userId,
-      business_id: args.input.businessId ?? null,
+      business_id: businessId,
       listing_kind: args.input.listingKind,
+      show_in_campus_feed: true,
       title: args.input.title.trim(),
       description: args.input.description.trim(),
       price_cents: priceCents,

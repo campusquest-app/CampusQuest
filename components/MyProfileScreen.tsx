@@ -7,7 +7,7 @@ import type { FieldNote } from "@/lib/types";
 import { getFeedByAuthorId, mergeRemoteQuadPostsForMutations, verifyFieldNote, assistFieldNote } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
 import { submitQuadComment } from "@/lib/client/quadCommentActions";
-import { fetchMyQuadPosts } from "@/lib/client/quadPostsClient";
+import { fetchMyQuadPosts, fetchQuadPostsByAuthor } from "@/lib/client/quadPostsClient";
 import {
   avatarFromConnectionProfile,
   fetchConnections,
@@ -35,6 +35,9 @@ import {
   PROFILE_DISPLAY_NAME_COOLDOWN_MS,
   PROFILE_USERNAME_COOLDOWN_MS,
 } from "@/lib/profileIdentityCooldown";
+import { useCampusIdentities } from "@/lib/client/useCampusIdentities";
+import { openVerificationOnboarding, switchCampusIdentity } from "@/lib/client/identityStore";
+import { SwitchProfileSheet } from "@/components/identity/SwitchProfileSheet";
 
 const BIO_MAX_LENGTH = 150;
 
@@ -78,6 +81,19 @@ export function MyProfileScreen({
   onProfileTabChange?: (tab: ProfileTab) => void;
   onOpenLeaderboard?: () => void;
 }) {
+  const identityState = useCampusIdentities();
+  const currentIdentity = identityState.currentIdentity;
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const displayCharacter: Character =
+    currentIdentity && currentIdentity.type !== "personal"
+      ? {
+          ...character,
+          name: currentIdentity.displayName,
+          username: currentIdentity.username,
+          bio: currentIdentity.bio,
+          avatar: currentIdentity.avatarUrl || character.avatar,
+        }
+      : character;
   const isPlatformAdminUser = platformAdminAccess ?? moderationAdminAccess;
   const [posts, setPosts] = useState<FieldNote[]>([]);
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
@@ -131,7 +147,16 @@ export function MyProfileScreen({
     void (async () => {
       try {
         const t0 = typeof performance !== "undefined" ? performance.now() : 0;
-        const mine = await fetchMyQuadPosts(character.id, 50);
+        const mine =
+          currentIdentity && currentIdentity.type !== "personal"
+            ? await fetchQuadPostsByAuthor(character.id, character.id, 50, {
+                type: currentIdentity.type,
+                id: currentIdentity.id,
+              })
+            : await fetchQuadPostsByAuthor(character.id, character.id, 50, {
+                type: "personal",
+                id: character.id,
+              }).catch(() => fetchMyQuadPosts(character.id, 50));
         if (typeof performance !== "undefined") {
           console.log("[cq:load] profile my quad posts", Math.round(performance.now() - t0), "ms");
         }
@@ -150,7 +175,7 @@ export function MyProfileScreen({
         setProfileQuadPostsReady(true);
       }
     })();
-  }, [character.id]);
+  }, [character.id, currentIdentity]);
 
   const handlePullRefresh = useCallback(async () => {
     refresh();
@@ -455,7 +480,7 @@ export function MyProfileScreen({
   return (
     <PullToRefresh onRefresh={handlePullRefresh}>
       <ProfileSocialPage
-        character={character}
+        character={displayCharacter}
         viewer={character}
         isOwner
         posts={posts}
@@ -464,18 +489,30 @@ export function MyProfileScreen({
         onRetryPosts={refresh}
         friendsCount={friendsCount}
         followingCount={followingCount}
-        onEditBio={() => {
-          setBioDraft(character.bio ?? "");
-          setShowEditBio(true);
-        }}
-        onEditIdentity={() => {
-          setIdentityNameDraft(character.name);
-          setIdentityUsernameDraft(character.username);
-          setIdentityError(null);
-          setRepairPreserveCooldown(true);
-          setCooldownSnap(null);
-          setShowEditIdentity(true);
-        }}
+        onSwitchIdentity={() => setSwitcherOpen(true)}
+        identityVerified={currentIdentity?.verified === true && currentIdentity.type !== "personal"}
+        identitySubtitle={currentIdentity?.type === "personal" ? null : currentIdentity?.verificationLabel ?? null}
+        showLevel={!currentIdentity || currentIdentity.type === "personal"}
+        onEditBio={
+          !currentIdentity || currentIdentity.type === "personal"
+            ? () => {
+                setBioDraft(character.bio ?? "");
+                setShowEditBio(true);
+              }
+            : undefined
+        }
+        onEditIdentity={
+          !currentIdentity || currentIdentity.type === "personal"
+            ? () => {
+                setIdentityNameDraft(character.name);
+                setIdentityUsernameDraft(character.username);
+                setIdentityError(null);
+                setRepairPreserveCooldown(true);
+                setCooldownSnap(null);
+                setShowEditIdentity(true);
+              }
+            : undefined
+        }
         onLogout={
           onLogout
             ? () => {
@@ -505,6 +542,24 @@ export function MyProfileScreen({
         onProfileTabChange={onProfileTabChange}
         onOpenLeaderboard={onOpenLeaderboard}
       />
+
+      {switcherOpen ? (
+        <SwitchProfileSheet
+          identities={identityState.identities}
+          currentId={identityState.active.id || character.id}
+          pendingRequests={identityState.pendingRequests}
+          onSelect={(identity) => {
+            void switchCampusIdentity({ type: identity.type, id: identity.id })
+              .then(() => setSwitcherOpen(false))
+              .catch(() => setSwitcherOpen(false));
+          }}
+          onAdd={() => {
+            setSwitcherOpen(false);
+            openVerificationOnboarding();
+          }}
+          onClose={() => setSwitcherOpen(false)}
+        />
+      ) : null}
 
       {friendsListOpen && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Friends list" onClick={(e) => e.target === e.currentTarget && setFriendsListOpen(false)}>

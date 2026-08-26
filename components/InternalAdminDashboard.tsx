@@ -16,6 +16,7 @@ import { AdminQuestsSection } from "@/components/admin/AdminQuestsSection";
 import { AdminUsersSection } from "@/components/admin/AdminUsersSection";
 import { AdminSystemSection } from "@/components/admin/AdminSystemSection";
 import { AdminUrinvolvedSection } from "@/components/admin/AdminUrinvolvedSection";
+import { AdminVerificationSection } from "@/components/admin/AdminVerificationSection";
 
 function BackToQuadLink() {
   return (
@@ -28,18 +29,26 @@ function BackToQuadLink() {
   );
 }
 
-export function InternalAdminDashboard() {
+export function InternalAdminDashboard({
+  initialSection = "dashboard",
+  initialRequestId,
+}: {
+  initialSection?: AdminSectionId;
+  initialRequestId?: string;
+}) {
   const [loading, setLoading] = useState(true);
   const [allowedEmail, setAllowedEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
-  const [section, setSection] = useState<AdminSectionId>("dashboard");
+  const [section, setSection] = useState<AdminSectionId>(initialSection);
   const [moderationTab, setModerationTab] = useState<ModerationTabId>("messages");
   const [organizationsTab, setOrganizationsTab] = useState<OrganizationsTabId>("requests");
   const [safetyQuery, setSafetyQuery] = useState<string | undefined>();
   const [auditQuery, setAuditQuery] = useState<string | undefined>();
   const [organizationId, setOrganizationId] = useState<string | undefined>();
+  const [verificationRequestId, setVerificationRequestId] = useState<string | undefined>(initialRequestId);
+  const [pendingVerificationCount, setPendingVerificationCount] = useState(0);
 
   const verifyAccess = useCallback(async () => {
     setLoading(true);
@@ -74,6 +83,21 @@ export function InternalAdminDashboard() {
   useEffect(() => {
     void verifyAccess();
   }, [verifyAccess]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("section") === "verification") setSection("verification");
+    const requestId = params.get("requestId");
+    if (requestId) setVerificationRequestId(requestId);
+  }, []);
+
+  useEffect(() => {
+    if (forbidden || sessionExpired || loading) return;
+    void fetchAuthed<{ requests: unknown[]; pendingCount: number }>("/api/internal/admin/verification-requests?status=pending_review")
+      .then((data) => setPendingVerificationCount(data.pendingCount ?? 0))
+      .catch(() => undefined);
+  }, [forbidden, sessionExpired, loading, section]);
 
   function navigate(sectionId: AdminSectionId, hint?: string) {
     setSection(sectionId);
@@ -144,6 +168,7 @@ export function InternalAdminDashboard() {
       onSectionChange={setSection}
       onSearchNavigate={handleSearchNavigate}
       allowedEmail={allowedEmail}
+      badges={{ verification: pendingVerificationCount }}
     >
       {error ? <p className="mb-4 text-xs text-rose-200">{error}</p> : null}
       {section === "dashboard" ? <AdminDashboardHome onNavigate={navigate} /> : null}
@@ -161,6 +186,7 @@ export function InternalAdminDashboard() {
           initialOrganizationId={organizationId}
         />
       ) : null}
+      {section === "verification" ? <AdminVerificationSection initialRequestId={verificationRequestId} /> : null}
       {section === "urinvolved" ? <AdminUrinvolvedSection /> : null}
       {section === "analytics" ? <AdminAnalyticsSection /> : null}
       {section === "audit" ? <AdminAuditSection initialSearch={auditQuery} /> : null}

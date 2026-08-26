@@ -5,7 +5,6 @@ import { Search } from "lucide-react";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
 import { MarketListingCard } from "@/components/market/MarketListingCard";
 import { MarketSellComposer } from "@/components/market/MarketSellComposer";
-import { MarketCreateBusinessSheet } from "@/components/market/MarketCreateBusinessSheet";
 import { MarketBusinessSheet } from "@/components/market/MarketBusinessSheet";
 import { MarketOfferSheet } from "@/components/market/MarketOfferSheet";
 import { MarketReportSheet } from "@/components/market/MarketReportSheet";
@@ -25,6 +24,7 @@ import {
 } from "@/lib/client/marketplaceClient";
 import { postAuthed } from "@/lib/client/dashboardApi";
 import { isMissingSessionError } from "@/lib/client/dashboardApi";
+import { openVerificationOnboarding } from "@/lib/client/identityStore";
 
 export function TheMarketFeed({
   viewerId,
@@ -49,7 +49,6 @@ export function TheMarketFeed({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [createBusinessOpen, setCreateBusinessOpen] = useState(false);
   const [editing, setEditing] = useState<MarketplaceListing | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);
   const [reportId, setReportId] = useState<string | null>(null);
@@ -166,7 +165,7 @@ export function TheMarketFeed({
               <button type="button" className="cq-market-btn cq-market-btn--primary" onClick={() => onSellOpenChange(true)}>
                 Sell Something
               </button>
-              <button type="button" className="cq-market-btn cq-market-btn--secondary" onClick={() => setCreateBusinessOpen(true)}>
+              <button type="button" className="cq-market-btn cq-market-btn--secondary" onClick={() => openVerificationOnboarding("student_business")}>
                 Start a Student Business
               </button>
             </>
@@ -238,7 +237,7 @@ export function TheMarketFeed({
 
       {empty ? null : (
         <div className="cq-market-start-row">
-          <button type="button" className="cq-market-link" onClick={() => setCreateBusinessOpen(true)}>
+          <button type="button" className="cq-market-link" onClick={() => openVerificationOnboarding("student_business")}>
             Start a Student Business
           </button>
         </div>
@@ -253,12 +252,6 @@ export function TheMarketFeed({
             onSellOpenChange(false);
           }}
           onPublished={() => void load()}
-        />
-      ) : null}
-      {createBusinessOpen ? (
-        <MarketCreateBusinessSheet
-          onClose={() => setCreateBusinessOpen(false)}
-          onCreated={() => void load()}
         />
       ) : null}
       {shopId ? (

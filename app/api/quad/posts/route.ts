@@ -42,11 +42,13 @@ async function finalizeFeedPosts(
 ): Promise<QuadPostApiRow[]> {
   const tagged = await withTagsAndMentions(posts);
   const withMedia = (await enrichPostsWithCarouselMedia(tagged)) as QuadPostApiRow[];
-  if (!args) return withMedia;
+  const { enrichPostsWithPostedAs } = await import("@/lib/server/identities");
+  const withPostedAs = (await enrichPostsWithPostedAs(withMedia as Record<string, unknown>[])) as QuadPostApiRow[];
+  if (!args) return withPostedAs;
   return attachRecentLikersToPosts({
     userClient: args.userClient,
     viewerId: args.viewerId,
-    posts: withMedia,
+    posts: withPostedAs,
   });
 }
 
@@ -159,6 +161,9 @@ export async function GET(request: Request) {
       });
     }
 
+    const postedAsTypeParam = searchParams.get("postedAsType")?.trim();
+    const postedAsIdParam = searchParams.get("postedAsId")?.trim();
+
     let query = auth.userClient.from("quad_posts").select(QUAD_POSTS_WITH_PROFILE_SELECT);
 
     if (authorIdParam) {
@@ -179,6 +184,13 @@ export async function GET(request: Request) {
           query = query.eq("visibility", "public");
         }
       }
+      if (postedAsTypeParam === "student_business" || postedAsTypeParam === "organization") {
+        if (postedAsIdParam && uuidSchema.safeParse(postedAsIdParam).success) {
+          query = query.eq("posted_as_type", postedAsTypeParam).eq("posted_as_id", postedAsIdParam);
+        }
+      } else if (postedAsTypeParam === "personal") {
+        query = query.eq("posted_as_type", "personal");
+      }
     } else if (feedParam === "public" || !feedParam) {
       query = query.eq("visibility", "public");
     }
@@ -188,13 +200,24 @@ export async function GET(request: Request) {
       listHiddenUserIds(auth.userClient),
     ]);
 
-    if (error) {
-      logQuadPostError("list", error, { userId: auth.user.id });
-      throw new ApiError(400, error.message ?? "Could not load Quad posts.", "QUAD_POSTS_LIST_FAILED");
+    let listed = data;
+    let listError = error;
+    if (listError && /posted_as_/i.test(`${listError.message ?? ""} ${listError.details ?? ""}`)) {
+      let fallback = auth.userClient.from("quad_posts").select(QUAD_POSTS_WITH_PROFILE_SELECT);
+      if (authorIdParam) fallback = fallback.eq("user_id", authorIdParam);
+      else if (feedParam === "public" || !feedParam) fallback = fallback.eq("visibility", "public");
+      const retry = await fallback.order("created_at", { ascending: false }).limit(limit);
+      listed = retry.data;
+      listError = retry.error;
+    }
+
+    if (listError) {
+      logQuadPostError("list", listError, { userId: auth.user.id });
+      throw new ApiError(400, listError.message ?? "Could not load Quad posts.", "QUAD_POSTS_LIST_FAILED");
     }
 
     // QA/test account posts stay visible to the author, hidden from everyone else.
-    const posts = ((data ?? []) as unknown as QuadPostApiRow[]).filter(
+    const posts = ((listed ?? []) as unknown as QuadPostApiRow[]).filter(
       (post) => post.user_id === auth.user.id || !hiddenIds.has(post.user_id),
     );
     const postIds = posts.map((p) => p.id);
@@ -275,8 +298,18 @@ export async function POST(request: Request) {
     const locationName = input.locationName?.trim();
     const hasValidLocation = !!locationId && isRealmLocationId(locationId);
 
+    const { resolvePostingIdentity } = await import("@/lib/server/identities");
+    const postingIdentity = await resolvePostingIdentity({
+      userClient: auth.userClient,
+      userId: auth.user.id,
+      requestedType: input.postedAsType ?? "personal",
+      requestedId: input.postedAsId ?? auth.user.id,
+    });
+
     const insert = {
       user_id: auth.user.id,
+      posted_as_type: postingIdentity.type,
+      posted_as_id: postingIdentity.id,
       body: input.body.trim().slice(0, 300),
       proof_url: proofUrl,
       media_type: mediaType,
@@ -299,11 +332,22 @@ export async function POST(request: Request) {
       location_id: hasValidLocation ? locationId : null,
       location_name: hasValidLocation && locationName ? locationName.slice(0, 80) : null,
     };
-    const { data: created, error: insErr } = await auth.userClient
+    let { data: created, error: insErr } = await auth.userClient
       .from("quad_posts")
       .insert(insert)
       .select(QUAD_POSTS_WITH_PROFILE_SELECT)
       .single();
+
+    if (insErr && /posted_as_/i.test(`${insErr.message ?? ""} ${insErr.details ?? ""}`)) {
+      const { posted_as_type: _postedAsType, posted_as_id: _postedAsId, ...legacyInsert } = insert;
+      const retry = await auth.userClient
+        .from("quad_posts")
+        .insert(legacyInsert)
+        .select(QUAD_POSTS_WITH_PROFILE_SELECT)
+        .single();
+      created = retry.data;
+      insErr = retry.error;
+    }
 
     if (insErr || !created) {
       logQuadPostError("create", insErr ?? new Error("insert returned no row"), {

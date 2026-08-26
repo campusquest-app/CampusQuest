@@ -17,6 +17,7 @@ export async function GET(request: Request) {
       q: searchParams.get("q") ?? undefined,
       businessId: searchParams.get("businessId") ?? undefined,
       mine: searchParams.get("mine") ?? undefined,
+      campusFeed: searchParams.get("campusFeed") ?? undefined,
     });
     if (!parsed.success) {
       throw new ApiError(400, parsed.error.issues[0]?.message ?? "Invalid query.", "VALIDATION_ERROR");
@@ -29,6 +30,7 @@ export async function GET(request: Request) {
       query: parsed.data.q,
       businessId: parsed.data.businessId,
       mine: Boolean(parsed.data.mine),
+      campusFeed: Boolean(parsed.data.campusFeed),
     });
     return ok({ listings });
   } catch (error) {

@@ -336,6 +336,9 @@ export interface FieldNote {
   mediaId?: string;
   /** Up to 3 recent likers for Instagram-style "Liked by" (connections prioritized). */
   likedByPreview?: import("./quadFieldNote").QuadPostLikerPreview[];
+  postedAsType?: "personal" | "student_business" | "organization";
+  postedAsId?: string;
+  authorVerifiedBadge?: boolean;
 }
 
 // For serialization we store nod/rally as arrays

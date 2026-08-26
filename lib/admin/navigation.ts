@@ -2,6 +2,7 @@ export type AdminSectionId =
   | "dashboard"
   | "moderation"
   | "organizations"
+  | "verification"
   | "urinvolved"
   | "analytics"
   | "audit"
@@ -33,6 +34,11 @@ export const ADMIN_NAV: AdminNavItem[] = [
       { id: "safety", label: "User Safety" },
       { id: "appeals", label: "Appeals" },
     ],
+  },
+  {
+    id: "verification",
+    label: "Verification Requests",
+    icon: "✅",
   },
   {
     id: "organizations",

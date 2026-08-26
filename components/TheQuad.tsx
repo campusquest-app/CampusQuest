@@ -38,8 +38,11 @@ import {
 } from "@/lib/client/authSessionClient";
 import { isQuadCommunityChannel, QUAD_COMMUNITY_FEED_LABELS, type QuadCommunityChannel } from "@/lib/quadCommunityChannels";
 import { isMarketFeedTab, type QuadFeedTab } from "@/lib/client/quadFeedOptions";
+import { fetchMarketplaceListings } from "@/lib/client/marketplaceClient";
+import { interleaveMarketIntoCampusFeed } from "@/lib/identity/policy";
+import { CampusFeedListingCard } from "@/components/identity/CampusFeedListingCard";
+import type { MarketplaceListing, MarketplaceSeller } from "@/lib/marketplace/types";
 import { TheMarketFeed } from "@/components/market/TheMarketFeed";
-import type { MarketplaceSeller } from "@/lib/marketplace/types";
 import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
 import {
   fieldNoteToRecommendationEntity,
@@ -127,6 +130,7 @@ export function TheQuad({
   onMessageSeller?: (seller: MarketplaceSeller) => void;
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
+  const [campusListings, setCampusListings] = useState<MarketplaceListing[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
@@ -220,6 +224,7 @@ export function TheQuad({
       if (isMarketFeedTab(feedTab)) {
         setFeedLoading(false);
         setNotes([]);
+        setCampusListings([]);
         setFeedError(null);
         setMarketRefreshKey((value) => value + 1);
         onRefresh?.();
@@ -227,6 +232,7 @@ export function TheQuad({
       }
 
       if (feedTab === "friends") {
+        setCampusListings([]);
         try {
           const remote = await fetchQuadFriendsPosts(character.id, 80);
           const list = remote.map(enrichNote);
@@ -246,6 +252,7 @@ export function TheQuad({
       }
 
       if (isCommunityFeedTab(feedTab)) {
+        setCampusListings([]);
         try {
           const remote = await fetchQuadCommunityPosts(character.id, feedTab, 80);
           mergeRemoteQuadPostsCache(remote);
@@ -287,6 +294,15 @@ export function TheQuad({
         list = applyCampusFeedRanking(list);
       }
       setNotes(cloneFeedNotesForDisplay(list));
+      if (feedTab === "public") {
+        try {
+          setCampusListings(await fetchMarketplaceListings({ campusFeed: true }));
+        } catch {
+          setCampusListings([]);
+        }
+      } else {
+        setCampusListings([]);
+      }
       if (homeFetchFailed && list.length === 0) {
         setFeedError("Could not load The Quad right now.");
       } else {
@@ -397,6 +413,19 @@ export function TheQuad({
       body: "Tap + to share what’s happening on campus. This Campus Feed stays open to the whole URI community.",
     };
   }, [feedTab]);
+
+  const streamItems = useMemo(
+    () =>
+      feedTab === "public"
+        ? interleaveMarketIntoCampusFeed(notes, campusListings)
+        : notes.map((note) => ({
+            kind: "post" as const,
+            id: note.id,
+            createdAt: note.createdAt,
+            note,
+          })),
+    [campusListings, feedTab, notes],
+  );
 
   const syncNotesFromFeed = useCallback(() => {
     if (feedTab === "friends" || isCommunityFeedTab(feedTab)) {
@@ -634,7 +663,7 @@ export function TheQuad({
                 onRetry={() => void refresh()}
               />
             </div>
-          ) : notes.length === 0 ? (
+          ) : streamItems.length === 0 ? (
             <div className="px-[2.5vw] py-10 sm:px-[3vw]">
               <ScreenDataState variant="empty" message={emptyCopy.title} detail={emptyCopy.body} />
             </div>
@@ -659,23 +688,31 @@ export function TheQuad({
                   {postActionMessage}
                 </p>
               ) : null}
-              {notes.map((note) => (
-                <div key={note.id}>
-                  {reasonById[note.id] ? (
-                    <p className="px-1 pb-1 text-[11px] font-semibold text-uri-keaney/90">{reasonById[note.id]}</p>
+              {streamItems.map((item) =>
+                item.kind === "market" ? (
+                  <CampusFeedListingCard
+                    key={item.id}
+                    listing={item.listing}
+                    viewerId={character.id}
+                    onMessageSeller={onMessageSeller}
+                  />
+                ) : (
+                <div key={item.id}>
+                  {reasonById[item.note.id] ? (
+                    <p className="px-1 pb-1 text-[11px] font-semibold text-uri-keaney/90">{reasonById[item.note.id]}</p>
                   ) : null}
                   <FieldNoteCard
                   variant="feed"
-                  note={note}
+                  note={item.note}
                   currentUserId={character.id}
-                  comments={getCommentsByNoteId(note.id)}
+                  comments={getCommentsByNoteId(item.note.id)}
                   onNod={handleNod}
                   onHype={handleHype}
                   onVerify={handleVerify}
                   onAssist={handleAssist}
                   onAddComment={handleAddComment}
                   onCommentsUpdated={handleCommentsUpdated}
-                  likePending={pendingReactions.has(note.id)}
+                  likePending={pendingReactions.has(item.note.id)}
                   onPostUpdated={handlePostUpdated}
                   onPostDeleted={handlePostDeleted}
                   canModeratePosts={canModeratePosts}
@@ -687,7 +724,8 @@ export function TheQuad({
                   onViewOnMap={onViewOnMap}
                 />
                 </div>
-              ))}
+                ),
+              )}
             </div>
           )}
         </div>

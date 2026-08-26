@@ -291,6 +291,7 @@ function fieldNoteCardPropsAreEqual(prev: FieldNoteCardProps, next: FieldNoteCar
   if ((pn.mentions?.length ?? 0) !== (nn.mentions?.length ?? 0)) return false;
   if (pn.authorName !== nn.authorName) return false;
   if (pn.authorUsername !== nn.authorUsername) return false;
+  if (pn.authorVerifiedBadge !== nn.authorVerifiedBadge) return false;
   if (pn.authorAvatar !== nn.authorAvatar) return false;
   if (pn.locationName !== nn.locationName) return false;
   if (userHasReacted(pn, prev.currentUserId) !== userHasReacted(nn, next.currentUserId)) return false;
@@ -1036,6 +1037,9 @@ function FieldNoteCardInner({
             <div className="min-w-0 flex-1 py-0.5">
               <div className="flex min-w-0 items-center gap-1.5">
                 {authorUsernamePrimary}
+                {note.authorVerifiedBadge ? (
+                  <span className="cq-identity-badge" aria-label="Verified">✓</span>
+                ) : null}
                 {(note.verifyCount ?? 0) >= 2 ? (
                   <span className="shrink-0 text-[10px] font-medium text-emerald-300/75">Verified</span>
                 ) : null}
@@ -1105,6 +1109,9 @@ function FieldNoteCardInner({
             <div className="flex items-start gap-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               {authorNameEl}
+              {note.authorVerifiedBadge ? (
+                <span className="cq-identity-badge" aria-label="Verified">✓</span>
+              ) : null}
               {onViewAuthor ? authorUsernameEl : (
                 <span className="text-uri-keaney/90 text-sm">@{note.authorUsername}</span>
               )}

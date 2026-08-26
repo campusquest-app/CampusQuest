@@ -56,6 +56,9 @@ import {
 } from "@/lib/quadMedia";
 import { logQuadUpload, logQuadUploadError } from "@/lib/client/quadUploadLog";
 import { probeVideoFile } from "@/lib/client/probeVideoFile";
+import { useCampusIdentities } from "@/lib/client/useCampusIdentities";
+import { switchCampusIdentity } from "@/lib/client/identityStore";
+import { SwitchProfileSheet } from "@/components/identity/SwitchProfileSheet";
 
 function seedCarouselItems(args: {
   initialCarousel?: { items: ComposerCarouselItem[]; coverClientId: string | null } | null;
@@ -155,6 +158,9 @@ export function FieldNoteComposer({
   const [photoTagEditorOpen, setPhotoTagEditorOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [cursor, setCursor] = useState(0);
+  const identityState = useCampusIdentities();
+  const postingIdentity = identityState.currentIdentity;
+  const [identityPickerOpen, setIdentityPickerOpen] = useState(false);
   const photoFileRef = useRef<HTMLInputElement>(null);
   const cameraFileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -383,6 +389,8 @@ export function FieldNoteComposer({
           visibility,
           ramMarks,
           authorStreakDays: character.streakDays ?? 0,
+          postedAsType: postingIdentity?.type ?? "personal",
+          postedAsId: postingIdentity?.id ?? character.id,
           ...(selectedLocation
             ? { locationId: selectedLocation.slug, locationName: selectedLocation.name }
             : {}),
@@ -468,8 +476,9 @@ export function FieldNoteComposer({
     }
   }
 
-  const previewName = character.name || "You";
-  const previewUsername = character.username || "you";
+  const previewName = postingIdentity?.displayName || character.name || "You";
+  const previewUsername = postingIdentity?.username || character.username || "you";
+  const previewAvatar = postingIdentity?.avatarUrl || character.avatar;
   const showPreview = body.trim().length > 0 || hasMedia;
   const uploadPct = overallUploadProgress(carouselItems);
 
@@ -499,10 +508,23 @@ export function FieldNoteComposer({
       <div className="cq-composer-scroll">
         <div className="cq-composer-identity">
           <div className="cq-composer-identity-avatar">
-            <AvatarDisplay avatar={character.avatar} fitParent size={44} />
+            <AvatarDisplay
+              avatar={previewAvatar}
+              size={40}
+              className="rounded-full"
+              classId={character.classId}
+              starterWeapon={character.starterWeapon}
+            />
           </div>
-          <div className="min-w-0">
-            <p className="cq-composer-identity-name">{previewName}</p>
+          <div className="min-w-0 flex-1">
+            <button
+              type="button"
+              className="cq-composer-posting-as"
+              onClick={() => setIdentityPickerOpen(true)}
+            >
+              Posting as: {previewName}
+              <ChevronDown className="h-4 w-4" aria-hidden />
+            </button>
             <div className="cq-composer-visibility" role="group" aria-label="Who can see this post">
               <button
                 type="button"
@@ -794,7 +816,7 @@ export function FieldNoteComposer({
             <div className="cq-composer-preview-card">
               <div className="cq-composer-preview-head">
                 <div className="cq-composer-preview-avatar">
-                  <AvatarDisplay avatar={character.avatar} fitParent size={36} />
+                  <AvatarDisplay avatar={previewAvatar} fitParent size={36} />
                 </div>
                 <div className="min-w-0">
                   <p className="cq-composer-preview-name">{previewName}</p>
@@ -879,6 +901,22 @@ export function FieldNoteComposer({
         }}
         onClose={() => setPhotoTagEditorOpen(false)}
       />
+
+      {identityPickerOpen ? (
+        <SwitchProfileSheet
+          identities={identityState.identities}
+          currentId={identityState.active.id || character.id}
+          pendingRequests={[]}
+          hideAdd
+          onSelect={(identity) => {
+            void switchCampusIdentity({ type: identity.type, id: identity.id }).finally(() => {
+              setIdentityPickerOpen(false);
+            });
+          }}
+          onAdd={() => setIdentityPickerOpen(false)}
+          onClose={() => setIdentityPickerOpen(false)}
+        />
+      ) : null}
 
       {posted ? (
         <div className="cq-composer-success-overlay" role="status" aria-live="polite">

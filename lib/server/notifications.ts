@@ -37,7 +37,11 @@ export type CampusNotificationType =
   | "organization_request_denied"
   | "marketplace_offer"
   | "marketplace_offer_accepted"
-  | "marketplace_offer_declined";
+  | "marketplace_offer_declined"
+  | "verification_request_submitted"
+  | "verification_request_approved"
+  | "verification_request_needs_info"
+  | "verification_request_rejected";
 
 const NOTIFICATION_INSERT_SELECT = "id, user_id, type, title, body, created_at";
 

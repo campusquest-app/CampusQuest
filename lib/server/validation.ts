@@ -714,6 +714,8 @@ export const postQuadPostSchema = z
     mediaHeight: z.number().int().positive().max(10_000).optional(),
     mediaMimeType: z.string().trim().max(80).optional(),
     mediaFileSizeBytes: z.number().int().positive().optional(),
+    postedAsType: z.enum(["personal", "student_business", "organization"]).optional(),
+    postedAsId: uuidSchema.optional(),
     tags: z
       .array(
         z.object({

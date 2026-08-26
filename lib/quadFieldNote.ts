@@ -39,6 +39,12 @@ export type QuadPostApiRow = {
   author_streak_days?: number | null;
   location_id?: string | null;
   location_name?: string | null;
+  posted_as_type?: "personal" | "student_business" | "organization" | null;
+  posted_as_id?: string | null;
+  posted_as_display_name?: string | null;
+  posted_as_username?: string | null;
+  posted_as_avatar_url?: string | null;
+  posted_as_verified?: boolean | null;
   nod_count: number;
   hype_count: number;
   verify_count: number;
@@ -70,9 +76,12 @@ export type QuadPostApiRow = {
 export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): FieldNote {
   const p = row.profiles;
   const prof = Array.isArray(p) ? p[0] : p;
-  const name = (prof?.display_name ?? "Student").trim() || "Student";
-  const username = (prof?.username ?? "student").trim().toLowerCase().replace(/\s+/g, "_") || "student";
-  const avatar = resolveProfileAvatar(prof ?? undefined);
+  const postedAsName = row.posted_as_display_name?.trim();
+  const name = (postedAsName || prof?.display_name || "Student").trim() || "Student";
+  const postedAsUsername = row.posted_as_username?.trim();
+  const username =
+    (postedAsUsername || prof?.username || "student").trim().toLowerCase().replace(/\s+/g, "_") || "student";
+  const avatar = row.posted_as_avatar_url?.trim() || resolveProfileAvatar(prof ?? undefined);
 
   let ramMarks: RamMark[] = [];
   if (Array.isArray(row.ram_marks)) {
@@ -132,5 +141,8 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
     mediaCount: row.media_count ?? row.media?.length ?? 0,
     coverMediaId: row.cover_media_id ?? undefined,
     likedByPreview: row.recent_likers ?? [],
+    postedAsType: row.posted_as_type === "student_business" || row.posted_as_type === "organization" ? row.posted_as_type : "personal",
+    postedAsId: row.posted_as_id ?? undefined,
+    authorVerifiedBadge: row.posted_as_verified === true,
   };
 }

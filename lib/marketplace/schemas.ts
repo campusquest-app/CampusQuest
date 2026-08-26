@@ -24,6 +24,7 @@ export const marketplaceFeedQuerySchema = z.object({
   q: z.string().trim().max(80).optional(),
   businessId: z.string().uuid().optional(),
   mine: z.enum(["1", "true"]).optional(),
+  campusFeed: z.enum(["1", "true"]).optional(),
 });
 
 export const createMarketplaceListingSchema = z.object({

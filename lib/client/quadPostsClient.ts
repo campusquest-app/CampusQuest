@@ -71,8 +71,13 @@ export async function fetchQuadPostsByAuthor(
   viewerId: string,
   authorId: string,
   limit = 40,
+  postedAs?: { type: "personal" | "student_business" | "organization"; id: string },
 ): Promise<FieldNote[]> {
   const qs = new URLSearchParams({ authorId, limit: String(limit) });
+  if (postedAs) {
+    qs.set("postedAsType", postedAs.type);
+    qs.set("postedAsId", postedAs.id);
+  }
   const data = await fetchAuthed<{ posts: QuadPostApiRow[] }>(`/api/quad/posts?${qs.toString()}`);
   return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
 }
@@ -149,6 +154,8 @@ export async function createQuadPostRequest(
     mediaHeight?: number;
     mediaMimeType?: string;
     mediaFileSizeBytes?: number;
+    postedAsType?: "personal" | "student_business" | "organization";
+    postedAsId?: string;
   },
   viewerId?: string,
 ): Promise<CreateQuadPostResult> {

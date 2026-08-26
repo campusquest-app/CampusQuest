@@ -5,6 +5,7 @@ import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { getEquippedTitleLabel } from "@/lib/achievementEngine";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { formatStreakBadge } from "@/lib/streakMessaging";
+import { ChevronDown } from "lucide-react";
 
 export function ProfileSocialHeader({
   character,
@@ -12,12 +13,20 @@ export function ProfileSocialHeader({
   guildLabel,
   onEditBio,
   onOpenMenu,
+  onSwitchIdentity,
+  identityVerified = false,
+  identitySubtitle,
+  showLevel = true,
 }: {
   character: Character;
   isOwner: boolean;
   guildLabel?: string | null;
   onEditBio?: () => void;
   onOpenMenu?: () => void;
+  onSwitchIdentity?: () => void;
+  identityVerified?: boolean;
+  identitySubtitle?: string | null;
+  showLevel?: boolean;
 }) {
   const title = getEquippedTitleLabel(character) || getClassTitle(character.classId);
   const realm = getClassRealm(character.classId);
@@ -25,7 +34,13 @@ export function ProfileSocialHeader({
   return (
     <header className="cq-profile-header cq-profile-fade-in">
       <div className="cq-profile-header-row">
-        <div className="relative flex-shrink-0">
+        <button
+          type="button"
+          className={`relative flex-shrink-0 ${onSwitchIdentity ? "cq-profile-switch-hit" : ""}`}
+          onClick={onSwitchIdentity}
+          disabled={!onSwitchIdentity}
+          aria-label={onSwitchIdentity ? "Switch profile" : undefined}
+        >
           <div className="character-avatar-frame cq-profile-avatar-shell cq-profile-avatar-shell--header flex shrink-0 items-center justify-center rounded-full">
             <div className="cq-profile-avatar-inner cq-profile-avatar-inner--header">
               <AvatarDisplay
@@ -38,20 +53,33 @@ export function ProfileSocialHeader({
               />
             </div>
           </div>
-          <span
-            className="cq-profile-level-pip absolute -bottom-0.5 -left-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney px-1 text-[10px] font-bold leading-none text-white"
-            aria-label={`Level ${character.level}`}
-          >
-            {character.level}
-          </span>
-        </div>
+          {showLevel ? (
+            <span
+              className="cq-profile-level-pip absolute -bottom-0.5 -left-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney px-1 text-[10px] font-bold leading-none text-white"
+              aria-label={`Level ${character.level}`}
+            >
+              {character.level}
+            </span>
+          ) : null}
+        </button>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <h1 className="cq-profile-username truncate font-display">{character.name}</h1>
+              <button
+                type="button"
+                className={`cq-profile-switch-name ${onSwitchIdentity ? "cq-profile-switch-name--btn" : ""}`}
+                onClick={onSwitchIdentity}
+                disabled={!onSwitchIdentity}
+              >
+                <h1 className="cq-profile-username truncate font-display">
+                  {character.name}
+                  {identityVerified ? <span className="cq-identity-badge" aria-label="Verified">✓</span> : null}
+                </h1>
+                {onSwitchIdentity ? <ChevronDown className="cq-profile-switch-chevron" aria-hidden /> : null}
+              </button>
               <p className="cq-profile-handle truncate">@{character.username}</p>
-              {title ? (
+              {identitySubtitle ? <p className="cq-profile-rank truncate">{identitySubtitle}</p> : title ? (
                 <p className="cq-profile-rank truncate">
                   {title}
                   {realm && title !== getClassTitle(character.classId) ? (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Lock, X } from "lucide-react";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 import {
   MARKETPLACE_CATEGORIES,
@@ -25,6 +25,7 @@ import {
   updateMarketplaceListingRequest,
   uploadMarketplaceImage,
 } from "@/lib/client/marketplaceClient";
+import { openVerificationOnboarding } from "@/lib/client/identityStore";
 
 type Draft = {
   listingKind: MarketplaceListingKind;
@@ -68,7 +69,7 @@ export function MarketSellComposer({
   onPublished: () => void;
 }) {
   useRegisterImmersiveScreen(true);
-  const [step, setStep] = useState<"kind" | "form" | "preview">(editing ? "form" : "kind");
+  const [step, setStep] = useState<"kind" | "businessKind" | "form" | "preview">(editing ? "form" : "kind");
   const [draft, setDraft] = useState<Draft>(() =>
     editing
       ? {
@@ -99,6 +100,15 @@ export function MarketSellComposer({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const verifiedBusinesses = useMemo(
+    () =>
+      businesses.filter(
+        (row) => row.verificationStatus === "verified" && row.isManager && row.status !== "inactive",
+      ),
+    [businesses],
+  );
+  const hasVerifiedBusiness = verifiedBusinesses.length > 0;
+
   const previews = useMemo(() => {
     const fromFiles = draft.photoFiles.map((file) => URL.createObjectURL(file));
     return [...draft.existingPhotoUrls, ...fromFiles];
@@ -122,7 +132,12 @@ export function MarketSellComposer({
       startingPrice: kind !== "item",
       condition: kind === "item" ? prev.condition ?? "like_new" : null,
       category: kind === "service" ? "services" : prev.category,
-      businessId: kind === "business_post" ? businesses[0]?.id ?? null : null,
+      businessId:
+        kind === "item"
+          ? null
+          : prev.businessId && verifiedBusinesses.some((row) => row.id === prev.businessId)
+            ? prev.businessId
+            : verifiedBusinesses[0]?.id ?? null,
     }));
     setStep("form");
   }
@@ -131,7 +146,9 @@ export function MarketSellComposer({
     if (previews.length < 1) return "Add at least one photo.";
     if (draft.title.trim().length < 3) return "Add a title.";
     if (draft.listingKind === "item" && !draft.condition) return "Choose a condition.";
-    if (draft.listingKind === "business_post" && !draft.businessId) return "Choose a Student Business.";
+    if ((draft.listingKind === "business_post" || draft.listingKind === "service") && !draft.businessId) {
+      return "Choose a verified Student Business.";
+    }
     return validateMarketplaceListingCopy({
       title: draft.title,
       description: draft.description,
@@ -194,24 +211,81 @@ export function MarketSellComposer({
             <p className="cq-market-sheet-copy">What are you listing?</p>
             <button type="button" className="cq-create-action" onClick={() => setKind("item")}>
               <span className="cq-create-action-text">
-                <span className="cq-create-action-title">Item</span>
-                <span className="cq-create-action-subtitle">Clothes, textbooks, dorm stuff, and more.</span>
+                <span className="cq-create-action-title">Sell an Item</span>
+                <span className="cq-create-action-subtitle">
+                  Clothing, furniture, textbooks, electronics, dorm items, and more.
+                </span>
               </span>
             </button>
+            <button
+              type="button"
+              className={`cq-create-action${hasVerifiedBusiness ? "" : " cq-create-action--locked"}`}
+              onClick={() => {
+                if (!hasVerifiedBusiness) {
+                  onClose();
+                  openVerificationOnboarding("student_business");
+                  return;
+                }
+                setDraft((prev) => ({
+                  ...prev,
+                  businessId:
+                    prev.businessId && verifiedBusinesses.some((row) => row.id === prev.businessId)
+                      ? prev.businessId
+                      : verifiedBusinesses[0]?.id ?? null,
+                }));
+                setStep("businessKind");
+              }}
+            >
+              <span className="cq-create-action-text">
+                <span className="cq-create-action-title">
+                  Business / Service
+                  {!hasVerifiedBusiness ? <Lock className="cq-market-lock-icon" aria-hidden /> : null}
+                </span>
+                <span className="cq-create-action-subtitle">Promote a business, brand, product or service</span>
+              </span>
+            </button>
+          </div>
+        ) : null}
+
+        {step === "businessKind" ? (
+          <div className="cq-create-sheet-actions">
+            <p className="cq-market-sheet-copy">Choose how this should appear.</p>
+            {verifiedBusinesses.length > 1 ? (
+              <label className="cq-market-label" htmlFor="cq-market-identity">
+                Posting as
+                <select
+                  id="cq-market-identity"
+                  className="cq-market-input"
+                  value={draft.businessId ?? ""}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, businessId: event.target.value || null }))}
+                >
+                  {verifiedBusinesses.map((business) => (
+                    <option key={business.id} value={business.id}>
+                      {business.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <p className="cq-market-sheet-copy">
+                Posting as {verifiedBusinesses[0]?.name ?? "your verified Student Business"}.
+              </p>
+            )}
             <button type="button" className="cq-create-action" onClick={() => setKind("service")}>
               <span className="cq-create-action-text">
                 <span className="cq-create-action-title">Service</span>
                 <span className="cq-create-action-subtitle">Tutoring, photos, hair, design, and more.</span>
               </span>
             </button>
-            {businesses.length > 0 ? (
-              <button type="button" className="cq-create-action" onClick={() => setKind("business_post")}>
-                <span className="cq-create-action-text">
-                  <span className="cq-create-action-title">Business Post</span>
-                  <span className="cq-create-action-subtitle">Drops, promotions, and shop updates.</span>
-                </span>
-              </button>
-            ) : null}
+            <button type="button" className="cq-create-action" onClick={() => setKind("business_post")}>
+              <span className="cq-create-action-text">
+                <span className="cq-create-action-title">Business Post</span>
+                <span className="cq-create-action-subtitle">Drops, promotions, and shop updates.</span>
+              </span>
+            </button>
+            <button type="button" className="cq-market-btn cq-market-btn--secondary" onClick={() => setStep("kind")}>
+              Back
+            </button>
           </div>
         ) : null}
 
@@ -279,6 +353,22 @@ export function MarketSellComposer({
               </>
             ) : null}
 
+            {draft.listingKind !== "item" && verifiedBusinesses.length > 0 ? (
+              <>
+                <label className="cq-market-label" htmlFor="cq-market-business">Posting as</label>
+                <select
+                  id="cq-market-business"
+                  className="cq-market-input"
+                  value={draft.businessId ?? ""}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, businessId: event.target.value || null }))}
+                >
+                  {verifiedBusinesses.map((business) => (
+                    <option key={business.id} value={business.id}>{business.name}</option>
+                  ))}
+                </select>
+              </>
+            ) : null}
+
             <label className="cq-market-label" htmlFor="cq-market-desc">Description</label>
             <textarea id="cq-market-desc" className="cq-market-input cq-market-textarea" value={draft.description} maxLength={2000} onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))} />
 
@@ -299,7 +389,13 @@ export function MarketSellComposer({
             {error ? <p className="cq-market-error">{error}</p> : null}
             <div className="cq-market-card-actions">
               {!editing ? (
-                <button type="button" className="cq-market-btn cq-market-btn--secondary" onClick={() => setStep("kind")}>Back</button>
+                <button
+                  type="button"
+                  className="cq-market-btn cq-market-btn--secondary"
+                  onClick={() => setStep(draft.listingKind === "item" ? "kind" : "businessKind")}
+                >
+                  Back
+                </button>
               ) : null}
               <button type="submit" className="cq-market-btn cq-market-btn--primary">Preview Listing</button>
             </div>
@@ -315,7 +411,12 @@ export function MarketSellComposer({
             {error ? <p className="cq-market-error">{error}</p> : null}
             <div className="cq-market-card-actions">
               <button type="button" className="cq-market-btn cq-market-btn--secondary" onClick={() => setStep("form")}>Back</button>
-              <button type="button" className="cq-market-btn cq-market-btn--primary" disabled={busy} onClick={() => void publish()}>
+            <button
+              type="button"
+              className="cq-market-btn cq-market-btn--primary"
+              disabled={busy || (draft.listingKind !== "item" && !draft.businessId)}
+              onClick={() => void publish()}
+            >
                 {busy ? "Publishing…" : kindLabel}
               </button>
             </div>

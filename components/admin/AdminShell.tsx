@@ -10,12 +10,14 @@ export function AdminShell({
   onSectionChange,
   onSearchNavigate,
   allowedEmail,
+  badges,
   children,
 }: {
   activeSection: AdminSectionId;
   onSectionChange: (section: AdminSectionId) => void;
   onSearchNavigate: (payload: AdminSearchNavigatePayload) => void;
   allowedEmail: string | null;
+  badges?: Partial<Record<AdminSectionId, number>>;
   children: React.ReactNode;
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -38,6 +40,9 @@ export function AdminShell({
             >
               <span aria-hidden>{item.icon}</span>
               <span>{item.label}</span>
+              {badges?.[item.id] ? (
+                <span className="cq-admin-nav-badge">{badges[item.id]! > 99 ? "99+" : badges[item.id]}</span>
+              ) : null}
             </button>
             {item.children && active ? (
               <ul className="ml-7 space-y-0.5 border-l border-white/10 pl-2">

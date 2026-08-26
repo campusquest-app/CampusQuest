@@ -26,12 +26,14 @@ export async function fetchMarketplaceListings(args?: {
   q?: string;
   businessId?: string;
   mine?: boolean;
+  campusFeed?: boolean;
 }): Promise<MarketplaceListing[]> {
   const qs = new URLSearchParams();
   if (args?.filter) qs.set("filter", args.filter);
   if (args?.q) qs.set("q", args.q);
   if (args?.businessId) qs.set("businessId", args.businessId);
   if (args?.mine) qs.set("mine", "1");
+  if (args?.campusFeed) qs.set("campusFeed", "1");
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   const data = await fetchAuthed<{ listings: MarketplaceListing[] }>(`/api/marketplace/listings${suffix}`);
   return data.listings;
