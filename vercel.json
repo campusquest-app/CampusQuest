@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/sync-urinvolved",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/sync-athletics",
+      "schedule": "30 3 * * *"
     }
   ]
 }

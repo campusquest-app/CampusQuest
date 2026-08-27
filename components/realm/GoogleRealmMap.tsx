@@ -22,6 +22,7 @@ import {
   type ForYouMarkerEmphasis,
   type MapMarkerFilter,
 } from "@/lib/realm/mapMarkerFilters";
+import { isImportedEventSource } from "@/lib/eventSources/catalog";
 import type { UrinvolvedEditPin } from "@/lib/realm/urinvolvedEditPins";
 import { CQ_REALM_MAP_BACKGROUND, CQ_REALM_MAP_STYLE } from "@/lib/realm/campusQuestMapStyles";
 import {
@@ -473,10 +474,10 @@ function RealmMapMarkers({
       ...supplementaryPins.map((g) => ({ key: g.groupKey, events: g.events })),
     ];
     const eventPins = allGroups.flatMap((g) => g.events);
-    const externalPins = eventPins.filter((e) => e.source === "urinvolved");
+    const externalPins = eventPins.filter((e) => isImportedEventSource(e.source));
     console.groupCollapsed("[cq:event-pins] map debug panel");
     console.info("total event pins loaded:", eventPins.length);
-    console.info("external (URInvolved) event pins:", externalPins.length);
+    console.info("imported event pins:", externalPins.length);
     console.info(
       "grouped event marker locations:",
       allGroups.filter((g) => g.events.length > 0).map((g) => `${g.key} (${g.events.length})`),

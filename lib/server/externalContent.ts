@@ -1,18 +1,23 @@
+import { canonicalEventCategory } from "@/lib/eventSources/categories";
+import { inferOrganizationType } from "@/lib/eventSources/organizationTypes";
 import { dedupeLogicalEventFields } from "@/lib/realm/dedupeLogicalEvents";
 import { createAdminClient } from "@/lib/server/supabase";
 import { resolveUrinvolvedEventLocation } from "@/lib/server/urinvolved/eventLocation";
 import { externalEventQualifiesForMap } from "@/lib/server/urinvolved/locationAliases";
 import { mapPositionForExternalEvent } from "@/lib/server/urinvolved/geoToMapPosition";
 import { getUrinvolvedSyncStatus } from "@/lib/server/urinvolved/sync";
+import { getLatestSyncBySource } from "@/lib/server/eventSources/syncLogs";
 import { shouldServeStaleInactiveEvents } from "@/lib/server/urinvolved/syncSafety";
 
 export type ExternalEventItem = {
   id: string;
   source: string;
+  sourceType?: string | null;
   externalId: string;
   title: string;
   description: string;
   organizationName: string | null;
+  organizationId?: string | null;
   location: string | null;
   venueName: string | null;
   address: string | null;
@@ -20,22 +25,39 @@ export type ExternalEventItem = {
   endsAt: string | null;
   imageUrl: string | null;
   eventUrl: string | null;
+  ticketUrl?: string | null;
+  broadcastUrl?: string | null;
+  rsvpUrl?: string | null;
   category: string | null;
   tags: string[];
+  sport?: string | null;
+  opponent?: string | null;
+  homeAway?: string | null;
+  score?: string | null;
+  liveStatus?: string | null;
+  cqRsvpEnabled?: boolean;
+  isCancelled?: boolean;
+  canonicalEventId?: string | null;
   latitude: number | null;
   longitude: number | null;
+  rsvpCount?: number;
+  myRsvpStatus?: "going" | "interested" | "not_going" | null;
   imported: true;
 };
 
 export type ExternalOrganizationItem = {
   id: string;
   source: string;
+  sourceType?: string | null;
   externalId: string;
   name: string;
   description: string;
   category: string | null;
+  organizationType?: string | null;
   logoUrl: string | null;
   organizationUrl: string | null;
+  websiteUrl?: string | null;
+  verified?: boolean;
   tags: string[];
   createdAt: string | null;
   imported: true;
@@ -66,10 +88,12 @@ export type ExternalEventsFeedMeta = {
 type ExternalEventRow = {
   id: string;
   source: string;
+  source_type?: string | null;
   external_id: string;
   title: string;
   description: string | null;
   organization_name: string | null;
+  organization_id?: string | null;
   venue_name: string | null;
   address: string | null;
   location_name: string | null;
@@ -77,14 +101,25 @@ type ExternalEventRow = {
   ends_at: string | null;
   image_url: string | null;
   event_url: string | null;
+  ticket_url?: string | null;
+  broadcast_url?: string | null;
+  rsvp_url?: string | null;
   category: string | null;
   tags: string[] | null;
+  sport?: string | null;
+  opponent?: string | null;
+  home_away?: string | null;
+  score?: string | null;
+  live_status?: string | null;
+  cq_rsvp_enabled?: boolean | null;
+  is_cancelled?: boolean | null;
+  canonical_event_id?: string | null;
   latitude: number | null;
   longitude: number | null;
 };
 
 const EXTERNAL_EVENT_COLUMNS =
-  "id, source, external_id, title, description, organization_name, venue_name, address, location_name, starts_at, ends_at, image_url, event_url, category, tags, latitude, longitude";
+  "id, source, source_type, external_id, title, description, organization_name, organization_id, venue_name, address, location_name, starts_at, ends_at, image_url, event_url, ticket_url, broadcast_url, rsvp_url, category, tags, sport, opponent, home_away, score, live_status, cq_rsvp_enabled, is_cancelled, canonical_event_id, latitude, longitude";
 
 export async function listActiveExternalEvents(filters?: {
   category?: string;
@@ -105,16 +140,29 @@ export async function listExternalEventsFeed(filters?: {
   search?: string;
   timeframe?: "today" | "tomorrow" | "this_week" | "this_month";
   includePast?: boolean;
+  sport?: string;
+  userId?: string;
 }): Promise<{ events: ExternalEventItem[]; meta: ExternalEventsFeedMeta }> {
   const admin = createAdminClient();
-  const status = await getUrinvolvedSyncStatus();
+  const [urinvolvedStatus, athleticsSync] = await Promise.all([
+    getUrinvolvedSyncStatus(),
+    getLatestSyncBySource(admin, "athletics").catch(() => null),
+  ]);
+  const lastSuccessfulSync = [urinvolvedStatus.lastSuccessfulSync, athleticsSync?.lastSuccessfulSync]
+    .filter(Boolean)
+    .sort()
+    .at(-1) ?? urinvolvedStatus.lastSuccessfulSync;
+  const lastAttemptedSync = [urinvolvedStatus.lastAttemptedSync, athleticsSync?.lastAttemptedSync]
+    .filter(Boolean)
+    .sort()
+    .at(-1) ?? urinvolvedStatus.lastAttemptedSync;
+  const lastError = urinvolvedStatus.lastError || athleticsSync?.lastError || null;
   let source: ExternalEventsFeedMeta["source"] = "active";
 
   let query = admin
     .from("external_events")
     .select(EXTERNAL_EVENT_COLUMNS)
     .eq("is_active", true)
-    .eq("source", "urinvolved")
     .order("starts_at", { ascending: true, nullsFirst: false });
 
   if (filters?.category?.trim()) {
@@ -136,12 +184,11 @@ export async function listExternalEventsFeed(filters?: {
     (row) => row.starts_at && new Date(row.starts_at).getTime() >= pastCutoff,
   );
 
-  if (!hasUpcomingActive && shouldServeStaleInactiveEvents(status)) {
+  if (!hasUpcomingActive && shouldServeStaleInactiveEvents(urinvolvedStatus)) {
     let staleQuery = admin
       .from("external_events")
       .select(EXTERNAL_EVENT_COLUMNS)
       .eq("is_active", false)
-      .eq("source", "urinvolved")
       .not("starts_at", "is", null)
       .gte("starts_at", new Date(pastCutoff).toISOString())
       .order("starts_at", { ascending: true, nullsFirst: false });
@@ -169,6 +216,9 @@ export async function listExternalEventsFeed(filters?: {
       if (!filters?.includePast && row.starts_at && new Date(row.starts_at).getTime() < pastCutoff) {
         return false;
       }
+      if (filters?.sport?.trim() && !(row.sport ?? "").toLowerCase().includes(filters.sport.trim().toLowerCase())) {
+        return false;
+      }
       if (searchNeedle) {
         const haystack = [
           row.title,
@@ -178,6 +228,8 @@ export async function listExternalEventsFeed(filters?: {
           row.address,
           row.organization_name,
           row.category,
+          row.sport,
+          row.opponent,
           ...(row.tags ?? []),
         ]
           .filter(Boolean)
@@ -223,10 +275,12 @@ export async function listExternalEventsFeed(filters?: {
     .map((row) => ({
       id: row.id,
       source: row.source,
+      sourceType: row.source_type ?? row.source,
       externalId: row.external_id,
       title: row.title,
       description: row.description ?? "",
       organizationName: row.organization_name,
+      organizationId: row.organization_id ?? null,
       location: row.location_name,
       venueName: row.venue_name,
       address: row.address,
@@ -234,27 +288,72 @@ export async function listExternalEventsFeed(filters?: {
       endsAt: row.ends_at,
       imageUrl: row.image_url,
       eventUrl: row.event_url,
-      category: row.category ?? "Campus Event",
+      ticketUrl: row.ticket_url ?? null,
+      broadcastUrl: row.broadcast_url ?? null,
+      rsvpUrl: row.rsvp_url ?? null,
+      category: canonicalEventCategory({
+        source: row.source,
+        category: row.category,
+        sport: row.sport,
+        title: row.title,
+        tags: row.tags,
+      }),
       tags: row.tags ?? [],
+      sport: row.sport ?? null,
+      opponent: row.opponent ?? null,
+      homeAway: row.home_away ?? null,
+      score: row.score ?? null,
+      liveStatus: row.live_status ?? null,
+      cqRsvpEnabled: Boolean(row.cq_rsvp_enabled),
+      isCancelled: Boolean(row.is_cancelled),
+      canonicalEventId: row.canonical_event_id ?? null,
       latitude: row.latitude,
       longitude: row.longitude,
+      rsvpCount: 0,
+      myRsvpStatus: null as ExternalEventItem["myRsvpStatus"],
       imported: true as const,
     }));
 
+  const deduped = dedupeLogicalEventFields(
+    mapped.map((item) => ({
+      ...item,
+      sourceExternalId: item.externalId,
+      locationText: item.location,
+      canonicalEventId: item.canonicalEventId,
+    })),
+  );
+
+  if (filters?.userId && deduped.length > 0) {
+    const ids = deduped.map((item) => item.id);
+    const [{ data: rsvps }, { data: mine }] = await Promise.all([
+      admin.from("external_event_rsvps").select("event_id, status, user_id").in("event_id", ids),
+      admin
+        .from("external_event_rsvps")
+        .select("event_id, status")
+        .in("event_id", ids)
+        .eq("user_id", filters.userId),
+    ]);
+    const counts = new Map<string, number>();
+    for (const row of rsvps ?? []) {
+      if (row.status === "going") counts.set(row.event_id, (counts.get(row.event_id) ?? 0) + 1);
+    }
+    const mineMap = new Map(
+      (mine ?? []).map((row) => [row.event_id, row.status as ExternalEventItem["myRsvpStatus"]]),
+    );
+    for (const item of deduped) {
+      item.rsvpCount = counts.get(item.id) ?? 0;
+      item.myRsvpStatus = mineMap.get(item.id) ?? null;
+    }
+  }
+
   return {
-    events: dedupeLogicalEventFields(
-      mapped.map((item) => ({
-        ...item,
-        sourceExternalId: item.externalId,
-        locationText: item.location,
-      })),
-    ),
+    events: deduped,
     meta: {
       source,
-      stale: source === "stale_cache" || Boolean(status.lastError),
-      lastSuccessfulSync: status.lastSuccessfulSync,
-      lastAttemptedSync: status.lastAttemptedSync,
-      lastError: status.lastError,
+      stale: source === "stale_cache" || Boolean(lastError),
+      lastSuccessfulSync,
+      lastAttemptedSync,
+      lastError,
     },
   };
 }
@@ -266,7 +365,7 @@ export async function listActiveExternalOrganizations(filters?: {
   const admin = createAdminClient();
   let dbQuery = admin
     .from("external_organizations")
-    .select("id, source, external_id, name, description, logo_url, organization_url, category, tags, created_at")
+    .select("id, source, source_type, external_id, name, description, logo_url, organization_url, website_url, category, organization_type, verified, tags, created_at")
     .eq("is_active", true)
     .order("name", { ascending: true });
 
@@ -284,12 +383,21 @@ export async function listActiveExternalOrganizations(filters?: {
   return (data ?? []).map((row) => ({
     id: row.id,
     source: row.source,
+    sourceType: row.source_type ?? row.source,
     externalId: row.external_id,
     name: row.name,
     description: row.description ?? "",
     category: row.category,
+    organizationType: inferOrganizationType({
+      source: row.source,
+      organizationType: row.organization_type,
+      category: row.category,
+      name: row.name,
+    }),
     logoUrl: row.logo_url,
-    organizationUrl: row.organization_url,
+    organizationUrl: row.organization_url ?? row.website_url,
+    websiteUrl: row.website_url ?? row.organization_url,
+    verified: Boolean(row.verified),
     tags: row.tags ?? [],
     createdAt: row.created_at ?? null,
     imported: true as const,

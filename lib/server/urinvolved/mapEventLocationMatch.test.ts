@@ -48,6 +48,23 @@ describe("mapEventToRealmLocation", () => {
     );
   });
 
+  it("matches official Athletics venue strings onto campus aliases", () => {
+    const ryan = mapEventToRealmLocation({ venueName: "Kingston, RI, Thomas M. Ryan Center" }, CATALOG);
+    expect(ryan?.kind).toBe("coords");
+    if (ryan?.kind === "coords") expect(ryan.locationName).toBe("Ryan Center");
+
+    const keaney = mapEventToRealmLocation({ venueName: "Kingston, R.I., Keaney Gymnasium" }, CATALOG);
+    expect(keaney?.kind).toBe("coords");
+    if (keaney?.kind === "coords") expect(keaney.locationName).toBe("Keaney Gym");
+
+    const soccer = mapEventToRealmLocation({ venueName: "Kingston, R.I., URI Soccer Complex" }, CATALOG);
+    expect(soccer?.kind).toBe("coords");
+    if (soccer?.kind === "coords") expect(soccer.locationName).toBe("URI Soccer Complex");
+
+    expect(mapEventToRealmLocation({ venueName: "North Andover, MA" }, CATALOG)).toBeNull();
+    expect(mapEventToRealmLocation({ venueName: "Pawtucket, RI, Centreville Bank Stadium" }, CATALOG)).toBeNull();
+  });
+
   it("returns confidence metadata for fuzzy matches", () => {
     const result = matchEventLocationWithMeta({ locationName: "Carothers Library" }, CATALOG);
     expect(result?.meta.confidence).toBeGreaterThan(0.8);

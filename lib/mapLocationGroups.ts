@@ -35,12 +35,18 @@ export type MapEventPin = {
   endsAt: string | null;
   organizationName: string | null;
   eventUrl: string | null;
-  /** "urinvolved" for imported URInvolved events; null/undefined for internal events. */
+  /** Imported provider key (`urinvolved`, `athletics`, …). Null for native campus events. */
   source?: string | null;
   /** True when the event is cancelled (status flag or "(Cancelled)" in the title). */
   cancelled?: boolean;
   imageUrl?: string | null;
   category?: string | null;
+  sport?: string | null;
+  opponent?: string | null;
+  ticketUrl?: string | null;
+  broadcastUrl?: string | null;
+  canonicalEventId?: string | null;
+  cqRsvpEnabled?: boolean;
   /** Raw location text from the source feed (e.g. "weldin hall"). */
   locationText?: string | null;
   /** DB id for external_events row (URInvolved). */

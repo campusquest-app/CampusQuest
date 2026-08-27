@@ -117,9 +117,11 @@ export async function searchTaggableEntities(args: {
       admin
         .from("external_events")
         .select(
-          "id, title, starts_at, location_name, venue_name, organization_name, mention_slug, image_url, is_active",
+          "id, title, starts_at, location_name, venue_name, organization_name, sport, opponent, mention_slug, image_url, is_active",
         )
-        .or(`title.ilike.%${safe}%,mention_slug.ilike.%${safe}%`)
+        .or(
+          `title.ilike.%${safe}%,mention_slug.ilike.%${safe}%,organization_name.ilike.%${safe}%,sport.ilike.%${safe}%,opponent.ilike.%${safe}%`,
+        )
         .eq("is_active", true)
         .gte("ends_at", nowIso)
         .order("starts_at", { ascending: true })

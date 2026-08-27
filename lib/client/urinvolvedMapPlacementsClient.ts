@@ -56,7 +56,7 @@ export type UrinvolvedPlacementEvent = {
   organizationName: string | null;
   rawLocationText: string;
   normalizedLocationText: string;
-  source: "urinvolved";
+  source: string;
   override: UrinvolvedPlacementOverride | null;
   autoMatch: {
     rawLocation: string;

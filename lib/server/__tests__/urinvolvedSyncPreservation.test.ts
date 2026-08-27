@@ -49,19 +49,38 @@ function createMemoryAdmin(seed: EventRow[]) {
 
     if (table === "external_events") {
       return {
-        select: (_cols: string) => ({
-          eq: (_col: string, value: string) => ({
-            maybeSingle: async () => {
-              const row = events.get(value);
-              return { data: row ? { id: row.external_id } : null, error: null };
+        select: (_cols: string) => {
+          let lookupId: string | null = null;
+          const chain = {
+            eq: (col: string, value: string | boolean) => {
+              if (col === "external_id" && typeof value === "string") lookupId = value;
+              return chain;
             },
-            eq: (_col2: string, active: boolean) => ({
-              then: undefined,
-              // used by soft-deactivate path: select external_id where source + is_active
-              // emulate thenable via custom await through returning promise-like
-            }),
-          }),
-        }),
+            gte: () => chain,
+            lte: () =>
+              Promise.resolve({
+                data: Array.from(events.values()).map((row) => ({
+                  id: row.external_id,
+                  external_id: row.external_id,
+                  title: row.title,
+                  organization_name: null,
+                  location_name: null,
+                  venue_name: null,
+                  address: null,
+                  starts_at: row.starts_at,
+                  event_url: null,
+                  updated_at: null,
+                  tags: [],
+                })),
+                error: null,
+              }),
+            maybeSingle: async () => {
+              const row = lookupId ? events.get(lookupId) : null;
+              return { data: row ? { id: row.external_id, admin_override: false } : null, error: null };
+            },
+          };
+          return chain;
+        },
         upsert: (row: Record<string, unknown>) => ({
           select: () => ({
             single: async () => {
@@ -77,24 +96,30 @@ function createMemoryAdmin(seed: EventRow[]) {
             },
           }),
         }),
-        update: (patch: Record<string, unknown>) => ({
-          eq: async (col: string, value: string) => {
-            if (col === "external_id") {
-              const row = events.get(value);
+        update: (patch: Record<string, unknown>) => {
+          const applyIn = async (_col: string, values: string[]) => {
+            for (const id of values) {
+              const row = events.get(id);
               if (row) Object.assign(row, patch);
             }
             return { data: null, error: null };
-          },
-          in: async (col: string, values: string[]) => {
-            if (col === "external_id") {
-              for (const id of values) {
-                const row = events.get(id);
+          };
+          const chain = {
+            eq: (col: string, value: string) => {
+              if (col === "external_id") {
+                const row = events.get(value);
                 if (row) Object.assign(row, patch);
               }
-            }
-            return { data: null, error: null };
-          },
-        }),
+              return {
+                eq: chain.eq,
+                in: applyIn,
+                then: async (resolve: (value: unknown) => unknown) => resolve({ data: null, error: null }),
+              };
+            },
+            in: applyIn,
+          };
+          return chain;
+        },
       };
     }
 
@@ -104,12 +129,15 @@ function createMemoryAdmin(seed: EventRow[]) {
           eq: () => ({
             maybeSingle: async () => ({ data: null, error: null }),
             eq: () => ({
-              /* soft deactivate select */
+              maybeSingle: async () => ({ data: null, error: null }),
             }),
           }),
         }),
         upsert: async () => ({ error: null }),
         update: () => ({
+          eq: () => ({
+            in: async () => ({ data: null, error: null }),
+          }),
           in: async () => ({ data: null, error: null }),
         }),
       };
@@ -176,7 +204,7 @@ describe("URInvolved sync preservation behavior (unit)", () => {
         return {
           ...builder,
           select: (cols: string) => {
-            if (cols.includes("starts_at") || cols.includes("is_active")) {
+            if (cols.includes("is_active")) {
               return storedEventsSelectResult(admin);
             }
             return builder.select(cols);
@@ -229,8 +257,7 @@ describe("URInvolved sync preservation behavior (unit)", () => {
         return {
           ...builder,
           select: (cols: string) => {
-            if (cols.includes("external_id") && cols.includes("title")) {
-              // logical duplicate query
+            if (cols.includes("updated_at") && cols.includes("venue_name") && !cols.includes("admin_override")) {
               return {
                 eq: () => ({
                   eq: () => ({
@@ -241,15 +268,21 @@ describe("URInvolved sync preservation behavior (unit)", () => {
                 }),
               };
             }
-            if (cols.includes("starts_at") || cols.includes("is_active")) {
+            if (cols.includes("is_active")) {
               return storedEventsSelectResult(admin);
             }
             return {
               eq: (_c: string, value: string) => ({
                 maybeSingle: async () => {
                   const row = admin._events.get(value);
-                  return { data: row ? { id: row.external_id } : null, error: null };
+                  return { data: row ? { id: row.external_id, admin_override: false } : null, error: null };
                 },
+                eq: (_c2: string, value2: string) => ({
+                  maybeSingle: async () => {
+                    const row = admin._events.get(value2);
+                    return { data: row ? { id: row.external_id, admin_override: false } : null, error: null };
+                  },
+                }),
               }),
             };
           },
@@ -350,7 +383,7 @@ describe("URInvolved sync preservation behavior (unit)", () => {
         return {
           ...builder,
           select: (cols: string) => {
-            if (cols.includes("starts_at") || cols.includes("is_active")) {
+            if (cols.includes("is_active")) {
               return storedEventsSelectResult(admin);
             }
             return builder.select(cols);
@@ -412,7 +445,7 @@ describe("URInvolved sync preservation behavior (unit)", () => {
         return {
           ...builder,
           select: (cols: string) => {
-            if (cols.includes("starts_at") || cols.includes("is_active")) {
+            if (cols.includes("is_active")) {
               return storedEventsSelectResult(admin);
             }
             return builder.select(cols);
@@ -472,7 +505,7 @@ describe("URInvolved sync preservation behavior (unit)", () => {
         return {
           ...builder,
           select: (cols: string) => {
-            if (cols.includes("starts_at") || cols.includes("is_active")) {
+            if (cols.includes("is_active")) {
               return storedEventsSelectResult(admin);
             }
             return builder.select(cols);

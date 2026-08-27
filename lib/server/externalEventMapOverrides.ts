@@ -562,7 +562,7 @@ export type AdminUrinvolvedPlacementEvent = {
   organizationName: string | null;
   rawLocationText: string;
   normalizedLocationText: string;
-  source: "urinvolved";
+  source: string;
   override: ExternalEventMapOverrideRow | null;
   autoMatch: EventLocationMatchMeta | null;
   currentMatch: EventLocationMatch | null;
@@ -590,7 +590,6 @@ export async function listAdminUrinvolvedPlacements(args: {
     .from("external_events")
     .select("id, external_id, title, starts_at, ends_at, venue_name, location_name, address, organization_name, source")
     .eq("is_active", true)
-    .eq("source", "urinvolved")
     .gte("starts_at", fetchStart.toISOString())
     .lt("starts_at", fetchEnd.toISOString())
     .order("starts_at", { ascending: true });
@@ -649,7 +648,7 @@ export async function listAdminUrinvolvedPlacements(args: {
       organizationName: (row.organization_name as string | null) ?? null,
       rawLocationText: rawLocation,
       normalizedLocationText: normalizeEventLocationText(rawLocation),
-      source: "urinvolved",
+      source: String(row.source ?? "urinvolved"),
       override,
       autoMatch: auto.meta,
       currentMatch: resolved.match,

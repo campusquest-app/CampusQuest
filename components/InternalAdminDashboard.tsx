@@ -15,7 +15,7 @@ import { AdminShell } from "@/components/admin/AdminShell";
 import { AdminQuestsSection } from "@/components/admin/AdminQuestsSection";
 import { AdminUsersSection } from "@/components/admin/AdminUsersSection";
 import { AdminSystemSection } from "@/components/admin/AdminSystemSection";
-import { AdminUrinvolvedSection } from "@/components/admin/AdminUrinvolvedSection";
+import { AdminEventSourcesSection } from "@/components/admin/AdminEventSourcesSection";
 import { AdminVerificationSection } from "@/components/admin/AdminVerificationSection";
 
 function BackToQuadLink() {
@@ -187,7 +187,7 @@ export function InternalAdminDashboard({
         />
       ) : null}
       {section === "verification" ? <AdminVerificationSection initialRequestId={verificationRequestId} /> : null}
-      {section === "urinvolved" ? <AdminUrinvolvedSection /> : null}
+      {section === "urinvolved" ? <AdminEventSourcesSection /> : null}
       {section === "analytics" ? <AdminAnalyticsSection /> : null}
       {section === "audit" ? <AdminAuditSection initialSearch={auditQuery} /> : null}
       {section === "legal" ? <AdminLegalSection /> : null}

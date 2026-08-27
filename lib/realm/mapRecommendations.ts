@@ -256,7 +256,7 @@ export function rankMapRecommendations(args: {
       relatedQuestName: relatedQuestName(source, sources),
       happeningToday,
       live,
-      campusRsvp: Boolean(event && event.source !== "urinvolved"),
+      campusRsvp: Boolean(event && (event.cqRsvpEnabled || !event.source)),
     });
     usedMarkers.add(source.markerId);
   }

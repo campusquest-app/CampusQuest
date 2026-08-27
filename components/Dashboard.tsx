@@ -2804,7 +2804,7 @@ export function Dashboard() {
         onTabEnterDirectionDone={() => setTabEnterDirection(null)}
         onTabChange={handleBottomNavSwipe}
         disabled={tabSwipeGestureDisabled}
-        className={`tab-content-enter cq-tab-shell${tab === "realm" ? " cq-tab-shell--realm" : ""} ${tabFullBleed ? "w-full pb-0" : "space-y-6 sm:space-y-7 px-4 pb-8"}`}
+        className={`tab-content-enter cq-tab-shell${tab === "realm" ? " cq-tab-shell--realm" : ""}${tab === "events" ? " cq-tab-shell--events" : ""} ${tabFullBleed || tab === "events" ? "w-full pb-0" : "space-y-6 sm:space-y-7 px-4 pb-8"}`}
       >
         {tab === "inbox" && character && renderPilotCampusGate(
           <Inbox

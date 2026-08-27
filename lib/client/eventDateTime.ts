@@ -83,6 +83,13 @@ export function formatEventTimeLine(
   return `${startTime}–${dayPrefix(end, start)} · ${formatCampusTime(end)}`;
 }
 
+/** Compact card line matching the mobile Events mockup: "Tue, Nov 3 • 7:00 PM". */
+export function formatEventCardWhen(startsAt: string | null | undefined): string {
+  const start = parseInstant(startsAt);
+  if (!start) return "Date TBA";
+  return `${campusShortDate(start)} • ${formatCampusTime(start)}`;
+}
+
 export function eventDateTimeIso(startsAt: string | null | undefined): string | undefined {
   const start = parseInstant(startsAt);
   return start ? start.toISOString() : undefined;

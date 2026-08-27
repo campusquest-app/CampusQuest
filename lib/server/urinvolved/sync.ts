@@ -74,6 +74,9 @@ async function finishSyncLog(
     events_updated: number;
     orgs_created: number;
     orgs_updated: number;
+    events_received?: number;
+    duplicates_merged?: number;
+    error_count?: number;
     error_message?: string | null;
   },
 ) {
@@ -277,6 +280,7 @@ async function runUrinvolvedSyncExclusive(
 
           const row = {
             source: URINVOLVED_SOURCE,
+            source_type: URINVOLVED_SOURCE,
             external_id: canonicalExternalId,
             title: event.title.slice(0, 500),
             description: event.description.slice(0, 5000) || null,
@@ -292,20 +296,48 @@ async function runUrinvolvedSyncExclusive(
             tags: cancelled ? Array.from(new Set([...event.tags, "cancelled"])) : event.tags,
             latitude: matched?.latitude ?? null,
             longitude: matched?.longitude ?? null,
+            timezone: "America/New_York",
+            cq_rsvp_enabled: false,
+            is_cancelled: cancelled,
+            source_ids: { [URINVOLVED_SOURCE]: canonicalExternalId },
             is_active: true,
             last_seen_at: now,
+            last_synced_at: now,
             updated_at: now,
           };
 
           const { data: existing } = await admin
             .from("external_events")
-            .select("id")
+            .select("id, admin_override, admin_override_fields, title, description, organization_name, venue_name, address, location_name, starts_at, ends_at, image_url, event_url, category, tags, latitude, longitude, sport, opponent, ticket_url, broadcast_url, rsvp_url, is_cancelled, featured, visibility, audience, timezone")
+            .eq("source", URINVOLVED_SOURCE)
             .eq("external_id", canonicalExternalId)
             .maybeSingle();
 
+          const mergedRow = existing?.admin_override
+            ? {
+                ...row,
+                title: existing.title ?? row.title,
+                description: existing.description ?? row.description,
+                organization_name: existing.organization_name ?? row.organization_name,
+                venue_name: existing.venue_name ?? row.venue_name,
+                address: existing.address ?? row.address,
+                location_name: existing.location_name ?? row.location_name,
+                starts_at: existing.starts_at ?? row.starts_at,
+                ends_at: existing.ends_at ?? row.ends_at,
+                image_url: existing.image_url ?? row.image_url,
+                event_url: existing.event_url ?? row.event_url,
+                category: existing.category ?? row.category,
+                tags: existing.tags ?? row.tags,
+                latitude: existing.latitude ?? row.latitude,
+                longitude: existing.longitude ?? row.longitude,
+                admin_override: true,
+                admin_override_fields: existing.admin_override_fields ?? [],
+              }
+            : row;
+
           const { data: upserted, error: upsertError } = await admin
             .from("external_events")
-            .upsert(row, { onConflict: "external_id" })
+            .upsert(mergedRow, { onConflict: "source,external_id" })
             .select("id")
             .single();
           if (upsertError) {
@@ -320,6 +352,7 @@ async function runUrinvolvedSyncExclusive(
             await admin
               .from("external_events")
               .update({ is_active: false, updated_at: now })
+              .eq("source", URINVOLVED_SOURCE)
               .eq("external_id", event.externalId);
           }
 
@@ -376,13 +409,16 @@ async function runUrinvolvedSyncExclusive(
         const tags = (org.CategoryNames ?? []).filter(Boolean);
         const row = {
           source: URINVOLVED_SOURCE,
+          source_type: URINVOLVED_SOURCE,
           external_id: org.Id,
           name: org.Name.trim().slice(0, 200),
           description: description?.slice(0, 5000) ?? null,
           logo_url: buildOrganizationLogoUrl(org.ProfilePicture),
           organization_url: buildOrganizationUrl(org.WebsiteKey, org.Id),
+          website_url: buildOrganizationUrl(org.WebsiteKey, org.Id),
           category: tags[0] ?? null,
           tags,
+          organization_type: "student_club",
           is_active: true,
           last_seen_at: now,
           updated_at: now,
@@ -391,12 +427,13 @@ async function runUrinvolvedSyncExclusive(
         const { data: existing } = await admin
           .from("external_organizations")
           .select("id")
+          .eq("source", URINVOLVED_SOURCE)
           .eq("external_id", org.Id)
           .maybeSingle();
 
         const { error: upsertError } = await admin
           .from("external_organizations")
-          .upsert(row, { onConflict: "external_id" });
+          .upsert(row, { onConflict: "source,external_id" });
         if (upsertError) {
           errors.push(`Org ${org.Id}: ${upsertError.message}`);
           continue;
@@ -437,6 +474,7 @@ async function runUrinvolvedSyncExclusive(
         await admin
           .from("external_events")
           .update({ is_active: false, updated_at: now })
+          .eq("source", URINVOLVED_SOURCE)
           .in("external_id", eventIdsToDeactivate);
         eventsDeactivated = eventIdsToDeactivate.length;
       }
@@ -469,6 +507,7 @@ async function runUrinvolvedSyncExclusive(
         await admin
           .from("external_organizations")
           .update({ is_active: false, updated_at: now })
+          .eq("source", URINVOLVED_SOURCE)
           .in("external_id", orgIdsToDeactivate);
       }
     }
@@ -488,6 +527,8 @@ async function runUrinvolvedSyncExclusive(
       events_updated: eventsUpdated,
       orgs_created: orgsCreated,
       orgs_updated: orgsUpdated,
+      events_received: eventsFetched,
+      error_count: errors.length,
       error_message: errors.length > 0 ? errors.slice(0, 8).join(" | ") : null,
     });
 
@@ -534,6 +575,8 @@ async function runUrinvolvedSyncExclusive(
       events_updated: eventsUpdated,
       orgs_created: orgsCreated,
       orgs_updated: orgsUpdated,
+      events_received: eventsFetched,
+      error_count: errors.length + 1,
       error_message: message,
     });
     console.warn("[cq:urinvolved-sync] complete", {

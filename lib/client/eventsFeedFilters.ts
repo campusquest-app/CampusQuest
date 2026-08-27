@@ -1,6 +1,13 @@
 import { CAMPUS_TIME_ZONE, getCampusDayWindow } from "@/lib/realm/eventCountdown";
 
-export type EventsFeedTimeframe = "for_you" | "all" | "today" | "tomorrow" | "this_week" | "this_month";
+export type EventsFeedTimeframe =
+  | "for_you"
+  | "all"
+  | "today"
+  | "tomorrow"
+  | "this_week"
+  | "this_weekend"
+  | "this_month";
 
 export const EVENTS_PAST_GRACE_MS = 2 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -16,6 +23,17 @@ function campusWeekdayIndex(now: Date): number {
     weekday: "short",
   }).format(now);
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(name);
+}
+
+/** Friday 00:00 through Monday 00:00 on the campus calendar (current or upcoming weekend). */
+export function getCampusWeekendWindow(now: Date = new Date()): { start: Date; end: Date } {
+  const today = getCampusDayWindow(now);
+  const weekday = campusWeekdayIndex(now);
+  const offsetToFriday =
+    weekday === 0 ? -2 : weekday === 6 ? -1 : weekday === 5 ? 0 : 5 - weekday;
+  const start = new Date(today.start.getTime() + offsetToFriday * DAY_MS);
+  const end = new Date(start.getTime() + 3 * DAY_MS);
+  return { start, end };
 }
 
 function campusYearMonth(instant: Date): { year: number; month: number } {
@@ -59,6 +77,11 @@ export function matchesEventsTimeframe(
     return start >= weekStart && start < weekEnd;
   }
 
+  if (timeframe === "this_weekend") {
+    const weekend = getCampusWeekendWindow(now);
+    return start >= weekend.start && start < weekend.end;
+  }
+
   if (timeframe === "this_month") {
     const nowMonth = campusYearMonth(now);
     const startMonth = campusYearMonth(start);
@@ -76,6 +99,8 @@ export function matchesEventsSearch(
     organizationName: string;
     category: string;
     tags: string[];
+    sport?: string;
+    opponent?: string;
   },
   query: string,
 ): boolean {
@@ -87,6 +112,8 @@ export function matchesEventsSearch(
     fields.location,
     fields.organizationName,
     fields.category,
+    fields.sport ?? "",
+    fields.opponent ?? "",
     ...fields.tags,
   ]
     .join(" ")

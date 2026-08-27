@@ -1,4 +1,5 @@
 import type { MapEventPin } from "@/lib/mapLocationGroups";
+import { athleticsEventEligibleForCampusMap } from "@/lib/eventSources/athleticsMapEligibility";
 import { dedupeLogicalEventFields } from "@/lib/realm/dedupeLogicalEvents";
 import { getCampusDayWindow, isEventCancelled } from "@/lib/realm/eventCountdown";
 import { effectiveEventEndIso, isEventVisibleOnMap } from "@/lib/realm/eventVisibility";
@@ -54,7 +55,15 @@ function normalizeRow(row: RawRow) {
     imageUrl: str(row, "image_url", "image", "cover_image_url"),
     eventUrl: str(row, "event_url", "url", "link"),
     category: str(row, "category"),
-    status: str(row, "status", "event_status"),
+    source: str(row, "source") ?? "urinvolved",
+    sport: str(row, "sport"),
+    opponent: str(row, "opponent"),
+    homeAway: str(row, "home_away"),
+    ticketUrl: str(row, "ticket_url"),
+    broadcastUrl: str(row, "broadcast_url"),
+    canonicalEventId: str(row, "canonical_event_id"),
+    cqRsvpEnabled: row.cq_rsvp_enabled === true,
+    status: str(row, "status", "event_status", "live_status"),
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
     updatedAt: str(row, "updated_at", "last_seen_at"),
   };
@@ -138,7 +147,6 @@ export async function getTodayExternalEventsForMap(args: {
     .from("external_events")
     .select("*")
     .eq("is_active", true)
-    .eq("source", "urinvolved")
     .gte("starts_at", fetchStart.toISOString())
     .lt("starts_at", fetchEnd.toISOString())
     .order("starts_at", { ascending: true });
@@ -150,7 +158,7 @@ export async function getTodayExternalEventsForMap(args: {
 
   const rows = (data ?? []).map((row) => normalizeRow(row as RawRow));
   debugLog(
-    "urinvolved events near today",
+    "imported events near today",
     rows.map((row) => ({
       title: row.title,
       startsAt: row.startsAt,
@@ -173,6 +181,10 @@ export async function getTodayExternalEventsForMap(args: {
       sourceExternalId: row.externalId,
       locationText: row.venueName ?? row.locationName ?? row.address,
       cancelled: rowCancelled(row),
+      source: row.source,
+      canonicalEventId: row.canonicalEventId,
+      sport: row.sport,
+      opponent: row.opponent,
     })),
   );
 
@@ -185,6 +197,10 @@ export async function getTodayExternalEventsForMap(args: {
   let overrideAppliedCount = 0;
 
   for (const row of todayRows) {
+    if (!athleticsEventEligibleForCampusMap({ source: row.source, homeAway: row.homeAway })) {
+      debugLog("event skipped (athletics away / off-campus map rule)", { title: row.title });
+      continue;
+    }
     const rawLocation = row.venueName ?? row.locationName ?? row.address;
     if (!rawLocation) {
       debugLog("event skipped (no location text)", { title: row.title });
@@ -250,10 +266,16 @@ export async function getTodayExternalEventsForMap(args: {
         endsAt: row.endsAt,
         organizationName: row.organizationName,
         eventUrl: row.eventUrl,
-        source: "urinvolved",
+        source: row.source ?? "urinvolved",
         cancelled,
         imageUrl: row.imageUrl,
         category: row.category,
+        sport: row.sport,
+        opponent: row.opponent,
+        ticketUrl: row.ticketUrl,
+        broadcastUrl: row.broadcastUrl,
+        canonicalEventId: row.canonicalEventId,
+        cqRsvpEnabled: row.cqRsvpEnabled,
         locationText: rawLocation,
         placementStatus: override?.matchStatus ?? "auto_matched",
         matchConfidence: resolved.meta?.confidence ?? override?.matchConfidence ?? null,

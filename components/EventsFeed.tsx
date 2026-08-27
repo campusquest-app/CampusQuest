@@ -2,10 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Calendar, Search, SlidersHorizontal } from "lucide-react";
+import { CANONICAL_EVENT_CATEGORIES } from "@/lib/eventSources/categories";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { EventDetailScreen } from "@/components/events/EventDetailScreen";
 import { EventDiscoveryCard } from "@/components/events/EventDiscoveryCard";
+import { EventsCategoryRail } from "@/components/events/EventsCategoryRail";
 import { EventsFilterSheet } from "@/components/events/EventsFilterSheet";
+import { HappeningSoonCarousel } from "@/components/events/HappeningSoonCarousel";
 import { ScreenBackHeader } from "@/components/ui/BackButton";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
 import {
@@ -14,7 +18,12 @@ import {
   matchesEventsSearch,
   matchesEventsTimeframe,
 } from "@/lib/client/eventsFeedFilters";
-import { EVENTS_STALE_NOTICE, eventsEmptyStateCopy } from "@/lib/client/eventsFeedEmptyState";
+import {
+  EVENTS_FOR_YOU_EMPTY_DETAIL,
+  EVENTS_FOR_YOU_EMPTY_TITLE,
+  EVENTS_STALE_NOTICE,
+  eventsEmptyStateCopy,
+} from "@/lib/client/eventsFeedEmptyState";
 import {
   countActiveEventFilters,
   EVENTS_SEARCH_PLACEHOLDER,
@@ -22,13 +31,18 @@ import {
   scoreEventsSearch,
 } from "@/lib/client/eventDiscovery";
 import {
+  eventMatchesCategoryRail,
+  eventSearchHaystack,
+  feedEventIsSaved,
+} from "@/lib/client/eventCardPresentation";
+import {
   type CampusEventItem,
   type ExternalFeedEventItem,
   type FeedEvent,
-  feedEventHostName,
   feedEventLocationText,
 } from "@/lib/client/eventFeedTypes";
 import { applyCampusRsvpStatus, nextInterestedRsvpStatus } from "@/lib/client/eventInterested";
+import { partitionDiscoverySections } from "@/lib/client/happeningSoon";
 import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
 import {
   campusEventToRecommendationEntity,
@@ -45,6 +59,7 @@ type Filters = {
   isPaid: "all" | "free" | "paid";
   location: string;
   timeframe: EventsFeedTimeframe;
+  sport: string;
 };
 
 const initialFilters: Filters = {
@@ -54,12 +69,13 @@ const initialFilters: Filters = {
   isPaid: "all",
   location: "",
   timeframe: "for_you",
+  sport: "",
 };
 
 const TIMEFRAME_OPTIONS: Array<{ value: EventsFeedTimeframe; label: string }> = [
   { value: "for_you", label: "For You" },
   { value: "today", label: "Today" },
-  { value: "this_week", label: "This Week" },
+  { value: "this_weekend", label: "This Weekend" },
   { value: "all", label: "All" },
 ];
 
@@ -91,6 +107,8 @@ export function EventsFeed({
   const [syncBanner, setSyncBanner] = useState<ReturnType<typeof eventsSyncBanner>>(null);
   const [filters, setFilters] = useState<Filters>(initialFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [savedOnly, setSavedOnly] = useState(false);
+  const [forYouExpanded, setForYouExpanded] = useState(false);
   const [activeDetail, setActiveDetail] = useState<FeedEvent | null>(null);
   const [rsvping, setRsvping] = useState<string | null>(null);
   const loadGenerationRef = useRef(0);
@@ -138,6 +156,7 @@ export function EventsFeed({
         setSyncBanner(
           eventsSyncBanner({
             stale: Boolean(externalResult.value.meta?.stale),
+            emptyFeed: (externalResult.value.events ?? []).length === 0 && (campusResult.status !== "fulfilled" || (campusResult.value.events ?? []).length === 0),
             lastSuccessfulSync: externalResult.value.meta?.lastSuccessfulSync ?? null,
             warningText: EVENTS_STALE_NOTICE,
           }),
@@ -146,11 +165,12 @@ export function EventsFeed({
         const message =
           externalResult.reason instanceof Error
             ? externalResult.reason.message
-            : "Could not load URInvolved events.";
+            : "Could not load campus events.";
         setSyncBanner(
           eventsSyncBanner({
             stale: true,
             fetchFailed: true,
+            emptyFeed: campusResult.status !== "fulfilled",
             warningText: EVENTS_STALE_NOTICE,
           }),
         );
@@ -202,10 +222,17 @@ export function EventsFeed({
     }
   }, [loading, events, externalEvents]);
 
-  const categories = useMemo(
+  const categories = useMemo(() => [...CANONICAL_EVENT_CATEGORIES], []);
+  const sports = useMemo(
     () =>
-      Array.from(new Set([...events, ...externalEvents].map((event) => event.category).filter(Boolean))).sort(),
-    [events, externalEvents],
+      Array.from(
+        new Set(
+          externalEvents
+            .map((event) => event.sport?.trim())
+            .filter((sport): sport is string => Boolean(sport)),
+        ),
+      ).sort(),
+    [externalEvents],
   );
   const organizationOptions = useMemo(() => {
     const campus = Array.from(
@@ -231,27 +258,29 @@ export function EventsFeed({
 
   const prioritizedEvents = useMemo(() => {
     const locationNeedle = filters.location.trim().toLowerCase();
-    const categoryNeedle = filters.category.trim().toLowerCase();
     const searchQuery = filters.search.trim();
 
     const filtered = allFeedEvents.filter((item) => {
       const startsAt = item.event.startsAt;
       if (!isUpcomingEvent(startsAt)) return false;
       if (!matchesEventsTimeframe(startsAt, filters.timeframe)) return false;
+      if (savedOnly && !feedEventIsSaved(item)) return false;
 
-      const title = item.event.title;
-      const description = item.event.description;
-      const category = item.event.category ?? "";
-      const location = feedEventLocationText(item);
-      const organizationName = feedEventHostName(item);
-      const tags = item.kind === "external" ? item.event.tags ?? [] : [];
+      const haystack = eventSearchHaystack(item);
       const isPaid = item.kind === "external" ? false : item.event.isPaid;
 
-      if (!matchesEventsSearch({ title, description, location, organizationName, category, tags }, filters.search)) {
+      if (!matchesEventsSearch(haystack, filters.search)) {
         return false;
       }
-      if (categoryNeedle && !category.toLowerCase().includes(categoryNeedle)) return false;
-      if (locationNeedle && !location.toLowerCase().includes(locationNeedle)) return false;
+      if (filters.category.trim() && !eventMatchesCategoryRail(item, filters.category)) {
+        return false;
+      }
+      if (filters.sport.trim()) {
+        if (item.kind !== "external" || !(item.event.sport ?? "").toLowerCase().includes(filters.sport.trim().toLowerCase())) {
+          return false;
+        }
+      }
+      if (locationNeedle && !feedEventLocationText(item).toLowerCase().includes(locationNeedle)) return false;
       if (filters.isPaid === "paid" && !isPaid) return false;
       if (filters.isPaid === "free" && isPaid) return false;
 
@@ -270,18 +299,7 @@ export function EventsFeed({
       return true;
     });
 
-    const searchScoreFor = (item: FeedEvent) =>
-      scoreEventsSearch(
-        {
-          title: item.event.title,
-          organizationName: feedEventHostName(item),
-          location: feedEventLocationText(item),
-          category: item.event.category ?? "",
-          tags: item.kind === "external" ? item.event.tags ?? [] : [],
-          description: item.event.description,
-        },
-        searchQuery,
-      );
+    const searchScoreFor = (item: FeedEvent) => scoreEventsSearch(eventSearchHaystack(item), searchQuery);
 
     if (searchQuery) {
       const ranked = rankRecommendationEntities({
@@ -329,7 +347,19 @@ export function EventsFeed({
       diversity: true,
       exploreEvery: 4,
     }).map((row) => ({ item: row.item, recommendation: row.recommendation }));
-  }, [allFeedEvents, filters, recProfile]);
+  }, [allFeedEvents, filters, recProfile, savedOnly]);
+
+  const discoverySections = useMemo(
+    () =>
+      partitionDiscoverySections({
+        ranked: prioritizedEvents,
+        timeframe: filters.timeframe,
+        searchQuery: filters.search,
+        savedOnly,
+        forYouLimit: forYouExpanded ? 40 : 8,
+      }),
+    [prioritizedEvents, filters.timeframe, filters.search, savedOnly, forYouExpanded],
+  );
 
   const emptyCopy = eventsEmptyStateCopy({
     hasLoadedEvents: events.length + externalEvents.length > 0,
@@ -337,6 +367,8 @@ export function EventsFeed({
     timeframe: filters.timeframe,
     hasSearch: Boolean(filters.search.trim()),
     hasExtraFilters: activeFilterCount > 0,
+    category: filters.category,
+    savedOnly,
   });
 
   function syncActiveCampusDetail(nextEvents: CampusEventItem[], eventId: string) {
@@ -346,7 +378,36 @@ export function EventsFeed({
     }
   }
 
-  async function handleInterested(eventId: string) {
+  function syncActiveExternalDetail(nextEvents: ExternalFeedEventItem[], eventId: string) {
+    if (activeDetail?.kind === "external" && activeDetail.event.id === eventId) {
+      const updated = nextEvents.find((event) => event.id === eventId);
+      if (updated) setActiveDetail({ kind: "external", event: updated });
+    }
+  }
+
+  async function handleInterested(eventId: string, kind: "campus" | "external" = "campus") {
+    if (kind === "external") {
+      const current = externalEvents.find((event) => event.id === eventId);
+      if (!current?.cqRsvpEnabled) return;
+      const previous = current.myRsvpStatus ?? null;
+      const next = nextInterestedRsvpStatus(previous);
+      const optimistic = applyCampusRsvpStatus(externalEvents, eventId, next);
+      setExternalEvents(optimistic);
+      syncActiveExternalDetail(optimistic, eventId);
+      setRsvping(eventId);
+      setError(null);
+      try {
+        await postAuthed(`/api/external/events/${eventId}/rsvp`, { status: next });
+      } catch (rsvpError) {
+        const rolledBack = applyCampusRsvpStatus(externalEvents, eventId, previous);
+        setExternalEvents(rolledBack);
+        syncActiveExternalDetail(rolledBack, eventId);
+        setError(rsvpError instanceof Error ? rsvpError.message : "Could not save RSVP.");
+      } finally {
+        setRsvping(null);
+      }
+      return;
+    }
     const current = events.find((event) => event.id === eventId);
     if (!current) return;
     const previous = current.myRsvpStatus;
@@ -368,7 +429,29 @@ export function EventsFeed({
     }
   }
 
-  async function handleGoing(eventId: string) {
+  async function handleGoing(eventId: string, kind: "campus" | "external" = "campus") {
+    if (kind === "external") {
+      const current = externalEvents.find((event) => event.id === eventId);
+      if (!current?.cqRsvpEnabled) return;
+      const previous = current.myRsvpStatus ?? null;
+      const next = previous === "going" ? "not_going" : "going";
+      const optimistic = applyCampusRsvpStatus(externalEvents, eventId, next);
+      setExternalEvents(optimistic);
+      syncActiveExternalDetail(optimistic, eventId);
+      setRsvping(eventId);
+      setError(null);
+      try {
+        await postAuthed(`/api/external/events/${eventId}/rsvp`, { status: next });
+      } catch (rsvpError) {
+        const rolledBack = applyCampusRsvpStatus(externalEvents, eventId, previous);
+        setExternalEvents(rolledBack);
+        syncActiveExternalDetail(rolledBack, eventId);
+        setError(rsvpError instanceof Error ? rsvpError.message : "Could not save RSVP.");
+      } finally {
+        setRsvping(null);
+      }
+      return;
+    }
     const current = events.find((event) => event.id === eventId);
     if (!current) return;
     const previous = current.myRsvpStatus;
@@ -391,10 +474,15 @@ export function EventsFeed({
   }
 
   function applyEmptyAction() {
-    if (emptyCopy.action === "all") setFilters((prev) => ({ ...prev, timeframe: "all" }));
+    if (emptyCopy.action === "all") {
+      setSavedOnly(false);
+      setFilters((prev) => ({ ...prev, timeframe: "all" }));
+    }
     if (emptyCopy.action === "this_week") setFilters((prev) => ({ ...prev, timeframe: "this_week" }));
+    if (emptyCopy.action === "this_weekend") setFilters((prev) => ({ ...prev, timeframe: "this_weekend" }));
     if (emptyCopy.action === "clear_search") setFilters((prev) => ({ ...prev, search: "" }));
     if (emptyCopy.action === "clear_filters") {
+      setSavedOnly(false);
       setFilters((prev) => ({
         ...initialFilters,
         search: prev.search,
@@ -406,61 +494,115 @@ export function EventsFeed({
   const liveDetail =
     activeDetail?.kind === "campus"
       ? { kind: "campus" as const, event: events.find((event) => event.id === activeDetail.event.id) ?? activeDetail.event }
-      : activeDetail;
+      : activeDetail?.kind === "external"
+        ? {
+            kind: "external" as const,
+            event: externalEvents.find((event) => event.id === activeDetail.event.id) ?? activeDetail.event,
+          }
+        : activeDetail;
+
+  const searching = Boolean(filters.search.trim()) || savedOnly;
+  const showForYouSection = filters.timeframe === "for_you" && !searching;
+
+  function renderFeedCard(row: (typeof prioritizedEvents)[number]) {
+    const item = row.item;
+    return (
+      <EventDiscoveryCard
+        key={`${item.kind}-${item.event.id}`}
+        item={item}
+        recommendation={row.recommendation}
+        interestedPending={rsvping === item.event.id}
+        onView={() => setActiveDetail(item)}
+        onViewOnMap={onViewOnMap ? () => onViewOnMap(item.event.id) : undefined}
+        onRsvpGoing={
+          item.kind === "campus" || (item.kind === "external" && item.event.cqRsvpEnabled)
+            ? () => void handleGoing(item.event.id, item.kind)
+            : undefined
+        }
+        onToggleInterested={
+          item.kind === "campus" || (item.kind === "external" && item.event.cqRsvpEnabled)
+            ? () => void handleInterested(item.event.id, item.kind)
+            : undefined
+        }
+      />
+    );
+  }
 
   return (
     <>
     {/* Keep the list mounted under the portaled detail so document scroll position is preserved. */}
     <section
-      className={`space-y-4${liveDetail ? " pointer-events-none" : ""}`}
+      className={`cq-events-discovery${liveDetail ? " pointer-events-none" : ""}`}
       aria-hidden={liveDetail ? true : undefined}
       inert={liveDetail ? true : undefined}
     >
       {onBack ? <ScreenBackHeader title="Events" onBack={onBack} /> : null}
-      <div className="card p-4 space-y-3">
-        <h3 className="font-display font-semibold text-white">Event Discovery</h3>
-        <p className="text-xs text-white/55">
-          Showing events in your verified campus community
-          {personalization?.schoolName ? ` (${personalization.schoolName})` : ""}.
-          {filters.timeframe === "for_you"
-            ? " For You ranks events from your interests and communities without hiding the rest of campus."
-            : ""}
+      <header className="cq-events-header">
+        <div className="cq-events-header-row">
+          <div>
+            <h1 className="cq-events-title">Events</h1>
+            <p className="cq-events-subtitle">Find something to do on campus.</p>
+          </div>
+          <button
+            type="button"
+            className={`cq-events-saved ${savedOnly ? "cq-events-saved--on" : ""}`}
+            onClick={() => setSavedOnly((prev) => !prev)}
+            aria-pressed={savedOnly}
+            aria-label={savedOnly ? "Show all events" : "Show saved events"}
+          >
+            <Calendar className="h-5 w-5" strokeWidth={2.1} />
+          </button>
+        </div>
+        <p className="sr-only">
+          For You ranks events from your interests and communities without hiding the rest of campus.
         </p>
+      </header>
+
+      <div className="cq-events-search">
+        <Search className="cq-events-search-icon" aria-hidden />
         <input
           value={filters.search}
           onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
           placeholder={EVENTS_SEARCH_PLACEHOLDER}
           aria-label={EVENTS_SEARCH_PLACEHOLDER}
-          className="w-full rounded-lg bg-white/10 border border-white/20 px-3 py-2.5 text-sm text-white placeholder-white/50"
+          className="cq-events-search-input"
         />
-        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Event time">
-          {TIMEFRAME_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="tab"
-              aria-selected={filters.timeframe === option.value}
-              onClick={() => setFilters((prev) => ({ ...prev, timeframe: option.value }))}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition min-h-[36px] ${
-                filters.timeframe === option.value
-                  ? "border-uri-keaney/50 text-uri-keaney bg-uri-keaney/15"
-                  : "border-white/20 text-white/75 hover:bg-white/10"
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
         <button
           type="button"
           onClick={() => setFiltersOpen(true)}
-          className="rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-white/85 hover:bg-white/10 min-h-[40px]"
+          className="cq-events-search-filter"
           aria-expanded={filtersOpen}
           aria-haspopup="dialog"
+          aria-label={activeFilterCount > 0 ? `Filters, ${activeFilterCount} active` : "Filters"}
         >
-          {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : "Filters"}
+          <SlidersHorizontal className="h-4 w-4" strokeWidth={2.2} />
         </button>
       </div>
+
+      <div className="cq-events-time-pills" role="tablist" aria-label="Event time" data-cq-horizontal-scroll="true" data-cq-gesture-block="swipe-tab">
+        {TIMEFRAME_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="tab"
+            aria-selected={filters.timeframe === option.value && !savedOnly}
+            onClick={() => {
+              setSavedOnly(false);
+              setFilters((prev) => ({ ...prev, timeframe: option.value }));
+            }}
+            className={`cq-events-time-pill ${
+              filters.timeframe === option.value && !savedOnly ? "cq-events-time-pill--on" : ""
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      <EventsCategoryRail
+        selected={filters.category}
+        onSelect={(id) => setFilters((prev) => ({ ...prev, category: id, sport: id === "Athletics" ? prev.sport : "" }))}
+      />
 
       {error ? (
         <ScreenDataState
@@ -471,57 +613,42 @@ export function EventsFeed({
           compact
         />
       ) : null}
-      {syncBanner && !error ? (
-        <div
-          className={
-            syncBanner.kind === "warning"
-              ? "rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100"
-              : "px-1 text-[11px] text-white/40"
-          }
-          role={syncBanner.kind === "warning" ? "status" : undefined}
-        >
+      {syncBanner?.kind === "warning" && !error ? (
+        <div className="cq-events-sync-warning" role="status">
           {syncBanner.text}
         </div>
       ) : null}
       {loading ? (
-        <div className="space-y-2">
-          <div className="h-24 rounded-xl bg-white/10 animate-pulse" />
-          <div className="h-24 rounded-xl bg-white/10 animate-pulse" />
+        <div className="cq-events-skeletons" aria-busy="true" aria-label="Loading events">
+          <div className="cq-events-skeleton cq-events-skeleton--hero" />
+          <div className="cq-events-skeleton cq-events-skeleton--row" />
+          <div className="cq-events-skeleton cq-events-skeleton--row" />
         </div>
       ) : null}
       {!loading && prioritizedEvents.length === 0 ? (
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center space-y-2">
-          <p className="text-sm text-white/80 font-medium">{emptyCopy.title}</p>
-          <p className="text-xs text-white/50 max-w-md mx-auto leading-relaxed">{emptyCopy.detail}</p>
-          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+        <div className="cq-events-empty">
+          <p className="cq-events-empty-title">{emptyCopy.title}</p>
+          <p className="cq-events-empty-detail">{emptyCopy.detail}</p>
+          <div className="cq-events-empty-actions">
             {emptyCopy.action ? (
-              <button
-                type="button"
-                onClick={applyEmptyAction}
-                className="rounded-lg border border-white/25 px-3 py-1.5 text-xs font-semibold text-white/85 hover:bg-white/10"
-              >
+              <button type="button" onClick={applyEmptyAction} className="cq-events-empty-btn">
                 {emptyCopy.action === "all"
                   ? "Explore all upcoming events"
                   : emptyCopy.action === "this_week"
                     ? "See this week"
-                    : emptyCopy.action === "clear_search"
-                      ? "Clear search"
-                      : "Clear filters"}
+                    : emptyCopy.action === "this_weekend"
+                      ? "See this weekend"
+                      : emptyCopy.action === "clear_search"
+                        ? "Clear search"
+                        : "Clear filters"}
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => void loadEvents()}
-                className="rounded-lg border border-white/25 px-3 py-1.5 text-xs font-semibold text-white/85 hover:bg-white/10"
-              >
+              <button type="button" onClick={() => void loadEvents()} className="cq-events-empty-btn">
                 Refresh events
               </button>
             )}
             {showAdminSyncLink ? (
-              <Link
-                href="/internal/admin"
-                className="rounded-lg border border-cyan-400/35 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/10"
-              >
+              <Link href="/internal/admin" className="cq-events-empty-btn cq-events-empty-btn--admin">
                 Admin sync status
               </Link>
             ) : null}
@@ -529,23 +656,60 @@ export function EventsFeed({
         </div>
       ) : null}
 
-      <div className="space-y-2.5">
-        {prioritizedEvents.map(({ item, recommendation }) => (
-          <EventDiscoveryCard
-            key={`${item.kind}-${item.event.id}`}
-            item={item}
-            recommendation={recommendation}
-            interestedPending={item.kind === "campus" && rsvping === item.event.id}
-            onView={() => setActiveDetail(item)}
-            onToggleInterested={item.kind === "campus" ? () => void handleInterested(item.event.id) : undefined}
-          />
-        ))}
-      </div>
+      {!loading && !searching ? (
+        <HappeningSoonCarousel
+          rows={discoverySections.happeningSoon}
+          rsvpingId={rsvping}
+          onView={setActiveDetail}
+          onViewOnMap={onViewOnMap}
+          onToggleInterested={(item) => void handleInterested(item.event.id, item.kind)}
+        />
+      ) : null}
+
+      {!loading && showForYouSection ? (
+        <section className="cq-events-foryou" aria-labelledby="cq-events-foryou-title">
+          <div className="cq-events-section-head">
+            <div>
+              <h2 id="cq-events-foryou-title" className="cq-events-section-title">
+                ☆ For You
+              </h2>
+              <p className="cq-events-section-sub">Based on your interests</p>
+            </div>
+            {discoverySections.more.length > 0 || forYouExpanded ? (
+              <button
+                type="button"
+                className="cq-events-section-link"
+                onClick={() => setForYouExpanded((prev) => !prev)}
+              >
+                {forYouExpanded ? "Show less" : "View All For You"}
+              </button>
+            ) : null}
+          </div>
+          {discoverySections.forYou.length === 0 ? (
+            <div className="cq-events-empty cq-events-empty--section">
+              <p className="cq-events-empty-title">{EVENTS_FOR_YOU_EMPTY_TITLE}</p>
+              <p className="cq-events-empty-detail">{EVENTS_FOR_YOU_EMPTY_DETAIL}</p>
+            </div>
+          ) : (
+            <div className="cq-events-feed">{discoverySections.forYou.map(renderFeedCard)}</div>
+          )}
+        </section>
+      ) : null}
+
+      {!loading && discoverySections.more.length > 0 ? (
+        <section className="cq-events-more" aria-labelledby="cq-events-more-title">
+          <h2 id="cq-events-more-title" className="cq-events-section-title">
+            {searching ? (savedOnly ? "Saved" : "Search results") : showForYouSection ? "More events" : "Upcoming"}
+          </h2>
+          <div className="cq-events-feed">{discoverySections.more.map(renderFeedCard)}</div>
+        </section>
+      ) : null}
 
       <EventsFilterSheet
         open={filtersOpen}
         values={filters}
         categories={categories}
+        sports={sports}
         organizations={organizationOptions}
         onChange={(patch) => setFilters((prev) => ({ ...prev, ...patch }))}
         onClose={() => setFiltersOpen(false)}
@@ -567,8 +731,16 @@ export function EventsFeed({
         interestedPending={rsvping === liveDetail.event.id}
         onBack={() => setActiveDetail(null)}
         onRetry={() => void loadEvents()}
-        onToggleInterested={liveDetail.kind === "campus" ? () => void handleInterested(liveDetail.event.id) : undefined}
-        onRsvpGoing={liveDetail.kind === "campus" ? () => void handleGoing(liveDetail.event.id) : undefined}
+        onToggleInterested={
+          liveDetail.kind === "campus" || (liveDetail.kind === "external" && liveDetail.event.cqRsvpEnabled)
+            ? () => void handleInterested(liveDetail.event.id, liveDetail.kind)
+            : undefined
+        }
+        onRsvpGoing={
+          liveDetail.kind === "campus" || (liveDetail.kind === "external" && liveDetail.event.cqRsvpEnabled)
+            ? () => void handleGoing(liveDetail.event.id, liveDetail.kind)
+            : undefined
+        }
         onViewOnMap={onViewOnMap ? () => onViewOnMap(liveDetail.event.id) : undefined}
         onWalkHere={onViewOnMap ? () => onViewOnMap(liveDetail.event.id, { walk: true }) : undefined}
         onOpenOrganization={onOpenOrganization}

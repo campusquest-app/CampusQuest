@@ -14,11 +14,14 @@ export type CampusEventItem = {
   rsvpCount: number;
   myRsvpStatus: "going" | "interested" | "not_going" | null;
   isCancelled: boolean;
+  source?: string;
+  sourceType?: string;
 };
 
 export type ExternalFeedEventItem = {
   id: string;
   source: string;
+  sourceType?: string | null;
   title: string;
   description: string;
   category: string;
@@ -28,11 +31,24 @@ export type ExternalFeedEventItem = {
   startsAt: string | null;
   endsAt: string | null;
   organizationName: string | null;
+  organizationId?: string | null;
   imageUrl: string | null;
   eventUrl: string | null;
+  ticketUrl?: string | null;
+  broadcastUrl?: string | null;
+  rsvpUrl?: string | null;
   tags: string[];
+  sport?: string | null;
+  opponent?: string | null;
+  homeAway?: string | null;
+  score?: string | null;
+  liveStatus?: string | null;
+  cqRsvpEnabled?: boolean;
+  isCancelled?: boolean;
   latitude?: number | null;
   longitude?: number | null;
+  rsvpCount?: number;
+  myRsvpStatus: "going" | "interested" | "not_going" | null;
   imported: true;
 };
 

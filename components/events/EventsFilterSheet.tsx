@@ -10,6 +10,7 @@ export type EventsFilterValues = {
   isPaid: "all" | "free" | "paid";
   location: string;
   timeframe: EventsFeedTimeframe;
+  sport: string;
 };
 
 export function EventsFilterSheet({
@@ -17,6 +18,7 @@ export function EventsFilterSheet({
   values,
   categories,
   organizations,
+  sports,
   onChange,
   onClose,
   onClear,
@@ -25,6 +27,7 @@ export function EventsFilterSheet({
   values: EventsFilterValues;
   categories: string[];
   organizations: Array<{ key: string; label: string }>;
+  sports?: string[];
   onChange: (patch: Partial<EventsFilterValues>) => void;
   onClose: () => void;
   onClear: () => void;
@@ -93,6 +96,24 @@ export function EventsFilterSheet({
               ))}
             </select>
           </label>
+
+          {values.category === "Athletics" && (sports?.length ?? 0) > 0 ? (
+            <label className="cq-events-filter-label">
+              Sport
+              <select
+                value={values.sport}
+                onChange={(event) => onChange({ sport: event.target.value })}
+                className="cq-events-filter-control"
+              >
+                <option value="">All sports</option>
+                {sports!.map((sport) => (
+                  <option key={sport} value={sport}>
+                    {sport}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
 
           <label className="cq-events-filter-label">
             Organization

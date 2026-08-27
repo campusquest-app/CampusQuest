@@ -20,10 +20,23 @@ describe("event discovery helpers", () => {
     ).toEqual({ kind: "fresh", text: "Updated 18 min ago" });
   });
 
-  it("warns only when sync is stale or failed", () => {
+  it("does not show a global stale warning when sources still have events", () => {
     expect(
       eventsSyncBanner({
         stale: true,
+        emptyFeed: false,
+        lastSuccessfulSync: "2026-09-08T16:00:00.000Z",
+        warningText: EVENTS_STALE_NOTICE,
+        now: new Date("2026-09-08T16:18:00.000Z"),
+      }),
+    ).toEqual({ kind: "fresh", text: "Updated 18 min ago" });
+  });
+
+  it("warns only when the whole feed failed or is empty and stale", () => {
+    expect(
+      eventsSyncBanner({
+        stale: true,
+        emptyFeed: true,
         lastSuccessfulSync: "2026-09-08T16:00:00.000Z",
         warningText: EVENTS_STALE_NOTICE,
       }),
@@ -78,6 +91,31 @@ describe("event discovery helpers", () => {
     expect(eventHasMappedLocation({ location: "Ryan Center" })).toBe(true);
     expect(eventHasMappedLocation({ address: "1 Rhody Way, Kingston, RI" })).toBe(false);
     expect(eventHasMappedLocation({ location: "Location TBA" })).toBe(false);
+    expect(
+      eventHasMappedLocation({
+        source: "athletics",
+        homeAway: "away",
+        venueName: "North Andover, MA",
+        latitude: 41.4865,
+        longitude: -71.5298,
+      }),
+    ).toBe(false);
+    expect(
+      eventHasMappedLocation({
+        source: "athletics",
+        homeAway: "home",
+        venueName: "Thomas M. Ryan Center",
+        latitude: 41.4865,
+        longitude: -71.5298,
+      }),
+    ).toBe(true);
+    expect(
+      eventHasMappedLocation({
+        source: "athletics",
+        homeAway: "home",
+        venueName: "Pawtucket, RI, Centreville Bank Stadium",
+      }),
+    ).toBe(false);
   });
 
   it("keeps recommendation reasons optional and labeled", () => {
@@ -85,5 +123,7 @@ describe("event discovery helpers", () => {
     expect(eventCardRecommendationReason({ code: "interest", label: "Because you're interested in Athletics" })).toBe(
       "Because you're interested in Athletics",
     );
+    expect(eventCardRecommendationReason({ code: "popular", label: "Popular on campus" })).toBe("Popular on campus");
+    expect(eventCardRecommendationReason({ code: "interest", label: "   " })).toBeNull();
   });
 });

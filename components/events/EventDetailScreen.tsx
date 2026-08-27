@@ -25,6 +25,8 @@ import {
   shouldCollapseEventDescription,
 } from "@/lib/client/eventDetailContent";
 import { eventCardRecommendationReason, eventHasMappedLocation, eventShareText } from "@/lib/client/eventDiscovery";
+import { eventCardDisplayTitle } from "@/lib/client/eventCardPresentation";
+import { eventSourceActionLabel, eventSourceLabel } from "@/lib/eventSources/catalog";
 import { campusEventHostLabel, type FeedEvent } from "@/lib/client/eventFeedTypes";
 import { isInterestedRsvp } from "@/lib/client/eventInterested";
 import { nativeShare, openExternalUrl } from "@/lib/client/capacitorNative";
@@ -210,6 +212,8 @@ function EventDetailBody({
           venueName: item.event.venueName,
           location: item.event.location,
           address: item.event.address,
+          source: item.event.source,
+          homeAway: item.event.homeAway,
         }
       : { location: item.event.location },
   );
@@ -224,8 +228,14 @@ function EventDetailBody({
   const visibleParagraphs =
     canCollapseDescription && !descriptionExpanded ? paragraphs.slice(0, 3) : paragraphs;
   const reason = eventCardRecommendationReason(recommendation?.reason);
-  const interested = item.kind === "campus" && isInterestedRsvp(item.event.myRsvpStatus);
-  const going = item.kind === "campus" && item.event.myRsvpStatus === "going";
+  const interested =
+    (item.kind === "campus" && isInterestedRsvp(item.event.myRsvpStatus)) ||
+    (item.kind === "external" && isInterestedRsvp(item.event.myRsvpStatus ?? null));
+  const going =
+    (item.kind === "campus" && item.event.myRsvpStatus === "going") ||
+    (item.kind === "external" && item.event.myRsvpStatus === "going");
+  const sourceKey = item.kind === "external" ? item.event.source : item.event.sourceType ?? "campusquest";
+  const sourceAction = eventSourceActionLabel(sourceKey) ?? "More Info on URInvolved";
   const canCalendar = Boolean(event.startsAt);
   const showNeedToKnow = facts.length > 0 || expect.length > 0;
 
@@ -273,7 +283,7 @@ function EventDetailBody({
 
       <div className="cq-event-detail-body">
         <div className="cq-event-detail-intro">
-          <h1 className="cq-event-detail-title">{event.title}</h1>
+          <h1 className="cq-event-detail-title">{eventCardDisplayTitle(item)}</h1>
           <div className="flex flex-wrap gap-1.5">
             {reason ? (
               <span className="cq-event-badge cq-event-badge--rec">
@@ -281,7 +291,13 @@ function EventDetailBody({
               </span>
             ) : null}
             {event.category ? <span className="cq-event-badge">{event.category}</span> : null}
+            {item.kind === "external" && item.event.sport ? (
+              <span className="cq-event-badge">{item.event.sport}</span>
+            ) : null}
             {item.kind === "campus" && item.event.isCancelled ? (
+              <span className="cq-event-badge cq-event-badge--warn">Cancelled</span>
+            ) : null}
+            {item.kind === "external" && item.event.isCancelled ? (
               <span className="cq-event-badge cq-event-badge--warn">Cancelled</span>
             ) : null}
           </div>
@@ -339,6 +355,21 @@ function EventDetailBody({
               </dd>
             </div>
           ) : null}
+          {item.kind === "external" && item.event.opponent ? (
+            <div className="cq-event-detail-meta-row">
+              <dt className="sr-only">Opponent</dt>
+              <dd>
+                <Users className="cq-event-detail-meta-icon" aria-hidden />
+                <span>
+                  {item.event.homeAway === "away" ? "at" : "vs"} {item.event.opponent}
+                  {item.event.score ? ` · ${item.event.score}` : ""}
+                  {item.event.liveStatus && item.event.liveStatus !== "upcoming"
+                    ? ` · ${item.event.liveStatus}`
+                    : ""}
+                </span>
+              </dd>
+            </div>
+          ) : null}
         </dl>
 
         <div className="cq-event-detail-actions" role="group" aria-label="Event actions">
@@ -353,7 +384,7 @@ function EventDetailBody({
               {interested ? "✓ Interested" : "Interested"}
             </button>
           ) : null}
-          {item.kind === "campus" && onRsvpGoing ? (
+          {onRsvpGoing && (item.kind === "campus" || (item.kind === "external" && item.event.cqRsvpEnabled)) ? (
             <button
               type="button"
               onClick={onRsvpGoing}
@@ -361,7 +392,31 @@ function EventDetailBody({
               className={`cq-event-detail-action ${going ? "cq-event-detail-action--on" : ""}`}
             >
               {going ? "✓ Going" : "Going"}
-              {item.event.rsvpCount > 0 ? ` · ${item.event.rsvpCount}` : ""}
+              {item.kind === "campus" && item.event.rsvpCount > 0
+                ? ` · ${item.event.rsvpCount}`
+                : item.kind === "external" && (item.event.rsvpCount ?? 0) > 0
+                  ? ` · ${item.event.rsvpCount}`
+                  : ""}
+            </button>
+          ) : null}
+          {item.kind === "external" && item.event.ticketUrl ? (
+            <button
+              type="button"
+              onClick={() => void openExternalUrl(item.event.ticketUrl!)}
+              className="cq-event-detail-action"
+            >
+              Tickets
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          ) : null}
+          {item.kind === "external" && item.event.broadcastUrl ? (
+            <button
+              type="button"
+              onClick={() => void openExternalUrl(item.event.broadcastUrl!)}
+              className="cq-event-detail-action"
+            >
+              Watch
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
             </button>
           ) : null}
           {canCalendar ? (
@@ -475,19 +530,21 @@ function EventDetailBody({
 
         {sourceUrl ? (
           <section className="cq-event-source">
-            <p className="text-xs text-white/45">Source: URInvolved</p>
+            <p className="text-xs text-white/45">Source: {eventSourceLabel(sourceKey)}</p>
             <button
               type="button"
               onClick={() => void openExternalUrl(sourceUrl)}
               className="inline-flex min-h-[44px] items-center gap-1 text-sm text-cyan-200/90"
             >
-              More Info on URInvolved
+              {sourceAction}
               <ExternalLink className="h-3.5 w-3.5" aria-hidden />
               <span className="sr-only">(opens in a new browser)</span>
             </button>
           </section>
         ) : item.kind === "external" ? (
-          <p className="text-xs text-white/45">Source: URInvolved</p>
+          <p className="text-xs text-white/45">Source: {eventSourceLabel(sourceKey)}</p>
+        ) : item.kind === "campus" && item.event.sourceType === "manual" ? (
+          <p className="text-xs text-white/45">Source: CampusQuest Verified</p>
         ) : null}
       </div>
 

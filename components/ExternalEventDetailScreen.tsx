@@ -5,6 +5,7 @@ import type { ExternalFeedEventItem } from "@/lib/client/eventFeedTypes";
 
 export type ExternalEventDetailData = {
   id: string;
+  source?: string;
   title: string;
   description: string;
   category: string;
@@ -35,7 +36,8 @@ export function ExternalEventDetailScreen({
 }) {
   const feedEvent: ExternalFeedEventItem = {
     ...event,
-    source: "urinvolved",
+    source: event.source ?? "urinvolved",
+    myRsvpStatus: null,
     imported: true,
   };
 

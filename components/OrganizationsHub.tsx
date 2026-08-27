@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { eventSourceActionLabel, eventSourceLabel } from "@/lib/eventSources/catalog";
+import { organizationTypeLabel } from "@/lib/eventSources/organizationTypes";
 import { fetchAuthed, postAuthed, deleteAuthed } from "@/lib/client/dashboardApi";
 import {
   ExternalEventLocationDetail,
@@ -53,11 +55,14 @@ type Organization = {
 
 type ExternalOrganization = {
   id: string;
+  source?: string;
   name: string;
   description: string;
   category: string | null;
+  organizationType?: string | null;
   logoUrl: string | null;
   organizationUrl: string | null;
+  verified?: boolean;
   tags: string[];
   createdAt?: string | null;
   imported: true;
@@ -65,6 +70,7 @@ type ExternalOrganization = {
 
 type ExternalEventItem = {
   id: string;
+  source?: string;
   title: string;
   description: string;
   category: string;
@@ -448,6 +454,7 @@ export function OrganizationsHub({
           category: organization.category,
           tags: organization.tags,
           name: organization.name,
+          organizationType: organization.organizationType,
         }),
       })),
     ],
@@ -885,7 +892,9 @@ export function OrganizationsHub({
                     {item.organization.category ?? orgBrowseFilterLabel(item.bucket)}
                   </p>
                 </div>
-                <span className="text-[10px] text-cyan-200/80 flex-shrink-0">Source: URInvolved</span>
+                <span className="text-[10px] text-cyan-200/80 flex-shrink-0">
+                  {eventSourceLabel(item.organization.source ?? "urinvolved")}
+                </span>
               </div>
               {item.organization.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -1074,7 +1083,7 @@ export function OrganizationsHub({
                 {activeExternalEvent.category ? (
                   <p className="text-xs text-white/55">Category: {activeExternalEvent.category}</p>
                 ) : null}
-                <p className="text-xs text-cyan-200/80">Source: URInvolved</p>
+                <p className="text-xs text-cyan-200/80">{eventSourceLabel(activeExternalEvent.source ?? "urinvolved")}</p>
                 {activeExternalEvent.eventUrl ? (
                   <a
                     href={activeExternalEvent.eventUrl}
@@ -1082,7 +1091,7 @@ export function OrganizationsHub({
                     rel="noreferrer"
                     className="inline-flex rounded-lg border border-cyan-400/35 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/10"
                   >
-                    View on URInvolved
+                    {eventSourceActionLabel(activeExternalEvent.source ?? "urinvolved") ?? "View listing"}
                   </a>
                 ) : null}
               </div>
@@ -1103,7 +1112,12 @@ export function OrganizationsHub({
                 {activeExternalOrg.tags.length > 0 ? (
                   <p className="text-xs text-white/50">{activeExternalOrg.tags.join(" · ")}</p>
                 ) : null}
-                <p className="text-xs text-cyan-200/80">Source: URInvolved</p>
+                <p className="text-xs text-cyan-200/80">
+                  {eventSourceLabel(activeExternalOrg.source ?? "urinvolved")}
+                  {activeExternalOrg.organizationType
+                    ? ` · ${organizationTypeLabel(activeExternalOrg.organizationType)}`
+                    : ""}
+                </p>
 
                 <div className="space-y-2 border-t border-white/10 pt-3">
                   <h5 className="text-sm font-semibold text-white">Upcoming Events</h5>

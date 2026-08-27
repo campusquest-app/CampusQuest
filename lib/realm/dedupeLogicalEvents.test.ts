@@ -111,9 +111,14 @@ describe("dedupeLogicalEvents", () => {
     expect(filterVisibleMapEvents([cancelled], new Date("2026-07-12T02:00:00.000Z"))).toHaveLength(0);
   });
 
-  it("prefers URInvolved external id for logical key", () => {
+  it("scopes imported external ids by source", () => {
     expect(getLogicalEventKey(pin({ title: "Different Title", sourceExternalId: "99999" }))).toBe(
-      "external:99999",
+      "external:urinvolved:99999",
     );
+    expect(
+      getLogicalEventKey(
+        pin({ id: "ath", source: "athletics", sourceExternalId: "99999", eventUrl: null }),
+      ),
+    ).toBe("external:athletics:99999");
   });
 });

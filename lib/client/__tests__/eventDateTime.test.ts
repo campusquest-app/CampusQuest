@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatEventDateTimeRange } from "@/lib/client/eventDateTime";
+import { formatEventCardWhen, formatEventDateTimeRange } from "@/lib/client/eventDateTime";
 
 describe("formatEventDateTimeRange", () => {
   const now = new Date("2026-09-08T16:00:00.000Z"); // Tue Sep 8, 12:00 PM EDT
@@ -22,6 +22,10 @@ describe("formatEventDateTimeRange", () => {
     expect(formatEventDateTimeRange("2026-09-15T16:00:00.000Z", "2026-09-15T18:00:00.000Z", now)).toBe(
       "Tue, Sep 15 · 12:00 PM–2:00 PM",
     );
+  });
+
+  it("formats compact card times with a bullet", () => {
+    expect(formatEventCardWhen("2026-11-04T00:00:00.000Z")).toBe("Tue, Nov 3 • 7:00 PM");
   });
 
   it("returns Date TBA for missing or invalid starts", () => {

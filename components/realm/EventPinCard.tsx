@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { eventSourceLabel } from "@/lib/eventSources/catalog";
 import type { MapEventPin } from "@/lib/mapLocationGroups";
 import {
   formatCampusTime,
@@ -46,7 +47,7 @@ export const EventPinCard = memo(function EventPinCard({
 }) {
   const cancelled = isEventCancelled(event);
   const state = getEventCountdownState(event.startsAt, event.endsAt, now, cancelled);
-  const sourceLabel = event.source === "urinvolved" ? "URInvolved" : null;
+  const sourceLabel = eventSourceLabel(event.source);
   const time = formatCampusTime(event.startsAt);
   const location = event.locationText ?? locationName ?? null;
 
@@ -87,8 +88,8 @@ export const EventPinCard = memo(function EventPinCard({
         {!compact && event.organizationName ? (
           <p className="cq-event-pin-card-org">{event.organizationName}</p>
         ) : null}
-        {!compact && sourceLabel ? (
-          <p className="cq-event-pin-card-source">Source: {sourceLabel}</p>
+        {!compact && sourceLabel && event.source && event.source !== "campusquest" ? (
+          <p className="cq-event-pin-card-source">{sourceLabel}</p>
         ) : null}
         {cancelled ? (
           <p className="cq-event-pin-card-warning">This event has been cancelled.</p>

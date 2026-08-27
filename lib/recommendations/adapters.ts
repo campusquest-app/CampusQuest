@@ -1,3 +1,4 @@
+import { isImportedEventSource } from "@/lib/eventSources/catalog";
 import type { FieldNote } from "@/lib/types";
 import type { UserQuestBoardItem } from "@/lib/adminQuestTypes";
 import type { RecommendationEntity } from "@/lib/recommendations/types";
@@ -42,6 +43,8 @@ export function externalEventToRecommendationEntity(event: {
   startsAt?: string | null;
   endsAt?: string | null;
   organizationName?: string | null;
+  sport?: string | null;
+  opponent?: string | null;
   campusId?: string | null;
 }): RecommendationEntity {
   return {
@@ -50,7 +53,9 @@ export function externalEventToRecommendationEntity(event: {
     title: event.title,
     description: event.description ?? "",
     category: event.category ?? null,
-    tags: event.tags ?? [],
+    tags: Array.from(
+      new Set([...(event.tags ?? []), event.sport, event.opponent, event.organizationName].filter(Boolean) as string[]),
+    ),
     organizationName: event.organizationName ?? null,
     locationName: event.venueName || event.location || null,
     campusId: event.campusId ?? "uri",
@@ -125,13 +130,15 @@ export function mapEventPinToRecommendationEntity(
     category?: string | null;
     locationText?: string | null;
     organizationName?: string | null;
+    sport?: string | null;
+    opponent?: string | null;
     startsAt: string;
     endsAt: string | null;
     source?: string | null;
   },
   locationName: string,
 ): RecommendationEntity {
-  if (event.source === "urinvolved") {
+  if (isImportedEventSource(event.source)) {
     return externalEventToRecommendationEntity({
       id: event.id,
       title: event.title,
@@ -141,6 +148,8 @@ export function mapEventPinToRecommendationEntity(
       startsAt: event.startsAt,
       endsAt: event.endsAt,
       organizationName: event.organizationName,
+      sport: event.sport,
+      opponent: event.opponent,
     });
   }
   return campusEventToRecommendationEntity({

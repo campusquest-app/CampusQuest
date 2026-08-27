@@ -169,7 +169,7 @@ export function buildMapSearchCatalog(args: {
         id: event.id,
         kind: "event",
         title: event.title,
-        subtitle: [formatEventWhen(event.startsAt, now), org || group.locationName]
+        subtitle: [formatEventWhen(event.startsAt, now), org || group.locationName, event.sport, event.opponent]
           .filter(Boolean)
           .join(" · "),
         dedupeKey: `event:${event.externalEventId ?? event.sourceExternalId ?? event.id}`,

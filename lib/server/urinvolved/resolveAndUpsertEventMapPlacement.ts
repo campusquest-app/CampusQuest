@@ -4,6 +4,7 @@
  * admin repair / reconciliation. Never depends on the client opening the map.
  */
 
+import { athleticsEventEligibleForCampusMap } from "@/lib/eventSources/athleticsMapEligibility";
 import { revalidatePath } from "next/cache";
 import type { CatalogLocationLike } from "@/lib/server/urinvolved/mapEventLocationTypes";
 import { getCampusLocations } from "@/lib/server/campusLocationsDb";
@@ -95,7 +96,7 @@ export async function resolveAndUpsertEventMapPlacement(
   const { data: event, error } = await admin
     .from("external_events")
     .select(
-      "id, external_id, title, venue_name, location_name, address, starts_at, ends_at, latitude, longitude, is_active, tags, source",
+      "id, external_id, title, venue_name, location_name, address, starts_at, ends_at, latitude, longitude, is_active, tags, source, home_away",
     )
     .eq("id", eventId)
     .maybeSingle();
@@ -122,6 +123,7 @@ export async function resolveAndUpsertEventMapPlacement(
   }
 
   const source = String(event.source ?? "urinvolved");
+  const homeAway = typeof event.home_away === "string" ? event.home_away : null;
   const occurrenceStart = typeof event.starts_at === "string" ? event.starts_at : null;
   const rawLocation =
     (typeof event.venue_name === "string" && event.venue_name.trim()) ||
@@ -137,6 +139,47 @@ export async function resolveAndUpsertEventMapPlacement(
   const visibleOnMapToday =
     Boolean(startsAt) &&
     isEventVisibleOnMap({ end_time: effectiveEventEndIso(startsAt, endsAt) }, new Date());
+
+  if (!athleticsEventEligibleForCampusMap({ source, homeAway })) {
+    const now = new Date().toISOString();
+    await admin.from("external_event_map_overrides").upsert(
+      {
+        external_event_id: eventId,
+        source,
+        occurrence_start: occurrenceStart,
+        realm_location_id: null,
+        custom_lat: null,
+        custom_lng: null,
+        custom_label: null,
+        match_status: "unresolved",
+        match_confidence: 0,
+        match_reason: "athletics_away",
+        raw_location_text: rawLocation || null,
+        normalized_location_text: normalizedLocation || null,
+        updated_at: now,
+      },
+      { onConflict: "external_event_id" },
+    );
+
+    const skipped: PlacementPipelineResult = {
+      externalEventId: eventId,
+      externalId: String(event.external_id ?? ""),
+      title: String(event.title ?? ""),
+      rawLocation,
+      normalizedLocation,
+      parentBuilding,
+      matchedBuilding: null,
+      latitude: null,
+      longitude: null,
+      matchStatus: "unresolved",
+      renderOnMap: false,
+      visibleOnMapToday: false,
+      failureReason: "athletics_away",
+      override: null,
+    };
+    logPipeline(skipped);
+    return skipped;
+  }
 
   if (!rawLocation) {
     const now = new Date().toISOString();
@@ -432,7 +475,6 @@ export async function reconcileEventMapPlacements(args?: {
     .from("external_events")
     .select("id")
     .eq("is_active", true)
-    .eq("source", "urinvolved")
     .gte("starts_at", horizonStart)
     .lte("starts_at", horizonEnd)
     .order("starts_at", { ascending: true })

@@ -51,10 +51,11 @@ export const ADMIN_NAV: AdminNavItem[] = [
   },
   {
     id: "urinvolved",
-    label: "URInvolved",
+    label: "Event Sources",
     icon: "📅",
     children: [
-      { id: "sync", label: "Sync Status" },
+      { id: "sources", label: "All Providers" },
+      { id: "sync", label: "URInvolved Sync" },
       { id: "events", label: "Imported Events" },
       { id: "orgs", label: "Imported Organizations" },
     ],

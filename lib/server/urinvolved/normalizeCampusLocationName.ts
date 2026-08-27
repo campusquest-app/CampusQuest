@@ -8,6 +8,7 @@ export function normalizeCampusLocationName(value = ""): string {
     .replace(/\buri\b/g, "")
     .replace(/\buniversity of rhode island\b/g, "")
     .replace(/\bkingston\b/g, "")
+    .replace(/\br\s*i\b/g, "")
     .replace(/\bri\b/g, "")
     .replace(/\s+/g, " ")
     .trim();

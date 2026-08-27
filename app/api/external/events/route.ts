@@ -21,8 +21,10 @@ export async function GET(request: Request) {
       location: url.searchParams.get("location") ?? undefined,
       organization: url.searchParams.get("organization") ?? undefined,
       search: url.searchParams.get("search") ?? undefined,
+      sport: url.searchParams.get("sport") ?? undefined,
       timeframe,
       includePast: url.searchParams.get("includePast") === "true",
+      userId: auth.user.id,
     });
     return ok({ events: feed.events, meta: feed.meta });
   } catch (error) {

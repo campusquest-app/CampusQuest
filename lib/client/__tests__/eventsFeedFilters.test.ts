@@ -58,6 +58,15 @@ describe("eventsFeedFilters", () => {
     vi.useRealTimers();
   });
 
+  it("keeps This Weekend on the campus Friday–Sunday window", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-11T15:00:00.000Z")); // Thursday
+    expect(matchesEventsTimeframe("2026-06-12T18:00:00.000Z", "this_weekend")).toBe(true);
+    expect(matchesEventsTimeframe("2026-06-14T18:00:00.000Z", "this_weekend")).toBe(true);
+    expect(matchesEventsTimeframe("2026-06-11T18:00:00.000Z", "this_weekend")).toBe(false);
+    vi.useRealTimers();
+  });
+
   it("does not let a description mention outrank an exact title search", () => {
     const exact = scoreEventsSearch(
       {

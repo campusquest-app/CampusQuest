@@ -1,4 +1,5 @@
 import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
+import { athleticsEventEligibleForCampusMap } from "@/lib/eventSources/athleticsMapEligibility";
 import type { EventsFeedTimeframe } from "@/lib/client/eventsFeedFilters";
 import type { RecommendationReason } from "@/lib/recommendations/types";
 
@@ -11,23 +12,25 @@ export type EventSyncBanner = {
 
 export function formatEventsSyncFreshness(lastSuccessfulSync: string, now: Date = new Date()): string {
   const then = new Date(lastSuccessfulSync);
-  if (Number.isNaN(then.getTime())) return "Updated recently from URInvolved";
+  if (Number.isNaN(then.getTime())) return "Updated recently";
   const minutes = Math.round((now.getTime() - then.getTime()) / 60000);
-  if (minutes < 2) return "Updated recently from URInvolved";
+  if (minutes < 2) return "Updated recently";
   if (minutes < 60) return `Updated ${minutes} min ago`;
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `Updated ${hours} hr ago`;
-  return "Updated recently from URInvolved";
+  return "Updated recently";
 }
 
 export function eventsSyncBanner(input: {
   stale: boolean;
   fetchFailed?: boolean;
+  emptyFeed?: boolean;
   lastSuccessfulSync?: string | null;
   warningText: string;
   now?: Date;
 }): EventSyncBanner | null {
-  if (input.fetchFailed || input.stale) {
+  const widespreadFailure = Boolean(input.fetchFailed) || (input.stale && input.emptyFeed);
+  if (widespreadFailure) {
     return { kind: "warning", text: input.warningText };
   }
   if (input.lastSuccessfulSync) {
@@ -42,12 +45,14 @@ export function countActiveEventFilters(input: {
   isPaid: "all" | "free" | "paid";
   location: string;
   timeframe: EventsFeedTimeframe;
+  sport?: string;
 }): number {
   let count = 0;
   if (input.category.trim()) count += 1;
   if (input.organizationKey.trim()) count += 1;
   if (input.isPaid !== "all") count += 1;
   if (input.location.trim()) count += 1;
+  if (input.sport?.trim()) count += 1;
   if (input.timeframe === "tomorrow" || input.timeframe === "this_month") count += 1;
   return count;
 }
@@ -60,6 +65,8 @@ export function scoreEventsSearch(
     category: string;
     tags: string[];
     description: string;
+    sport?: string;
+    opponent?: string;
   },
   query: string,
 ): number {
@@ -69,14 +76,16 @@ export function scoreEventsSearch(
   const org = fields.organizationName.toLowerCase();
   const location = fields.location.toLowerCase();
   const category = fields.category.toLowerCase();
+  const sport = (fields.sport ?? "").toLowerCase();
+  const opponent = (fields.opponent ?? "").toLowerCase();
   const description = fields.description.toLowerCase();
   const tags = fields.tags.map((tag) => tag.toLowerCase());
 
   if (title === q) return 100;
   if (title.startsWith(q)) return 86;
   if (title.includes(q)) return 72;
-  if (org === q) return 64;
-  if (org.includes(q)) return 52;
+  if (org === q || sport === q) return 64;
+  if (org.includes(q) || sport.includes(q) || opponent.includes(q)) return 52;
   if (location.includes(q)) return 44;
   if (category.includes(q)) return 36;
   if (tags.some((tag) => tag === q || tag.includes(q))) return 28;
@@ -90,8 +99,14 @@ export function eventHasMappedLocation(input: {
   venueName?: string | null;
   location?: string | null;
   address?: string | null;
+  source?: string | null;
+  homeAway?: string | null;
 }): boolean {
+  if (!athleticsEventEligibleForCampusMap({ source: input.source, homeAway: input.homeAway })) {
+    return false;
+  }
   if (hasValidCoordinates({ latitude: input.latitude, longitude: input.longitude })) return true;
+  if ((input.source ?? "").toLowerCase() === "athletics") return false;
   const venue = input.venueName?.trim();
   const location = input.location?.trim();
   if (venue) return true;

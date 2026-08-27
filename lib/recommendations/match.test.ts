@@ -4,6 +4,22 @@ import { isCampusWideImportant } from "@/lib/recommendations/campusImportance";
 import { campusEventToRecommendationEntity, externalEventToRecommendationEntity } from "@/lib/recommendations/adapters";
 
 describe("recommendation topic matching", () => {
+  it("maps an imported Athletics event from sport and title", () => {
+    const match = matchRecommendationTopics(
+      externalEventToRecommendationEntity({
+        id: "ath-1",
+        title: "University of Rhode Island Men's Basketball vs Holy Cross",
+        description: "Home game at the Ryan Center",
+        category: "Athletics",
+        sport: "Men's Basketball",
+        opponent: "Holy Cross",
+        venueName: "Kingston, RI, Thomas M. Ryan Center",
+      }),
+    );
+    expect(match.interestIds).toContain("athletics");
+    expect(match.communityIds).toContain("athletics");
+  });
+
   it("maps a basketball game to athletics from keywords", () => {
     const match = matchRecommendationTopics(
       campusEventToRecommendationEntity({

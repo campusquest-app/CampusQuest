@@ -43,7 +43,7 @@ export async function listEvents(args: {
   const query = userClient
     .from("campus_events")
     .select(
-      "id, title, description, category, location_name, starts_at, ends_at, is_paid, ticket_link, host_organization_id, host_type, host_user_id, created_by, is_cancelled, created_at, school_name, school_domain, student_organizations(id, name, logo_url)",
+      "id, title, description, category, location_name, starts_at, ends_at, is_paid, ticket_link, host_organization_id, host_type, host_user_id, created_by, is_cancelled, created_at, school_name, school_domain, source, source_type, student_organizations(id, name, logo_url)",
     )
     .eq("school_domain", school.schoolDomain)
     .order("starts_at", { ascending: true });
@@ -147,6 +147,8 @@ export async function listEvents(args: {
         : null,
       rsvpCount: counts.get(row.id) ?? 0,
       myRsvpStatus: myMap.get(row.id) ?? null,
+      source: row.source ?? "campusquest",
+      sourceType: row.source_type ?? "campusquest",
     };
   });
 }
@@ -212,6 +214,8 @@ export async function createEvent(args: {
   }
 
   const hostOrganizationIdStored = hostOrganizationId ?? null;
+  const adminCreated = Boolean(userEmail && isAdminEmail(userEmail));
+  const sourceType = adminCreated ? "manual" : "campusquest";
 
   const { data, error } = await userClient
     .from("campus_events")
@@ -230,6 +234,8 @@ export async function createEvent(args: {
       created_by: userId,
       school_name: school.schoolName,
       school_domain: school.schoolDomain,
+      source: "campusquest",
+      source_type: sourceType,
     })
     .select("id, host_organization_id, title")
     .single();

@@ -67,6 +67,18 @@ const ALIAS_ENTRIES: AliasEntry[] = [
     coordinates: { latitude: 41.4865, longitude: -71.5298 },
   },
   {
+    aliases: ["keaney gymnasium", "keaney gym", "keaney"],
+    coordinates: { latitude: 41.4853, longitude: -71.5319 },
+  },
+  {
+    aliases: ["meade stadium", "meade stadium at uri"],
+    coordinates: { latitude: 41.4844, longitude: -71.5328 },
+  },
+  {
+    aliases: ["soccer complex", "uri soccer complex"],
+    coordinates: { latitude: 41.4838, longitude: -71.5348 },
+  },
+  {
     aliases: ["mackal", "mackal field house", "mackal gym", "mackal fieldhouse"],
     coordinates: { latitude: 41.4856, longitude: -71.5291 },
     realmLocationId: "rec-center",
@@ -90,6 +102,8 @@ const ALIAS_ENTRIES: AliasEntry[] = [
       "anna fascitelli fitness and wellness center",
       "fascitelli fitness center",
       "tootell athletic center",
+      "tootell aquatic center",
+      "tootell",
     ],
     addressAliases: [
       "18 butterfield rd kingston ri 02881",

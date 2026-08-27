@@ -10,9 +10,10 @@ describe("Events experience source contracts", () => {
 
   it("keeps compact cards free of source CTAs and raw timestamps", () => {
     expect(cardSrc).toContain("formatEventDateTimeRange");
-    expect(cardSrc).toContain("eventCardSummary");
+    expect(cardSrc).toContain("formatEventCardWhen");
     expect(cardSrc).toContain("Interested");
-    expect(cardSrc).toContain("View");
+    expect(cardSrc).toContain("View Game");
+    expect(cardSrc).toContain("View Event");
     expect(cardSrc).not.toContain("toLocaleString");
     expect(cardSrc).not.toContain("View on URInvolved");
     expect(cardSrc).not.toContain("View full listing on URInvolved");
@@ -35,6 +36,7 @@ describe("Events experience source contracts", () => {
     expect(detailSrc).toContain("Interested");
     expect(detailSrc).toContain("View on Map");
     expect(detailSrc).toContain("Walk Here");
+    expect(detailSrc).toContain("eventSourceActionLabel");
     expect(detailSrc).toContain("More Info on URInvolved");
     expect(detailSrc).toContain("Read More");
     expect(detailSrc).toContain("Event unavailable");

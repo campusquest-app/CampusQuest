@@ -6,7 +6,10 @@
 
 export const ORG_BROWSE_FILTERS = [
   { id: "all", label: "All Organizations" },
+  { id: "athletics_teams", label: "Athletics Teams" },
   { id: "academic_professional", label: "Academic / Professional" },
+  { id: "academic_departments", label: "Academic Departments" },
+  { id: "campus_offices", label: "Campus Offices" },
   { id: "club_sports", label: "Club Sports" },
   { id: "cultural_identity", label: "Cultural / Identity" },
   { id: "fsl", label: "Fraternity & Sorority Life" },
@@ -77,7 +80,15 @@ export function classifyOrganizationBucket(input: {
   category?: string | null;
   tags?: string[];
   name?: string;
+  organizationType?: string | null;
 }): OrgBrowseFilterId {
+  const type = input.organizationType?.trim();
+  if (type === "athletics_team") return "athletics_teams";
+  if (type === "academic_department") return "academic_departments";
+  if (type === "campus_office" || type === "campus_service" || type === "program") return "campus_offices";
+  if (type === "arts_group") return "performance_arts";
+  if (type === "entrepreneurship") return "academic_professional";
+
   const slug = input.campusCategorySlug?.trim().toLowerCase();
   if (slug && CAMPUS_SLUG_BUCKETS[slug]) return CAMPUS_SLUG_BUCKETS[slug];
 

@@ -34,6 +34,7 @@ export type AdminSearchEventResult = {
   organizer: string | null;
   imported: boolean;
   removed: boolean;
+  source?: string | null;
 };
 
 export type AdminSearchReportResult = {
@@ -248,8 +249,8 @@ async function searchEvents(
 
   let externalQuery = admin
     .from("external_events")
-    .select("id, title, starts_at, organization_name, is_active")
-    .eq("source", "urinvolved")
+    .select("id, title, starts_at, organization_name, is_active, source")
+    .eq("is_active", true)
     .order("starts_at", { ascending: false })
     .limit(RESULT_LIMIT);
   if (isUuid(query)) externalQuery = externalQuery.eq("id", query);
@@ -286,6 +287,7 @@ async function searchEvents(
     organizer: (row.organization_name as string | null) ?? null,
     imported: true,
     removed: !row.is_active,
+    source: (row.source as string | null) ?? null,
   }));
 
   return [...campusResults, ...externalResults].slice(0, RESULT_LIMIT);

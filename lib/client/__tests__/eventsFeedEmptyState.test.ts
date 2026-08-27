@@ -23,16 +23,23 @@ describe("events empty-state copy", () => {
 
   it("gives useful empty copy for For You, Today, and search", () => {
     expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, timeframe: "for_you" })).toMatchObject({
-      title: "No personalized events yet.",
+      title: "We're still learning what you like.",
       action: "all",
     });
     expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, timeframe: "today" })).toMatchObject({
-      title: "Nothing scheduled for today.",
-      action: "this_week",
+      title: "Nothing listed for today yet. Check this weekend.",
+      action: "this_weekend",
+    });
+    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, timeframe: "this_weekend" })).toMatchObject({
+      title: "Nothing listed this weekend yet.",
+      action: "all",
     });
     expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, hasSearch: true })).toMatchObject({
       title: "No events match your search.",
       action: "clear_search",
+    });
+    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, category: "Athletics" })).toMatchObject({
+      title: "No Athletics events coming up right now.",
     });
   });
 
@@ -105,10 +112,13 @@ describe("EventsFeed student vs admin controls", () => {
     expect(feedSrc).toContain('timeframe: "for_you"');
     expect(feedSrc).toContain('{ value: "for_you", label: "For You" }');
     expect(feedSrc).toContain('{ value: "today", label: "Today" }');
-    expect(feedSrc).toContain('{ value: "this_week", label: "This Week" }');
+    expect(feedSrc).toContain('{ value: "this_weekend", label: "This Weekend" }');
     expect(feedSrc).toContain('{ value: "all", label: "All" }');
     expect(feedSrc).toContain("rankRecommendationEntities");
     expect(feedSrc).toContain("without hiding the rest of campus");
+    expect(feedSrc).toContain("HappeningSoonCarousel");
+    expect(feedSrc).toContain("EventsCategoryRail");
+    expect(feedSrc).toContain('syncBanner?.kind === "warning"');
   });
 
   it("only renders Admin sync status when showAdminSyncLink is true", () => {

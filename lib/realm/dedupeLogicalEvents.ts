@@ -19,6 +19,12 @@ export type LogicalEventFields = {
   status?: string | null;
   tags?: string[] | null;
   sourceExternalId?: string | null;
+  canonicalEventId?: string | null;
+  canonical_event_id?: string | null;
+  source?: string | null;
+  sport?: string | null;
+  opponent?: string | null;
+  homeAway?: string | null;
   external_event_id?: string | null;
   source_event_id?: string | null;
   updatedAt?: string | null;
@@ -90,8 +96,21 @@ export function getLogicalEventFallbackKey(event: LogicalEventFields): string {
   ].join("|");
 }
 
+function fieldSource(event: LogicalEventFields): string {
+  return (event.source ?? "").trim().toLowerCase();
+}
+
+function fieldCanonicalId(event: LogicalEventFields): string | null {
+  const value = event.canonicalEventId ?? event.canonical_event_id ?? null;
+  return value ? String(value).trim().toLowerCase() : null;
+}
+
 export function getLogicalEventKey(event: LogicalEventFields): string {
+  const canonicalId = fieldCanonicalId(event);
+  if (canonicalId) return `canonical:${canonicalId}`;
   const externalId = fieldExternalId(event);
+  const source = fieldSource(event);
+  if (externalId && source) return `external:${source}:${externalId}`;
   if (externalId) return `external:${externalId}`;
   return getLogicalEventFallbackKey(event);
 }
@@ -116,15 +135,22 @@ function laterIso(a: string | null | undefined, b: string | null | undefined): s
 
 export function mergeMapEventPins(winner: MapEventPin, other: MapEventPin): MapEventPin {
   const cancelled = isLogicalEventCancelled(winner) || isLogicalEventCancelled(other);
-  const preferUrinvolved = winner.source === "urinvolved" ? winner : other.source === "urinvolved" ? other : winner;
+  const preferImported =
+    winner.source && other.source && winner.source !== other.source
+      ? winner.updatedAt && other.updatedAt && Date.parse(winner.updatedAt) >= Date.parse(other.updatedAt)
+        ? winner
+        : other.source && !winner.source
+          ? other
+          : winner
+      : winner;
 
   return {
     ...winner,
     ...other,
-    id: preferUrinvolved.id,
-    externalEventId: preferUrinvolved.externalEventId ?? winner.externalEventId ?? other.externalEventId,
+    id: preferImported.id,
+    externalEventId: preferImported.externalEventId ?? winner.externalEventId ?? other.externalEventId,
     sourceExternalId: winner.sourceExternalId ?? other.sourceExternalId ?? null,
-    source: preferUrinvolved.source ?? winner.source ?? other.source,
+    source: preferImported.source ?? winner.source ?? other.source,
     title: winner.title || other.title,
     startsAt: winner.startsAt || other.startsAt,
     endsAt: winner.endsAt ?? other.endsAt ?? null,
@@ -132,6 +158,12 @@ export function mergeMapEventPins(winner: MapEventPin, other: MapEventPin): MapE
     eventUrl: winner.eventUrl ?? other.eventUrl ?? null,
     imageUrl: winner.imageUrl ?? other.imageUrl ?? null,
     category: winner.category ?? other.category ?? null,
+    sport: winner.sport ?? other.sport ?? null,
+    opponent: winner.opponent ?? other.opponent ?? null,
+    ticketUrl: winner.ticketUrl ?? other.ticketUrl ?? null,
+    broadcastUrl: winner.broadcastUrl ?? other.broadcastUrl ?? null,
+    canonicalEventId: winner.canonicalEventId ?? other.canonicalEventId ?? null,
+    cqRsvpEnabled: Boolean(winner.cqRsvpEnabled || other.cqRsvpEnabled),
     locationText: winner.locationText ?? other.locationText ?? null,
     placementStatus: winner.placementStatus ?? other.placementStatus ?? null,
     matchConfidence: winner.matchConfidence ?? other.matchConfidence ?? null,

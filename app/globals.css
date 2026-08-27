@@ -13395,7 +13395,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   background: rgba(255, 255, 255, 0.035);
 }
 
-.cq-event-card:has(.cq-event-card-thumb) {
+.cq-event-card:has(.cq-event-card-thumb):not(.cq-event-card--row) {
   grid-template-columns: 5.5rem minmax(0, 1fr);
 }
 
@@ -13410,7 +13410,14 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 .cq-event-card-thumb--empty {
-  background: linear-gradient(180deg, rgba(104, 171, 232, 0.16), rgba(255, 255, 255, 0.04));
+  background: transparent;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 0.7rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 1.8rem;
+  font-weight: 800;
 }
 
 .cq-event-card-body {
@@ -13469,7 +13476,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 .cq-event-card-action {
-  min-height: 36px;
+  min-height: 40px;
   padding: 0.35rem 0.7rem;
   border-radius: 0.65rem;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -13487,6 +13494,639 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 
 .cq-event-card-action--view {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.cq-event-card-action--rsvp-career {
+  border-color: rgba(228, 195, 106, 0.45);
+  color: #e4c36a;
+}
+
+.cq-event-card-action--rsvp-arts {
+  border-color: rgba(197, 155, 255, 0.45);
+  color: #c59bff;
+}
+
+.cq-event-card-action--rsvp-social {
+  border-color: rgba(240, 160, 196, 0.45);
+  color: #f0a0c4;
+}
+
+.cq-event-card-action--rsvp-athletics {
+  border-color: rgba(240, 161, 90, 0.45);
+  color: #f0a15a;
+}
+
+.cq-tab-shell--events {
+  padding-bottom: var(--cq-feed-bottom-clearance, calc(var(--cq-bottom-nav-h, 5.75rem) + 1rem));
+}
+
+.cq-events-discovery {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 0.35rem 0 1.5rem;
+}
+
+.cq-events-header {
+  padding: 0.15rem 1rem 0;
+}
+
+.cq-events-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.cq-events-title {
+  margin: 0;
+  color: #fff;
+  font-size: 1.7rem;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.cq-events-subtitle {
+  margin: 0.3rem 0 0;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.86rem;
+}
+
+.cq-events-saved {
+  width: 2.75rem;
+  height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.9rem;
+  color: rgb(104, 171, 232);
+  border: 1px solid rgba(104, 171, 232, 0.35);
+  background: rgba(104, 171, 232, 0.08);
+}
+
+.cq-events-saved--on {
+  background: rgba(104, 171, 232, 0.22);
+}
+
+.cq-events-search {
+  position: relative;
+  margin: 0 1rem;
+}
+
+.cq-events-search-icon {
+  position: absolute;
+  left: 0.85rem;
+  top: 50%;
+  width: 1rem;
+  height: 1rem;
+  transform: translateY(-50%);
+  color: rgba(255, 255, 255, 0.45);
+  pointer-events: none;
+}
+
+.cq-events-search-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0.7rem 2.8rem 0.7rem 2.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.cq-events-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.cq-events-search-filter {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.4rem;
+  height: 2.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.cq-events-time-pills {
+  display: flex;
+  gap: 0.45rem;
+  padding: 0 1rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+  scrollbar-width: none;
+}
+
+.cq-events-time-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-events-time-pill {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0.4rem 0.95rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.cq-events-time-pill--on {
+  border-color: transparent;
+  background: rgb(47, 124, 214);
+  color: #fff;
+}
+
+.cq-events-category-rail {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.1rem 1rem 0.2rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+  scrollbar-width: none;
+}
+
+.cq-events-category-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-events-category-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0.35rem 0.8rem 0.35rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.cq-events-category-chip-icon {
+  width: 1.7rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cq-events-category-chip--athletics .cq-events-category-chip-icon { color: #f0a15a; }
+.cq-events-category-chip--clubs .cq-events-category-chip-icon { color: #7dce8a; }
+.cq-events-category-chip--arts .cq-events-category-chip-icon { color: #c59bff; }
+.cq-events-category-chip--career .cq-events-category-chip-icon { color: #e4c36a; }
+.cq-events-category-chip--academic .cq-events-category-chip-icon { color: #7eb6ff; }
+.cq-events-category-chip--recreation .cq-events-category-chip-icon { color: #6fd0c4; }
+.cq-events-category-chip--social .cq-events-category-chip-icon { color: #f0a0c4; }
+
+.cq-events-category-chip--on {
+  border-color: rgba(104, 171, 232, 0.45);
+  background: rgba(104, 171, 232, 0.12);
+}
+
+.cq-events-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.15rem 1rem 0.35rem;
+}
+
+.cq-events-section-title {
+  margin: 0;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.cq-events-section-sub {
+  margin: 0.15rem 0 0;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 0.75rem;
+}
+
+.cq-events-section-link {
+  color: rgb(130, 188, 245);
+  font-size: 0.78rem;
+  font-weight: 700;
+  min-height: 36px;
+  padding: 0.25rem 0;
+}
+
+.cq-happening-soon-scroller {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0 1rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  touch-action: pan-x pan-y;
+  scrollbar-width: none;
+}
+
+.cq-happening-soon-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-happening-soon-slide {
+  flex: 0 0 calc(100% - 2.25rem);
+  max-width: 26rem;
+  scroll-snap-align: start;
+}
+
+.cq-happening-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #0b1a33;
+}
+
+.cq-happening-card-media {
+  position: relative;
+  min-height: 14.5rem;
+}
+
+.cq-happening-card-image,
+.cq-happening-card-media .cq-event-fallback {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cq-happening-card-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(4, 16, 36, 0.05) 20%, rgba(4, 16, 36, 0.92) 100%);
+}
+
+.cq-happening-card-chip {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 1;
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(232, 140, 58, 0.92);
+}
+
+.cq-happening-card-chip--career { background: rgba(196, 154, 48, 0.92); }
+.cq-happening-card-chip--arts { background: rgba(146, 92, 214, 0.92); }
+.cq-happening-card-chip--clubs { background: rgba(62, 148, 86, 0.92); }
+.cq-happening-card-chip--academic { background: rgba(62, 118, 196, 0.92); }
+.cq-happening-card-chip--social { background: rgba(196, 82, 132, 0.92); }
+.cq-happening-card-chip--recreation { background: rgba(42, 150, 140, 0.92); }
+
+.cq-happening-card-save {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  z-index: 1;
+  width: 2.4rem;
+  height: 2.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.cq-happening-card-save--on {
+  color: rgb(186, 213, 247);
+}
+
+.cq-happening-card-copy {
+  position: relative;
+  z-index: 1;
+  padding: 6.75rem 0.9rem 0.85rem;
+}
+
+.cq-happening-card-title {
+  margin: 0;
+  color: #fff;
+  font-size: 1.28rem;
+  line-height: 1.15;
+  font-weight: 800;
+}
+
+.cq-happening-card-sport {
+  margin: 0.28rem 0 0.45rem;
+  color: #f0a15a;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.cq-happening-card-meta {
+  margin: 0.18rem 0 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.78rem;
+}
+
+.cq-happening-card-source {
+  display: inline-block;
+  margin-top: 0.3rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.cq-happening-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  padding: 0.7rem 0.75rem 0.8rem;
+}
+
+.cq-happening-card-actions:has(> :only-child) {
+  grid-template-columns: 1fr;
+}
+
+.cq-happening-card-action {
+  min-height: 42px;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.cq-happening-card-action--primary {
+  background: rgb(47, 124, 214);
+  border-color: transparent;
+}
+
+.cq-happening-soon-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.65rem 0 0.1rem;
+}
+
+.cq-happening-soon-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.cq-happening-soon-dot--on {
+  width: 0.7rem;
+  background: rgb(104, 171, 232);
+}
+
+.cq-events-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0 1rem;
+}
+
+.cq-event-card--row {
+  display: grid;
+  grid-template-columns: minmax(5.6rem, 32%) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.7rem;
+}
+
+.cq-event-card-thumb-wrap,
+.cq-event-card-thumb {
+  width: 100%;
+  height: 100%;
+  min-height: 6.4rem;
+  object-fit: cover;
+  border-radius: 0.9rem;
+}
+
+.cq-event-card-chip {
+  margin: 0 0 0.15rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #f0a15a;
+}
+
+.cq-event-card-chip--career { color: #e4c36a; }
+.cq-event-card-chip--arts { color: #c59bff; }
+.cq-event-card-chip--clubs { color: #7dce8a; }
+.cq-event-card-chip--academic { color: #7eb6ff; }
+.cq-event-card-chip--social { color: #f0a0c4; }
+.cq-event-card-chip--recreation { color: #6fd0c4; }
+
+.cq-event-card-sport {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.cq-event-card-source {
+  margin-top: 0.1rem;
+  font-size: 0.62rem;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.cq-event-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.cq-event-card-heart {
+  width: 2.2rem;
+  height: 2.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.cq-event-card-heart--on {
+  color: #f0a0c4;
+}
+
+.cq-event-fallback {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 0.8rem;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.12), transparent 40%),
+    linear-gradient(160deg, #1a335c, #0b1a33);
+}
+
+.cq-event-fallback--athletics {
+  background:
+    radial-gradient(circle at 80% 10%, rgba(240, 161, 90, 0.28), transparent 42%),
+    linear-gradient(160deg, #3a2412, #0b1a33);
+}
+
+.cq-event-fallback--career {
+  background:
+    radial-gradient(circle at 80% 10%, rgba(228, 195, 106, 0.28), transparent 42%),
+    linear-gradient(160deg, #2f2710, #0b1a33);
+}
+
+.cq-event-fallback--arts {
+  background:
+    radial-gradient(circle at 80% 10%, rgba(197, 155, 255, 0.28), transparent 42%),
+    linear-gradient(160deg, #2a1844, #0b1a33);
+}
+
+.cq-event-fallback--clubs {
+  background:
+    radial-gradient(circle at 80% 10%, rgba(125, 206, 138, 0.25), transparent 42%),
+    linear-gradient(160deg, #14301c, #0b1a33);
+}
+
+.cq-event-fallback--academic {
+  background:
+    radial-gradient(circle at 80% 10%, rgba(126, 182, 255, 0.28), transparent 42%),
+    linear-gradient(160deg, #142848, #0b1a33);
+}
+
+.cq-event-fallback--recreation {
+  background:
+    radial-gradient(circle at 80% 10%, rgba(111, 208, 196, 0.28), transparent 42%),
+    linear-gradient(160deg, #103330, #0b1a33);
+}
+
+.cq-event-fallback--social {
+  background:
+    radial-gradient(circle at 80% 10%, rgba(240, 160, 196, 0.28), transparent 42%),
+    linear-gradient(160deg, #331422, #0b1a33);
+}
+
+.cq-event-fallback-mark {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.cq-events-empty {
+  margin: 0 1rem;
+  padding: 1.1rem 1rem;
+  text-align: center;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.cq-events-empty--section {
+  margin-top: 0.2rem;
+}
+
+.cq-events-empty-title {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.cq-events-empty-detail {
+  margin: 0.35rem 0 0;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.cq-events-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.cq-events-empty-btn {
+  min-height: 38px;
+  padding: 0.35rem 0.8rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.cq-events-empty-btn--admin {
+  border-color: rgba(104, 171, 232, 0.4);
+  color: rgb(186, 213, 247);
+}
+
+.cq-events-skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 1rem;
+}
+
+.cq-events-skeleton {
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.08);
+  animation: cq-events-pulse 1.2s ease-in-out infinite;
+}
+
+.cq-events-skeleton--hero {
+  height: 18rem;
+}
+
+.cq-events-skeleton--row {
+  height: 7.2rem;
+}
+
+.cq-events-sync-warning {
+  margin: 0 1rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  background: rgba(245, 158, 11, 0.08);
+  color: rgb(255, 236, 200);
+  font-size: 0.72rem;
+}
+
+@keyframes cq-events-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@media (min-width: 640px) {
+  .cq-happening-soon-slide {
+    flex-basis: 22rem;
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .cq-happening-card-media {
+    min-height: 12rem;
+  }
 }
 
 .cq-events-filter-sheet {
