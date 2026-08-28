@@ -92,11 +92,13 @@ export function computeMapChromePadding(args?: {
   safeArea?: { top: number; right: number; bottom: number; left: number };
   attributionBandPx?: number;
   fabGapPx?: number;
+  extraBottomPx?: number;
 }): MapChromePadding {
   const safe = args?.safeArea ?? { top: 0, right: 0, bottom: 0, left: 0 };
   const navClearance = Math.max(0, args?.navClearancePx ?? 0);
   const attributionBand = args?.attributionBandPx ?? GOOGLE_ATTRIBUTION_BAND_PX;
   const fabGap = args?.fabGapPx ?? MAP_CHROME_FAB_GAP_PX;
+  const extraBottom = Math.max(0, args?.extraBottomPx ?? 0);
 
   return {
     // Realm header lives outside the map stage; only a light inset for top chrome.
@@ -104,7 +106,8 @@ export function computeMapChromePadding(args?: {
     right: Math.max(MAP_CHROME_RIGHT_INSET_PX, safe.right),
     // Dock covers the bottom of the canvas — push logo/attribution above it,
     // then reserve a dedicated band (+ FAB gap) so CQ UI never covers Google chrome.
-    bottom: navClearance + attributionBand + fabGap,
+    // extraBottomPx lifts chrome above the discovery sheet without recentering.
+    bottom: navClearance + attributionBand + fabGap + extraBottom,
     left: Math.max(MAP_CHROME_LEFT_INSET_PX, safe.left),
   };
 }

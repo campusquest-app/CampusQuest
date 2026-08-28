@@ -78,4 +78,22 @@ describe("onboarding preferences validation", () => {
     });
     expect(parsed.communities).toEqual([]);
   });
+
+  it("accepts optional academic area on preferences and profile patch", () => {
+    const prefs = onboardingPreferencesSchema.parse({
+      schoolName: "University of Rhode Island",
+      interests: ["athletics", "music", "tech"],
+      academicArea: "engineering",
+      major: "Mechanical Engineering",
+    });
+    expect(prefs.academicArea).toBe("engineering");
+    expect(
+      patchMeProfileSchema.parse({ academicArea: "undecided", requestedSchoolName: "Brown University" }),
+    ).toEqual(
+      expect.objectContaining({
+        academicArea: "undecided",
+        requestedSchoolName: "Brown University",
+      }),
+    );
+  });
 });

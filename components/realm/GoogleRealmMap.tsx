@@ -9,7 +9,7 @@ import {
   MapControl,
   useMap,
 } from "@vis.gl/react-google-maps";
-import { AlertTriangle, MapPinOff } from "lucide-react";
+import { AlertTriangle, Bell, MapPinOff } from "lucide-react";
 import type { RealmLocationId } from "@/lib/realm/locations";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
@@ -589,6 +589,10 @@ function RealmMapMarkers({
               zoomTier={zoomTier}
               revealOpacity={reveal}
               deemphasized={emphasis === "context"}
+              hideLabel={
+                emphasis === "context" ||
+                (zoomTier === "far" && activityState === "idle" && !isSelected)
+              }
               editMode={editMode}
               editorSelected={editorSelectedId === landmark.id}
               revealIndex={markersReveal ? index : undefined}
@@ -647,6 +651,10 @@ function RealmMapMarkers({
               zoomTier={zoomTier}
               revealOpacity={forYouRevealOpacity(emphasis, markerRevealOpacity(mapZoom, false))}
               deemphasized={emphasis === "context"}
+              hideLabel={
+                emphasis === "context" ||
+                (zoomTier === "far" && activityState === "idle" && !isSelected)
+              }
               revealIndex={markersReveal ? visibleLandmarks.length + index : undefined}
               countdown={countdownByGroup[group.groupKey] ?? null}
               locationAdjusted={group.events.some((event) => event.locationManuallyAdjusted)}
@@ -730,6 +738,13 @@ export function GoogleRealmMap({
   recommendedMarkerIds = null,
   suppressLegacyWelcome = false,
   recommendationScoreById,
+  extraBottomPx = 0,
+  onUserFix,
+  viewerAvatar = null,
+  viewerName = null,
+  unreadCount = 0,
+  onOpenProfile,
+  onOpenNotifications,
 }: {
   apiKey: string;
   landmarks: GoogleRealmMapLandmark[];
@@ -765,6 +780,13 @@ export function GoogleRealmMap({
   recommendedMarkerIds?: ReadonlySet<string> | null;
   suppressLegacyWelcome?: boolean;
   recommendationScoreById?: Record<string, number>;
+  extraBottomPx?: number;
+  onUserFix?: (pos: { lat: number; lng: number } | null) => void;
+  viewerAvatar?: string | null;
+  viewerName?: string | null;
+  unreadCount?: number;
+  onOpenProfile?: () => void;
+  onOpenNotifications?: () => void;
 }) {
   const [apiError, setApiError] = useState(false);
   const [internalFilter, setInternalFilter] = useState<MapMarkerFilter>("for_you");
@@ -891,6 +913,12 @@ export function GoogleRealmMap({
     onDenied: showNotice,
   });
   const userPos = geolocation.userPos;
+  const userLat = userPos?.lat ?? null;
+  const userLng = userPos?.lng ?? null;
+
+  useEffect(() => {
+    onUserFix?.(userLat != null && userLng != null ? { lat: userLat, lng: userLng } : null);
+  }, [onUserFix, userLat, userLng]);
 
   const sheetOpen = Boolean(activeMarkerId) || routeSheetOpen;
   const forceChromeExpanded =
@@ -1089,7 +1117,7 @@ export function GoogleRealmMap({
           styles={useVectorMapId ? undefined : mapLayer === "campus" ? CQ_REALM_MAP_STYLE : undefined}
           mapTypeId={mapLayer === "campus" ? URI_MAP_TYPE_ID : "satellite"}
           defaultCenter={URI_MAP_CENTER}
-          defaultZoom={16}
+          defaultZoom={17.2}
           minZoom={URI_MAP_MIN_ZOOM}
           maxZoom={URI_MAP_MAX_ZOOM}
           gestureHandling="greedy"
@@ -1124,7 +1152,7 @@ export function GoogleRealmMap({
             exploreApiRef={exploreApiRef}
           />
           {/* Keep Google logo/attribution clear of dock, FABs, and CQ gradients. */}
-          <RealmMapChromePadding enabled={isActive} />
+          <RealmMapChromePadding enabled={isActive} extraBottomPx={extraBottomPx} />
           <RealmMapCameraGestures enabled={isActive && tilesLoaded} touchMobile={touchMobile} />
           <RealmMapVectorDiagnostics enabled={isActive && tilesLoaded && !editMode} />
           {REALM_CAMERA_DEBUG ? <RealmMapCameraDebugHud enabled={isActive && tilesLoaded} /> : null}
@@ -1215,22 +1243,50 @@ export function GoogleRealmMap({
                 }`}
               >
                 {onPlaceSelected ? (
-                  <RealmMapSearch
-                    buildings={searchBuildings}
-                    groups={[
-                      ...landmarks
-                        .map((landmark) => landmark.mapContent)
-                        .filter((group): group is GroupedMapLocation => Boolean(group)),
-                      ...supplementaryPins,
-                    ]}
-                    onSelect={(result) => {
-                      exploreApiRef.current?.expandChrome();
-                      onPlaceSelected(result);
-                    }}
-                    onActiveChange={setSearchActive}
-                    disabled={!tilesLoaded}
-                    recommendationScoreById={recommendationScoreById}
-                  />
+                  <div className="cq-realm-map-header-row">
+                    {onOpenProfile ? (
+                      <button
+                        type="button"
+                        className="cq-realm-map-avatar touch-manipulation"
+                        aria-label={viewerName ? `Open profile for ${viewerName}` : "Open profile"}
+                        onClick={onOpenProfile}
+                      >
+                        {viewerAvatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={viewerAvatar} alt="" />
+                        ) : (
+                          <span aria-hidden>{(viewerName ?? "You").slice(0, 1).toUpperCase()}</span>
+                        )}
+                      </button>
+                    ) : null}
+                    <RealmMapSearch
+                      buildings={searchBuildings}
+                      groups={[
+                        ...landmarks
+                          .map((landmark) => landmark.mapContent)
+                          .filter((group): group is GroupedMapLocation => Boolean(group)),
+                        ...supplementaryPins,
+                      ]}
+                      onSelect={(result) => {
+                        exploreApiRef.current?.expandChrome();
+                        onPlaceSelected(result);
+                      }}
+                      onActiveChange={setSearchActive}
+                      disabled={!tilesLoaded}
+                      recommendationScoreById={recommendationScoreById}
+                    />
+                    {onOpenNotifications ? (
+                      <button
+                        type="button"
+                        className="cq-realm-map-bell touch-manipulation"
+                        aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
+                        onClick={onOpenNotifications}
+                      >
+                        <Bell className="h-4 w-4" strokeWidth={2.1} aria-hidden />
+                        {unreadCount > 0 ? <span className="cq-realm-map-bell__dot" aria-hidden /> : null}
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
                 <RealmMapFilterPills
                   value={filter}

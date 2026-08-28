@@ -14,6 +14,11 @@ export {
   profileFromPersonalization,
 } from "@/lib/recommendations/profile";
 export {
+  buildStudentDiscoveryProfile,
+  recommendationProfileFromDiscovery,
+} from "@/lib/recommendations/discoveryProfile";
+export type { StudentDiscoveryProfile } from "@/lib/recommendations/discoveryProfile";
+export {
   campusEventToRecommendationEntity,
   externalEventToRecommendationEntity,
   fieldNoteToRecommendationEntity,

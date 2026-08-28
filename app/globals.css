@@ -774,11 +774,15 @@
 }
 
 .cq-simple-starter-card--selected {
-  border-color: rgba(104, 171, 232, 0.9);
+  border-color: rgba(232, 197, 71, 0.95);
   box-shadow:
-    0 0 0 2px rgba(104, 171, 232, 0.35),
+    0 0 0 2px rgba(232, 197, 71, 0.35),
     0 0 24px rgba(104, 171, 232, 0.28);
   transform: scale(1.02);
+}
+
+.cq-simple-starter-card--selected .cq-simple-starter-thumb {
+  box-shadow: 0 0 0 2px rgba(232, 197, 71, 0.8);
 }
 
 .cq-simple-starter-thumb {
@@ -786,7 +790,10 @@
   height: 6rem;
   border-radius: 9999px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.25);
+  background:
+    radial-gradient(circle at 50% 28%, rgba(104, 171, 232, 0.42), rgba(8, 28, 58, 0.92) 72%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .cq-simple-starter-label {
@@ -811,8 +818,8 @@
 }
 
 .cq-simple-starter-thumb--compact {
-  width: 3.6rem;
-  height: 3.6rem;
+  width: 3.85rem;
+  height: 3.85rem;
 }
 
 .cq-simple-starter-card--compact .cq-simple-starter-label {
@@ -7353,10 +7360,10 @@ html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__item--active 
 }
 
 .cq-dock-nav__map-btn--active {
-  border-color: rgba(186, 230, 253, 0.75);
+  border-color: rgba(186, 230, 253, 0.85);
   box-shadow:
-    0 0 34px -4px rgba(56, 189, 248, 0.9),
-    0 0 16px -2px rgba(125, 211, 252, 0.55),
+    0 0 40px -2px rgba(56, 189, 248, 1),
+    0 0 18px 0 rgba(125, 211, 252, 0.7),
     0 12px 26px -10px rgba(0, 0, 0, 0.65);
 }
 
@@ -11747,6 +11754,33 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   inset: 0;
   pointer-events: none;
   background: radial-gradient(ellipse 80% 45% at 50% -5%, rgba(76, 201, 255, 0.12) 0%, transparent 55%);
+}
+
+.cq-auth-provisioning {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1.5rem;
+  background: rgba(7, 20, 40, 0.78);
+  text-align: center;
+}
+
+.cq-auth-provisioning__title {
+  margin: 0;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 750;
+}
+
+.cq-auth-provisioning__copy {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.9rem;
 }
 
 .cq-auth-inner {
@@ -18572,7 +18606,9 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 .cq-realm-map-search {
   position: relative;
   margin: 0;
-  width: min(22rem, calc(100vw - 2rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  flex: 1;
+  min-width: 0;
+  width: auto;
   pointer-events: auto;
   z-index: 40;
 }
@@ -18580,13 +18616,60 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 .cq-realm-map-search-field {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
   border-radius: 9999px;
-  border: 1px solid rgba(222, 184, 92, 0.35);
-  background: rgba(10, 8, 4, 0.88);
-  padding: 0.35rem 0.65rem;
+  border: 1px solid rgba(222, 184, 92, 0.28);
+  background: rgba(6, 10, 22, 0.92);
+  padding: 0.28rem 0.6rem;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(10px);
+}
+
+.cq-realm-map-header-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: min(100%, calc(100vw - 1.1rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+}
+
+.cq-realm-map-avatar,
+.cq-realm-map-bell {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  border: 1px solid rgba(75, 174, 255, 0.38);
+  background: rgba(8, 18, 40, 0.9);
+  color: #e8f6ff;
+  box-shadow: 0 4px 14px rgba(0, 20, 50, 0.4);
+  overflow: hidden;
+}
+
+.cq-realm-map-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cq-realm-map-avatar span {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.cq-realm-map-bell__dot {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: #3b9bff;
+  box-shadow: 0 0 8px rgba(59, 155, 255, 0.85);
+  border: 1px solid #061224;
 }
 
 .cq-realm-map-search-icon {
@@ -19115,8 +19198,8 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  width: 52px;
-  height: 58px;
+  width: 36px;
+  height: 42px;
   overflow: visible;
   pointer-events: none;
 }
@@ -19129,17 +19212,17 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  margin-bottom: 10px;
+  width: 26px;
+  height: 26px;
+  margin-bottom: 7px;
   border-radius: 50% 50% 50% 0;
   transform: rotate(-45deg);
-  border: 2px solid rgba(255, 255, 255, 0.88);
+  border: 1.5px solid rgba(255, 255, 255, 0.88);
   background: linear-gradient(145deg, var(--cq-marker-grad-top), var(--cq-marker-grad-bot));
   box-shadow:
-    0 0 10px var(--cq-marker-glow),
-    0 0 20px var(--cq-marker-glow-soft),
-    0 8px 18px rgba(0, 0, 0, 0.45);
+    0 0 8px var(--cq-marker-glow),
+    0 0 16px var(--cq-marker-glow-soft),
+    0 6px 14px rgba(0, 0, 0, 0.45);
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease,
@@ -19153,8 +19236,8 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: rgba(6, 16, 36, 0.28);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
@@ -19166,8 +19249,8 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 
 .marker-icon .cq-realm-marker-icon,
 .cq-realm-marker-icon.cq-realm-marker-icon {
-  width: 15px;
-  height: 15px;
+  width: 11px;
+  height: 11px;
   background: transparent;
   box-shadow: none;
   border-radius: 0;
@@ -19183,14 +19266,14 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 .cq-realm-marker-label {
   position: relative;
   z-index: 4;
-  margin-top: 2px;
-  max-width: 7.5rem;
+  margin-top: 1px;
+  max-width: 6.2rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 4px 10px;
+  padding: 2px 7px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 1.2;
@@ -19239,9 +19322,9 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   left: 50%;
   bottom: 1px;
   z-index: 1;
-  width: 28px;
-  height: 10px;
-  margin-left: -14px;
+  width: 20px;
+  height: 7px;
+  margin-left: -10px;
   border-radius: 50%;
   border: 1.5px solid var(--cq-marker-grad-top);
   background: radial-gradient(ellipse at center, var(--cq-marker-glow-soft) 0%, transparent 72%);
@@ -19358,21 +19441,21 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 
 .cq-realm-marker--state-selected .marker-pin,
 .cq-realm-marker--state-selected .cq-realm-marker-pin {
-  width: 40px;
-  height: 40px;
-  margin-bottom: 12px;
+  width: 30px;
+  height: 30px;
+  margin-bottom: 8px;
   transform: rotate(-45deg) scale(1.08);
   animation: none;
   box-shadow:
-    0 0 22px var(--cq-marker-glow),
-    0 0 40px var(--cq-marker-glow),
-    0 12px 28px rgba(0, 0, 0, 0.5);
+    0 0 18px var(--cq-marker-glow),
+    0 0 32px var(--cq-marker-glow),
+    0 10px 22px rgba(0, 0, 0, 0.5);
 }
 
 .cq-realm-marker--state-selected .marker-ground-ring {
-  width: 36px;
-  height: 12px;
-  margin-left: -18px;
+  width: 26px;
+  height: 9px;
+  margin-left: -13px;
   opacity: 1;
   animation: realm-marker-ring-pulse 1.8s ease-in-out infinite;
 }
@@ -20347,6 +20430,95 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   color: rgba(232, 246, 255, 0.9);
 }
 
+.cq-realm-intro-slot {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: calc(var(--cq-bottom-nav-h, 3.95rem) + env(safe-area-inset-bottom, 0px) + 1.25rem);
+  z-index: 9;
+  pointer-events: none;
+}
+
+.cq-realm-intro {
+  pointer-events: auto;
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: 0.95rem 1rem 1rem;
+  border-radius: 1.1rem;
+  border: 1px solid rgba(75, 174, 255, 0.38);
+  background: rgba(4, 16, 36, 0.94);
+  box-shadow: 0 12px 32px rgba(0, 24, 56, 0.46);
+}
+
+.cq-realm-intro__eyebrow {
+  margin: 0 0 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+}
+
+.cq-realm-intro__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #f8fbff;
+}
+
+.cq-realm-intro__body {
+  margin: 0.4rem 0 0.75rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: rgba(232, 246, 255, 0.82);
+}
+
+.cq-realm-intro__dots {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.cq-realm-intro__dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.cq-realm-intro__dot--active {
+  background: #e8c547;
+}
+
+.cq-realm-intro__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.cq-realm-intro__skip,
+.cq-realm-intro__primary {
+  min-height: 44px;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.cq-realm-intro__skip {
+  flex: 0 0 auto;
+  padding: 0 0.9rem;
+  border: 0;
+  background: transparent;
+  color: rgba(232, 246, 255, 0.75);
+}
+
+.cq-realm-intro__primary {
+  flex: 1;
+  border: none;
+  background: linear-gradient(180deg, #4baeff 0%, #2b8fd9 100%);
+  color: #03101f;
+}
+
 .cq-realm-foryou-rail {
   position: absolute;
   left: 0;
@@ -20550,11 +20722,12 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-realm-map-filter-chip {
   border-radius: 9999px;
-  padding: 0.35rem 0.75rem;
+  padding: 0.32rem 0.62rem;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   color: rgba(216, 236, 255, 0.62);
+  white-space: nowrap;
   transition: background-color 180ms ease, color 180ms ease, transform 120ms ease;
 }
 
@@ -20564,7 +20737,7 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-realm-map-filter-chip--active {
   background: linear-gradient(180deg, #4baeff 0%, #2b8fd9 100%);
-  color: #03101f;
+  color: #fff;
   box-shadow: 0 0 14px rgba(75, 174, 255, 0.45);
 }
 
@@ -20584,8 +20757,8 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-realm-map-filter-chip--active .cq-realm-map-filter-live-dot {
-  background: #064e3b;
-  box-shadow: none;
+  background: #86efac;
+  box-shadow: 0 0 6px rgba(134, 239, 172, 0.7);
 }
 
 .cq-realm-map-btn {
@@ -23833,6 +24006,16 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   box-shadow: 0 6px 16px rgba(11, 31, 58, 0.04);
 }
 
+.cq-onboard-search--input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #0f172a;
+  font-size: 0.95rem;
+  outline: none;
+}
+
 .cq-onboard-school {
   margin-top: 0.85rem;
   width: 100%;
@@ -23879,10 +24062,16 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-onboard-muted-link {
+  display: block;
+  width: 100%;
   text-align: center;
   color: var(--cq-onboard-blue);
   font-size: 0.9rem;
   font-weight: 600;
+  background: none;
+  border: 0;
+  padding: 0.5rem;
+  min-height: 44px;
 }
 
 .cq-onboard-chip-grid {
@@ -23890,6 +24079,46 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.55rem;
+}
+
+.cq-onboard-major {
+  margin-top: 1.15rem;
+}
+
+.cq-onboard-major-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-height: 14rem;
+  overflow-y: auto;
+  margin-top: 0.65rem;
+  padding-bottom: 0.25rem;
+}
+
+.cq-onboard-major-selected,
+.cq-onboard-school-request {
+  margin-top: 0.65rem;
+  width: 100%;
+  border-radius: 1rem;
+  border: 1.5px solid var(--cq-onboard-border);
+  background: var(--cq-onboard-card);
+  padding: 0.85rem 1rem;
+}
+
+.cq-onboard-major-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  text-align: left;
+  font-weight: 650;
+  color: #0f172a;
+}
+
+.cq-onboard-major-clear {
+  color: var(--cq-onboard-blue);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .cq-onboard-chip {
@@ -24014,10 +24243,24 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-onboard-otp {
+  position: relative;
   display: flex;
   justify-content: center;
   gap: 0.45rem;
   margin-top: 1.25rem;
+}
+
+.cq-onboard-otp-autofill {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
 }
 
 .cq-onboard-otp-cell {
@@ -24840,4 +25083,384 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   .cq-onboard-knight-stage--up {
     transform: none;
   }
+}
+
+/* Realm discovery sheet — overlay above the map, below the dock. */
+.cq-realm-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--cq-realm-nav-clearance, 5.25rem);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1.35rem 1.35rem 0 0;
+  border: 1px solid rgba(75, 174, 255, 0.28);
+  border-bottom: none;
+  background: linear-gradient(180deg, rgba(8, 22, 48, 0.97) 0%, rgba(4, 14, 32, 0.98) 100%);
+  box-shadow:
+    0 -16px 40px rgba(0, 16, 40, 0.48),
+    0 0 24px rgba(0, 119, 255, 0.12);
+  pointer-events: auto;
+  transition: height 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  overscroll-behavior: contain;
+}
+
+.cq-realm-sheet--dragging {
+  transition: none;
+}
+
+.cq-realm-sheet__handle-hit {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.55rem 1rem 0.4rem;
+  touch-action: none;
+  cursor: grab;
+}
+
+.cq-realm-sheet__handle {
+  width: 2.35rem;
+  height: 0.28rem;
+  border-radius: 9999px;
+  background: rgba(186, 230, 253, 0.45);
+}
+
+.cq-realm-sheet__peek {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(226, 242, 255, 0.88);
+}
+
+.cq-realm-sheet__body {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0.85rem 1rem;
+}
+
+.cq-realm-sheet--default .cq-realm-sheet__body {
+  overflow-y: hidden;
+}
+
+.cq-realm-sheet--expanded .cq-realm-sheet__body {
+  overflow-y: auto;
+}
+
+.cq-realm-sheet__split {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: 0.7rem;
+  align-items: start;
+}
+
+.cq-rhody-highlights,
+.cq-discover-foryou {
+  min-width: 0;
+}
+
+.cq-rhody-highlights__head,
+.cq-discover-foryou__head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.45rem;
+}
+
+.cq-rhody-highlights__title,
+.cq-discover-foryou__title,
+.cq-nearby-places__title {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(236, 248, 255, 0.92);
+}
+
+.cq-rhody-highlights__mark {
+  width: 1.05rem;
+  height: 1.05rem;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.cq-rhody-highlights__more,
+.cq-discover-foryou__more {
+  display: flex;
+  color: rgba(186, 230, 253, 0.8);
+}
+
+.cq-rhody-highlights__list,
+.cq-discover-foryou__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cq-rhody-highlights__row,
+.cq-discover-foryou__row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  text-align: left;
+  border-radius: 0.7rem;
+  padding: 0.2rem 0.1rem;
+}
+
+.cq-rhody-highlights__thumb {
+  position: relative;
+  width: 3.35rem;
+  aspect-ratio: 16 / 9;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 0.4rem;
+  background: rgba(12, 40, 78, 0.85);
+}
+
+.cq-rhody-highlights__thumb img,
+.cq-rhody-highlights__thumb-fallback {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cq-rhody-highlights__thumb-fallback {
+  background: linear-gradient(135deg, rgba(14, 116, 178, 0.55), rgba(4, 20, 48, 0.9));
+}
+
+.cq-rhody-highlights__copy,
+.cq-discover-foryou__copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.cq-rhody-highlights__sport {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+}
+
+.cq-rhody-highlights__name,
+.cq-discover-foryou__name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #f8fbff;
+  line-height: 1.2;
+}
+
+.cq-rhody-highlights__time,
+.cq-discover-foryou__meta,
+.cq-rhody-highlights__empty,
+.cq-discover-foryou__empty {
+  font-size: 0.62rem;
+  color: rgba(176, 204, 230, 0.72);
+}
+
+.cq-rhody-highlights__cta,
+.cq-discover-foryou__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-top: 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #7dd3fc;
+}
+
+.cq-discover-foryou__survey {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  padding: 0.65rem 0.7rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(75, 174, 255, 0.28);
+  background: linear-gradient(180deg, rgba(20, 64, 120, 0.55), rgba(8, 28, 64, 0.72));
+}
+
+.cq-discover-foryou__survey-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.cq-discover-foryou__survey-title {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #f4fbff;
+}
+
+.cq-discover-foryou__survey-body {
+  margin: 0.15rem 0 0;
+  font-size: 0.62rem;
+  line-height: 1.35;
+  color: rgba(196, 222, 246, 0.78);
+}
+
+.cq-discover-foryou__start {
+  align-self: flex-start;
+  border-radius: 9999px;
+  padding: 0.32rem 0.85rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(90deg, #3b9bff 0%, #7c5cff 100%);
+  box-shadow: 0 6px 16px rgba(59, 155, 255, 0.28);
+}
+
+.cq-discover-foryou__reason {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: rgba(196, 181, 253, 0.9);
+}
+
+.cq-discover-foryou__icon {
+  width: 1.55rem;
+  height: 1.55rem;
+  flex-shrink: 0;
+  border-radius: 0.45rem;
+  background: rgba(59, 155, 255, 0.28);
+}
+
+.cq-discover-foryou__icon--event {
+  background: rgba(167, 139, 250, 0.35);
+}
+
+.cq-discover-foryou__icon--quest {
+  background: rgba(52, 211, 153, 0.32);
+}
+
+.cq-discover-foryou__icon--place {
+  background: rgba(251, 191, 36, 0.28);
+}
+
+.cq-nearby-places {
+  margin-top: 0.85rem;
+}
+
+.cq-nearby-places__scroller {
+  display: flex;
+  gap: 0.55rem;
+  overflow-x: auto;
+  padding: 0.15rem 0.15rem 0.35rem;
+  margin: 0 -0.15rem;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+}
+
+.cq-nearby-places__scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-nearby-place-card {
+  position: relative;
+  flex: 0 0 158px;
+  width: 158px;
+  border-radius: 0.85rem;
+  overflow: hidden;
+  background: rgba(8, 22, 48, 0.95);
+  border: 1px solid rgba(75, 174, 255, 0.18);
+}
+
+.cq-nearby-place-card__hit {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  text-align: left;
+  color: inherit;
+}
+
+.cq-nearby-place-card__image {
+  width: 100%;
+  height: 92px;
+  object-fit: cover;
+  display: block;
+}
+
+.cq-nearby-place-card__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  padding: 0.4rem 0.5rem 0.5rem;
+}
+
+.cq-nearby-place-card__name {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #f8fbff;
+}
+
+.cq-nearby-place-card__cat {
+  font-size: 0.6rem;
+  color: rgba(176, 204, 230, 0.72);
+}
+
+.cq-nearby-place-card__walk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-top: 0.12rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #4ade80;
+}
+
+.cq-nearby-place-card__save {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 9999px;
+  background: rgba(4, 12, 28, 0.72);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.cq-nearby-place-card__save--on {
+  color: #fde68a;
+}
+
+@media (max-width: 389px) {
+  .cq-realm-sheet__split {
+    grid-template-columns: 1fr;
+  }
+
+  .cq-nearby-place-card {
+    flex-basis: 148px;
+    width: 148px;
+  }
+}
+
+.cq-nearby-places__scroller::after {
+  content: "";
+  flex: 0 0 0.85rem;
 }

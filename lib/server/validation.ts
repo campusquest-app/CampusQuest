@@ -5,6 +5,7 @@ import { REALM_LOCATION_IDS } from "@/lib/realm/locationGeo";
 import { ORGANIZATION_REQUEST_CATEGORIES } from "@/lib/organizationRequestCategories";
 import { passwordMeetsRequirements } from "@/lib/passwordRequirements";
 import { STUDENT_STATUS_VALUES } from "@/lib/onboarding/taxonomy";
+import { ONBOARDING_FUNNEL_EVENTS } from "@/lib/onboarding/analyticsEvents";
 
 export const uuidSchema = z.string().uuid();
 
@@ -520,12 +521,20 @@ export const onboardingPreferencesSchema = z.object({
     .max(3)
     .optional(),
   major: z.union([z.literal(""), z.string().trim().min(2).max(120)]).optional(),
+  academicArea: z.union([z.literal(""), z.string().trim().min(2).max(64)]).optional(),
   communities: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
   institutionId: z.string().trim().min(2).max(32).optional(),
   studentStatus: z.enum(STUDENT_STATUS_VALUES).optional(),
   classYear: z.number().int().min(1900).max(3000).nullable().optional(),
   onboardingVersion: z.number().int().min(1).max(100).optional(),
   markOnboardingComplete: z.boolean().optional(),
+});
+
+export const onboardingFunnelEventSchema = z.object({
+  eventName: z.enum(ONBOARDING_FUNNEL_EVENTS),
+  stepNumber: z.number().int().min(1).max(20).nullable().optional(),
+  elapsedMs: z.number().int().min(0).max(3_600_000).nullable().optional(),
+  skipped: z.boolean().nullable().optional(),
 });
 
 export const patchMeProfileSchema = z
@@ -540,6 +549,8 @@ export const patchMeProfileSchema = z
     scholarGuildId: z.string().trim().max(64).nullable().optional(),
     bio: z.string().trim().max(280).optional(),
     major: z.union([z.literal(""), z.string().trim().min(2).max(120)]).optional(),
+    academicArea: z.union([z.literal(""), z.string().trim().min(2).max(64)]).optional(),
+    requestedSchoolName: z.union([z.literal(""), z.string().trim().min(2).max(120)]).optional(),
     year: z.number().int().min(1900).max(3000).nullable().optional(),
     classYear: z.number().int().min(1900).max(3000).nullable().optional(),
     studentStatus: z.enum(STUDENT_STATUS_VALUES).nullable().optional(),
@@ -561,6 +572,10 @@ export const patchMeProfileSchema = z
     realmWelcomeSeen: z.literal(true).optional(),
     /** Dev-only: clear Realm arrival so QA can replay first entry. */
     realmWelcomeSeenReset: z.literal(true).optional(),
+    /** Persist first-use Realm coach marks. */
+    realmIntroCompleted: z.literal(true).optional(),
+    /** Dev-only: clear Realm intro so QA can replay coach marks. */
+    realmIntroCompletedReset: z.literal(true).optional(),
     /** Persist first-session dock label hints. */
     navHintsSeen: z.literal(true).optional(),
     /** Dev-only: clear dock hints for QA. */

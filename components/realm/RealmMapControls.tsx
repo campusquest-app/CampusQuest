@@ -61,8 +61,6 @@ export function RealmMapControls({
     onShowFallbackBuildingsChange: onBuildingsOverlayChange,
   });
 
-  const showLocateWhenCollapsed = locating || userPos != null;
-
   const locate = useCallback(() => {
     onLocate((pos) => {
       const activeMap = mapRef?.current ?? map;
@@ -132,22 +130,36 @@ export function RealmMapControls({
         onTouchEnd={handleStackTouchEnd}
       >
         <div className={stackClass}>
-          {!expanded && showLocateWhenCollapsed ? (
-            <button
-              type="button"
-              onClick={locate}
-              disabled={locating}
-              className={`cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-11 w-11 items-center justify-center touch-manipulation disabled:opacity-60${
-                followMode ? " cq-realm-float-btn--active" : ""
-              }`}
-              aria-label={followMode ? "Stop following your location" : "Center map on my location"}
-              title={followMode ? "Following location" : "My location"}
-            >
-              <LocateFixed
-                className={`h-[18px] w-[18px] ${locating ? "animate-pulse" : ""}`}
-                strokeWidth={2.2}
-              />
-            </button>
+          {!expanded ? (
+            <>
+              <button
+                type="button"
+                onClick={toggleLayer}
+                className={`cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-12 w-12 items-center justify-center touch-manipulation${
+                  mapLayer === "satellite" ? " cq-realm-float-btn--active" : ""
+                }`}
+                aria-label={mapLayer === "campus" ? "Switch to satellite view" : "Switch to campus view"}
+                aria-pressed={mapLayer === "satellite"}
+                title={mapLayer === "campus" ? "Satellite view" : "Campus view"}
+              >
+                <Layers className="h-[18px] w-[18px]" strokeWidth={2.2} />
+              </button>
+              <button
+                type="button"
+                onClick={locate}
+                disabled={locating}
+                className={`cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-12 w-12 items-center justify-center touch-manipulation disabled:opacity-60${
+                  followMode ? " cq-realm-float-btn--active" : ""
+                }`}
+                aria-label={followMode ? "Stop following your location" : "Center map on my location"}
+                title={followMode ? "Following location" : "My location"}
+              >
+                <LocateFixed
+                  className={`h-[18px] w-[18px] ${locating ? "animate-pulse" : ""}`}
+                  strokeWidth={2.2}
+                />
+              </button>
+            </>
           ) : null}
 
           <div className="cq-realm-map-controls-expandable" aria-hidden={!expanded}>
@@ -298,7 +310,7 @@ export function RealmMapControls({
           <button
             type="button"
             onClick={() => onExpandedChange(!expanded)}
-            className={`cq-realm-float-btn cq-realm-map-controls-toggle flex h-11 w-11 items-center justify-center touch-manipulation${
+            className={`cq-realm-float-btn cq-realm-map-controls-toggle flex h-12 w-12 items-center justify-center touch-manipulation${
               expanded ? " cq-realm-map-controls-toggle--expanded" : ""
             }`}
             aria-label={expanded ? "Hide map controls" : "Show map controls"}

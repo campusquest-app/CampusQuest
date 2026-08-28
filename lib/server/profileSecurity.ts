@@ -67,6 +67,8 @@ export const ALLOWED_PROFILE_IDENTITY_FIELDS = [
   "major",
   "classYear",
   "year",
+  "academicArea",
+  "requestedSchoolName",
 ] as const;
 
 /** Additional profile fields allowed for onboarding / gameplay cosmetic sync (not stats). */
@@ -82,6 +84,8 @@ export const ALLOWED_PROFILE_GAMEPLAY_FIELDS = [
   "starterIntroSeenReset",
   "realmWelcomeSeen",
   "realmWelcomeSeenReset",
+  "realmIntroCompleted",
+  "realmIntroCompletedReset",
   "navHintsSeen",
   "navHintsSeenReset",
   "preserveIdentityCooldownTimestamps",

@@ -10,6 +10,7 @@ import {
   normalizeInterestIds,
   ONBOARDING_VERSION,
 } from "@/lib/onboarding/taxonomy";
+import { isMissingDiscoveryColumnError, stripDiscoveryColumns } from "@/lib/server/profileDiscoveryColumns";
 
 function mapPrefsRow(data: Record<string, unknown>) {
   return {
@@ -117,6 +118,11 @@ export async function POST(request: Request) {
     if (input.studentStatus) profilePatch.student_status = input.studentStatus;
     if (institutionId) profilePatch.institution_id = institutionId;
     if (input.onboardingVersion != null) profilePatch.onboarding_version = input.onboardingVersion;
+    if (input.major !== undefined) profilePatch.major = majorTrimmed;
+    if (input.academicArea !== undefined) {
+      const area = typeof input.academicArea === "string" ? input.academicArea.trim() : "";
+      profilePatch.academic_area = area || null;
+    }
 
     const { data: profileRow, error: profileErr } = await auth.userClient
       .from("profiles")
@@ -141,12 +147,21 @@ export async function POST(request: Request) {
         update.onboarding_completed_at = new Date().toISOString();
         update.onboarding_version = input.onboardingVersion ?? ONBOARDING_VERSION;
       }
-      const { error: doneErr } = await auth.userClient.from("profiles").update(update).eq("id", auth.user.id);
+      let { error: doneErr } = await auth.userClient.from("profiles").update(update).eq("id", auth.user.id);
+      if (doneErr && isMissingDiscoveryColumnError(doneErr.message)) {
+        const withoutDiscovery = stripDiscoveryColumns(update);
+        if (Object.keys(withoutDiscovery).length > 0) {
+          const retried = await auth.userClient.from("profiles").update(withoutDiscovery).eq("id", auth.user.id);
+          doneErr = retried.error;
+        } else {
+          doneErr = null;
+        }
+      }
       if (doneErr) {
         if (/student_status|institution_id|onboarding_version/i.test(doneErr.message)) {
           throw new ApiError(
             500,
-            "Onboarding demographics migration is required. Apply supabase/migrations/20260818220000_onboarding_demographics_v2.sql.",
+            "We couldn't save your preferences. Please try again.",
             "SCHEMA_MIGRATION_REQUIRED",
           );
         }

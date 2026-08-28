@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronLeft } from "lucide-react";
 import { RealmMap } from "@/components/realm/RealmMap";
 import type { RealmLocation } from "@/lib/realm/locations";
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 
 export function TheRealm({
-  onBack,
   onCreatePost,
   onViewProfile,
   onSharePost,
@@ -20,8 +18,17 @@ export function TheRealm({
   isActive = true,
   personalization = null,
   showArrival = false,
+  showIntro = false,
   onArrivalExplore,
   onArrivalViewFeed,
+  onIntroComplete,
+  onIntroSkip,
+  onViewAthletics,
+  onFindMyCampus,
+  onViewAllRecommendations,
+  onOpenNotifications,
+  onOpenOwnProfile,
+  unreadCount = 0,
 }: {
   onBack?: () => void;
   onCreatePost?: () => void;
@@ -41,10 +48,21 @@ export function TheRealm({
     communities?: string[] | null;
     studentStatus?: string | null;
     classYear?: number | null;
+    major?: string | null;
+    academicArea?: string | null;
   } | null;
   showArrival?: boolean;
+  showIntro?: boolean;
   onArrivalExplore?: () => void;
   onArrivalViewFeed?: () => void;
+  onIntroComplete?: () => void;
+  onIntroSkip?: () => void;
+  onViewAthletics?: () => void;
+  onFindMyCampus?: () => void;
+  onViewAllRecommendations?: () => void;
+  onOpenNotifications?: () => void;
+  onOpenOwnProfile?: () => void;
+  unreadCount?: number;
 }) {
   const [entered, setEntered] = useState(false);
 
@@ -59,19 +77,6 @@ export function TheRealm({
 
   return (
     <div className={`cq-realm-immersive cq-realm-immersive--map-first${entered ? " cq-realm-immersive--entered" : ""}`}>
-      {onBack ? (
-        <header className="cq-realm-immersive-header cq-realm-immersive-header--minimal">
-          <button
-            type="button"
-            onClick={onBack}
-            className="cq-realm-immersive-back touch-manipulation"
-            aria-label="Back to home"
-          >
-            <ChevronLeft className="h-5 w-5" strokeWidth={2.2} />
-          </button>
-        </header>
-      ) : null}
-
       <div className="cq-realm-immersive-stage">
         <RealmMap
           onViewQuests={handleViewQuests}
@@ -87,8 +92,17 @@ export function TheRealm({
           isActive={isActive}
           personalization={personalization}
           showArrival={showArrival}
+          showIntro={showIntro}
           onArrivalExplore={onArrivalExplore}
           onArrivalViewFeed={onArrivalViewFeed}
+          onIntroComplete={onIntroComplete}
+          onIntroSkip={onIntroSkip}
+          onViewAthletics={onViewAthletics}
+          onFindMyCampus={onFindMyCampus}
+          onViewAllRecommendations={onViewAllRecommendations}
+          onOpenNotifications={onOpenNotifications}
+          onOpenOwnProfile={onOpenOwnProfile}
+          unreadCount={unreadCount}
         />
       </div>
     </div>

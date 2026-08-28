@@ -18,6 +18,7 @@ import { AVATAR_LOOK_PRESETS } from "@/lib/avatarPresets";
 import { CHARACTER_CLASSES } from "@/lib/characterClasses";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { ApiRequestError, fetchAuthed, patchAuthed } from "@/lib/client/dashboardApi";
+import { trackOnboardingEvent } from "@/lib/client/onboardingAnalytics";
 import { resetUserSaveSyncAfterHydrate } from "@/lib/client/gameStateSync";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { resolveCharacterGateIdentity } from "@/lib/client/characterGateIdentity";
@@ -238,6 +239,8 @@ export function CharacterGate({
         skipRemoteSync: true,
       });
       resetUserSaveSyncAfterHydrate();
+      trackOnboardingEvent({ eventName: "onboarding_avatar_completed" });
+      trackOnboardingEvent({ eventName: "onboarding_completed" });
       onReady();
     } catch (err) {
       if (preserveExistingProgress) {

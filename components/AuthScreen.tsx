@@ -48,6 +48,12 @@ import { isAllowedSignupEmail, SCHOOL_EMAIL_REQUIRED_MESSAGE } from "@/lib/signu
 import { CAMPUSQUEST_LOGO_SRC } from "@/lib/branding";
 import { BRAND_KNIGHT } from "@/lib/onboarding/taxonomy";
 import { clearAuthSignupDraft, readAuthSignupDraft, writeAuthSignupDraft } from "@/lib/client/authSignupDraft";
+import {
+  SIGNUP_SESSION_RETRY_DELAYS_MS,
+  isSignupPendingSetupCode,
+  shouldAutoEstablishSignupSession,
+  shouldKeepSignupPassword,
+} from "@/lib/client/signupSessionContinuity";
 
 type Mode = "welcome" | "signin" | "signup";
 type ApiResponse<T> = { data?: T; error?: { message?: string; code?: string } | string };
@@ -138,7 +144,6 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -171,6 +176,9 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const lastSignupAttemptRef = useRef(0);
   const loginLockedRef = useRef(false);
   const [signupLifecycle, setSignupLifecycle] = useState<SignupLifecycleUi>("idle");
+  const [usernameAvailability, setUsernameAvailability] = useState<"idle" | "checking" | "available" | "taken">(
+    "idle",
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -180,7 +188,6 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setEmail(draft.email);
       setUsername(draft.username);
       setPassword(draft.password);
-      setConfirmPassword(draft.confirmPassword);
       setAcceptedTerms(draft.acceptedTerms);
     }
     const expiredNotice = sessionStorage.getItem(AUTH_SESSION_EXPIRED_NOTICE_KEY);
@@ -202,10 +209,45 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       email,
       username,
       password,
-      confirmPassword,
       acceptedTerms,
     });
-  }, [mode, email, username, password, confirmPassword, acceptedTerms]);
+  }, [mode, email, username, password, acceptedTerms]);
+
+  useEffect(() => {
+    if (mode !== "signup") {
+      setUsernameAvailability("idle");
+      return;
+    }
+    const u = username.trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,24}$/.test(u)) {
+      setUsernameAvailability("idle");
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setUsernameAvailability("checking");
+      void fetch(`/api/auth/username-available?username=${encodeURIComponent(u)}`, {
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          const payload = (await response.json().catch(() => ({}))) as {
+            data?: { available?: boolean };
+          };
+          if (!response.ok) {
+            setUsernameAvailability("idle");
+            return;
+          }
+          setUsernameAvailability(payload.data?.available === false ? "taken" : "available");
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setUsernameAvailability("idle");
+        });
+    }, 450);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [mode, username]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 250);
@@ -398,6 +440,62 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     }
   }
 
+  async function persistIncomingSession(session: {
+    access_token?: string;
+    refresh_token?: string;
+  }): Promise<boolean> {
+    const accessToken = session.access_token;
+    if (!accessToken) return false;
+    setAccessToken(accessToken);
+    if (session.refresh_token) {
+      await persistSupabaseSession({ access_token: accessToken, refresh_token: session.refresh_token });
+    }
+    syncOnboardingQaReplayFromAccessToken(accessToken);
+    return true;
+  }
+
+  async function loginForSignupContinuity(eVal: string, p: string) {
+    const payload = await fetchJson<{ session?: { access_token?: string; refresh_token?: string } }>(
+      "/api/auth/login",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: eVal, password: p }),
+      },
+    );
+    return payload?.data?.session ?? null;
+  }
+
+  async function establishSignupSession(eVal: string, p: string): Promise<boolean> {
+    setSignupLifecycle("initializing");
+    let lastError: unknown = null;
+    for (const delay of SIGNUP_SESSION_RETRY_DELAYS_MS) {
+      if (delay > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, delay));
+      }
+      try {
+        const session = await loginForSignupContinuity(eVal, p);
+        if (session && (await persistIncomingSession(session))) return true;
+      } catch (err) {
+        lastError = err;
+        if (err instanceof HttpRequestError) {
+          const code = (err.code ?? "").toUpperCase();
+          if (code === "SIGNUP_VERIFICATION_REQUIRED" || code === "EMAIL_NOT_CONFIRMED") {
+            throw err;
+          }
+          if (isSignupPendingSetupCode(code) || err.status === 503 || err.status === 404) {
+            continue;
+          }
+          if (err.status === 401) return false;
+        }
+      }
+    }
+    if (lastError instanceof HttpRequestError && isSignupPendingSetupCode(lastError.code)) {
+      return false;
+    }
+    return false;
+  }
+
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
     if (isSubmitting || signupLockedRef.current) return;
@@ -410,8 +508,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     const eVal = email.trim().toLowerCase();
     const u = username.trim().toLowerCase();
     const p = password.trim();
-    const cp = confirmPassword.trim();
-    if (!eVal || !u || !p || !cp) {
+    if (!eVal || !u || !p) {
       setError("Fill in all fields to create your account.");
       return;
     }
@@ -423,16 +520,16 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setError("Username must be 3-24 characters (a-z, 0-9, _).");
       return;
     }
+    if (usernameAvailability === "taken") {
+      setError("This username is already taken.");
+      return;
+    }
     if (!isAllowedSignupEmail(eVal)) {
       setError(SCHOOL_EMAIL_REQUIRED_MESSAGE);
       return;
     }
     if (!passwordMeetsRequirements(p)) {
       setShowPasswordRequirementsError(true);
-      return;
-    }
-    if (p !== cp) {
-      setError("Passwords do not match.");
       return;
     }
     if (!acceptedTerms) {
@@ -457,31 +554,44 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       const session = payload?.data?.session;
       const accessToken = session?.access_token;
       const lifecycle = payload?.data?.lifecycle;
-      if (!accessToken) {
-        const needsVerification =
-          lifecycle === "verification_required" || FEATURE_FLAGS.requireEmailVerification;
-        setSignupLifecycle(needsVerification ? "verification_required" : "recover_sign_in");
-        setMode("signin");
-        setEmail(eVal);
-        setPassword("");
-        setConfirmPassword("");
+      const needsVerification =
+        lifecycle === "verification_required" || FEATURE_FLAGS.requireEmailVerification;
+      if (accessToken) {
+        setSignupLifecycle("auth_created");
+        await persistIncomingSession(session ?? {});
         setSuccessBanner("Account Created!");
-        setNotice(
-          needsVerification
-            ? "Check your URI email to confirm your account before signing in."
-            : "Sign in with your password to continue.",
-        );
+        setSignupLifecycle("onboarding");
+        await completeAuthenticatedSession({ isSignup: true });
+        setSignupLifecycle("complete");
         return;
       }
-      setSignupLifecycle("auth_created");
-      setAccessToken(accessToken);
-      if (session?.refresh_token) {
-        await persistSupabaseSession({ access_token: accessToken, refresh_token: session.refresh_token });
+      if (
+        shouldAutoEstablishSignupSession({
+          hasAccessToken: false,
+          verificationRequired: needsVerification,
+        })
+      ) {
+        const established = await establishSignupSession(eVal, p);
+        if (established) {
+          setSuccessBanner("Account Created!");
+          setSignupLifecycle("onboarding");
+          await completeAuthenticatedSession({ isSignup: true });
+          setSignupLifecycle("complete");
+          return;
+        }
+      }
+      setSignupLifecycle(needsVerification ? "verification_required" : "recover_sign_in");
+      setMode("signin");
+      setEmail(eVal);
+      if (!shouldKeepSignupPassword({ verificationRequired: needsVerification })) {
+        setPassword("");
       }
       setSuccessBanner("Account Created!");
-      setSignupLifecycle("onboarding");
-      await completeAuthenticatedSession({ isSignup: true });
-      setSignupLifecycle("complete");
+      setNotice(
+        needsVerification
+          ? "Check your URI email to confirm your account before signing in."
+          : "Your account is ready. Sign in to continue onboarding.",
+      );
     } catch (signUpError) {
       logAuthClientError("signup", signUpError);
       if (signUpError instanceof SchoolVerificationHttpError) {
@@ -498,12 +608,37 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         return;
       }
       setShowPasswordRequirementsError(false);
+      const errorCode =
+        signUpError instanceof HttpRequestError ? signUpError.code ?? null : null;
+      if (
+        mapped.recoverSignIn &&
+        shouldAutoEstablishSignupSession({
+          hasAccessToken: false,
+          verificationRequired: mapped.verificationRequired === true,
+          recoverSignIn: true,
+          errorCode,
+        })
+      ) {
+        try {
+          const established = await establishSignupSession(eVal, p);
+          if (established) {
+            setSuccessBanner("Account Created!");
+            setSignupLifecycle("onboarding");
+            await completeAuthenticatedSession({ isSignup: true });
+            setSignupLifecycle("complete");
+            return;
+          }
+        } catch (retryError) {
+          logAuthClientError("signup-retry", retryError);
+        }
+      }
       if (mapped.recoverSignIn) {
         setSignupLifecycle(mapped.verificationRequired ? "verification_required" : "recover_sign_in");
         setMode("signin");
         setEmail(eVal);
-        setPassword("");
-        setConfirmPassword("");
+        if (!shouldKeepSignupPassword({ verificationRequired: mapped.verificationRequired === true, errorCode })) {
+          setPassword("");
+        }
         setError(null);
         setNotice(mapped.message);
         return;
@@ -581,7 +716,6 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     setNotice(null);
     setSuccessBanner(null);
     setPassword("");
-    setConfirmPassword("");
   }
 
   if (needsConsent) {
@@ -721,6 +855,15 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
 
   return (
     <div className="cq-auth-shell min-h-[100dvh] flex flex-col items-center px-5 py-6">
+      {isSubmitting ||
+      signupLifecycle === "initializing" ||
+      signupLifecycle === "auth_created" ||
+      signupLifecycle === "onboarding" ? (
+        <div className="cq-auth-provisioning" role="status" aria-live="polite">
+          <p className="cq-auth-provisioning__title">Setting up CampusQuest</p>
+          <p className="cq-auth-provisioning__copy">Finishing your account. This only takes a moment.</p>
+        </div>
+      ) : null}
       <div className="cq-auth-inner cq-auth-enter w-full">
         <AuthHeader />
         <AuthModeSegment
@@ -877,18 +1020,6 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                     </div>
                   </div>
                   <div>
-                    <label htmlFor="auth-confirm-password" className="cq-auth-label">
-                      Confirm Password
-                    </label>
-                    <PasswordInput
-                      id="auth-confirm-password"
-                      autoComplete="new-password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="••••••••"
-                    />
-                  </div>
-                  <div>
                     <label htmlFor="auth-username-signup" className="cq-auth-label">
                       Username
                     </label>
@@ -900,7 +1031,17 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                       onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
                       placeholder="your_username"
                       className="cq-auth-input"
+                      aria-invalid={usernameAvailability === "taken"}
                     />
+                    {usernameAvailability === "checking" ? (
+                      <p className="cq-auth-notice mt-1">Checking username…</p>
+                    ) : null}
+                    {usernameAvailability === "taken" ? (
+                      <p className="cq-auth-error mt-1">This username is already taken.</p>
+                    ) : null}
+                    {usernameAvailability === "available" ? (
+                      <p className="cq-auth-success mt-1">Username is available.</p>
+                    ) : null}
                   </div>
                   <div className="cq-auth-terms">
                     <input
@@ -931,8 +1072,13 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                   {error ? <p className="cq-auth-error">{error}</p> : null}
                   {successBanner ? <p className="cq-auth-success">{successBanner}</p> : null}
                   {notice ? <p className="cq-auth-notice">{notice}</p> : null}
-                  <button type="submit" disabled={isSubmitting} className="cq-auth-btn-primary w-full">
-                    {isSubmitting ? "Finishing account…" : "Create Account"}
+                  <button type="submit" disabled={isSubmitting || usernameAvailability === "taken"} className="cq-auth-btn-primary w-full">
+                    {isSubmitting ||
+                    signupLifecycle === "initializing" ||
+                    signupLifecycle === "auth_created" ||
+                    signupLifecycle === "onboarding"
+                      ? "Finishing account…"
+                      : "Create Account"}
                   </button>
                 </form>
                 <p className="cq-auth-switch-row">

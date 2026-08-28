@@ -150,7 +150,7 @@ describe("mapSigninError", () => {
 
   it("maps a missing profile row to a finishing-setup message instead of a credential error", () => {
     expect(mapSigninError(httpError(404, "Profile not found after setup.", "PROFILE_NOT_FOUND"))).toBe(
-      "We're finishing your account setup. Please wait a moment, then try signing in.",
+      "We're finishing your account. Hang tight — this only takes a moment.",
     );
   });
 
@@ -163,7 +163,7 @@ describe("mapSigninError", () => {
           "PROFILE_SETUP_PENDING",
         ),
       ),
-    ).toBe("We're still creating your profile. Please wait a moment and try signing in.");
+    ).toBe("We're finishing your account. Hang tight — this only takes a moment.");
   });
 
   it("maps server errors without leaking raw text", () => {
@@ -223,7 +223,7 @@ describe("mapSignupError", () => {
         httpError(500, 'duplicate key value violates unique constraint "profiles_pkey"', "PROFILE_SETUP_FAILED"),
       ),
     ).toEqual({
-      message: "We're finishing your account setup. Please wait a moment, then try signing in.",
+      message: "We're finishing your account. Hang tight — this only takes a moment.",
       recoverSignIn: true,
     });
     expect(
@@ -241,7 +241,7 @@ describe("mapSignupError", () => {
         ),
       ),
     ).toEqual({
-      message: "We're finishing your account setup. Please wait a moment, then try signing in.",
+      message: "We're finishing your account. Hang tight — this only takes a moment.",
       recoverSignIn: true,
     });
   });

@@ -28,6 +28,21 @@ export function CampusEmailOtpInput({ value, disabled, onChange, onComplete }: P
 
   return (
     <div className="cq-onboard-otp" role="group" aria-label="6-digit verification code">
+      <input
+        className="cq-onboard-otp-autofill"
+        type="text"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        enterKeyHint="done"
+        aria-hidden="true"
+        tabIndex={-1}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => commit(digitsOnly(event.target.value))}
+      />
       {chars.map((char, index) => (
         <input
           key={index}
@@ -39,6 +54,8 @@ export function CampusEmailOtpInput({ value, disabled, onChange, onComplete }: P
           type="text"
           inputMode="numeric"
           autoComplete={index === 0 ? "one-time-code" : "off"}
+          autoCapitalize="none"
+          enterKeyHint={index === CAMPUS_EMAIL_CODE_LENGTH - 1 ? "done" : "next"}
           autoCorrect="off"
           spellCheck={false}
           pattern="[0-9]*"

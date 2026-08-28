@@ -13,11 +13,13 @@ describe("first-entry + Events/Map wiring", () => {
     expect(dashboardSrc).toContain("markPendingRealmArrival()");
     expect(dashboardSrc).toContain('setTab("realm")');
     expect(dashboardSrc).toContain("showArrival={showRealmArrival}");
+    expect(dashboardSrc).toContain("showIntro={showRealmIntro}");
     expect(dashboardSrc).toContain("onArrivalViewFeed");
   });
 
   it("persists Realm welcome and nav hints on the profile API", () => {
     expect(dashboardSrc).toContain("realmWelcomeSeen: true");
+    expect(dashboardSrc).toContain("realmIntroCompleted: true");
     expect(dashboardSrc).toContain("navHintsSeen: true");
     expect(dashboardSrc).toContain("realmWelcomeSeenReset: true");
   });

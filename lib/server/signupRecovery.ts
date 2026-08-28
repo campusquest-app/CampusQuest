@@ -14,7 +14,7 @@ export const SIGNUP_AUTH_CREATED_SETUP_PENDING = "AUTH_CREATED_SETUP_PENDING" as
 export const SIGNUP_VERIFICATION_REQUIRED = "SIGNUP_VERIFICATION_REQUIRED" as const;
 
 export const PENDING_SETUP_USER_MESSAGE =
-  "We're finishing your account setup. Please wait a moment, then try signing in.";
+  "We're finishing your account. Hang tight — this only takes a moment.";
 
 const PENDING_SETUP_CODES = new Set([
   "AUTH_USER_NOT_READY",

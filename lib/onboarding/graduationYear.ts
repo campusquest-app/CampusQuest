@@ -28,14 +28,24 @@ export function currentAcademicYearStart(now: Date = new Date()): number {
  * Expected 4-year cohort graduation years for the current cycle.
  * Example (academic year starting 2026): Senior→2027 … Freshman→2030
  */
-export function graduationYearOptions(now: Date = new Date()): Array<{
+export function graduationYearOptions(
+  now: Date = new Date(),
+  options?: { extraFutureYears?: number },
+): Array<{
   year: number | null;
   standing: ClassStandingId;
   label: string;
 }> {
   const start = currentAcademicYearStart(now);
   const seniorYear = start + 1;
+  const extraFutureYears = Math.max(0, Math.min(4, options?.extraFutureYears ?? 0));
+  const extra: Array<{ year: number; standing: ClassStandingId; label: string }> = [];
+  for (let i = extraFutureYears; i >= 1; i -= 1) {
+    const year = seniorYear + 3 + i;
+    extra.push({ year, standing: "other", label: `${year}` });
+  }
   return [
+    ...extra,
     { year: seniorYear + 3, standing: "freshman", label: `${seniorYear + 3}` },
     { year: seniorYear + 2, standing: "sophomore", label: `${seniorYear + 2}` },
     { year: seniorYear + 1, standing: "junior", label: `${seniorYear + 1}` },

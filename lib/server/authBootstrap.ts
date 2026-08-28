@@ -150,7 +150,7 @@ export function classifyProfileSetupError(setupError: ApiError): ApiError {
   // client moves to sign-in instead of trapping Create Account.
   return new ApiError(
     503,
-    "We're finishing your account setup. Please wait a moment, then try signing in.",
+    "We're finishing your account. Hang tight — this only takes a moment.",
     "AUTH_CREATED_SETUP_PENDING",
   );
 }

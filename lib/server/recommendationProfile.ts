@@ -1,9 +1,9 @@
-import { normalizeCommunityIds, normalizeInterestIds } from "@/lib/onboarding/taxonomy";
 import { matchRecommendationTopics } from "@/lib/recommendations/match";
 import {
   campusEventToRecommendationEntity,
   organizationToRecommendationEntity,
 } from "@/lib/recommendations/adapters";
+import { recommendationProfileFromDiscovery } from "@/lib/recommendations/discoveryProfile";
 import { inferAffinitiesFromSignals, type RecommendationBehaviorSignal } from "@/lib/recommendations/profile";
 import type { UserRecommendationProfile } from "@/lib/recommendations/types";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -177,15 +177,23 @@ export async function loadUserRecommendationProfile(args: {
 }): Promise<UserRecommendationProfile> {
   const userId = args.user.id;
 
-  const [profileResult, prefsResult, rsvpSignals, orgBundle, checkInSignals] = await Promise.all([
-    args.userClient
+  let profileResult = await args.userClient
+    .from("profiles")
+    .select("institution_id, student_status, class_year, major, academic_area, campus_email_verified_at")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileResult.error && /academic_area|campus_email_verified_at/i.test(profileResult.error.message ?? "")) {
+    profileResult = await args.userClient
       .from("profiles")
-      .select("institution_id, student_status, class_year")
+      .select("institution_id, student_status, class_year, major")
       .eq("id", userId)
-      .maybeSingle(),
+      .maybeSingle();
+  }
+
+  const [prefsResult, rsvpSignals, orgBundle, checkInSignals] = await Promise.all([
     args.userClient
       .from("user_onboarding_preferences")
-      .select("interests, communities, institution_id, school_name")
+      .select("interests, communities, institution_id, school_name, major")
       .eq("user_id", userId)
       .maybeSingle(),
     loadOwnRsvpSignals(args.userClient, userId).catch(() => [] as RecommendationBehaviorSignal[]),
@@ -199,26 +207,30 @@ export async function loadUserRecommendationProfile(args: {
 
   const profile = (profileResult.data ?? {}) as Record<string, unknown>;
   const prefs = (prefsResult.data ?? {}) as Record<string, unknown>;
-  const campusId =
-    String(profile.institution_id ?? prefs.institution_id ?? "").trim() ||
-    (String(prefs.school_name ?? "").toLowerCase().includes("rhode island") ? "uri" : null);
 
-  return {
-    campusId,
-    studentStatus: (profile.student_status as string | null) ?? null,
-    classYear: typeof profile.class_year === "number" ? profile.class_year : null,
-    explicitInterests: normalizeInterestIds(asStringArray(prefs.interests)),
-    explicitCommunities: normalizeCommunityIds(asStringArray(prefs.communities)),
-    inferredAffinities: inferAffinitiesFromSignals([
-      ...rsvpSignals,
-      ...orgBundle.signals,
-      ...checkInSignals,
-    ]),
-    followedOrganizationIds: orgBundle.followedOrganizationIds,
-    followedOrganizationNames: orgBundle.followedOrganizationNames,
-    // Never ship score-breakdown debug to clients (admin or student). Ranking still runs.
-    includeDebug: false,
-  };
+  return recommendationProfileFromDiscovery(
+    {
+      institutionId: (profile.institution_id as string | null) ?? (prefs.institution_id as string | null) ?? null,
+      schoolName: (prefs.school_name as string | null) ?? null,
+      studentStatus: (profile.student_status as string | null) ?? null,
+      classYear: typeof profile.class_year === "number" ? profile.class_year : null,
+      major: (profile.major as string | null) || (prefs.major as string | null) || null,
+      academicArea: (profile.academic_area as string | null) ?? null,
+      interests: asStringArray(prefs.interests),
+      communities: asStringArray(prefs.communities),
+      campusEmailVerifiedAt: (profile.campus_email_verified_at as string | null) ?? null,
+    },
+    {
+      inferredAffinities: inferAffinitiesFromSignals([
+        ...rsvpSignals,
+        ...orgBundle.signals,
+        ...checkInSignals,
+      ]),
+      followedOrganizationIds: orgBundle.followedOrganizationIds,
+      followedOrganizationNames: orgBundle.followedOrganizationNames,
+      includeDebug: false,
+    },
+  );
 }
 
 /** Kept so analytics/popularity callers can reuse admin exclusion without extra imports. */

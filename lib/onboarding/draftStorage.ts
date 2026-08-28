@@ -1,3 +1,5 @@
+import type { AcademicAreaId } from "@/lib/onboarding/academicAreas";
+import { isKnownAcademicArea } from "@/lib/onboarding/academicAreas";
 import { isDemographicOnboardingStep, type DemographicOnboardingStep } from "@/lib/onboarding/flow";
 import type { CommunityId, InterestId, StudentStatusId } from "@/lib/onboarding/taxonomy";
 import { isKnownStudentStatus } from "@/lib/onboarding/taxonomy";
@@ -14,6 +16,9 @@ export type OnboardingDraftState = {
   institutionId: "uri";
   interests: InterestId[];
   communities: CommunityId[];
+  major: string | null;
+  academicArea: AcademicAreaId | null;
+  requestedSchoolName: string | null;
 };
 
 function draftKeyForUser(userId?: string | null): string {
@@ -75,4 +80,14 @@ export function sanitizeDraftStep(value: unknown): DemographicOnboardingStep | n
 
 export function sanitizeDraftStudentStatus(value: unknown): StudentStatusId | null {
   return typeof value === "string" && isKnownStudentStatus(value) ? value : null;
+}
+
+export function sanitizeDraftAcademicArea(value: unknown): AcademicAreaId | null {
+  return typeof value === "string" && isKnownAcademicArea(value) ? value : null;
+}
+
+export function sanitizeDraftMajor(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length >= 2 && trimmed.length <= 120 ? trimmed : null;
 }

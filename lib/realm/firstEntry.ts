@@ -96,6 +96,24 @@ export function shouldShowRealmArrival(args: {
   return args.pending || args.realmWelcomeSeenAt === null;
 }
 
+/**
+ * First-time Realm coach marks (max 3).
+ * Grandfather: anyone who already saw the previous arrival/welcome never sees this.
+ * Missing columns (undefined) also grandfather so existing users are not forced.
+ */
+export function shouldShowRealmIntro(args: {
+  realmIntroCompletedAt: string | null | undefined;
+  realmWelcomeSeenAt: string | null | undefined;
+  pending: boolean;
+  onboardingComplete: boolean;
+}): boolean {
+  if (!args.onboardingComplete) return false;
+  if (args.realmIntroCompletedAt) return false;
+  if (args.realmWelcomeSeenAt) return false;
+  if (args.realmIntroCompletedAt === undefined) return false;
+  return args.pending || args.realmIntroCompletedAt === null;
+}
+
 export function shouldLandOnRealmFirstEntry(args: {
   realmWelcomeSeenAt: string | null | undefined;
   pending: boolean;

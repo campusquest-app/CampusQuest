@@ -42,11 +42,11 @@ describe("computeMapChromePadding", () => {
     expect(padding.bottom).toBe(GOOGLE_ATTRIBUTION_BAND_PX + MAP_CHROME_FAB_GAP_PX);
   });
 
-  it("always reserves fab gap so RIGHT_BOTTOM controls clear the logo", () => {
+  it("adds extraBottomPx on top of dock and attribution clearance", () => {
     const padding = computeMapChromePadding({
-      navClearancePx: 80,
-      fabGapPx: 12,
+      navClearancePx: 100,
+      extraBottomPx: 320,
     });
-    expect(padding.bottom).toBe(80 + GOOGLE_ATTRIBUTION_BAND_PX + 12);
+    expect(padding.bottom).toBe(100 + GOOGLE_ATTRIBUTION_BAND_PX + MAP_CHROME_FAB_GAP_PX + 320);
   });
 });

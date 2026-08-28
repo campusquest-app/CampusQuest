@@ -21,7 +21,13 @@ function paddingsEqual(a: MapChromePadding, b: MapChromePadding): boolean {
  * 2. Publishing matching CSS vars for absolute overlays (aura, footer, edit FAB)
  * 3. Recomputing on resize, orientation change, visualViewport, and dock layout
  */
-export function RealmMapChromePadding({ enabled = true }: { enabled?: boolean }) {
+export function RealmMapChromePadding({
+  enabled = true,
+  extraBottomPx = 0,
+}: {
+  enabled?: boolean;
+  extraBottomPx?: number;
+}) {
   const map = useMap();
   const lastPaddingRef = useRef<MapChromePadding | null>(null);
 
@@ -32,6 +38,7 @@ export function RealmMapChromePadding({ enabled = true }: { enabled?: boolean })
       const padding = computeMapChromePadding({
         navClearancePx: measureRealmNavClearancePx(),
         safeArea: measureSafeAreaInsets(),
+        extraBottomPx,
       });
       if (lastPaddingRef.current && paddingsEqual(lastPaddingRef.current, padding)) return;
       lastPaddingRef.current = padding;
@@ -82,7 +89,7 @@ export function RealmMapChromePadding({ enabled = true }: { enabled?: boolean })
       lastPaddingRef.current = null;
       clearMapChromePaddingCssVars();
     };
-  }, [map, enabled]);
+  }, [map, enabled, extraBottomPx]);
 
   return null;
 }

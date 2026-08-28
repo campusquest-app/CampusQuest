@@ -146,4 +146,24 @@ describe("RealmMapMarker magical pin", () => {
     expect(html).toContain("marker-pin");
     expect(html).toContain("marker-count");
   });
+
+  it("hides the name pill when hideLabel is set unless the marker is selected", () => {
+    const hidden = render({
+      variant: "default",
+      label: "Business",
+      hideLabel: true,
+      zoomTier: "far",
+    });
+    expect(hidden).toContain("marker-pin");
+    expect(hidden).not.toContain("marker-label");
+
+    const selected = render({
+      variant: "default",
+      label: "Business",
+      hideLabel: true,
+      activityState: "selected",
+    });
+    expect(selected).toContain("marker-label");
+    expect(selected).toContain("Business");
+  });
 });

@@ -58,6 +58,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   color = "electric-blue",
   zoomTier = "near",
   deemphasized = false,
+  hideLabel = false,
 }: {
   variant: RealmMarkerVariant;
   label: string;
@@ -81,6 +82,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   /** Zoom-driven scale / label density. */
   zoomTier?: "far" | "mid" | "near";
   deemphasized?: boolean;
+  hideLabel?: boolean;
 }) {
   const landmarkIcon = landmarkIconForId(landmarkId);
   const iconKind = useMemo(
@@ -120,6 +122,11 @@ export const RealmMapMarker = memo(function RealmMapMarker({
   const showBadge = !editMode && badgeCount > 1;
   const showDiscovery = !editMode && discoveryMode != null;
   const showDiscoveryLabel = showDiscovery && Boolean(discoveryLabel);
+  const showNameLabel =
+    activityState === "selected" ||
+    Boolean(showCountdown) ||
+    activityState === "hot" ||
+    (!hideLabel && !deemphasized && zoomTier !== "far");
   const particles = deemphasized ? 0 : particleCountForMarker(activityState, editMode, startingSoon);
 
   return (
@@ -212,7 +219,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
         </div>
       </div>
 
-      <span className="marker-label">{label}</span>
+      {showNameLabel ? <span className="marker-label">{label}</span> : null}
     </div>
   );
 });

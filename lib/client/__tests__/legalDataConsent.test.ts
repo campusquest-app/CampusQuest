@@ -36,7 +36,6 @@ describe("auth signup draft", () => {
       email: "ram@uri.edu",
       username: "ram",
       password: "Secret123!",
-      confirmPassword: "Secret123!",
       acceptedTerms: true,
     });
     expect(readAuthSignupDraft()).toEqual({
@@ -44,7 +43,6 @@ describe("auth signup draft", () => {
       email: "ram@uri.edu",
       username: "ram",
       password: "Secret123!",
-      confirmPassword: "Secret123!",
       acceptedTerms: true,
     });
     clearAuthSignupDraft();

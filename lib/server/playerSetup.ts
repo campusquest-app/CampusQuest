@@ -128,7 +128,7 @@ async function waitForAuthUser(
   });
   throw new ApiError(
     503,
-    "We're still finishing your account. Please wait a moment and try signing in.",
+    "We're finishing your account. Hang tight — this only takes a moment.",
     "AUTH_USER_NOT_READY",
   );
 }
@@ -211,7 +211,7 @@ async function upsertProfileRow(
   });
   throw new ApiError(
     503,
-    "We're still creating your profile. Please wait a moment and try signing in.",
+    "We're finishing your account. Hang tight — this only takes a moment.",
     "PROFILE_SETUP_PENDING",
   );
 }
@@ -283,7 +283,7 @@ async function upsertStatsRow(
   });
   throw new ApiError(
     503,
-    "We're still preparing your account stats. Please wait a moment and try signing in.",
+    "We're finishing your account. Hang tight — this only takes a moment.",
     "STATS_SETUP_PENDING",
   );
 }
@@ -362,7 +362,7 @@ async function pollUntilProfileAndStats(
   });
   throw new ApiError(
     503,
-    "We're still finishing your account setup. Please wait a moment and try signing in.",
+    "We're finishing your account. Hang tight — this only takes a moment.",
     "PLAYER_SETUP_PENDING",
   );
 }

@@ -44,6 +44,10 @@ export type MeProfileRow = {
   display_name_changed_at?: string | null;
   username_changed_at?: string | null;
   campus_email_verified_at?: string | null;
+  academic_area?: string | null;
+  requested_school_name?: string | null;
+  requested_school_at?: string | null;
+  realm_intro_completed_at?: string | null;
   /** Present for allowlisted emails: rolling 7‑day caps on renames. */
   weekly_identity_budget?: {
     max_per_week: number;

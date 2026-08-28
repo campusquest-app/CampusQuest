@@ -59,6 +59,7 @@ import {
   shouldLandOnRealmFirstEntry,
   shouldShowNavHints,
   shouldShowRealmArrival,
+  shouldShowRealmIntro,
 } from "@/lib/realm/firstEntry";
 import { STAT_KEYS, STAT_LABELS } from "@/lib/types";
 import { StatIcon } from "@/components/stats/StatIcon";
@@ -331,15 +332,18 @@ export function Dashboard() {
   const [realmWelcomeSeenAt, setRealmWelcomeSeenAt] = useState<string | null | undefined>(undefined);
   const [navHintsSeenAt, setNavHintsSeenAt] = useState<string | null | undefined>(undefined);
   const [showRealmArrival, setShowRealmArrival] = useState(false);
+  const [showRealmIntro, setShowRealmIntro] = useState(false);
   const [onboardingPreferences, setOnboardingPreferences] = useState<{
     schoolName: string;
     interests: string[];
     communities: string[];
     discoveryFocus: string[];
     major?: string | null;
+    academicArea?: string | null;
     institutionId?: string | null;
     studentStatus?: string | null;
     classYear?: number | null;
+    campusEmailVerifiedAt?: string | null;
   } | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("bootstrapping");
   const [bootstrapNonce, setBootstrapNonce] = useState(0);
@@ -769,9 +773,13 @@ export function Dashboard() {
     preferRealmArrivalRef.current = false;
     clearPendingRealmArrival();
     setShowRealmArrival(false);
+    setShowRealmIntro(false);
     setRealmWelcomeSeenAt((prev) => prev ?? new Date().toISOString());
     void import("@/lib/client/dashboardApi").then(({ patchAuthed }) => {
-      void patchAuthed("/api/me/profile", { realmWelcomeSeen: true }).catch(() => {});
+      void patchAuthed("/api/me/profile", {
+        realmWelcomeSeen: true,
+        realmIntroCompleted: true,
+      }).catch(() => {});
     });
   }, []);
 
@@ -1522,6 +1530,7 @@ export function Dashboard() {
           starterIntroSeenReset: true,
           beginnerChainCelebrationSeenReset: true,
           realmWelcomeSeenReset: true,
+          realmIntroCompletedReset: true,
           navHintsSeenReset: true,
         });
         preferRealmArrivalRef.current = false;
@@ -1529,6 +1538,7 @@ export function Dashboard() {
         setRealmWelcomeSeenAt(null);
         setNavHintsSeenAt(null);
         setShowRealmArrival(false);
+        setShowRealmIntro(false);
       } catch {
         /* ignore */
       }
@@ -1763,9 +1773,11 @@ export function Dashboard() {
               communities: prefsSnapshot.communities ?? [],
               discoveryFocus: prefsSnapshot.discoveryFocus,
               major: prefsSnapshot.major,
+              academicArea: profileMerged.academic_area ?? null,
               institutionId: prefsSnapshot.institutionId ?? profileMerged.institution_id ?? null,
               studentStatus: profileMerged.student_status ?? null,
               classYear: profileMerged.class_year ?? null,
+              campusEmailVerifiedAt: profileMerged.campus_email_verified_at ?? null,
             });
           } else {
             setOnboardingPreferences(null);
@@ -1830,6 +1842,10 @@ export function Dashboard() {
               profileMerged as Record<string, unknown>,
               "realm_welcome_seen_at",
             );
+            const introSeen = readOptionalProfileTimestamp(
+              profileMerged as Record<string, unknown>,
+              "realm_intro_completed_at",
+            );
             const hintsSeen = readOptionalProfileTimestamp(
               profileMerged as Record<string, unknown>,
               "nav_hints_seen_at",
@@ -1841,12 +1857,20 @@ export function Dashboard() {
               realmWelcomeSeenAt: welcomeSeen,
               pending,
             });
+            const intro = shouldShowRealmIntro({
+              realmIntroCompletedAt: introSeen,
+              realmWelcomeSeenAt: welcomeSeen,
+              pending,
+              onboardingComplete: true,
+            });
+            setShowRealmIntro(intro);
             setShowRealmArrival(
-              shouldShowRealmArrival({
-                realmWelcomeSeenAt: welcomeSeen,
-                pending,
-                onboardingComplete: true,
-              }),
+              !intro &&
+                shouldShowRealmArrival({
+                  realmWelcomeSeenAt: welcomeSeen,
+                  pending,
+                  onboardingComplete: true,
+                }),
             );
             setTab(landRealm ? "realm" : "quad");
           } else {
@@ -2882,6 +2906,7 @@ export function Dashboard() {
                 isActive={tab === "realm"}
                 personalization={onboardingPreferences}
                 showArrival={showRealmArrival}
+                showIntro={showRealmIntro}
                 onArrivalExplore={() => {
                   persistRealmWelcomeSeen();
                   persistNavHintsSeen();
@@ -2891,7 +2916,26 @@ export function Dashboard() {
                   persistNavHintsSeen();
                   setTab("quad");
                 }}
-                onBack={() => goBackTab()}
+                onIntroComplete={() => {
+                  persistRealmWelcomeSeen();
+                  persistNavHintsSeen();
+                  void import("@/lib/client/onboardingAnalytics").then(({ trackOnboardingEvent }) => {
+                    trackOnboardingEvent({ eventName: "realm_intro_completed" });
+                  });
+                }}
+                onIntroSkip={() => {
+                  persistRealmWelcomeSeen();
+                  persistNavHintsSeen();
+                  void import("@/lib/client/onboardingAnalytics").then(({ trackOnboardingEvent }) => {
+                    trackOnboardingEvent({ eventName: "realm_intro_skipped", skipped: true });
+                  });
+                }}
+                onViewAthletics={() => setTab("events")}
+                onFindMyCampus={() => setTab("character")}
+                onViewAllRecommendations={() => setTab("events")}
+                onOpenNotifications={() => setTab("inbox")}
+                onOpenOwnProfile={() => setTab("character")}
+                unreadCount={unreadNotificationCount}
                 onCreatePost={() => setTab("quad")}
                 onViewQuests={() => setTab("quest-board")}
                 onOpenOrganization={(organizationId) => {

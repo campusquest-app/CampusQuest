@@ -7,7 +7,6 @@ export type AuthSignupDraft = {
   email: string;
   username: string;
   password: string;
-  confirmPassword: string;
   acceptedTerms: boolean;
 };
 
@@ -16,7 +15,6 @@ const EMPTY: AuthSignupDraft = {
   email: "",
   username: "",
   password: "",
-  confirmPassword: "",
   acceptedTerms: false,
 };
 
@@ -28,7 +26,6 @@ function isDraft(value: unknown): value is AuthSignupDraft {
     typeof draft.email === "string" &&
     typeof draft.username === "string" &&
     typeof draft.password === "string" &&
-    typeof draft.confirmPassword === "string" &&
     typeof draft.acceptedTerms === "boolean"
   );
 }

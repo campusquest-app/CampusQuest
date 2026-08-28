@@ -64,7 +64,7 @@ export const INTEREST_OPTIONS = [
   { id: "gaming", label: "Gaming" },
   { id: "fitness", label: "Fitness" },
   { id: "academics", label: "Academics" },
-  { id: "art", label: "Art" },
+  { id: "art", label: "Arts" },
   { id: "career", label: "Career" },
   { id: "clubs", label: "Clubs" },
   { id: "volunteering", label: "Volunteering" },
@@ -73,12 +73,28 @@ export const INTEREST_OPTIONS = [
   { id: "tech", label: "Tech" },
   { id: "theater", label: "Theater" },
   { id: "competitions", label: "Competitions" },
+  { id: "entrepreneurship", label: "Entrepreneurship" },
+  { id: "social", label: "Social" },
+  { id: "professional_development", label: "Professional Development" },
+  { id: "wellness", label: "Wellness" },
+  { id: "culture", label: "Culture" },
   { id: "other", label: "Other" },
 ] as const;
 
 export type InterestId = (typeof INTEREST_OPTIONS)[number]["id"];
 
 export const INTEREST_ID_SET = new Set<string>(INTEREST_OPTIONS.map((o) => o.id));
+
+/** Legacy / alternate labels → stored IDs. Keep `art` and `tech` as canonical IDs. */
+const INTEREST_ALIASES: Record<string, InterestId> = {
+  arts: "art",
+  technology: "tech",
+  "community_service": "volunteering",
+  professional: "professional_development",
+  "professional-development": "professional_development",
+  cultural: "culture",
+  "cultural_events": "culture",
+};
 
 export const MIN_INTERESTS = 3;
 export const MAX_INTERESTS = 15;
@@ -112,8 +128,9 @@ export function normalizeInterestIds(raw: string[]): InterestId[] {
     const trimmed = value.trim();
     if (!trimmed) continue;
     const lower = trimmed.toLowerCase().replace(/\s+/g, "_");
+    const aliased = INTEREST_ALIASES[lower];
     const byId = INTEREST_OPTIONS.find((o) => o.id === lower || o.label.toLowerCase() === trimmed.toLowerCase());
-    const id = (byId?.id ?? (INTEREST_ID_SET.has(lower) ? lower : null)) as InterestId | null;
+    const id = (aliased ?? byId?.id ?? (INTEREST_ID_SET.has(lower) ? lower : null)) as InterestId | null;
     if (!id || seen.has(id)) continue;
     seen.add(id);
     out.push(id);

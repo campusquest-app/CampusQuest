@@ -37,7 +37,7 @@ export const PROFILE_SETUP_CODES = new Set([
 ]);
 
 const PENDING_SETUP_MESSAGE =
-  "We're finishing your account setup. Please wait a moment, then try signing in.";
+  "We're finishing your account. Hang tight — this only takes a moment.";
 
 const RECOVER_SIGN_IN_CODES = new Set([
   "AUTH_CREATED_SETUP_PENDING",
@@ -84,7 +84,7 @@ export type SignupErrorMapped =
   | { passwordRequirements: true }
   | {
       message: string;
-      /** Auth already exists / setup pending — leave Create Account for Sign In. */
+      /** Auth already exists / setup pending — client may auto-establish the session. */
       recoverSignIn?: boolean;
       verificationRequired?: boolean;
     };
@@ -145,9 +145,6 @@ export function mapSigninError(error: unknown): string {
 
     // Auth succeeded but profile/stats are still provisioning (includes 503).
     if (isPendingSetupError(error)) {
-      if (/finishing your account|still creating|still preparing|still finishing/i.test(error.message)) {
-        return error.message.trim();
-      }
       return PENDING_SETUP_MESSAGE;
     }
 

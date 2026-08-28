@@ -22,6 +22,9 @@ describe("onboarding taxonomy", () => {
   it("requires at least 3 interests for the new flow", () => {
     expect(MIN_INTERESTS).toBe(3);
     expect(INTEREST_OPTIONS.length).toBeGreaterThanOrEqual(MIN_INTERESTS);
+    expect(INTEREST_OPTIONS.length).toBeLessThanOrEqual(20);
+    expect(INTEREST_OPTIONS.some((opt) => opt.id === "entrepreneurship")).toBe(true);
+    expect(INTEREST_OPTIONS.some((opt) => opt.id === "wellness")).toBe(true);
   });
 
   it("normalizes interest labels to stable ids", () => {
@@ -30,6 +33,7 @@ describe("onboarding taxonomy", () => {
       "music",
       "tech",
     ]);
+    expect(normalizeInterestIds(["Arts", "technology", "Wellness"])).toEqual(["art", "tech", "wellness"]);
   });
 
   it("allows empty communities (optional / skip)", () => {
@@ -107,6 +111,13 @@ describe("graduation year / class standing", () => {
     expect(opts.map((o) => o.year)).toEqual([2030, 2029, 2028, 2027, null]);
     expect(opts.map((o) => o.label)).toEqual(["2030", "2029", "2028", "2027", "Not sure / Other"]);
     expect(opts.some((o) => /freshman|sophomore|junior|senior/i.test(o.label))).toBe(false);
+  });
+
+  it("adds extra future years for graduate students without changing the default set", () => {
+    const now = new Date("2026-10-15T12:00:00Z");
+    expect(graduationYearOptions(now, { extraFutureYears: 2 }).map((o) => o.year)).toEqual([
+      2032, 2031, 2030, 2029, 2028, 2027, null,
+    ]);
   });
 });
 

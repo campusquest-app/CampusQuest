@@ -5,6 +5,7 @@ import {
   shouldLandOnRealmFirstEntry,
   shouldShowNavHints,
   shouldShowRealmArrival,
+  shouldShowRealmIntro,
 } from "@/lib/realm/firstEntry";
 
 describe("first-entry Realm welcome eligibility", () => {
@@ -58,5 +59,38 @@ describe("first-entry Realm welcome eligibility", () => {
   it("uses a real campus name when available", () => {
     expect(campusArrivalName("University of Rhode Island", "uri")).toBe("University of Rhode Island");
     expect(campusArrivalName(null, "uri")).toBe("URI");
+  });
+
+  it("shows Realm intro once for a new completed account", () => {
+    expect(
+      shouldShowRealmIntro({
+        realmIntroCompletedAt: null,
+        realmWelcomeSeenAt: null,
+        pending: true,
+        onboardingComplete: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("grandfathers Realm intro when the previous welcome was already seen", () => {
+    expect(
+      shouldShowRealmIntro({
+        realmIntroCompletedAt: null,
+        realmWelcomeSeenAt: "2026-08-24T12:00:00.000Z",
+        pending: true,
+        onboardingComplete: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not show Realm intro when the column is missing from the payload", () => {
+    expect(
+      shouldShowRealmIntro({
+        realmIntroCompletedAt: undefined,
+        realmWelcomeSeenAt: null,
+        pending: true,
+        onboardingComplete: true,
+      }),
+    ).toBe(false);
   });
 });

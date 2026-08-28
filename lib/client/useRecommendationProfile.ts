@@ -8,16 +8,10 @@ import {
 } from "@/lib/client/recommendationProfileClient";
 import type { UserRecommendationProfile } from "@/lib/recommendations";
 import { profileFromPersonalization } from "@/lib/recommendations";
+import type { StudentDiscoveryInput } from "@/lib/recommendations/discoveryProfile";
 
 export function useRecommendationProfile(
-  personalization?: {
-    schoolName?: string | null;
-    institutionId?: string | null;
-    interests?: string[] | null;
-    communities?: string[] | null;
-    studentStatus?: string | null;
-    classYear?: number | null;
-  } | null,
+  personalization?: StudentDiscoveryInput | null,
 ): UserRecommendationProfile {
   const seed = useMemo(() => seedRecommendationProfile(personalization), [personalization]);
   const [loaded, setLoaded] = useState<UserRecommendationProfile | null>(null);

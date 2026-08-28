@@ -19,8 +19,8 @@ export const REALM_HEART_OF_CAMPUS = {
 } as const;
 
 /** Start zoomed out, then ease into this final discovery zoom. */
-export const REALM_FIRST_OPEN_START_ZOOM = 15.1;
-export const REALM_FIRST_OPEN_END_ZOOM = Math.min(URI_MAP_DEFAULT_ZOOM, 16.5);
+export const REALM_FIRST_OPEN_START_ZOOM = 16.35;
+export const REALM_FIRST_OPEN_END_ZOOM = Math.min(URI_MAP_DEFAULT_ZOOM, 17.7);
 
 export const REALM_FIRST_OPEN_FLY_MS = 1000;
 export const REALM_LOCATE_TIMEOUT_MS = 2200;

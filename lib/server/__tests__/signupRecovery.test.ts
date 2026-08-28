@@ -79,7 +79,7 @@ describe("signup recovery helpers", () => {
       new ApiError(503, "We're still creating your profile.", "PROFILE_SETUP_PENDING"),
     );
     expect(err.code).toBe(SIGNUP_AUTH_CREATED_SETUP_PENDING);
-    expect(err.message).toMatch(/finishing your account setup/i);
+    expect(err.message).toMatch(/finishing your account/i);
   });
 
   it("preserves USERNAME_TAKEN after auth create", () => {
@@ -215,7 +215,7 @@ describe("mapSignupError recovery UX", () => {
         ),
       ),
     ).toEqual({
-      message: "We're finishing your account setup. Please wait a moment, then try signing in.",
+      message: "We're finishing your account. Hang tight — this only takes a moment.",
       recoverSignIn: true,
     });
   });
@@ -233,7 +233,7 @@ describe("mapSignupError recovery UX", () => {
 
   it("routes request timeouts after possible backend success to recoverSignIn", () => {
     expect(mapSignupError(new Error("REQUEST_TIMEOUT:/api/auth/signup"))).toEqual({
-      message: "We're finishing your account setup. Please wait a moment, then try signing in.",
+      message: "We're finishing your account. Hang tight — this only takes a moment.",
       recoverSignIn: true,
     });
   });

@@ -11,7 +11,7 @@ export function recommendationReasonLabel(code: RecommendationReasonCode, topic?
   }
   if (code === "community") {
     const label = topic ? COMMUNITY_LABELS.get(topic) ?? topic : "your communities";
-    return `Matches your ${label} community`;
+    return `Matches your ${label} campus connection`;
   }
   if (code === "organization") return "From an organization you follow";
   if (code === "campus_wide") return "Campus-wide";

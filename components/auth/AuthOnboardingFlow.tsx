@@ -8,6 +8,9 @@ import { readAccessTokenClaims } from "@/lib/client/jwtClaims";
 import { shouldShowCampusVerificationQaControls } from "@/lib/onboardingQa";
 import { CAMPUS_EMAIL_USER_MESSAGES, isCampusEmailVerified } from "@/lib/campusEmailVerification";
 import { CampusEmailOtpInput } from "@/components/auth/CampusEmailOtpInput";
+import { AcademicAreaPicker } from "@/components/auth/AcademicAreaPicker";
+import { trackOnboardingEvent } from "@/lib/client/onboardingAnalytics";
+import type { AcademicAreaId } from "@/lib/onboarding/academicAreas";
 import { graduationYearOptions } from "@/lib/onboarding/graduationYear";
 import {
   BRAND_KNIGHT,
@@ -35,6 +38,8 @@ import {
 import {
   clearOnboardingDraft,
   readOnboardingDraft,
+  sanitizeDraftAcademicArea,
+  sanitizeDraftMajor,
   sanitizeDraftStep,
   sanitizeDraftStudentStatus,
   writeOnboardingDraft,
@@ -95,6 +100,8 @@ export function AuthOnboardingFlow({
     (initialYear == null &&
       Boolean(initialProfile?.institution_id) &&
       shouldAskGraduationYear(initialStudentStatus));
+  const initialMajor = sanitizeDraftMajor(draft?.major) ?? null;
+  const initialAcademicArea = sanitizeDraftAcademicArea(draft?.academicArea) ?? null;
 
   const [step, setStep] = useState<Step>(() =>
     resolveDemographicResumeStep({
@@ -118,6 +125,12 @@ export function AuthOnboardingFlow({
   const [institutionId] = useState<"uri">("uri");
   const [interests, setInterests] = useState<InterestId[]>(initialInterests);
   const [communities, setCommunities] = useState<CommunityId[]>(initialCommunities);
+  const [major, setMajor] = useState<string | null>(initialMajor);
+  const [academicArea, setAcademicArea] = useState<AcademicAreaId | null>(initialAcademicArea);
+  const [schoolQuery, setSchoolQuery] = useState("");
+  const [showSchoolRequest, setShowSchoolRequest] = useState(false);
+  const [requestedSchoolName, setRequestedSchoolName] = useState(draft?.requestedSchoolName ?? "");
+  const [schoolRequestSaved, setSchoolRequestSaved] = useState(Boolean(draft?.requestedSchoolName));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -135,7 +148,17 @@ export function AuthOnboardingFlow({
   const sendLock = useRef(false);
   const verifyLock = useRef(false);
   const statusInFlight = useRef(false);
-  const yearOptions = graduationYearOptions();
+  const startedAtRef = useRef(Date.now());
+  const trackedStart = useRef(false);
+
+  function elapsedMs() {
+    return Math.max(0, Date.now() - startedAtRef.current);
+  }
+
+  const yearOptions = graduationYearOptions(
+    new Date(),
+    studentStatus === "graduate_student" ? { extraFutureYears: 2 } : undefined,
+  );
 
   const claims = readAccessTokenClaims(getAccessToken());
   const userEmail = claims?.email ?? "";
@@ -162,10 +185,25 @@ export function AuthOnboardingFlow({
         institutionId,
         interests,
         communities,
+        major,
+        academicArea,
+        requestedSchoolName: requestedSchoolName.trim() || null,
       },
       userId,
     );
-  }, [step, studentStatus, graduationYear, graduateOther, institutionId, interests, communities, userId]);
+  }, [
+    step,
+    studentStatus,
+    graduationYear,
+    graduateOther,
+    institutionId,
+    interests,
+    communities,
+    major,
+    academicArea,
+    requestedSchoolName,
+    userId,
+  ]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 1000);
@@ -243,11 +281,16 @@ export function AuthOnboardingFlow({
     studentStatus?: StudentStatusId | null;
     classYear?: number | null;
     institutionId?: "uri";
+    major?: string | null;
+    academicArea?: AcademicAreaId | null;
+    requestedSchoolName?: string;
   }) {
     if (forceFullReplay || startAtEmailVerification) return;
     try {
       await patchAuthed("/api/me/profile", {
         ...patch,
+        major: patch.major === undefined ? undefined : patch.major ?? "",
+        academicArea: patch.academicArea === undefined ? undefined : patch.academicArea ?? "",
         onboardingVersion: ONBOARDING_VERSION,
       });
     } catch {
@@ -281,6 +324,11 @@ export function AuthOnboardingFlow({
         setCampusVerified(false);
         setOtpCode("");
         setNotice(CAMPUS_EMAIL_USER_MESSAGES.sent);
+        trackOnboardingEvent({
+          eventName: "onboarding_verification_sent",
+          stepNumber: 6,
+          elapsedMs: elapsedMs(),
+        });
       }
     } catch (err) {
       setResendAvailableInSeconds(0);
@@ -308,6 +356,11 @@ export function AuthOnboardingFlow({
         setHasActiveChallenge(false);
         setOtpCode("");
         setNotice(CAMPUS_EMAIL_USER_MESSAGES.alreadyVerified);
+        trackOnboardingEvent({
+          eventName: "onboarding_verification_completed",
+          stepNumber: 6,
+          elapsedMs: elapsedMs(),
+        });
       }
     } catch (err) {
       setCampusVerified(false);
@@ -348,6 +401,13 @@ export function AuthOnboardingFlow({
     setStep(next);
   }
 
+  useEffect(() => {
+    if (trackedStart.current) return;
+    if (step === "welcome" && !forceFullReplay) return;
+    trackedStart.current = true;
+    trackOnboardingEvent({ eventName: "onboarding_started", stepNumber: 1, elapsedMs: elapsedMs() });
+  }, [step, forceFullReplay]);
+
   function proceedToEmailVerification() {
     go("email_verification");
     void sendCampusCode();
@@ -376,6 +436,8 @@ export function AuthOnboardingFlow({
       classYear: graduateOther || !shouldAskGraduationYear(studentStatus) ? null : graduationYear,
       studentStatus,
       institutionId,
+      major: major ?? "",
+      academicArea: academicArea ?? "",
       onboardingVersion: ONBOARDING_VERSION,
     });
     await postAuthed("/api/me/onboarding-preferences", {
@@ -386,7 +448,8 @@ export function AuthOnboardingFlow({
       studentStatus,
       classYear: graduateOther || !shouldAskGraduationYear(studentStatus) ? null : graduationYear,
       discoveryFocus: ["events", "organizations", "meet_students"],
-      major: "",
+      major: major ?? "",
+      academicArea: academicArea ?? "",
       onboardingVersion: ONBOARDING_VERSION,
       markOnboardingComplete: false,
     });
@@ -405,6 +468,12 @@ export function AuthOnboardingFlow({
       if (!forceFullReplay) {
         await saveDemographics();
       }
+      trackOnboardingEvent({
+        eventName: "onboarding_communities_completed",
+        stepNumber: 5,
+        elapsedMs: elapsedMs(),
+        skipped: communities.length === 0,
+      });
       proceedToEmailVerification();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save. Your progress is kept — try again.");
@@ -435,6 +504,10 @@ export function AuthOnboardingFlow({
       if (!startAtEmailVerification) {
         await saveDemographics();
       }
+      trackOnboardingEvent({
+        eventName: "onboarding_preferences_saved",
+        elapsedMs: elapsedMs(),
+      });
       clearOnboardingDraft(userId);
       await onComplete();
     } catch (err) {
@@ -542,6 +615,11 @@ export function AuthOnboardingFlow({
                     }`}
                     onClick={() => {
                       setStudentStatus(opt.id);
+                      trackOnboardingEvent({
+                        eventName: "onboarding_status_completed",
+                        stepNumber: 1,
+                        elapsedMs: elapsedMs(),
+                      });
                       if (faculty) {
                         setGraduationYear(null);
                         setGraduateOther(true);
@@ -594,7 +672,6 @@ export function AuthOnboardingFlow({
                         setGraduationYear(opt.year);
                         void persistProfilePatch({ classYear: opt.year });
                       }
-                      go("school");
                     }}
                   >
                     <span>{opt.label}</span>
@@ -603,6 +680,33 @@ export function AuthOnboardingFlow({
                 );
               })}
             </div>
+            <AcademicAreaPicker
+              academicArea={academicArea}
+              major={major}
+              onChange={(next) => {
+                setAcademicArea(next.academicArea);
+                setMajor(next.major);
+                void persistProfilePatch({
+                  academicArea: next.academicArea,
+                  major: next.major,
+                });
+              }}
+            />
+            <button
+              type="button"
+              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-40"
+              disabled={!graduateOther && graduationYear == null}
+              onClick={() => {
+                trackOnboardingEvent({
+                  eventName: "onboarding_graduation_completed",
+                  stepNumber: 2,
+                  elapsedMs: elapsedMs(),
+                });
+                go("school");
+              }}
+            >
+              Continue
+            </button>
           </div>
         ) : null}
 
@@ -611,38 +715,105 @@ export function AuthOnboardingFlow({
             <KnightStage src={BRAND_KNIGHT.pointing} size="md" ring="md" />
             <h2 className="cq-onboard-question">What school do you go to?</h2>
             <p className="cq-onboard-support">URI is the campus currently live on CampusQuest.</p>
-            <div className="cq-onboard-search" aria-hidden>
-              <Search className="h-4 w-4 text-slate-400" />
-              <span>Search for your school.</span>
+            <div className="cq-onboard-search cq-onboard-search--input">
+              <Search className="h-4 w-4 text-slate-400" aria-hidden />
+              <input
+                type="search"
+                value={schoolQuery}
+                onChange={(event) => setSchoolQuery(event.target.value)}
+                placeholder="Search for your school."
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                aria-label="Search for your school"
+              />
             </div>
-            <button
-              type="button"
-              className="cq-onboard-school cq-onboard-school--selected"
-              onClick={() => {
-                void persistProfilePatch({ institutionId: "uri" });
-                go("interests");
-              }}
-            >
-              <span className="cq-onboard-school-mark" aria-hidden>
-                R
-              </span>
-              <span className="text-left">
-                <span className="block font-semibold text-slate-900">{INSTITUTIONS.uri.name}</span>
-                <span className="block text-sm text-slate-500">{INSTITUTIONS.uri.city}</span>
-              </span>
-              <Check className="ml-auto h-5 w-5 shrink-0 text-white" aria-hidden />
-            </button>
+            {(schoolQuery.trim() === "" ||
+              INSTITUTIONS.uri.name.toLowerCase().includes(schoolQuery.trim().toLowerCase()) ||
+              "uri".includes(schoolQuery.trim().toLowerCase())) ? (
+              <button
+                type="button"
+                className="cq-onboard-school cq-onboard-school--selected"
+                onClick={() => {
+                  void persistProfilePatch({ institutionId: "uri" });
+                  trackOnboardingEvent({
+                    eventName: "onboarding_school_completed",
+                    stepNumber: 3,
+                    elapsedMs: elapsedMs(),
+                  });
+                  go("interests");
+                }}
+              >
+                <span className="cq-onboard-school-mark" aria-hidden>
+                  R
+                </span>
+                <span className="text-left">
+                  <span className="block font-semibold text-slate-900">{INSTITUTIONS.uri.name}</span>
+                  <span className="block text-sm text-slate-500">{INSTITUTIONS.uri.city}</span>
+                </span>
+                <Check className="ml-auto h-5 w-5 shrink-0 text-white" aria-hidden />
+              </button>
+            ) : (
+              <p className="cq-onboard-support mt-4">No matching campus is live yet. URI is available today.</p>
+            )}
             <button
               type="button"
               className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6"
               onClick={() => {
                 void persistProfilePatch({ institutionId: "uri" });
+                trackOnboardingEvent({
+                  eventName: "onboarding_school_completed",
+                  stepNumber: 3,
+                  elapsedMs: elapsedMs(),
+                });
                 go("interests");
               }}
             >
               Continue
             </button>
-            <p className="cq-onboard-muted-link mt-4">Can&apos;t find your school?</p>
+            {schoolRequestSaved ? (
+              <p className="cq-onboard-notice mt-4">Thanks — we noted your campus. URI onboarding continues.</p>
+            ) : showSchoolRequest ? (
+              <div className="cq-onboard-school-request">
+                <label htmlFor="cq-requested-school" className="cq-onboard-support">
+                  Which school are you looking for?
+                </label>
+                <input
+                  id="cq-requested-school"
+                  className="cq-auth-input mt-2"
+                  value={requestedSchoolName}
+                  onChange={(event) => setRequestedSchoolName(event.target.value)}
+                  placeholder="School name"
+                  autoComplete="organization"
+                />
+                <div className="cq-onboard-row-actions mt-3">
+                  <button type="button" className="cq-onboard-text-btn" onClick={() => setShowSchoolRequest(false)}>
+                    Never mind
+                  </button>
+                  <button
+                    type="button"
+                    className="cq-onboard-btn-primary cq-onboard-btn-primary--inline disabled:opacity-40"
+                    disabled={requestedSchoolName.trim().length < 2}
+                    onClick={() => {
+                      const name = requestedSchoolName.trim();
+                      setSchoolRequestSaved(true);
+                      setShowSchoolRequest(false);
+                      void persistProfilePatch({ requestedSchoolName: name, institutionId: "uri" });
+                    }}
+                  >
+                    Submit
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="cq-onboard-muted-link mt-4"
+                onClick={() => setShowSchoolRequest(true)}
+              >
+                Can&apos;t find your school?
+              </button>
+            )}
           </div>
         ) : null}
 
@@ -677,7 +848,14 @@ export function AuthOnboardingFlow({
               type="button"
               disabled={interests.length < MIN_INTERESTS}
               className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-40"
-              onClick={() => go("communities")}
+              onClick={() => {
+                trackOnboardingEvent({
+                  eventName: "onboarding_interests_completed",
+                  stepNumber: 4,
+                  elapsedMs: elapsedMs(),
+                });
+                go("communities");
+              }}
             >
               Continue
             </button>
@@ -687,9 +865,9 @@ export function AuthOnboardingFlow({
         {step === "communities" ? (
           <div className="cq-onboard-step">
             <KnightStage src={BRAND_KNIGHT.presentingRight} size="sm" ring="sm" />
-            <h2 className="cq-onboard-question">Find your communities.</h2>
+            <h2 className="cq-onboard-question">What parts of campus are you connected to?</h2>
             <p className="cq-onboard-support">
-              Choose any that apply. We&apos;ll surface relevant events, posts, and opportunities.
+              These are affiliations, programs, and networks — skip any that don&apos;t apply.
             </p>
             <div className="cq-onboard-community-grid" role="group" aria-label="Communities">
               {COMMUNITY_OPTIONS.map((opt) => {
@@ -833,9 +1011,9 @@ export function AuthOnboardingFlow({
             <h1 className="cq-onboard-title cq-onboard-title--celebrate">Preferences saved!</h1>
             <p className="cq-onboard-sub cq-onboard-sub--strong">Your CampusQuest is taking shape.</p>
             <p className="cq-onboard-sub mt-2">
-              Next: create your character.
+              Now make CampusQuest yours.
               <br />
-              Then explore campus, connect, and level up.
+              Choose your avatar. You can change it anytime.
             </p>
             {error ? <p className="cq-onboard-error mt-4">{error}</p> : null}
             <button

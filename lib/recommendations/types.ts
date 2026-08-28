@@ -59,6 +59,9 @@ export type UserRecommendationProfile = {
   campusId: string | null;
   studentStatus: string | null;
   classYear: number | null;
+  major: string | null;
+  academicArea: string | null;
+  verifiedSchoolEmail: boolean;
   explicitInterests: string[];
   explicitCommunities: string[];
   /** Topic id → 0–1 affinity learned from behavior. Never written over explicit prefs. */

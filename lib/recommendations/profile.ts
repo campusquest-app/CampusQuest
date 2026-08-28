@@ -1,5 +1,8 @@
-import { normalizeCommunityIds, normalizeInterestIds } from "@/lib/onboarding/taxonomy";
 import { BEHAVIOR_SIGNAL_WEIGHTS } from "@/lib/recommendations/weights";
+import {
+  recommendationProfileFromDiscovery,
+  type StudentDiscoveryInput,
+} from "@/lib/recommendations/discoveryProfile";
 import type { UserRecommendationProfile } from "@/lib/recommendations/types";
 
 export type BehaviorSignalKind = keyof typeof BEHAVIOR_SIGNAL_WEIGHTS;
@@ -16,6 +19,9 @@ export function emptyRecommendationProfile(
     campusId: overrides?.campusId ?? null,
     studentStatus: overrides?.studentStatus ?? null,
     classYear: overrides?.classYear ?? null,
+    major: overrides?.major ?? null,
+    academicArea: overrides?.academicArea ?? null,
+    verifiedSchoolEmail: overrides?.verifiedSchoolEmail === true,
     explicitInterests: [...(overrides?.explicitInterests ?? [])],
     explicitCommunities: [...(overrides?.explicitCommunities ?? [])],
     inferredAffinities: { ...(overrides?.inferredAffinities ?? {}) },
@@ -49,26 +55,10 @@ export function inferAffinitiesFromSignals(
   return normalized;
 }
 
-export function profileFromPersonalization(input?: {
-  schoolName?: string | null;
-  institutionId?: string | null;
-  interests?: string[] | null;
-  communities?: string[] | null;
-  studentStatus?: string | null;
-  classYear?: number | null;
-  includeDebug?: boolean;
-} | null): UserRecommendationProfile {
-  const campusId =
-    input?.institutionId?.trim() ||
-    (input?.schoolName?.toLowerCase().includes("rhode island") ? "uri" : null);
-  return emptyRecommendationProfile({
-    campusId,
-    studentStatus: input?.studentStatus ?? null,
-    classYear: input?.classYear ?? null,
-    explicitInterests: normalizeInterestIds(input?.interests ?? []),
-    explicitCommunities: normalizeCommunityIds(input?.communities ?? []),
-    includeDebug: input?.includeDebug === true,
-  });
+export function profileFromPersonalization(
+  input?: (StudentDiscoveryInput & { includeDebug?: boolean }) | null,
+): UserRecommendationProfile {
+  return recommendationProfileFromDiscovery(input, { includeDebug: input?.includeDebug === true });
 }
 
 export function mergeRecommendationProfiles(
@@ -80,6 +70,9 @@ export function mergeRecommendationProfiles(
     campusId: overlay.campusId ?? base.campusId,
     studentStatus: overlay.studentStatus ?? base.studentStatus,
     classYear: overlay.classYear ?? base.classYear,
+    major: overlay.major ?? base.major,
+    academicArea: overlay.academicArea ?? base.academicArea,
+    verifiedSchoolEmail: overlay.verifiedSchoolEmail ?? base.verifiedSchoolEmail,
     explicitInterests: overlay.explicitInterests ?? base.explicitInterests,
     explicitCommunities: overlay.explicitCommunities ?? base.explicitCommunities,
     inferredAffinities: overlay.inferredAffinities ?? base.inferredAffinities,

@@ -100,7 +100,9 @@ describe("auth error message mapping", () => {
         "PROFILE_SETUP_PENDING",
       ),
     );
-    expect(message.toLowerCase()).toContain("creating your profile");
+    expect(message.toLowerCase()).toContain("finishing");
+    expect(message.toLowerCase()).toContain("hang tight");
+    expect(message.toLowerCase()).not.toContain("try signing in");
     expect(message.toLowerCase()).not.toContain("not available yet");
   });
 });

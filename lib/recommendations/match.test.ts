@@ -108,6 +108,27 @@ describe("recommendation topic matching", () => {
     );
     expect(match.communityIds).toContain("engineering");
   });
+
+  it("maps a wellness session and an entrepreneurship mixer to the new interest ids", () => {
+    expect(
+      matchRecommendationTopics(
+        campusEventToRecommendationEntity({
+          id: "w1",
+          title: "Mindfulness and wellness workshop",
+          category: "Wellness",
+        }),
+      ).interestIds,
+    ).toContain("wellness");
+    expect(
+      matchRecommendationTopics(
+        campusEventToRecommendationEntity({
+          id: "e1",
+          title: "Student entrepreneur mixer",
+          description: "Meet founders from the business school",
+        }),
+      ).interestIds,
+    ).toContain("entrepreneurship");
+  });
 });
 
 describe("campus-wide importance", () => {

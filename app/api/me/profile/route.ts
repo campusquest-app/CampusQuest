@@ -29,6 +29,11 @@ import {
   rejectForbiddenProfileFields,
 } from "@/lib/server/profileSecurity";
 import { patchMeProfileSchema } from "@/lib/server/validation";
+import {
+  isMissingDiscoveryColumnError,
+  omitUnavailableDiscoveryColumns,
+  stripDiscoveryColumns,
+} from "@/lib/server/profileDiscoveryColumns";
 
 function normalizeDisplayName(value: string) {
   return value.trim();
@@ -228,6 +233,14 @@ export async function PATCH(request: Request) {
     if (input.avatar_url !== undefined) patch.avatar_url = input.avatar_url || null;
     if (input.avatarCustomJson !== undefined) patch.avatar_custom_json = input.avatarCustomJson;
     if (input.major !== undefined) patch.major = input.major || null;
+    if (input.academicArea !== undefined) patch.academic_area = input.academicArea || null;
+    if (input.requestedSchoolName !== undefined) {
+      const requested = input.requestedSchoolName.trim();
+      if (requested) {
+        patch.requested_school_name = requested;
+        patch.requested_school_at = nowIso;
+      }
+    }
     if (classYearInput !== undefined) patch.class_year = classYearInput;
     if (input.studentStatus !== undefined) patch.student_status = input.studentStatus;
     if (input.institutionId !== undefined) patch.institution_id = input.institutionId;
@@ -286,6 +299,12 @@ export async function PATCH(request: Request) {
       patch.realm_welcome_seen_at = nowIso;
     }
 
+    if (input.realmIntroCompletedReset === true && process.env.NODE_ENV !== "production") {
+      patch.realm_intro_completed_at = null;
+    } else if (input.realmIntroCompleted === true) {
+      patch.realm_intro_completed_at = nowIso;
+    }
+
     if (input.navHintsSeenReset === true && process.env.NODE_ENV !== "production") {
       patch.nav_hints_seen_at = null;
     } else if (input.navHintsSeen === true) {
@@ -296,19 +315,41 @@ export async function PATCH(request: Request) {
       patch.show_xp_progress_bar = input.showXpProgressBar;
     }
 
-    if (Object.keys(patch).length === 0) {
+    const patchForSchema = omitUnavailableDiscoveryColumns(patch, existing as object);
+
+    if (Object.keys(patchForSchema).length === 0) {
+      if (Object.keys(patch).length > 0) {
+        return ok(enrichProfileRowForApiClient(existing as unknown as Record<string, unknown>, auth.user.email));
+      }
       throw new ApiError(400, "No profile fields to update.", "PROFILE_PATCH_EMPTY");
     }
 
     const { data, error } = await auth.userClient
       .from("profiles")
-      .update(patch)
+      .update(patchForSchema)
       .eq("id", auth.user.id)
       .select("*")
       .single();
 
     let dataOut = data;
     let errorOut = error;
+
+    if (errorOut && isMissingDiscoveryColumnError(errorOut.message)) {
+      const withoutDiscovery = stripDiscoveryColumns(patchForSchema);
+      if (Object.keys(withoutDiscovery).length > 0) {
+        const retried = await auth.userClient
+          .from("profiles")
+          .update(withoutDiscovery)
+          .eq("id", auth.user.id)
+          .select("*")
+          .single();
+        dataOut = retried.data;
+        errorOut = retried.error;
+      } else {
+        errorOut = null;
+        dataOut = existing;
+      }
+    }
 
     if (
       errorOut &&
@@ -317,7 +358,7 @@ export async function PATCH(request: Request) {
     ) {
       throw new ApiError(
         500,
-        "Onboarding demographics migration is required. Apply supabase/migrations/20260818220000_onboarding_demographics_v2.sql.",
+        "We couldn't save your preferences. Please try again.",
         "SCHEMA_MIGRATION_REQUIRED",
       );
     }
@@ -328,7 +369,7 @@ export async function PATCH(request: Request) {
       errorOut.message.includes("identity_weekly_change_events") &&
       patch.identity_weekly_change_events !== undefined
     ) {
-      const { identity_weekly_change_events: _w, ...patchWithoutWeekly } = patch;
+      const { identity_weekly_change_events: _w, ...patchWithoutWeekly } = patchForSchema;
       const second = await auth.userClient
         .from("profiles")
         .update(patchWithoutWeekly)
