@@ -272,7 +272,7 @@ export function Dashboard() {
   const [showAccountTypeModal, setShowAccountTypeModal] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [logoutConfirmError, setLogoutConfirmError] = useState<string | null>(null);
-  const [drawerSubPanel, setDrawerSubPanel] = useState<"menu" | "settings" | "help">("menu");
+  const [drawerSubPanel, setDrawerSubPanel] = useState<"menu" | "settings" | "help" | "demographics">("menu");
   const [gainToast, setGainToast] = useState<null | {
     xp: number;
     stats: Partial<Record<keyof Character["stats"], number>>;
@@ -2931,7 +2931,10 @@ export function Dashboard() {
                   });
                 }}
                 onViewAthletics={() => setTab("events")}
-                onFindMyCampus={() => setTab("character")}
+                onFindMyCampus={() => {
+                  setDrawerSubPanel("demographics");
+                  setSideMenuOpen(true);
+                }}
                 onViewAllRecommendations={() => setTab("events")}
                 onOpenNotifications={() => setTab("inbox")}
                 onOpenOwnProfile={() => setTab("character")}

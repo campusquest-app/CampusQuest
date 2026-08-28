@@ -10,6 +10,8 @@ import {
   useMap,
 } from "@vis.gl/react-google-maps";
 import { AlertTriangle, Bell, MapPinOff } from "lucide-react";
+import { AvatarDisplay } from "@/components/AvatarDisplay";
+import { normalizeAvatarInput } from "@/lib/resolveAvatarForDisplay";
 import type { RealmLocationId } from "@/lib/realm/locations";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
@@ -77,6 +79,8 @@ import { useNow } from "@/lib/client/useNow";
 import { getGroupCountdown, type GroupCountdown } from "@/lib/realm/eventCountdown";
 import type { RealmDirectionsRequest } from "@/lib/realm/realmDirectionsTypes";
 import {
+  REALM_DISCOVERY_OVERVIEW_CENTER,
+  REALM_FIRST_OPEN_END_ZOOM,
   REALM_HEART_OF_CAMPUS,
   discoveryPriorityScore,
   distanceMeters,
@@ -1116,8 +1120,8 @@ export function GoogleRealmMap({
           colorScheme={useVectorMapId ? ColorScheme.DARK : undefined}
           styles={useVectorMapId ? undefined : mapLayer === "campus" ? CQ_REALM_MAP_STYLE : undefined}
           mapTypeId={mapLayer === "campus" ? URI_MAP_TYPE_ID : "satellite"}
-          defaultCenter={URI_MAP_CENTER}
-          defaultZoom={17.2}
+          defaultCenter={REALM_DISCOVERY_OVERVIEW_CENTER}
+          defaultZoom={REALM_FIRST_OPEN_END_ZOOM}
           minZoom={URI_MAP_MIN_ZOOM}
           maxZoom={URI_MAP_MAX_ZOOM}
           gestureHandling="greedy"
@@ -1251,12 +1255,12 @@ export function GoogleRealmMap({
                         aria-label={viewerName ? `Open profile for ${viewerName}` : "Open profile"}
                         onClick={onOpenProfile}
                       >
-                        {viewerAvatar ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={viewerAvatar} alt="" />
-                        ) : (
-                          <span aria-hidden>{(viewerName ?? "You").slice(0, 1).toUpperCase()}</span>
-                        )}
+                        <AvatarDisplay
+                          avatar={normalizeAvatarInput(viewerAvatar)}
+                          fitParent
+                          size={34}
+                          showProp={false}
+                        />
                       </button>
                     ) : null}
                     <RealmMapSearch

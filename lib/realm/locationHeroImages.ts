@@ -1,19 +1,7 @@
 import type { RealmLocationId } from "@/lib/realm/locations";
+import { placeCardImage } from "@/lib/realm/placeImages";
 
-/** Hero banner assets for Realm location sheets (display only). */
-const REALM_LOCATION_HERO_IMAGES: Partial<Record<RealmLocationId, string>> = {
-  library: "/quad-feed/library.jpg",
-  "rec-center": "/quad-feed/gym.jpg",
-  "memorial-union": "/quad-feed/memorial-union.png",
-  "the-quad": "/maps/uri-campus-map-fantasy.jpg",
-  "dining-hall": "/quad-feed/coffee.jpg",
-  "butterfield-dining": "/quad-feed/coffee.jpg",
-  "mainfare-dining": "/quad-feed/coffee.jpg",
-  "engineering-hall": "/quad-feed/group-study.jpg",
-  "business-building": "/quad-feed/career.jpg",
-  "rams-den": "/quad-feed/coffee.jpg",
-};
-
+/** Hero banner assets for Realm location sheets — same canonical mapping as nearby cards. */
 export function getRealmLocationHeroImage(locationId: RealmLocationId): string | null {
-  return REALM_LOCATION_HERO_IMAGES[locationId] ?? null;
+  return placeCardImage(locationId);
 }

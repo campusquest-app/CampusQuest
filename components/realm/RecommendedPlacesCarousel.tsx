@@ -30,7 +30,13 @@ export function RecommendedPlacesCarousel({
             <article key={item.id} role="listitem" className="cq-nearby-place-card">
               <button type="button" className="cq-nearby-place-card__hit" onClick={() => onOpen(item)}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={item.imageUrl} alt="" className="cq-nearby-place-card__image" loading="lazy" />
+                <img
+                  src={item.imageUrl}
+                  alt={item.imageAlt}
+                  className="cq-nearby-place-card__image"
+                  style={{ objectPosition: item.imageObjectPosition }}
+                  loading="lazy"
+                />
                 <span className="cq-nearby-place-card__copy">
                   <span className="cq-nearby-place-card__name">{item.name}</span>
                   <span className="cq-nearby-place-card__cat">{item.categoryLabel}</span>

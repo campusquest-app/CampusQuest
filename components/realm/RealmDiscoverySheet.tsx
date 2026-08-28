@@ -55,19 +55,28 @@ export function RealmDiscoverySheet({
     moved: boolean;
   } | null>(null);
   const [viewportH, setViewportH] = useState(() => (typeof window === "undefined" ? 844 : window.innerHeight));
+  const [navClearancePx, setNavClearancePx] = useState(88);
   const [dragHeight, setDragHeight] = useState<number | null>(null);
   const [savedIds, setSavedIds] = useState<Set<string>>(() => readSavedPlaceIds());
 
-  const snaps = useMemo(() => discoverySheetSnaps(viewportH), [viewportH]);
+  const snaps = useMemo(() => discoverySheetSnaps(viewportH, 88, navClearancePx), [viewportH, navClearancePx]);
   const height = dragHeight ?? snaps[snap];
 
   useEffect(() => {
-    const onResize = () => setViewportH(window.innerHeight);
-    window.addEventListener("resize", onResize);
-    window.visualViewport?.addEventListener("resize", onResize);
+    const measure = () => {
+      setViewportH(window.innerHeight);
+      const dock = document.querySelector(".cq-dock-nav");
+      if (dock instanceof HTMLElement) {
+        const top = dock.getBoundingClientRect().top;
+        if (top > 0) setNavClearancePx(Math.max(64, Math.round(window.innerHeight - top)));
+      }
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("resize", measure);
     return () => {
-      window.removeEventListener("resize", onResize);
-      window.visualViewport?.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
     };
   }, []);
 

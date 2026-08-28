@@ -503,7 +503,15 @@ export function AppSideDrawer({
               }}
             />
           ) : panel === "demographics" ? (
-            <DemographicsSettingsPanel onBack={() => setPanel("settings")} />
+            <DemographicsSettingsPanel
+              onBack={() => {
+                if (initialPanel === "demographics") {
+                  onClose();
+                  return;
+                }
+                setPanel("settings");
+              }}
+            />
           ) : (
             <AppHelpSupportPanel onBack={() => setPanel("menu")} />
           )}

@@ -1,28 +1,37 @@
 import { describe, expect, it } from "vitest";
 import {
   REALM_HEART_OF_CAMPUS,
+  REALM_DISCOVERY_OVERVIEW_CENTER,
+  REALM_FIRST_OPEN_END_ZOOM,
   discoveryPriorityScore,
   distanceMeters,
   resolveFirstOpenCameraTarget,
 } from "@/lib/realm/realmFirstOpen";
 
 describe("resolveFirstOpenCameraTarget", () => {
-  it("uses the user position when it is on campus", () => {
-    const target = resolveFirstOpenCameraTarget({ lat: 41.487, lng: -71.5305 });
-    expect(target.source).toBe("user");
-    expect(target.lat).toBeCloseTo(41.487, 3);
+  it("opens on a campus overview instead of a dining-hall close-up", () => {
+    const target = resolveFirstOpenCameraTarget({ lat: 41.4891, lng: -71.5295 });
+    expect(target.source).toBe("campus-heart");
+    expect(target.lat).toBeCloseTo(REALM_DISCOVERY_OVERVIEW_CENTER.lat, 4);
+    expect(target.lng).toBeCloseTo(REALM_DISCOVERY_OVERVIEW_CENTER.lng, 4);
+    expect(target.lat).toBeGreaterThan(41.4849);
+    expect(target.lat).toBeLessThan(41.4891);
   });
 
-  it("falls back to the campus heart when location is missing", () => {
+  it("uses the same overview when location is missing", () => {
     const target = resolveFirstOpenCameraTarget(null);
     expect(target.source).toBe("campus-heart");
-    expect(target.lat).toBeCloseTo(REALM_HEART_OF_CAMPUS.lat, 4);
-    expect(target.lng).toBeCloseTo(REALM_HEART_OF_CAMPUS.lng, 4);
+    expect(target.lat).toBeCloseTo(REALM_DISCOVERY_OVERVIEW_CENTER.lat, 4);
   });
 
-  it("rejects fixes far from Kingston campus", () => {
+  it("does not follow off-campus GPS for the initial camera", () => {
     const target = resolveFirstOpenCameraTarget({ lat: 40.7, lng: -74.0 });
     expect(target.source).toBe("campus-heart");
+  });
+
+  it("keeps the first-open zoom in the campus-overview band", () => {
+    expect(REALM_FIRST_OPEN_END_ZOOM).toBeGreaterThanOrEqual(15.4);
+    expect(REALM_FIRST_OPEN_END_ZOOM).toBeLessThan(16.1);
   });
 });
 

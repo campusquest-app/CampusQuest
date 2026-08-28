@@ -3,6 +3,7 @@
 import { ChevronLeft, MapPin } from "lucide-react";
 import type { RealmLocation } from "@/lib/realm/locations";
 import { getRealmLocationHeroImage } from "@/lib/realm/locationHeroImages";
+import { placeCardImageObjectPosition } from "@/lib/realm/placeImages";
 import type { LocationMetaPill } from "@/lib/realm/locationDetailCopy";
 
 export function LocationHero({
@@ -21,13 +22,19 @@ export function LocationHero({
   onBack: () => void;
 }) {
   const heroImage = (location ? getRealmLocationHeroImage(location.id) : null) ?? fallbackImageUrl ?? null;
+  const heroObjectPosition = location ? placeCardImageObjectPosition(location.id) : "center 35%";
 
   return (
     <header className="cq-loc-hero cq-realm-hero-enter">
       <div className="cq-loc-hero-media" aria-hidden>
         {heroImage ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={heroImage} alt="" className="cq-loc-hero-image" />
+          <img
+            src={heroImage}
+            alt=""
+            className="cq-loc-hero-image"
+            style={{ objectPosition: heroObjectPosition }}
+          />
         ) : (
           <div className="cq-loc-hero-fallback">
             <span className="text-4xl">{location?.markerEmoji ?? "📍"}</span>

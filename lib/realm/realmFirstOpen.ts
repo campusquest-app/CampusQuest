@@ -6,21 +6,29 @@
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 import {
   URI_MAP_CENTER,
-  URI_MAP_DEFAULT_ZOOM,
   moveMapCamera,
 } from "@/lib/realm/googleMapPose";
 
 export const REALM_WELCOME_STORAGE_KEY = "cq_realm_welcome_v1";
 
-/** Heart of campus — Memorial Union / Quad midpoint for fallback centering. */
+/** Heart of campus — Memorial Union / Quad midpoint for walking estimates. */
 export const REALM_HEART_OF_CAMPUS = {
   lat: (REALM_LOCATION_GEO["memorial-union"].latitude + REALM_LOCATION_GEO["the-quad"].latitude) / 2,
   lng: (REALM_LOCATION_GEO["memorial-union"].longitude + REALM_LOCATION_GEO["the-quad"].longitude) / 2,
 } as const;
 
-/** Start zoomed out, then ease into this final discovery zoom. */
-export const REALM_FIRST_OPEN_START_ZOOM = 16.35;
-export const REALM_FIRST_OPEN_END_ZOOM = Math.min(URI_MAP_DEFAULT_ZOOM, 17.7);
+/**
+ * Default first-open camera: central URI overview covering Rec Center through
+ * Mainfare / Library / Engineering / Quad / Business / Butterfield / Union.
+ */
+export const REALM_DISCOVERY_OVERVIEW_CENTER = {
+  lat: 41.48705,
+  lng: -71.52975,
+} as const;
+
+/** Start zoomed out, then ease into a campus-overview discovery zoom. */
+export const REALM_FIRST_OPEN_START_ZOOM = 15.35;
+export const REALM_FIRST_OPEN_END_ZOOM = 15.72;
 
 export const REALM_FIRST_OPEN_FLY_MS = 1000;
 export const REALM_LOCATE_TIMEOUT_MS = 2200;
@@ -54,21 +62,9 @@ export function markRealmWelcomeSeen(): void {
 }
 
 export function resolveFirstOpenCameraTarget(
-  userPos: { lat: number; lng: number } | null,
+  _userPos: { lat: number; lng: number } | null,
 ): { lat: number; lng: number; source: "user" | "campus-heart" } {
-  if (
-    userPos &&
-    Number.isFinite(userPos.lat) &&
-    Number.isFinite(userPos.lng) &&
-    // Reject absurd fixes far from campus (rough Kingston bounding box).
-    userPos.lat > 41.46 &&
-    userPos.lat < 41.52 &&
-    userPos.lng > -71.56 &&
-    userPos.lng < -71.5
-  ) {
-    return { ...userPos, source: "user" };
-  }
-  return { ...REALM_HEART_OF_CAMPUS, source: "campus-heart" };
+  return { ...REALM_DISCOVERY_OVERVIEW_CENTER, source: "campus-heart" };
 }
 
 function easeOutCubic(t: number): number {
