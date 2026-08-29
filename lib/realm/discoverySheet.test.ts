@@ -14,6 +14,9 @@ import {
   walkingMinutesBetween,
   isCampusWalkOrigin,
   athleticsHighlightSlots,
+  buildRhodyHighlights,
+  campusWalkTimeStatus,
+  walkTimeLabel,
 } from "@/lib/realm/discoverySheet";
 import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
 
@@ -28,14 +31,25 @@ describe("discovery sheet snaps", () => {
     expect(snaps.collapsed).toBeLessThanOrEqual(96);
     expect(snaps.default).toBeGreaterThan(snaps.collapsed);
     expect(snaps.expanded).toBeGreaterThan(snaps.default);
-    expect(mapShare / usable).toBeGreaterThanOrEqual(0.5);
-    expect(snaps.default / usable).toBeLessThanOrEqual(0.45);
+    expect(mapShare / usable).toBeGreaterThanOrEqual(0.64);
+    expect(snaps.default / usable).toBeLessThanOrEqual(0.36);
+    expect(snaps.defaultMax / usable).toBeLessThanOrEqual(0.36);
   });
 
   it("hugs measured content instead of stretching a tall empty panel", () => {
-    const snaps = discoverySheetSnaps(844, 120, 88, 280);
-    expect(snaps.default).toBe(280);
-    expect(snaps.default).toBeLessThan(discoverySheetSnaps(844, 120, 88).default);
+    const snaps = discoverySheetSnaps(844, 120, 88, 230);
+    expect(snaps.default).toBe(230);
+    expect(snaps.default).toBeLessThan(discoverySheetSnaps(844, 120, 88).defaultMax);
+  });
+
+  it("lets compact measured content exceed the empty 34% cap without becoming a half-screen slab", () => {
+    const viewport = 844;
+    const nav = 88;
+    const usable = viewport - nav;
+    const snaps = discoverySheetSnaps(viewport, 120, nav, 290);
+    expect(snaps.default).toBe(290);
+    expect(snaps.default / usable).toBeLessThanOrEqual(0.4);
+    expect(discoverySheetSnaps(viewport, 120, nav, 520).default / usable).toBeLessThanOrEqual(0.4);
   });
 
   it("picks the nearest snap and honors flick velocity", () => {
@@ -63,6 +77,36 @@ describe("walking estimates", () => {
     expect(walkingMinutesBetween({ lat: 41.7, lng: -71.4 }, library)).toBeNull();
     expect(walkingMinutesBetween({ lat: -71.5309, lng: 41.4862 }, library)).toBeNull();
     expect(walkingMinutesBetween({ lat: 41.4862, lng: -71.5309, accuracy: 5000 }, library)).toBeNull();
+  });
+
+  it("rejects a ~5km GPS fix that used to sit inside the wide Kingston bbox", () => {
+    const library = { lat: 41.4865, lng: -71.5301 };
+    const fiveKmNorth = { lat: 41.5312, lng: -71.5309 };
+    const oldWideBboxEdge = { lat: 41.465, lng: -71.555 };
+    expect(isCampusWalkOrigin(fiveKmNorth)).toBe(false);
+    expect(isCampusWalkOrigin(oldWideBboxEdge)).toBe(false);
+    expect(walkingMinutesBetween(fiveKmNorth, library)).toBeNull();
+    expect(walkingMinutesBetween(oldWideBboxEdge, library)).toBeNull();
+  });
+
+  it("rejects campus-scale walks that are still longer than a short campus hop", () => {
+    const library = { lat: 41.4865, lng: -71.5301 };
+    const farOnCampusEdge = { lat: 41.4821, lng: -71.5358 };
+    const minutes = walkingMinutesBetween(farOnCampusEdge, library);
+    expect(minutes == null || minutes <= 18).toBe(true);
+    expect(
+      walkingMinutesBetween({ lat: 41.4862, lng: -71.5309 }, { lat: 41.5005, lng: -71.5309 }),
+    ).toBeNull();
+  });
+
+  it("labels missing GPS as locating or unavailable, never fake minutes", () => {
+    expect(campusWalkTimeStatus(null, true)).toBe("locating");
+    expect(campusWalkTimeStatus(null, false)).toBe("unavailable");
+    expect(campusWalkTimeStatus({ lat: 41.5312, lng: -71.5309 }, false)).toBe("unavailable");
+    expect(campusWalkTimeStatus({ lat: 41.4862, lng: -71.5309 }, false)).toBe("ready");
+    expect(walkTimeLabel(null, "locating")).toBe("Locating…");
+    expect(walkTimeLabel(null, "unavailable")).toBe("Walk time unavailable");
+    expect(walkTimeLabel(3, "unavailable")).toBe("3 min walk");
   });
 });
 
@@ -195,6 +239,42 @@ describe("athletics highlights", () => {
     const slots = athleticsHighlightSlots([]);
     expect(slots).toHaveLength(3);
     expect(slots[0]?.title).not.toMatch(/Villanova|UMass|Dayton/i);
+    expect(slots.every((row) => row.type === "placeholder")).toBe(true);
+  });
+
+  it("pads a single loaded game out to three highlight rows", () => {
+    const slots = athleticsHighlightSlots([
+      {
+        id: "game-1",
+        type: "athletics",
+        title: "URI vs. Dayton",
+        sport: "Women's Soccer",
+        opponent: "Dayton",
+        timeLabel: "Tue • 7:00 PM",
+        durationLabel: null,
+        imageUrl: "/quad-feed/running.jpg",
+        imageFallbackUrl: null,
+        broadcastUrl: null,
+        youtubeVideoId: null,
+        url: null,
+        playable: false,
+      },
+    ]);
+    expect(slots).toHaveLength(3);
+    expect(slots[0]?.title).toBe("URI vs. Dayton");
+    expect(slots[1]?.id).toMatch(/athletics-slot/);
+  });
+
+  it("surfaces the curated Rams YouTube short first in Rhody Highlights", () => {
+    const rows = buildRhodyHighlights([], new Date("2026-08-28T16:00:00.000Z"), 3);
+    expect(rows[0]?.type).toBe("youtube");
+    expect(rows[0]?.youtubeVideoId).toBe("WeztHt4UU_U");
+    expect(rows[0]?.url).toBe("https://www.youtube.com/watch?v=WeztHt4UU_U");
+    expect(rows[0]?.imageUrl).toBe("https://img.youtube.com/vi/WeztHt4UU_U/maxresdefault.jpg");
+    expect(rows[0]?.imageFallbackUrl).toBe("https://img.youtube.com/vi/WeztHt4UU_U/hqdefault.jpg");
+    expect(rows[0]?.title).toMatch(/Rams are Coming/i);
+    expect(rows[0]?.playable).toBe(true);
+    expect(rows).toHaveLength(3);
   });
 });
 

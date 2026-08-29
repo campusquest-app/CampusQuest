@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { ChevronUp } from "lucide-react";
 import {
-  athleticsHighlightSlots,
-  collectAthleticsHighlights,
+  buildRhodyHighlights,
+  campusWalkTimeStatus,
   cycleDiscoverySnap,
   discoverySheetSnaps,
   readSavedPlaceIds,
@@ -12,6 +12,8 @@ import {
   toggleSavedPlaceId,
   type DiscoverySheetSnap,
   type NearbyPlaceCard,
+  type WalkOrigin,
+  type WalkTimeStatus,
 } from "@/lib/realm/discoverySheet";
 import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
@@ -25,24 +27,26 @@ export function RealmDiscoverySheet({
   nearbyPlaces,
   snap,
   onSnapChange,
-  onHeightChange,
   onOpenRecommendation,
   onOpenPlace,
   onViewAthletics,
   onFindMyCampus,
   onViewAllRecommendations,
+  walkOrigin = null,
+  locating = false,
 }: {
   items: MapRecommendationItem[];
   groups: GroupedMapLocation[];
   nearbyPlaces: NearbyPlaceCard[];
   snap: DiscoverySheetSnap;
   onSnapChange: (next: DiscoverySheetSnap) => void;
-  onHeightChange?: (heightPx: number) => void;
   onOpenRecommendation: (item: MapRecommendationItem) => void;
   onOpenPlace: (place: NearbyPlaceCard) => void;
   onViewAthletics?: () => void;
   onFindMyCampus?: () => void;
   onViewAllRecommendations?: () => void;
+  walkOrigin?: WalkOrigin | null;
+  locating?: boolean;
 }) {
   const sheetRef = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -66,6 +70,8 @@ export function RealmDiscoverySheet({
     () => discoverySheetSnaps(viewportH, 120, navClearancePx, contentHeightPx ?? undefined),
     [viewportH, navClearancePx, contentHeightPx],
   );
+  const walkStatus: WalkTimeStatus = campusWalkTimeStatus(walkOrigin, locating);
+  const useAutoDefault = snap === "default" && dragHeight == null;
   const height = dragHeight ?? snaps[snap];
 
   useEffect(() => {
@@ -86,20 +92,28 @@ export function RealmDiscoverySheet({
     };
   }, []);
 
-  useLayoutEffect(() => {
+  const measureContent = useCallback(() => {
     const body = bodyRef.current;
     const handle = handleRef.current;
     if (!body) return;
     const next = Math.round(body.scrollHeight + (handle?.offsetHeight ?? 28));
     setContentHeightPx((prev) => (prev === next ? prev : next));
-  }, [items, groups, nearbyPlaces, snap]);
+  }, []);
+
+  useLayoutEffect(() => {
+    measureContent();
+  }, [items, groups, nearbyPlaces, snap, measureContent]);
 
   useEffect(() => {
-    onHeightChange?.(snaps[snap]);
-  }, [onHeightChange, snap, snaps]);
+    const body = bodyRef.current;
+    if (!body || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => measureContent());
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, [measureContent, snap]);
 
   const athletics = useMemo(
-    () => athleticsHighlightSlots(collectAthleticsHighlights(groups)),
+    () => buildRhodyHighlights(groups),
     [groups],
   );
   const forYouRows = useMemo(
@@ -115,6 +129,8 @@ export function RealmDiscoverySheet({
     [onSnapChange],
   );
 
+  const measuredSheetHeight = () => sheetRef.current?.offsetHeight ?? height;
+
   const onHandlePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -122,7 +138,7 @@ export function RealmDiscoverySheet({
     dragRef.current = {
       pointerId: event.pointerId,
       startY: event.clientY,
-      startH: height,
+      startH: measuredSheetHeight(),
       lastY: event.clientY,
       lastT: event.timeStamp,
       velocity: 0,
@@ -148,7 +164,7 @@ export function RealmDiscoverySheet({
     if (!drag || event.pointerId !== drag.pointerId) return;
     const moved = drag.moved;
     dragRef.current = null;
-    const current = dragHeight ?? height;
+    const current = dragHeight ?? measuredSheetHeight();
     settle(snapFromVelocity(current, drag.velocity, snaps));
     if (moved) {
       (event.currentTarget as HTMLElement).dataset.cqSheetDidDrag = "1";
@@ -158,8 +174,14 @@ export function RealmDiscoverySheet({
   return (
     <section
       ref={sheetRef}
-      className={`cq-realm-sheet cq-realm-sheet--${snap}${dragHeight != null ? " cq-realm-sheet--dragging" : ""}`}
-      style={{ height }}
+      className={`cq-realm-sheet cq-realm-sheet--${snap}${dragHeight != null ? " cq-realm-sheet--dragging" : ""}${
+        useAutoDefault ? " cq-realm-sheet--auto" : ""
+      }`}
+      style={
+        useAutoDefault
+          ? { height: "auto", maxHeight: snaps.default }
+          : { height }
+      }
       aria-label="Campus discovery"
       data-no-drawer-swipe="true"
     >
@@ -201,6 +223,7 @@ export function RealmDiscoverySheet({
           <RecommendedPlacesCarousel
             items={nearbyPlaces}
             savedIds={savedIds}
+            walkStatus={walkStatus}
             onOpen={onOpenPlace}
             onToggleSave={(id) => setSavedIds(toggleSavedPlaceId(id))}
           />

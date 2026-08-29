@@ -77,7 +77,6 @@ import type { RealmDirectionsLoadResult } from "./RealmDirectionsOverlay.types";
 import { logWalkRoute } from "@/lib/realm/walkRouteLog";
 import {
   buildNearbyPlaceCardsFromLandmarks,
-  discoverySheetSnaps,
   type DiscoverySheetSnap,
 } from "@/lib/realm/discoverySheet";
 import { RealmRouteSheet } from "./RealmRouteSheet";
@@ -258,10 +257,9 @@ export function RealmMap({
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
   const [railFocus, setRailFocus] = useState<{ lat: number; lng: number } | null>(null);
   const [discoverySnap, setDiscoverySnap] = useState<DiscoverySheetSnap>("default");
-  const [discoveryPadPx, setDiscoveryPadPx] = useState(() =>
-    typeof window === "undefined" ? 420 : discoverySheetSnaps(window.innerHeight).default,
-  );
   const [userFix, setUserFix] = useState<{ lat: number; lng: number; accuracy?: number | null } | null>(null);
+  const [userLocating, setUserLocating] = useState(true);
+  const locateAttemptedRef = useRef(false);
   const recProfile = useRecommendationProfile(personalization);
   const focusSeqRef = useRef(0);
   const pendingWalkAfterFocusRef = useRef(false);
@@ -869,6 +867,12 @@ export function RealmMap({
     });
   }, []);
 
+  const handleUserLocating = useCallback((locating: boolean) => {
+    if (locating) locateAttemptedRef.current = true;
+    if (!locating && !locateAttemptedRef.current) return;
+    setUserLocating(locating);
+  }, []);
+
   const showDiscoverySheet =
     !showArrival && !showIntro && !editMode && !sheetOpen && !isRouteSheetOpen;
 
@@ -1338,8 +1342,8 @@ export function RealmMap({
             recommendedMarkerIds={forYouMarkerIds}
             suppressLegacyWelcome={showArrival || showIntro}
             recommendationScoreById={searchRecScores}
-            extraBottomPx={showDiscoverySheet ? discoveryPadPx : 0}
             onUserFix={handleUserFix}
+            onUserLocating={handleUserLocating}
             viewerAvatar={viewer?.avatar ?? null}
             viewerName={viewer?.name ?? null}
             unreadCount={unreadCount}
@@ -1553,12 +1557,13 @@ export function RealmMap({
             nearbyPlaces={nearbyPlaces}
             snap={discoverySnap}
             onSnapChange={setDiscoverySnap}
-            onHeightChange={setDiscoveryPadPx}
             onOpenRecommendation={(item) => focusRecommendation(item, true)}
             onOpenPlace={openPlaceFromCarousel}
             onViewAthletics={onViewAthletics}
             onFindMyCampus={onFindMyCampus}
             onViewAllRecommendations={onViewAllRecommendations}
+            walkOrigin={userFix}
+            locating={userLocating}
           />
         ) : null}
       </div>

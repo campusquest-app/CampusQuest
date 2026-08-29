@@ -7506,8 +7506,8 @@ html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-map-btn svg {
 .cq-tab-shell--realm {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - env(safe-area-inset-top, 0px));
-  min-height: calc(100dvh - env(safe-area-inset-top, 0px));
+  height: 100dvh;
+  min-height: 100dvh;
   overflow: hidden;
 }
 
@@ -12530,7 +12530,7 @@ html[data-realm-sheet-dragging] .cq-realm-map-surface {
   flex-direction: column;
   width: 100%;
   height: 100%;
-  min-height: calc(100dvh - env(safe-area-inset-top, 0px));
+  min-height: 100dvh;
   overflow: hidden;
   background: #010814;
 }
@@ -18616,13 +18616,14 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 .cq-realm-map-search-field {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
   min-width: 0;
   width: 100%;
+  min-height: 2.45rem;
   border-radius: 9999px;
-  border: 1px solid rgba(222, 184, 92, 0.28);
+  border: 1px solid rgba(222, 184, 92, 0.42);
   background: rgba(6, 10, 22, 0.92);
-  padding: 0.28rem 0.6rem;
+  padding: 0.42rem 0.78rem;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(10px);
 }
@@ -18641,8 +18642,8 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 9999px;
   border: 1px solid rgba(75, 174, 255, 0.38);
   background: rgba(8, 18, 40, 0.9);
@@ -18660,6 +18661,19 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 .cq-realm-map-avatar span {
   font-size: 12px;
   font-weight: 800;
+}
+
+.cq-realm-map-avatar::after {
+  content: "";
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #34d399;
+  border: 1.5px solid #061224;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.7);
 }
 
 .cq-realm-map-bell__dot {
@@ -18686,7 +18700,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   flex: 1;
   border: none;
   background: transparent;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.92);
   outline: none;
@@ -19968,7 +19982,8 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 .cq-realm-map-top-chrome--immersive {
-  margin-top: 0.2rem;
+  margin-top: 0;
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .cq-realm-map-top-chrome--entered {
@@ -20011,15 +20026,15 @@ html[data-cq-map-exploring] .cq-realm-map-quick-actions {
 }
 
 html[data-cq-map-exploring] .cq-realm-map-filter {
-  transform: scale(0.88);
+  transform: none;
   transform-origin: top center;
-  opacity: 0.72;
-  gap: 0.2rem;
+  opacity: 1;
+  gap: 0.32rem;
 }
 
 html[data-cq-map-exploring] .cq-realm-map-filter-chip {
-  padding: 0.22rem 0.55rem;
-  font-size: 9px;
+  padding: 0.3rem 0.62rem;
+  font-size: 11px;
 }
 
 html[data-cq-map-exploring] .cq-realm-map-controls,
@@ -20695,17 +20710,15 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-realm-map-filter {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.38rem;
   margin: 0;
-  padding: 0.3rem;
-  border-radius: 9999px;
-  border: 1px solid rgba(75, 174, 255, 0.32);
-  background: rgba(5, 18, 40, 0.78);
-  box-shadow:
-    0 6px 22px rgba(0, 40, 90, 0.35),
-    0 0 24px rgba(0, 119, 255, 0.1);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -20727,12 +20740,16 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-realm-map-filter-chip {
   border-radius: 9999px;
-  padding: 0.32rem 0.62rem;
-  font-size: 11px;
+  padding: 0.34rem 0.72rem;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: rgba(216, 236, 255, 0.62);
+  color: rgba(226, 242, 255, 0.86);
   white-space: nowrap;
+  border: 1px solid rgba(90, 170, 255, 0.2);
+  background: rgba(6, 16, 36, 0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   transition: background-color 180ms ease, color 180ms ease, transform 120ms ease;
 }
 
@@ -25099,12 +25116,14 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   z-index: 20;
   display: flex;
   flex-direction: column;
+  height: auto;
+  min-height: 0;
   overflow: hidden;
   border: none;
   background: transparent;
   box-shadow: none;
   pointer-events: none;
-  transition: height 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: height 280ms cubic-bezier(0.22, 1, 0.36, 1), max-height 280ms cubic-bezier(0.22, 1, 0.36, 1);
   overscroll-behavior: contain;
 }
 
@@ -25116,6 +25135,10 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   transition: none;
 }
 
+.cq-realm-sheet--auto {
+  height: auto !important;
+}
+
 .cq-realm-sheet--collapsed {
   background: rgba(7, 18, 40, 0.78);
   border-radius: 1rem 1rem 0 0;
@@ -25125,20 +25148,20 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-realm-sheet__handle-hit {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.22rem;
-  min-height: 2.2rem;
-  padding: 0.5rem 1rem 0.18rem;
+  gap: 0.14rem;
+  min-height: 1.55rem;
+  padding: 0.32rem 1rem 0.08rem;
   touch-action: none;
   cursor: grab;
 }
 
 .cq-realm-sheet__handle {
-  width: 3.5rem;
-  height: 0.31rem;
+  width: 2.85rem;
+  height: 0.24rem;
   border-radius: 9999px;
   background: rgba(148, 178, 204, 0.5);
 }
@@ -25155,13 +25178,13 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-realm-sheet__body {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: hidden;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 0 0.7rem 0.35rem;
+  padding: 0 0.58rem 0.18rem;
 }
 
 .cq-realm-sheet--expanded .cq-realm-sheet__body {
@@ -25172,15 +25195,16 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-realm-sheet__split {
   display: grid;
   grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr);
-  gap: 0.5rem;
+  gap: 0.38rem;
   align-items: start;
 }
 
 .cq-rhody-highlights,
 .cq-discover-foryou {
   min-width: 0;
-  padding: 0.42rem 0.48rem 0.4rem;
-  border-radius: 0.85rem;
+  height: auto;
+  padding: 0.32rem 0.38rem 0.3rem;
+  border-radius: 0.72rem;
   border: 1px solid rgba(90, 170, 255, 0.34);
   background: rgba(7, 18, 40, 0.72);
   box-shadow: 0 8px 22px rgba(0, 12, 32, 0.28);
@@ -25192,9 +25216,9 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-discover-foryou__head {
   display: flex;
   align-items: center;
-  gap: 0.32rem;
-  min-height: 2.1rem;
-  margin-bottom: 0.32rem;
+  gap: 0.26rem;
+  min-height: 1.45rem;
+  margin-bottom: 0.2rem;
 }
 
 .cq-rhody-highlights__title,
@@ -25203,7 +25227,7 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   margin: 0;
   flex: 1;
   min-width: 0;
-  font-size: 0.64rem;
+  font-size: 0.58rem;
   font-weight: 800;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -25212,7 +25236,7 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-rhody-highlights__mark {
   width: auto;
-  height: 34px;
+  height: 26px;
   object-fit: contain;
   flex-shrink: 0;
   mix-blend-mode: screen;
@@ -25228,7 +25252,7 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-discover-foryou__list {
   display: flex;
   flex-direction: column;
-  gap: 0.28rem;
+  gap: 0.16rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -25238,17 +25262,17 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-discover-foryou__row {
   display: flex;
   align-items: center;
-  gap: 0.36rem;
+  gap: 0.3rem;
   width: 100%;
-  min-height: 2.45rem;
+  min-height: 0;
   text-align: left;
-  border-radius: 0.45rem;
-  padding: 0.04rem 0.02rem;
+  border-radius: 0.38rem;
+  padding: 0;
 }
 
 .cq-rhody-highlights__thumb {
   position: relative;
-  width: 3.2rem;
+  width: 3.35rem;
   aspect-ratio: 16 / 9;
   flex-shrink: 0;
   overflow: hidden;
@@ -25275,8 +25299,8 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-rhody-highlights__play::before {
   content: "";
   position: absolute;
-  width: 1.15rem;
-  height: 1.15rem;
+  width: 0.95rem;
+  height: 0.95rem;
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.94);
 }
@@ -25286,17 +25310,31 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   margin-left: 1px;
 }
 
+.cq-rhody-highlights__duration {
+  position: absolute;
+  right: 0.12rem;
+  bottom: 0.1rem;
+  z-index: 1;
+  border-radius: 0.18rem;
+  padding: 0.02rem 0.16rem;
+  font-size: 0.46rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: #fff;
+  background: rgba(4, 10, 22, 0.78);
+}
+
 .cq-rhody-highlights__copy,
 .cq-discover-foryou__copy {
   display: flex;
   min-width: 0;
   flex: 1;
   flex-direction: column;
-  gap: 0.02rem;
+  gap: 0.01rem;
 }
 
 .cq-rhody-highlights__sport {
-  font-size: 0.54rem;
+  font-size: 0.48rem;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -25305,10 +25343,10 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-rhody-highlights__name,
 .cq-discover-foryou__name {
-  font-size: 0.68rem;
+  font-size: 0.6rem;
   font-weight: 700;
   color: #f8fbff;
-  line-height: 1.15;
+  line-height: 1.12;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -25319,8 +25357,8 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-discover-foryou__meta,
 .cq-rhody-highlights__empty,
 .cq-discover-foryou__empty {
-  font-size: 0.58rem;
-  line-height: 1.25;
+  font-size: 0.5rem;
+  line-height: 1.2;
   color: rgba(176, 204, 230, 0.72);
 }
 
@@ -25334,8 +25372,8 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   display: inline-flex;
   align-items: center;
   gap: 0.15rem;
-  margin-top: 0.28rem;
-  font-size: 0.62rem;
+  margin-top: 0.18rem;
+  font-size: 0.56rem;
   font-weight: 700;
   color: #7dd3fc;
 }
@@ -25343,10 +25381,10 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-discover-foryou__survey {
   display: flex;
   flex-direction: column;
-  gap: 0.28rem;
-  margin-bottom: 0.28rem;
-  padding: 0.4rem 0.45rem 0.42rem;
-  border-radius: 0.65rem;
+  gap: 0.18rem;
+  margin-bottom: 0.18rem;
+  padding: 0.28rem 0.34rem 0.3rem;
+  border-radius: 0.55rem;
   border: 1px solid rgba(75, 174, 255, 0.28);
   background: linear-gradient(180deg, rgba(16, 52, 98, 0.58), rgba(8, 24, 56, 0.78));
 }
@@ -25359,31 +25397,31 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-discover-foryou__survey-row {
   display: flex;
   align-items: flex-start;
-  gap: 0.38rem;
+  gap: 0.3rem;
 }
 
 .cq-discover-foryou__survey-icon {
-  width: 0.95rem;
-  height: 0.95rem;
+  width: 0.82rem;
+  height: 0.82rem;
   flex-shrink: 0;
-  margin-top: 0.08rem;
+  margin-top: 0.06rem;
   color: #c4e7ff;
 }
 
 .cq-discover-foryou__survey-title {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 0.62rem;
   font-weight: 800;
   color: #f4fbff;
 }
 
 .cq-discover-foryou__survey-body {
-  margin: 0.12rem 0 0;
-  font-size: 0.58rem;
-  line-height: 1.32;
+  margin: 0.06rem 0 0;
+  font-size: 0.5rem;
+  line-height: 1.28;
   color: rgba(196, 222, 246, 0.8);
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -25391,16 +25429,16 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-discover-foryou__start {
   width: 100%;
   border-radius: 9999px;
-  padding: 0.28rem 0.7rem;
-  font-size: 0.66rem;
+  padding: 0.22rem 0.62rem;
+  font-size: 0.58rem;
   font-weight: 800;
   color: #fff;
-  background: linear-gradient(90deg, #3b9bff 0%, #7c5cff 100%);
+  background: linear-gradient(90deg, #7c5cff 0%, #3b9bff 100%);
   box-shadow: 0 6px 14px rgba(59, 155, 255, 0.26);
 }
 
 .cq-discover-foryou__reason {
-  font-size: 0.54rem;
+  font-size: 0.48rem;
   font-weight: 700;
   color: rgba(196, 181, 253, 0.92);
   white-space: nowrap;
@@ -25408,15 +25446,35 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   text-overflow: ellipsis;
 }
 
-.cq-discover-foryou__icon {
-  width: 1.35rem;
-  height: 1.35rem;
-  flex-shrink: 0;
-  border-radius: 0.38rem;
-  background: rgba(59, 155, 255, 0.28);
+.cq-discover-foryou__reason--0 {
+  color: #86efac;
 }
 
-.cq-discover-foryou__icon--event {
+.cq-discover-foryou__reason--1 {
+  color: #fdba74;
+}
+
+.cq-discover-foryou__reason--2 {
+  color: #c4b5fd;
+}
+
+.cq-discover-foryou__reason--3 {
+  color: #7dd3fc;
+}
+
+.cq-discover-foryou__icon {
+  display: grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+  border-radius: 0.32rem;
+  background: rgba(59, 155, 255, 0.28);
+  color: #e8f6ff;
+}
+
+.cq-discover-foryou__icon--event,
+.cq-discover-foryou__icon--arts {
   background: rgba(167, 139, 250, 0.35);
 }
 
@@ -25424,25 +25482,30 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   background: rgba(52, 211, 153, 0.32);
 }
 
-.cq-discover-foryou__icon--place {
-  background: rgba(251, 191, 36, 0.28);
+.cq-discover-foryou__icon--place,
+.cq-discover-foryou__icon--people {
+  background: rgba(59, 155, 255, 0.32);
+}
+
+.cq-discover-foryou__icon--sport {
+  background: rgba(251, 146, 60, 0.34);
 }
 
 .cq-nearby-places {
-  margin-top: 0.48rem;
+  margin-top: 0.32rem;
 }
 
 .cq-nearby-places__title {
-  padding: 0 0.1rem 0.28rem;
+  padding: 0 0.08rem 0.16rem;
   text-shadow: 0 1px 8px rgba(0, 8, 24, 0.65);
 }
 
 .cq-nearby-places__scroller {
   display: flex;
-  gap: 0.38rem;
+  gap: 0.3rem;
   overflow-x: auto;
-  padding: 0.08rem 0.08rem 0.18rem;
-  margin: 0 -0.08rem;
+  padding: 0.04rem 0.04rem 0.08rem;
+  margin: 0 -0.04rem;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x;
@@ -25454,9 +25517,10 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-nearby-place-card {
   position: relative;
-  flex: 0 0 clamp(86px, 22.5vw, 104px);
-  width: clamp(86px, 22.5vw, 104px);
-  border-radius: 0.58rem;
+  flex: 0 0 21.5vw;
+  width: 21.5vw;
+  max-width: 96px;
+  border-radius: 0.48rem;
   overflow: hidden;
   background: rgba(8, 22, 48, 0.78);
   border: 1px solid rgba(75, 174, 255, 0.22);
@@ -25474,23 +25538,23 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-nearby-place-card__image {
   width: 100%;
-  height: 52px;
+  height: 38px;
   object-fit: cover;
   object-position: center;
   display: block;
   background: #0b1d38;
-  border-radius: 0.58rem 0.58rem 0 0;
+  border-radius: 0.48rem 0.48rem 0 0;
 }
 
 .cq-nearby-place-card__copy {
   display: flex;
   flex-direction: column;
-  gap: 0.02rem;
-  padding: 0.22rem 0.32rem 0.26rem;
+  gap: 0;
+  padding: 0.16rem 0.26rem 0.18rem;
 }
 
 .cq-nearby-place-card__name {
-  font-size: 0.68rem;
+  font-size: 0.58rem;
   font-weight: 800;
   color: #f8fbff;
   white-space: nowrap;
@@ -25499,7 +25563,7 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-nearby-place-card__cat {
-  font-size: 0.56rem;
+  font-size: 0.48rem;
   color: rgba(176, 204, 230, 0.72);
   white-space: nowrap;
   overflow: hidden;
@@ -25509,11 +25573,17 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-nearby-place-card__walk {
   display: inline-flex;
   align-items: center;
-  gap: 0.14rem;
-  margin-top: 0.04rem;
-  font-size: 0.54rem;
+  gap: 0.12rem;
+  margin-top: 0.02rem;
+  font-size: 0.48rem;
   font-weight: 700;
   color: #4ade80;
+}
+
+.cq-nearby-place-card__walk-icon {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex-shrink: 0;
 }
 
 .cq-nearby-place-card__walk--pending {
@@ -25522,13 +25592,13 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-nearby-place-card__save {
   position: absolute;
-  top: 0.28rem;
-  right: 0.28rem;
+  top: 0.18rem;
+  right: 0.18rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1.4rem;
-  height: 1.4rem;
+  width: 1.15rem;
+  height: 1.15rem;
   border-radius: 9999px;
   background: rgba(4, 12, 28, 0.72);
   color: rgba(255, 255, 255, 0.82);
@@ -25541,20 +25611,34 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 @media (max-width: 389px) {
   .cq-realm-sheet__split {
     grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr);
-    gap: 0.42rem;
+    gap: 0.3rem;
+  }
+
+  .cq-rhody-highlights__title,
+  .cq-discover-foryou__title,
+  .cq-nearby-places__title {
+    font-size: 0.52rem;
   }
 
   .cq-nearby-place-card {
-    flex-basis: clamp(80px, 23vw, 96px);
-    width: clamp(80px, 23vw, 96px);
+    flex-basis: 23vw;
+    width: 23vw;
+    max-width: 92px;
+  }
+}
+
+@media (max-height: 720px) {
+  .cq-discover-foryou__survey-body {
+    -webkit-line-clamp: 1;
   }
 
-  .cq-nearby-place-card__image {
-    height: 46px;
+  .cq-rhody-highlights__name,
+  .cq-discover-foryou__name {
+    -webkit-line-clamp: 1;
   }
 }
 
 .cq-nearby-places__scroller::after {
   content: "";
-  flex: 0 0 0.7rem;
+  flex: 0 0 0.55rem;
 }

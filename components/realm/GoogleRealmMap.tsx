@@ -744,6 +744,7 @@ export function GoogleRealmMap({
   recommendationScoreById,
   extraBottomPx = 0,
   onUserFix,
+  onUserLocating,
   viewerAvatar = null,
   viewerName = null,
   unreadCount = 0,
@@ -786,6 +787,7 @@ export function GoogleRealmMap({
   recommendationScoreById?: Record<string, number>;
   extraBottomPx?: number;
   onUserFix?: (pos: { lat: number; lng: number; accuracy?: number | null } | null) => void;
+  onUserLocating?: (locating: boolean) => void;
   viewerAvatar?: string | null;
   viewerName?: string | null;
   unreadCount?: number;
@@ -928,6 +930,10 @@ export function GoogleRealmMap({
         : null,
     );
   }, [onUserFix, userLat, userLng, userAccuracy]);
+
+  useEffect(() => {
+    onUserLocating?.(geolocation.locating);
+  }, [onUserLocating, geolocation.locating]);
 
   const sheetOpen = Boolean(activeMarkerId) || routeSheetOpen;
   const forceChromeExpanded =

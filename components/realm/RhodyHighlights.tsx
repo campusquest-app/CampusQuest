@@ -2,6 +2,16 @@
 
 import { ChevronRight, Play } from "lucide-react";
 import type { AthleticsHighlight } from "@/lib/realm/discoverySheet";
+import { openExternalUrl } from "@/lib/client/capacitorNative";
+
+function openHighlight(item: AthleticsHighlight, onViewAthletics?: () => void) {
+  const target = item.url?.trim() || item.broadcastUrl?.trim() || "";
+  if (target) {
+    void openExternalUrl(target);
+    return;
+  }
+  onViewAthletics?.();
+}
 
 export function RhodyHighlights({
   items,
@@ -28,13 +38,36 @@ export function RhodyHighlights({
       <ul className="cq-rhody-highlights__list">
         {items.map((item) => (
           <li key={item.id}>
-            <button type="button" className="cq-rhody-highlights__row" onClick={onViewAthletics}>
+            <button
+              type="button"
+              className="cq-rhody-highlights__row"
+              aria-label={item.playable ? `Play ${item.title}` : item.title}
+              onClick={() => openHighlight(item, onViewAthletics)}
+            >
               <span className="cq-rhody-highlights__thumb">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={item.imageUrl ?? "/quad-feed/gym.jpg"} alt="" loading="lazy" />
+                <img
+                  src={item.imageUrl ?? "/quad-feed/gym.jpg"}
+                  alt=""
+                  loading="lazy"
+                  onError={(event) => {
+                    const img = event.currentTarget;
+                    const fallback = item.imageFallbackUrl?.trim();
+                    if (fallback && img.src !== fallback) {
+                      img.src = fallback;
+                      return;
+                    }
+                    if (!img.src.endsWith("/quad-feed/gym.jpg")) {
+                      img.src = "/quad-feed/gym.jpg";
+                    }
+                  }}
+                />
                 <span className="cq-rhody-highlights__play" aria-hidden>
-                  <Play className="h-3 w-3" fill="currentColor" strokeWidth={0} />
+                  <Play className="h-2.5 w-2.5" fill="currentColor" strokeWidth={0} />
                 </span>
+                {item.durationLabel ? (
+                  <span className="cq-rhody-highlights__duration">{item.durationLabel}</span>
+                ) : null}
               </span>
               <span className="cq-rhody-highlights__copy">
                 <span className="cq-rhody-highlights__sport">{item.sport}</span>

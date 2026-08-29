@@ -6,21 +6,39 @@ import {
   placeCardImageAlt,
   placeCardImageObjectPosition,
 } from "@/lib/realm/placeImages";
+import {
+  RHODY_YOUTUBE_HIGHLIGHTS,
+  youtubeThumbnailFallbackUrl,
+  youtubeThumbnailUrl,
+  youtubeWatchUrl,
+  type RhodyYoutubeHighlightSource,
+} from "@/lib/realm/rhodyYoutubeHighlights";
 
 export { placeCardImage, placeCardImageAlt, placeCardImageObjectPosition };
 
 export type DiscoverySheetSnap = "collapsed" | "default" | "expanded";
 
-export type DiscoverySheetSnaps = Record<DiscoverySheetSnap, number>;
+export type DiscoverySheetSnaps = Record<DiscoverySheetSnap, number> & {
+  defaultMax: number;
+};
+
+export type WalkTimeStatus = "ready" | "locating" | "unavailable";
 
 export type AthleticsHighlight = {
   id: string;
+  type: "athletics" | "youtube" | "placeholder";
   title: string;
   sport: string;
   opponent: string | null;
   timeLabel: string | null;
+  durationLabel: string | null;
   imageUrl: string | null;
+  /** hqdefault (or similar) when primary YouTube maxres thumbnail fails. */
+  imageFallbackUrl: string | null;
   broadcastUrl: string | null;
+  youtubeVideoId: string | null;
+  /** Preferred external open URL (YouTube watch link, broadcast, etc.). */
+  url: string | null;
   playable: boolean;
 };
 
@@ -44,6 +62,13 @@ export type WalkOrigin = {
 };
 
 const WALK_METERS_PER_MINUTE = 80;
+/** Kingston core only — a ~5km GPS fix must not produce campus walk ETAs. */
+const CAMPUS_WALK_LAT_MIN = 41.482;
+const CAMPUS_WALK_LAT_MAX = 41.492;
+const CAMPUS_WALK_LNG_MIN = -71.536;
+const CAMPUS_WALK_LNG_MAX = -71.524;
+const MAX_CAMPUS_WALK_METERS = 1600;
+const MAX_CAMPUS_WALK_MINUTES = 18;
 const SAVED_PLACES_KEY = "cq_realm_saved_places_v1";
 
 const ATHLETICS_FALLBACK_IMAGES = [
@@ -75,14 +100,16 @@ export function discoverySheetSnaps(
   const usable = Math.max(360, h - Math.max(0, navClearancePx));
   const maxH = Math.max(200, usable - Math.max(96, topReservePx));
   const collapsed = clamp(Math.round(usable * 0.1), 64, 88);
-  const defaultMax = clamp(Math.round(usable * 0.42), 250, maxH);
+  const defaultMax = clamp(Math.round(usable * 0.34), 220, maxH);
+  const contentCap = clamp(Math.round(usable * 0.4), defaultMax, maxH);
   const defaultH =
     contentHeightPx != null && Number.isFinite(contentHeightPx)
-      ? clamp(Math.round(contentHeightPx), collapsed + 72, defaultMax)
+      ? clamp(Math.round(contentHeightPx), collapsed + 72, contentCap)
       : defaultMax;
   return {
     collapsed,
     default: defaultH,
+    defaultMax,
     expanded: clamp(Math.round(usable * 0.86), defaultH + 40, maxH),
   };
 }
@@ -134,7 +161,12 @@ export function isCampusWalkOrigin(origin: WalkOrigin | null | undefined): origi
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
   if (Math.abs(lat) > 60 || Math.abs(lng) < 20) return false;
   if (accuracy != null && Number.isFinite(accuracy) && accuracy > 350) return false;
-  return lat > 41.46 && lat < 41.52 && lng > -71.56 && lng < -71.5;
+  return (
+    lat >= CAMPUS_WALK_LAT_MIN &&
+    lat <= CAMPUS_WALK_LAT_MAX &&
+    lng >= CAMPUS_WALK_LNG_MIN &&
+    lng <= CAMPUS_WALK_LNG_MAX
+  );
 }
 
 export function walkingMinutesBetween(
@@ -142,7 +174,27 @@ export function walkingMinutesBetween(
   to: { lat: number; lng: number },
 ): number | null {
   if (!isCampusWalkOrigin(from)) return null;
-  return walkingMinutesFromMeters(distanceMeters(from, to));
+  if (!Number.isFinite(to.lat) || !Number.isFinite(to.lng)) return null;
+  const meters = distanceMeters(from, to);
+  if (meters > MAX_CAMPUS_WALK_METERS) return null;
+  const minutes = walkingMinutesFromMeters(meters);
+  if (minutes > MAX_CAMPUS_WALK_MINUTES) return null;
+  return minutes;
+}
+
+export function campusWalkTimeStatus(
+  origin: WalkOrigin | null | undefined,
+  locating: boolean,
+): WalkTimeStatus {
+  if (isCampusWalkOrigin(origin)) return "ready";
+  if (locating && !origin) return "locating";
+  return "unavailable";
+}
+
+export function walkTimeLabel(minutes: number | null, status: WalkTimeStatus): string {
+  if (minutes != null) return `${minutes} min walk`;
+  if (status === "locating") return "Locating…";
+  return "Walk time unavailable";
 }
 
 export function placeCategoryLabel(markerId: string, category?: string | null): string {
@@ -238,13 +290,18 @@ export function collectAthleticsHighlights(
       const opponent = event.opponent?.trim() || null;
       rows.push({
         id,
+        type: "athletics",
         title: athleticsDisplayTitle(event.title, opponent),
         sport,
         opponent,
         timeLabel: eventTimeShort(event.startsAt, now),
+        durationLabel: null,
         imageUrl: event.imageUrl?.trim() || athleticsFallbackImage(sport, rows.length),
+        imageFallbackUrl: null,
         broadcastUrl: event.broadcastUrl ?? null,
-        playable: Boolean(event.broadcastUrl?.trim()),
+        youtubeVideoId: null,
+        url: event.broadcastUrl?.trim() || event.eventUrl?.trim() || null,
+        playable: Boolean(event.broadcastUrl?.trim() || event.eventUrl?.trim()),
         startMs,
       });
     }
@@ -258,19 +315,61 @@ export function collectAthleticsHighlights(
   return rows.slice(0, limit).map(({ startMs: _start, ...row }) => row);
 }
 
-/** Keep the target 3-row athletics card even when no games have loaded. */
-export function athleticsHighlightSlots(items: AthleticsHighlight[], limit = 3): AthleticsHighlight[] {
-  if (items.length > 0) return items.slice(0, limit);
-  return ATHLETICS_FALLBACK_IMAGES.slice(0, limit).map((imageUrl, index) => ({
-    id: `athletics-slot-${index}`,
-    title: "Rhody highlights will appear here",
-    sport: index === 0 ? "Athletics" : index === 1 ? "Upcoming" : "Results",
+export function youtubeSourceToHighlight(source: RhodyYoutubeHighlightSource): AthleticsHighlight {
+  const duration = source.duration?.trim() || null;
+  return {
+    id: `youtube:${source.youtubeVideoId}`,
+    type: "youtube",
+    title: source.title,
+    sport: source.category,
     opponent: null,
     timeLabel: null,
-    imageUrl,
-    broadcastUrl: null,
-    playable: false,
-  }));
+    durationLabel: duration,
+    imageUrl: youtubeThumbnailUrl(source.youtubeVideoId),
+    imageFallbackUrl: youtubeThumbnailFallbackUrl(source.youtubeVideoId),
+    broadcastUrl: youtubeWatchUrl(source.youtubeVideoId),
+    youtubeVideoId: source.youtubeVideoId,
+    url: youtubeWatchUrl(source.youtubeVideoId),
+    playable: true,
+  };
+}
+
+/** Curated YouTube rows first, then live athletics, then structural placeholders. */
+export function buildRhodyHighlights(
+  groups: Array<Pick<GroupedMapLocation, "events">>,
+  now = new Date(),
+  limit = 3,
+  youtubeSources: readonly RhodyYoutubeHighlightSource[] = RHODY_YOUTUBE_HIGHLIGHTS,
+): AthleticsHighlight[] {
+  const youtube = youtubeSources.slice(0, limit).map(youtubeSourceToHighlight);
+  const remaining = Math.max(0, limit - youtube.length);
+  const athletics = remaining > 0 ? collectAthleticsHighlights(groups, now, remaining) : [];
+  return athleticsHighlightSlots([...youtube, ...athletics], limit);
+}
+
+/** Keep the target 3-row athletics card even when no games have loaded. */
+export function athleticsHighlightSlots(items: AthleticsHighlight[], limit = 3): AthleticsHighlight[] {
+  const filled = items.slice(0, limit);
+  if (filled.length >= limit) return filled;
+  const pads = ATHLETICS_FALLBACK_IMAGES.slice(0, limit - filled.length).map((imageUrl, index) => {
+    const slot = filled.length + index;
+    return {
+      id: `athletics-slot-${slot}`,
+      type: "placeholder" as const,
+      title: "Rhody highlights will appear here",
+      sport: slot === 0 ? "Athletics" : slot === 1 ? "Upcoming" : "Results",
+      opponent: null,
+      timeLabel: null,
+      durationLabel: null,
+      imageUrl,
+      imageFallbackUrl: null,
+      broadcastUrl: null,
+      youtubeVideoId: null,
+      url: null,
+      playable: false,
+    };
+  });
+  return [...filled, ...pads];
 }
 
 export function compactDiscoveryReason(reasonLabel: string | null | undefined, happeningToday = false): string {
