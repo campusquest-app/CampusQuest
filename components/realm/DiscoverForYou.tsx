@@ -16,6 +16,26 @@ export function DiscoverForYou({
   onOpenItem?: (item: MapRecommendationItem) => void;
 }) {
   const rows = items.slice(0, 4);
+  const slots: Array<{
+    id: string;
+    kind: MapRecommendationItem["kind"];
+    title: string;
+    locationName: string;
+    timeLabel: string | null;
+    reasonLabel: string | null;
+    happeningToday: boolean;
+  }> =
+    rows.length > 0
+      ? rows
+      : Array.from({ length: 4 }, (_, index) => ({
+          id: `discover-slot-${index}`,
+          kind: "event",
+          title: "Recommendations will appear here",
+          locationName: "Campus",
+          timeLabel: null,
+          reasonLabel: "Recommended for you",
+          happeningToday: false,
+        }));
   return (
     <section className="cq-discover-foryou" aria-label="Discover For You">
       <header className="cq-discover-foryou__head">
@@ -41,13 +61,19 @@ export function DiscoverForYou({
         </button>
       </div>
 
-      {rows.length === 0 ? (
-        <p className="cq-discover-foryou__empty">Personalized picks appear as events are published.</p>
-      ) : (
-        <ul className="cq-discover-foryou__list">
-          {rows.map((item) => (
+      <ul className="cq-discover-foryou__list">
+        {slots.map((item) => {
+          const liveItem = rows.find((row) => row.id === item.id) ?? null;
+          return (
             <li key={item.id}>
-              <button type="button" className="cq-discover-foryou__row" onClick={() => onOpenItem?.(item)}>
+              <button
+                type="button"
+                className="cq-discover-foryou__row"
+                onClick={() => {
+                  if (liveItem) onOpenItem?.(liveItem);
+                  else onViewAll?.();
+                }}
+              >
                 <span className={`cq-discover-foryou__icon cq-discover-foryou__icon--${item.kind}`} aria-hidden />
                 <span className="cq-discover-foryou__copy">
                   <span className="cq-discover-foryou__reason">
@@ -61,9 +87,9 @@ export function DiscoverForYou({
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/35" strokeWidth={2} />
               </button>
             </li>
-          ))}
-        </ul>
-      )}
+          );
+        })}
+      </ul>
       <button type="button" className="cq-discover-foryou__cta" onClick={onViewAll}>
         View All Recommendations
         <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.2} />

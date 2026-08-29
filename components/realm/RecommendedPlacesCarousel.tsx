@@ -40,9 +40,9 @@ export function RecommendedPlacesCarousel({
                 <span className="cq-nearby-place-card__copy">
                   <span className="cq-nearby-place-card__name">{item.name}</span>
                   <span className="cq-nearby-place-card__cat">{item.categoryLabel}</span>
-                  <span className="cq-nearby-place-card__walk">
+                  <span className={`cq-nearby-place-card__walk${item.walkMinutes == null ? " cq-nearby-place-card__walk--pending" : ""}`}>
                     <Footprints className="h-3 w-3" strokeWidth={2.4} aria-hidden />
-                    {item.walkMinutes} min walk
+                    {item.walkMinutes == null ? "Walk time unavailable" : `${item.walkMinutes} min walk`}
                   </span>
                 </span>
               </button>

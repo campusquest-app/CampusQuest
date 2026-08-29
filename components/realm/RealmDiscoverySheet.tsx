@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { ChevronUp } from "lucide-react";
 import {
+  athleticsHighlightSlots,
   collectAthleticsHighlights,
   cycleDiscoverySnap,
   discoverySheetSnaps,
@@ -45,6 +46,7 @@ export function RealmDiscoverySheet({
 }) {
   const sheetRef = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<HTMLElement>(null);
   const dragRef = useRef<{
     pointerId: number;
     startY: number;
@@ -56,10 +58,14 @@ export function RealmDiscoverySheet({
   } | null>(null);
   const [viewportH, setViewportH] = useState(() => (typeof window === "undefined" ? 844 : window.innerHeight));
   const [navClearancePx, setNavClearancePx] = useState(88);
+  const [contentHeightPx, setContentHeightPx] = useState<number | null>(null);
   const [dragHeight, setDragHeight] = useState<number | null>(null);
   const [savedIds, setSavedIds] = useState<Set<string>>(() => readSavedPlaceIds());
 
-  const snaps = useMemo(() => discoverySheetSnaps(viewportH, 88, navClearancePx), [viewportH, navClearancePx]);
+  const snaps = useMemo(
+    () => discoverySheetSnaps(viewportH, 120, navClearancePx, contentHeightPx ?? undefined),
+    [viewportH, navClearancePx, contentHeightPx],
+  );
   const height = dragHeight ?? snaps[snap];
 
   useEffect(() => {
@@ -80,11 +86,22 @@ export function RealmDiscoverySheet({
     };
   }, []);
 
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    const handle = handleRef.current;
+    if (!body) return;
+    const next = Math.round(body.scrollHeight + (handle?.offsetHeight ?? 28));
+    setContentHeightPx((prev) => (prev === next ? prev : next));
+  }, [items, groups, nearbyPlaces, snap]);
+
   useEffect(() => {
     onHeightChange?.(snaps[snap]);
   }, [onHeightChange, snap, snaps]);
 
-  const athletics = useMemo(() => collectAthleticsHighlights(groups), [groups]);
+  const athletics = useMemo(
+    () => athleticsHighlightSlots(collectAthleticsHighlights(groups)),
+    [groups],
+  );
   const forYouRows = useMemo(
     () => items.filter((item) => item.kind !== "place").slice(0, 4),
     [items],
@@ -138,24 +155,16 @@ export function RealmDiscoverySheet({
     }
   };
 
-  const onBodyTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-    const el = bodyRef.current;
-    if (!el || snap !== "expanded") return;
-    if (el.scrollTop > 0) return;
-    const target = event.target as HTMLElement | null;
-    if (target?.closest("[data-cq-horizontal-scroll='true']")) return;
-  };
-
   return (
     <section
       ref={sheetRef}
       className={`cq-realm-sheet cq-realm-sheet--${snap}${dragHeight != null ? " cq-realm-sheet--dragging" : ""}`}
       style={{ height }}
       aria-label="Campus discovery"
-      aria-expanded={snap !== "collapsed"}
       data-no-drawer-swipe="true"
     >
       <header
+        ref={handleRef}
         className="cq-realm-sheet__handle-hit"
         data-cq-gesture-block="all"
         onPointerDown={onHandlePointerDown}
@@ -179,11 +188,7 @@ export function RealmDiscoverySheet({
         ) : null}
       </header>
       {snap !== "collapsed" ? (
-        <div
-          ref={bodyRef}
-          className="cq-realm-sheet__body"
-          onTouchStart={onBodyTouchStart}
-        >
+        <div ref={bodyRef} className="cq-realm-sheet__body">
           <div className="cq-realm-sheet__split">
             <RhodyHighlights items={athletics} onViewAthletics={onViewAthletics} />
             <DiscoverForYou

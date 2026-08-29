@@ -9,6 +9,7 @@ import {
 } from "@/lib/realm/placeImages";
 
 const SUPPLIED_IDS = [
+  "library",
   "the-quad",
   "business-building",
   "memorial-union",
@@ -32,18 +33,23 @@ describe("canonical URI place images", () => {
   });
 
   it("does not invent photos for locations that were not supplied", () => {
-    expect(placeCardImage("library")).toBe("/maps/uri-campus-map.png");
+    expect(placeCardImage("library")).toBe("/images/places/uri/carothers-library.jpg");
     expect(placeCardImage("library")).not.toMatch(/\/quad-feed\/library/);
     expect(placeCardImage("engineering-hall")).not.toMatch(/group-study/);
     expect(placeCardImage("engineering-hall")).not.toMatch(/\/maps\/uri-campus-map/);
     expect(placeCardImage("the-quad")).not.toMatch(/uri-campus-map-fantasy/);
+    expect(placeCardImage("rams-den")).toBe("/maps/uri-campus-map.png");
   });
 
   it("rejects cartoon icon fallbacks in favor of the canonical photo", () => {
     expect(placeCardImage("the-quad", "/icons/locations/the-quad.png")).toBe(
       "/images/places/uri/uri-quad.jpg",
     );
+    expect(placeCardImage("library", "/icons/locations/library.png")).toBe(
+      "/images/places/uri/carothers-library.jpg",
+    );
     expect(placeCardImageAlt("library")).toMatch(/Carothers Library/);
+    expect(placeCardImageObjectPosition("library")).toBe("center 42%");
     expect(placeCardImageObjectPosition("rec-center")).toBe("38% 48%");
     expect(placeCardImageObjectPosition("engineering-hall")).toBe("center 48%");
     expect(placeCardImage("engineering-hall")).toBe("/images/places/uri/fascitelli-engineering.jpg");

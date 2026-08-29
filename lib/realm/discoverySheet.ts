@@ -1,5 +1,5 @@
 import type { GroupedMapLocation, MapEventPin } from "@/lib/mapLocationGroups";
-import { distanceMeters, REALM_HEART_OF_CAMPUS } from "@/lib/realm/realmFirstOpen";
+import { distanceMeters } from "@/lib/realm/realmFirstOpen";
 import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
 import {
   placeCardImage,
@@ -32,9 +32,15 @@ export type NearbyPlaceCard = {
   imageUrl: string;
   imageAlt: string;
   imageObjectPosition: string;
-  walkMinutes: number;
+  walkMinutes: number | null;
   lat: number;
   lng: number;
+};
+
+export type WalkOrigin = {
+  lat: number;
+  lng: number;
+  accuracy?: number | null;
 };
 
 const WALK_METERS_PER_MINUTE = 80;
@@ -61,18 +67,23 @@ const PLACE_CATEGORY_LABEL: Record<string, string> = {
 
 export function discoverySheetSnaps(
   viewportHeight: number,
-  topReservePx = 88,
+  topReservePx = 120,
   navClearancePx = 88,
+  contentHeightPx?: number,
 ): DiscoverySheetSnaps {
   const h = Math.max(480, viewportHeight);
   const usable = Math.max(360, h - Math.max(0, navClearancePx));
-  const maxH = Math.max(160, usable - Math.max(0, topReservePx - navClearancePx));
-  const mapShare = clamp(Math.round(usable * 0.45), 280, usable - 220);
-  const defaultH = clamp(usable - mapShare, 240, maxH);
+  const maxH = Math.max(200, usable - Math.max(96, topReservePx));
+  const collapsed = clamp(Math.round(usable * 0.1), 64, 88);
+  const defaultMax = clamp(Math.round(usable * 0.42), 250, maxH);
+  const defaultH =
+    contentHeightPx != null && Number.isFinite(contentHeightPx)
+      ? clamp(Math.round(contentHeightPx), collapsed + 72, defaultMax)
+      : defaultMax;
   return {
-    collapsed: clamp(Math.round(usable * 0.11), 68, 96),
+    collapsed,
     default: defaultH,
-    expanded: clamp(Math.round(usable * 0.92), defaultH + 48, maxH),
+    expanded: clamp(Math.round(usable * 0.86), defaultH + 40, maxH),
   };
 }
 
@@ -116,12 +127,22 @@ export function walkingMinutesFromMeters(meters: number): number {
   return Math.max(1, Math.round(meters / WALK_METERS_PER_MINUTE));
 }
 
+/** Kingston campus bbox — reject off-campus / swapped / coarse GPS for walk ETAs. */
+export function isCampusWalkOrigin(origin: WalkOrigin | null | undefined): origin is WalkOrigin {
+  if (!origin) return false;
+  const { lat, lng, accuracy } = origin;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (Math.abs(lat) > 60 || Math.abs(lng) < 20) return false;
+  if (accuracy != null && Number.isFinite(accuracy) && accuracy > 350) return false;
+  return lat > 41.46 && lat < 41.52 && lng > -71.56 && lng < -71.5;
+}
+
 export function walkingMinutesBetween(
-  from: { lat: number; lng: number } | null,
+  from: WalkOrigin | null,
   to: { lat: number; lng: number },
-): number {
-  const origin = from && Number.isFinite(from.lat) && Number.isFinite(from.lng) ? from : REALM_HEART_OF_CAMPUS;
-  return walkingMinutesFromMeters(distanceMeters(origin, to));
+): number | null {
+  if (!isCampusWalkOrigin(from)) return null;
+  return walkingMinutesFromMeters(distanceMeters(from, to));
 }
 
 export function placeCategoryLabel(markerId: string, category?: string | null): string {
@@ -175,6 +196,9 @@ export function buildNearbyPlaceCardsFromLandmarks(
   }));
   scored.sort((a, b) => {
     if (Boolean(a.major) !== Boolean(b.major)) return a.major ? -1 : 1;
+    if (a.walkMinutes == null && b.walkMinutes == null) return a.name.localeCompare(b.name);
+    if (a.walkMinutes == null) return 1;
+    if (b.walkMinutes == null) return -1;
     return a.walkMinutes - b.walkMinutes;
   });
   return scored.slice(0, limit).map((landmark) => ({
@@ -232,6 +256,21 @@ export function collectAthleticsHighlights(
     return aUpcoming === 0 ? a.startMs - b.startMs : b.startMs - a.startMs;
   });
   return rows.slice(0, limit).map(({ startMs: _start, ...row }) => row);
+}
+
+/** Keep the target 3-row athletics card even when no games have loaded. */
+export function athleticsHighlightSlots(items: AthleticsHighlight[], limit = 3): AthleticsHighlight[] {
+  if (items.length > 0) return items.slice(0, limit);
+  return ATHLETICS_FALLBACK_IMAGES.slice(0, limit).map((imageUrl, index) => ({
+    id: `athletics-slot-${index}`,
+    title: "Rhody highlights will appear here",
+    sport: index === 0 ? "Athletics" : index === 1 ? "Upcoming" : "Results",
+    opponent: null,
+    timeLabel: null,
+    imageUrl,
+    broadcastUrl: null,
+    playable: false,
+  }));
 }
 
 export function compactDiscoveryReason(reasonLabel: string | null | undefined, happeningToday = false): string {

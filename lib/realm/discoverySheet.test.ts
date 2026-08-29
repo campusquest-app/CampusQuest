@@ -11,22 +11,31 @@ import {
   placeCategoryLabel,
   snapFromVelocity,
   walkingMinutesFromMeters,
+  walkingMinutesBetween,
+  isCampusWalkOrigin,
+  athleticsHighlightSlots,
 } from "@/lib/realm/discoverySheet";
 import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
 
 describe("discovery sheet snaps", () => {
-  it("leaves about 42–45% of the usable map height above the default sheet", () => {
+  it("keeps the default overlay under half the usable height so the map stays dominant", () => {
     const viewport = 844;
     const nav = 88;
-    const snaps = discoverySheetSnaps(viewport, 88, nav);
+    const snaps = discoverySheetSnaps(viewport, 120, nav);
     const usable = viewport - nav;
     const mapShare = usable - snaps.default;
-    expect(snaps.collapsed).toBeGreaterThanOrEqual(68);
-    expect(snaps.collapsed).toBeLessThanOrEqual(110);
+    expect(snaps.collapsed).toBeGreaterThanOrEqual(64);
+    expect(snaps.collapsed).toBeLessThanOrEqual(96);
     expect(snaps.default).toBeGreaterThan(snaps.collapsed);
     expect(snaps.expanded).toBeGreaterThan(snaps.default);
-    expect(mapShare / usable).toBeGreaterThanOrEqual(0.42);
-    expect(mapShare / usable).toBeLessThanOrEqual(0.48);
+    expect(mapShare / usable).toBeGreaterThanOrEqual(0.5);
+    expect(snaps.default / usable).toBeLessThanOrEqual(0.45);
+  });
+
+  it("hugs measured content instead of stretching a tall empty panel", () => {
+    const snaps = discoverySheetSnaps(844, 120, 88, 280);
+    expect(snaps.default).toBe(280);
+    expect(snaps.default).toBeLessThan(discoverySheetSnaps(844, 120, 88).default);
   });
 
   it("picks the nearest snap and honors flick velocity", () => {
@@ -44,6 +53,16 @@ describe("walking estimates", () => {
     expect(walkingMinutesFromMeters(0)).toBe(1);
     expect(walkingMinutesFromMeters(160)).toBe(2);
     expect(walkingMinutesFromMeters(400)).toBe(5);
+  });
+
+  it("only reports walk time from a precise on-campus GPS fix", () => {
+    const library = { lat: 41.4865, lng: -71.5301 };
+    expect(isCampusWalkOrigin({ lat: 41.4862, lng: -71.5309 })).toBe(true);
+    expect(walkingMinutesBetween({ lat: 41.4862, lng: -71.5309 }, library)).toBeGreaterThan(0);
+    expect(walkingMinutesBetween(null, library)).toBeNull();
+    expect(walkingMinutesBetween({ lat: 41.7, lng: -71.4 }, library)).toBeNull();
+    expect(walkingMinutesBetween({ lat: -71.5309, lng: 41.4862 }, library)).toBeNull();
+    expect(walkingMinutesBetween({ lat: 41.4862, lng: -71.5309, accuracy: 5000 }, library)).toBeNull();
   });
 });
 
@@ -73,6 +92,7 @@ describe("nearby place cards", () => {
     expect(cards).toHaveLength(1);
     expect(cards[0]?.categoryLabel).toBe("Study • Resources");
     expect(cards[0]?.walkMinutes).toBeGreaterThan(0);
+    expect(buildNearbyPlaceCards(items, null, 4)[0]?.walkMinutes).toBeNull();
     expect(placeCategoryLabel("library")).not.toMatch(/interested/i);
   });
 
@@ -107,6 +127,7 @@ describe("nearby place cards", () => {
 
   it("maps supplied URI photos by stable location id", () => {
     expect(placeCardImage("the-quad")).toBe("/images/places/uri/uri-quad.jpg");
+    expect(placeCardImage("library")).toBe("/images/places/uri/carothers-library.jpg");
     expect(placeCardImage("library")).not.toMatch(/\/quad-feed\/|\/icons\/locations\//);
     expect(placeCardImage("engineering-hall")).not.toMatch(/\/quad-feed\/|\/icons\/locations\//);
     expect(placeCardImage("business-building")).toBe("/images/places/uri/ballentine-business.jpg");
@@ -114,7 +135,6 @@ describe("nearby place cards", () => {
     expect(placeCardImage("butterfield-dining")).toBe("/images/places/uri/butterfield-dining.jpg");
     expect(placeCardImage("rec-center")).toBe("/images/places/uri/fascitelli-fitness.jpg");
     expect(placeCardImage("mainfare-dining")).toBe("/images/places/uri/hope-commons-mainfare.jpg");
-    expect(placeCardImage("library")).toBe("/maps/uri-campus-map.png");
     expect(placeCardImage("engineering-hall")).toBe("/images/places/uri/fascitelli-engineering.jpg");
     expect(placeCardImage("engineering-hall")).not.toMatch(/fascitelli-fitness/);
     expect(placeCardImage("the-quad", "/icons/locations/the-quad.png")).toBe("/images/places/uri/uri-quad.jpg");
@@ -169,6 +189,12 @@ describe("athletics highlights", () => {
     expect(rows[0]?.title).toBe("URI vs. Dayton");
     expect(rows[0]?.sport).toBe("Women's Soccer");
     expect(rows[1]?.title).toBe("URI vs. Holy Cross");
+  });
+
+  it("keeps three athletics rows when no games have loaded", () => {
+    const slots = athleticsHighlightSlots([]);
+    expect(slots).toHaveLength(3);
+    expect(slots[0]?.title).not.toMatch(/Villanova|UMass|Dayton/i);
   });
 });
 

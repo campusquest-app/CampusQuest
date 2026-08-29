@@ -25,32 +25,26 @@ export function RhodyHighlights({
           <ChevronRight className="h-4 w-4" strokeWidth={2.2} />
         </button>
       </header>
-      {items.length === 0 ? (
-        <p className="cq-rhody-highlights__empty">Rhody games and results will show here.</p>
-      ) : (
-        <ul className="cq-rhody-highlights__list">
-          {items.map((item) => (
-            <li key={item.id}>
-              <button type="button" className="cq-rhody-highlights__row" onClick={onViewAthletics}>
-                <span className="cq-rhody-highlights__thumb">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={item.imageUrl ?? "/quad-feed/gym.jpg"} alt="" loading="lazy" />
-                  {item.playable ? (
-                    <span className="cq-rhody-highlights__play" aria-hidden>
-                      <Play className="h-3 w-3" fill="currentColor" strokeWidth={0} />
-                    </span>
-                  ) : null}
+      <ul className="cq-rhody-highlights__list">
+        {items.map((item) => (
+          <li key={item.id}>
+            <button type="button" className="cq-rhody-highlights__row" onClick={onViewAthletics}>
+              <span className="cq-rhody-highlights__thumb">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={item.imageUrl ?? "/quad-feed/gym.jpg"} alt="" loading="lazy" />
+                <span className="cq-rhody-highlights__play" aria-hidden>
+                  <Play className="h-3 w-3" fill="currentColor" strokeWidth={0} />
                 </span>
-                <span className="cq-rhody-highlights__copy">
-                  <span className="cq-rhody-highlights__sport">{item.sport}</span>
-                  <span className="cq-rhody-highlights__name">{item.title}</span>
-                  {item.timeLabel ? <span className="cq-rhody-highlights__time">{item.timeLabel}</span> : null}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+              </span>
+              <span className="cq-rhody-highlights__copy">
+                <span className="cq-rhody-highlights__sport">{item.sport}</span>
+                <span className="cq-rhody-highlights__name">{item.title}</span>
+                {item.timeLabel ? <span className="cq-rhody-highlights__time">{item.timeLabel}</span> : null}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
       <button type="button" className="cq-rhody-highlights__cta" onClick={onViewAthletics}>
         View Athletics →
       </button>

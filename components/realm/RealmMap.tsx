@@ -261,7 +261,7 @@ export function RealmMap({
   const [discoveryPadPx, setDiscoveryPadPx] = useState(() =>
     typeof window === "undefined" ? 420 : discoverySheetSnaps(window.innerHeight).default,
   );
-  const [userFix, setUserFix] = useState<{ lat: number; lng: number } | null>(null);
+  const [userFix, setUserFix] = useState<{ lat: number; lng: number; accuracy?: number | null } | null>(null);
   const recProfile = useRecommendationProfile(personalization);
   const focusSeqRef = useRef(0);
   const pendingWalkAfterFocusRef = useRef(false);
@@ -853,10 +853,18 @@ export function RealmMap({
     [recommendationLandmarks, userFix],
   );
 
-  const handleUserFix = useCallback((pos: { lat: number; lng: number } | null) => {
+  const handleUserFix = useCallback((pos: { lat: number; lng: number; accuracy?: number | null } | null) => {
     setUserFix((prev) => {
       if (!pos && !prev) return prev;
-      if (pos && prev && pos.lat === prev.lat && pos.lng === prev.lng) return prev;
+      if (
+        pos &&
+        prev &&
+        pos.lat === prev.lat &&
+        pos.lng === prev.lng &&
+        pos.accuracy === prev.accuracy
+      ) {
+        return prev;
+      }
       return pos;
     });
   }, []);

@@ -12,6 +12,7 @@ const ILLEGITIMATE_PLACE_PHOTO = /\/icons\/locations\/|uri-campus-map-fantasy/;
 
 /** Supplied URI photographs. Locations without a supplied photo are omitted. */
 export const PLACE_IMAGES: Record<string, string> = {
+  library: "/images/places/uri/carothers-library.jpg",
   "business-building": "/images/places/uri/ballentine-business.jpg",
   "memorial-union": "/images/places/uri/memorial-union.jpg",
   "the-quad": "/images/places/uri/uri-quad.jpg",
@@ -23,6 +24,7 @@ export const PLACE_IMAGES: Record<string, string> = {
 
 /** CSS object-position so cover-crops keep the building in frame. */
 export const PLACE_IMAGE_OBJECT_POSITION: Record<string, string> = {
+  library: "center 42%",
   "business-building": "center 40%",
   "memorial-union": "center 42%",
   "the-quad": "center 52%",
