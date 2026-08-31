@@ -18044,17 +18044,18 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   word-break: break-word;
 }
 
-/* —— Tabs with sliding underline + animated weight —— */
+/* —— Profile content tabs (Posts / Tagged / Memories / Activity) —— */
 .cq-profile-tabs {
   position: sticky;
   top: 0;
   z-index: 10;
   display: flex;
-  border-bottom: 1px solid rgba(104, 171, 232, 0.18);
+  border-top: 1px solid rgba(186, 208, 230, 0.14);
+  border-bottom: none;
   -webkit-tap-highlight-color: transparent;
-  background: rgba(4, 30, 66, 0.92);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--cq-bg-app, #08090c);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .cq-profile-tab {
@@ -18064,29 +18065,35 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   align-items: center;
   justify-content: center;
   gap: 0.25rem;
-  padding: 0.625rem 0.125rem;
+  padding: 0.42rem 0.125rem 0.48rem;
   font-size: 0.625rem;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.42);
+  color: rgba(168, 178, 192, 0.72);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   transition: color 220ms ease;
 }
 
 @media (min-width: 390px) {
   .cq-profile-tab {
-    padding: 0.625rem 0.25rem;
+    padding: 0.45rem 0.25rem 0.5rem;
     font-size: 0.6875rem;
     letter-spacing: 0.1em;
   }
 }
 
 .cq-profile-tab:hover {
-  color: rgba(255, 255, 255, 0.68);
+  color: rgba(220, 228, 238, 0.82);
+  background: transparent;
 }
 
 .cq-profile-tab--active {
-  color: #fff;
+  color: rgba(255, 255, 255, 0.96);
+  background: transparent;
 }
 
 .cq-profile-tab-label {
@@ -18095,12 +18102,12 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
     transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 260ms ease,
     font-weight 220ms ease;
-  transform: scale(0.96);
-  opacity: 0.72;
+  transform: scale(0.98);
+  opacity: 0.85;
 }
 
 .cq-profile-tab-label--active {
-  font-weight: 800;
+  font-weight: 600;
   transform: scale(1);
   opacity: 1;
 }
@@ -18110,16 +18117,29 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   opacity: 0.55;
 }
 
+/* Sliding slot; visible cyan bar is label-width via ::after */
 .cq-profile-tab-indicator {
   position: absolute;
   bottom: 0;
   left: 0;
   height: 2px;
-  border-radius: 1px;
-  background: linear-gradient(90deg, rgba(76, 201, 255, 0.4), #4cc9ff 50%, rgba(76, 201, 255, 0.4));
-  box-shadow: 0 0 10px rgba(76, 201, 255, 0.6);
-  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  background: transparent;
+  box-shadow: none;
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
+}
+
+.cq-profile-tab-indicator::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: min(3.15rem, 58%);
+  height: 1.5px;
+  border-radius: 1px;
+  transform: translateX(-50%);
+  background: #4cc9ff;
+  box-shadow: 0 0 8px rgba(76, 201, 255, 0.45);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -25189,7 +25209,7 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   overflow-y: hidden;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 0 0.58rem 0.18rem;
+  padding: 0 1rem 0.28rem;
 }
 
 .cq-realm-sheet--expanded .cq-realm-sheet__body {
@@ -25197,64 +25217,75 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   overflow-y: auto;
 }
 
-.cq-realm-sheet__split {
-  display: grid;
-  grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr);
-  gap: 0.38rem;
-  align-items: start;
+.cq-realm-sheet__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  width: 100%;
+  min-width: 0;
 }
 
 .cq-rhody-highlights,
-.cq-discover-foryou {
+.cq-discover-foryou,
+.cq-discover-recs {
   min-width: 0;
+  width: 100%;
   height: auto;
-  padding: 0.32rem 0.38rem 0.3rem;
-  border-radius: 0.72rem;
+  padding: 0.72rem 0.85rem 0.78rem;
+  border-radius: 1.25rem;
   border: 1px solid rgba(90, 170, 255, 0.34);
-  background: rgba(7, 18, 40, 0.72);
-  box-shadow: 0 8px 22px rgba(0, 12, 32, 0.28);
+  background: rgba(7, 18, 40, 0.78);
+  box-shadow:
+    0 10px 28px rgba(0, 12, 32, 0.32),
+    0 0 22px rgba(59, 155, 255, 0.08);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
 
+.cq-discover-foryou--hero {
+  padding: 0.85rem 0.95rem 0.9rem;
+  box-shadow:
+    0 12px 32px rgba(0, 12, 32, 0.36),
+    0 0 28px rgba(76, 201, 255, 0.14);
+}
+
 .cq-rhody-highlights__head,
-.cq-discover-foryou__head {
+.cq-discover-foryou__head,
+.cq-discover-recs__head {
   display: flex;
   align-items: center;
-  gap: 0.26rem;
-  min-height: 1.45rem;
-  margin-bottom: 0.2rem;
+  gap: 0.35rem;
+  min-height: 1.35rem;
+  margin-bottom: 0.45rem;
 }
 
 .cq-rhody-highlights__title,
 .cq-discover-foryou__title,
+.cq-discover-recs__title,
 .cq-nearby-places__title {
   margin: 0;
   flex: 1;
   min-width: 0;
-  font-size: 0.58rem;
+  font-size: 0.72rem;
   font-weight: 800;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(236, 248, 255, 0.92);
+  color: rgba(236, 248, 255, 0.94);
+  line-height: 1.15;
 }
 
-.cq-rhody-highlights__title {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.02rem;
-  line-height: 1.05;
-}
-
-.cq-rhody-highlights__title-line {
-  display: block;
+.cq-discover-foryou__sparkle {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  color: #a5e4ff;
+  filter: drop-shadow(0 0 6px rgba(76, 201, 255, 0.55));
 }
 
 .cq-rhody-highlights__mark-wrap {
   flex: 0 0 auto;
-  width: 1.65rem;
-  height: 1.85rem;
+  width: 1.55rem;
+  height: 1.7rem;
   display: grid;
   place-items: center;
 }
@@ -25269,42 +25300,57 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   display: block;
 }
 
-.cq-rhody-highlights__more,
+.cq-rhody-highlights__cta-inline,
+.cq-discover-recs__more,
 .cq-discover-foryou__more {
-  display: flex;
-  color: rgba(186, 230, 253, 0.8);
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #7dd3fc;
+  white-space: nowrap;
 }
 
 .cq-rhody-highlights__list,
-.cq-discover-foryou__list {
+.cq-discover-foryou__list,
+.cq-discover-recs__list {
   display: flex;
   flex-direction: column;
-  gap: 0.16rem;
+  gap: 0.28rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .cq-rhody-highlights__row,
-.cq-discover-foryou__row {
+.cq-discover-foryou__row,
+.cq-discover-recs__row {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.7rem;
   width: 100%;
   min-height: 0;
   text-align: left;
-  border-radius: 0.38rem;
+  border-radius: 0.55rem;
   padding: 0;
+  background: transparent;
+  border: none;
 }
 
 .cq-rhody-highlights__thumb {
   position: relative;
-  width: 3.35rem;
+  width: 7.25rem;
   aspect-ratio: 16 / 9;
   flex-shrink: 0;
   overflow: hidden;
-  border-radius: 0.32rem;
+  border-radius: 0.55rem;
   background: rgba(12, 40, 78, 0.85);
+  box-shadow: 0 0 14px rgba(59, 155, 255, 0.18);
 }
 
 .cq-rhody-highlights__thumb img,
@@ -25326,10 +25372,11 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-rhody-highlights__play::before {
   content: "";
   position: absolute;
-  width: 0.95rem;
-  height: 0.95rem;
+  width: 1.55rem;
+  height: 1.55rem;
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 0 12px rgba(76, 201, 255, 0.35);
 }
 
 .cq-rhody-highlights__play svg {
@@ -25339,12 +25386,12 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-rhody-highlights__duration {
   position: absolute;
-  right: 0.12rem;
-  bottom: 0.1rem;
+  right: 0.22rem;
+  bottom: 0.18rem;
   z-index: 1;
-  border-radius: 0.18rem;
-  padding: 0.02rem 0.16rem;
-  font-size: 0.46rem;
+  border-radius: 0.2rem;
+  padding: 0.04rem 0.22rem;
+  font-size: 0.55rem;
   font-weight: 800;
   line-height: 1.15;
   color: #fff;
@@ -25352,28 +25399,30 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-rhody-highlights__copy,
-.cq-discover-foryou__copy {
+.cq-discover-foryou__copy,
+.cq-discover-recs__copy {
   display: flex;
   min-width: 0;
   flex: 1;
   flex-direction: column;
-  gap: 0.01rem;
+  gap: 0.12rem;
 }
 
 .cq-rhody-highlights__sport {
-  font-size: 0.48rem;
+  font-size: 0.62rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: #7dd3fc;
 }
 
 .cq-rhody-highlights__name,
-.cq-discover-foryou__name {
-  font-size: 0.6rem;
+.cq-discover-foryou__name,
+.cq-discover-recs__name {
+  font-size: 0.92rem;
   font-weight: 700;
   color: #f8fbff;
-  line-height: 1.12;
+  line-height: 1.2;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -25382,11 +25431,12 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-rhody-highlights__time,
 .cq-discover-foryou__meta,
+.cq-discover-recs__meta,
 .cq-rhody-highlights__empty,
 .cq-discover-foryou__empty {
-  font-size: 0.5rem;
-  line-height: 1.2;
-  color: rgba(176, 204, 230, 0.72);
+  font-size: 0.68rem;
+  line-height: 1.25;
+  color: rgba(176, 204, 230, 0.76);
 }
 
 .cq-rhody-highlights__empty,
@@ -25395,12 +25445,16 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-rhody-highlights__cta,
-.cq-discover-foryou__cta {
+.cq-discover-foryou__cta,
+.cq-discover-recs__cta {
   display: inline-flex;
   align-items: center;
   gap: 0.15rem;
-  margin-top: 0.18rem;
-  font-size: 0.56rem;
+  margin-top: 0.45rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 0.72rem;
   font-weight: 700;
   color: #7dd3fc;
 }
@@ -25408,64 +25462,93 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-discover-foryou__survey {
   display: flex;
   flex-direction: column;
-  gap: 0.18rem;
-  margin-bottom: 0.18rem;
-  padding: 0.28rem 0.34rem 0.3rem;
-  border-radius: 0.55rem;
-  border: 1px solid rgba(75, 174, 255, 0.28);
-  background: linear-gradient(180deg, rgba(16, 52, 98, 0.58), rgba(8, 24, 56, 0.78));
+  gap: 0.7rem;
+  margin: 0;
+  padding: 0.15rem 0 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.cq-discover-foryou__survey-main {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.55rem;
+  min-width: 0;
 }
 
 .cq-discover-foryou__survey-copy {
   min-width: 0;
   flex: 1;
-}
-
-.cq-discover-foryou__survey-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.3rem;
-}
-
-.cq-discover-foryou__survey-icon {
-  width: 0.82rem;
-  height: 0.82rem;
-  flex-shrink: 0;
-  margin-top: 0.06rem;
-  color: #c4e7ff;
+  padding-bottom: 0.15rem;
 }
 
 .cq-discover-foryou__survey-title {
   margin: 0;
-  font-size: 0.62rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.02rem;
+  font-size: 1.55rem;
   font-weight: 800;
-  color: #f4fbff;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: #f8fbff;
+  text-shadow: 0 0 18px rgba(76, 201, 255, 0.22);
+}
+
+.cq-discover-foryou__survey-title-line {
+  display: block;
 }
 
 .cq-discover-foryou__survey-body {
-  margin: 0.06rem 0 0;
-  font-size: 0.5rem;
-  line-height: 1.28;
-  color: rgba(196, 222, 246, 0.8);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  margin: 0.55rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.38;
+  color: rgba(210, 230, 248, 0.88);
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+.cq-discover-foryou__knight {
+  flex: 0 0 auto;
+  width: 5.6rem;
+  height: 6.4rem;
+  display: grid;
+  place-items: end center;
+  pointer-events: none;
+  filter: drop-shadow(0 0 14px rgba(76, 201, 255, 0.28));
+}
+
+.cq-discover-foryou__knight-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  display: block;
 }
 
 .cq-discover-foryou__start {
   width: 100%;
   border-radius: 9999px;
-  padding: 0.22rem 0.62rem;
-  font-size: 0.58rem;
+  padding: 0.72rem 1rem;
+  font-size: 0.92rem;
   font-weight: 800;
+  letter-spacing: 0.01em;
   color: #fff;
-  background: linear-gradient(90deg, #7c5cff 0%, #3b9bff 100%);
-  box-shadow: 0 6px 14px rgba(59, 155, 255, 0.26);
+  background: linear-gradient(90deg, #7c5cff 0%, #3b9bff 55%, #4cc9ff 100%);
+  box-shadow:
+    0 8px 20px rgba(59, 155, 255, 0.32),
+    0 0 18px rgba(124, 92, 255, 0.22);
+}
+
+.cq-discover-recs {
+  padding-top: 0.7rem;
+  padding-bottom: 0.7rem;
 }
 
 .cq-discover-foryou__reason {
-  font-size: 0.48rem;
+  font-size: 0.62rem;
   font-weight: 700;
   color: rgba(196, 181, 253, 0.92);
   white-space: nowrap;
@@ -25492,10 +25575,10 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 .cq-discover-foryou__icon {
   display: grid;
   place-items: center;
-  width: 1.15rem;
-  height: 1.15rem;
+  width: 1.45rem;
+  height: 1.45rem;
   flex-shrink: 0;
-  border-radius: 0.32rem;
+  border-radius: 0.4rem;
   background: rgba(59, 155, 255, 0.28);
   color: #e8f6ff;
 }
@@ -25519,7 +25602,7 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-nearby-places {
-  margin-top: 0.32rem;
+  margin-top: 0.05rem;
 }
 
 .cq-nearby-places__title {
@@ -25636,15 +25719,31 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 @media (max-width: 389px) {
-  .cq-realm-sheet__split {
-    grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr);
-    gap: 0.3rem;
+  .cq-realm-sheet__body {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
   }
 
-  .cq-rhody-highlights__title,
-  .cq-discover-foryou__title,
-  .cq-nearby-places__title {
-    font-size: 0.52rem;
+  .cq-discover-foryou__survey-title {
+    font-size: 1.35rem;
+  }
+
+  .cq-discover-foryou__survey-body {
+    font-size: 0.78rem;
+  }
+
+  .cq-discover-foryou__knight {
+    width: 4.75rem;
+    height: 5.5rem;
+  }
+
+  .cq-rhody-highlights__thumb {
+    width: 6.35rem;
+  }
+
+  .cq-rhody-highlights__name,
+  .cq-discover-recs__name {
+    font-size: 0.84rem;
   }
 
   .cq-nearby-place-card {
@@ -25655,13 +25754,13 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 @media (max-height: 720px) {
-  .cq-discover-foryou__survey-body {
-    -webkit-line-clamp: 1;
+  .cq-discover-foryou__knight {
+    width: 4.85rem;
+    height: 5.5rem;
   }
 
-  .cq-rhody-highlights__name,
-  .cq-discover-foryou__name {
-    -webkit-line-clamp: 1;
+  .cq-discover-foryou__survey-title {
+    font-size: 1.4rem;
   }
 }
 

@@ -26,6 +26,19 @@ describe("rhody YouTube highlights", () => {
     expect(youtubeThumbnailFallbackUrl("WeztHt4UU_U")).toBe("https://img.youtube.com/vi/WeztHt4UU_U/hqdefault.jpg");
   });
 
+  it("seeds In The Library with the provided YouTube id and thumbnail", () => {
+    const seeded = RHODY_YOUTUBE_HIGHLIGHTS.find((row) => row.youtubeVideoId === "Ry_Hpfz-K40");
+    expect(seeded).toEqual({
+      youtubeVideoId: "Ry_Hpfz-K40",
+      title: "In The Library",
+      category: "Rhody",
+      duration: null,
+    });
+    expect(youtubeWatchUrl("Ry_Hpfz-K40")).toBe("https://www.youtube.com/watch?v=Ry_Hpfz-K40");
+    expect(youtubeThumbnailUrl("Ry_Hpfz-K40")).toBe("https://img.youtube.com/vi/Ry_Hpfz-K40/maxresdefault.jpg");
+    expect(youtubeThumbnailFallbackUrl("Ry_Hpfz-K40")).toBe("https://img.youtube.com/vi/Ry_Hpfz-K40/hqdefault.jpg");
+  });
+
   it("creates reusable highlight rows from a URL", () => {
     const row = createRhodyYoutubeHighlight("https://www.youtube.com/watch?v=WeztHt4UU_U", {
       title: "The Rams are Coming - Short",

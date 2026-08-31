@@ -100,8 +100,9 @@ export function discoverySheetSnaps(
   const usable = Math.max(360, h - Math.max(0, navClearancePx));
   const maxH = Math.max(200, usable - Math.max(96, topReservePx));
   const collapsed = clamp(Math.round(usable * 0.1), 64, 88);
-  const defaultMax = clamp(Math.round(usable * 0.34), 220, maxH);
-  const contentCap = clamp(Math.round(usable * 0.4), defaultMax, maxH);
+  // Room for full-width Genius Mining + Rhody Highlights in the default snap.
+  const defaultMax = clamp(Math.round(usable * 0.52), 280, maxH);
+  const contentCap = clamp(Math.round(usable * 0.62), defaultMax, maxH);
   const defaultH =
     contentHeightPx != null && Number.isFinite(contentHeightPx)
       ? clamp(Math.round(contentHeightPx), collapsed + 72, contentCap)

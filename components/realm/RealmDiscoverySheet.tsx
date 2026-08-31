@@ -25,7 +25,7 @@ import {
 } from "@/lib/realm/discoverySheet";
 import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
-import { DiscoverForYou } from "./DiscoverForYou";
+import { DiscoverForYou, DiscoverRecommendations } from "./DiscoverForYou";
 import { RecommendedPlacesCarousel } from "./RecommendedPlacesCarousel";
 import { RhodyHighlights } from "./RhodyHighlights";
 
@@ -301,22 +301,22 @@ export function RealmDiscoverySheet({
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
         >
-          <div className="cq-realm-sheet__split">
+          <div className="cq-realm-sheet__stack">
+            <DiscoverForYou onStartGeniusMining={onFindMyCampus} />
             <RhodyHighlights items={athletics} onViewAthletics={onViewAthletics} />
-            <DiscoverForYou
+            <DiscoverRecommendations
               items={forYouRows}
-              onStartGeniusMining={onFindMyCampus}
               onViewAll={onViewAllRecommendations}
               onOpenItem={onOpenRecommendation}
             />
+            <RecommendedPlacesCarousel
+              items={nearbyPlaces}
+              savedIds={savedIds}
+              walkStatus={walkStatus}
+              onOpen={onOpenPlace}
+              onToggleSave={(id) => setSavedIds(toggleSavedPlaceId(id))}
+            />
           </div>
-          <RecommendedPlacesCarousel
-            items={nearbyPlaces}
-            savedIds={savedIds}
-            walkStatus={walkStatus}
-            onOpen={onOpenPlace}
-            onToggleSave={(id) => setSavedIds(toggleSavedPlaceId(id))}
-          />
         </div>
       ) : null}
     </section>

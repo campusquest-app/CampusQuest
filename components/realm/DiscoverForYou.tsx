@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronRight, ClipboardList, Drama, Rocket, Sparkles, Users, Volleyball } from "lucide-react";
+import { ChevronRight, Drama, Rocket, Sparkles, Users, Volleyball } from "lucide-react";
+import { BRAND_KNIGHT } from "@/lib/onboarding/taxonomy";
 import { compactDiscoveryReason } from "@/lib/realm/discoverySheet";
 import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
 
@@ -45,85 +46,107 @@ function discoverIconKey(item: DiscoverSlot): "quest" | "sport" | "arts" | "peop
 }
 
 function DiscoverRowIcon({ icon }: { icon: ReturnType<typeof discoverIconKey> }) {
-  const common = { className: "h-3 w-3", strokeWidth: 2.1 } as const;
+  const common = { className: "h-3.5 w-3.5", strokeWidth: 2.1 } as const;
   if (icon === "sport") return <Volleyball {...common} />;
   if (icon === "arts") return <Drama {...common} />;
   if (icon === "people") return <Users {...common} />;
   return <Rocket {...common} />;
 }
 
+/** Full-width Genius Mining survey feature card. */
 export function DiscoverForYou({
-  items,
   onStartGeniusMining,
-  onViewAll,
-  onOpenItem,
 }: {
-  items: MapRecommendationItem[];
   onStartGeniusMining?: () => void;
+  /** @deprecated Recommendations moved below Rhody Highlights; kept for call-site compatibility. */
+  items?: MapRecommendationItem[];
   onViewAll?: () => void;
   onOpenItem?: (item: MapRecommendationItem) => void;
 }) {
-  const rows = items.slice(0, 4);
-  const slots: DiscoverSlot[] =
-    rows.length > 0
-      ? rows
-      : Array.from({ length: 4 }, (_, index) => ({
-          id: `discover-slot-${index}`,
-          kind: index === 0 ? "quest" : index === 1 ? "event" : index === 2 ? "event" : "place",
-          title: "Recommendations will appear here",
-          locationName: "Campus",
-          timeLabel: null,
-          reasonLabel: "Recommended for you",
-          happeningToday: false,
-        }));
   return (
-    <section className="cq-discover-foryou" aria-label="Discover For You">
+    <section className="cq-discover-foryou cq-discover-foryou--hero" aria-label="Discover For You">
       <header className="cq-discover-foryou__head">
-        <Sparkles className="h-3.5 w-3.5 text-cyan-200" strokeWidth={2.2} aria-hidden />
+        <Sparkles className="cq-discover-foryou__sparkle" strokeWidth={2.2} aria-hidden />
         <h2 className="cq-discover-foryou__title">Discover For You</h2>
-        <button type="button" className="cq-discover-foryou__more" aria-label="View all recommendations" onClick={onViewAll}>
-          <ChevronRight className="h-4 w-4" strokeWidth={2.2} />
-        </button>
       </header>
 
       <div className="cq-discover-foryou__survey">
-        <div className="cq-discover-foryou__survey-row">
-          <ClipboardList className="cq-discover-foryou__survey-icon" strokeWidth={2} aria-hidden />
+        <div className="cq-discover-foryou__survey-main">
           <div className="cq-discover-foryou__survey-copy">
-            <p className="cq-discover-foryou__survey-title">Genius Mining Survey</p>
-            <p className="cq-discover-foryou__survey-body">
-              Take a quick survey and we&apos;ll find events, clubs, activities, places, and experiences you might actually enjoy.
+            <p className="cq-discover-foryou__survey-title">
+              <span className="cq-discover-foryou__survey-title-line">Genius Mining</span>
+              <span className="cq-discover-foryou__survey-title-line">Survey</span>
             </p>
+            <p className="cq-discover-foryou__survey-body">
+              Take a quick survey and we&apos;ll find events, clubs, activities, places, and experiences
+              tailored just for you.
+            </p>
+          </div>
+          <div className="cq-discover-foryou__knight" aria-hidden>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={BRAND_KNIGHT.welcoming}
+              alt=""
+              width={240}
+              height={240}
+              decoding="async"
+              className="cq-discover-foryou__knight-img"
+            />
           </div>
         </div>
         <button type="button" className="cq-discover-foryou__start" onClick={onStartGeniusMining}>
           Start Survey →
         </button>
       </div>
+    </section>
+  );
+}
 
-      <ul className="cq-discover-foryou__list">
-        {slots.map((item, index) => {
-          const liveItem = rows.find((row) => row.id === item.id) ?? null;
-          const icon = discoverIconKey(item);
+/** Recommendation rows — rendered below Rhody Highlights in the discovery stack. */
+export function DiscoverRecommendations({
+  items,
+  onViewAll,
+  onOpenItem,
+}: {
+  items: MapRecommendationItem[];
+  onViewAll?: () => void;
+  onOpenItem?: (item: MapRecommendationItem) => void;
+}) {
+  const rows = items.slice(0, 4);
+  if (rows.length === 0) return null;
+
+  return (
+    <section className="cq-discover-recs" aria-label="Recommended for you">
+      <header className="cq-discover-recs__head">
+        <h2 className="cq-discover-recs__title">Recommended For You</h2>
+        <button type="button" className="cq-discover-recs__more" aria-label="View all recommendations" onClick={onViewAll}>
+          <ChevronRight className="h-4 w-4" strokeWidth={2.2} />
+        </button>
+      </header>
+      <ul className="cq-discover-recs__list">
+        {rows.map((item, index) => {
+          const slot: DiscoverSlot = {
+            id: item.id,
+            kind: item.kind,
+            title: item.title,
+            locationName: item.locationName,
+            timeLabel: item.timeLabel,
+            reasonLabel: item.reasonLabel,
+            happeningToday: item.happeningToday,
+          };
+          const icon = discoverIconKey(slot);
           return (
             <li key={item.id}>
-              <button
-                type="button"
-                className="cq-discover-foryou__row"
-                onClick={() => {
-                  if (liveItem) onOpenItem?.(liveItem);
-                  else onViewAll?.();
-                }}
-              >
+              <button type="button" className="cq-discover-recs__row" onClick={() => onOpenItem?.(item)}>
                 <span className={`cq-discover-foryou__icon cq-discover-foryou__icon--${icon}`} aria-hidden>
                   <DiscoverRowIcon icon={icon} />
                 </span>
-                <span className="cq-discover-foryou__copy">
+                <span className="cq-discover-recs__copy">
                   <span className={`cq-discover-foryou__reason cq-discover-foryou__reason--${index % 4}`}>
                     {compactDiscoveryReason(item.reasonLabel, item.happeningToday)}
                   </span>
-                  <span className="cq-discover-foryou__name">{item.title}</span>
-                  <span className="cq-discover-foryou__meta">
+                  <span className="cq-discover-recs__name">{item.title}</span>
+                  <span className="cq-discover-recs__meta">
                     {[item.timeLabel, item.locationName].filter(Boolean).join(" • ")}
                   </span>
                 </span>
@@ -132,7 +155,7 @@ export function DiscoverForYou({
           );
         })}
       </ul>
-      <button type="button" className="cq-discover-foryou__cta" onClick={onViewAll}>
+      <button type="button" className="cq-discover-recs__cta" onClick={onViewAll}>
         View All Recommendations →
       </button>
     </section>
