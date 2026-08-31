@@ -265,8 +265,9 @@ describe("athletics highlights", () => {
     expect(slots[1]?.id).toMatch(/athletics-slot/);
   });
 
-  it("surfaces the curated Rams YouTube short first in Rhody Highlights", () => {
-    const rows = buildRhodyHighlights([], new Date("2026-08-28T16:00:00.000Z"), 3);
+  it("surfaces only the curated Rams YouTube short in the Rhody Highlights preview", () => {
+    const rows = buildRhodyHighlights([], new Date("2026-08-28T16:00:00.000Z"));
+    expect(rows).toHaveLength(1);
     expect(rows[0]?.type).toBe("youtube");
     expect(rows[0]?.youtubeVideoId).toBe("WeztHt4UU_U");
     expect(rows[0]?.url).toBe("https://www.youtube.com/watch?v=WeztHt4UU_U");
@@ -274,7 +275,17 @@ describe("athletics highlights", () => {
     expect(rows[0]?.imageFallbackUrl).toBe("https://img.youtube.com/vi/WeztHt4UU_U/hqdefault.jpg");
     expect(rows[0]?.title).toMatch(/Rams are Coming/i);
     expect(rows[0]?.playable).toBe(true);
+    expect(rows.every((row) => row.type !== "placeholder")).toBe(true);
+  });
+
+  it("can restore a padded three-row Rhody Highlights card when asked", () => {
+    const rows = buildRhodyHighlights([], new Date("2026-08-28T16:00:00.000Z"), 3, undefined, {
+      padPlaceholders: true,
+    });
     expect(rows).toHaveLength(3);
+    expect(rows[0]?.youtubeVideoId).toBe("WeztHt4UU_U");
+    expect(rows[1]?.sport).toBe("Upcoming");
+    expect(rows[2]?.sport).toBe("Results");
   });
 });
 

@@ -23,9 +23,21 @@ export function RhodyHighlights({
   return (
     <section className="cq-rhody-highlights" aria-label="Rhody Highlights">
       <header className="cq-rhody-highlights__head">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/assets/rhody-r.png" alt="" className="cq-rhody-highlights__mark" />
-        <h2 className="cq-rhody-highlights__title">Rhody Highlights</h2>
+        <span className="cq-rhody-highlights__mark-wrap" aria-hidden>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/assets/rhody-r.png"
+            alt=""
+            width={102}
+            height={114}
+            decoding="async"
+            className="cq-rhody-highlights__mark"
+          />
+        </span>
+        <h2 className="cq-rhody-highlights__title">
+          <span className="cq-rhody-highlights__title-line">Rhody</span>
+          <span className="cq-rhody-highlights__title-line">Highlights</span>
+        </h2>
         <button
           type="button"
           className="cq-rhody-highlights__more"
