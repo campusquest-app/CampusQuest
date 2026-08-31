@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiRequestError, fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { AdminKpiCard, AdminSectionIntro, AdminStatusPill } from "@/components/admin/AdminUi";
 import { AdminUrinvolvedSection } from "@/components/admin/AdminUrinvolvedSection";
+import { formatAdminSyncErrorSummary } from "@/lib/eventSources/providerHealth";
 
 type SourceStatus = {
   source: string;
@@ -12,6 +13,7 @@ type SourceStatus = {
   configurationHint: string;
   lastSuccessfulSync: string | null;
   lastAttemptedSync: string | null;
+  nextScheduledSync: string | null;
   lastStatus: string | null;
   lastError: string | null;
   eventsReceived: number;
@@ -19,7 +21,26 @@ type SourceStatus = {
   eventsUpdated: number;
   duplicatesMerged: number;
   activeEventsCount: number;
+  healthStatus: string;
+  healthLabel: string;
+  healthMessage: string;
 };
+
+function healthTone(status: string): "success" | "warning" | "danger" | "neutral" | "info" {
+  switch (status) {
+    case "connected":
+      return "success";
+    case "syncing":
+      return "info";
+    case "warning":
+    case "stale":
+      return "warning";
+    case "failed":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
 
 export function AdminEventSourcesSection() {
   const [sources, setSources] = useState<SourceStatus[]>([]);
@@ -27,6 +48,7 @@ export function AdminEventSourcesSection() {
   const [syncing, setSyncing] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expandedTech, setExpandedTech] = useState<Record<string, boolean>>({});
   const [manualTitle, setManualTitle] = useState("");
   const [manualStartsAt, setManualStartsAt] = useState("");
   const [manualVenue, setManualVenue] = useState("");
@@ -55,10 +77,20 @@ export function AdminEventSourcesSection() {
     setMessage(null);
     setError(null);
     try {
-      const data = await postAuthed<{ result: { success: boolean; skipped?: boolean; skipReason?: string | null; eventsReceived: number; eventsCreated: number; eventsUpdated: number }; sources: SourceStatus[] }, { source: string }>(
-        "/api/internal/admin/event-sources/sync",
-        { source },
-      );
+      const data = await postAuthed<
+        {
+          result: {
+            success: boolean;
+            skipped?: boolean;
+            skipReason?: string | null;
+            eventsReceived: number;
+            eventsCreated: number;
+            eventsUpdated: number;
+          };
+          sources: SourceStatus[];
+        },
+        { source: string }
+      >("/api/internal/admin/event-sources/sync", { source });
       setSources(data.sources ?? []);
       if (data.result.skipped) {
         setMessage(`${source}: not configured (${data.result.skipReason ?? "feed_not_configured"}).`);
@@ -113,37 +145,75 @@ export function AdminEventSourcesSection() {
 
       <div className="grid gap-3 sm:grid-cols-2">
         {loading && sources.length === 0 ? <p className="text-sm text-white/55">Loading sources…</p> : null}
-        {sources.map((source) => (
-          <article key={source.source} className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-semibold text-white">{source.label}</h3>
-                <p className="mt-1 text-[11px] text-white/45">{source.source}</p>
+        {sources.map((source) => {
+          const healthStatus = syncing === source.source ? "syncing" : source.healthStatus;
+          const healthLabel = syncing === source.source ? "Syncing" : source.healthLabel;
+          const errorSummary =
+            source.healthStatus === "failed" || source.lastError
+              ? formatAdminSyncErrorSummary(source.lastError)
+              : null;
+          return (
+            <article key={source.source} className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-white">{source.label}</h3>
+                  <p className="mt-1 text-[11px] text-white/45">{source.source}</p>
+                </div>
+                <AdminStatusPill tone={healthTone(healthStatus)} label={healthLabel} />
               </div>
-              <AdminStatusPill
-                tone={source.lastStatus === "failed" ? "danger" : source.configured ? "success" : "neutral"}
-                label={source.configured ? source.lastStatus ?? "ready" : "not connected"}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <AdminKpiCard label="Active events" value={String(source.activeEventsCount)} />
-              <AdminKpiCard label="Last received" value={String(source.eventsReceived)} />
-            </div>
-            <p className="text-xs text-white/50">{source.configurationHint}</p>
-            {source.lastError ? <p className="text-xs text-rose-200/90">{source.lastError}</p> : null}
-            {source.lastSuccessfulSync ? (
-              <p className="text-[11px] text-white/40">Last success {new Date(source.lastSuccessfulSync).toLocaleString()}</p>
-            ) : null}
-            <button
-              type="button"
-              disabled={syncing === source.source}
-              onClick={() => void runSync(source.source)}
-              className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/85 hover:bg-white/10 disabled:opacity-50"
-            >
-              {syncing === source.source ? "Syncing…" : `Run ${source.label} sync`}
-            </button>
-          </article>
-        ))}
+              <div className="grid grid-cols-2 gap-2">
+                <AdminKpiCard label="Active events" value={String(source.activeEventsCount)} />
+                <AdminKpiCard label="Last received" value={String(source.eventsReceived)} />
+              </div>
+              <p className="text-xs text-white/60">{source.healthMessage}</p>
+              <p className="text-xs text-white/45">{source.configurationHint}</p>
+              <div className="space-y-1 text-[11px] text-white/40">
+                <p>
+                  Last success:{" "}
+                  {source.lastSuccessfulSync ? new Date(source.lastSuccessfulSync).toLocaleString() : "Never"}
+                </p>
+                <p>
+                  Last attempt:{" "}
+                  {source.lastAttemptedSync ? new Date(source.lastAttemptedSync).toLocaleString() : "Never"}
+                </p>
+                <p>
+                  Next scheduled:{" "}
+                  {source.nextScheduledSync
+                    ? new Date(source.nextScheduledSync).toLocaleString()
+                    : "Not scheduled"}
+                </p>
+              </div>
+              {errorSummary?.technical ? (
+                <div className="rounded-lg border border-rose-400/25 bg-rose-500/10 px-3 py-2 space-y-1">
+                  <p className="text-xs font-semibold text-rose-100">{errorSummary.title}</p>
+                  <p className="text-[11px] text-rose-100/80">{errorSummary.summary}</p>
+                  <button
+                    type="button"
+                    className="text-[11px] text-rose-200/90 underline"
+                    onClick={() =>
+                      setExpandedTech((prev) => ({ ...prev, [source.source]: !prev[source.source] }))
+                    }
+                  >
+                    {expandedTech[source.source] ? "Hide technical details" : "View technical details"}
+                  </button>
+                  {expandedTech[source.source] ? (
+                    <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-words text-[10px] text-rose-100/70">
+                      {errorSummary.technical}
+                    </pre>
+                  ) : null}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                disabled={syncing === source.source}
+                onClick={() => void runSync(source.source)}
+                className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/85 hover:bg-white/10 disabled:opacity-50"
+              >
+                {syncing === source.source ? "Syncing…" : `Retry Sync`}
+              </button>
+            </article>
+          );
+        })}
       </div>
 
       <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">

@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiRequestError, fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { AdminKpiCard, AdminSectionIntro, AdminStatusPill } from "@/components/admin/AdminUi";
+import {
+  estimateNextDailyCronUtc,
+  formatAdminSyncErrorSummary,
+} from "@/lib/eventSources/providerHealth";
 
 type SyncStatus = {
   lastSuccessfulSync: string | null;
@@ -28,6 +32,8 @@ export function AdminUrinvolvedSection() {
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [showTech, setShowTech] = useState(false);
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -87,11 +93,18 @@ export function AdminUrinvolvedSection() {
   }
 
   const nextSyncEstimate = useMemo(() => {
-    if (!status?.lastSuccessfulSync) return "After first successful sync";
-    const next = new Date(status.lastSuccessfulSync);
-    next.setHours(next.getHours() + 24);
-    return next.toLocaleString();
-  }, [status?.lastSuccessfulSync]);
+    const nextIso = estimateNextDailyCronUtc({
+      scheduled: true,
+      cronHourUtc: 3,
+      cronMinuteUtc: 0,
+    });
+    return nextIso ? new Date(nextIso).toLocaleString() : "Not scheduled";
+  }, []);
+
+  const errorSummary = useMemo(
+    () => formatAdminSyncErrorSummary(status?.lastError),
+    [status?.lastError],
+  );
 
   const syncSuccessRate = useMemo(() => {
     if (!status?.lastAttemptedSync) return "—";
@@ -116,7 +129,10 @@ export function AdminUrinvolvedSection() {
       {message ? <p className="text-xs text-emerald-200">{message}</p> : null}
 
       <div className="flex flex-wrap items-center gap-2">
-        <AdminStatusPill label={status?.lastError ? "Sync warning" : "Sync healthy"} tone={status?.lastError ? "warning" : "success"} />
+        <AdminStatusPill
+          label={status?.lastError ? errorSummary.title : "Sync healthy"}
+          tone={status?.lastError ? "danger" : "success"}
+        />
         <AdminStatusPill label={`Success rate: ${syncSuccessRate}`} tone="info" />
       </div>
 
@@ -154,8 +170,35 @@ export function AdminUrinvolvedSection() {
       {syncing ? <p className="text-xs text-white/50">Sync in progress…</p> : null}
 
       {status?.lastError ? (
-        <div className="cq-admin-panel border-amber-400/25 bg-amber-500/10 p-3 text-xs text-amber-100">
-          Last error: {status.lastError}
+        <div className="cq-admin-panel border-rose-400/25 bg-rose-500/10 p-3 text-xs text-rose-100 space-y-2">
+          <p className="font-semibold">{errorSummary.title}</p>
+          <p className="text-rose-100/80">{errorSummary.summary}</p>
+          <p className="text-[11px] text-rose-100/60">
+            Last attempt:{" "}
+            {status.lastAttemptedSync ? new Date(status.lastAttemptedSync).toLocaleString() : "Unknown"}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={syncing}
+              onClick={() => void handleRunSync()}
+              className="rounded-lg border border-rose-300/40 px-3 py-1.5 text-[11px] font-semibold text-rose-100 hover:bg-rose-500/20 disabled:opacity-50"
+            >
+              Retry Sync
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTech((open) => !open)}
+              className="rounded-lg border border-white/20 px-3 py-1.5 text-[11px] font-semibold text-white/80 hover:bg-white/10"
+            >
+              {showTech ? "Hide Technical Details" : "View Technical Details"}
+            </button>
+          </div>
+          {showTech && errorSummary.technical ? (
+            <pre className="max-h-36 overflow-auto whitespace-pre-wrap break-words text-[10px] text-rose-100/70">
+              {errorSummary.technical}
+            </pre>
+          ) : null}
         </div>
       ) : null}
 

@@ -1,32 +1,13 @@
 import { ZodError } from "zod";
-import { isAdminEmail } from "@/lib/server/adminAuth";
+import { assertPlatformModerationAdminEmail } from "@/lib/server/moderationAuth";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { setOrganizationFreeze, transferOrganizationOwnership } from "@/lib/server/organizationManagement";
 import { moderateCampusContent } from "@/lib/server/campusModeration";
 import { organizationAdminModerationSchema, readJson } from "@/lib/server/validation";
 
-function assertModerationKey(request: Request) {
-  const expected = process.env.MESSAGE_MODERATION_API_KEY;
-  if (!expected) {
-    throw new ApiError(500, "Missing MESSAGE_MODERATION_API_KEY for moderation route.", "MODERATION_KEY_MISSING");
-  }
-  const provided = request.headers.get("x-message-moderation-key");
-  if (!provided || provided !== expected) {
-    throw new ApiError(403, "Forbidden.", "FORBIDDEN");
-  }
-}
-
-function assertModerationAdminEmailHeader(request: Request) {
-  const adminEmail = request.headers.get("x-admin-email")?.trim().toLowerCase();
-  if (!adminEmail || !isAdminEmail(adminEmail)) {
-    throw new ApiError(403, "Forbidden.", "FORBIDDEN");
-  }
-}
-
 export async function POST(request: Request) {
   try {
-    assertModerationKey(request);
-    assertModerationAdminEmailHeader(request);
+    await assertPlatformModerationAdminEmail(request);
     const input = await readJson(request, organizationAdminModerationSchema);
     if (input.action === "freeze" || input.action === "unfreeze") {
       const result = await setOrganizationFreeze({
