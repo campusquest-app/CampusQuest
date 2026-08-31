@@ -25178,13 +25178,13 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 }
 
 .cq-realm-sheet__body {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-x: hidden;
-  overflow-y: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 0 0.58rem 0.18rem;
+  padding: 0 0.58rem 0.28rem;
 }
 
 .cq-realm-sheet--expanded .cq-realm-sheet__body {
@@ -25196,13 +25196,15 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   display: grid;
   grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr);
   gap: 0.38rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 .cq-rhody-highlights,
 .cq-discover-foryou {
   min-width: 0;
   height: auto;
+  display: flex;
+  flex-direction: column;
   padding: 0.32rem 0.38rem 0.3rem;
   border-radius: 0.72rem;
   border: 1px solid rgba(90, 170, 255, 0.34);
@@ -25372,7 +25374,8 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   display: inline-flex;
   align-items: center;
   gap: 0.15rem;
-  margin-top: 0.18rem;
+  margin-top: auto;
+  padding-top: 0.18rem;
   font-size: 0.56rem;
   font-weight: 700;
   color: #7dd3fc;
@@ -25538,7 +25541,7 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-nearby-place-card__image {
   width: 100%;
-  height: 38px;
+  height: 52px;
   object-fit: cover;
   object-position: center;
   display: block;

@@ -101,7 +101,8 @@ export function discoverySheetSnaps(
   const maxH = Math.max(200, usable - Math.max(96, topReservePx));
   const collapsed = clamp(Math.round(usable * 0.1), 64, 88);
   const defaultMax = clamp(Math.round(usable * 0.34), 220, maxH);
-  const contentCap = clamp(Math.round(usable * 0.4), defaultMax, maxH);
+  /** Two-column cards + carousel need ~0.55 usable; 0.40 clipped the places row. */
+  const contentCap = clamp(Math.round(usable * 0.55), defaultMax, maxH);
   const defaultH =
     contentHeightPx != null && Number.isFinite(contentHeightPx)
       ? clamp(Math.round(contentHeightPx), collapsed + 72, contentCap)

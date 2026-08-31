@@ -42,14 +42,20 @@ describe("discovery sheet snaps", () => {
     expect(snaps.default).toBeLessThan(discoverySheetSnaps(844, 120, 88).defaultMax);
   });
 
-  it("lets compact measured content exceed the empty 34% cap without becoming a half-screen slab", () => {
+  it("lets compact measured content exceed the empty 34% cap without covering the map", () => {
     const viewport = 844;
     const nav = 88;
     const usable = viewport - nav;
     const snaps = discoverySheetSnaps(viewport, 120, nav, 290);
     expect(snaps.default).toBe(290);
-    expect(snaps.default / usable).toBeLessThanOrEqual(0.4);
-    expect(discoverySheetSnaps(viewport, 120, nav, 520).default / usable).toBeLessThanOrEqual(0.4);
+    expect(snaps.default / usable).toBeLessThan(0.56);
+    expect(discoverySheetSnaps(viewport, 120, nav, 520).default / usable).toBeLessThan(0.56);
+  });
+
+  it("fits a two-column plus carousel stack under the default snap on a large iPhone", () => {
+    const snaps = discoverySheetSnaps(844, 120, 88, 400);
+    expect(snaps.default).toBe(400);
+    expect(snaps.default / (844 - 88)).toBeLessThan(0.56);
   });
 
   it("picks the nearest snap and honors flick velocity", () => {
