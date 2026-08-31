@@ -24,6 +24,8 @@ import {
   idsMissingFromSeen,
   countUpcomingFromActiveRows,
 } from "@/lib/server/urinvolved/syncSafety";
+import { applyAdminOverrideMerge } from "@/lib/server/eventSources/upsert";
+import { upsertBySourceExternalId } from "@/lib/server/eventSources/upsertBySourceExternalId";
 import { revalidatePath } from "next/cache";
 
 export const URINVOLVED_SOURCE = "urinvolved";
@@ -313,33 +315,35 @@ async function runUrinvolvedSyncExclusive(
             .eq("external_id", canonicalExternalId)
             .maybeSingle();
 
-          const mergedRow = existing?.admin_override
-            ? {
-                ...row,
-                title: existing.title ?? row.title,
-                description: existing.description ?? row.description,
-                organization_name: existing.organization_name ?? row.organization_name,
-                venue_name: existing.venue_name ?? row.venue_name,
-                address: existing.address ?? row.address,
-                location_name: existing.location_name ?? row.location_name,
-                starts_at: existing.starts_at ?? row.starts_at,
-                ends_at: existing.ends_at ?? row.ends_at,
-                image_url: existing.image_url ?? row.image_url,
-                event_url: existing.event_url ?? row.event_url,
-                category: existing.category ?? row.category,
-                tags: existing.tags ?? row.tags,
-                latitude: existing.latitude ?? row.latitude,
-                longitude: existing.longitude ?? row.longitude,
-                admin_override: true,
-                admin_override_fields: existing.admin_override_fields ?? [],
-              }
+          const mergedRow = existing
+            ? applyAdminOverrideMerge(row, existing as Record<string, unknown> & {
+                admin_override: boolean | null;
+                admin_override_fields: string[] | null;
+              })
             : row;
 
-          const { data: upserted, error: upsertError } = await admin
-            .from("external_events")
-            .upsert(mergedRow, { onConflict: "source,external_id" })
-            .select("id")
-            .single();
+          const { data: upserted, error: upsertError } = await (async () => {
+            try {
+              const result = await upsertBySourceExternalId(
+                admin,
+                "external_events",
+                {
+                  ...mergedRow,
+                  source: URINVOLVED_SOURCE,
+                  external_id: canonicalExternalId,
+                },
+                {
+                selectId: true,
+              },
+              );
+              return { data: result.id ? { id: result.id } : null, error: null as null };
+            } catch (error) {
+              return {
+                data: null,
+                error: { message: error instanceof Error ? error.message : String(error) },
+              };
+            }
+          })();
           if (upsertError) {
             eventsFailed += 1;
             errors.push(`Event ${event.externalId}: ${upsertError.message}`);
@@ -403,19 +407,20 @@ async function runUrinvolvedSyncExclusive(
       orgsFetchSucceeded = true;
       for (const org of orgs) {
         if (!org.Id || !org.Name?.trim()) continue;
-        seenOrgIds.push(org.Id);
+        const orgExternalId = String(org.Id);
+        seenOrgIds.push(orgExternalId);
         const description =
           stripHtmlToText(org.Description) || stripHtmlToText(org.Summary) || null;
         const tags = (org.CategoryNames ?? []).filter(Boolean);
         const row = {
           source: URINVOLVED_SOURCE,
           source_type: URINVOLVED_SOURCE,
-          external_id: org.Id,
+          external_id: orgExternalId,
           name: org.Name.trim().slice(0, 200),
           description: description?.slice(0, 5000) ?? null,
           logo_url: buildOrganizationLogoUrl(org.ProfilePicture),
-          organization_url: buildOrganizationUrl(org.WebsiteKey, org.Id),
-          website_url: buildOrganizationUrl(org.WebsiteKey, org.Id),
+          organization_url: buildOrganizationUrl(org.WebsiteKey, orgExternalId),
+          website_url: buildOrganizationUrl(org.WebsiteKey, orgExternalId),
           category: tags[0] ?? null,
           tags,
           organization_type: "student_club",
@@ -428,18 +433,20 @@ async function runUrinvolvedSyncExclusive(
           .from("external_organizations")
           .select("id")
           .eq("source", URINVOLVED_SOURCE)
-          .eq("external_id", org.Id)
+          .eq("external_id", orgExternalId)
           .maybeSingle();
 
-        const { error: upsertError } = await admin
-          .from("external_organizations")
-          .upsert(row, { onConflict: "source,external_id" });
-        if (upsertError) {
-          errors.push(`Org ${org.Id}: ${upsertError.message}`);
+        try {
+          const upserted = await upsertBySourceExternalId(admin, "external_organizations", row, {
+            selectId: false,
+          });
+          if (existing || !upserted.created) orgsUpdated += 1;
+          else orgsCreated += 1;
+        } catch (upsertError) {
+          const message = upsertError instanceof Error ? upsertError.message : String(upsertError);
+          errors.push(`Org ${orgExternalId}: ${message}`);
           continue;
         }
-        if (existing) orgsUpdated += 1;
-        else orgsCreated += 1;
       }
     } catch (orgError) {
       orgsFetchSucceeded = false;
@@ -540,18 +547,25 @@ async function runUrinvolvedSyncExclusive(
     }
 
     console.info("[cq:urinvolved-sync] complete", {
-      source: URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE,
+      provider: URINVOLVED_SOURCE,
+      runId: log.id,
+      started_at: new Date(startedMs).toISOString(),
+      finished_at: new Date().toISOString(),
+      status: success ? "success" : "failed",
+      records_received: eventsFetched,
+      records_created: eventsCreated,
+      records_updated: eventsUpdated,
+      records_skipped: Math.max(0, eventsFetched - eventsCreated - eventsUpdated - eventsFailed),
+      records_failed: eventsFailed,
+      organizations_processed: orgsCreated + orgsUpdated,
+      events_processed: eventsCreated + eventsUpdated,
+      events_deactivated: eventsDeactivated,
+      events_map_matched: eventsMapMatched,
+      events_unresolved_location: eventsUnresolvedLocation,
       httpStatus: upstreamHttpStatus,
-      received: upstreamReceived,
-      validated: eventsFetched,
-      inserted: eventsCreated,
-      updated: eventsUpdated,
-      deactivated: eventsDeactivated,
-      failed: eventsFailed,
       durationMs,
-      success,
       inventoryPreserved,
-      failureReason: success ? null : errors[0] ?? "sync_failed",
+      error_summary: success ? null : errors.slice(0, 5).join(" | ") || "sync_failed",
     });
 
     return {
@@ -580,18 +594,21 @@ async function runUrinvolvedSyncExclusive(
       error_message: message,
     });
     console.warn("[cq:urinvolved-sync] complete", {
-      source: URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE,
-      httpStatus: upstreamHttpStatus,
-      received: upstreamReceived,
-      validated: eventsFetched,
-      inserted: eventsCreated,
-      updated: eventsUpdated,
-      deactivated: eventsDeactivated,
-      failed: eventsFailed,
+      provider: URINVOLVED_SOURCE,
+      runId: log.id,
+      started_at: new Date(startedMs).toISOString(),
+      finished_at: new Date().toISOString(),
+      status: "failed",
+      records_received: eventsFetched,
+      records_created: eventsCreated,
+      records_updated: eventsUpdated,
+      records_skipped: Math.max(0, eventsFetched - eventsCreated - eventsUpdated - eventsFailed),
+      records_failed: eventsFailed,
+      organizations_processed: orgsCreated + orgsUpdated,
+      events_processed: eventsCreated + eventsUpdated,
       durationMs: Date.now() - startedMs,
-      success: false,
       inventoryPreserved: true,
-      failureReason: message,
+      error_summary: message,
     });
     return {
       success: false,

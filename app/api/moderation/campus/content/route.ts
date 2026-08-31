@@ -1,32 +1,12 @@
 import { ZodError } from "zod";
-import { isAdminEmail } from "@/lib/server/adminAuth";
+import { assertPlatformModerationAdminEmail } from "@/lib/server/moderationAuth";
 import { moderateCampusContent } from "@/lib/server/campusModeration";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { moderateCampusContentSchema, readJson } from "@/lib/server/validation";
 
-function assertModerationKey(request: Request) {
-  const expected = process.env.MESSAGE_MODERATION_API_KEY;
-  if (!expected) {
-    throw new ApiError(500, "Missing MESSAGE_MODERATION_API_KEY for moderation route.", "MODERATION_KEY_MISSING");
-  }
-  const provided = request.headers.get("x-message-moderation-key");
-  if (!provided || provided !== expected) {
-    throw new ApiError(403, "Forbidden.", "FORBIDDEN");
-  }
-}
-
-function assertModerationAdminEmailHeader(request: Request) {
-  const adminEmail = request.headers.get("x-admin-email")?.trim().toLowerCase();
-  if (!adminEmail || !isAdminEmail(adminEmail)) {
-    throw new ApiError(403, "Forbidden.", "FORBIDDEN");
-  }
-  return adminEmail;
-}
-
 export async function POST(request: Request) {
   try {
-    assertModerationKey(request);
-    const adminEmail = assertModerationAdminEmailHeader(request);
+    const adminEmail = await assertPlatformModerationAdminEmail(request);
     const input = await readJson(request, moderateCampusContentSchema);
     const content = await moderateCampusContent({
       entityType: input.entityType,

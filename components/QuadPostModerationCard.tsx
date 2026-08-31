@@ -24,12 +24,14 @@ export function QuadPostModerationCard() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [forbidden, setForbidden] = useState(false);
 
   const loadReports = useCallback(async () => {
     setLoading(true);
     setError(null);
     setSuccess(null);
     setSessionExpired(false);
+    setForbidden(false);
     try {
       const data = await fetchAuthed<{ reports: QuadPostReport[] }>(
         "/api/internal/admin/moderation/quad/reports?limit=100",
@@ -38,6 +40,10 @@ export function QuadPostModerationCard() {
     } catch (loadError) {
       if (loadError instanceof ApiRequestError && loadError.status === 401) {
         setSessionExpired(true);
+        return;
+      }
+      if (loadError instanceof ApiRequestError && loadError.status === 403) {
+        setForbidden(true);
         return;
       }
       setError(loadError instanceof Error ? loadError.message : "Could not load post reports.");
@@ -101,6 +107,19 @@ export function QuadPostModerationCard() {
         </button>
       </div>
 
+      {forbidden ? (
+        <div className="rounded-lg border border-amber-300/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 space-y-2">
+          <p className="font-semibold">Unable to load moderation reports</p>
+          <p className="text-amber-100/80">Your administrator session could not be verified for this queue.</p>
+          <button
+            type="button"
+            onClick={() => void loadReports()}
+            className="rounded-lg border border-amber-200/40 px-3 py-1.5 text-[11px] font-semibold text-amber-50 hover:bg-amber-500/20"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
       {error ? <div className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</div> : null}
       {success ? (
         <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">{success}</div>

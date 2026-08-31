@@ -20,6 +20,7 @@ import {
   linkCrossSourceDuplicate,
   normalizedEventToRow,
 } from "@/lib/server/eventSources/upsert";
+import { upsertBySourceExternalId } from "@/lib/server/eventSources/upsertBySourceExternalId";
 
 export const ATHLETICS_SOURCE = "athletics" as const;
 
@@ -87,6 +88,7 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
   let orgsUpdated = 0;
   const seenEventIds: string[] = [];
   const now = new Date().toISOString();
+  const startedMs = Date.now();
 
   try {
     const feedUrls = athleticsFeedUrlsFromEnv();
@@ -137,11 +139,28 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
         const existing = await findExistingExternalEvent(admin, ATHLETICS_SOURCE, located.externalId);
         const merged = existing ? applyAdminOverrideMerge(row, existing) : row;
 
-        const { data: upserted, error: upsertError } = await admin
-          .from("external_events")
-          .upsert(merged, { onConflict: "source,external_id" })
-          .select("id")
-          .single();
+        const { data: upserted, error: upsertError } = await (async () => {
+          try {
+            const result = await upsertBySourceExternalId(
+              admin,
+              "external_events",
+              {
+                ...merged,
+                source: String(merged.source ?? ATHLETICS_SOURCE),
+                external_id: String(merged.external_id ?? located.externalId),
+              },
+              {
+              selectId: true,
+            },
+            );
+            return { data: result.id ? { id: result.id } : null, error: null as null };
+          } catch (error) {
+            return {
+              data: null,
+              error: { message: error instanceof Error ? error.message : String(error) },
+            };
+          }
+        })();
         if (upsertError) {
           eventsFailed += 1;
           errors.push(`Event ${located.externalId}: ${upsertError.message}`);
@@ -193,26 +212,35 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
             .eq("source", ATHLETICS_SOURCE)
             .eq("external_id", org.externalId)
             .maybeSingle();
-          const { error: orgError } = await admin.from("external_organizations").upsert(
-            {
-              source: org.source,
-              source_type: org.sourceType,
-              external_id: org.externalId,
-              name: org.name,
-              description: org.description,
-              logo_url: org.logoUrl,
-              organization_url: org.websiteUrl,
-              website_url: org.websiteUrl,
-              category: org.category,
-              tags: org.tags,
-              organization_type: org.organizationType,
-              verified: org.verified,
-              is_active: true,
-              last_seen_at: now,
-              updated_at: now,
-            },
-            { onConflict: "source,external_id" },
-          );
+          const { error: orgError } = await (async () => {
+            try {
+              await upsertBySourceExternalId(
+                admin,
+                "external_organizations",
+                {
+                  source: org.source,
+                  source_type: org.sourceType,
+                  external_id: String(org.externalId),
+                  name: org.name,
+                  description: org.description,
+                  logo_url: org.logoUrl,
+                  organization_url: org.websiteUrl,
+                  website_url: org.websiteUrl,
+                  category: org.category,
+                  tags: org.tags,
+                  organization_type: org.organizationType,
+                  verified: org.verified,
+                  is_active: true,
+                  last_seen_at: now,
+                  updated_at: now,
+                },
+                { selectId: false },
+              );
+              return { error: null as null };
+            } catch (error) {
+              return { error: { message: error instanceof Error ? error.message : String(error) } };
+            }
+          })();
           if (!orgError) {
             if (existingOrg) orgsUpdated += 1;
             else orgsCreated += 1;
@@ -260,6 +288,23 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
     } catch {
       /* ignore */
     }
+
+    console.info("[cq:athletics-sync] complete", {
+      provider: ATHLETICS_SOURCE,
+      runId: log.id,
+      started_at: new Date(startedMs).toISOString(),
+      finished_at: new Date().toISOString(),
+      status: success ? "success" : "failed",
+      records_received: eventsReceived,
+      records_created: eventsCreated,
+      records_updated: eventsUpdated,
+      records_skipped: Math.max(0, eventsReceived - eventsCreated - eventsUpdated - eventsFailed),
+      records_failed: eventsFailed,
+      organizations_processed: orgsCreated + orgsUpdated,
+      events_processed: eventsCreated + eventsUpdated,
+      duplicates_merged: duplicatesMerged,
+      error_summary: success ? null : errors.slice(0, 5).join(" | ") || null,
+    });
 
     return {
       source: ATHLETICS_SOURCE,
