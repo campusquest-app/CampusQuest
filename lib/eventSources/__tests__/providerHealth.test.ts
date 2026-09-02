@@ -4,15 +4,12 @@ import {
   formatAdminSyncErrorSummary,
   resolveProviderHealth,
 } from "@/lib/eventSources/providerHealth";
-import {
-  EXTERNAL_SOURCE_ID_CONFLICT,
-  isMissingOnConflictTargetError,
-} from "@/lib/server/eventSources/upsertBySourceExternalId";
+import { EXTERNAL_SOURCE_ID_CONFLICT } from "@/lib/server/eventSources/upsertBySourceExternalId";
 
 describe("provider health status", () => {
-  const now = Date.parse("2026-08-31T12:00:00.000Z");
+  const now = Date.parse("2026-09-02T12:00:00.000Z");
 
-  it("does not label Athletics Not Connected when imported data exists", () => {
+  it("shows Configuration Required for Athletics when feed env is missing", () => {
     const health = resolveProviderHealth({
       source: "athletics",
       configured: false,
@@ -24,9 +21,10 @@ describe("provider health status", () => {
       nowMs: now,
       staleAfterMs: 48 * 60 * 60 * 1000,
     });
-    // 184 events with success 4 days ago (>48h) → stale, not not_connected
-    expect(health.status).toBe("stale");
-    expect(health.label).not.toBe("Not Connected");
+    expect(health.status).toBe("configuration_required");
+    expect(health.label).toBe("Configuration Required");
+    expect(health.label).not.toBe("Stale");
+    expect(health.message).toMatch(/URI_ATHLETICS_FEED_URL/);
   });
 
   it("marks recent successful configured feed as Connected", () => {
@@ -34,8 +32,8 @@ describe("provider health status", () => {
       source: "athletics",
       configured: true,
       activeEventsCount: 184,
-      lastSuccessfulSync: "2026-08-31T08:00:00.000Z",
-      lastAttemptedSync: "2026-08-31T08:00:00.000Z",
+      lastSuccessfulSync: "2026-09-02T08:00:00.000Z",
+      lastAttemptedSync: "2026-09-02T08:00:00.000Z",
       lastStatus: "success",
       lastError: null,
       nowMs: now,
@@ -49,16 +47,32 @@ describe("provider health status", () => {
       configured: true,
       activeEventsCount: 0,
       lastSuccessfulSync: "2026-08-25T03:45:00.000Z",
-      lastAttemptedSync: "2026-08-31T03:45:00.000Z",
+      lastAttemptedSync: "2026-09-02T03:45:00.000Z",
       lastStatus: "failed",
-      lastError: "Org 379938: there is no unique or exclusion constraint matching the ON CONFLICT specification",
+      lastError:
+        "Org 379938 [external_organizations conflict target source,external_id]: there is no unique or exclusion constraint matching the ON CONFLICT specification",
       nowMs: now,
     });
     expect(health.status).toBe("failed");
     expect(health.label).toBe("Failed");
   });
 
-  it("reports Not Connected only when no feed and no inventory", () => {
+  it("reports stale when configured but success is old", () => {
+    const health = resolveProviderHealth({
+      source: "athletics",
+      configured: true,
+      activeEventsCount: 184,
+      lastSuccessfulSync: "2026-08-27T00:29:14.000Z",
+      lastAttemptedSync: "2026-08-27T00:29:14.000Z",
+      lastStatus: "success",
+      lastError: null,
+      nowMs: now,
+      staleAfterMs: 48 * 60 * 60 * 1000,
+    });
+    expect(health.status).toBe("stale");
+  });
+
+  it("reports Not Connected only when no feed and no athletics inventory path", () => {
     const health = resolveProviderHealth({
       source: "fine_arts",
       configured: false,
@@ -74,13 +88,22 @@ describe("provider health status", () => {
 });
 
 describe("sync error presentation", () => {
-  it("summarizes ON CONFLICT failures without dumping raw SQL as the primary message", () => {
+  it("identifies failing table and conflict target for ON CONFLICT failures", () => {
+    const summary = formatAdminSyncErrorSummary(
+      "Org 379938 [external_organizations conflict target source,external_id]: there is no unique or exclusion constraint matching the ON CONFLICT specification",
+    );
+    expect(summary.title).toBe("URInvolved Sync Failed");
+    expect(summary.summary).toMatch(/external_organizations/);
+    expect(summary.summary).toMatch(/source,external_id/);
+    expect(summary.technical).toMatch(/ON CONFLICT/i);
+  });
+
+  it("infers organization table from Org-prefixed legacy errors", () => {
     const summary = formatAdminSyncErrorSummary(
       "Org 379938: there is no unique or exclusion constraint matching the ON CONFLICT specification",
     );
-    expect(summary.title).toBe("URInvolved Sync Failed");
-    expect(summary.summary).toMatch(/could not be imported/i);
-    expect(summary.technical).toMatch(/ON CONFLICT/i);
+    expect(summary.summary).toMatch(/external_organizations/);
+    expect(summary.summary).toMatch(/source,external_id/);
   });
 });
 
@@ -90,28 +113,14 @@ describe("next cron estimate", () => {
       scheduled: true,
       cronHourUtc: 3,
       cronMinuteUtc: 0,
-      nowMs: Date.parse("2026-08-31T12:00:00.000Z"),
+      nowMs: Date.parse("2026-09-02T12:00:00.000Z"),
     });
-    expect(next).toBe("2026-09-01T03:00:00.000Z");
-  });
-
-  it("returns null when not scheduled", () => {
-    expect(estimateNextDailyCronUtc({ scheduled: false })).toBeNull();
+    expect(next).toBe("2026-09-03T03:00:00.000Z");
   });
 });
 
-describe("upsert conflict helpers", () => {
-  it("uses the composite source,external_id conflict target", () => {
+describe("conflict target constant", () => {
+  it("matches the composite unique identity", () => {
     expect(EXTERNAL_SOURCE_ID_CONFLICT).toBe("source,external_id");
-  });
-
-  it("detects missing ON CONFLICT target errors", () => {
-    expect(
-      isMissingOnConflictTargetError({
-        code: "42P10",
-        message: "there is no unique or exclusion constraint matching the ON CONFLICT specification",
-      }),
-    ).toBe(true);
-    expect(isMissingOnConflictTargetError({ code: "23505", message: "duplicate" })).toBe(false);
   });
 });

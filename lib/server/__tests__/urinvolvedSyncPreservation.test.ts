@@ -96,6 +96,20 @@ function createMemoryAdmin(seed: EventRow[]) {
             },
           }),
         }),
+        insert: (row: Record<string, unknown>) => ({
+          select: () => ({
+            single: async () => {
+              const externalId = String(row.external_id);
+              events.set(externalId, {
+                external_id: externalId,
+                is_active: Boolean(row.is_active),
+                title: String(row.title ?? ""),
+                starts_at: (row.starts_at as string | null) ?? null,
+              });
+              return { data: { id: externalId }, error: null };
+            },
+          }),
+        }),
         update: (patch: Record<string, unknown>) => {
           const applyIn = async (_col: string, values: string[]) => {
             for (const id of values) {
@@ -106,7 +120,7 @@ function createMemoryAdmin(seed: EventRow[]) {
           };
           const chain = {
             eq: (col: string, value: string) => {
-              if (col === "external_id") {
+              if (col === "external_id" || col === "id") {
                 const row = events.get(value);
                 if (row) Object.assign(row, patch);
               }
@@ -134,6 +148,11 @@ function createMemoryAdmin(seed: EventRow[]) {
           }),
         }),
         upsert: async () => ({ error: null }),
+        insert: () => ({
+          select: () => ({
+            single: async () => ({ data: { id: "org-mock" }, error: null }),
+          }),
+        }),
         update: () => ({
           eq: () => ({
             in: async () => ({ data: null, error: null }),
@@ -300,7 +319,30 @@ describe("URInvolved sync preservation behavior (unit)", () => {
               },
             }),
           }),
-          update: builder.update,
+          insert: (row: Record<string, unknown>) => ({
+            select: () => ({
+              single: async () => {
+                const externalId = String(row.external_id);
+                admin._events.set(externalId, {
+                  external_id: externalId,
+                  is_active: Boolean(row.is_active),
+                  title: String(row.title ?? ""),
+                  starts_at: (row.starts_at as string | null) ?? null,
+                });
+                return { data: { id: externalId }, error: null };
+              },
+            }),
+          }),
+          update: (patch: Record<string, unknown>) => ({
+            eq: async (col: string, value: string) => {
+              if (col === "id" || col === "external_id") {
+                const row = admin._events.get(value);
+                if (row) Object.assign(row, patch);
+              }
+              return builder.update(patch);
+            },
+            in: (...args: unknown[]) => (builder.update(patch) as { in: (...a: unknown[]) => unknown }).in(...args),
+          }),
         };
       }
       if (table === "external_organizations") {
@@ -312,7 +354,13 @@ describe("URInvolved sync preservation behavior (unit)", () => {
             }),
           }),
           upsert: async () => ({ error: null }),
+          insert: () => ({
+            select: () => ({
+              single: async () => ({ data: { id: "org-1" }, error: null }),
+            }),
+          }),
           update: () => ({
+            eq: async () => ({ error: null }),
             in: async () => ({ data: null, error: null }),
           }),
         };

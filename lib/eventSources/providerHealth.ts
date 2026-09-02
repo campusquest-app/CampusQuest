@@ -9,6 +9,7 @@ export type ProviderHealthStatus =
   | "warning"
   | "failed"
   | "stale"
+  | "configuration_required"
   | "not_connected";
 
 export type ProviderHealthInput = {
@@ -52,6 +53,31 @@ export function resolveProviderHealth(input: ProviderHealthInput): {
     };
   }
 
+  // Missing env/feed config must never read as Stale — that blocks operators from
+  // noticing URI_ATHLETICS_FEED_URL (etc.) needs to be set.
+  if (!input.configured) {
+    const needsConfig =
+      input.source === "athletics" ||
+      hasInventory ||
+      Number.isFinite(lastSuccessMs) ||
+      skipConfiguredNoise;
+    if (needsConfig) {
+      return {
+        status: "configuration_required",
+        label: "Configuration Required",
+        message:
+          input.source === "athletics"
+            ? "Set URI_ATHLETICS_FEED_URL to the official GoRhody ICS feed, then use Retry Sync."
+            : "Provider feed is not configured. Imported data is preserved until a feed is set.",
+      };
+    }
+    return {
+      status: "not_connected",
+      label: "Not Connected",
+      message: "No usable provider feed is configured.",
+    };
+  }
+
   if (lastStatus === "failed" && !skipConfiguredNoise) {
     return {
       status: "failed",
@@ -60,7 +86,7 @@ export function resolveProviderHealth(input: ProviderHealthInput): {
     };
   }
 
-  if (input.configured && hasRecentSuccess) {
+  if (hasRecentSuccess) {
     return {
       status: "connected",
       label: "Connected",
@@ -68,7 +94,6 @@ export function resolveProviderHealth(input: ProviderHealthInput): {
     };
   }
 
-  // Inventory from a previously configured feed (env may be temporarily missing).
   if (hasInventory && Number.isFinite(lastSuccessMs)) {
     if (now - lastSuccessMs > staleAfterMs) {
       return {
@@ -92,7 +117,7 @@ export function resolveProviderHealth(input: ProviderHealthInput): {
     };
   }
 
-  if (input.configured && !hasRecentSuccess) {
+  if (!hasRecentSuccess) {
     if (Number.isFinite(lastSuccessMs)) {
       return {
         status: "stale",
@@ -143,6 +168,13 @@ function sanitizeTechnicalDiagnostics(raw: string): string {
     .replace(/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[redacted-jwt]");
 }
 
+function inferConflictTable(technical: string): "external_organizations" | "external_events" {
+  if (/^Org\s+/i.test(technical) || /\bOrg\s+\d+/i.test(technical)) {
+    return "external_organizations";
+  }
+  return "external_events";
+}
+
 export function formatAdminSyncErrorSummary(raw: string | null | undefined): {
   title: string;
   summary: string;
@@ -153,9 +185,26 @@ export function formatAdminSyncErrorSummary(raw: string | null | undefined): {
     return { title: "Sync healthy", summary: "No recent sync errors.", technical: null };
   }
   if (/no unique or exclusion constraint matching the ON CONFLICT/i.test(technical)) {
+    const tableMatch = technical.match(/\[(external_organizations|external_events)\s+conflict target\s+([^\]]+)\]/i);
+    const table = tableMatch?.[1] ?? inferConflictTable(technical);
+    const conflictTarget = tableMatch?.[2] ?? "source,external_id";
     return {
       title: "URInvolved Sync Failed",
-      summary: "Some records could not be imported due to a database conflict-target mismatch.",
+      summary: `Some records could not be imported. Failing table: ${table}. Conflict target: (${conflictTarget}).`,
+      technical,
+    };
+  }
+  if (/\[external_organizations\s+conflict target/i.test(technical)) {
+    return {
+      title: "URInvolved Sync Failed",
+      summary: "Organization import failed (table: external_organizations, conflict target: source,external_id).",
+      technical,
+    };
+  }
+  if (/\[external_events\s+conflict target/i.test(technical)) {
+    return {
+      title: "URInvolved Sync Failed",
+      summary: "Event import failed (table: external_events, conflict target: source,external_id).",
       technical,
     };
   }

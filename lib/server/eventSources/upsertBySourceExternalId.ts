@@ -1,8 +1,9 @@
 /**
  * Shared upsert helpers for external_events / external_organizations.
- * Always conflict on (source, external_id). Falls back to select→update/insert
- * if Postgres rejects ON CONFLICT (schema drift / stale deploy), so one mismatch
- * cannot wipe an entire provider sync.
+ *
+ * Identity is always (source, external_id). Prefer select → update/insert so sync
+ * never depends on PostgREST ON CONFLICT matching a unique constraint (42P10).
+ * A best-effort upsert remains as a secondary path when no existing row is found.
  */
 
 import type { createAdminClient } from "@/lib/server/supabase";
@@ -18,6 +19,15 @@ export function isMissingOnConflictTargetError(error: {
   if (!error) return false;
   if (error.code === "42P10") return true;
   return /no unique or exclusion constraint matching the ON CONFLICT/i.test(error.message ?? "");
+}
+
+export function formatSourceExternalIdConflictError(
+  table: "external_events" | "external_organizations",
+  externalId: string,
+  cause: string,
+): string {
+  const label = table === "external_organizations" ? "Org" : "Event";
+  return `${label} ${externalId} [${table} conflict target ${EXTERNAL_SOURCE_ID_CONFLICT}]: ${cause}`;
 }
 
 export type UpsertBySourceExternalIdResult = {
@@ -48,10 +58,54 @@ export async function upsertBySourceExternalId(
     .eq("external_id", externalId)
     .maybeSingle();
   if (existingQuery.error) {
-    throw new Error(existingQuery.error.message);
+    throw new Error(
+      formatSourceExternalIdConflictError(table, externalId, existingQuery.error.message),
+    );
   }
   const existingId = (existingQuery.data as { id?: string } | null)?.id ?? null;
 
+  // Primary path: update/insert by identity lookup — never requires ON CONFLICT.
+  if (existingId) {
+    const { error: updateError } = await admin.from(table).update(payload).eq("id", existingId);
+    if (updateError) {
+      throw new Error(formatSourceExternalIdConflictError(table, externalId, updateError.message));
+    }
+    return { id: existingId, created: false, usedFallback: true };
+  }
+
+  const { data: inserted, error: insertError } = await admin
+    .from(table)
+    .insert(payload)
+    .select("id")
+    .single();
+
+  if (!insertError && inserted) {
+    return {
+      id: String((inserted as { id: string }).id),
+      created: true,
+      usedFallback: true,
+    };
+  }
+
+  // Race: another writer inserted the same (source, external_id). Update that row.
+  if (insertError && (insertError.code === "23505" || /duplicate key/i.test(insertError.message))) {
+    const again = await admin
+      .from(table)
+      .select("id")
+      .eq("source", source)
+      .eq("external_id", externalId)
+      .maybeSingle();
+    const racedId = (again.data as { id?: string } | null)?.id ?? null;
+    if (racedId) {
+      const { error: updateError } = await admin.from(table).update(payload).eq("id", racedId);
+      if (updateError) {
+        throw new Error(formatSourceExternalIdConflictError(table, externalId, updateError.message));
+      }
+      return { id: racedId, created: false, usedFallback: true };
+    }
+  }
+
+  // Last resort: PostgREST upsert on the composite unique target (requires migration).
   if (selectId) {
     const { data, error } = await admin
       .from(table)
@@ -61,37 +115,37 @@ export async function upsertBySourceExternalId(
     if (!error && data) {
       return {
         id: String((data as { id: string }).id),
-        created: !existingId,
+        created: true,
         usedFallback: false,
       };
     }
     if (error && !isMissingOnConflictTargetError(error)) {
-      throw new Error(error.message);
+      throw new Error(formatSourceExternalIdConflictError(table, externalId, error.message));
+    }
+    if (error) {
+      throw new Error(
+        formatSourceExternalIdConflictError(
+          table,
+          externalId,
+          insertError?.message ?? error.message,
+        ),
+      );
     }
   } else {
     const { error } = await admin.from(table).upsert(payload, { onConflict: EXTERNAL_SOURCE_ID_CONFLICT });
     if (!error) {
-      return { id: existingId, created: !existingId, usedFallback: false };
+      return { id: null, created: true, usedFallback: false };
     }
     if (!isMissingOnConflictTargetError(error)) {
-      throw new Error(error.message);
+      throw new Error(formatSourceExternalIdConflictError(table, externalId, error.message));
     }
   }
 
-  // Fallback when ON CONFLICT target is missing (or select-after-upsert failed for that reason).
-  if (existingId) {
-    const { error: updateError } = await admin.from(table).update(payload).eq("id", existingId);
-    if (updateError) throw new Error(updateError.message);
-    return { id: existingId, created: false, usedFallback: true };
-  }
-
-  const { data: inserted, error: insertError } = await admin
-    .from(table)
-    .insert(payload)
-    .select("id")
-    .single();
-  if (insertError || !inserted) {
-    throw new Error(insertError?.message ?? `Could not insert ${table} row.`);
-  }
-  return { id: String((inserted as { id: string }).id), created: true, usedFallback: true };
+  throw new Error(
+    formatSourceExternalIdConflictError(
+      table,
+      externalId,
+      insertError?.message ?? "Could not insert or update row.",
+    ),
+  );
 }

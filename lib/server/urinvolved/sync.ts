@@ -346,7 +346,8 @@ async function runUrinvolvedSyncExclusive(
           })();
           if (upsertError) {
             eventsFailed += 1;
-            errors.push(`Event ${event.externalId}: ${upsertError.message}`);
+            const message = upsertError.message;
+            errors.push(message.startsWith("Event ") ? message : `Event ${event.externalId}: ${message}`);
             continue;
           }
           if (existing) eventsUpdated += 1;
@@ -444,7 +445,7 @@ async function runUrinvolvedSyncExclusive(
           else orgsCreated += 1;
         } catch (upsertError) {
           const message = upsertError instanceof Error ? upsertError.message : String(upsertError);
-          errors.push(`Org ${orgExternalId}: ${message}`);
+          errors.push(message.startsWith("Org ") ? message : `Org ${orgExternalId}: ${message}`);
           continue;
         }
       }

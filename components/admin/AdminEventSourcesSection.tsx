@@ -34,6 +34,7 @@ function healthTone(status: string): "success" | "warning" | "danger" | "neutral
       return "info";
     case "warning":
     case "stale":
+    case "configuration_required":
       return "warning";
     case "failed":
       return "danger";
