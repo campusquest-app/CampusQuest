@@ -257,6 +257,7 @@ export function RealmMap({
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
   const [railFocus, setRailFocus] = useState<{ lat: number; lng: number } | null>(null);
   const [discoverySnap, setDiscoverySnap] = useState<DiscoverySheetSnap>("default");
+  const [discoveryPadPx, setDiscoveryPadPx] = useState(0);
   const [userFix, setUserFix] = useState<{ lat: number; lng: number; accuracy?: number | null } | null>(null);
   const [userLocating, setUserLocating] = useState(true);
   const locateAttemptedRef = useRef(false);
@@ -876,6 +877,10 @@ export function RealmMap({
   const showDiscoverySheet =
     !showArrival && !showIntro && !editMode && !sheetOpen && !isRouteSheetOpen;
 
+  useEffect(() => {
+    if (!showDiscoverySheet) setDiscoveryPadPx(0);
+  }, [showDiscoverySheet]);
+
   const syncRecommendationForMarker = useCallback(
     (markerId: string) => {
       const match = mapRecommendations.find((item) => item.markerId === markerId);
@@ -1355,6 +1360,7 @@ export function RealmMap({
             onUrinvolvedEventDragEnd={(id, lat, lng) => void handleUrinvolvedEventDragEnd(id, lat, lng)}
             onPlaceSelected={handlePlaceSelected}
             searchPin={searchPin}
+            extraBottomPx={showDiscoverySheet ? discoveryPadPx : 0}
           />
         ) : (
           <TransformWrapper
@@ -1557,6 +1563,7 @@ export function RealmMap({
             nearbyPlaces={nearbyPlaces}
             snap={discoverySnap}
             onSnapChange={setDiscoverySnap}
+            onHeightChange={setDiscoveryPadPx}
             onOpenRecommendation={(item) => focusRecommendation(item, true)}
             onOpenPlace={openPlaceFromCarousel}
             onViewAthletics={onViewAthletics}

@@ -21,7 +21,7 @@ import {
 import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
 
 describe("discovery sheet snaps", () => {
-  it("keeps the default overlay under half the usable height so the map stays dominant", () => {
+  it("keeps the default overlay under ~half the usable height so the map stays visible", () => {
     const viewport = 844;
     const nav = 88;
     const snaps = discoverySheetSnaps(viewport, 120, nav);
@@ -31,9 +31,9 @@ describe("discovery sheet snaps", () => {
     expect(snaps.collapsed).toBeLessThanOrEqual(96);
     expect(snaps.default).toBeGreaterThan(snaps.collapsed);
     expect(snaps.expanded).toBeGreaterThan(snaps.default);
-    expect(mapShare / usable).toBeGreaterThanOrEqual(0.64);
-    expect(snaps.default / usable).toBeLessThanOrEqual(0.36);
-    expect(snaps.defaultMax / usable).toBeLessThanOrEqual(0.36);
+    expect(mapShare / usable).toBeGreaterThanOrEqual(0.38);
+    expect(snaps.default / usable).toBeLessThanOrEqual(0.55);
+    expect(snaps.defaultMax / usable).toBeLessThanOrEqual(0.55);
   });
 
   it("hugs measured content instead of stretching a tall empty panel", () => {
@@ -42,14 +42,14 @@ describe("discovery sheet snaps", () => {
     expect(snaps.default).toBeLessThan(discoverySheetSnaps(844, 120, 88).defaultMax);
   });
 
-  it("lets compact measured content exceed the empty 34% cap without becoming a half-screen slab", () => {
+  it("lets measured Genius+Rhody content expand without covering the whole map", () => {
     const viewport = 844;
     const nav = 88;
     const usable = viewport - nav;
-    const snaps = discoverySheetSnaps(viewport, 120, nav, 290);
-    expect(snaps.default).toBe(290);
-    expect(snaps.default / usable).toBeLessThanOrEqual(0.4);
-    expect(discoverySheetSnaps(viewport, 120, nav, 520).default / usable).toBeLessThanOrEqual(0.4);
+    const snaps = discoverySheetSnaps(viewport, 120, nav, 360);
+    expect(snaps.default).toBe(360);
+    expect(snaps.default / usable).toBeLessThanOrEqual(0.62);
+    expect(discoverySheetSnaps(viewport, 120, nav, 620).default / usable).toBeLessThanOrEqual(0.63);
   });
 
   it("picks the nearest snap and honors flick velocity", () => {
@@ -265,8 +265,9 @@ describe("athletics highlights", () => {
     expect(slots[1]?.id).toMatch(/athletics-slot/);
   });
 
-  it("surfaces the curated Rams YouTube short first in Rhody Highlights", () => {
-    const rows = buildRhodyHighlights([], new Date("2026-08-28T16:00:00.000Z"), 3);
+  it("surfaces only the curated Rams YouTube short in the Rhody Highlights preview", () => {
+    const rows = buildRhodyHighlights([], new Date("2026-08-28T16:00:00.000Z"));
+    expect(rows).toHaveLength(1);
     expect(rows[0]?.type).toBe("youtube");
     expect(rows[0]?.youtubeVideoId).toBe("WeztHt4UU_U");
     expect(rows[0]?.url).toBe("https://www.youtube.com/watch?v=WeztHt4UU_U");
@@ -274,7 +275,17 @@ describe("athletics highlights", () => {
     expect(rows[0]?.imageFallbackUrl).toBe("https://img.youtube.com/vi/WeztHt4UU_U/hqdefault.jpg");
     expect(rows[0]?.title).toMatch(/Rams are Coming/i);
     expect(rows[0]?.playable).toBe(true);
+    expect(rows.every((row) => row.type !== "placeholder")).toBe(true);
+  });
+
+  it("can restore a padded three-row Rhody Highlights card when asked", () => {
+    const rows = buildRhodyHighlights([], new Date("2026-08-28T16:00:00.000Z"), 3, undefined, {
+      padPlaceholders: true,
+    });
     expect(rows).toHaveLength(3);
+    expect(rows[0]?.youtubeVideoId).toBe("WeztHt4UU_U");
+    expect(rows[1]?.youtubeVideoId).toBe("Ry_Hpfz-K40");
+    expect(rows[2]?.sport).toBe("Results");
   });
 });
 

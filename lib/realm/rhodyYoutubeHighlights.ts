@@ -22,6 +22,12 @@ export const RHODY_YOUTUBE_HIGHLIGHTS: readonly RhodyYoutubeHighlightSource[] = 
     category: "Rhody",
     duration: null,
   },
+  {
+    youtubeVideoId: "Ry_Hpfz-K40",
+    title: "In The Library",
+    category: "Rhody",
+    duration: null,
+  },
 ];
 
 export function parseYoutubeVideoId(input: string): string | null {

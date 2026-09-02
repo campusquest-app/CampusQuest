@@ -100,8 +100,9 @@ export function discoverySheetSnaps(
   const usable = Math.max(360, h - Math.max(0, navClearancePx));
   const maxH = Math.max(200, usable - Math.max(96, topReservePx));
   const collapsed = clamp(Math.round(usable * 0.1), 64, 88);
-  const defaultMax = clamp(Math.round(usable * 0.34), 220, maxH);
-  const contentCap = clamp(Math.round(usable * 0.4), defaultMax, maxH);
+  // Room for full-width Genius Mining + Rhody Highlights in the default snap.
+  const defaultMax = clamp(Math.round(usable * 0.52), 280, maxH);
+  const contentCap = clamp(Math.round(usable * 0.62), defaultMax, maxH);
   const defaultH =
     contentHeightPx != null && Number.isFinite(contentHeightPx)
       ? clamp(Math.round(contentHeightPx), collapsed + 72, contentCap)
@@ -334,17 +335,30 @@ export function youtubeSourceToHighlight(source: RhodyYoutubeHighlightSource): A
   };
 }
 
-/** Curated YouTube rows first, then live athletics, then structural placeholders. */
+/**
+ * How many Rhody Highlights rows the Realm preview shows.
+ * Raise this (and optionally enable padPlaceholders) to restore a fuller card later.
+ */
+export const RHODY_HIGHLIGHTS_PREVIEW_LIMIT = 1;
+
+/** When true, pad short lists with UPCOMING/RESULTS placeholders. Off for the short preview card. */
+export const RHODY_HIGHLIGHTS_PAD_PLACEHOLDERS = false;
+
+/** Curated YouTube rows first, then live athletics; placeholders only when padPlaceholders is on. */
 export function buildRhodyHighlights(
   groups: Array<Pick<GroupedMapLocation, "events">>,
   now = new Date(),
-  limit = 3,
+  limit = RHODY_HIGHLIGHTS_PREVIEW_LIMIT,
   youtubeSources: readonly RhodyYoutubeHighlightSource[] = RHODY_YOUTUBE_HIGHLIGHTS,
+  options?: { padPlaceholders?: boolean },
 ): AthleticsHighlight[] {
+  const padPlaceholders = options?.padPlaceholders ?? RHODY_HIGHLIGHTS_PAD_PLACEHOLDERS;
   const youtube = youtubeSources.slice(0, limit).map(youtubeSourceToHighlight);
   const remaining = Math.max(0, limit - youtube.length);
   const athletics = remaining > 0 ? collectAthleticsHighlights(groups, now, remaining) : [];
-  return athleticsHighlightSlots([...youtube, ...athletics], limit);
+  const filled = [...youtube, ...athletics].slice(0, limit);
+  if (!padPlaceholders) return filled;
+  return athleticsHighlightSlots(filled, limit);
 }
 
 /** Keep the target 3-row athletics card even when no games have loaded. */

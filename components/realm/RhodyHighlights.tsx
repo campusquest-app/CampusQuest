@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import type { AthleticsHighlight } from "@/lib/realm/discoverySheet";
 import { openExternalUrl } from "@/lib/client/capacitorNative";
 
@@ -21,18 +21,22 @@ export function RhodyHighlights({
   onViewAthletics?: () => void;
 }) {
   return (
-    <section className="cq-rhody-highlights" aria-label="Rhody Highlights">
+    <section className="cq-rhody-highlights cq-rhody-highlights--wide" aria-label="Rhody Highlights">
       <header className="cq-rhody-highlights__head">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/assets/rhody-r.png" alt="" className="cq-rhody-highlights__mark" />
+        <span className="cq-rhody-highlights__mark-wrap" aria-hidden>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/assets/rhody-r.png"
+            alt=""
+            width={102}
+            height={114}
+            decoding="async"
+            className="cq-rhody-highlights__mark"
+          />
+        </span>
         <h2 className="cq-rhody-highlights__title">Rhody Highlights</h2>
-        <button
-          type="button"
-          className="cq-rhody-highlights__more"
-          aria-label="View athletics"
-          onClick={onViewAthletics}
-        >
-          <ChevronRight className="h-4 w-4" strokeWidth={2.2} />
+        <button type="button" className="cq-rhody-highlights__cta-inline" onClick={onViewAthletics}>
+          View Athletics →
         </button>
       </header>
       <ul className="cq-rhody-highlights__list">
@@ -63,7 +67,7 @@ export function RhodyHighlights({
                   }}
                 />
                 <span className="cq-rhody-highlights__play" aria-hidden>
-                  <Play className="h-2.5 w-2.5" fill="currentColor" strokeWidth={0} />
+                  <Play className="h-3.5 w-3.5" fill="currentColor" strokeWidth={0} />
                 </span>
                 {item.durationLabel ? (
                   <span className="cq-rhody-highlights__duration">{item.durationLabel}</span>
@@ -78,9 +82,6 @@ export function RhodyHighlights({
           </li>
         ))}
       </ul>
-      <button type="button" className="cq-rhody-highlights__cta" onClick={onViewAthletics}>
-        View Athletics →
-      </button>
     </section>
   );
 }
