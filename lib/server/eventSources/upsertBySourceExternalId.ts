@@ -1,12 +1,16 @@
 /**
  * Shared upsert helpers for external_events / external_organizations.
  *
- * Identity is always (source, external_id). Prefer select → update/insert so sync
- * never depends on PostgREST ON CONFLICT matching a unique constraint (42P10).
- * A best-effort upsert remains as a secondary path when no existing row is found.
+ * Identity is always (source, external_id). Uses select → update/insert only —
+ * never PostgREST ON CONFLICT — so sync cannot fail with Postgres 42P10 when
+ * the API schema cache lags behind migrations.
  */
 
 import type { createAdminClient } from "@/lib/server/supabase";
+import {
+  SCHEMA_INCOMPATIBLE_DIAGNOSTIC,
+  isStructuralSyncFailure,
+} from "@/lib/server/eventSources/schemaHealth";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -27,7 +31,10 @@ export function formatSourceExternalIdConflictError(
   cause: string,
 ): string {
   const label = table === "external_organizations" ? "Org" : "Event";
-  return `${label} ${externalId} [${table} conflict target ${EXTERNAL_SOURCE_ID_CONFLICT}]: ${cause}`;
+  if (isMissingOnConflictTargetError({ message: cause }) || isStructuralSyncFailure(cause)) {
+    return `${SCHEMA_INCOMPATIBLE_DIAGNOSTIC} (${table} / ${label} ${externalId})`;
+  }
+  return `${label} ${externalId} [${table} identity ${EXTERNAL_SOURCE_ID_CONFLICT}]: ${cause}`;
 }
 
 export type UpsertBySourceExternalIdResult = {
@@ -46,10 +53,15 @@ export async function upsertBySourceExternalId(
   row: Record<string, unknown> & { source: string; external_id: string },
   options?: { selectId?: boolean },
 ): Promise<UpsertBySourceExternalIdResult> {
-  const source = String(row.source);
-  const externalId = String(row.external_id);
+  void options;
+  const source = String(row.source).trim();
+  const externalId = String(row.external_id).trim();
+  if (!source || !externalId) {
+    throw new Error(
+      formatSourceExternalIdConflictError(table, externalId || "(empty)", "source and external_id are required"),
+    );
+  }
   const payload = { ...row, source, external_id: externalId };
-  const selectId = options?.selectId !== false;
 
   const existingQuery = await admin
     .from(table)
@@ -64,7 +76,6 @@ export async function upsertBySourceExternalId(
   }
   const existingId = (existingQuery.data as { id?: string } | null)?.id ?? null;
 
-  // Primary path: update/insert by identity lookup — never requires ON CONFLICT.
   if (existingId) {
     const { error: updateError } = await admin.from(table).update(payload).eq("id", existingId);
     if (updateError) {
@@ -102,42 +113,6 @@ export async function upsertBySourceExternalId(
         throw new Error(formatSourceExternalIdConflictError(table, externalId, updateError.message));
       }
       return { id: racedId, created: false, usedFallback: true };
-    }
-  }
-
-  // Last resort: PostgREST upsert on the composite unique target (requires migration).
-  if (selectId) {
-    const { data, error } = await admin
-      .from(table)
-      .upsert(payload, { onConflict: EXTERNAL_SOURCE_ID_CONFLICT })
-      .select("id")
-      .single();
-    if (!error && data) {
-      return {
-        id: String((data as { id: string }).id),
-        created: true,
-        usedFallback: false,
-      };
-    }
-    if (error && !isMissingOnConflictTargetError(error)) {
-      throw new Error(formatSourceExternalIdConflictError(table, externalId, error.message));
-    }
-    if (error) {
-      throw new Error(
-        formatSourceExternalIdConflictError(
-          table,
-          externalId,
-          insertError?.message ?? error.message,
-        ),
-      );
-    }
-  } else {
-    const { error } = await admin.from(table).upsert(payload, { onConflict: EXTERNAL_SOURCE_ID_CONFLICT });
-    if (!error) {
-      return { id: null, created: true, usedFallback: false };
-    }
-    if (!isMissingOnConflictTargetError(error)) {
-      throw new Error(formatSourceExternalIdConflictError(table, externalId, error.message));
     }
   }
 

@@ -92,9 +92,9 @@ describe("sync error presentation", () => {
     const summary = formatAdminSyncErrorSummary(
       "Org 379938 [external_organizations conflict target source,external_id]: there is no unique or exclusion constraint matching the ON CONFLICT specification",
     );
-    expect(summary.title).toBe("URInvolved Sync Failed");
+    expect(summary.title).toMatch(/schema incompatible/i);
+    expect(summary.summary).toMatch(/EVENT_SCHEMA_INCOMPATIBLE/);
     expect(summary.summary).toMatch(/external_organizations/);
-    expect(summary.summary).toMatch(/source,external_id/);
     expect(summary.technical).toMatch(/ON CONFLICT/i);
   });
 
@@ -102,8 +102,9 @@ describe("sync error presentation", () => {
     const summary = formatAdminSyncErrorSummary(
       "Org 379938: there is no unique or exclusion constraint matching the ON CONFLICT specification",
     );
+    expect(summary.title).toMatch(/schema incompatible/i);
     expect(summary.summary).toMatch(/external_organizations/);
-    expect(summary.summary).toMatch(/source,external_id/);
+    expect(summary.summary).toMatch(/source, external_id|source,external_id/);
   });
 });
 

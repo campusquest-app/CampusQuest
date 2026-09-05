@@ -167,6 +167,24 @@ function createMemoryAdmin(seed: EventRow[]) {
 
   return {
     from,
+    rpc: async (fn: string) => {
+      if (fn === "cq_external_identity_schema_health") {
+        return {
+          data: {
+            ok: true,
+            code: null,
+            message: "ok",
+            external_events_unique_source_external_id: true,
+            external_organizations_unique_source_external_id: true,
+            required_constraint: "UNIQUE (source, external_id)",
+            events_constraint_name: "external_events_source_external_id_key",
+            organizations_constraint_name: "external_organizations_source_external_id_key",
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: { message: `Unexpected rpc ${fn}` } };
+    },
     _events: events,
     _logs: logs,
     listActiveExternalIds: () =>

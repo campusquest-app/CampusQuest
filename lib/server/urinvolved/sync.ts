@@ -26,6 +26,11 @@ import {
 } from "@/lib/server/urinvolved/syncSafety";
 import { applyAdminOverrideMerge } from "@/lib/server/eventSources/upsert";
 import { upsertBySourceExternalId } from "@/lib/server/eventSources/upsertBySourceExternalId";
+import {
+  SCHEMA_INCOMPATIBLE_DIAGNOSTIC,
+  assertExternalIdentitySchemaReady,
+  isStructuralSyncFailure,
+} from "@/lib/server/eventSources/schemaHealth";
 import { revalidatePath } from "next/cache";
 
 export const URINVOLVED_SOURCE = "urinvolved";
@@ -231,6 +236,8 @@ async function runUrinvolvedSyncExclusive(
   });
 
   try {
+    await assertExternalIdentitySchemaReady(admin);
+
     // --- Events (discovery search — full upcoming catalog; not the 24h RSS window) ---
     try {
       eventsFetchAttempted = true;
@@ -345,8 +352,12 @@ async function runUrinvolvedSyncExclusive(
             }
           })();
           if (upsertError) {
-            eventsFailed += 1;
             const message = upsertError.message;
+            if (isStructuralSyncFailure(message)) {
+              errors.push(message.includes("EVENT_SCHEMA_INCOMPATIBLE") ? message : SCHEMA_INCOMPATIBLE_DIAGNOSTIC);
+              throw new Error(errors[errors.length - 1]!);
+            }
+            eventsFailed += 1;
             errors.push(message.startsWith("Event ") ? message : `Event ${event.externalId}: ${message}`);
             continue;
           }
@@ -385,8 +396,11 @@ async function runUrinvolvedSyncExclusive(
             }
           }
         } catch (eventError) {
-          eventsFailed += 1;
           const message = eventError instanceof Error ? eventError.message : String(eventError);
+          if (isStructuralSyncFailure(message)) {
+            throw eventError instanceof Error ? eventError : new Error(message);
+          }
+          eventsFailed += 1;
           console.warn("[cq:urinvolved-sync] event import failed", {
             externalId: event.externalId,
             title: event.title,
@@ -398,8 +412,12 @@ async function runUrinvolvedSyncExclusive(
         }
       }
     } catch (eventError) {
+      const message = eventError instanceof Error ? eventError.message : String(eventError);
+      if (isStructuralSyncFailure(message)) {
+        throw eventError instanceof Error ? eventError : new Error(message);
+      }
       eventsFetchSucceeded = false;
-      errors.push(eventError instanceof Error ? eventError.message : String(eventError));
+      errors.push(message);
     }
 
     // --- Organizations (public discovery search API) ---
@@ -445,13 +463,21 @@ async function runUrinvolvedSyncExclusive(
           else orgsCreated += 1;
         } catch (upsertError) {
           const message = upsertError instanceof Error ? upsertError.message : String(upsertError);
+          if (isStructuralSyncFailure(message)) {
+            errors.push(message.includes("EVENT_SCHEMA_INCOMPATIBLE") ? message : SCHEMA_INCOMPATIBLE_DIAGNOSTIC);
+            throw new Error(errors[errors.length - 1]!);
+          }
           errors.push(message.startsWith("Org ") ? message : `Org ${orgExternalId}: ${message}`);
           continue;
         }
       }
     } catch (orgError) {
+      const message = orgError instanceof Error ? orgError.message : String(orgError);
+      if (isStructuralSyncFailure(message)) {
+        throw orgError instanceof Error ? orgError : new Error(message);
+      }
       orgsFetchSucceeded = false;
-      errors.push(orgError instanceof Error ? orgError.message : String(orgError));
+      errors.push(message);
     }
 
     // Soft-hide missing items only after a verified non-empty catalog (or a

@@ -21,6 +21,11 @@ import {
   normalizedEventToRow,
 } from "@/lib/server/eventSources/upsert";
 import { upsertBySourceExternalId } from "@/lib/server/eventSources/upsertBySourceExternalId";
+import {
+  SCHEMA_INCOMPATIBLE_DIAGNOSTIC,
+  assertExternalIdentitySchemaReady,
+  isStructuralSyncFailure,
+} from "@/lib/server/eventSources/schemaHealth";
 
 export const ATHLETICS_SOURCE = "athletics" as const;
 
@@ -91,6 +96,8 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
   const startedMs = Date.now();
 
   try {
+    await assertExternalIdentitySchemaReady(admin);
+
     const feedUrls = athleticsFeedUrlsFromEnv();
     const format = athleticsFeedFormatFromEnv(process.env.URI_ATHLETICS_FEED_FORMAT);
     const parsedById = new Map<string, NormalizedCampusEvent>();
@@ -162,8 +169,13 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
           }
         })();
         if (upsertError) {
+          const message = upsertError.message;
+          if (isStructuralSyncFailure(message)) {
+            errors.push(message.includes("EVENT_SCHEMA_INCOMPATIBLE") ? message : SCHEMA_INCOMPATIBLE_DIAGNOSTIC);
+            throw new Error(errors[errors.length - 1]!);
+          }
           eventsFailed += 1;
-          errors.push(`Event ${located.externalId}: ${upsertError.message}`);
+          errors.push(`Event ${located.externalId}: ${message}`);
           continue;
         }
         if (existing) eventsUpdated += 1;
@@ -244,11 +256,22 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
           if (!orgError) {
             if (existingOrg) orgsUpdated += 1;
             else orgsCreated += 1;
+          } else if (isStructuralSyncFailure(orgError.message)) {
+            errors.push(
+              orgError.message.includes("EVENT_SCHEMA_INCOMPATIBLE")
+                ? orgError.message
+                : SCHEMA_INCOMPATIBLE_DIAGNOSTIC,
+            );
+            throw new Error(errors[errors.length - 1]!);
           }
         }
       } catch (eventError) {
+        const message = eventError instanceof Error ? eventError.message : String(eventError);
+        if (isStructuralSyncFailure(message)) {
+          throw eventError instanceof Error ? eventError : new Error(message);
+        }
         eventsFailed += 1;
-        errors.push(eventError instanceof Error ? eventError.message : String(eventError));
+        errors.push(message);
       }
     }
 

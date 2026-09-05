@@ -184,13 +184,13 @@ export function formatAdminSyncErrorSummary(raw: string | null | undefined): {
   if (!technical) {
     return { title: "Sync healthy", summary: "No recent sync errors.", technical: null };
   }
-  if (/no unique or exclusion constraint matching the ON CONFLICT/i.test(technical)) {
-    const tableMatch = technical.match(/\[(external_organizations|external_events)\s+conflict target\s+([^\]]+)\]/i);
+  if (/EVENT_SCHEMA_INCOMPATIBLE|no unique or exclusion constraint matching the ON CONFLICT/i.test(technical)) {
+    const tableMatch = technical.match(/\[(external_organizations|external_events)\s+(?:conflict target|identity)\s+([^\]]+)\]/i);
     const table = tableMatch?.[1] ?? inferConflictTable(technical);
     const conflictTarget = tableMatch?.[2] ?? "source,external_id";
     return {
-      title: "URInvolved Sync Failed",
-      summary: `Some records could not be imported. Failing table: ${table}. Conflict target: (${conflictTarget}).`,
+      title: "Database schema incompatible",
+      summary: `EVENT_SCHEMA_INCOMPATIBLE: ${table} requires UNIQUE(${conflictTarget.replace(/,/g, ", ")}). Apply migration 20260905190000_external_events_identity_invariant, then retry sync once.`,
       technical,
     };
   }

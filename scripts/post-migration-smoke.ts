@@ -84,6 +84,20 @@ async function main() {
     check(`table exists: ${table}`, probe.ok, probe.error ?? undefined);
   }
 
+  // --- External event identity invariant (ON CONFLICT / UNIQUE(source, external_id)) ---
+  const { data: identityHealth, error: identityHealthError } = await admin.rpc(
+    "cq_external_identity_schema_health",
+  );
+  check(
+    "cq_external_identity_schema_health RPC",
+    !identityHealthError,
+    identityHealthError?.message ?? undefined,
+  );
+  if (!identityHealthError && identityHealth && typeof identityHealth === "object") {
+    const health = identityHealth as { ok?: boolean; message?: string };
+    check("external identity UNIQUE(source, external_id)", Boolean(health.ok), health.message);
+  }
+
   // --- QR / Gym ---
   const { data: gym, error: gymError } = await admin
     .from("qr_codes")

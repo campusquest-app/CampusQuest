@@ -19,8 +19,8 @@ export async function POST(request: Request) {
     const adapter = getEventSourceAdapter(input.source);
     if (!adapter) throw new ApiError(400, "Unknown event source.", "UNKNOWN_SOURCE");
     const result = await adapter.sync("manual");
-    const sources = await listEventSourceAdminStatuses();
-    return ok({ result, sources });
+    const payload = await listEventSourceAdminStatuses();
+    return ok({ result, sources: payload.sources, schemaHealth: payload.schemaHealth });
   } catch (error) {
     if (error instanceof ZodError) {
       return fail(new ApiError(400, error.issues[0]?.message ?? "Invalid payload.", "VALIDATION_ERROR"));

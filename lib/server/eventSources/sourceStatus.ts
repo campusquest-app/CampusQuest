@@ -8,6 +8,10 @@ import {
   resolveProviderHealth,
   type ProviderHealthStatus,
 } from "@/lib/eventSources/providerHealth";
+import {
+  probeExternalIdentitySchemaHealth,
+  type ExternalIdentitySchemaHealth,
+} from "@/lib/server/eventSources/schemaHealth";
 
 export type EventSourceAdminStatus = {
   source: string;
@@ -27,10 +31,17 @@ export type EventSourceAdminStatus = {
   healthStatus: ProviderHealthStatus;
   healthLabel: string;
   healthMessage: string;
+  schemaCompatible: boolean;
 };
 
-export async function listEventSourceAdminStatuses(): Promise<EventSourceAdminStatus[]> {
+export type EventSourcesAdminPayload = {
+  sources: EventSourceAdminStatus[];
+  schemaHealth: ExternalIdentitySchemaHealth;
+};
+
+export async function listEventSourceAdminStatuses(): Promise<EventSourcesAdminPayload> {
   const admin = createAdminClient();
+  const schemaHealth = await probeExternalIdentitySchemaHealth(admin);
   const statuses: EventSourceAdminStatus[] = [];
 
   for (const adapter of EVENT_SOURCE_ADAPTERS) {
@@ -44,14 +55,19 @@ export async function listEventSourceAdminStatuses(): Promise<EventSourceAdminSt
     const configured =
       adapter.source === "athletics" ? athleticsFeedConfigured() : adapter.isConfigured();
     const activeEventsCount = count ?? 0;
+    const schemaError = schemaHealth.ok
+      ? null
+      : (schemaHealth.message || "EVENT_SCHEMA_INCOMPATIBLE: external_events requires UNIQUE(source, external_id)");
+    const effectiveLastError = schemaError ?? latest.lastError;
+    const effectiveLastStatus = schemaError ? "failed" : latest.lastStatus;
     const health = resolveProviderHealth({
       source: adapter.source,
       configured,
       activeEventsCount,
       lastSuccessfulSync: latest.lastSuccessfulSync,
       lastAttemptedSync: latest.lastAttemptedSync,
-      lastStatus: latest.lastStatus,
-      lastError: latest.lastError,
+      lastStatus: effectiveLastStatus,
+      lastError: effectiveLastError,
     });
 
     const nextScheduledSync =
@@ -71,8 +87,8 @@ export async function listEventSourceAdminStatuses(): Promise<EventSourceAdminSt
       lastSuccessfulSync: latest.lastSuccessfulSync,
       lastAttemptedSync: latest.lastAttemptedSync,
       nextScheduledSync,
-      lastStatus: latest.lastStatus,
-      lastError: latest.lastError,
+      lastStatus: effectiveLastStatus,
+      lastError: effectiveLastError,
       eventsReceived: latest.eventsReceived,
       eventsCreated: latest.eventsCreated,
       eventsUpdated: latest.eventsUpdated,
@@ -80,9 +96,12 @@ export async function listEventSourceAdminStatuses(): Promise<EventSourceAdminSt
       activeEventsCount,
       healthStatus: health.status,
       healthLabel: health.label,
-      healthMessage: health.message,
+      healthMessage: schemaError
+        ? "Database schema is incompatible with event imports. Apply the identity invariant migration before syncing."
+        : health.message,
+      schemaCompatible: schemaHealth.ok,
     });
   }
 
-  return statuses;
+  return { sources: statuses, schemaHealth };
 }

@@ -24,6 +24,13 @@ type SourceStatus = {
   healthStatus: string;
   healthLabel: string;
   healthMessage: string;
+  schemaCompatible?: boolean;
+};
+
+type SchemaHealth = {
+  ok: boolean;
+  code: string | null;
+  message: string;
 };
 
 function healthTone(status: string): "success" | "warning" | "danger" | "neutral" | "info" {
@@ -45,6 +52,7 @@ function healthTone(status: string): "success" | "warning" | "danger" | "neutral
 
 export function AdminEventSourcesSection() {
   const [sources, setSources] = useState<SourceStatus[]>([]);
+  const [schemaHealth, setSchemaHealth] = useState<SchemaHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -60,8 +68,11 @@ export function AdminEventSourcesSection() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchAuthed<{ sources: SourceStatus[] }>("/api/internal/admin/event-sources");
+      const data = await fetchAuthed<{ sources: SourceStatus[]; schemaHealth?: SchemaHealth }>(
+        "/api/internal/admin/event-sources",
+      );
       setSources(data.sources ?? []);
+      setSchemaHealth(data.schemaHealth ?? null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load event sources.");
     } finally {
@@ -89,10 +100,12 @@ export function AdminEventSourcesSection() {
             eventsUpdated: number;
           };
           sources: SourceStatus[];
+          schemaHealth?: SchemaHealth;
         },
         { source: string }
       >("/api/internal/admin/event-sources/sync", { source });
       setSources(data.sources ?? []);
+      if (data.schemaHealth) setSchemaHealth(data.schemaHealth);
       if (data.result.skipped) {
         setMessage(`${source}: not configured (${data.result.skipReason ?? "feed_not_configured"}).`);
       } else {
@@ -143,6 +156,15 @@ export function AdminEventSourcesSection() {
       />
       {error ? <p className="text-sm text-rose-200">{error}</p> : null}
       {message ? <p className="text-sm text-cyan-200/90">{message}</p> : null}
+      {schemaHealth && !schemaHealth.ok ? (
+        <div className="rounded-xl border border-rose-400/40 bg-rose-500/15 px-4 py-3 space-y-1">
+          <p className="text-sm font-semibold text-rose-100">EVENT_SCHEMA_INCOMPATIBLE</p>
+          <p className="text-xs text-rose-100/85">
+            {schemaHealth.message ||
+              "external_events requires UNIQUE(source, external_id). Apply migration 20260905190000_external_events_identity_invariant, then retry sync once."}
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
         {loading && sources.length === 0 ? <p className="text-sm text-white/55">Loading sources…</p> : null}

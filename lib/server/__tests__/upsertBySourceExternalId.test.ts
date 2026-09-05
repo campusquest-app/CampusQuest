@@ -129,7 +129,7 @@ describe("upsert conflict helpers", () => {
     ).toBe(true);
   });
 
-  it("formats admin-facing errors with table and conflict target", () => {
+  it("formats admin-facing schema errors with EVENT_SCHEMA_INCOMPATIBLE", () => {
     expect(
       formatSourceExternalIdConflictError(
         "external_organizations",
@@ -137,7 +137,7 @@ describe("upsert conflict helpers", () => {
         "there is no unique or exclusion constraint matching the ON CONFLICT specification",
       ),
     ).toBe(
-      "Org 379938 [external_organizations conflict target source,external_id]: there is no unique or exclusion constraint matching the ON CONFLICT specification",
+      "EVENT_SCHEMA_INCOMPATIBLE: external_events requires UNIQUE(source, external_id) (external_organizations / Org 379938)",
     );
   });
 });
