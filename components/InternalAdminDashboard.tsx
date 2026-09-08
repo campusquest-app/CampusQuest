@@ -17,6 +17,7 @@ import { AdminUsersSection } from "@/components/admin/AdminUsersSection";
 import { AdminSystemSection } from "@/components/admin/AdminSystemSection";
 import { AdminEventSourcesSection } from "@/components/admin/AdminEventSourcesSection";
 import { AdminVerificationSection } from "@/components/admin/AdminVerificationSection";
+import { AdminLandingSection } from "@/components/admin/AdminLandingSection";
 
 function BackToQuadLink() {
   return (
@@ -187,6 +188,7 @@ export function InternalAdminDashboard({
         />
       ) : null}
       {section === "verification" ? <AdminVerificationSection initialRequestId={verificationRequestId} /> : null}
+      {section === "landing" ? <AdminLandingSection /> : null}
       {section === "urinvolved" ? <AdminEventSourcesSection /> : null}
       {section === "analytics" ? <AdminAnalyticsSection /> : null}
       {section === "audit" ? <AdminAuditSection initialSearch={auditQuery} /> : null}

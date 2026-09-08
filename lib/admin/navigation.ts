@@ -3,6 +3,7 @@ export type AdminSectionId =
   | "moderation"
   | "organizations"
   | "verification"
+  | "landing"
   | "urinvolved"
   | "analytics"
   | "audit"
@@ -39,6 +40,15 @@ export const ADMIN_NAV: AdminNavItem[] = [
     id: "verification",
     label: "Verification Requests",
     icon: "✅",
+  },
+  {
+    id: "landing",
+    label: "Landing Intake",
+    icon: "📨",
+    children: [
+      { id: "leads", label: "Landing Leads" },
+      { id: "contacts", label: "Contact" },
+    ],
   },
   {
     id: "organizations",
