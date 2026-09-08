@@ -2,6 +2,10 @@ import type { RealmLocationId } from "@/lib/realm/locations";
 import { isCampusLocationId, tryGetCampusLocation } from "@/lib/locations/campusLocationCatalog";
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
+import {
+  canonicalVenueCoordinates,
+  resolveUriCanonicalVenue,
+} from "@/lib/locations/uriVenueAliases";
 
 export type LocationMatchSource = "venue" | "location_name" | "address" | "description";
 
@@ -345,6 +349,27 @@ export function resolveCampusLocationFromEventFields(input: {
     [input.locationName, "location_name"],
     [input.address, "address"],
   ];
+
+  // Canonical venue registry wins over the fuzzy alias scan below.
+  for (const [value, source] of attempts) {
+    const canonical = resolveUriCanonicalVenue(value);
+    if (!canonical) continue;
+    const coords = canonicalVenueCoordinates(canonical.venue);
+    if (!coords) continue;
+    const realmLocationId = canonical.venue.realmLocationId ?? undefined;
+    return {
+      locationMatch: {
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        realmLocationId,
+        mapPinAvailable: hasCampusMapPin(realmLocationId),
+        matchedBy: source,
+      },
+      matchedBy: source,
+      aliasMatched: true,
+      mapPinAvailable: hasCampusMapPin(realmLocationId),
+    };
+  }
 
   for (const [value, source] of attempts) {
     const result = matchField(value, source);

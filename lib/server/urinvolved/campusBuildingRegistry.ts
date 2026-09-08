@@ -6,6 +6,7 @@ import {
 } from "@/lib/server/urinvolved/normalizeCampusLocationName";
 import { createAdminClient } from "@/lib/server/supabase";
 import type { GoogleGeocodeResult } from "@/lib/server/geocoding/googleCampusGeocoder";
+import { resolveUriCanonicalVenue } from "@/lib/locations/uriVenueAliases";
 
 export type CampusBuildingRegistryEntry = {
   slug: string;
@@ -67,6 +68,35 @@ export async function loadCampusBuildingRegistry(): Promise<CampusBuildingRegist
   }
 
   return (data as DbRow[]).map(mapRow).filter((row): row is CampusBuildingRegistryEntry => row !== null);
+}
+
+/**
+ * Registry matching below is fuzzy (substring/containment), which can snap a
+ * named venue onto an unrelated building — e.g. "URI Soccer Complex" landing on
+ * a row aliased "complex". When the text names a canonical URI venue, only
+ * accept a registry row that resolves to that same venue.
+ */
+export function matchCanonicalSafeRegistryEntry(
+  locationText: string,
+  registry: CampusBuildingRegistryEntry[],
+): CampusBuildingRegistryEntry | null {
+  const entry = matchBuildingRegistryEntry(locationText, registry);
+  if (!entry) return null;
+
+  const wanted = resolveUriCanonicalVenue(locationText);
+  if (!wanted) return entry;
+
+  const agrees = [entry.canonicalName, entry.slug.replace(/-/g, " "), ...entry.aliases].some(
+    (candidate) => resolveUriCanonicalVenue(candidate)?.venue.id === wanted.venue.id,
+  );
+  if (agrees) return entry;
+
+  console.info("[cq:building-registry] ignored registry hit that disagrees with canonical venue", {
+    locationText,
+    canonicalVenue: wanted.venue.name,
+    rejectedSlug: entry.slug,
+  });
+  return null;
 }
 
 export function matchBuildingRegistryEntry(

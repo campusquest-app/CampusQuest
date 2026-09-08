@@ -9,9 +9,10 @@ import {
 } from "@/lib/realm/mapRecommendations";
 import { hasUsableMapCoords } from "@/lib/realm/mapCoords";
 import {
+  canonicalMarkerRevealOpacity,
   groupMatchesFilter,
+  isForYouMarkerVisible,
   landmarkMatchesFilter,
-  resolveForYouMarkerEmphasis,
 } from "@/lib/realm/mapMarkerFilters";
 import { campusEventToRecommendationEntity, mapEventPinToRecommendationEntity, scoreRecommendationEntity } from "@/lib/recommendations";
 
@@ -170,20 +171,23 @@ describe("For You map recommendations", () => {
     expect(mapScore.score).toBe(eventsScore.score);
   });
 
-  it("deemphasizes unrelated optional markers while keeping major context", () => {
+  it("keeps majors and recommended pins visible on For You and hides only unrelated optional pins", () => {
     const recommended = new Set(["the-quad"]);
-    expect(resolveForYouMarkerEmphasis({ markerId: "the-quad", major: true, selected: true, recommendedMarkerIds: recommended })).toBe(
-      "selected",
-    );
-    expect(
-      resolveForYouMarkerEmphasis({ markerId: "the-quad", major: true, selected: false, recommendedMarkerIds: recommended }),
-    ).toBe("recommended");
-    expect(
-      resolveForYouMarkerEmphasis({ markerId: "library", major: true, selected: false, recommendedMarkerIds: recommended }),
-    ).toBe("context");
-    expect(
-      resolveForYouMarkerEmphasis({ markerId: "side-pin", major: false, selected: false, recommendedMarkerIds: recommended }),
-    ).toBe("hidden");
+    const visible = (markerId: string, major: boolean, selected = false) =>
+      isForYouMarkerVisible({ markerId, major, selected, recommendedMarkerIds: recommended });
+    expect(visible("the-quad", true, true)).toBe(true);
+    expect(visible("the-quad", true)).toBe(true);
+    expect(visible("library", true)).toBe(true);
+    expect(visible("side-pin", false)).toBe(false);
+    expect(visible("side-pin", false, true)).toBe(true);
+  });
+
+  it("gives recommended and unrecommended markers identical canonical opacity", () => {
+    // Recommendation state must never dim, fade, or emphasize a permanent pin.
+    for (const baseOpacity of [0, 0.3, 0.42, 0.92, 1]) {
+      expect(canonicalMarkerRevealOpacity(baseOpacity, false)).toBe(Math.max(baseOpacity, 0.92));
+      expect(canonicalMarkerRevealOpacity(baseOpacity, true)).toBe(1);
+    }
   });
 
   it("focuses the matching marker for an event id and ignores unmapped events", () => {

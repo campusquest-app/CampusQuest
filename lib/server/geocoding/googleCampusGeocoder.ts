@@ -5,6 +5,8 @@ import {
 } from "@/lib/server/urinvolved/normalizeCampusLocationName";
 import {
   isBroadCampusOnlyResult,
+  isImpreciseGeocodeResult,
+  isPlaceholderCampusCoordinate,
   isRejectedRoadResult,
   isWithinUriCampusBounds,
   URI_CAMPUS_BOUNDS,
@@ -90,9 +92,16 @@ export function validateGeocodeResult(args: {
   latitude: number;
   longitude: number;
   confidence: number;
+  types?: readonly string[];
 }): { accepted: boolean; reason: string } {
   if (!isWithinUriCampusBounds(args.latitude, args.longitude)) {
     return { accepted: false, reason: "outside_campus_bounds" };
+  }
+  if (isPlaceholderCampusCoordinate(args.latitude, args.longitude)) {
+    return { accepted: false, reason: "placeholder_coordinates" };
+  }
+  if (args.types && isImpreciseGeocodeResult(args.types)) {
+    return { accepted: false, reason: "imprecise_result_type" };
   }
   if (isRejectedRoadResult(`${args.name} ${args.formattedAddress}`)) {
     const requested = normalizeCampusLocationName(args.requestedBuilding);
@@ -163,8 +172,17 @@ export async function geocodeUriBuilding(args: {
       latitude: lat,
       longitude: lng,
       confidence,
+      types,
     });
-    if (!validation.accepted) continue;
+    if (!validation.accepted) {
+      console.info("[cq:geocode] rejected result", {
+        query,
+        formattedAddress,
+        types,
+        reason: validation.reason,
+      });
+      continue;
+    }
 
     const candidate: GoogleGeocodeResult = {
       placeId: result.place_id,

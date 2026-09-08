@@ -19984,11 +19984,13 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
  * never competes with Google attribution at the bottom.
  */
 .cq-realm-map-top-chrome {
+  /* Breathing room below the status bar / Dynamic Island / browser chrome. */
+  --cq-realm-top-chrome-offset: 10px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 0.45rem;
-  margin-top: 0.15rem;
+  margin-top: calc(0.15rem + var(--cq-realm-top-chrome-offset));
   width: min(26.75rem, calc(100vw - 1.1rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
   max-width: min(100%, calc(100vw - max(0.7rem, env(safe-area-inset-left, 0px)) - max(0.7rem, env(safe-area-inset-right, 0px))));
   opacity: 0;
@@ -20002,7 +20004,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 .cq-realm-map-top-chrome--immersive {
-  margin-top: 0;
+  margin-top: var(--cq-realm-top-chrome-offset);
   padding-top: env(safe-area-inset-top, 0px);
 }
 
@@ -20027,7 +20029,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 /* Explore mode — tuck top chrome so the map stays primary. */
 html[data-cq-map-exploring] .cq-realm-map-top-chrome--entered {
   gap: 0.22rem;
-  margin-top: 0;
+  margin-top: var(--cq-realm-top-chrome-offset);
 }
 
 html[data-cq-map-exploring] .cq-realm-map-search {

@@ -10,7 +10,10 @@ import type { CatalogLocationLike } from "@/lib/server/urinvolved/mapEventLocati
 import { getCampusLocations } from "@/lib/server/campusLocationsDb";
 import { createAdminClient } from "@/lib/server/supabase";
 import { isValidCampusCoordinate } from "@/lib/campusLocations";
-import { isWithinUriCampusBounds } from "@/lib/server/urinvolved/uriCampusBounds";
+import {
+  isPlaceholderCampusCoordinate,
+  isWithinUriCampusBounds,
+} from "@/lib/server/urinvolved/uriCampusBounds";
 import {
   loadOverridesForEventIds,
   upsertAutoPlacementOverride,
@@ -74,8 +77,9 @@ function logPipeline(result: PlacementPipelineResult): void {
 }
 
 function coordsAreUsable(latitude: number, longitude: number): boolean {
-  if (latitude === 0 && longitude === 0) return false;
   if (!isValidCampusCoordinate(latitude, longitude)) return false;
+  // Null island and the campus centroid mean "nothing was actually resolved".
+  if (isPlaceholderCampusCoordinate(latitude, longitude)) return false;
   if (!isWithinUriCampusBounds(latitude, longitude)) return false;
   return true;
 }

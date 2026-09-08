@@ -6,15 +6,17 @@ import {
 } from "@/lib/server/geocoding/googleCampusGeocoder";
 import {
   loadCampusBuildingRegistry,
-  matchBuildingRegistryEntry,
+  matchCanonicalSafeRegistryEntry,
   upsertBuildingFromGeocode,
   type CampusBuildingRegistryEntry,
 } from "@/lib/server/urinvolved/campusBuildingRegistry";
+import { resolveUriCanonicalVenueFromFields } from "@/lib/locations/uriVenueAliases";
 import {
   extractBuildingName,
   normalizeCampusLocationName,
 } from "@/lib/server/urinvolved/normalizeCampusLocationName";
 import {
+  matchCanonicalUriVenue,
   matchEventLocationWithMeta,
   type EventLocationMatchMeta,
 } from "@/lib/server/urinvolved/eventLocationMatcher";
@@ -112,6 +114,39 @@ function registryMatch(
   };
 }
 
+/** Exact canonical-venue hit — trusted coordinates, no geocoding needed. */
+function canonicalVenueResult(
+  building: string,
+  sourceText: string,
+  candidate: { match: EventLocationMatch; confidence: number; reason: string },
+): EventLocationResolutionResult {
+  const meta: EventLocationMatchMeta = {
+    rawLocation: sourceText,
+    normalizedLocation: building,
+    confidence: candidate.confidence,
+    matchReason: candidate.reason,
+    needsReview: false,
+    matchedText: candidate.match.matchedText,
+  };
+  return {
+    match: candidate.match,
+    meta,
+    debug: {
+      originalLocationText: sourceText,
+      normalizedBuildingName: building,
+      selectedGoogleResult: null,
+      registryMatch: null,
+      confidence: candidate.confidence,
+      matchReason: candidate.reason,
+      manuallyOverridden: false,
+      renderOnMap: true,
+    },
+    registrySlug: candidate.match.kind === "realm" ? candidate.match.realmLocationId : null,
+    googlePlaceId: null,
+    formattedAddress: null,
+  };
+}
+
 function googleMatch(
   building: string,
   sourceText: string,
@@ -157,7 +192,40 @@ function googleMatch(
   };
 }
 
-function unresolved(sourceText: string, building: string, reason: string): EventLocationResolutionResult {
+/** Identifying details logged when an event cannot be placed on the map. */
+export type EventLocationDiagnosticContext = {
+  eventId?: string | null;
+  title?: string | null;
+  source?: string | null;
+  venueName?: string | null;
+  address?: string | null;
+};
+
+function logUnresolved(
+  sourceText: string,
+  building: string,
+  reason: string,
+  context?: EventLocationDiagnosticContext,
+): void {
+  console.warn("[cq:event-location] unresolved — no map marker will be shown", {
+    eventId: context?.eventId ?? null,
+    title: context?.title ?? null,
+    source: context?.source ?? null,
+    rawVenue: context?.venueName ?? null,
+    rawAddress: context?.address ?? null,
+    rawLocationText: sourceText,
+    normalizedVenue: building,
+    reason,
+  });
+}
+
+function unresolved(
+  sourceText: string,
+  building: string,
+  reason: string,
+  context?: EventLocationDiagnosticContext,
+): EventLocationResolutionResult {
+  logUnresolved(sourceText, building, reason, context);
   return {
     match: null,
     meta: {
@@ -188,10 +256,11 @@ function unresolved(sourceText: string, building: string, reason: string): Event
  * Shared async location-resolution pipeline for URInvolved events.
  *
  * Priority:
- * 1. verified campus building registry
- * 2. catalog / alias auto-match (sync matcher)
- * 3. Google geocode for URI building
- * 4. unresolved (no default map position)
+ * 1. canonical URI venue registry (exact venue name/alias -> trusted coords)
+ * 2. verified campus building registry
+ * 3. catalog / alias auto-match (sync matcher)
+ * 4. Google geocode using the canonical venue name + URI/Kingston context
+ * 5. unresolved (no default map position)
  */
 export async function resolveEventLocationAsync(args: {
   fields: {
@@ -202,12 +271,22 @@ export async function resolveEventLocationAsync(args: {
   catalog: CatalogLocationLike[];
   forceGoogle?: boolean;
   fetchImpl?: typeof fetch;
+  context?: EventLocationDiagnosticContext;
 }): Promise<EventLocationResolutionResult> {
   const sourceText = rawLocationFromFields(args.fields);
   const building = extractBuildingName(sourceText);
+  const canonicalVenue = resolveUriCanonicalVenueFromFields(args.fields);
+
+  // Trusted venue coordinates outrank a re-geocode: forceGoogle exists to
+  // refresh buildings we don't already know, not to second-guess a named venue.
+  const canonical = matchCanonicalUriVenue(args.fields, args.catalog);
+  if (canonical) {
+    return canonicalVenueResult(building, sourceText, canonical);
+  }
+
   const registry = await loadCampusBuildingRegistry();
 
-  const registryHit = matchBuildingRegistryEntry(sourceText, registry);
+  const registryHit = matchCanonicalSafeRegistryEntry(sourceText, registry);
   if (registryHit?.verified) {
     return registryMatch(building, registryHit, sourceText, "verified_registry", 1, args.catalog);
   }
@@ -247,20 +326,23 @@ export async function resolveEventLocationAsync(args: {
     }
   }
 
-  if (!building || building.length < 4) {
-    return unresolved(sourceText, building, "insufficient_location_text");
+  // Known venue with no trusted coordinates yet — geocode the canonical name
+  // (with URI/Kingston context) instead of the raw feed text.
+  const geocodeName = canonicalVenue?.venue.name ?? building;
+  if (!geocodeName || geocodeName.length < 4) {
+    return unresolved(sourceText, building, "insufficient_location_text", args.context);
   }
 
-  const geocode = await geocodeUriBuilding({ buildingName: building, fetchImpl: args.fetchImpl });
+  const geocode = await geocodeUriBuilding({ buildingName: geocodeName, fetchImpl: args.fetchImpl });
   if (!geocode) {
     if (registryHit) {
       return registryMatch(building, registryHit, sourceText, "registry_fallback", 0.8, args.catalog);
     }
-    return unresolved(sourceText, building, "google_unresolved");
+    return unresolved(sourceText, building, "google_unresolved", args.context);
   }
 
   const saved = await upsertBuildingFromGeocode({
-    buildingName: building,
+    buildingName: geocodeName,
     geocode,
     sourceText,
   });
@@ -283,10 +365,17 @@ export function resolveEventLocationFromRegistrySync(args: {
   };
   registry: CampusBuildingRegistryEntry[];
   catalog: CatalogLocationLike[];
+  context?: EventLocationDiagnosticContext;
 }): EventLocationResolutionResult {
   const sourceText = rawLocationFromFields(args.fields);
   const building = extractBuildingName(sourceText);
-  const registryHit = matchBuildingRegistryEntry(sourceText, args.registry);
+
+  const canonical = matchCanonicalUriVenue(args.fields, args.catalog);
+  if (canonical) {
+    return canonicalVenueResult(building, sourceText, canonical);
+  }
+
+  const registryHit = matchCanonicalSafeRegistryEntry(sourceText, args.registry);
 
   if (registryHit?.verified) {
     return registryMatch(building, registryHit, sourceText, "verified_registry", 1, args.catalog);
@@ -316,7 +405,7 @@ export function resolveEventLocationFromRegistrySync(args: {
     };
   }
 
-  return unresolved(sourceText, building, auto ? "low_confidence" : "unmatched");
+  return unresolved(sourceText, building, auto ? "low_confidence" : "unmatched", args.context);
 }
 
 export { normalizeCampusLocationName, extractBuildingName };

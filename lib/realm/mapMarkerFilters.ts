@@ -86,23 +86,24 @@ export function groupVisibleOnMap(group: GroupedMapLocation, filter: MapMarkerFi
   return groupMatchesFilter(group, filter, now, recommendedMarkerIds);
 }
 
-export type ForYouMarkerEmphasis = "selected" | "recommended" | "context" | "hidden";
-
-export function resolveForYouMarkerEmphasis(args: {
+/**
+ * For You decides *which* markers render, never how they look. Majors stay as
+ * orientation anchors; optional pins render only when recommended.
+ */
+export function isForYouMarkerVisible(args: {
   markerId: string;
   major: boolean;
   selected: boolean;
   recommendedMarkerIds: ReadonlySet<string>;
-}): ForYouMarkerEmphasis {
-  if (args.selected) return "selected";
-  if (args.recommendedMarkerIds.has(args.markerId)) return "recommended";
-  if (args.major) return "context";
-  return "hidden";
+}): boolean {
+  return args.selected || args.major || args.recommendedMarkerIds.has(args.markerId);
 }
 
-export function forYouRevealOpacity(emphasis: ForYouMarkerEmphasis, baseOpacity: number): number {
-  if (emphasis === "selected") return 1;
-  if (emphasis === "recommended") return Math.max(baseOpacity, 0.92);
-  if (emphasis === "context") return Math.min(baseOpacity, 0.42);
-  return 0;
+/**
+ * Canonical marker opacity — identical on every filter so recommendation state
+ * can't dim, fade, or emphasize a permanent campus pin.
+ */
+export function canonicalMarkerRevealOpacity(baseOpacity: number, selected: boolean): number {
+  if (selected) return 1;
+  return Math.max(baseOpacity, 0.92);
 }

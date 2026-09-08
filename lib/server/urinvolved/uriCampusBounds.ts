@@ -17,6 +17,54 @@ export function isWithinUriCampusBounds(latitude: number, longitude: number): bo
   );
 }
 
+/**
+ * Coordinates that mean "we never actually resolved this": the null island, and
+ * the campus-centroid constant, which only appears when something used it as a
+ * default. The tolerance stays tight because The Quad is a real pin next to it.
+ */
+export function isPlaceholderCampusCoordinate(latitude: number, longitude: number): boolean {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return true;
+  if (latitude === 0 && longitude === 0) return true;
+  return (
+    Math.abs(latitude - URI_CAMPUS_BOUNDS.center.latitude) < 1e-6 &&
+    Math.abs(longitude - URI_CAMPUS_BOUNDS.center.longitude) < 1e-6
+  );
+}
+
+/**
+ * Google result granularity we accept for a venue pin. Anything coarser
+ * (locality, postal code, campus polygon) is a generic area, not the venue.
+ */
+const IMPRECISE_RESULT_TYPES = new Set([
+  "locality",
+  "sublocality",
+  "postal_code",
+  "administrative_area_level_1",
+  "administrative_area_level_2",
+  "administrative_area_level_3",
+  "country",
+  "political",
+  "neighborhood",
+]);
+
+const PRECISE_RESULT_TYPES = new Set([
+  "premise",
+  "subpremise",
+  "establishment",
+  "point_of_interest",
+  "stadium",
+  "park",
+  "university",
+  "street_address",
+  "street_number",
+]);
+
+/** True when the geocode result is too coarse to place a venue marker. */
+export function isImpreciseGeocodeResult(types: readonly string[]): boolean {
+  if (types.some((type) => PRECISE_RESULT_TYPES.has(type))) return false;
+  return types.length === 0 || types.every((type) => IMPRECISE_RESULT_TYPES.has(type));
+}
+
 /** Roads / broad campus labels that must not be used as building pins. */
 const REJECTED_ROAD_PATTERNS = [
   /\bflagg\s+(rd|road)\b/i,

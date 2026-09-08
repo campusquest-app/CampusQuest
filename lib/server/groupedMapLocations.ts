@@ -22,9 +22,10 @@ import { createAdminClient } from "@/lib/server/supabase";
 import { resolveCampusLocationFromEventFields } from "@/lib/server/urinvolved/locationAliases";
 import {
   loadCampusBuildingRegistry,
-  matchBuildingRegistryEntry,
+  matchCanonicalSafeRegistryEntry,
   type CampusBuildingRegistryEntry,
 } from "@/lib/server/urinvolved/campusBuildingRegistry";
+import { resolveUriCanonicalVenue } from "@/lib/locations/uriVenueAliases";
 import { getTodayExternalEventsForMap } from "@/lib/server/urinvolved/todayMapEvents";
 
 type GroupBucket = {
@@ -288,7 +289,13 @@ export function resolveCanonicalLandmarkForExternalEvent(
     "";
   if (!locationText) return null;
 
-  const registryHit = matchBuildingRegistryEntry(locationText, registry);
+  // A named canonical venue keeps its own resolved coordinates. Attaching it to
+  // a landmark would move the marker off the real venue (e.g. a soccer game
+  // snapping onto the Rec Center) — only attach when the venue *is* that landmark.
+  const canonicalVenue = resolveUriCanonicalVenue(locationText);
+  if (canonicalVenue) return canonicalVenue.venue.realmLocationId;
+
+  const registryHit = matchCanonicalSafeRegistryEntry(locationText, registry);
   if (registryHit) return registryHit.slug;
 
   const aliasResolved = resolveCampusLocationFromEventFields({

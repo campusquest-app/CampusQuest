@@ -17,11 +17,10 @@ import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
 import { hasUsableMapCoords } from "@/lib/realm/mapCoords";
 import {
+  canonicalMarkerRevealOpacity,
   groupMatchesFilter,
+  isForYouMarkerVisible,
   landmarkMatchesFilter,
-  resolveForYouMarkerEmphasis,
-  forYouRevealOpacity,
-  type ForYouMarkerEmphasis,
   type MapMarkerFilter,
 } from "@/lib/realm/mapMarkerFilters";
 import { isImportedEventSource } from "@/lib/eventSources/catalog";
@@ -537,19 +536,19 @@ function RealmMapMarkers({
         const pos = geoPositions[landmark.id];
         if (!pos || !hasUsableMapCoords(pos.lat, pos.lng)) return null;
         const isSelected = !editMode && activeMarkerId === landmark.id;
-        const emphasis: ForYouMarkerEmphasis =
-          filter === "for_you" && !editMode
-            ? resolveForYouMarkerEmphasis({
-                markerId: landmark.id,
-                major: landmark.major,
-                selected: isSelected,
-                recommendedMarkerIds: recommendedMarkerIds ?? new Set(),
-              })
-            : isSelected
-              ? "selected"
-              : "recommended";
-        if (emphasis === "hidden") return null;
-        const reveal = forYouRevealOpacity(emphasis, markerRevealOpacity(mapZoom, landmark.major));
+        if (
+          filter === "for_you" &&
+          !editMode &&
+          !isForYouMarkerVisible({
+            markerId: landmark.id,
+            major: landmark.major,
+            selected: isSelected,
+            recommendedMarkerIds: recommendedMarkerIds ?? new Set(),
+          })
+        ) {
+          return null;
+        }
+        const reveal = canonicalMarkerRevealOpacity(markerRevealOpacity(mapZoom, landmark.major), isSelected);
         const counts = landmarkActivityCounts(landmark);
         const { state: activityState, activityCount } = getLocationActivityState(counts, isSelected);
         const discovery = resolveDiscoveryForMarker(
@@ -561,7 +560,7 @@ function RealmMapMarkers({
         const zIndex =
           markerZIndexForActivity(activityState, editorSelectedId === landmark.id) +
           (discovery.mode === "spotlight" ? 80 : discovery.mode === "nearest" ? 40 : 0) +
-          (emphasis === "selected" ? 120 : emphasis === "recommended" ? 60 : 0);
+          (isSelected ? 120 : 60);
 
         return (
           <CampusQuestMapMarker
@@ -592,11 +591,7 @@ function RealmMapMarkers({
               color={colorFor(landmark.id)}
               zoomTier={zoomTier}
               revealOpacity={reveal}
-              deemphasized={emphasis === "context"}
-              hideLabel={
-                emphasis === "context" ||
-                (zoomTier === "far" && activityState === "idle" && !isSelected)
-              }
+              hideLabel={zoomTier === "far" && activityState === "idle" && !isSelected}
               editMode={editMode}
               editorSelected={editorSelectedId === landmark.id}
               revealIndex={markersReveal ? index : undefined}
@@ -613,18 +608,18 @@ function RealmMapMarkers({
         const groupLat = group.lat as number;
         const groupLng = group.lng as number;
         const isSelected = !editMode && activeMarkerId === group.groupKey;
-        const emphasis: ForYouMarkerEmphasis =
-          filter === "for_you" && !editMode
-            ? resolveForYouMarkerEmphasis({
-                markerId: group.groupKey,
-                major: false,
-                selected: isSelected,
-                recommendedMarkerIds: recommendedMarkerIds ?? new Set(),
-              })
-            : isSelected
-              ? "selected"
-              : "recommended";
-        if (emphasis === "hidden") return null;
+        if (
+          filter === "for_you" &&
+          !editMode &&
+          !isForYouMarkerVisible({
+            markerId: group.groupKey,
+            major: false,
+            selected: isSelected,
+            recommendedMarkerIds: recommendedMarkerIds ?? new Set(),
+          })
+        ) {
+          return null;
+        }
         const counts = groupActivityCounts(group);
         const { state: activityState, activityCount } = getLocationActivityState(counts, isSelected);
         const discovery = resolveDiscoveryForMarker(
@@ -636,7 +631,7 @@ function RealmMapMarkers({
         const zIndex =
           markerZIndexForActivity(activityState, false) +
           (discovery.mode === "spotlight" ? 80 : discovery.mode === "nearest" ? 40 : 0) +
-          (emphasis === "selected" ? 120 : emphasis === "recommended" ? 60 : 0);
+          (isSelected ? 120 : 60);
 
         return (
           <CampusQuestMapMarker
@@ -653,12 +648,8 @@ function RealmMapMarkers({
               opportunityCount={groupOpportunityCount(group)}
               color={colorFor(group.groupKey)}
               zoomTier={zoomTier}
-              revealOpacity={forYouRevealOpacity(emphasis, markerRevealOpacity(mapZoom, false))}
-              deemphasized={emphasis === "context"}
-              hideLabel={
-                emphasis === "context" ||
-                (zoomTier === "far" && activityState === "idle" && !isSelected)
-              }
+              revealOpacity={canonicalMarkerRevealOpacity(markerRevealOpacity(mapZoom, false), isSelected)}
+              hideLabel={zoomTier === "far" && activityState === "idle" && !isSelected}
               revealIndex={markersReveal ? visibleLandmarks.length + index : undefined}
               countdown={countdownByGroup[group.groupKey] ?? null}
               locationAdjusted={group.events.some((event) => event.locationManuallyAdjusted)}

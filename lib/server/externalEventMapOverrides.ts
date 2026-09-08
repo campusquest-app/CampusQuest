@@ -378,6 +378,12 @@ export async function upsertAutoPlacementOverride(args: {
     fields: args.fields,
     catalog: args.catalog,
     forceGoogle,
+    context: {
+      eventId: args.externalEventId,
+      source: args.source ?? null,
+      venueName: args.fields.venueName ?? null,
+      address: args.fields.address ?? null,
+    },
   });
 
   const admin = createAdminClient();

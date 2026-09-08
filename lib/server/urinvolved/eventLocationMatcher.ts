@@ -12,6 +12,10 @@ import {
   type UriAliasTarget,
 } from "@/lib/server/urinvolved/mapEventLocationTypes";
 import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
+import {
+  canonicalVenueCoordinates,
+  resolveUriCanonicalVenueFromFields,
+} from "@/lib/locations/uriVenueAliases";
 
 export { normalizeLocationName };
 
@@ -50,11 +54,63 @@ export type EventLocationMatchResult = {
   meta: EventLocationMatchMeta;
 };
 
-type MatchCandidate = {
+export type MatchCandidate = {
   match: EventLocationMatch;
   confidence: number;
   reason: string;
 };
+
+/**
+ * Highest-priority layer: an exact hit in the canonical URI venue registry.
+ * Runs ahead of catalog containment and fuzzy matching so a named venue such as
+ * "URI Soccer Complex" can never be pulled onto a different campus landmark.
+ *
+ * Returns null when the venue is recognized but has no trusted coordinates —
+ * the caller then geocodes it rather than guessing a position.
+ */
+export function matchCanonicalUriVenue(
+  fields: {
+    venueName?: string | null;
+    locationName?: string | null;
+    address?: string | null;
+  },
+  catalog: CatalogLocationLike[],
+): MatchCandidate | null {
+  const hit = resolveUriCanonicalVenueFromFields(fields);
+  if (!hit) return null;
+
+  const { venue } = hit;
+  if (venue.realmLocationId) {
+    const catalogEntry = catalog.find((entry) => entry.slug === venue.realmLocationId);
+    if (catalogEntry) {
+      return {
+        match: {
+          kind: "realm",
+          realmLocationId: catalogEntry.slug,
+          locationName: catalogEntry.name,
+          matchedText: hit.matchedAlias,
+        },
+        confidence: 0.99,
+        reason: "canonical_venue",
+      };
+    }
+  }
+
+  const coords = canonicalVenueCoordinates(venue);
+  if (!coords) return null;
+
+  return {
+    match: {
+      kind: "coords",
+      locationName: venue.name,
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      matchedText: hit.matchedAlias,
+    },
+    confidence: 0.99,
+    reason: "canonical_venue",
+  };
+}
 
 function matchCatalogEntry(
   normalized: string,
@@ -201,6 +257,17 @@ export function matchEventLocationWithMeta(
   catalog: CatalogLocationLike[],
 ): EventLocationMatchResult | null {
   const candidates = [fields.venueName, fields.locationName, fields.address];
+
+  const canonical = matchCanonicalUriVenue(fields, catalog);
+  if (canonical) {
+    const canonicalRaw =
+      fields.venueName?.trim() || fields.locationName?.trim() || fields.address?.trim() || canonical.match.matchedText;
+    return {
+      match: canonical.match,
+      meta: buildMeta(canonicalRaw, normalizeEventLocationText(canonicalRaw), canonical),
+    };
+  }
+
   let best: MatchCandidate | null = null;
 
   for (const value of candidates) {
