@@ -58,9 +58,9 @@ describe("isEventVisibleOnMap", () => {
     expect(isEventVisibleOnMap({ end_time: "2026-07-13T09:00:00+02:00" }, NOW)).toBe(true);
   });
 
-  it("treats events with no end time as visible", () => {
+  it("hides events with no usable start/end instead of keeping them forever", () => {
     expect(isEventVisibleOnMap({ start_time: hoursAgoIso(1), end_time: null }, NOW)).toBe(true);
-    expect(isEventVisibleOnMap({}, NOW)).toBe(true);
+    expect(isEventVisibleOnMap({}, NOW)).toBe(false);
   });
 
   it("hides events with unparseable end times", () => {

@@ -9,6 +9,7 @@ import type {
   UserRecommendationProfile,
 } from "@/lib/recommendations/types";
 import { RECOMMENDATION_WEIGHTS, REASON_MIN_SCORE } from "@/lib/recommendations/weights";
+import { isEventLiveNow } from "@/lib/realm/eventVisibility";
 
 function clamp01(value: number): number {
   if (value <= 0) return 0;
@@ -27,8 +28,11 @@ function eventTimeSignal(entity: RecommendationEntity, nowMs: number): number {
   const start = entity.startsAtMs ?? null;
   const end = entity.endsAtMs ?? null;
   if (start == null) return 0.35;
-  if (end != null && end < nowMs) return 0.02;
-  if (start <= nowMs && (end == null || end >= nowMs)) return 1;
+  const now = new Date(nowMs);
+  // Shared LIVE helper — null ends_at cannot stay "happening now" past the campus day.
+  if (isEventLiveNow(start, end, now)) return 1;
+  const endMs = end;
+  if (endMs != null && endMs < nowMs) return 0.02;
   const hours = (start - nowMs) / (60 * 60 * 1000);
   if (hours < 0) return 0.08;
   if (hours <= 6) return 0.92;

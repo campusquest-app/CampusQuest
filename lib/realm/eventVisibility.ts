@@ -1,12 +1,15 @@
 /**
- * Shared map-event visibility rule: an event stays visible on the Realm map
- * (pins, counts, location sheets, stacked indicators) until exactly 24 hours
- * after its actual end time, then disappears from active map views. Database
- * rows are never deleted — this is a display rule only.
+ * Shared map-event visibility + LIVE status rules.
  *
- * All comparisons use epoch milliseconds from `Date.parse`, so ISO timestamps
- * with any timezone offset (Z, -04:00, +02:00, …) compare correctly.
+ * LIVE: starts_at <= now <= effective end.
+ * Missing ends_at: assume start + 2h, clamped to the end of the start's
+ * America/New_York calendar day so events never stay LIVE on later days.
+ *
+ * Map visibility: remain until 24h after the effective end. Database rows are
+ * never deleted — display rules only.
  */
+
+import { getCampusDayWindow, parseEventInstant } from "@/lib/realm/campusTime";
 
 /** How long an ended event remains visible on the map. */
 export const EVENT_MAP_RETENTION_MS = 24 * 60 * 60 * 1000;
@@ -23,37 +26,69 @@ type EventTimeFields = {
 };
 
 /**
+ * Resolve the effective end instant (epoch ms) for LIVE + visibility.
+ * Prefers a real ends_at when it is parseable and not before starts_at.
+ * Otherwise uses start + 2h, never past the end of the start's campus day.
+ */
+export function resolveEventEndMs(
+  startsAt: Date | string | number | null | undefined,
+  endsAt: Date | string | number | null | undefined,
+): number | null {
+  const start = parseEventInstant(startsAt);
+  if (!start) return null;
+
+  const parsedEnd = parseEventInstant(endsAt);
+  if (parsedEnd && parsedEnd.getTime() >= start.getTime()) {
+    return parsedEnd.getTime();
+  }
+
+  const assumedEnd = start.getTime() + DEFAULT_EVENT_DURATION_MS;
+  const campusDayEndMs = getCampusDayWindow(start).end.getTime();
+  return Math.min(assumedEnd, campusDayEndMs);
+}
+
+/**
+ * Canonical LIVE check for Realm badges, What's Happening, and recommendations.
+ * An event is LIVE only while starts_at <= now <= effective end.
+ */
+export function isEventLiveNow(
+  startsAt: Date | string | number | null | undefined,
+  endsAt: Date | string | number | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  const start = parseEventInstant(startsAt);
+  if (!start) return false;
+  const endMs = resolveEventEndMs(startsAt, endsAt);
+  if (endMs == null) return false;
+  const t = now.getTime();
+  return start.getTime() <= t && t <= endMs;
+}
+
+/**
  * True while the event should appear on the map: it has not ended yet, or it
- * ended less than 24 hours ago. Events with no end time are always visible
- * (callers that need a bounded lifetime should pass an effective end via
- * `effectiveEventEndIso`). Cancelled events follow the same rule — they show
- * as cancelled until 24 hours after their scheduled end, then disappear.
+ * ended less than 24 hours ago. When end is omitted, uses {@link resolveEventEndMs}
+ * so null ends cannot linger forever. Cancelled events follow the same rule.
  */
 export function isEventVisibleOnMap(event: EventTimeFields, now: Date = new Date()): boolean {
+  const startRaw = event.start_time ?? event.startsAt ?? null;
   const endRaw = event.end_time ?? event.endsAt ?? null;
-  if (!endRaw) return true;
+  const endMs = resolveEventEndMs(startRaw, endRaw) ?? parseEventInstant(endRaw)?.getTime() ?? null;
+  if (endMs == null) return false;
 
-  const endTime = new Date(endRaw);
-  if (Number.isNaN(endTime.getTime())) return false;
-
-  const removalTime = new Date(endTime.getTime() + EVENT_MAP_RETENTION_MS);
-  return now.getTime() < removalTime.getTime();
+  const removalTime = endMs + EVENT_MAP_RETENTION_MS;
+  return now.getTime() < removalTime;
 }
 
 /**
  * End instant used for the retention window when the source feed omits
- * `ends_at`: the real end time, or start + 2 hours as a fallback so events
- * without an end time cannot linger on the map forever.
+ * `ends_at`: the real end time, or start + 2h clamped to the campus day.
  */
 export function effectiveEventEndIso(
   startsAt: string | null | undefined,
   endsAt: string | null | undefined,
 ): string | null {
-  if (endsAt) return endsAt;
-  if (!startsAt) return null;
-  const start = new Date(startsAt);
-  if (Number.isNaN(start.getTime())) return null;
-  return new Date(start.getTime() + DEFAULT_EVENT_DURATION_MS).toISOString();
+  const endMs = resolveEventEndMs(startsAt, endsAt);
+  return endMs == null ? null : new Date(endMs).toISOString();
 }
 
 /**
@@ -66,6 +101,6 @@ export function filterVisibleMapEvents<T extends { startsAt?: string | null; end
   now: Date = new Date(),
 ): T[] {
   return events.filter((event) =>
-    isEventVisibleOnMap({ end_time: effectiveEventEndIso(event.startsAt, event.endsAt) }, now),
+    isEventVisibleOnMap({ startsAt: event.startsAt, endsAt: event.endsAt }, now),
   );
 }
