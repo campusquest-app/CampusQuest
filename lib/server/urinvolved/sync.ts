@@ -23,6 +23,7 @@ import {
   decideSoftDeactivateMissingEvents,
   idsMissingFromSeen,
   countUpcomingFromActiveRows,
+  filterSafeDeactivationIds,
 } from "@/lib/server/urinvolved/syncSafety";
 import { applyAdminOverrideMerge } from "@/lib/server/eventSources/upsert";
 import { upsertBySourceExternalId } from "@/lib/server/eventSources/upsertBySourceExternalId";
@@ -496,14 +497,34 @@ async function runUrinvolvedSyncExclusive(
       eventsFetched,
       existingUpcomingActiveCount,
       existingUpcomingStoredCount,
+      existingActiveCount: activeEventRows.length,
       payloadValid: eventsPayloadValid,
+      successfulImports: eventsCreated + eventsUpdated,
     });
     inventoryPreserved = eventDeactivate.preservePreviousInventory;
     if (eventDeactivate.shouldDeactivate) {
-      const eventIdsToDeactivate = idsMissingFromSeen(
+      const missing = idsMissingFromSeen(
         (activeEventRows ?? []).map((row) => row.external_id as string),
         seenEventIds,
       );
+      const safe = filterSafeDeactivationIds({
+        missingIds: missing,
+        activeCount: activeEventRows.length,
+      });
+      if (safe.blocked) {
+        inventoryPreserved = true;
+        errors.push(
+          `Refusing to deactivate ${missing.length}/${activeEventRows.length} URInvolved events (excessive missing ratio).`,
+        );
+        console.warn("[cq:urinvolved-sync] refusing mass soft-deactivate", {
+          reason: safe.reason,
+          missing: missing.length,
+          active: activeEventRows.length,
+          fetched: eventsFetched,
+          imported: eventsCreated + eventsUpdated,
+        });
+      }
+      const eventIdsToDeactivate = safe.ids;
       if (eventIdsToDeactivate.length > 0) {
         await admin
           .from("external_events")
@@ -516,12 +537,17 @@ async function runUrinvolvedSyncExclusive(
       const reasonMessage =
         eventDeactivate.reason === "suspicious_empty_catalog"
           ? `Refusing to deactivate ${existingUpcomingActiveCount} stored upcoming events after an empty upstream catalog.`
-          : `Preserving stored events (${eventDeactivate.reason}).`;
+          : eventDeactivate.reason === "suspicious_partial_catalog"
+            ? `Refusing to deactivate after a suspiciously small catalog (fetched ${eventsFetched}, imported ${eventsCreated + eventsUpdated}, stored upcoming ${existingUpcomingActiveCount}).`
+            : eventDeactivate.reason === "zero_successful_imports"
+              ? `Refusing to deactivate after zero successful imports (fetched ${eventsFetched}).`
+              : `Preserving stored events (${eventDeactivate.reason}).`;
       errors.push(reasonMessage);
       console.warn("[cq:urinvolved-sync] preserving existing events", {
         reason: eventDeactivate.reason,
         existingUpcomingActiveCount,
         eventsFetched,
+        imported: eventsCreated + eventsUpdated,
         upstreamHttpStatus,
         errors: errors.slice(0, 3),
       });

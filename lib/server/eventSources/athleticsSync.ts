@@ -11,7 +11,7 @@ import { resolveUrinvolvedEventLocation } from "@/lib/server/urinvolved/eventLoc
 import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
 import { getCampusLocations } from "@/lib/server/campusLocationsDb";
 import { resolveAndUpsertEventMapPlacement } from "@/lib/server/urinvolved/resolveAndUpsertEventMapPlacement";
-import { idsMissingFromSeen } from "@/lib/server/urinvolved/syncSafety";
+import { idsMissingFromSeen, filterSafeDeactivationIds } from "@/lib/server/urinvolved/syncSafety";
 import { createAdminClient } from "@/lib/server/supabase";
 import { finishProviderSyncLog, startProviderSyncLog } from "@/lib/server/eventSources/syncLogs";
 import {
@@ -284,12 +284,30 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
       (activeRows ?? []).map((row) => row.external_id as string),
       seenEventIds,
     );
-    if (missing.length > 0 && eventsReceived > 0 && eventsFailed < eventsReceived) {
+    const activeCount = (activeRows ?? []).length;
+    const safeMissing = filterSafeDeactivationIds({
+      missingIds: missing,
+      activeCount,
+    });
+    // Never soft-deactivate Athletics inventory after a zero-import or mass-miss run.
+    // Source-scoped only — never touches urinvolved/manual rows.
+    if (
+      safeMissing.ids.length > 0 &&
+      eventsReceived > 0 &&
+      eventsCreated + eventsUpdated > 0 &&
+      eventsFailed < eventsReceived
+    ) {
       await admin
         .from("external_events")
         .update({ is_active: false, updated_at: now })
         .eq("source", ATHLETICS_SOURCE)
-        .in("external_id", missing);
+        .in("external_id", safeMissing.ids);
+    } else if (safeMissing.blocked || (eventsReceived > 0 && eventsCreated + eventsUpdated === 0)) {
+      errors.push(
+        safeMissing.blocked
+          ? `Refusing to deactivate ${missing.length}/${activeCount} Athletics events (excessive missing ratio).`
+          : `Refusing to deactivate Athletics inventory after zero successful imports (received ${eventsReceived}).`,
+      );
     }
 
     const success = eventsFailed === 0 || eventsCreated + eventsUpdated > 0;

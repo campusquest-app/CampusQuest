@@ -6,6 +6,7 @@ import {
 import {
   countUpcomingFromActiveRows,
   decideSoftDeactivateMissingEvents,
+  filterSafeDeactivationIds,
   idsMissingFromSeen,
 } from "@/lib/server/urinvolved/syncSafety";
 import { getLogicalEventFallbackKey } from "@/lib/realm/dedupeLogicalEvents";
@@ -169,8 +170,46 @@ describe("URInvolved soft-deactivate safety", () => {
         fetchSucceeded: true,
         eventsFetched: 12,
         existingUpcomingActiveCount: 12,
+        successfulImports: 12,
       }),
     ).toEqual({ shouldDeactivate: true, preservePreviousInventory: false, reason: "successful_catalog" });
+  });
+
+  it("does not deactivate when every upsert failed (zero successful imports)", () => {
+    expect(
+      decideSoftDeactivateMissingEvents({
+        fetchAttempted: true,
+        fetchSucceeded: true,
+        eventsFetched: 40,
+        existingUpcomingActiveCount: 40,
+        successfulImports: 0,
+      }),
+    ).toEqual({
+      shouldDeactivate: false,
+      preservePreviousInventory: true,
+      reason: "zero_successful_imports",
+    });
+  });
+
+  it("does not deactivate a suspiciously partial catalog", () => {
+    expect(
+      decideSoftDeactivateMissingEvents({
+        fetchAttempted: true,
+        fetchSucceeded: true,
+        eventsFetched: 8,
+        existingUpcomingActiveCount: 100,
+        successfulImports: 8,
+      }).reason,
+    ).toBe("suspicious_partial_catalog");
+  });
+
+  it("blocks excessive missing-ratio deactivations", () => {
+    expect(
+      filterSafeDeactivationIds({
+        missingIds: Array.from({ length: 60 }, (_, i) => String(i)),
+        activeCount: 100,
+      }).blocked,
+    ).toBe(true);
   });
 
   it("allows deactivate only when empty catalog is legitimate (no stored upcoming events)", () => {
