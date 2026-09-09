@@ -13954,7 +13954,82 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   height: 100%;
   min-height: 6.4rem;
   object-fit: cover;
+  object-position: center;
   border-radius: 0.9rem;
+}
+
+/* Mobile For You / discovery cards: landscape image on top, text below. */
+@media (max-width: 639px) {
+  .cq-events-feed {
+    gap: 0.55rem;
+  }
+
+  .cq-event-card--row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+    padding: 0.55rem;
+  }
+
+  .cq-event-card--row .cq-event-card-thumb-wrap {
+    width: 100%;
+    height: clamp(130px, 36vw, 150px);
+    min-height: 130px;
+    max-height: 150px;
+    overflow: hidden;
+    border-radius: 0.9rem;
+  }
+
+  .cq-event-card--row .cq-event-card-thumb-wrap:has(img) {
+    padding: 0;
+  }
+
+  .cq-event-card--row .cq-event-card-thumb {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    object-fit: cover;
+    object-position: center;
+    border-radius: 0.9rem;
+  }
+
+  .cq-event-card--row .cq-event-card-body {
+    gap: 0.12rem;
+  }
+
+  .cq-event-card--row .cq-event-card-title {
+    font-size: 1rem;
+    line-height: 1.3;
+    -webkit-line-clamp: 2;
+  }
+
+  .cq-event-card--row .cq-event-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.28rem;
+  }
+
+  .cq-event-card--row .cq-event-card-action {
+    flex: 1 1 calc(50% - 0.2rem);
+    min-width: min(100%, 9.25rem);
+    text-align: center;
+    min-height: 36px;
+    padding: 0.28rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
+  .cq-event-card--row .cq-event-card-action--rsvp {
+    flex: 1 1 100%;
+  }
+
+  .cq-event-card--row .cq-event-card-footer {
+    margin-top: 0.22rem;
+  }
+
+  .cq-event-card--row .cq-event-card-reason {
+    font-size: 0.65rem;
+    line-height: 1.25;
+  }
 }
 
 .cq-event-card-chip {
