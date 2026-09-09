@@ -256,7 +256,8 @@ export function RealmMap({
   const [markerFilter, setMarkerFilter] = useState<MapMarkerFilter>("for_you");
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
   const [railFocus, setRailFocus] = useState<{ lat: number; lng: number } | null>(null);
-  const [discoverySnap, setDiscoverySnap] = useState<DiscoverySheetSnap>("default");
+  // Idle map shows a collapsed peek only; For You content opens via the For You filter pill.
+  const [discoverySnap, setDiscoverySnap] = useState<DiscoverySheetSnap>("collapsed");
   const [discoveryPadPx, setDiscoveryPadPx] = useState(0);
   const [userFix, setUserFix] = useState<{ lat: number; lng: number; accuracy?: number | null } | null>(null);
   const [userLocating, setUserLocating] = useState(true);
@@ -616,6 +617,8 @@ export function RealmMap({
     setSheetOpen(false);
     setSearchPin(null);
     setFlyToForce(false);
+    // Closing a marker/backdrop must not remount the full For You stack.
+    setDiscoverySnap("collapsed");
     if (!isRouteSheetOpen) {
       setActiveMarkerId(null);
       setSelectedMapContent(null);
@@ -625,6 +628,20 @@ export function RealmMap({
       setActiveRouteDestination(null);
     }
   }, [cancelInFlightRoute, isRouteSheetOpen]);
+
+  const handleMarkerFilterChange = useCallback((next: MapMarkerFilter) => {
+    setMarkerFilter(next);
+    // Discovery content opens only from an explicit For You control.
+    setDiscoverySnap(next === "for_you" ? "default" : "collapsed");
+  }, []);
+
+  const handleMapBackgroundClick = useCallback(() => {
+    if (sheetOpen) {
+      closeSheet();
+      return;
+    }
+    setDiscoverySnap("collapsed");
+  }, [closeSheet, sheetOpen]);
 
   useEffect(() => {
     if (!isActive && sheetOpen) closeSheet();
@@ -1343,7 +1360,8 @@ export function RealmMap({
             flyToForce={flyToForce}
             routeSheetOpen={isRouteSheetOpen}
             markerFilter={markerFilter}
-            onMarkerFilterChange={setMarkerFilter}
+            onMarkerFilterChange={handleMarkerFilterChange}
+            onMapBackgroundClick={handleMapBackgroundClick}
             recommendedMarkerIds={forYouMarkerIds}
             suppressLegacyWelcome={showArrival || showIntro}
             recommendationScoreById={searchRecScores}
@@ -1548,7 +1566,7 @@ export function RealmMap({
               liveCount={recCounts.live}
               dataReady={mapGroupsLoaded}
               onExploreForYou={() => {
-                setMarkerFilter("for_you");
+                handleMarkerFilterChange("for_you");
                 onArrivalExplore?.();
               }}
               onViewFeed={() => onArrivalViewFeed?.()}

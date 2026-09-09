@@ -53,6 +53,9 @@ function DiscoverRowIcon({ icon }: { icon: ReturnType<typeof discoverIconKey> })
   return <Rocket {...common} />;
 }
 
+/** Flip to true to restore the Genius Mining survey card in Realm discovery. */
+export const SHOW_GENIUS_MINING_SURVEY = false;
+
 /** Full-width Genius Mining survey feature card. */
 export function DiscoverForYou({
   onStartGeniusMining,
@@ -63,6 +66,8 @@ export function DiscoverForYou({
   onViewAll?: () => void;
   onOpenItem?: (item: MapRecommendationItem) => void;
 }) {
+  if (!SHOW_GENIUS_MINING_SURVEY) return null;
+
   return (
     <section className="cq-discover-foryou cq-discover-foryou--hero" aria-label="Discover For You">
       <header className="cq-discover-foryou__head">

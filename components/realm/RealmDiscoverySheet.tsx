@@ -29,6 +29,9 @@ import { DiscoverForYou, DiscoverRecommendations } from "./DiscoverForYou";
 import { RecommendedPlacesCarousel } from "./RecommendedPlacesCarousel";
 import { RhodyHighlights } from "./RhodyHighlights";
 
+/** Flip to true to restore the Recommended Around Campus places carousel. */
+const SHOW_RECOMMENDED_PLACES = false;
+
 type SheetDrag = {
   pointerId: number;
   startX: number;
@@ -309,13 +312,15 @@ export function RealmDiscoverySheet({
               onViewAll={onViewAllRecommendations}
               onOpenItem={onOpenRecommendation}
             />
-            <RecommendedPlacesCarousel
-              items={nearbyPlaces}
-              savedIds={savedIds}
-              walkStatus={walkStatus}
-              onOpen={onOpenPlace}
-              onToggleSave={(id) => setSavedIds(toggleSavedPlaceId(id))}
-            />
+            {SHOW_RECOMMENDED_PLACES ? (
+              <RecommendedPlacesCarousel
+                items={nearbyPlaces}
+                savedIds={savedIds}
+                walkStatus={walkStatus}
+                onOpen={onOpenPlace}
+                onToggleSave={(id) => setSavedIds(toggleSavedPlaceId(id))}
+              />
+            ) : null}
           </div>
         </div>
       ) : null}

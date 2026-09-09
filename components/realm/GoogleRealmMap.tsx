@@ -730,6 +730,7 @@ export function GoogleRealmMap({
   flyToForce = false,
   markerFilter,
   onMarkerFilterChange,
+  onMapBackgroundClick,
   recommendedMarkerIds = null,
   suppressLegacyWelcome = false,
   recommendationScoreById,
@@ -773,6 +774,8 @@ export function GoogleRealmMap({
   searchPin?: { lat: number; lng: number; name: string } | null;
   markerFilter?: MapMarkerFilter;
   onMarkerFilterChange?: (next: MapMarkerFilter) => void;
+  /** Empty-map tap: collapse discovery / close sheets — never open For You content. */
+  onMapBackgroundClick?: () => void;
   recommendedMarkerIds?: ReadonlySet<string> | null;
   suppressLegacyWelcome?: boolean;
   recommendationScoreById?: Record<string, number>;
@@ -1036,12 +1039,13 @@ export function GoogleRealmMap({
   const handleMapClick = useCallback(
     (event: { detail: { latLng: { lat: number; lng: number } | null } }) => {
       setControlsExpanded(false);
+      onMapBackgroundClick?.();
       if (!editMode || !editorSelectedId) return;
       const latLng = event.detail.latLng;
       if (!latLng) return;
       onMarkerGeoChange(editorSelectedId, latLng.lat, latLng.lng);
     },
-    [editMode, editorSelectedId, onMarkerGeoChange],
+    [editMode, editorSelectedId, onMapBackgroundClick, onMarkerGeoChange],
   );
 
   const directionsActive = Boolean(directionsRequest);
