@@ -15,12 +15,10 @@ import type { Character } from "@/lib/types";
 import type { QuadPostXpReward } from "@/lib/quadPostXp";
 import { FieldNoteComposer } from "@/components/FieldNoteComposer";
 import { PostMediaPicker, type PickedMedia } from "@/components/posts/PostMediaPicker";
-import { QuadCreateActionSheet } from "@/components/QuadCreateActionSheet";
 import { revokeVideoObjectUrl } from "@/lib/client/probeVideoFile";
 import type { QuadFeedTab } from "@/components/TheQuad";
 
 type Step = "media" | "compose";
-type View = "actions" | "post";
 
 function baseFeedType(feedTab: QuadFeedTab): "public" | "friends" {
   return feedTab === "friends" ? "friends" : "public";
@@ -40,7 +38,6 @@ export function QuadCreatePostFab({
   onMarketSell?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<View>("actions");
   const [step, setStep] = useState<Step>("media");
   const [pendingMedia, setPendingMedia] = useState<PickedMedia>({ kind: "none" });
   const [tapBurst, setTapBurst] = useState(false);
@@ -72,14 +69,12 @@ export function QuadCreatePostFab({
     dirtyRef.current = false;
     clearPendingMedia();
     setStep("media");
-    setView("actions");
     setOpen(true);
   }
 
   const handleClose = useCallback(() => {
     dirtyRef.current = false;
     setOpen(false);
-    setView("actions");
     setStep("media");
     if (pendingMedia.kind === "video") {
       revokeVideoObjectUrl(pendingMedia.previewUrl);
@@ -97,19 +92,12 @@ export function QuadCreatePostFab({
       pendingMedia.kind === "carousel"
         ? pendingMedia.items.length > 0
         : pendingMedia.kind !== "none";
-    if (view === "post" && (dirtyRef.current || hasMedia)) {
+    if (dirtyRef.current || hasMedia) {
       const confirmed = window.confirm("Discard this post? Your draft will be lost.");
       if (!confirmed) return;
     }
     handleClose();
-  }, [handleClose, pendingMedia, view]);
-
-  const startPostFlow = useCallback(() => {
-    dirtyRef.current = false;
-    setPendingMedia({ kind: "none" });
-    setStep("media");
-    setView("post");
-  }, []);
+  }, [handleClose, pendingMedia]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -141,66 +129,62 @@ export function QuadCreatePostFab({
 
   const modal =
     open && typeof document !== "undefined" ? (
-      view === "actions" ? (
-        <QuadCreateActionSheet onClose={handleClose} onCreatePost={startPostFlow} />
-      ) : (
+      <div
+        className="cq-composer-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Create a new post"
+        onClick={requestClose}
+      >
         <div
-          className="cq-composer-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Create a new post"
-          onClick={requestClose}
+          className={`cq-composer-shell cq-composer-shell--${step}`}
+          onClick={(e) => e.stopPropagation()}
         >
-          <div
-            className={`cq-composer-shell cq-composer-shell--${step}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {step === "media" ? (
-              <PostMediaPicker
-                onClose={requestClose}
-                onNext={(media) => {
-                  setPendingMedia(media);
-                  setStep("compose");
-                }}
-              />
-            ) : (
-              <FieldNoteComposer
-                key={`${feedTab}-${open}-compose`}
-                character={character}
-                defaultVisibility={baseFeedType(feedTab)}
-                initialImage={pendingMedia.kind === "image" ? pendingMedia.dataUrl : ""}
-                initialVideo={
-                  pendingMedia.kind === "video"
-                    ? {
-                        file: pendingMedia.file,
-                        previewUrl: pendingMedia.previewUrl,
-                        durationSeconds: pendingMedia.durationSeconds,
-                      }
-                    : null
-                }
-                initialCarousel={
-                  pendingMedia.kind === "carousel"
-                    ? {
-                        items: pendingMedia.items,
-                        coverClientId: pendingMedia.coverClientId,
-                      }
-                    : null
-                }
-                onBack={() => setStep("media")}
-                onCancel={requestClose}
-                onDirtyChange={(d) => {
-                  dirtyRef.current = d;
-                }}
-                onPosted={() => {
-                  onPosted();
-                  handleClose();
-                }}
-                onXpReward={onXpReward}
-              />
-            )}
-          </div>
+          {step === "media" ? (
+            <PostMediaPicker
+              onClose={requestClose}
+              onNext={(media) => {
+                setPendingMedia(media);
+                setStep("compose");
+              }}
+            />
+          ) : (
+            <FieldNoteComposer
+              key={`${feedTab}-${open}-compose`}
+              character={character}
+              defaultVisibility={baseFeedType(feedTab)}
+              initialImage={pendingMedia.kind === "image" ? pendingMedia.dataUrl : ""}
+              initialVideo={
+                pendingMedia.kind === "video"
+                  ? {
+                      file: pendingMedia.file,
+                      previewUrl: pendingMedia.previewUrl,
+                      durationSeconds: pendingMedia.durationSeconds,
+                    }
+                  : null
+              }
+              initialCarousel={
+                pendingMedia.kind === "carousel"
+                  ? {
+                      items: pendingMedia.items,
+                      coverClientId: pendingMedia.coverClientId,
+                    }
+                  : null
+              }
+              onBack={() => setStep("media")}
+              onCancel={requestClose}
+              onDirtyChange={(d) => {
+                dirtyRef.current = d;
+              }}
+              onPosted={() => {
+                onPosted();
+                handleClose();
+              }}
+              onXpReward={onXpReward}
+            />
+          )}
         </div>
-      )
+      </div>
     ) : null;
 
   if (typeof document === "undefined") return null;
