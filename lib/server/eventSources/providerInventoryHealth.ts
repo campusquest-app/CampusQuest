@@ -12,7 +12,14 @@ import {
 export const WATCHDOG_PROVIDER_SOURCES = ["athletics", "urinvolved", "manual"] as const;
 export type WatchdogProviderSource = (typeof WATCHDOG_PROVIDER_SOURCES)[number];
 
-export type ProviderHealthStatusValue = "healthy" | "degraded" | "recovering" | "circuit_open";
+export type ProviderHealthStatusValue =
+  | "healthy"
+  | "degraded"
+  | "recovering"
+  | "circuit_open"
+  | "failed"
+  | "repairing"
+  | "configuration_required";
 export type OverallEventsHealth = "HEALTHY" | "DEGRADED";
 export type RecoveryFinalResult =
   | "not_needed"
@@ -137,7 +144,11 @@ export function overallEventsHealth(input: {
   const live = input.providers.filter(
     (provider) => provider.source === "urinvolved" || provider.source === "athletics",
   );
-  if (live.some((provider) => provider.status === "degraded" || provider.status === "circuit_open")) {
+  if (
+    live.some((provider) =>
+      ["degraded", "circuit_open", "failed", "repairing"].includes(provider.status ?? ""),
+    )
+  ) {
     return "DEGRADED";
   }
   return "HEALTHY";

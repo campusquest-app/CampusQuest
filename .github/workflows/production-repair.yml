@@ -1,0 +1,50 @@
+name: Production repair gates
+
+# Validates a repair change. Does not auto-merge to main and does not
+# invent GitHub/Vercel credentials. In-place schema repair uses the
+# allowlisted Supabase RPC after 20260910180000 is applied.
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Provider to mention in logs (urinvolved or athletics)
+        required: false
+        default: urinvolved
+      incident_id:
+        description: Optional incident id for traceability
+        required: false
+  repository_dispatch:
+    types: [campusquest-provider-repair]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-repair
+  cancel-in-progress: false
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run check:migration-safety
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - name: Record incident context
+        run: |
+          echo "provider=${{ github.event.inputs.provider || github.event.client_payload.provider || 'urinvolved' }}"
+          echo "incident_id=${{ github.event.inputs.incident_id || github.event.client_payload.incident_id || 'none' }}"
+          echo "Automatic merge is disabled. Open a PR to main after these gates pass."

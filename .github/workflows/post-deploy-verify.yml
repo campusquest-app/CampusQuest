@@ -1,0 +1,56 @@
+name: Post-deploy provider verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      retry:
+        description: Retry provider recovery after verify (true/false)
+        required: false
+        default: "true"
+  deployment_status:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-deploy-verify
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       contains(github.event.deployment_status.environment, 'Production'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Call production verify endpoint
+        env:
+          PRODUCTION_APP_URL: ${{ secrets.PRODUCTION_APP_URL }}
+          CQ_INTERNAL_REPAIR_SECRET: ${{ secrets.CQ_INTERNAL_REPAIR_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          RETRY: ${{ github.event.inputs.retry || 'true' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PRODUCTION_APP_URL:-}" ]; then
+            echo "Live verify skipped: add repository secret PRODUCTION_APP_URL."
+            exit 0
+          fi
+          TOKEN="${CQ_INTERNAL_REPAIR_SECRET:-${CRON_SECRET:-}}"
+          if [ -z "$TOKEN" ]; then
+            echo "Live verify skipped: add CQ_INTERNAL_REPAIR_SECRET or CRON_SECRET."
+            exit 0
+          fi
+          BASE="${PRODUCTION_APP_URL%/}"
+          BODY='{"source":"urinvolved","retry":true}'
+          if [ "$RETRY" = "false" ]; then
+            BODY='{"source":"urinvolved","retry":false}'
+          fi
+          curl -sS --fail --max-time 120 \
+            -X POST "$BASE/api/internal/admin/provider-verify" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" \
+            | python -c 'import json,sys; d=json.load(sys.stdin); print("verify_ok", bool((d.get("data") or {}).get("verification", {}).get("schemaOk"))); print("recovery", (d.get("data") or {}).get("recovery", {}).get("status"))'

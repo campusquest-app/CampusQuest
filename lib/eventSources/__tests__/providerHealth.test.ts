@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   estimateNextDailyCronUtc,
   formatAdminSyncErrorSummary,
+  operatorHealthLabel,
   resolveProviderHealth,
+  sanitizeTechnicalDiagnostics,
 } from "@/lib/eventSources/providerHealth";
 import { EXTERNAL_SOURCE_ID_CONFLICT } from "@/lib/server/eventSources/upsertBySourceExternalId";
 
@@ -123,5 +125,25 @@ describe("next cron estimate", () => {
 describe("conflict target constant", () => {
   it("matches the composite unique identity", () => {
     expect(EXTERNAL_SOURCE_ID_CONFLICT).toBe("source,external_id");
+  });
+});
+
+describe("operator health + sanitization", () => {
+  it("maps configuration required to Manual Review without deleting inventory", () => {
+    expect(
+      operatorHealthLabel({
+        healthStatus: "configuration_required",
+      }),
+    ).toBe("Manual Review");
+  });
+
+  it("redacts secrets, JWTs, and emails from incident/log text", () => {
+    const raw =
+      "Authorization: Bearer supersecret token=abc service_role=xyz sb_secret_abc123 user@uri.edu eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.aaa.bbb";
+    const sanitized = sanitizeTechnicalDiagnostics(raw);
+    expect(sanitized).not.toMatch(/supersecret/);
+    expect(sanitized).not.toMatch(/sb_secret_/);
+    expect(sanitized).not.toMatch(/user@uri\.edu/);
+    expect(sanitized).toMatch(/\[redacted/);
   });
 });

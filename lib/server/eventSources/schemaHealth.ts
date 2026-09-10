@@ -89,8 +89,14 @@ export async function assertExternalIdentitySchemaReady(admin: AdminClient): Pro
   };
 
   if (!normalized.ok) {
+    const missing = [
+      !normalized.external_events_unique_source_external_id ? "external_events" : null,
+      !normalized.external_organizations_unique_source_external_id ? "external_organizations" : null,
+    ]
+      .filter(Boolean)
+      .join(" and ");
     throw new Error(
-      `${SCHEMA_INCOMPATIBLE_DIAGNOSTIC} — events=${normalized.external_events_unique_source_external_id} orgs=${normalized.external_organizations_unique_source_external_id}`,
+      `${EVENT_SCHEMA_INCOMPATIBLE_CODE}: ${missing || "external identity"} requires UNIQUE(${EXTERNAL_IDENTITY_CONFLICT_COLS})`,
     );
   }
   return normalized;

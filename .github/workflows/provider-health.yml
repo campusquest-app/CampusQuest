@@ -1,0 +1,36 @@
+name: Provider health ping
+
+# Optional backup for Vercel Cron. Hits the production health endpoint.
+# Primary scheduler remains vercel.json → /api/cron/provider-health.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "10,40 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-health-ping
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect production provider health
+        env:
+          PRODUCTION_APP_URL: ${{ secrets.PRODUCTION_APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PRODUCTION_APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "Health ping skipped: add PRODUCTION_APP_URL and CRON_SECRET repository secrets."
+            exit 0
+          fi
+          curl -sS --fail --max-time 120 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${PRODUCTION_APP_URL%/}/api/cron/provider-health" \
+            | python -c 'import json,sys; d=json.load(sys.stdin); print("ok", d.get("ok")); print("keys", list((d.get("data") or {}).keys()))'

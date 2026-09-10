@@ -65,6 +65,25 @@ describe("assertExternalIdentitySchemaReady", () => {
     );
   });
 
+  it("names external_organizations when that unique is the missing invariant", async () => {
+    const rpc = vi.fn(async () => ({
+      data: {
+        ok: false,
+        code: EVENT_SCHEMA_INCOMPATIBLE_CODE,
+        message: "missing",
+        external_events_unique_source_external_id: true,
+        external_organizations_unique_source_external_id: false,
+        required_constraint: "UNIQUE (source, external_id)",
+        events_constraint_name: "external_events_source_external_id_key",
+        organizations_constraint_name: "external_organizations_source_external_id_key",
+      },
+      error: null,
+    }));
+    await expect(assertExternalIdentitySchemaReady({ rpc } as never)).rejects.toThrow(
+      /external_organizations requires UNIQUE\(source, external_id\)/,
+    );
+  });
+
   it("fails clearly when health RPC is missing (migration not applied)", async () => {
     const rpc = vi.fn(async () => ({
       data: null,

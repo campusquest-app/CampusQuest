@@ -16,6 +16,7 @@ import {
   upsertEventProviderHealth,
   type EventProviderHealthRow,
 } from "@/lib/server/eventSources/providerHealthStore";
+import { classifyProviderIncident, shouldSkipWatchdogRetries } from "@/lib/server/eventSources/incidentTypes";
 import { getLatestSyncBySource, getRecentSuccessfulImportCounts } from "@/lib/server/eventSources/syncLogs";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -208,12 +209,16 @@ async function snapshotSource(admin: AdminClient, source: string): Promise<Provi
 }
 
 function cardFromSnapshot(snapshot: ProviderInventorySnapshot): ProviderWatchdogCard {
+  const raw = snapshot.status;
   const status: ProviderHealthStatusValue =
-    snapshot.status === "healthy" ||
-    snapshot.status === "degraded" ||
-    snapshot.status === "recovering" ||
-    snapshot.status === "circuit_open"
-      ? snapshot.status
+    raw === "healthy" ||
+    raw === "degraded" ||
+    raw === "recovering" ||
+    raw === "circuit_open" ||
+    raw === "failed" ||
+    raw === "repairing" ||
+    raw === "configuration_required"
+      ? raw
       : snapshot.lastError
         ? "degraded"
         : "healthy";
@@ -300,10 +305,15 @@ export async function runProviderWatchdogAfterSync(input: {
     finalResult: "not_needed",
   };
 
+  const skipWatchdogRetries = input.errors.some((error) =>
+    shouldSkipWatchdogRetries(classifyProviderIncident(error).type),
+  );
+
   const shouldRecover =
     Boolean(input.enableRecovery) &&
     !input.skipped &&
     uriUnhealthy &&
+    !skipWatchdogRetries &&
     typeof input.runRecoverySync === "function";
 
   if (!shouldRecover) {

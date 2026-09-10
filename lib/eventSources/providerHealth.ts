@@ -160,12 +160,70 @@ export function estimateNextDailyCronUtc(args: {
   return next.toISOString();
 }
 
-function sanitizeTechnicalDiagnostics(raw: string): string {
+export function operatorHealthLabel(input: {
+  healthStatus: string;
+  incidentStatus?: string | null;
+  watchdogStatus?: string | null;
+}): "Healthy" | "Failed" | "Repairing" | "Manual Review" {
+  const incident = input.incidentStatus ?? "";
+  if (
+    incident === "diagnosing" ||
+    incident === "repairing" ||
+    incident === "verifying" ||
+    incident === "awaiting_deployment" ||
+    input.healthStatus === "syncing" ||
+    input.watchdogStatus === "repairing" ||
+    input.watchdogStatus === "recovering"
+  ) {
+    return "Repairing";
+  }
+  if (
+    incident === "manual_review_required" ||
+    input.healthStatus === "configuration_required" ||
+    input.healthStatus === "not_connected" ||
+    input.watchdogStatus === "configuration_required"
+  ) {
+    return "Manual Review";
+  }
+  if (
+    input.healthStatus === "failed" ||
+    input.healthStatus === "warning" ||
+    input.healthStatus === "stale" ||
+    incident === "failed_repair" ||
+    input.watchdogStatus === "degraded" ||
+    input.watchdogStatus === "circuit_open" ||
+    input.watchdogStatus === "failed"
+  ) {
+    return "Failed";
+  }
+  return "Healthy";
+}
+
+export function repairPhaseLabel(status: string | null | undefined): string | null {
+  switch (status) {
+    case "diagnosing":
+      return "Diagnosing…";
+    case "repairing":
+      return "Applying safe repair…";
+    case "awaiting_deployment":
+      return "Waiting for deployment…";
+    case "verifying":
+      return "Verifying production…";
+    case "resolved":
+      return "Recovered";
+    default:
+      return null;
+  }
+}
+
+export function sanitizeTechnicalDiagnostics(raw: string): string {
   return raw
-    .replace(/(api[_-]?key|token|secret|password|authorization)\s*[:=]\s*\S+/gi, "$1=[redacted]")
     .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [redacted]")
+    .replace(/(api[_-]?key|token|secret|password|authorization|service[_-]?role)\s*[:=]\s*\S+/gi, "$1=[redacted]")
     .replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "[redacted-connection]")
-    .replace(/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[redacted-jwt]");
+    .replace(/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[redacted-jwt]")
+    .replace(/\bsb_(?:secret|publishable)_[A-Za-z0-9]+/gi, "[redacted-supabase-key]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]");
 }
 
 function inferConflictTable(technical: string): "external_organizations" | "external_events" {
@@ -190,7 +248,7 @@ export function formatAdminSyncErrorSummary(raw: string | null | undefined): {
     const conflictTarget = tableMatch?.[2] ?? "source,external_id";
     return {
       title: "Database schema incompatible",
-      summary: `EVENT_SCHEMA_INCOMPATIBLE: ${table} requires UNIQUE(${conflictTarget.replace(/,/g, ", ")}). Apply migration 20260905190000_external_events_identity_invariant, then retry sync once.`,
+      summary: `EVENT_SCHEMA_INCOMPATIBLE: ${table} requires UNIQUE(${conflictTarget.replace(/,/g, ", ")}). Apply migration 20260905190000_external_events_identity_invariant (and 20260910180000_provider_self_healing for automatic repair), then retry sync once.`,
       technical,
     };
   }

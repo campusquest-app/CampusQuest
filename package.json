@@ -9,6 +9,7 @@
     "lint": "next lint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "check:migration-safety": "node scripts/check-migration-safety.mjs",
     "run:prod": "next build && next start",
     "icons": "node scripts/generate-pwa-icons.cjs",
     "logo:process": "node scripts/process-logo.mjs && node scripts/generate-pwa-icons.cjs",

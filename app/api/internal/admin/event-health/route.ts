@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       watchdog,
       sources: payload.sources,
       schemaHealth: payload.schemaHealth,
+      incidents: payload.incidents,
     });
   } catch (error) {
     if (error instanceof ZodError) {

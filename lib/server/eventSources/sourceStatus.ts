@@ -5,14 +5,18 @@ import { athleticsFeedConfigured } from "@/lib/server/eventSources/athleticsSync
 import { eventSourceLabel } from "@/lib/eventSources/catalog";
 import {
   estimateNextDailyCronUtc,
+  operatorHealthLabel,
+  repairPhaseLabel,
   resolveProviderHealth,
   type ProviderHealthStatus,
 } from "@/lib/eventSources/providerHealth";
+import type { ExternalIdentitySchemaHealth } from "@/lib/server/eventSources/schemaHealth";
+import type { EventWatchdogDiagnostics } from "@/lib/server/eventSources/providerWatchdog";
 import {
-  probeExternalIdentitySchemaHealth,
-  type ExternalIdentitySchemaHealth,
-} from "@/lib/server/eventSources/schemaHealth";
-import { inspectEventProviderWatchdog, type EventWatchdogDiagnostics } from "@/lib/server/eventSources/providerWatchdog";
+  inspectCentralProviderHealth,
+  latestIncidentForProvider,
+} from "@/lib/server/eventSources/providerHealthService";
+import type { ProviderIncidentRow } from "@/lib/server/eventSources/incidentStore";
 
 export type EventSourceAdminStatus = {
   source: string;
@@ -32,25 +36,26 @@ export type EventSourceAdminStatus = {
   healthStatus: ProviderHealthStatus;
   healthLabel: string;
   healthMessage: string;
+  operatorHealthLabel: "Healthy" | "Failed" | "Repairing" | "Manual Review";
+  repairPhase: string | null;
   schemaCompatible: boolean;
   watchdogStatus?: string | null;
   currentEventCount?: number;
   lastGoodEventCount?: number;
   consecutiveFailures?: number;
+  latestIncident: ProviderIncidentRow | null;
 };
 
 export type EventSourcesAdminPayload = {
   sources: EventSourceAdminStatus[];
   schemaHealth: ExternalIdentitySchemaHealth;
   watchdog: EventWatchdogDiagnostics;
+  incidents: ProviderIncidentRow[];
 };
 
 export async function listEventSourceAdminStatuses(): Promise<EventSourcesAdminPayload> {
   const admin = createAdminClient();
-  const [schemaHealth, watchdog] = await Promise.all([
-    probeExternalIdentitySchemaHealth(admin),
-    inspectEventProviderWatchdog(admin),
-  ]);
+  const central = await inspectCentralProviderHealth(admin);
   const statuses: EventSourceAdminStatus[] = [];
 
   for (const adapter of EVENT_SOURCE_ADAPTERS) {
@@ -64,9 +69,10 @@ export async function listEventSourceAdminStatuses(): Promise<EventSourcesAdminP
     const configured =
       adapter.source === "athletics" ? athleticsFeedConfigured() : adapter.isConfigured();
     const activeEventsCount = count ?? 0;
-    const schemaError = schemaHealth.ok
-      ? null
-      : (schemaHealth.message || "EVENT_SCHEMA_INCOMPATIBLE: external_events requires UNIQUE(source, external_id)");
+    const overlaySchemaError = !central.schema.ok && configured;
+    const schemaError = overlaySchemaError
+      ? central.schema.message || "EVENT_SCHEMA_INCOMPATIBLE: external_events requires UNIQUE(source, external_id)"
+      : null;
     const effectiveLastError = schemaError ?? latest.lastError;
     const effectiveLastStatus = schemaError ? "failed" : latest.lastStatus;
     const health = resolveProviderHealth({
@@ -88,7 +94,13 @@ export async function listEventSourceAdminStatuses(): Promise<EventSourcesAdminP
           })
         : null;
 
-    const watchdogCard = watchdog.providers.find((row) => row.source === adapter.source);
+    const watchdogCard = central.watchdog.providers.find((row) => row.source === adapter.source);
+    const incident = latestIncidentForProvider(central.incidents, adapter.source);
+    const operator = operatorHealthLabel({
+      healthStatus: health.status,
+      incidentStatus: incident?.status,
+      watchdogStatus: watchdogCard?.status,
+    });
 
     statuses.push({
       source: adapter.source,
@@ -106,17 +118,26 @@ export async function listEventSourceAdminStatuses(): Promise<EventSourcesAdminP
       duplicatesMerged: latest.duplicatesMerged,
       activeEventsCount,
       healthStatus: health.status,
-      healthLabel: health.label,
-      healthMessage: schemaError
-        ? "Database schema is incompatible with event imports. Apply the identity invariant migration before syncing."
-        : health.message,
-      schemaCompatible: schemaHealth.ok,
+      healthLabel: operator,
+      healthMessage:
+        overlaySchemaError && adapter.source !== "athletics"
+          ? "Database schema is incompatible with event imports. Apply the identity invariant migration before syncing."
+          : health.message,
+      operatorHealthLabel: operator,
+      repairPhase: repairPhaseLabel(incident?.status),
+      schemaCompatible: central.schema.ok,
       watchdogStatus: watchdogCard?.status ?? null,
       currentEventCount: watchdogCard?.eventCount,
       lastGoodEventCount: watchdogCard?.lastGoodEventCount,
       consecutiveFailures: watchdogCard?.consecutiveFailures,
+      latestIncident: incident,
     });
   }
 
-  return { sources: statuses, schemaHealth, watchdog };
+  return {
+    sources: statuses,
+    schemaHealth: central.schema,
+    watchdog: central.watchdog,
+    incidents: central.incidents,
+  };
 }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiRequestError, fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { AdminKpiCard, AdminSectionIntro, AdminStatusPill } from "@/components/admin/AdminUi";
 import { AdminUrinvolvedSection } from "@/components/admin/AdminUrinvolvedSection";
-import { formatAdminSyncErrorSummary } from "@/lib/eventSources/providerHealth";
+import { formatAdminSyncErrorSummary, repairPhaseLabel } from "@/lib/eventSources/providerHealth";
 
 type SourceStatus = {
   source: string;
@@ -24,11 +24,29 @@ type SourceStatus = {
   healthStatus: string;
   healthLabel: string;
   healthMessage: string;
+  operatorHealthLabel?: "Healthy" | "Failed" | "Repairing" | "Manual Review";
+  repairPhase?: string | null;
   schemaCompatible?: boolean;
   watchdogStatus?: string | null;
   currentEventCount?: number;
   lastGoodEventCount?: number;
   consecutiveFailures?: number;
+  latestIncident?: IncidentCard | null;
+};
+
+type IncidentCard = {
+  id: string;
+  provider: string;
+  incident_type: string;
+  error_code: string | null;
+  error_message: string | null;
+  technical_details: string | null;
+  detected_at: string;
+  status: string;
+  repair_action: string | null;
+  deployment_commit: string | null;
+  inventory_before: Record<string, unknown>;
+  inventory_after: Record<string, unknown>;
 };
 
 type SchemaHealth = {
@@ -52,14 +70,18 @@ type WatchdogPayload = {
 function healthTone(status: string): "success" | "warning" | "danger" | "neutral" | "info" {
   switch (status) {
     case "connected":
+    case "Healthy":
       return "success";
     case "syncing":
+    case "Repairing":
       return "info";
     case "warning":
     case "stale":
     case "configuration_required":
+    case "Manual Review":
       return "warning";
     case "failed":
+    case "Failed":
       return "danger";
     default:
       return "neutral";
@@ -81,6 +103,8 @@ export function AdminEventSourcesSection() {
   const [manualDescription, setManualDescription] = useState("");
   const [creating, setCreating] = useState(false);
   const [healthResyncing, setHealthResyncing] = useState(false);
+  const [incidents, setIncidents] = useState<IncidentCard[]>([]);
+  const [repairingSource, setRepairingSource] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -90,10 +114,12 @@ export function AdminEventSourcesSection() {
         sources: SourceStatus[];
         schemaHealth?: SchemaHealth;
         watchdog?: WatchdogPayload;
+        incidents?: IncidentCard[];
       }>("/api/internal/admin/event-sources");
       setSources(data.sources ?? []);
       setSchemaHealth(data.schemaHealth ?? null);
       setWatchdog(data.watchdog ?? null);
+      setIncidents(data.incidents ?? []);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load event sources.");
     } finally {
@@ -123,12 +149,14 @@ export function AdminEventSourcesSection() {
           sources: SourceStatus[];
           schemaHealth?: SchemaHealth;
           watchdog?: WatchdogPayload;
+          incidents?: IncidentCard[];
         },
         { source: string }
       >("/api/internal/admin/event-sources/sync", { source });
       setSources(data.sources ?? []);
       if (data.schemaHealth) setSchemaHealth(data.schemaHealth);
       if (data.watchdog) setWatchdog(data.watchdog);
+      if (data.incidents) setIncidents(data.incidents);
       if (data.result.skipped) {
         setMessage(`${source}: not configured (${data.result.skipReason ?? "feed_not_configured"}).`);
       } else {
@@ -202,6 +230,37 @@ export function AdminEventSourcesSection() {
     }
   }
 
+  async function runProviderRepair(source: "urinvolved" | "athletics") {
+    setRepairingSource(source);
+    setMessage(null);
+    setError(null);
+    try {
+      const data = await postAuthed<
+        {
+          recovery: { status: string; repairAction: string | null };
+          sources?: SourceStatus[];
+          schemaHealth?: SchemaHealth;
+          watchdog?: WatchdogPayload;
+          incidents?: IncidentCard[];
+        },
+        { source: "urinvolved" | "athletics" }
+      >("/api/internal/admin/provider-repair", { source });
+      if (data.sources) setSources(data.sources);
+      if (data.schemaHealth) setSchemaHealth(data.schemaHealth);
+      if (data.watchdog) setWatchdog(data.watchdog);
+      if (data.incidents) setIncidents(data.incidents);
+      setMessage(`${source}: repair ${data.recovery.status}${data.recovery.repairAction ? ` (${data.recovery.repairAction})` : ""}.`);
+    } catch (repairError) {
+      if (repairError instanceof ApiRequestError && repairError.status === 403) {
+        setError("You do not have permission to run provider repair.");
+      } else {
+        setError(repairError instanceof Error ? repairError.message : "Repair failed.");
+      }
+    } finally {
+      setRepairingSource(null);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <AdminSectionIntro
@@ -259,8 +318,14 @@ export function AdminEventSourcesSection() {
       <div className="grid gap-3 sm:grid-cols-2">
         {loading && sources.length === 0 ? <p className="text-sm text-white/55">Loading sources…</p> : null}
         {sources.map((source) => {
-          const healthStatus = syncing === source.source ? "syncing" : source.healthStatus;
-          const healthLabel = syncing === source.source ? "Syncing" : source.healthLabel;
+          const operatorLabel =
+            syncing === source.source || repairingSource === source.source
+              ? "Repairing"
+              : source.operatorHealthLabel ?? source.healthLabel;
+          const phase =
+            repairingSource === source.source
+              ? "Applying safe repair…"
+              : source.repairPhase ?? repairPhaseLabel(source.latestIncident?.status);
           const errorSummary =
             source.healthStatus === "failed" || source.lastError
               ? formatAdminSyncErrorSummary(source.lastError)
@@ -272,8 +337,9 @@ export function AdminEventSourcesSection() {
                   <h3 className="font-semibold text-white">{source.label}</h3>
                   <p className="mt-1 text-[11px] text-white/45">{source.source}</p>
                 </div>
-                <AdminStatusPill tone={healthTone(healthStatus)} label={healthLabel} />
+                <AdminStatusPill tone={healthTone(operatorLabel)} label={operatorLabel} />
               </div>
+              {phase ? <p className="text-xs font-medium text-cyan-100/90">{phase}</p> : null}
               <div className="grid grid-cols-2 gap-2">
                 <AdminKpiCard label="Active events" value={String(source.activeEventsCount)} />
                 <AdminKpiCard label="Last received" value={String(source.eventsReceived)} />
@@ -325,18 +391,75 @@ export function AdminEventSourcesSection() {
                   ) : null}
                 </div>
               ) : null}
-              <button
-                type="button"
-                disabled={syncing === source.source}
-                onClick={() => void runSync(source.source)}
-                className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/85 hover:bg-white/10 disabled:opacity-50"
-              >
-                {syncing === source.source ? "Syncing…" : `Retry Sync`}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={syncing === source.source}
+                  onClick={() => void runSync(source.source)}
+                  className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/85 hover:bg-white/10 disabled:opacity-50"
+                >
+                  {syncing === source.source ? "Syncing…" : `Retry Sync`}
+                </button>
+                {source.source === "urinvolved" || source.source === "athletics" ? (
+                  <button
+                    type="button"
+                    disabled={repairingSource === source.source}
+                    onClick={() => void runProviderRepair(source.source as "urinvolved" | "athletics")}
+                    className="rounded-lg border border-cyan-400/30 px-3 py-1.5 text-xs font-semibold text-cyan-100 hover:bg-cyan-400/10 disabled:opacity-50"
+                  >
+                    {repairingSource === source.source ? "Repairing…" : "Run safe repair"}
+                  </button>
+                ) : null}
+              </div>
             </article>
           );
         })}
       </div>
+
+      {incidents.length > 0 ? (
+        <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+          <h3 className="font-semibold text-white">Production incidents</h3>
+          {incidents.slice(0, 8).map((incident) => (
+            <article key={incident.id} className="rounded-lg border border-white/10 px-3 py-2 space-y-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-white">
+                  {incident.provider} · {incident.error_code ?? incident.incident_type}
+                </p>
+                <span className="text-[11px] text-white/50">{incident.status}</span>
+              </div>
+              <p className="text-xs text-white/70">{incident.error_message ?? "No summary."}</p>
+              <p className="text-[11px] text-white/45">
+                Repair: {incident.repair_action ?? "none"}
+                {incident.deployment_commit ? ` · Commit: ${incident.deployment_commit}` : ""}
+              </p>
+              <p className="text-[11px] text-white/40">
+                Events before: {String(incident.inventory_before.urinvolved ?? "n/a")} · after:{" "}
+                {String(incident.inventory_after.urinvolved ?? "n/a")} · Athletics after:{" "}
+                {String(incident.inventory_after.athletics ?? incident.inventory_before.athletics ?? "n/a")}
+              </p>
+              <p className="text-[11px] text-white/35">{new Date(incident.detected_at).toLocaleString()}</p>
+              {incident.technical_details ? (
+                <div>
+                  <button
+                    type="button"
+                    className="text-[11px] text-white/60 underline"
+                    onClick={() =>
+                      setExpandedTech((prev) => ({ ...prev, [incident.id]: !prev[incident.id] }))
+                    }
+                  >
+                    {expandedTech[incident.id] ? "Hide technical details" : "View technical details"}
+                  </button>
+                  {expandedTech[incident.id] ? (
+                    <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-words text-[10px] text-white/45">
+                      {incident.technical_details}
+                    </pre>
+                  ) : null}
+                </div>
+              ) : null}
+            </article>
+          ))}
+        </section>
+      ) : null}
 
       <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
         <h3 className="font-semibold text-white">Create verified manual event</h3>
