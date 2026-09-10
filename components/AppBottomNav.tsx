@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useLayoutEffect, useRef, useState, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Calendar, Home, Map, MessageCircle } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
@@ -8,6 +8,12 @@ import { getCharacter, subscribeCharacterAvatar } from "@/lib/store";
 import { useIsDrawerOpen } from "@/lib/client/appDrawerStore";
 import { DEFAULT_DISPLAY_AVATAR, normalizeAvatarInput } from "@/lib/resolveAvatarForDisplay";
 import { APP_BOTTOM_NAV_HINT_LABELS, APP_BOTTOM_NAV_TABS, type AppBottomNavTab } from "@/lib/client/appBottomNavTabs";
+import { isCreatePostModalOpen } from "@/lib/client/modalViewportCleanup";
+import {
+  computeBottomNavAutoHide,
+  readScrollY,
+  resolveBottomNavScrollRoot,
+} from "@/lib/client/bottomNavAutoHide";
 
 export type { AppBottomNavTab } from "@/lib/client/appBottomNavTabs";
 export { APP_BOTTOM_NAV_TABS } from "@/lib/client/appBottomNavTabs";
@@ -15,13 +21,13 @@ export { APP_BOTTOM_NAV_TABS } from "@/lib/client/appBottomNavTabs";
 /** Synced by ResizeObserver on the dock element. */
 export const BOTTOM_NAV_CSS_VAR = "--cq-bottom-nav-h";
 
-/** Content clearance above floating dock (pill + offset + safe area). */
+/** Content clearance above the edge-attached bar (measured height already includes safe area). */
 export const CQ_BOTTOM_NAV_CLEARANCE =
-  "calc(var(--cq-bottom-nav-h, 3.95rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 0.875rem)";
+  "calc(var(--cq-bottom-nav-h, 4.75rem) + 0.875rem)";
 
-/** Floating action buttons (compose, etc.) sit just above the dock. */
+/** Floating action buttons (compose, etc.) sit just above the bar. */
 export const CQ_FLOATING_ACTION_BOTTOM =
-  "calc(var(--cq-bottom-nav-h, 3.95rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px) + 1.25rem)";
+  "calc(var(--cq-bottom-nav-h, 4.75rem) + 1.25rem)";
 
 /** Non-Map tabs that participate in the sliding active indicator. */
 const INDICATOR_TABS: AppBottomNavTab[] = ["quad", "inbox", "events", "character"];
@@ -69,6 +75,7 @@ export function AppBottomNav({
   avatarLoading = false,
   unreadBadgeCount = 0,
   showDockLabels = false,
+  autoHideOnScroll = false,
 }: {
   activeTab: AppBottomNavTab | "other";
   onSelectTab: (tab: AppBottomNavTab) => void;
@@ -77,6 +84,8 @@ export function AppBottomNav({
   /** Unread messages badge on Messages. */
   unreadBadgeCount?: number;
   showDockLabels?: boolean;
+  /** Social / Quad feed only: slide the whole bar off-screen while scrolling down. */
+  autoHideOnScroll?: boolean;
 }) {
   const navRef = useRef<HTMLElement | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
@@ -101,8 +110,14 @@ export function AppBottomNav({
     if (!el || typeof document === "undefined") return undefined;
 
     const sync = (): void => {
-      const raw = Math.ceil(el.getBoundingClientRect().height);
-      document.documentElement.style.setProperty(BOTTOM_NAV_CSS_VAR, `${Math.max(68, raw)}px`);
+      const navRect = el.getBoundingClientRect();
+      const mapBtn = el.querySelector(".cq-dock-nav__map-btn");
+      const top =
+        mapBtn instanceof HTMLElement
+          ? Math.min(navRect.top, mapBtn.getBoundingClientRect().top)
+          : navRect.top;
+      const raw = Math.ceil(navRect.bottom - top);
+      document.documentElement.style.setProperty(BOTTOM_NAV_CSS_VAR, `${Math.max(72, raw)}px`);
     };
 
     sync();
@@ -153,6 +168,53 @@ export function AppBottomNav({
     };
   }, [indicatorTab]);
 
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el || !autoHideOnScroll || typeof window === "undefined") {
+      el?.classList.remove("cq-dock-nav--autohidden");
+      return undefined;
+    }
+
+    const root = resolveBottomNavScrollRoot();
+    let lastY = readScrollY(root);
+    let hidden = false;
+    let accumulated = 0;
+    let rafId: number | null = null;
+
+    const applyHidden = (next: boolean): void => {
+      hidden = next;
+      el.classList.toggle("cq-dock-nav--autohidden", next);
+    };
+
+    applyHidden(false);
+
+    const onScroll = (): void => {
+      if (isCreatePostModalOpen()) return;
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        const currentY = readScrollY(root);
+        const delta = currentY - lastY;
+        lastY = currentY;
+        const next = computeBottomNavAutoHide({
+          hidden,
+          accumulated,
+          delta,
+          scrollY: currentY,
+        });
+        accumulated = next.accumulated;
+        if (next.hidden !== hidden) applyHidden(next.hidden);
+      });
+    };
+
+    root.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      root.removeEventListener("scroll", onScroll);
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      applyHidden(false);
+    };
+  }, [autoHideOnScroll]);
+
   const guardNav = (action: () => void) => {
     if (drawerOpen) return;
     action();
@@ -172,6 +234,7 @@ export function AppBottomNav({
       exit={reduceMotion ? undefined : { opacity: 0 }}
       transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
     >
+      <div className="cq-dock-nav__slide">
       <div ref={railRef} className="cq-dock-nav__rail">
         {indicator ? (
           <span
@@ -232,7 +295,7 @@ export function AppBottomNav({
           >
             <span className="cq-dock-nav__map-ring cq-pulse-glow" aria-hidden />
             <span className="cq-dock-nav__map-ring cq-dock-nav__map-ring--outer cq-pulse-glow" aria-hidden />
-            <Map className="relative z-[1] h-[24px] w-[24px]" strokeWidth={2.2} />
+            <Map className="relative z-[1] h-[26px] w-[26px]" strokeWidth={2.2} />
             {showDockLabels ? (
               <span className="cq-dock-nav__hint cq-dock-nav__hint--map">{APP_BOTTOM_NAV_HINT_LABELS.realm}</span>
             ) : null}
@@ -269,6 +332,7 @@ export function AppBottomNav({
           useInitials={shouldShowInitialsAvatar(liveAvatar)}
           loading={avatarLoading}
         />
+      </div>
       </div>
     </motion.nav>
   );
@@ -312,7 +376,7 @@ const DockItem = forwardRef(function DockItem(
       }
       className={`cq-dock-nav__item touch-manipulation cq-tap-press ${active ? "cq-dock-nav__item--active" : ""}`}
     >
-      <span className={`cq-dock-nav__icon-wrap ${active ? "cq-nav-glow" : ""}`}>
+      <span className="cq-dock-nav__icon-wrap">
         {icon}
         {hint ? <span className="cq-dock-nav__hint">{label}</span> : null}
         {reserveBadge || badge ? (
@@ -357,7 +421,7 @@ const DockProfileItem = forwardRef(function DockProfileItem(
       aria-label={active ? "Profile, current page" : "Profile"}
       className={`cq-dock-nav__item cq-dock-nav__item--profile touch-manipulation cq-tap-press ${active ? "cq-dock-nav__item--active" : ""}`}
     >
-      <span className={`cq-dock-nav__avatar ${active ? "cq-dock-nav__avatar--active cq-nav-glow" : ""}`}>
+      <span className={`cq-dock-nav__avatar ${active ? "cq-dock-nav__avatar--active" : ""}`}>
         {loading ? (
           <span className="cq-dock-nav__avatar-placeholder" aria-hidden />
         ) : useInitials ? (

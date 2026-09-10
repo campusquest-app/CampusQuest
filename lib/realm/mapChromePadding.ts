@@ -62,8 +62,8 @@ export function measureSafeAreaInsets(): { top: number; right: number; bottom: n
 }
 
 /**
- * Space occupied by the floating bottom dock (nav height + dock offset +
- * home-indicator safe area). Matches `--cq-realm-nav-clearance`.
+ * Space occupied by the edge-attached bottom nav (includes safe area).
+ * Matches `--cq-realm-nav-clearance`.
  */
 export function measureRealmNavClearancePx(): number {
   if (typeof document === "undefined") return 0;
@@ -78,9 +78,7 @@ export function measureRealmNavClearancePx(): number {
     }
   }
 
-  return measureCssLengthPx(
-    "calc(var(--cq-bottom-nav-h, 4rem) + var(--cq-dock-bottom-offset, 14px) + env(safe-area-inset-bottom, 0px))",
-  );
+  return measureCssLengthPx("var(--cq-bottom-nav-h, 4.75rem)");
 }
 
 /**

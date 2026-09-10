@@ -25,6 +25,10 @@ describe("primary bottom navigation destinations", () => {
   it("keeps Map as the center dock action", () => {
     expect(APP_BOTTOM_NAV_TABS[2]).toBe("realm");
     expect(navSrc).toContain("cq-dock-nav__map-btn");
+    expect(navSrc).toContain("autoHideOnScroll");
+    expect(navSrc).toContain("autoHideOnScroll = false");
+    expect(dashboardSrc).toContain("autoHideOnScroll={tab === \"quad\" && !quadChromeSuppressed}");
+    expect(dashboardSrc).not.toContain("autoHideOnScroll={true}");
     expect(navSrc).toContain('aria-label={mapActive ? "Explore, current page" : "Explore"}');
   });
 

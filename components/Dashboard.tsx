@@ -962,8 +962,8 @@ export function Dashboard() {
     xpGainSession != null;
 
   useScrollChrome({
-    enabled: bootstrapStatus === "authenticated" && !quadChromeSuppressed,
-    topChrome: tab === "quad" && !quadChromeSuppressed,
+    enabled: bootstrapStatus === "authenticated" && tab === "quad" && !quadChromeSuppressed,
+    topChrome: true,
   });
 
   const tabSwipeGestureDisabled =
@@ -3086,6 +3086,7 @@ export function Dashboard() {
             avatarLoading={!character}
             unreadBadgeCount={unreadNotificationCount}
             showDockLabels={shouldShowNavHints(navHintsSeenAt)}
+            autoHideOnScroll={tab === "quad" && !quadChromeSuppressed}
             onSelectTab={(t) => {
               if (drawerBlocksNavigation) return;
               persistNavHintsSeen();
