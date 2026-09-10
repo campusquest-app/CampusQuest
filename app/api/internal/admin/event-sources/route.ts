@@ -8,7 +8,7 @@ export async function GET(request: Request) {
     const auth = await requireAdminUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "admin:event-sources", limit: 30, windowMs: 60_000 });
     const payload = await listEventSourceAdminStatuses();
-    return ok({ sources: payload.sources, schemaHealth: payload.schemaHealth });
+    return ok({ sources: payload.sources, schemaHealth: payload.schemaHealth, watchdog: payload.watchdog });
   } catch (error) {
     return fail(error);
   }

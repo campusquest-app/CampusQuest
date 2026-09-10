@@ -24,7 +24,12 @@ import {
   idsMissingFromSeen,
   countUpcomingFromActiveRows,
   filterSafeDeactivationIds,
+  isCatalogPublishable,
 } from "@/lib/server/urinvolved/syncSafety";
+import { validateProviderCatalogRecords } from "@/lib/server/eventSources/catalogValidation";
+import { getEventProviderHealth } from "@/lib/server/eventSources/providerHealthStore";
+import { recordProviderSyncOutcome } from "@/lib/server/eventSources/providerWatchdog";
+import { getRecentSuccessfulImportCounts } from "@/lib/server/eventSources/syncLogs";
 import { applyAdminOverrideMerge } from "@/lib/server/eventSources/upsert";
 import { upsertBySourceExternalId } from "@/lib/server/eventSources/upsertBySourceExternalId";
 import {
@@ -50,6 +55,8 @@ export type UrinvolvedSyncSummary = {
   syncLogId?: string;
   skipped?: boolean;
   skip_reason?: string | null;
+  inventory_preserved?: boolean;
+  catalog_publishable?: boolean;
 };
 
 type SyncLogRow = {
@@ -207,7 +214,10 @@ async function runUrinvolvedSyncExclusive(
   let eventsDeactivated = 0;
   let inventoryPreserved = false;
   let orgsFetchSucceeded = false;
+  let catalogPublishable = false;
+  let existingUpcomingActiveCount = 0;
   const startedMs = Date.now();
+  let parsedEvents: ParsedUrinvolvedEvent[] = [];
 
   if (await hasRecentRunningSync(admin)) {
     return {
@@ -223,6 +233,8 @@ async function runUrinvolvedSyncExclusive(
       errors: ["URInvolved sync already in progress."],
       skipped: true,
       skip_reason: "already_running",
+      inventory_preserved: true,
+      catalog_publishable: false,
     };
   }
 
@@ -239,13 +251,13 @@ async function runUrinvolvedSyncExclusive(
   try {
     await assertExternalIdentitySchemaReady(admin);
 
-    // --- Events (discovery search — full upcoming catalog; not the 24h RSS window) ---
+    // --- Events: FETCH → VALIDATE → CHECK HEALTH → WRITE ONLY IF HEALTHY ---
     try {
       eventsFetchAttempted = true;
       const discovery = await fetchUpcomingUrinvolvedDiscoveryEvents();
       upstreamHttpStatus = discovery.httpStatus;
       upstreamReceived = discovery.raw.length;
-      const parsedEvents = parseUrinvolvedDiscoveryEvents(discovery.raw);
+      parsedEvents = parseUrinvolvedDiscoveryEvents(discovery.raw);
       if (discovery.raw.length > 0 && parsedEvents.length === 0) {
         eventsPayloadValid = false;
         throw new Error("URInvolved events discovery payload could not be parsed.");
@@ -259,7 +271,84 @@ async function runUrinvolvedSyncExclusive(
         validated: parsedEvents.length,
         totalCount: discovery.totalCount,
       });
+    } catch (eventError) {
+      const message = eventError instanceof Error ? eventError.message : String(eventError);
+      if (isStructuralSyncFailure(message)) {
+        throw eventError instanceof Error ? eventError : new Error(message);
+      }
+      eventsFetchSucceeded = false;
+      errors.push(message);
+    }
 
+    const { data: storedBeforeRows } = await admin
+      .from("external_events")
+      .select("external_id, starts_at, is_active")
+      .eq("source", URINVOLVED_SOURCE);
+    const activeBeforeRows = (storedBeforeRows ?? []).filter((row) => row.is_active);
+    const existingUpcomingActiveCountLoaded = countUpcomingFromActiveRows(activeBeforeRows);
+    existingUpcomingActiveCount = existingUpcomingActiveCountLoaded;
+    const existingUpcomingStoredCount = countUpcomingFromActiveRows(storedBeforeRows ?? []);
+    const [lastGoodRow, historicalCounts] = await Promise.all([
+      getEventProviderHealth(admin, URINVOLVED_SOURCE),
+      getRecentSuccessfulImportCounts(admin, URINVOLVED_SOURCE),
+    ]);
+    const lastGoodEventCount = lastGoodRow?.last_good_event_count || null;
+    const recordValidation = eventsFetchSucceeded
+      ? validateProviderCatalogRecords(
+          parsedEvents.map((event) => ({
+            externalId: event.externalId,
+            title: event.title,
+            startsAt: event.startsAt,
+            locationName: event.locationName,
+            venueName: event.venueName,
+            address: event.address,
+            eventUrl: event.eventUrl,
+          })),
+        )
+      : { valid: true as const, reason: null, detail: null, sampled: 0 };
+    if (!recordValidation.valid) {
+      eventsPayloadValid = false;
+      errors.push(recordValidation.detail ?? "URInvolved catalog validation failed.");
+    }
+
+    const prePublish = decideSoftDeactivateMissingEvents({
+      fetchAttempted: eventsFetchAttempted,
+      fetchSucceeded: eventsFetchSucceeded,
+      eventsFetched,
+      existingUpcomingActiveCount,
+      existingUpcomingStoredCount,
+      existingActiveCount: activeBeforeRows.length,
+      payloadValid: eventsPayloadValid,
+      successfulImports: eventsFetched,
+      lastGoodEventCount,
+      recentHistoricalCounts: historicalCounts,
+    });
+    catalogPublishable = isCatalogPublishable(prePublish) && recordValidation.valid;
+
+    if (!catalogPublishable) {
+      inventoryPreserved = true;
+      const reasonMessage =
+        !recordValidation.valid
+          ? recordValidation.detail ?? "Refusing to publish an invalid URInvolved catalog."
+          : prePublish.reason === "suspicious_empty_catalog"
+            ? `Refusing to deactivate ${existingUpcomingActiveCount} stored upcoming events after an empty upstream catalog.`
+            : prePublish.reason === "suspicious_partial_catalog"
+              ? `Refusing to deactivate after a suspiciously small catalog (fetched ${eventsFetched}, stored upcoming ${existingUpcomingActiveCount}).`
+              : prePublish.reason === "suspicious_inventory_drop"
+                ? `Refusing to publish after an abnormal inventory drop (fetched ${eventsFetched}, last-known-good ${lastGoodEventCount ?? "n/a"}).`
+                : prePublish.reason === "zero_successful_imports"
+                  ? `Refusing to deactivate after zero successful imports (fetched ${eventsFetched}).`
+                  : `Preserving stored events (${prePublish.reason}).`;
+      if (!errors.includes(reasonMessage)) errors.push(reasonMessage);
+      console.warn("[cq:urinvolved-sync] preserving existing events before write", {
+        reason: recordValidation.valid ? prePublish.reason : "validation_failed",
+        existingUpcomingActiveCount,
+        lastGoodEventCount,
+        eventsFetched,
+        upstreamHttpStatus,
+      });
+    } else {
+      try {
       const catalog = (await getCampusLocations({ refreshCache: true })).map((row) => ({
         slug: row.slug,
         name: row.name,
@@ -412,13 +501,15 @@ async function runUrinvolvedSyncExclusive(
           errors.push(`Event ${event.externalId}: ${message}`);
         }
       }
-    } catch (eventError) {
-      const message = eventError instanceof Error ? eventError.message : String(eventError);
-      if (isStructuralSyncFailure(message)) {
-        throw eventError instanceof Error ? eventError : new Error(message);
+      } catch (writeError) {
+        const message = writeError instanceof Error ? writeError.message : String(writeError);
+        if (isStructuralSyncFailure(message)) {
+          throw writeError instanceof Error ? writeError : new Error(message);
+        }
+        inventoryPreserved = true;
+        catalogPublishable = false;
+        errors.push(message);
       }
-      eventsFetchSucceeded = false;
-      errors.push(message);
     }
 
     // --- Organizations (public discovery search API) ---
@@ -481,76 +572,85 @@ async function runUrinvolvedSyncExclusive(
       errors.push(message);
     }
 
-    // Soft-hide missing items only after a verified non-empty catalog (or a
-    // truly empty campus with no stored upcoming events). Never wipe inventory
-    // from an unverified empty/failed/malformed upstream response.
-    const { data: storedEventRows } = await admin
-      .from("external_events")
-      .select("external_id, starts_at, is_active")
-      .eq("source", URINVOLVED_SOURCE);
-    const activeEventRows = (storedEventRows ?? []).filter((row) => row.is_active);
-    const existingUpcomingActiveCount = countUpcomingFromActiveRows(activeEventRows);
-    const existingUpcomingStoredCount = countUpcomingFromActiveRows(storedEventRows ?? []);
-    const eventDeactivate = decideSoftDeactivateMissingEvents({
-      fetchAttempted: eventsFetchAttempted,
-      fetchSucceeded: eventsFetchSucceeded,
-      eventsFetched,
-      existingUpcomingActiveCount,
-      existingUpcomingStoredCount,
-      existingActiveCount: activeEventRows.length,
-      payloadValid: eventsPayloadValid,
-      successfulImports: eventsCreated + eventsUpdated,
-    });
-    inventoryPreserved = eventDeactivate.preservePreviousInventory;
-    if (eventDeactivate.shouldDeactivate) {
-      const missing = idsMissingFromSeen(
-        (activeEventRows ?? []).map((row) => row.external_id as string),
-        seenEventIds,
-      );
-      const safe = filterSafeDeactivationIds({
-        missingIds: missing,
-        activeCount: activeEventRows.length,
+    // Soft-hide missing items only after a verified healthy catalog. Never wipe
+    // last-known-good inventory from an unverified empty/failed/malformed run.
+    if (!catalogPublishable) {
+      inventoryPreserved = true;
+    } else {
+      const { data: storedEventRows } = await admin
+        .from("external_events")
+        .select("external_id, starts_at, is_active")
+        .eq("source", URINVOLVED_SOURCE);
+      const activeEventRows = (storedEventRows ?? []).filter((row) => row.is_active);
+      const upcomingActiveAfterWrite = countUpcomingFromActiveRows(activeEventRows);
+      const upcomingStoredAfterWrite = countUpcomingFromActiveRows(storedEventRows ?? []);
+      const eventDeactivate = decideSoftDeactivateMissingEvents({
+        fetchAttempted: eventsFetchAttempted,
+        fetchSucceeded: eventsFetchSucceeded,
+        eventsFetched,
+        existingUpcomingActiveCount: upcomingActiveAfterWrite,
+        existingUpcomingStoredCount: upcomingStoredAfterWrite,
+        existingActiveCount: activeEventRows.length,
+        payloadValid: eventsPayloadValid,
+        successfulImports: eventsCreated + eventsUpdated,
+        lastGoodEventCount,
+        recentHistoricalCounts: historicalCounts,
       });
-      if (safe.blocked) {
-        inventoryPreserved = true;
-        errors.push(
-          `Refusing to deactivate ${missing.length}/${activeEventRows.length} URInvolved events (excessive missing ratio).`,
+      inventoryPreserved = eventDeactivate.preservePreviousInventory;
+      if (eventDeactivate.shouldDeactivate) {
+        const missing = idsMissingFromSeen(
+          (activeEventRows ?? []).map((row) => row.external_id as string),
+          seenEventIds,
         );
-        console.warn("[cq:urinvolved-sync] refusing mass soft-deactivate", {
-          reason: safe.reason,
-          missing: missing.length,
-          active: activeEventRows.length,
-          fetched: eventsFetched,
+        const safe = filterSafeDeactivationIds({
+          missingIds: missing,
+          activeCount: activeEventRows.length,
+        });
+        if (safe.blocked) {
+          inventoryPreserved = true;
+          catalogPublishable = false;
+          errors.push(
+            `Refusing to deactivate ${missing.length}/${activeEventRows.length} URInvolved events (excessive missing ratio).`,
+          );
+          console.warn("[cq:urinvolved-sync] refusing mass soft-deactivate", {
+            reason: safe.reason,
+            missing: missing.length,
+            active: activeEventRows.length,
+            fetched: eventsFetched,
+            imported: eventsCreated + eventsUpdated,
+          });
+        }
+        const eventIdsToDeactivate = safe.ids;
+        if (eventIdsToDeactivate.length > 0) {
+          await admin
+            .from("external_events")
+            .update({ is_active: false, updated_at: now })
+            .eq("source", URINVOLVED_SOURCE)
+            .in("external_id", eventIdsToDeactivate);
+          eventsDeactivated = eventIdsToDeactivate.length;
+        }
+      } else if (inventoryPreserved) {
+        catalogPublishable = false;
+        const reasonMessage =
+          eventDeactivate.reason === "suspicious_empty_catalog"
+            ? `Refusing to deactivate ${upcomingActiveAfterWrite} stored upcoming events after an empty upstream catalog.`
+            : eventDeactivate.reason === "suspicious_partial_catalog"
+              ? `Refusing to deactivate after a suspiciously small catalog (fetched ${eventsFetched}, imported ${eventsCreated + eventsUpdated}, stored upcoming ${upcomingActiveAfterWrite}).`
+              : eventDeactivate.reason === "suspicious_inventory_drop"
+                ? `Refusing to publish after an abnormal inventory drop (fetched ${eventsFetched}, imported ${eventsCreated + eventsUpdated}, last-known-good ${lastGoodEventCount ?? "n/a"}).`
+                : eventDeactivate.reason === "zero_successful_imports"
+                  ? `Refusing to deactivate after zero successful imports (fetched ${eventsFetched}).`
+                  : `Preserving stored events (${eventDeactivate.reason}).`;
+        errors.push(reasonMessage);
+        console.warn("[cq:urinvolved-sync] preserving existing events", {
+          reason: eventDeactivate.reason,
+          existingUpcomingActiveCount: upcomingActiveAfterWrite,
+          eventsFetched,
           imported: eventsCreated + eventsUpdated,
+          upstreamHttpStatus,
+          errors: errors.slice(0, 3),
         });
       }
-      const eventIdsToDeactivate = safe.ids;
-      if (eventIdsToDeactivate.length > 0) {
-        await admin
-          .from("external_events")
-          .update({ is_active: false, updated_at: now })
-          .eq("source", URINVOLVED_SOURCE)
-          .in("external_id", eventIdsToDeactivate);
-        eventsDeactivated = eventIdsToDeactivate.length;
-      }
-    } else if (inventoryPreserved) {
-      const reasonMessage =
-        eventDeactivate.reason === "suspicious_empty_catalog"
-          ? `Refusing to deactivate ${existingUpcomingActiveCount} stored upcoming events after an empty upstream catalog.`
-          : eventDeactivate.reason === "suspicious_partial_catalog"
-            ? `Refusing to deactivate after a suspiciously small catalog (fetched ${eventsFetched}, imported ${eventsCreated + eventsUpdated}, stored upcoming ${existingUpcomingActiveCount}).`
-            : eventDeactivate.reason === "zero_successful_imports"
-              ? `Refusing to deactivate after zero successful imports (fetched ${eventsFetched}).`
-              : `Preserving stored events (${eventDeactivate.reason}).`;
-      errors.push(reasonMessage);
-      console.warn("[cq:urinvolved-sync] preserving existing events", {
-        reason: eventDeactivate.reason,
-        existingUpcomingActiveCount,
-        eventsFetched,
-        imported: eventsCreated + eventsUpdated,
-        upstreamHttpStatus,
-        errors: errors.slice(0, 3),
-      });
     }
 
     if (orgsFetchSucceeded) {
@@ -579,6 +679,7 @@ async function runUrinvolvedSyncExclusive(
       inventoryPreserved ||
       (eventsFetched > 0 && imported === 0 && eventsFailed >= eventsFetched);
     const success = !totalFailure;
+    catalogPublishable = success;
     const durationMs = Date.now() - startedMs;
 
     await finishSyncLog(admin, log.id, {
@@ -591,6 +692,22 @@ async function runUrinvolvedSyncExclusive(
       error_count: errors.length,
       error_message: errors.length > 0 ? errors.slice(0, 8).join(" | ") : null,
     });
+
+    try {
+      await recordProviderSyncOutcome(admin, {
+        source: URINVOLVED_SOURCE,
+        publishable: success,
+        importedCount: imported,
+        currentUpcomingCount: success
+          ? Math.max(eventsFetched, existingUpcomingActiveCount)
+          : existingUpcomingActiveCount,
+        error: errors[0] ?? null,
+      });
+    } catch (healthError) {
+      console.warn("[cq:urinvolved-sync] health record failed", {
+        error: healthError instanceof Error ? healthError.message : String(healthError),
+      });
+    }
 
     try {
       revalidatePath("/api/quests/map-pins");
@@ -618,6 +735,7 @@ async function runUrinvolvedSyncExclusive(
       httpStatus: upstreamHttpStatus,
       durationMs,
       inventoryPreserved,
+      catalogPublishable: success,
       error_summary: success ? null : errors.slice(0, 5).join(" | ") || "sync_failed",
     });
 
@@ -633,6 +751,8 @@ async function runUrinvolvedSyncExclusive(
       orgs_updated: orgsUpdated,
       errors,
       syncLogId: log.id,
+      inventory_preserved: inventoryPreserved,
+      catalog_publishable: success,
     };
   } catch (fatalError) {
     const message = fatalError instanceof Error ? fatalError.message : String(fatalError);
@@ -646,6 +766,17 @@ async function runUrinvolvedSyncExclusive(
       error_count: errors.length + 1,
       error_message: message,
     });
+    try {
+      await recordProviderSyncOutcome(admin, {
+        source: URINVOLVED_SOURCE,
+        publishable: false,
+        importedCount: eventsCreated + eventsUpdated,
+        currentUpcomingCount: existingUpcomingActiveCount,
+        error: message,
+      });
+    } catch {
+      /* health is best-effort */
+    }
     console.warn("[cq:urinvolved-sync] complete", {
       provider: URINVOLVED_SOURCE,
       runId: log.id,
@@ -661,6 +792,7 @@ async function runUrinvolvedSyncExclusive(
       events_processed: eventsCreated + eventsUpdated,
       durationMs: Date.now() - startedMs,
       inventoryPreserved: true,
+      catalogPublishable: false,
       error_summary: message,
     });
     return {
@@ -675,6 +807,8 @@ async function runUrinvolvedSyncExclusive(
       orgs_updated: orgsUpdated,
       errors: [message, ...errors],
       syncLogId: log.id,
+      inventory_preserved: true,
+      catalog_publishable: false,
     };
   }
 }

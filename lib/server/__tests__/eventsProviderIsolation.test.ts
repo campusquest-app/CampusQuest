@@ -174,6 +174,7 @@ describe("writer source-isolation contracts (source proofs)", () => {
     expect(sync).toMatch(/\.eq\("source", URINVOLVED_SOURCE\)/);
     expect(sync).toContain("successfulImports: eventsCreated + eventsUpdated");
     expect(sync).toContain("filterSafeDeactivationIds");
+    expect(sync).toContain("lastGoodEventCount");
     expect(sync).not.toMatch(/\.delete\(\)/);
   });
 
@@ -182,6 +183,7 @@ describe("writer source-isolation contracts (source proofs)", () => {
     expect(sync).toMatch(/\.eq\("source", ATHLETICS_SOURCE\)/);
     expect(sync).toContain("filterSafeDeactivationIds");
     expect(sync).toContain("eventsCreated + eventsUpdated > 0");
+    expect(sync).toContain("catalogPublishable");
     expect(sync).not.toMatch(/\.delete\(\)/);
   });
 

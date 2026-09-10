@@ -7,7 +7,12 @@ import { externalEventQualifiesForMap } from "@/lib/server/urinvolved/locationAl
 import { mapPositionForExternalEvent } from "@/lib/server/urinvolved/geoToMapPosition";
 import { getUrinvolvedSyncStatus } from "@/lib/server/urinvolved/sync";
 import { getLatestSyncBySource } from "@/lib/server/eventSources/syncLogs";
-import { shouldServeStaleInactiveEvents } from "@/lib/server/urinvolved/syncSafety";
+import { listEventProviderHealth } from "@/lib/server/eventSources/providerHealthStore";
+import {
+  mergeFeedRowsById,
+  shouldMergeLastKnownGoodForSource,
+  shouldServeStaleInactiveEvents,
+} from "@/lib/server/urinvolved/syncSafety";
 
 export type ExternalEventItem = {
   id: string;
@@ -180,14 +185,29 @@ export async function listExternalEventsFeed(filters?: {
 
   let rows = (data ?? []) as ExternalEventRow[];
   const pastCutoff = Date.now() - EXTERNAL_EVENTS_PAST_GRACE_MS;
-  const hasUpcomingActive = rows.some(
-    (row) => row.starts_at && new Date(row.starts_at).getTime() >= pastCutoff,
-  );
+  const providerHealth = await listEventProviderHealth(admin).catch(() => []);
+  const staleSources: string[] = [];
 
-  if (!hasUpcomingActive && shouldServeStaleInactiveEvents(urinvolvedStatus)) {
+  for (const provider of ["urinvolved", "athletics", "manual"] as const) {
+    const upcomingActiveForSource = rows.filter(
+      (row) =>
+        row.source === provider &&
+        row.starts_at &&
+        new Date(row.starts_at).getTime() >= pastCutoff,
+    ).length;
+    if (upcomingActiveForSource > 0) continue;
+
+    const health = providerHealth.find((row) => row.source === provider);
+    const degraded =
+      health?.status === "degraded" ||
+      health?.status === "circuit_open" ||
+      health?.status === "recovering" ||
+      (provider === "urinvolved" && Boolean(urinvolvedStatus.lastError));
+
     let staleQuery = admin
       .from("external_events")
       .select(EXTERNAL_EVENT_COLUMNS)
+      .eq("source", provider)
       .eq("is_active", false)
       .not("starts_at", "is", null)
       .gte("starts_at", new Date(pastCutoff).toISOString())
@@ -203,9 +223,54 @@ export async function listExternalEventsFeed(filters?: {
     }
     const stale = await staleQuery;
     if (stale.error) throw new Error(stale.error.message);
-    if ((stale.data?.length ?? 0) > 0) {
-      rows = (stale.data ?? []) as ExternalEventRow[];
-      source = "stale_cache";
+    const staleRows = (stale.data ?? []) as ExternalEventRow[];
+    if (
+      shouldMergeLastKnownGoodForSource({
+        sourceUpcomingActiveCount: upcomingActiveForSource,
+        sourceHasInactiveUpcoming: staleRows.length > 0,
+        providerDegraded: degraded,
+        lastError:
+          health?.last_error ?? (provider === "urinvolved" ? urinvolvedStatus.lastError : null),
+        lastSyncImportedCount:
+          provider === "urinvolved"
+            ? urinvolvedStatus.lastSyncImportedCount
+            : (health?.latest_import_count ?? 0),
+      })
+    ) {
+      rows = mergeFeedRowsById(rows, staleRows);
+      staleSources.push(provider);
+    }
+  }
+
+  if (staleSources.length > 0) {
+    source = "stale_cache";
+  } else {
+    const hasUpcomingActive = rows.some(
+      (row) => row.starts_at && new Date(row.starts_at).getTime() >= pastCutoff,
+    );
+    if (!hasUpcomingActive && shouldServeStaleInactiveEvents(urinvolvedStatus)) {
+      let staleQuery = admin
+        .from("external_events")
+        .select(EXTERNAL_EVENT_COLUMNS)
+        .eq("is_active", false)
+        .not("starts_at", "is", null)
+        .gte("starts_at", new Date(pastCutoff).toISOString())
+        .order("starts_at", { ascending: true, nullsFirst: false });
+      if (filters?.category?.trim()) {
+        staleQuery = staleQuery.ilike("category", `%${filters.category.trim()}%`);
+      }
+      if (filters?.location?.trim()) {
+        staleQuery = staleQuery.ilike("location_name", `%${filters.location.trim()}%`);
+      }
+      if (filters?.organization?.trim()) {
+        staleQuery = staleQuery.ilike("organization_name", `%${filters.organization.trim()}%`);
+      }
+      const stale = await staleQuery;
+      if (stale.error) throw new Error(stale.error.message);
+      if ((stale.data?.length ?? 0) > 0) {
+        rows = (stale.data ?? []) as ExternalEventRow[];
+        source = "stale_cache";
+      }
     }
   }
 

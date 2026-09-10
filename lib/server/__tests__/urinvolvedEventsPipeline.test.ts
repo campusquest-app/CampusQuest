@@ -191,6 +191,19 @@ describe("URInvolved soft-deactivate safety", () => {
     });
   });
 
+  it("does not deactivate a 90% drop from last-known-good", () => {
+    expect(
+      decideSoftDeactivateMissingEvents({
+        fetchAttempted: true,
+        fetchSucceeded: true,
+        eventsFetched: 10,
+        existingUpcomingActiveCount: 100,
+        successfulImports: 10,
+        lastGoodEventCount: 100,
+      }).reason,
+    ).toBe("suspicious_inventory_drop");
+  });
+
   it("does not deactivate a suspiciously partial catalog", () => {
     expect(
       decideSoftDeactivateMissingEvents({

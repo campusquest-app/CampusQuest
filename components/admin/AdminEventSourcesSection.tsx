@@ -25,12 +25,28 @@ type SourceStatus = {
   healthLabel: string;
   healthMessage: string;
   schemaCompatible?: boolean;
+  watchdogStatus?: string | null;
+  currentEventCount?: number;
+  lastGoodEventCount?: number;
+  consecutiveFailures?: number;
 };
 
 type SchemaHealth = {
   ok: boolean;
   code: string | null;
   message: string;
+};
+
+type WatchdogPayload = {
+  overall: "HEALTHY" | "DEGRADED";
+  athleticsOnlyFailure?: boolean;
+  athleticsOnlyReason?: string | null;
+  recovery: {
+    source: string | null;
+    autoRecoveryOccurred: boolean;
+    retryAttempts: number;
+    finalResult: string;
+  };
 };
 
 function healthTone(status: string): "success" | "warning" | "danger" | "neutral" | "info" {
@@ -53,6 +69,7 @@ function healthTone(status: string): "success" | "warning" | "danger" | "neutral
 export function AdminEventSourcesSection() {
   const [sources, setSources] = useState<SourceStatus[]>([]);
   const [schemaHealth, setSchemaHealth] = useState<SchemaHealth | null>(null);
+  const [watchdog, setWatchdog] = useState<WatchdogPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -63,16 +80,20 @@ export function AdminEventSourcesSection() {
   const [manualVenue, setManualVenue] = useState("");
   const [manualDescription, setManualDescription] = useState("");
   const [creating, setCreating] = useState(false);
+  const [healthResyncing, setHealthResyncing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchAuthed<{ sources: SourceStatus[]; schemaHealth?: SchemaHealth }>(
-        "/api/internal/admin/event-sources",
-      );
+      const data = await fetchAuthed<{
+        sources: SourceStatus[];
+        schemaHealth?: SchemaHealth;
+        watchdog?: WatchdogPayload;
+      }>("/api/internal/admin/event-sources");
       setSources(data.sources ?? []);
       setSchemaHealth(data.schemaHealth ?? null);
+      setWatchdog(data.watchdog ?? null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load event sources.");
     } finally {
@@ -101,11 +122,13 @@ export function AdminEventSourcesSection() {
           };
           sources: SourceStatus[];
           schemaHealth?: SchemaHealth;
+          watchdog?: WatchdogPayload;
         },
         { source: string }
       >("/api/internal/admin/event-sources/sync", { source });
       setSources(data.sources ?? []);
       if (data.schemaHealth) setSchemaHealth(data.schemaHealth);
+      if (data.watchdog) setWatchdog(data.watchdog);
       if (data.result.skipped) {
         setMessage(`${source}: not configured (${data.result.skipReason ?? "feed_not_configured"}).`);
       } else {
@@ -148,6 +171,37 @@ export function AdminEventSourcesSection() {
     }
   }
 
+  async function runSafeUrinvolvedResync() {
+    setHealthResyncing(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const data = await postAuthed<
+        {
+          result: { success: boolean; events_fetched?: number; events_created?: number; events_updated?: number };
+          watchdog?: WatchdogPayload;
+          sources?: SourceStatus[];
+        },
+        { action: "resync"; source: "urinvolved" }
+      >("/api/internal/admin/event-health", { action: "resync", source: "urinvolved" });
+      if (data.sources) setSources(data.sources);
+      if (data.watchdog) setWatchdog(data.watchdog);
+      setMessage(
+        data.result.success
+          ? "Safe URInvolved resync published a healthy catalog."
+          : "Safe URInvolved resync kept last-known-good inventory (catalog was not published).",
+      );
+    } catch (resyncError) {
+      if (resyncError instanceof ApiRequestError && resyncError.status === 403) {
+        setError("You do not have permission to run a safe URInvolved resync.");
+      } else {
+        setError(resyncError instanceof Error ? resyncError.message : "Safe resync failed.");
+      }
+    } finally {
+      setHealthResyncing(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <AdminSectionIntro
@@ -156,6 +210,42 @@ export function AdminEventSourcesSection() {
       />
       {error ? <p className="text-sm text-rose-200">{error}</p> : null}
       {message ? <p className="text-sm text-cyan-200/90">{message}</p> : null}
+      {watchdog ? (
+        <div
+          className={`rounded-xl border px-4 py-3 space-y-2 ${
+            watchdog.overall === "DEGRADED"
+              ? "border-amber-400/40 bg-amber-500/10"
+              : "border-emerald-400/30 bg-emerald-500/10"
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-white">
+              Overall Events: {watchdog.overall}
+            </p>
+            <button
+              type="button"
+              disabled={healthResyncing}
+              onClick={() => void runSafeUrinvolvedResync()}
+              className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/85 hover:bg-white/10 disabled:opacity-50"
+            >
+              {healthResyncing ? "Resyncing…" : "Safe URInvolved resync"}
+            </button>
+          </div>
+          {watchdog.athleticsOnlyFailure ? (
+            <p className="text-xs text-amber-100/90">
+              {watchdog.athleticsOnlyReason ||
+                "Athletics inventory is populated while URInvolved looks empty. Last-known-good campus events are retained."}
+            </p>
+          ) : null}
+          <p className="text-[11px] text-white/55">
+            Recovery: {watchdog.recovery.autoRecoveryOccurred ? "auto-recovery ran" : "not needed"}
+            {watchdog.recovery.retryAttempts > 0
+              ? ` · ${watchdog.recovery.retryAttempts} retry attempt(s)`
+              : ""}
+            {` · ${watchdog.recovery.finalResult}`}
+          </p>
+        </div>
+      ) : null}
       {schemaHealth && !schemaHealth.ok ? (
         <div className="rounded-xl border border-rose-400/40 bg-rose-500/15 px-4 py-3 space-y-1">
           <p className="text-sm font-semibold text-rose-100">EVENT_SCHEMA_INCOMPATIBLE</p>
@@ -187,7 +277,16 @@ export function AdminEventSourcesSection() {
               <div className="grid grid-cols-2 gap-2">
                 <AdminKpiCard label="Active events" value={String(source.activeEventsCount)} />
                 <AdminKpiCard label="Last received" value={String(source.eventsReceived)} />
+                {source.lastGoodEventCount != null ? (
+                  <AdminKpiCard label="Last-known-good" value={String(source.lastGoodEventCount)} />
+                ) : null}
+                {source.currentEventCount != null ? (
+                  <AdminKpiCard label="Upcoming" value={String(source.currentEventCount)} />
+                ) : null}
               </div>
+              {source.watchdogStatus && source.watchdogStatus !== "healthy" ? (
+                <p className="text-[11px] text-amber-100/80">Watchdog: {source.watchdogStatus}</p>
+              ) : null}
               <p className="text-xs text-white/60">{source.healthMessage}</p>
               <p className="text-xs text-white/45">{source.configurationHint}</p>
               <div className="space-y-1 text-[11px] text-white/40">

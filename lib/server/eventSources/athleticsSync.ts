@@ -11,7 +11,11 @@ import { resolveUrinvolvedEventLocation } from "@/lib/server/urinvolved/eventLoc
 import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
 import { getCampusLocations } from "@/lib/server/campusLocationsDb";
 import { resolveAndUpsertEventMapPlacement } from "@/lib/server/urinvolved/resolveAndUpsertEventMapPlacement";
-import { idsMissingFromSeen, filterSafeDeactivationIds } from "@/lib/server/urinvolved/syncSafety";
+import { idsMissingFromSeen, filterSafeDeactivationIds, decideSoftDeactivateMissingEvents, isCatalogPublishable } from "@/lib/server/urinvolved/syncSafety";
+import { validateProviderCatalogRecords } from "@/lib/server/eventSources/catalogValidation";
+import { getEventProviderHealth } from "@/lib/server/eventSources/providerHealthStore";
+import { recordProviderSyncOutcome } from "@/lib/server/eventSources/providerWatchdog";
+import { getRecentSuccessfulImportCounts } from "@/lib/server/eventSources/syncLogs";
 import { createAdminClient } from "@/lib/server/supabase";
 import { finishProviderSyncLog, startProviderSyncLog } from "@/lib/server/eventSources/syncLogs";
 import {
@@ -130,8 +134,92 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
 
     const parsed = Array.from(parsedById.values());
     eventsReceived = parsed.length;
-    if (parsed.length === 0) {
-      throw new Error(errors[0] || "Athletics feed returned no parseable events.");
+
+    const { data: storedBefore } = await admin
+      .from("external_events")
+      .select("external_id, starts_at, is_active")
+      .eq("source", ATHLETICS_SOURCE);
+    const activeBefore = (storedBefore ?? []).filter((row) => row.is_active);
+    const existingUpcoming = activeBefore.filter((row) => {
+      if (!row.starts_at) return false;
+      const t = new Date(row.starts_at as string).getTime();
+      return Number.isFinite(t) && t >= Date.now() - 2 * 60 * 60 * 1000;
+    }).length;
+    const [lastGoodRow, historicalCounts] = await Promise.all([
+      getEventProviderHealth(admin, ATHLETICS_SOURCE),
+      getRecentSuccessfulImportCounts(admin, ATHLETICS_SOURCE),
+    ]);
+    const recordValidation =
+      parsed.length > 0
+        ? validateProviderCatalogRecords(
+            parsed.map((event) => ({
+              externalId: event.externalId,
+              title: event.title,
+              startsAt: event.startsAt,
+              locationName: event.locationName,
+              venueName: event.venueName,
+              address: event.address,
+              eventUrl: event.eventUrl,
+            })),
+          )
+        : { valid: true as const, reason: null, detail: null, sampled: 0 };
+    const prePublish = decideSoftDeactivateMissingEvents({
+      fetchAttempted: true,
+      fetchSucceeded: parsed.length > 0 || errors.length === 0,
+      eventsFetched: parsed.length,
+      existingUpcomingActiveCount: existingUpcoming,
+      existingUpcomingStoredCount: existingUpcoming,
+      existingActiveCount: activeBefore.length,
+      payloadValid: recordValidation.valid,
+      successfulImports: parsed.length,
+      lastGoodEventCount: lastGoodRow?.last_good_event_count || null,
+      recentHistoricalCounts: historicalCounts,
+    });
+    const catalogPublishable = isCatalogPublishable(prePublish) && recordValidation.valid && parsed.length > 0;
+
+    if (!catalogPublishable) {
+      const message =
+        parsed.length === 0
+          ? errors[0] || "Athletics feed returned no parseable events."
+          : recordValidation.detail ||
+            `Preserving Athletics inventory (${prePublish.reason}).`;
+      errors.push(message);
+      await finishProviderSyncLog(admin, log.id, {
+        status: "failed",
+        events_created: 0,
+        events_updated: 0,
+        orgs_created: 0,
+        orgs_updated: 0,
+        events_received: eventsReceived,
+        error_count: errors.length,
+        error_message: errors.slice(0, 8).join(" | "),
+      });
+      try {
+        await recordProviderSyncOutcome(admin, {
+          source: ATHLETICS_SOURCE,
+          publishable: false,
+          importedCount: 0,
+          currentUpcomingCount: existingUpcoming,
+          error: errors[0] ?? message,
+        });
+      } catch {
+        /* health is best-effort */
+      }
+      return {
+        source: ATHLETICS_SOURCE,
+        success: false,
+        skipped: false,
+        skipReason: null,
+        eventsReceived,
+        eventsCreated: 0,
+        eventsUpdated: 0,
+        eventsFailed: Math.max(eventsFailed, 1),
+        duplicatesMerged: 0,
+        orgsCreated: 0,
+        orgsUpdated: 0,
+        errors,
+        syncLogId: log.id,
+      };
     }
 
     const catalog = (await getCampusLocations({ refreshCache: true })).map((row) => ({
@@ -324,6 +412,18 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
     });
 
     try {
+      await recordProviderSyncOutcome(admin, {
+        source: ATHLETICS_SOURCE,
+        publishable: success,
+        importedCount: eventsCreated + eventsUpdated,
+        currentUpcomingCount: success ? Math.max(eventsReceived, existingUpcoming) : existingUpcoming,
+        error: success ? null : errors[0] ?? null,
+      });
+    } catch {
+      /* health is best-effort */
+    }
+
+    try {
       revalidatePath("/api/quests/map-pins");
       revalidatePath("/realm");
     } catch {
@@ -375,6 +475,17 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
       error_count: errors.length + 1,
       error_message: message,
     });
+    try {
+      await recordProviderSyncOutcome(admin, {
+        source: ATHLETICS_SOURCE,
+        publishable: false,
+        importedCount: eventsCreated + eventsUpdated,
+        currentUpcomingCount: 0,
+        error: message,
+      });
+    } catch {
+      /* health is best-effort */
+    }
     return {
       source: ATHLETICS_SOURCE,
       success: false,

@@ -12,6 +12,7 @@ import {
   probeExternalIdentitySchemaHealth,
   type ExternalIdentitySchemaHealth,
 } from "@/lib/server/eventSources/schemaHealth";
+import { inspectEventProviderWatchdog, type EventWatchdogDiagnostics } from "@/lib/server/eventSources/providerWatchdog";
 
 export type EventSourceAdminStatus = {
   source: string;
@@ -32,16 +33,24 @@ export type EventSourceAdminStatus = {
   healthLabel: string;
   healthMessage: string;
   schemaCompatible: boolean;
+  watchdogStatus?: string | null;
+  currentEventCount?: number;
+  lastGoodEventCount?: number;
+  consecutiveFailures?: number;
 };
 
 export type EventSourcesAdminPayload = {
   sources: EventSourceAdminStatus[];
   schemaHealth: ExternalIdentitySchemaHealth;
+  watchdog: EventWatchdogDiagnostics;
 };
 
 export async function listEventSourceAdminStatuses(): Promise<EventSourcesAdminPayload> {
   const admin = createAdminClient();
-  const schemaHealth = await probeExternalIdentitySchemaHealth(admin);
+  const [schemaHealth, watchdog] = await Promise.all([
+    probeExternalIdentitySchemaHealth(admin),
+    inspectEventProviderWatchdog(admin),
+  ]);
   const statuses: EventSourceAdminStatus[] = [];
 
   for (const adapter of EVENT_SOURCE_ADAPTERS) {
@@ -79,6 +88,8 @@ export async function listEventSourceAdminStatuses(): Promise<EventSourcesAdminP
           })
         : null;
 
+    const watchdogCard = watchdog.providers.find((row) => row.source === adapter.source);
+
     statuses.push({
       source: adapter.source,
       label: eventSourceLabel(adapter.source),
@@ -100,8 +111,12 @@ export async function listEventSourceAdminStatuses(): Promise<EventSourcesAdminP
         ? "Database schema is incompatible with event imports. Apply the identity invariant migration before syncing."
         : health.message,
       schemaCompatible: schemaHealth.ok,
+      watchdogStatus: watchdogCard?.status ?? null,
+      currentEventCount: watchdogCard?.eventCount,
+      lastGoodEventCount: watchdogCard?.lastGoodEventCount,
+      consecutiveFailures: watchdogCard?.consecutiveFailures,
     });
   }
 
-  return { sources: statuses, schemaHealth };
+  return { sources: statuses, schemaHealth, watchdog };
 }

@@ -63,6 +63,33 @@ export type LatestSourceSync = {
   duplicatesMerged: number;
 };
 
+/** Recent successful catalog sizes used as historical last-known-good baselines. */
+export async function getRecentSuccessfulImportCounts(
+  admin: AdminClient,
+  source: string,
+  limit = 5,
+): Promise<number[]> {
+  try {
+    const { data, error } = await admin
+      .from("sync_logs")
+      .select("events_received, events_created, events_updated")
+      .eq("source", source)
+      .eq("status", "success")
+      .order("started_at", { ascending: false })
+      .limit(limit);
+    if (error) return [];
+    return (data ?? [])
+      .map((row) => {
+        const received = Number(row.events_received ?? 0);
+        if (received > 0) return received;
+        return Number(row.events_created ?? 0) + Number(row.events_updated ?? 0);
+      })
+      .filter((count) => count > 0);
+  } catch {
+    return [];
+  }
+}
+
 export async function getLatestSyncBySource(admin: AdminClient, source: string): Promise<LatestSourceSync> {
   const { data } = await admin
     .from("sync_logs")

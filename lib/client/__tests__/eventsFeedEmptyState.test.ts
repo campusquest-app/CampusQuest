@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { eventsEmptyStateCopy } from "@/lib/client/eventsFeedEmptyState";
-import { shouldServeStaleInactiveEvents } from "@/lib/server/urinvolved/syncSafety";
+import { shouldMergeLastKnownGoodForSource, shouldServeStaleInactiveEvents } from "@/lib/server/urinvolved/syncSafety";
 import {
   fetchUrinvolvedEventsRss,
   URINVOLVED_AUTHORITATIVE_EVENTS_SOURCE,
@@ -85,6 +85,16 @@ describe("stale cached events after sync failure", () => {
         lastSyncImportedCount: 0,
       }),
     ).toBe(false);
+  });
+
+  it("merges last-known-good for a degraded source even when another source is healthy", () => {
+    expect(
+      shouldMergeLastKnownGoodForSource({
+        sourceUpcomingActiveCount: 0,
+        sourceHasInactiveUpcoming: true,
+        providerDegraded: true,
+      }),
+    ).toBe(true);
   });
 });
 
