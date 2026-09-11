@@ -303,12 +303,14 @@ describe("athletics sync source isolation", () => {
   it("keeps the athletics cron independent and authenticated", () => {
     const cron = readFileSync(join(process.cwd(), "app/api/cron/sync-athletics/route.ts"), "utf8");
     const urinvolved = readFileSync(join(process.cwd(), "app/api/cron/sync-urinvolved/route.ts"), "utf8");
+    const combined = readFileSync(join(process.cwd(), "app/api/cron/sync-campus-events/route.ts"), "utf8");
     const vercel = readFileSync(join(process.cwd(), "vercel.json"), "utf8");
     expect(cron).toContain("assertCronSecret");
     expect(cron).toContain("runAthleticsSync");
     expect(urinvolved).toContain("runUrinvolvedSync");
     expect(urinvolved).not.toContain("runAthleticsSync");
-    expect(vercel).toContain("/api/cron/sync-athletics");
-    expect(vercel).toContain("30 3 * * *");
+    expect(combined).toContain("runAthleticsSync");
+    expect(combined).toContain("runUrinvolvedSync");
+    expect(vercel).toContain("/api/cron/sync-campus-events");
   });
 });

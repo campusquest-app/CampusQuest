@@ -1,5 +1,29 @@
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { runUrinvolvedSync, getUrinvolvedSyncStatus } from "../lib/server/urinvolved/sync";
 import { listActiveExternalEvents } from "../lib/server/externalContent";
+
+function loadEnvFile(path: string) {
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const i = t.indexOf("=");
+    if (i < 1) continue;
+    const key = t.slice(0, i).trim();
+    let val = t.slice(i + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    if (!process.env[key]) process.env[key] = val;
+  }
+}
+
+loadEnvFile(resolve(process.cwd(), ".env.local"));
+loadEnvFile(resolve(process.cwd(), ".env"));
 
 async function main() {
   const started = Date.now();

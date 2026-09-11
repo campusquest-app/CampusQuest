@@ -281,6 +281,15 @@ describe("source proofs", () => {
     expect(src).toContain("runProviderWatchdogAfterSync");
   });
 
+  it("daily campus cron syncs URInvolved and Athletics in one job", () => {
+    const src = readFileSync(join(root, "app/api/cron/sync-campus-events/route.ts"), "utf8");
+    const vercel = readFileSync(join(root, "vercel.json"), "utf8");
+    expect(src).toContain("runUrinvolvedSync");
+    expect(src).toContain("runAthleticsSync");
+    expect(src).toContain("assertCronSecret");
+    expect(vercel).toContain("/api/cron/sync-campus-events");
+  });
+
   it("internal repair endpoints are not anonymous", () => {
     for (const file of [
       "app/api/internal/admin/provider-health/route.ts",
