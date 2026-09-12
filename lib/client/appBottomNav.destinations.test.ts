@@ -32,6 +32,12 @@ describe("primary bottom navigation destinations", () => {
     expect(navSrc).toContain('aria-label={mapActive ? "Explore, current page" : "Explore"}');
   });
 
+  it("marks the Social feed scroll surface for auto-hide", () => {
+    const quadSrc = readFileSync(join(process.cwd(), "components/TheQuad.tsx"), "utf8");
+    expect(quadSrc).toContain('setAttribute("data-cq-quad-scroll-root"');
+    expect(navSrc).toContain("resolveBottomNavScrollRoot");
+  });
+
   it("does not create a second Events page or change Feed/Messages/Profile routes", () => {
     expect(dashboardSrc.match(/<EventsFeed/g)?.length).toBe(1);
     expect(dashboardSrc).toContain('tab === "quad"');

@@ -57,6 +57,13 @@ export function QuadCreatePostFab({
     setPendingMedia({ kind: "none" });
   }
 
+  function startPostFlow() {
+    dirtyRef.current = false;
+    clearPendingMedia();
+    setStep("media");
+    setOpen(true);
+  }
+
   function handleFabTap() {
     if (feedTab === "market") {
       setTapBurst(true);
@@ -66,10 +73,8 @@ export function QuadCreatePostFab({
     }
     setTapBurst(true);
     window.setTimeout(() => setTapBurst(false), 380);
-    dirtyRef.current = false;
-    clearPendingMedia();
-    setStep("media");
-    setOpen(true);
+    if (open) return;
+    startPostFlow();
   }
 
   const handleClose = useCallback(() => {

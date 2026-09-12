@@ -189,7 +189,13 @@ export function AppBottomNav({
     applyHidden(false);
 
     const onScroll = (): void => {
-      if (isCreatePostModalOpen()) return;
+      // Keep the bar visible while the post composer (or any create modal) is open.
+      if (isCreatePostModalOpen()) {
+        accumulated = 0;
+        if (hidden) applyHidden(false);
+        lastY = readScrollY(root);
+        return;
+      }
       if (rafId !== null) return;
       rafId = window.requestAnimationFrame(() => {
         rafId = null;
@@ -207,9 +213,26 @@ export function AppBottomNav({
       });
     };
 
+    // Attribute flips (composer open/close) should force a reveal without waiting for scroll.
+    const onModalAttr = (): void => {
+      if (!isCreatePostModalOpen()) return;
+      accumulated = 0;
+      if (hidden) applyHidden(false);
+      lastY = readScrollY(root);
+    };
+    const modalObserver =
+      typeof MutationObserver !== "undefined"
+        ? new MutationObserver(onModalAttr)
+        : null;
+    modalObserver?.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-cq-create-post-open"],
+    });
+
     root.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       root.removeEventListener("scroll", onScroll);
+      modalObserver?.disconnect();
       if (rafId !== null) window.cancelAnimationFrame(rafId);
       applyHidden(false);
     };

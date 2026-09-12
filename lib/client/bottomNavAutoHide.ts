@@ -17,8 +17,16 @@ export function resolveBottomNavScrollRoot(
   doc: Document | null | undefined = typeof document === "undefined" ? null : document,
 ): Window | HTMLElement {
   const el = doc?.querySelector(QUAD_SCROLL_ROOT_SELECTOR);
+  if (!el || !doc) return window;
+  // DocumentElement/body mark window scrolling for the Social feed.
+  if (isDocumentScrollMarker(el, doc)) return window;
   if (el instanceof HTMLElement) return el;
   return window;
+}
+
+/** True when the marked scroll root is the document itself (window scrolling). */
+export function isDocumentScrollMarker(el: Element, doc: Document): boolean {
+  return el === doc.documentElement || el === doc.body;
 }
 
 export function readScrollY(root: Window | HTMLElement): number {

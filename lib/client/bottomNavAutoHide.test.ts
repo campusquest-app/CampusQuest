@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { computeBottomNavAutoHide } from "@/lib/client/bottomNavAutoHide";
+import {
+  computeBottomNavAutoHide,
+  isDocumentScrollMarker,
+} from "@/lib/client/bottomNavAutoHide";
 
 describe("bottom nav auto-hide", () => {
   it("stays visible until directional movement crosses the threshold", () => {
@@ -46,5 +49,15 @@ describe("bottom nav auto-hide", () => {
     state = computeBottomNavAutoHide({ ...state, delta: 4, scrollY: 124 });
     expect(state.hidden).toBe(false);
     expect(state.accumulated).toBe(8);
+  });
+
+  it("treats documentElement and body markers as the window scroll surface", () => {
+    const documentElement = { id: "html" };
+    const body = { id: "body" };
+    const other = { id: "feed" };
+    const doc = { documentElement, body } as unknown as Document;
+    expect(isDocumentScrollMarker(documentElement as unknown as Element, doc)).toBe(true);
+    expect(isDocumentScrollMarker(body as unknown as Element, doc)).toBe(true);
+    expect(isDocumentScrollMarker(other as unknown as Element, doc)).toBe(false);
   });
 });

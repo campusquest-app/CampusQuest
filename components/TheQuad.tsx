@@ -154,8 +154,11 @@ export function TheQuad({
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
     document.documentElement.setAttribute("data-cq-on-quad", "true");
+    // Marks the document as the Social feed scroll surface for bottom-nav auto-hide.
+    document.documentElement.setAttribute("data-cq-quad-scroll-root", "true");
     return () => {
       document.documentElement.removeAttribute("data-cq-on-quad");
+      document.documentElement.removeAttribute("data-cq-quad-scroll-root");
       document.documentElement.style.removeProperty("--cq-topnav-h");
       document.documentElement.style.removeProperty("--cq-quad-header-h");
     };
