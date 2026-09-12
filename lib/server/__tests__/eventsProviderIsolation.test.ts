@@ -202,6 +202,18 @@ describe("writer source-isolation contracts (source proofs)", () => {
     expect(migration).toContain("external_events_source_external_id_key");
     expect(migration).toMatch(/UNIQUE \(source, external_id\)/);
   });
+
+  it("database guard refuses a mass source deactivation in one statement", () => {
+    const migration = readFileSync(
+      join(root, "supabase/migrations/20260912160000_guard_mass_event_deactivate.sql"),
+      "utf8",
+    );
+    expect(migration).toContain("cq_guard_external_event_mass_deactivate");
+    expect(migration).toContain("CQ_REFUSE_MASS_DEACTIVATE");
+    expect(migration).toContain("notify pgrst, 'reload schema'");
+    expect(migration).not.toMatch(/drop table public/i);
+    expect(migration).not.toMatch(/disable row level security/i);
+  });
 });
 
 describe("Events API path does not hard-filter to athletics", () => {
