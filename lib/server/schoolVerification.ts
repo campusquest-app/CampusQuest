@@ -60,7 +60,7 @@ export async function ensureSchoolVerificationForUser(args: {
     confirmed_at?: string | null;
   };
 }): Promise<SchoolVerificationState> {
-  const { userClient, user } = args;
+  const { user } = args;
   const pilot = getPilotSchoolConfig();
   const emailDomain = extractEmailDomain(user.email ?? null);
   const isEmailVerified = isEmailVerifiedForCampus(user);
@@ -77,7 +77,11 @@ export async function ensureSchoolVerificationForUser(args: {
     updated_at: nowIso,
   };
 
-  const { data, error } = await userClient
+  // AUD-001: verification state is server-owned. Everything in `upsertPayload`
+  // is derived from the authenticated auth.users record, never from the client,
+  // so the write runs with the service-role client and `user_school_verifications`
+  // no longer exposes client INSERT/UPDATE.
+  const { data, error } = await createAdminClient()
     .from("user_school_verifications")
     .upsert(upsertPayload, { onConflict: "user_id" })
     .select("user_id, school_name, school_domain, status, verified_at")

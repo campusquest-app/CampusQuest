@@ -81,7 +81,10 @@ export function touchUserActivityFromAuth(auth: {
   user: { id: string };
   userClient: SupabaseLike;
 }): void {
-  touchUserActivitySafe(auth.user.id, auth.userClient);
+  // AUD-001: last_active_at is server-owned telemetry. The authenticated user
+  // id is established by the caller, while the write uses the trusted client
+  // because direct browser-role profile updates cannot alter this field.
+  touchUserActivitySafe(auth.user.id, createAdminClient());
 }
 
 export function touchUserActivityById(userId: string, options?: { force?: boolean }): void {

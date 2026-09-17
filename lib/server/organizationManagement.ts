@@ -504,7 +504,10 @@ export async function updateMemberRole(args: {
   const { userClient, organizationId, userId, memberUserId, role } = args;
   await assertAccountCanSocialize(userClient, userId);
   await assertOrganizationOwner({ userClient, organizationId, userId });
-  const { data, error } = await userClient
+  // AUD-001: role is authoritative membership state. Authorization is checked
+  // above against the caller's session, then the narrowly scoped mutation uses
+  // the trusted server client rather than a browser-writable RLS path.
+  const { data, error } = await createAdminClient()
     .from("organization_members")
     .update({ org_role: role, membership_kind: "member", status: "approved" })
     .eq("organization_id", organizationId)
@@ -526,7 +529,9 @@ export async function removeOrganizationMember(args: {
   await assertAccountCanSocialize(userClient, userId);
   await assertOrganizationAdmin({ userClient, organizationId, userId });
   if (memberUserId === userId) throw new ApiError(400, "Use transfer ownership before removing yourself.", "VALIDATION_ERROR");
-  const { error } = await userClient
+  // The self-delete policy cannot authorize removing another member. Keep the
+  // authoritative delete behind this authenticated admin/owner check.
+  const { error } = await createAdminClient()
     .from("organization_members")
     .delete()
     .eq("organization_id", organizationId)

@@ -1,20 +1,8 @@
-import { ZodError } from "zod";
-import { z } from "zod";
 import { fail, ok, ApiError } from "@/lib/server/http";
+import { logSecurityEvent } from "@/lib/server/profileSecurity";
 import { enforceRateLimit } from "@/lib/server/security";
-import { fetchBossDropsForUser, persistBossDrop } from "@/lib/server/bossDrops";
+import { fetchBossDropsForUser } from "@/lib/server/bossDrops";
 import { requireAuthUser } from "@/lib/server/supabase";
-import { readJson } from "@/lib/server/validation";
-
-const persistBossDropSchema = z.object({
-  bossId: z.string().trim().min(1).max(120),
-  bossName: z.string().trim().min(1).max(120),
-  cosmeticId: z.string().trim().min(1).max(120),
-  itemName: z.string().trim().max(120).optional(),
-  rarity: z.string().trim().max(32).optional(),
-  isFinalBoss: z.boolean().optional(),
-  quantity: z.number().int().min(1).max(10).optional(),
-});
 
 export async function GET(request: Request) {
   try {
@@ -36,17 +24,22 @@ export async function POST(request: Request) {
   try {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:boss:post", limit: 60, windowMs: 60_000 });
-    const input = await readJson(request, persistBossDropSchema);
-    const drop = await persistBossDrop({
-      userClient: auth.userClient,
+
+    const rawBody = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    await logSecurityEvent({
       userId: auth.user.id,
-      input,
+      eventType: "blocked_boss_drop_grant",
+      blockedFields: Object.keys(rawBody),
+      requestPath: "/api/me/boss",
+      metadata: { method: "POST" },
     });
-    return ok({ drop }, 201);
+
+    throw new ApiError(
+      403,
+      "Boss rewards are granted only by the verified server-side combat flow.",
+      "BOSS_DROP_SELF_GRANT_FORBIDDEN",
+    );
   } catch (error) {
-    if (error instanceof ZodError) {
-      return fail(new ApiError(400, error.issues[0]?.message ?? "Invalid payload.", "VALIDATION_ERROR"));
-    }
     return fail(error);
   }
 }
