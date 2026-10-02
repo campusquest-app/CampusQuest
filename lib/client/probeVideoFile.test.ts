@@ -86,6 +86,19 @@ describe("validation before any upload starts", () => {
     await expect(probeWithDuration(175)).resolves.toMatchObject({ durationSeconds: 175, width: 1080, height: 1920 });
   });
 
+  it.each([30, 120, 179.9])("accepts a %ss video under the size limit", async (seconds) => {
+    await expect(probeWithDuration(seconds)).resolves.toMatchObject({ durationSeconds: seconds });
+  });
+
+  it("rejects an under-3-minute video over the size limit with the size message, not the duration message", async () => {
+    const big = new File([new Uint8Array(8)], "IMG_4.MOV", { type: "video/quicktime" });
+    Object.defineProperty(big, "size", { value: 251 * 1024 * 1024 });
+    const error = await probeVideoFile(big).catch((e: unknown) => e as Error);
+    expect(error.message).toBe("This video file is too large to upload.");
+    expect(error.message).not.toMatch(/minute/);
+    expect(created).toHaveLength(0);
+  });
+
   it("rejects a video longer than 3 minutes", async () => {
     await expect(probeWithDuration(181)).rejects.toThrow("This video is longer than the 3-minute limit.");
   });
