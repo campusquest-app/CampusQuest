@@ -392,12 +392,16 @@ export async function verifyCampusEmailCode(args: {
     throw new ApiError(400, CAMPUS_EMAIL_USER_MESSAGES.incorrect, "EMAIL_VERIFICATION_INVALID_CODE");
   }
 
+  const rows = await args.store.listChallenges(args.userId);
   const existingVerified = await args.store.getProfileVerifiedAt(args.userId);
   if (existingVerified) {
+    const latestForUser = rows.find((row) => !row.invalidated_at) ?? null;
+    if (latestForUser?.consumed_at) {
+      throw new ApiError(400, CAMPUS_EMAIL_USER_MESSAGES.invalidated, "EMAIL_VERIFICATION_CONSUMED");
+    }
     return { ok: true, verified: true, verifiedAt: existingVerified };
   }
 
-  const rows = await args.store.listChallenges(args.userId);
   const candidate = rows.find((row) => !row.invalidated_at) ?? null;
   if (!candidate) {
     throw new ApiError(400, CAMPUS_EMAIL_USER_MESSAGES.missing, "EMAIL_VERIFICATION_NOT_FOUND");

@@ -94,11 +94,7 @@ export const ALLOWED_PROFILE_GAMEPLAY_FIELDS = [
 /** Keys clients may merge into `profiles.game_state_json`. Server-owned keys are preserved. */
 export const CLIENT_GAME_STATE_JSON_KEYS = new Set([
   "equippedCosmetics",
-  "unlockedCosmetics",
-  "guildIds",
   "equippedTitleId",
-  "miniGameTraining",
-  "statPrestige",
 ]);
 
 function normalizeBodyKey(key: string): string {

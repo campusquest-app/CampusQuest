@@ -228,8 +228,12 @@ export function canManageListing(args: { sellerId: string; businessMember?: bool
   return args.actorId === args.sellerId || args.businessMember === true;
 }
 
-export function canRespondToOffer(args: { sellerId: string; actorId: string }): boolean {
-  return args.actorId === args.sellerId;
+export function canRespondToOffer(args: {
+  sellerId: string;
+  businessMember?: boolean;
+  actorId: string;
+}): boolean {
+  return args.actorId === args.sellerId || args.businessMember === true;
 }
 
 export function canCreateOffer(args: { sellerId: string; buyerId: string; status: MarketplaceListingStatus }): boolean {

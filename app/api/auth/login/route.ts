@@ -1,6 +1,5 @@
 import { ZodError } from "zod";
 import { NextResponse } from "next/server";
-import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import {
   SIGNIN_USER_MESSAGES,
   classifySupabaseSignInFailure,
@@ -62,11 +61,11 @@ export async function POST(request: Request) {
         message: error.message,
       });
 
-      // Auto-confirm recovery only when the flag is off AND Supabase explicitly
-      // reported email_not_confirmed (never for invalid_credentials).
-      // CampusQuest URI ownership is proven later via 6-digit codes, not by
-      // leaving the Supabase Auth user unconfirmed.
-      if (isUnconfirmed && !FEATURE_FLAGS.requireEmailVerification) {
+      // Recover legacy pending accounts only when Supabase explicitly reports
+      // email_not_confirmed (never for invalid_credentials). The helper verifies
+      // the submitted password and rolls Auth confirmation back on failure.
+      // URI ownership is still gated by campus_email_verified_at.
+      if (isUnconfirmed) {
         const userId = await findAuthUserIdByEmail(input.email);
         if (userId) {
           const recovered = await confirmEmailAndSignIn({

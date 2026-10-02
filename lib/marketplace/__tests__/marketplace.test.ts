@@ -83,6 +83,7 @@ describe("marketplace policy", () => {
     expect(canCreateOffer({ sellerId: "a", buyerId: "b", status: "active" })).toBe(true);
     expect(canCreateOffer({ sellerId: "a", buyerId: "b", status: "sold" })).toBe(false);
     expect(canRespondToOffer({ sellerId: "a", actorId: "b" })).toBe(false);
+    expect(canRespondToOffer({ sellerId: "a", actorId: "b", businessMember: true })).toBe(true);
     expect(canRespondToOffer({ sellerId: "a", actorId: "a" })).toBe(true);
     expect(
       listingSupportsOffers({
@@ -183,7 +184,7 @@ describe("marketplace source contracts", () => {
     expect(migration).toContain("enforce_marketplace_offer_update");
     expect(migration).toContain("buyers may only withdraw their own offers");
     expect(server).toContain("You can only edit your own listings.");
-    expect(server).toContain("Only the seller can respond to this offer.");
+    expect(server).toContain("Only the seller or an authorized business manager can respond to this offer.");
     expect(server).toContain("marketplaceListingId");
     expect(server).toContain("createContentReport");
   });

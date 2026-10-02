@@ -127,4 +127,21 @@ describe("campusAccess", () => {
       }),
     ).toBe(false);
   });
+
+  it("does not treat Supabase confirmation alone as campus verification", () => {
+    expect(
+      canAccessCampusFeatures({
+        isPlatformAdmin: false,
+        isInternalTester: false,
+        email: "student@uri.edu",
+        emailVerified: true,
+        pilotDomain: "uri.edu",
+        verification: {
+          status: "pending",
+          schoolName: null,
+          schoolDomain: "uri.edu",
+        },
+      }),
+    ).toBe(false);
+  });
 });

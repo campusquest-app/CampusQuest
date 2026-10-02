@@ -317,7 +317,7 @@ describe("send + verify", () => {
     expect(ok.verified).toBe(true);
   });
 
-  it("rejects a consumed code after verification is cleared", async () => {
+  it("rejects reuse of a consumed code after successful verification", async () => {
     const store = createMemoryStore();
     await sendCampusEmailVerification({
       userId: "user-1",
@@ -336,7 +336,6 @@ describe("send + verify", () => {
       secret: SECRET,
       now: new Date("2026-08-25T12:00:05Z"),
     });
-    store.verifiedAt = null;
     await expect(
       verifyCampusEmailCode({
         userId: "user-1",
@@ -455,7 +454,7 @@ describe("routing + logout persistence", () => {
     ).toBe("app");
   });
 
-  it("routes explicit unverified users back to the verification onboarding gate only when setup is incomplete", () => {
+  it("routes every explicit unverified user back to the verification gate", () => {
     expect(
       resolveProfileRoute({
         onboarding_completed: true,
@@ -463,7 +462,7 @@ describe("routing + logout persistence", () => {
         campus_email_verified_at: null,
         display_name_changed_at: "2026-01-01T00:00:00Z",
       }),
-    ).toBe("app");
+    ).toBe("demographics_gate");
     expect(
       resolveProfileRoute({
         onboarding_completed: false,

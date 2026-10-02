@@ -41,6 +41,7 @@ import {
   allCarouselItemsReady,
   carouselHasBlockingMedia,
   createCarouselItemFromFile,
+  discardCarouselItemUpload,
   filterNewFiles,
   overallUploadProgress,
   resetCarouselItemForRetry,
@@ -54,7 +55,7 @@ import {
   looksLikeImageFile,
   looksLikeVideoFile,
 } from "@/lib/quadMedia";
-import { logQuadUpload, logQuadUploadError } from "@/lib/client/quadUploadLog";
+import { logMediaStage, logQuadUpload, logQuadUploadError } from "@/lib/client/quadUploadLog";
 import { probeVideoFile } from "@/lib/client/probeVideoFile";
 import { useCampusIdentities } from "@/lib/client/useCampusIdentities";
 import { switchCampusIdentity } from "@/lib/client/identityStore";
@@ -289,6 +290,13 @@ export function FieldNoteComposer({
     for (const file of accepted) {
       const isVideo = looksLikeVideoFile(file);
       const isImage = looksLikeImageFile(file);
+      logMediaStage("selected", {
+        source: "composer",
+        kind: isVideo ? "video" : isImage ? "image" : "unknown",
+        mime: file.type || null,
+        extension: file.name.split(".").pop()?.toLowerCase() ?? null,
+        sizeBytes: file.size,
+      });
       if (!isVideo && !isImage) {
         console.error("[cq][quad-media] unsupported_selection", {
           name: file.name,
@@ -331,6 +339,11 @@ export function FieldNoteComposer({
   }
 
   function removeCarouselItem(clientId: string) {
+    // In-flight items release their reservation when the abort lands in the upload queue.
+    const removed = carouselItems.find((i) => i.clientId === clientId);
+    if (removed && (removed.stage === "ready" || removed.stage === "failed")) {
+      discardCarouselItemUpload(removed);
+    }
     setCarouselItems((prev) => {
       const target = prev.find((i) => i.clientId === clientId);
       if (target) revokeCarouselItem(target);

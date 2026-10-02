@@ -53,6 +53,30 @@ export function logQuadUploadError(
   }
 }
 
+export type MediaPipelineStage =
+  | "selected"
+  | "metadata loaded"
+  | "processing started"
+  | "processing completed"
+  | "thumbnail started"
+  | "thumbnail completed"
+  | "upload started"
+  | "upload progress"
+  | "upload completed"
+  | "database record created"
+  | "ready"
+  | "error";
+
+/**
+ * TEMPORARY video-pipeline tracing. Dev builds only.
+ * Never pass URLs, storage paths, tokens, or user identifiers in `detail`.
+ */
+export function logMediaStage(stage: MediaPipelineStage, detail: Record<string, unknown> = {}): void {
+  if (!isDev()) return;
+  const log = stage === "error" ? console.warn : console.info;
+  log(`[MEDIA] ${stage}`, detail);
+}
+
 export function formatUploadStageError(stage: QuadUploadStage, error: unknown): string {
   const message =
     error instanceof Error && error.message.trim()

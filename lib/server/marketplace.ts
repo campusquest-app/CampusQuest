@@ -538,8 +538,13 @@ export async function respondToMarketplaceOffer(args: {
     userId: args.userId,
     listingId: offer.listing_id,
   });
-  if (!canRespondToOffer({ sellerId: listing.sellerId, actorId: args.userId })) {
-    throw new ApiError(403, "Only the seller can respond to this offer.", "MARKETPLACE_OFFER_FORBIDDEN");
+  const businessManager = await isBusinessManager(
+    args.userClient,
+    args.userId,
+    listing.businessId,
+  );
+  if (!canRespondToOffer({ sellerId: listing.sellerId, businessMember: businessManager, actorId: args.userId })) {
+    throw new ApiError(403, "Only the seller or an authorized business manager can respond to this offer.", "MARKETPLACE_OFFER_FORBIDDEN");
   }
 
   const nextStatus = args.action === "accept" ? "accepted" : "declined";

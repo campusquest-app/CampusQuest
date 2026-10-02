@@ -5,6 +5,7 @@ import { Check, ChevronLeft, GraduationCap, Lock, Search, User } from "lucide-re
 import { patchAuthed, postAuthed, fetchAuthed } from "@/lib/client/dashboardApi";
 import { getAccessToken } from "@/lib/client/apiSession";
 import { readAccessTokenClaims } from "@/lib/client/jwtClaims";
+import { takeSignupVerificationDeliveryError } from "@/lib/client/signupVerificationDelivery";
 import { shouldShowCampusVerificationQaControls } from "@/lib/onboardingQa";
 import { CAMPUS_EMAIL_USER_MESSAGES, isCampusEmailVerified } from "@/lib/campusEmailVerification";
 import { CampusEmailOtpInput } from "@/components/auth/CampusEmailOtpInput";
@@ -132,7 +133,7 @@ export function AuthOnboardingFlow({
   const [requestedSchoolName, setRequestedSchoolName] = useState(draft?.requestedSchoolName ?? "");
   const [schoolRequestSaved, setSchoolRequestSaved] = useState(Boolean(draft?.requestedSchoolName));
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => takeSignupVerificationDeliveryError());
   const [notice, setNotice] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [sparkInterestId, setSparkInterestId] = useState<InterestId | null>(null);

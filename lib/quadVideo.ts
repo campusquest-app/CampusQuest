@@ -3,8 +3,13 @@
 export const QUAD_VIDEO_MAX_DURATION_SECONDS = 180;
 export const QUAD_VIDEO_MAX_DURATION_LABEL = "3 minutes";
 
-/** Default max upload size (80 MB). Override with QUAD_VIDEO_MAX_BYTES. */
-export const QUAD_VIDEO_MAX_BYTES_DEFAULT = 80 * 1024 * 1024;
+/**
+ * Default max video upload size (250 MB): fits a 3-minute 1080p phone recording (HEVC ≈ 60 MB/min,
+ * H.264 ≈ 80 MB/min at 1080p30). Videos upload browser → Storage directly, so this is bounded by the
+ * Supabase project's Storage upload limit, not Vercel. Override with QUAD_VIDEO_MAX_BYTES (server)
+ * and NEXT_PUBLIC_QUAD_VIDEO_MAX_BYTES (client) — keep both ≤ the Supabase limit.
+ */
+export const QUAD_VIDEO_MAX_BYTES_DEFAULT = 250 * 1024 * 1024;
 
 export const QUAD_VIDEO_MIME_TYPES = [
   "video/mp4",
@@ -57,11 +62,11 @@ export function formatVideoDuration(seconds: number): string {
 }
 
 export function videoDurationErrorMessage(): string {
-  return `Videos can be up to ${QUAD_VIDEO_MAX_DURATION_LABEL}.`;
+  return `This video is longer than the ${QUAD_VIDEO_MAX_DURATION_SECONDS / 60}-minute limit.`;
 }
 
 export function videoTooLargeErrorMessage(): string {
-  return "This video file is too large.";
+  return "This video file is too large to upload.";
 }
 
 export function videoFormatErrorMessage(): string {
