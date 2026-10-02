@@ -93,9 +93,12 @@ describe("validation before any upload starts", () => {
   it("rejects an under-3-minute video over the size limit with the size message, not the duration message", async () => {
     const big = new File([new Uint8Array(8)], "IMG_4.MOV", { type: "video/quicktime" });
     Object.defineProperty(big, "size", { value: 251 * 1024 * 1024 });
-    const error = await probeVideoFile(big).catch((e: unknown) => e as Error);
-    expect(error.message).toBe("This video file is too large to upload.");
-    expect(error.message).not.toMatch(/minute/);
+    const error = await probeVideoFile(big).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+    expect(error?.message).toBe("This video file is too large to upload.");
+    expect(error?.message).not.toMatch(/minute/);
     expect(created).toHaveLength(0);
   });
 
