@@ -16,6 +16,7 @@ import {
   type ComposerCarouselItem,
 } from "@/lib/client/quadMediaUploadQueue";
 import { ComposerCarouselEditor } from "@/components/posts/ComposerCarouselEditor";
+import { logMediaStage } from "@/lib/client/quadUploadLog";
 
 export type PickedMedia =
   | { kind: "none" }
@@ -65,6 +66,13 @@ export function PostMediaPicker({
     for (const file of accepted) {
       const isVideo = looksLikeVideoFile(file);
       const isImage = looksLikeImageFile(file);
+      logMediaStage("selected", {
+        source: "picker",
+        kind: isVideo ? "video" : isImage ? "image" : "unknown",
+        mime: file.type || null,
+        extension: file.name.split(".").pop()?.toLowerCase() ?? null,
+        sizeBytes: file.size,
+      });
       if (!isVideo && !isImage) {
         console.error("[cq][quad-media] unsupported_selection", {
           name: file.name,

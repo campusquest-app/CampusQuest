@@ -1,9 +1,7 @@
 import type { Session, User } from "@supabase/supabase-js";
-import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { ApiError } from "@/lib/server/http";
 import { isPasswordRequirementFailure } from "@/lib/passwordRequirements";
 import { createAdminClient, createPublicClient } from "@/lib/server/supabase";
-import { getAuthEmailRedirectUrl } from "@/lib/authRedirect";
 
 type PublicAuthClient = ReturnType<typeof createPublicClient>;
 
@@ -45,21 +43,6 @@ export function logAuthError(
   console.error(`[auth:${route}] ${phase}`, details);
 }
 
-/**
- * Supabase may create the auth user but fail sending the confirmation email
- * (rate limits, SMTP issues). Profile setup + admin confirm can still succeed.
- */
-export function isRecoverableSignupAuthError(error: AuthSupabaseError): boolean {
-  const code = (error.code ?? "").toLowerCase();
-  const msg = (error.message ?? "").toLowerCase();
-  return (
-    code === "over_email_send_rate_limit" ||
-    msg.includes("rate limit") ||
-    msg.includes("error sending confirmation email") ||
-    (msg.includes("confirmation email") && msg.includes("error"))
-  );
-}
-
 export function classifySupabaseSignupError(error: AuthSupabaseError): ApiError {
   const code = (error.code ?? "").toLowerCase();
   const msg = (error.message ?? "").toLowerCase();
@@ -72,7 +55,7 @@ export function classifySupabaseSignupError(error: AuthSupabaseError): ApiError 
   if (code === "over_email_send_rate_limit" || msg.includes("email rate limit") || msg.includes("rate limit exceeded")) {
     return new ApiError(
       429,
-      "Too many confirmation emails were sent. Please wait a few minutes before trying again.",
+      "Too many verification requests. Please wait a few minutes before trying again.",
       "EMAIL_RATE_LIMIT",
     );
   }
@@ -155,55 +138,16 @@ export function classifyProfileSetupError(setupError: ApiError): ApiError {
   );
 }
 
-/** When public signUp fails before creating a user, provision via admin API (no confirmation email). */
-export function shouldFallbackToAdminSignup(error: AuthSupabaseError, hasUser: boolean): boolean {
-  if (hasUser) return false;
-  // Auto-confirming via admin create would fake verification.
-  if (FEATURE_FLAGS.requireEmailVerification) return false;
-  return isRecoverableSignupAuthError(error);
-}
-
 export async function provisionSignupAuthUser(args: {
   publicClient: PublicAuthClient;
   email: string;
   password: string;
   displayName?: string;
-}): Promise<{ user: User; session: Session | null; source: "sign_up" | "admin_create" }> {
-  const signUpOptions = {
-    ...(args.displayName ? { data: { display_name: args.displayName } } : {}),
-    emailRedirectTo: getAuthEmailRedirectUrl(),
-  };
-
-  const { data, error } = await args.publicClient.auth.signUp({
-    email: args.email,
-    password: args.password,
-    options: signUpOptions,
-  });
-
-  const signUpUser = data.user;
-  const hasUser = Boolean(signUpUser?.id);
-
-  if (!error && hasUser) {
-    return { user: signUpUser!, session: data.session, source: "sign_up" };
-  }
-
-  if (error && hasUser && isRecoverableSignupAuthError(error)) {
-    return { user: signUpUser!, session: data.session, source: "sign_up" };
-  }
-
-  if (error && !shouldFallbackToAdminSignup(error, hasUser)) {
-    throw classifySupabaseSignupError(error);
-  }
-
-  if (hasUser) {
-    return { user: signUpUser!, session: data.session, source: "sign_up" };
-  }
-
-  logAuthFlow("signup", "admin_create_fallback", {
-    code: error?.code ?? null,
-    message: error?.message ?? null,
-  });
-
+}): Promise<{ user: User; session: Session | null; source: "admin_create" }> {
+  // CampusQuest owns student email verification through its six-digit code.
+  // Creating the Auth user through the server-only admin client avoids sending
+  // Supabase's separate confirmation-link email. `email_confirm` only permits
+  // a session; campus access remains locked by campus_email_verified_at.
   const admin = createAdminClient();
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email: args.email,
@@ -267,9 +211,9 @@ export async function findAuthUserIdByEmail(email: string): Promise<string | nul
 }
 
 /**
- * Supabase may require email confirmation before issuing a session.
- * When email verification is off, confirm + sign-in. If the password is wrong,
- * roll confirmation back so a failed guess never leaves the account confirmed.
+ * Recover a legacy unconfirmed Auth user by confirming and signing in. If the
+ * password is wrong, roll confirmation back so a failed guess never changes
+ * the account. URI ownership is still proven separately by the six-digit code.
  */
 export async function confirmEmailAndSignIn(args: {
   publicClient: PublicAuthClient;

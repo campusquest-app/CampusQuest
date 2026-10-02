@@ -30,12 +30,12 @@ describe("quad video helpers", () => {
 
   it("enforces 180 second max constant", () => {
     expect(QUAD_VIDEO_MAX_DURATION_SECONDS).toBe(180);
-    expect(videoDurationErrorMessage()).toContain("3 minutes");
+    expect(videoDurationErrorMessage()).toBe("This video is longer than the 3-minute limit.");
   });
 
   it("resolves max bytes from env with floor", () => {
     expect(resolveQuadVideoMaxBytes("10485760")).toBe(10_485_760);
-    expect(resolveQuadVideoMaxBytes("100")).toBe(80 * 1024 * 1024);
+    expect(resolveQuadVideoMaxBytes("100")).toBe(250 * 1024 * 1024);
   });
 
   it("sniffs mp4 and webm containers", () => {

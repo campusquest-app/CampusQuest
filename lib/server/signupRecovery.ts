@@ -1,5 +1,5 @@
 import type { Session, User } from "@supabase/supabase-js";
-import { FEATURE_FLAGS } from "@/lib/featureFlags";
+import { isExplicitEmailNotConfirmedError } from "@/lib/authSignInErrors";
 import { ApiError } from "@/lib/server/http";
 import {
   confirmEmailAndSignIn,
@@ -11,7 +11,6 @@ import { ensurePlayerSetup } from "@/lib/server/playerSetup";
 import { createPublicClient } from "@/lib/server/supabase";
 
 export const SIGNUP_AUTH_CREATED_SETUP_PENDING = "AUTH_CREATED_SETUP_PENDING" as const;
-export const SIGNUP_VERIFICATION_REQUIRED = "SIGNUP_VERIFICATION_REQUIRED" as const;
 
 export const PENDING_SETUP_USER_MESSAGE =
   "We're finishing your account. Hang tight — this only takes a moment.";
@@ -57,11 +56,6 @@ export type SignupRecoveryResult =
       profile: unknown;
       stats: unknown;
       source: "existing_password_login" | "existing_auto_confirm";
-    }
-  | {
-      kind: "verification_required";
-      email: string;
-      userId: string | null;
     }
   | {
       kind: "unrecoverable";
@@ -116,7 +110,15 @@ export async function recoverExistingSignupEmail(args: {
 
   const userId = await findAuthUserIdByEmail(email);
 
-  if (!FEATURE_FLAGS.requireEmailVerification && userId) {
+  // Legacy pending accounts may still be unconfirmed in Supabase Auth. Confirm
+  // only long enough to validate the submitted password and create a session;
+  // confirmEmailAndSignIn rolls the change back when the password is wrong.
+  // Campus ownership remains unverified until the six-digit challenge succeeds.
+  const isLegacyUnconfirmed = isExplicitEmailNotConfirmedError({
+    code: signInError?.code,
+    message: signInError?.message,
+  });
+  if (userId && isLegacyUnconfirmed) {
     const recovered = await confirmEmailAndSignIn({
       publicClient: args.publicClient,
       userId,
@@ -150,11 +152,6 @@ export async function recoverExistingSignupEmail(args: {
         throw setupError;
       }
     }
-  }
-
-  if (FEATURE_FLAGS.requireEmailVerification && userId) {
-    logAuthFlow("signup", "existing_email_needs_verification", { userId });
-    return { kind: "verification_required", email, userId };
   }
 
   // Wrong password for an existing account, or lookup failed.

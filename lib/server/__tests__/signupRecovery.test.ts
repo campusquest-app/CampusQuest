@@ -201,6 +201,7 @@ describe("recoverExistingSignupEmail", () => {
     if (result.kind === "unrecoverable") {
       expect(result.error.code).toBe("EMAIL_ALREADY_EXISTS");
     }
+    expect(confirmEmailAndSignInMock).not.toHaveBeenCalled();
   });
 });
 
@@ -246,7 +247,7 @@ describe("mapSignupError recovery UX", () => {
 
   it("maps verification-required to check-email recoverSignIn", () => {
     expect(mapSignupError(httpError(200, "Confirm email", "SIGNUP_VERIFICATION_REQUIRED"))).toEqual({
-      message: "Check your URI email to confirm your account before signing in.",
+      message: "Sign in to continue with your 6-digit URI email verification code.",
       recoverSignIn: true,
       verificationRequired: true,
     });

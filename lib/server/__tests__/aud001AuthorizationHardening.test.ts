@@ -45,11 +45,18 @@ function functionBody(fn: string): string {
 }
 
 describe("AUD-001 migration is a single forward-only security migration", () => {
-  it("is the newest migration and does not edit historical migrations", () => {
+  it("is never undone by a later migration", () => {
     const files = fs.readdirSync(MIGRATIONS_DIR).filter((name) => name.endsWith(".sql"));
     expect(files).toContain(AUD001_MIGRATION);
-    const newest = [...files].sort().at(-1);
-    expect(newest).toBe(AUD001_MIGRATION);
+    const auditedPolicies = Array.from(migrationSql.matchAll(/create\s+policy\s+"([^"]+)"/gi), (m) => m[1]!);
+    expect(auditedPolicies.length).toBeGreaterThan(0);
+    for (const later of files.filter((name) => name > AUD001_MIGRATION)) {
+      const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, later), "utf8");
+      expect(/disable\s+row\s+level\s+security/i.test(sql), later).toBe(false);
+      for (const policy of auditedPolicies) {
+        expect(sql.includes(`"${policy}"`), `${later} must not redefine AUD-001 policy "${policy}"`).toBe(false);
+      }
+    }
   });
 
   it("never disables row level security and always pairs DROP POLICY IF EXISTS with CREATE POLICY", () => {
@@ -431,7 +438,21 @@ describe("AUD-001 server-side write routing", () => {
         }),
       }),
     }));
-    adminFrom.mockImplementation(() => ({ upsert }));
+    adminFrom.mockImplementation((table: string) => {
+      if (table === "profiles") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { campus_email_verified_at: new Date().toISOString() },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      return { upsert };
+    });
 
     const { ensureSchoolVerificationForUser } = await import("../schoolVerification");
     await ensureSchoolVerificationForUser({
@@ -439,7 +460,7 @@ describe("AUD-001 server-side write routing", () => {
       user: {
         id: "user-1",
         email: "student@uri.edu",
-        email_confirmed_at: new Date().toISOString(),
+        email_confirmed_at: null,
       },
     });
 

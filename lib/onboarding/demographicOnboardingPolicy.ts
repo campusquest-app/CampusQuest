@@ -84,9 +84,8 @@ export function isDemographicsRequired(args: {
 }
 
 /**
- * True only when demographic requirements are already satisfied and URI email
- * is the remaining onboarding step. Never true during QA full replay, and
- * never true merely because email is unverified.
+ * New and resumed signups prove URI email ownership before demographic
+ * onboarding. QA full replay retains its explicit all-steps ordering.
  */
 export function shouldStartOnboardingAtEmailVerification(args: {
   profile: DemographicProfileSnapshot;
@@ -94,14 +93,5 @@ export function shouldStartOnboardingAtEmailVerification(args: {
   forceQaReplay?: boolean;
 }): boolean {
   if (args.forceQaReplay) return false;
-  if (
-    isDemographicsRequired({
-      profile: args.profile,
-      preferences: args.preferences,
-      forceQaReplay: false,
-    })
-  ) {
-    return false;
-  }
   return isCampusEmailVerificationRequired(args.profile);
 }
