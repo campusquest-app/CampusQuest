@@ -68,9 +68,8 @@ export function canAccessCampusFeatures(args: {
     return true;
   }
 
-  const email = normalizeEmail(args.email);
-  const isConfirmed = args.emailVerified;
-  const isUriStudent = emailMatchesPilotDomain(email, args.pilotDomain ?? null);
-
-  return isConfirmed && isUriStudent;
+  // Supabase email confirmation is only a session-enablement detail for new
+  // CampusQuest signups. Regular student access requires the app-owned campus
+  // verification row, which is derived from campus_email_verified_at.
+  return false;
 }

@@ -46,15 +46,11 @@ export async function persistBossDropToServer(payload: {
   rarity?: string;
   isFinalBoss?: boolean;
 }): Promise<BossDropApiRow | null> {
-  try {
-    const data = await postAuthed<{ drop: BossDropApiRow }, typeof payload>("/api/me/boss", payload);
-    return data.drop ?? null;
-  } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("[cq:persist] boss drop save failed", error);
-    }
-    return null;
-  }
+  // AUD-001: local game state is not proof of an authoritative boss reward.
+  // Server combat grants persisted loot directly; keep local-only gameplay
+  // functional without sending an intentionally rejected grant request.
+  void payload;
+  return null;
 }
 
 export async function fetchInventoryFromServer(): Promise<InventoryApiRow[]> {

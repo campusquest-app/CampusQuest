@@ -24,7 +24,7 @@ describe("appShellRoute", () => {
         campus_email_verified_at: null,
         display_name_changed_at: "2026-01-01T00:00:00.000Z",
       }),
-    ).toBe("app");
+    ).toBe("demographics_gate");
     expect(
       resolveProfileRoute(
         {
@@ -52,6 +52,13 @@ describe("appShellRoute", () => {
   });
 
   it("routes new users through display name then demographics before character onboarding", () => {
+    expect(
+      resolveProfileRoute({
+        onboarding_completed: false,
+        role: null,
+        campus_email_verified_at: null,
+      }),
+    ).toBe("demographics_gate");
     expect(resolveProfileRoute({ onboarding_completed: false, role: null })).toBe("display_name_gate");
     expect(
       resolveProfileRoute(

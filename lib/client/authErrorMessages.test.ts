@@ -139,7 +139,7 @@ describe("mapSigninError", () => {
   it("maps unconfirmed email only for EMAIL_NOT_CONFIRMED", () => {
     expect(
       mapSigninError(httpError(401, SIGNIN_USER_MESSAGES.emailNotConfirmed, "EMAIL_NOT_CONFIRMED")),
-    ).toBe("Please confirm your URI email before signing in.");
+    ).toBe("We couldn't start URI email verification. Please try signing in again.");
   });
 
   it("maps Supabase connection outages (503) to a connection message", () => {
@@ -211,9 +211,9 @@ describe("mapSignupError", () => {
     });
   });
 
-  it("maps email rate limits to a confirmation-email message", () => {
+  it("maps email rate limits to a verification-request message", () => {
     expect(mapSignupError(httpError(429, "Too many confirmation emails were sent.", "EMAIL_RATE_LIMIT"))).toEqual({
-      message: "Too many confirmation emails were sent. Please wait a few minutes before trying again.",
+      message: "Too many verification requests. Please wait a few minutes before trying again.",
     });
   });
 

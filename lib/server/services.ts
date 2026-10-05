@@ -511,7 +511,9 @@ export async function logActivity(args: {
     note: minutes ? `Logged ${minutes} minutes` : "Logged activity",
   });
 
-  const { error: profileUpdateError } = await userClient
+  // AUD-001: streak progression is server-owned (profiles trigger freezes it
+  // for browser sessions).
+  const { error: profileUpdateError } = await getTrustedStatsWriteClient()
     .from("profiles")
     .update({
       streak_days: nextStreakDays,
@@ -1139,7 +1141,7 @@ export async function joinGuild(args: {
   });
   if (insertMembershipError) throw new ApiError(400, insertMembershipError.message, "GUILD_JOIN_FAILED");
 
-  const { error: profileUpdateError } = await userClient
+  const { error: profileUpdateError } = await adminClient
     .from("profiles")
     .update({ guild_id: guildId })
     .eq("id", userId);
@@ -1168,6 +1170,7 @@ export async function createGuild(args: {
   isPublic?: boolean;
 }) {
   const { userClient, userId, name, description, isPublic = true } = args;
+  const adminClient = createAdminClient();
 
   const { data: existingMembership } = await userClient
     .from("guild_members")
@@ -1202,7 +1205,10 @@ export async function createGuild(args: {
   });
   if (memberError) throw new ApiError(400, memberError.message, "GUILD_MEMBER_CREATE_FAILED");
 
-  await userClient.from("profiles").update({ guild_id: guild.id }).eq("id", userId);
+  const { error: profileGuildError } = await adminClient.from("profiles").update({ guild_id: guild.id }).eq("id", userId);
+  if (profileGuildError) {
+    throw new ApiError(400, profileGuildError.message, "PROFILE_GUILD_UPDATE_FAILED");
+  }
 
   return guild;
 }
@@ -1606,7 +1612,9 @@ export async function attemptBossBattle(args: {
   const hpRemainingAfter = Math.max(0, hpRemainingBefore - appliedDamage);
   const wasKillingBlow = hpRemainingAfter === 0;
 
-  const { data: attempt, error: attemptError } = await userClient
+  // AUD-001: damage and killing-blow are server-computed, so the row is written
+  // with the trusted client; boss_attempts has no client INSERT policy.
+  const { data: attempt, error: attemptError } = await getTrustedStatsWriteClient()
     .from("boss_attempts")
     .insert({
       boss_id: bossId,
@@ -1752,6 +1760,11 @@ export async function addItemToInventory(args: {
 }) {
   const { userClient, userId, itemId, quantity, source = "unknown" } = args;
 
+  // AUD-001: item grants are server-authoritative. Reads stay on the caller's
+  // client; writes use the trusted client because user_inventory no longer has
+  // client INSERT/UPDATE policies.
+  const inventoryWriter = getTrustedStatsWriteClient();
+
   const { data: existing } = await userClient
     .from("user_inventory")
     .select("quantity")
@@ -1760,7 +1773,7 @@ export async function addItemToInventory(args: {
     .maybeSingle();
 
   if (!existing) {
-    const { error } = await userClient.from("user_inventory").insert({
+    const { error } = await inventoryWriter.from("user_inventory").insert({
       user_id: userId,
       item_id: itemId,
       quantity,
@@ -1771,7 +1784,7 @@ export async function addItemToInventory(args: {
   }
 
   const nextQuantity = Number(existing.quantity ?? 0) + quantity;
-  const { error } = await userClient
+  const { error } = await inventoryWriter
     .from("user_inventory")
     .update({ quantity: nextQuantity, source })
     .eq("user_id", userId)
@@ -1955,7 +1968,9 @@ async function updatePlayerStreakOnQuest(userClient: SupabaseClientLike, userId:
   if (streakUpdate.streakDays === "increment") nextStreakDays += 1;
   else if (typeof streakUpdate.streakDays === "number") nextStreakDays = streakUpdate.streakDays;
 
-  const { error: updateError } = await userClient
+  // AUD-001: streak progression is server-owned (profiles trigger freezes it
+  // for browser sessions).
+  const { error: updateError } = await getTrustedStatsWriteClient()
     .from("profiles")
     .update({
       streak_days: nextStreakDays,

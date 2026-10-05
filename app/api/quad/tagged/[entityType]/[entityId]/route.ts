@@ -1,6 +1,6 @@
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
-import { createAdminClient, requireAuthUser } from "@/lib/server/supabase";
+import { requireAuthUser } from "@/lib/server/supabase";
 import { uuidSchema } from "@/lib/server/validation";
 import { canViewerSeeTaggedPost, isTagEntityType } from "@/lib/postTags";
 import { QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
@@ -22,9 +22,8 @@ export async function GET(
 
     const { searchParams } = new URL(request.url);
     const limit = Math.min(60, Math.max(1, Number(searchParams.get("limit") || "30") || 30));
-    const admin = createAdminClient();
 
-    const { data: tags, error: tagErr } = await admin
+    const { data: tags, error: tagErr } = await auth.userClient
       .from("post_tags")
       .select("post_id")
       .eq("entity_type", entityType)
@@ -39,8 +38,9 @@ export async function GET(
     const postIds = Array.from(new Set((tags ?? []).map((t) => t.post_id as string)));
     if (!postIds.length) return ok({ posts: [] });
 
-    // Fetch via admin so we can apply visibility in-app (RLS allows all authed reads).
-    const { data: posts, error } = await admin
+    // AUD-001: read through the caller client so quad_posts RLS remains the
+    // authoritative visibility/block/hidden-account boundary.
+    const { data: posts, error } = await auth.userClient
       .from("quad_posts")
       .select(QUAD_POSTS_WITH_PROFILE_SELECT)
       .in("id", postIds)

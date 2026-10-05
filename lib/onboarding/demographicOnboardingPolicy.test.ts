@@ -112,13 +112,13 @@ describe("demographic onboarding policy", () => {
     ).toBe(true);
   });
 
-  it("does not start at email verification when earlier demographics are incomplete", () => {
+  it("starts at email verification before incomplete demographics", () => {
     expect(
       shouldStartOnboardingAtEmailVerification({
         profile: { campus_email_verified_at: null },
         preferences: { exists: false, interests: [] },
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldStartOnboardingAtEmailVerification({
         profile: {
@@ -128,10 +128,10 @@ describe("demographic onboarding policy", () => {
         },
         preferences: { exists: false, interests: ["athletics"] },
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("starts at email verification only when demographics are complete and email is still required", () => {
+  it("starts at email verification when email is still required", () => {
     expect(
       shouldStartOnboardingAtEmailVerification({
         profile: {
@@ -161,12 +161,18 @@ describe("demographic onboarding policy", () => {
 });
 
 describe("authenticated route order", () => {
-  it("new signup path: display name → demographics → CharacterGate → app", () => {
+  it("new signup path: URI verification → display name → demographics → CharacterGate → app", () => {
     const incomplete = {
       onboarding_completed: false,
       onboarding_character_completed: false,
       role: null as string | null,
     };
+    expect(
+      resolveProfileRoute(
+        { ...incomplete, campus_email_verified_at: null },
+        { preferences: { interests: [] } },
+      ),
+    ).toBe("demographics_gate");
     expect(
       resolveProfileRoute(incomplete, {
         preferences: { interests: [] },
@@ -327,7 +333,7 @@ describe("authenticated route order", () => {
     ).toBe("app");
   });
 
-  it("routes campus email verification after demographics are complete, then avatar — without a loop", () => {
+  it("routes campus email verification before demographics and avatar — without a loop", () => {
     const personalizationDone = {
       onboarding_character_completed: false,
       onboarding_completed: false,

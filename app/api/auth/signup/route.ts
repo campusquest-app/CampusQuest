@@ -13,16 +13,82 @@ import { createPublicClient } from "@/lib/server/supabase";
 import { enforceKeyedRateLimit, getRequestClientIp } from "@/lib/server/security";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { authSignupSchema, readJson } from "@/lib/server/validation";
-import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { signupEmailRejectionReason } from "@/lib/signupEmailPolicy";
 import { logEmailVerification } from "@/lib/authEmailDelivery";
+import { maskCampusEmail } from "@/lib/campusEmailVerification";
+import {
+  createSupabaseCampusEmailStore,
+  getCampusEmailVerificationStatus,
+  sendCampusEmailVerification,
+} from "@/lib/server/campusEmailVerification";
 import {
   isEmailAlreadyExistsError,
   recoverExistingSignupEmail,
   SIGNUP_AUTH_CREATED_SETUP_PENDING,
-  SIGNUP_VERIFICATION_REQUIRED,
   toAuthCreatedSetupPendingError,
 } from "@/lib/server/signupRecovery";
+
+type SignupVerificationDelivery = {
+  state: "sent" | "already_verified" | "send_failed";
+  emailMasked: string;
+  expiresInSeconds: number;
+  resendAvailableInSeconds: number;
+};
+
+async function prepareSignupVerification(args: {
+  userId: string;
+  email: string;
+}): Promise<SignupVerificationDelivery> {
+  const store = createSupabaseCampusEmailStore();
+  try {
+    const result = await sendCampusEmailVerification({
+      userId: args.userId,
+      email: args.email,
+      store,
+    });
+    return {
+      state: result.alreadyVerified ? "already_verified" : "sent",
+      emailMasked: result.emailMasked,
+      expiresInSeconds: result.expiresInSeconds,
+      resendAvailableInSeconds: result.resendAvailableInSeconds,
+    };
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      (error.code === "EMAIL_VERIFICATION_COOLDOWN" ||
+        error.code === "EMAIL_VERIFICATION_RATE_LIMIT")
+    ) {
+      try {
+        const status = await getCampusEmailVerificationStatus({
+          userId: args.userId,
+          email: args.email,
+          store,
+        });
+        if (status.hasActiveChallenge && status.dispatched) {
+          return {
+            state: "sent",
+            emailMasked: status.emailMasked,
+            expiresInSeconds: status.expiresInSeconds,
+            resendAvailableInSeconds: status.resendAvailableInSeconds,
+          };
+        }
+      } catch {
+        // Fall through to the sanitized retry state below.
+      }
+    }
+    logAuthError("signup", "campus_verification_send_failed", {
+      userId: args.userId,
+      code: error instanceof ApiError ? error.code ?? null : null,
+      status: error instanceof ApiError ? error.status : null,
+    });
+    return {
+      state: "send_failed",
+      emailMasked: maskCampusEmail(args.email),
+      expiresInSeconds: 0,
+      resendAvailableInSeconds: 0,
+    };
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -53,7 +119,7 @@ export async function POST(request: Request) {
       routeKey: "auth:signup:email",
       limit: 3,
       windowMs: 60 * 60_000,
-      message: "Too many confirmation emails were sent. Please wait a few minutes before trying again.",
+      message: "Too many verification code requests. Please wait a few minutes before trying again.",
       code: "EMAIL_RATE_LIMIT",
     });
 
@@ -77,6 +143,10 @@ export async function POST(request: Request) {
           username: input.username,
         });
         if (recovered.kind === "ready") {
+          const verification = await prepareSignupVerification({
+            userId: recovered.user.id,
+            email: recovered.user.email ?? normalizedEmail,
+          });
           const torchBearer = await tryAwardTorchBearerBadge({
             userId: recovered.user.id,
             user: recovered.user,
@@ -89,23 +159,10 @@ export async function POST(request: Request) {
               profile: recovered.profile,
               stats: recovered.stats,
               torchBearer,
-              lifecycle: "complete",
+              verification,
+              lifecycle: verification.state === "already_verified" ? "complete" : "verification_required",
               recovered: true,
               recoverySource: recovered.source,
-            },
-            200,
-          );
-        }
-        if (recovered.kind === "verification_required") {
-          return ok(
-            {
-              user: { id: recovered.userId, email: recovered.email },
-              session: null,
-              profile: null,
-              stats: null,
-              torchBearer: null,
-              lifecycle: "verification_required",
-              recovered: true,
             },
             200,
           );
@@ -159,7 +216,7 @@ export async function POST(request: Request) {
 
     let sessionUser = authUser;
     let authSession = provisioned.session;
-    if (!authSession && !FEATURE_FLAGS.requireEmailVerification) {
+    if (!authSession) {
       const confirmed = await confirmEmailAndSignIn({
         publicClient: supabase,
         userId: authUser.id,
@@ -176,16 +233,16 @@ export async function POST(request: Request) {
           reason: "email_confirmation_pending",
         });
       }
-    } else if (!authSession && FEATURE_FLAGS.requireEmailVerification) {
-      logEmailVerification("signup awaiting confirmation email", {
-        userId: authUser.id,
-      });
-      logAuthFlow("signup", "session_unavailable", {
-        userId: authUser.id,
-        reason: "email_confirmation_required",
-        lifecycle: "verification_required",
-      });
     }
+
+    const verification = await prepareSignupVerification({
+      userId: authUser.id,
+      email: authUser.email ?? normalizedEmail,
+    });
+    logEmailVerification("signup campus verification prepared", {
+      userId: authUser.id,
+      state: verification.state,
+    });
 
     const torchBearer = authSession
       ? await tryAwardTorchBearerBadge({
@@ -205,11 +262,8 @@ export async function POST(request: Request) {
         profile: player.profile,
         stats: player.stats,
         torchBearer,
-        lifecycle: authSession
-          ? "complete"
-          : FEATURE_FLAGS.requireEmailVerification
-            ? "verification_required"
-            : "recover_sign_in",
+        verification,
+        lifecycle: authSession ? "verification_required" : "recover_sign_in",
       },
       201,
     );
@@ -227,7 +281,6 @@ export async function POST(request: Request) {
         code: error.code ?? null,
         message: error.message,
         authCreatedPending: error.code === SIGNUP_AUTH_CREATED_SETUP_PENDING,
-        verificationRequired: error.code === SIGNUP_VERIFICATION_REQUIRED,
       });
     } else {
       logAuthError("signup", "unexpected_error", {

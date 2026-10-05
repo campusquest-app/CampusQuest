@@ -1695,7 +1695,10 @@ export async function blockUser(args: {
 
   const existing = await getConnectionBetween(userClient, userId, blockedUserId);
   if (existing?.status === "accepted") {
-    await userClient
+    // AUD-001: relationship transitions are server-owned. The block is already
+    // authorized above, so the teardown runs on the service-role client instead
+    // of relying on a broad client UPDATE policy on student_connections.
+    await createAdminClient()
       .from("student_connections")
       .update({ status: "cancelled", responded_at: new Date().toISOString() })
       .eq("id", existing.id);

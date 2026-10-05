@@ -1,4 +1,3 @@
-import { isEmailVerifiedForCampus } from "@/lib/campusAccess";
 import { ApiError } from "@/lib/server/http";
 import { resolveCampusAccessIdentity, userIdHasCampusBypassAccess } from "@/lib/server/campusAccess";
 import { extractEmailDomain, getPilotSchoolConfig } from "@/lib/server/pilotMode";
@@ -60,12 +59,21 @@ export async function ensureSchoolVerificationForUser(args: {
     confirmed_at?: string | null;
   };
 }): Promise<SchoolVerificationState> {
-  const { userClient, user } = args;
+  const { user } = args;
   const pilot = getPilotSchoolConfig();
   const emailDomain = extractEmailDomain(user.email ?? null);
-  const isEmailVerified = isEmailVerifiedForCampus(user);
+  const admin = createAdminClient();
+  const { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .select("campus_email_verified_at")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profileError) {
+    throw new ApiError(400, "Could not verify school email.", "SCHOOL_VERIFICATION_FAILED");
+  }
+  const campusEmailVerified = Boolean(profile?.campus_email_verified_at);
   const pilotDomainAllowed = !pilot.schoolDomain || emailDomain === pilot.schoolDomain;
-  const shouldVerify = Boolean(emailDomain && isEmailVerified && pilotDomainAllowed);
+  const shouldVerify = Boolean(emailDomain && campusEmailVerified && pilotDomainAllowed);
   const nowIso = new Date().toISOString();
 
   const upsertPayload = {
@@ -77,7 +85,10 @@ export async function ensureSchoolVerificationForUser(args: {
     updated_at: nowIso,
   };
 
-  const { data, error } = await userClient
+  // AUD-001: verification state is server-owned. Everything in `upsertPayload`
+  // is derived from the authenticated identity and the protected profile
+  // timestamp, never from client input, so the write uses service_role.
+  const { data, error } = await admin
     .from("user_school_verifications")
     .upsert(upsertPayload, { onConflict: "user_id" })
     .select("user_id, school_name, school_domain, status, verified_at")
@@ -104,18 +115,10 @@ export async function requireVerifiedSchoolForCoreAccess(args: {
   if (identity.isPlatformAdmin || identity.isInternalTester) {
     return syntheticPilotVerificationForPlatformAdmin();
   }
-  const existing = await userClient
-    .from("user_school_verifications")
-    .select("user_id, school_name, school_domain, status, verified_at")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (existing.error) {
-    throw new ApiError(400, existing.error.message, "SCHOOL_VERIFICATION_FAILED");
-  }
-  const verification =
-    existing.data && existing.data.status === "verified"
-      ? mapRowToState(existing.data as VerificationRow)
-      : await ensureSchoolVerificationForUser({ userClient, user });
+  // Re-derive on every core-access check so a stale legacy row that was
+  // previously verified from auth.users.email_confirmed_at cannot bypass the
+  // CampusQuest six-digit proof.
+  const verification = await ensureSchoolVerificationForUser({ userClient, user });
   if (verification.status !== "verified" || !verification.schoolDomain || !verification.schoolName) {
     throw new ApiError(
       403,

@@ -243,6 +243,10 @@ describe("verification request schemas", () => {
 
 describe("identity verification source contracts", () => {
   const migration = readFileSync(join(root, "supabase/migrations/20260825200000_campusquest_identity_verification.sql"), "utf8");
+  const securityInvokerMigration = readFileSync(
+    join(root, "supabase/migrations/20260915030000_identity_managers_security_invoker.sql"),
+    "utf8",
+  );
   const quad = readFileSync(join(root, "components/TheQuad.tsx"), "utf8");
   const composer = readFileSync(join(root, "components/market/MarketSellComposer.tsx"), "utf8");
   const feed = readFileSync(join(root, "components/market/TheMarketFeed.tsx"), "utf8");
@@ -264,6 +268,13 @@ describe("identity verification source contracts", () => {
     expect(migration).toContain("show_in_campus_feed");
     expect(migration).toContain("enforce_quad_post_posted_as");
     expect(migration).toContain("is_verified_student_business_manager");
+  });
+
+  it("runs identity_managers as security_invoker so caller RLS applies", () => {
+    expect(securityInvokerMigration).toContain("alter view public.identity_managers");
+    expect(securityInvokerMigration).toContain("security_invoker = true");
+    expect(securityInvokerMigration).not.toContain("disable row level security");
+    expect(securityInvokerMigration).not.toContain("security_invoker = false");
   });
 
   it("keeps The Market open to every student and surfaces listings in Campus Feed", () => {

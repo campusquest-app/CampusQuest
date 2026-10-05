@@ -96,13 +96,13 @@ export function mapSignupError(error: unknown): SignupErrorMapped {
     }
     if (error.status === 429 || error.code === "EMAIL_RATE_LIMIT") {
       return {
-        message: "Too many confirmation emails were sent. Please wait a few minutes before trying again.",
+        message: "Too many verification requests. Please wait a few minutes before trying again.",
       };
     }
     const code = (error.code ?? "").toUpperCase();
     if (code === "SIGNUP_VERIFICATION_REQUIRED" || code === "EMAIL_NOT_CONFIRMED") {
       return {
-        message: "Check your URI email to confirm your account before signing in.",
+        message: "Sign in to continue with your 6-digit URI email verification code.",
         recoverSignIn: true,
         verificationRequired: true,
       };

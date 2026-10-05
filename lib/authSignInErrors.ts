@@ -5,7 +5,7 @@
 
 export const SIGNIN_USER_MESSAGES = {
   invalidCredentials: "Incorrect email or password.",
-  emailNotConfirmed: "Please confirm your URI email before signing in.",
+  emailNotConfirmed: "We couldn't start URI email verification. Please try signing in again.",
   rateLimited: "Too many sign-in attempts. Please wait a moment and try again.",
   network: "Unable to connect. Check your internet connection and try again.",
   generic: "Unable to sign in. Please try again.",

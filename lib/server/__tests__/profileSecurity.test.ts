@@ -25,17 +25,27 @@ describe("profileSecurity", () => {
         achievements: ["torch_bearer_badge"],
         foundingMember: true,
         equippedCosmetics: { hat: "old" },
+        unlockedCosmetics: ["earned-cosmetic"],
+        guildIds: ["server-guild"],
+        miniGameTraining: { playsUsed: 1 },
+        statPrestige: { strength: 2 },
       },
       {
         achievements: ["fake_badge"],
         totalXP: 99999,
         equippedCosmetics: { hat: "new" },
-        unlockedCosmetics: ["c1"],
+        unlockedCosmetics: ["fake-cosmetic"],
+        guildIds: ["fake-guild"],
+        miniGameTraining: { playsUsed: 999 },
+        statPrestige: { strength: 999 },
       },
     );
     expect(merged.achievements).toEqual(["torch_bearer_badge"]);
     expect(merged.equippedCosmetics).toEqual({ hat: "new" });
-    expect(merged.unlockedCosmetics).toEqual(["c1"]);
+    expect(merged.unlockedCosmetics).toEqual(["earned-cosmetic"]);
+    expect(merged.guildIds).toEqual(["server-guild"]);
+    expect(merged.miniGameTraining).toEqual({ playsUsed: 1 });
+    expect(merged.statPrestige).toEqual({ strength: 2 });
     expect(merged).not.toHaveProperty("totalXP");
     expect(merged.foundingMember).toBe(true);
   });

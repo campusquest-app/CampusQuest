@@ -11,7 +11,6 @@ import { persistSupabaseSession } from "@/lib/client/supabaseSession";
 import { loadLegalConsentGate, submitLegalConsentAccept } from "@/lib/client/legalConsentClient";
 import { LegalConsentScreen } from "@/components/LegalConsentScreen";
 import { AccountSafetyStatusScreen } from "@/components/AccountSafetyStatusScreen";
-import { SchoolVerificationScreen } from "@/components/SchoolVerificationScreen";
 import { dismissOnboardingTutorialOnServer } from "@/lib/client/dismissOnboardingTutorial";
 import { resetMobileViewportScale } from "@/lib/client/modalViewportCleanup";
 import { AuthPasswordRequirementsAlert } from "@/components/auth/AuthPasswordRequirementsAlert";
@@ -24,6 +23,10 @@ import {
   AUTH_SESSION_EXPIRED_NOTICE_KEY,
 } from "@/lib/client/invalidateAuthSession";
 import { FEATURE_FLAGS } from "@/lib/featureFlags";
+import {
+  clearSignupVerificationDeliveryFailure,
+  rememberSignupVerificationDeliveryFailed,
+} from "@/lib/client/signupVerificationDelivery";
 
 import {
   HttpRequestError,
@@ -167,11 +170,6 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     reason?: string | null;
     suspendedUntil?: string | null;
   } | null>(null);
-  const [schoolVerificationBlock, setSchoolVerificationBlock] = useState<{
-    requiredSchoolName: string;
-    requiredSchoolDomain: string | null;
-    currentDomain: string | null;
-  } | null>(null);
   const signupLockedRef = useRef(false);
   const lastSignupAttemptRef = useRef(0);
   const loginLockedRef = useRef(false);
@@ -304,18 +302,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
 
   async function checkSchoolVerification(accessToken: string) {
     const snapshot = await fetchMeSchoolVerification(accessToken);
-    const allowed = canAccessCampusFromSnapshot(snapshot);
-    if (!allowed) {
-      const { verification } = snapshot;
-      setSchoolVerificationBlock({
-        requiredSchoolName: verification.requiredPilotSchoolName ?? "your school",
-        requiredSchoolDomain: verification.requiredPilotDomain ?? null,
-        currentDomain: verification.schoolDomain ?? null,
-      });
-      return false;
-    }
-    setSchoolVerificationBlock(null);
-    return true;
+    return canAccessCampusFromSnapshot(snapshot);
   }
 
   async function completeAuthenticatedSession(opts: { isSignup: boolean }) {
@@ -326,8 +313,9 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     const canContinue = await checkConsentStatus();
     if (!canContinue) return;
     const sessionToken = getAccessToken() ?? token;
-    const verifiedForCampus = await checkSchoolVerification(sessionToken);
-    if (!verifiedForCampus) return;
+    // Materialize the trusted campus-verification snapshot, but let the
+    // authenticated app shell route pending users to its six-digit code gate.
+    await checkSchoolVerification(sessionToken);
 
     // Demographic onboarding is an authenticated Dashboard routing gate
     // (demographics → CharacterGate → app), not signup-only presentation.
@@ -362,8 +350,8 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setNeedsConsent(false);
       const token = getAccessToken();
       if (!token) throw new Error("Session expired. Please sign in again.");
-      const verifiedForCampus = await checkSchoolVerification(token);
-      if (verifiedForCampus) onComplete();
+      await checkSchoolVerification(token);
+      onComplete();
     } catch (consentError) {
       if (consentError instanceof SchoolVerificationHttpError) {
         if (consentError.status === 401) clearAccessToken();
@@ -546,6 +534,10 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
         session?: { access_token?: string; refresh_token?: string };
         user?: { id?: string };
         lifecycle?: string;
+        verification?: {
+          state?: "sent" | "already_verified" | "send_failed";
+          emailMasked?: string;
+        };
       }>("/api/auth/signup", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -554,6 +546,12 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       const session = payload?.data?.session;
       const accessToken = session?.access_token;
       const lifecycle = payload?.data?.lifecycle;
+      const verificationState = payload?.data?.verification?.state;
+      if (verificationState === "send_failed") {
+        rememberSignupVerificationDeliveryFailed();
+      } else {
+        clearSignupVerificationDeliveryFailure();
+      }
       const needsVerification =
         lifecycle === "verification_required" || FEATURE_FLAGS.requireEmailVerification;
       if (accessToken) {
@@ -589,7 +587,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setSuccessBanner("Account Created!");
       setNotice(
         needsVerification
-          ? "Check your URI email to confirm your account before signing in."
+          ? "Sign in to continue with your 6-digit URI email verification code."
           : "Your account is ready. Sign in to continue onboarding.",
       );
     } catch (signUpError) {
@@ -738,35 +736,12 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     );
   }
 
-  if (schoolVerificationBlock) {
-    return (
-      <SchoolVerificationScreen
-        requiredSchoolName={schoolVerificationBlock.requiredSchoolName}
-        requiredSchoolDomain={schoolVerificationBlock.requiredSchoolDomain}
-        currentDomain={schoolVerificationBlock.currentDomain}
-        onUseDifferentAccount={() => {
-          clearAccessToken();
-          setSchoolVerificationBlock(null);
-          switchMode("signin");
-          setEmail("");
-          setError(null);
-        }}
-      />
-    );
-  }
-
   const resendRemaining = remainingResendCooldownMs({
     email,
     nowMs,
     stored: readResendCooldownState(),
   });
   const resendLocked = isResendingConfirmation || resendRemaining > 0;
-  const showResend =
-    FEATURE_FLAGS.requireEmailVerification ||
-    Boolean(error?.toLowerCase().includes("confirm")) ||
-    Boolean(notice?.toLowerCase().includes("confirm")) ||
-    Boolean(notice && notice === AUTH_EMAIL_USER_MESSAGES.accepted) ||
-    Boolean(successBanner === "Account Created!");
 
   if (callbackRecovery) {
     return (
@@ -944,20 +919,6 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                     ? "Secure sign-in · Email verification supported"
                     : "Secure sign-in"}
                   </p>
-                  {showResend ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleResendConfirmation()}
-                      disabled={resendLocked}
-                      className="cq-auth-link w-full text-center"
-                    >
-                      {isResendingConfirmation
-                        ? "Sending..."
-                        : resendRemaining > 0
-                          ? formatResendCooldownLabel(resendRemaining)
-                          : "Resend verification email"}
-                    </button>
-                  ) : null}
                 </form>
                 <p className="cq-auth-switch-row">
                   Don&apos;t have an account?{" "}

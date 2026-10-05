@@ -133,13 +133,22 @@ export function ComposerCarouselEditor({
 
       {active.stage === "failed" ? (
         <div className="space-y-1">
-          <button
-            type="button"
-            onClick={() => onRetry(active.clientId)}
-            className="text-sm font-semibold text-uri-keaney"
-          >
-            Retry upload
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => onRetry(active.clientId)}
+              className="min-h-[40px] text-sm font-semibold text-uri-keaney"
+            >
+              Retry upload
+            </button>
+            <button
+              type="button"
+              onClick={() => onRemove(active.clientId)}
+              className="min-h-[40px] text-sm font-semibold text-white/70"
+            >
+              Remove
+            </button>
+          </div>
           {process.env.NODE_ENV !== "production" && active.diagnostic ? (
             <p className="break-words text-[10px] text-amber-300/90">Dev: {active.diagnostic}</p>
           ) : null}

@@ -56,7 +56,10 @@ export async function deleteQuadPost(args: {
   userId: string;
   isAdmin: boolean;
 }): Promise<{ postId: string }> {
-  const post = await fetchQuadPostRow(args.userClient, args.postId);
+  // AUD-001: quad_posts SELECT is now visibility-scoped, so a moderator acting on
+  // a friends-only or hidden-account post must read it through the already
+  // authorized admin client. Non-admins still resolve the post under their own RLS.
+  const post = await fetchQuadPostRow(args.isAdmin ? args.adminClient : args.userClient, args.postId);
 
   if (post.user_id !== args.userId && !args.isAdmin) {
     throw new ApiError(403, "You can only delete your own posts.", "QUAD_POST_FORBIDDEN");

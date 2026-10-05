@@ -110,6 +110,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const auth = await requireAuthUser(request);
+    const profileWriter = createAdminClient();
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:profile:patch", limit: 30, windowMs: 60_000 });
     touchUserActivityFromAuth(auth);
     const rawBody = (await request.json().catch(() => ({}))) as Record<string, unknown>;
@@ -324,7 +325,11 @@ export async function PATCH(request: Request) {
       throw new ApiError(400, "No profile fields to update.", "PROFILE_PATCH_EMPTY");
     }
 
-    const { data, error } = await auth.userClient
+    // AUD-001: the database freezes identity-enforcement and progression fields
+    // for browser-role writes. This server route authenticates the user, derives
+    // the row id, validates/allowlists the patch above, then performs the write
+    // through the trusted server client.
+    const { data, error } = await profileWriter
       .from("profiles")
       .update(patchForSchema)
       .eq("id", auth.user.id)
@@ -337,7 +342,7 @@ export async function PATCH(request: Request) {
     if (errorOut && isMissingDiscoveryColumnError(errorOut.message)) {
       const withoutDiscovery = stripDiscoveryColumns(patchForSchema);
       if (Object.keys(withoutDiscovery).length > 0) {
-        const retried = await auth.userClient
+        const retried = await profileWriter
           .from("profiles")
           .update(withoutDiscovery)
           .eq("id", auth.user.id)
@@ -370,7 +375,7 @@ export async function PATCH(request: Request) {
       patch.identity_weekly_change_events !== undefined
     ) {
       const { identity_weekly_change_events: _w, ...patchWithoutWeekly } = patchForSchema;
-      const second = await auth.userClient
+      const second = await profileWriter
         .from("profiles")
         .update(patchWithoutWeekly)
         .eq("id", auth.user.id)
@@ -411,7 +416,7 @@ export async function PATCH(request: Request) {
         .eq("user_id", auth.user.id)
         .maybeSingle();
       if (existingPrefs) {
-        const { data: repaired, error: repairErr } = await auth.userClient
+        const { data: repaired, error: repairErr } = await profileWriter
           .from("profiles")
           .update({
             onboarding_completed: true,
