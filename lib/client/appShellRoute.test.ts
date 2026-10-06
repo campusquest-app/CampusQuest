@@ -89,10 +89,17 @@ describe("appShellRoute", () => {
     expect(resolveProfileRoute({ onboarding_completed: true, role: "banana" })).toBe("role_gate");
   });
 
-  it("never shows the role gate to admins or internal testers", () => {
+  it("never shows the role gate or student verification to admins or internal testers", () => {
     expect(resolveProfileRoute({ onboarding_completed: true, role: "admin" })).toBe("app");
     expect(resolveProfileRoute({ onboarding_completed: true, role: "super_admin" })).toBe("app");
     expect(resolveProfileRoute({ onboarding_completed: true, role: "beta_internal" })).toBe("app");
+    expect(
+      resolveProfileRoute({
+        onboarding_completed: true,
+        role: "admin",
+        campus_email_verified_at: null,
+      }),
+    ).toBe("app");
     expect(resolveProfileRoute({ onboarding_completed: false, role: "admin" })).toBe("display_name_gate");
     expect(
       resolveProfileRoute(

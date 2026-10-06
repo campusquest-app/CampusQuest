@@ -155,7 +155,9 @@ export function resolveDemographicResumeStep(input: {
   const draftStep = isDemographicOnboardingStep(input.draft?.step) ? input.draft.step : null;
 
   if (input.forceFullReplay) {
-    return draftStep && draftStep !== "welcome" ? draftStep : "welcome";
+    // Welcome is the logged-out marketing screen. A signed-in replay starts
+    // at the first real step.
+    return draftStep && draftStep !== "welcome" ? draftStep : "student_status";
   }
 
   if (input.startAtEmailVerification) {
@@ -185,7 +187,8 @@ export function resolveDemographicResumeStep(input: {
   const draftIdx = stepIndex(draftStep, steps);
 
   if (!isKnownStudentStatus(studentStatus)) {
-    return draftStep === "student_status" ? "student_status" : "welcome";
+    // An authenticated session never resumes on the public welcome screen.
+    return "student_status";
   }
 
   if (shouldAskGraduationYear(studentStatus)) {

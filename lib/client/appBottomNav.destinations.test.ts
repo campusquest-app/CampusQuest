@@ -12,8 +12,11 @@ describe("primary bottom navigation destinations", () => {
   const progressSrc = readFileSync(join(process.cwd(), "components/ProgressHubScreen.tsx"), "utf8");
   const drawerSrc = readFileSync(join(process.cwd(), "components/AppSideDrawer.tsx"), "utf8");
 
-  it("uses Feed, Messages, Explore/Map, Events, and Profile", () => {
-    expect(APP_BOTTOM_NAV_TABS).toEqual(["quad", "inbox", "realm", "events", "character"]);
+  it("uses Feed, Partners, Explore/Map, Events, and Profile", () => {
+    expect(APP_BOTTOM_NAV_TABS).toEqual(["quad", "partners", "realm", "events", "character"]);
+    expect(navSrc).toContain('onSelectTab("partners")');
+    expect(navSrc).toContain("<Handshake");
+    expect(navSrc).not.toContain("MessageCircle");
     expect(BOTTOM_NAV_SWIPE_TABS).toEqual(APP_BOTTOM_NAV_TABS);
     expect(navSrc).toContain("APP_BOTTOM_NAV_HINT_LABELS.events");
     expect(navSrc).toContain("onSelectTab(\"events\")");
@@ -42,7 +45,9 @@ describe("primary bottom navigation destinations", () => {
     expect(dashboardSrc.match(/<EventsFeed/g)?.length).toBe(1);
     expect(dashboardSrc).toContain('tab === "quad"');
     expect(dashboardSrc).toContain('tab === "inbox"');
+    expect(dashboardSrc).toContain('onOpenInbox={() => setTab("inbox")}');
     expect(dashboardSrc).toContain('tab === "character"');
+    expect(dashboardSrc.match(/<PartnersScreen/g)?.length).toBe(1);
     expect(dashboardSrc).toContain('TAB_QUERY_VALUES');
     expect(dashboardSrc).toContain('"events"');
   });

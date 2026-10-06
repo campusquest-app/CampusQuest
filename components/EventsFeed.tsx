@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Calendar, Search, SlidersHorizontal } from "lucide-react";
+import { Calendar, CalendarSearch, Search, SlidersHorizontal } from "lucide-react";
 import { CANONICAL_EVENT_CATEGORIES } from "@/lib/eventSources/categories";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { EventDetailScreen } from "@/components/events/EventDetailScreen";
@@ -361,14 +361,19 @@ export function EventsFeed({
     [prioritizedEvents, filters.timeframe, filters.search, savedOnly, forYouExpanded],
   );
 
+  const sheetFilterCount =
+    (filters.organizationKey.trim() ? 1 : 0) +
+    (filters.isPaid !== "all" ? 1 : 0) +
+    (filters.location.trim() ? 1 : 0) +
+    (filters.sport.trim() ? 1 : 0);
+
   const emptyCopy = eventsEmptyStateCopy({
     hasLoadedEvents: events.length + externalEvents.length > 0,
-    isAdmin: showAdminSyncLink,
     timeframe: filters.timeframe,
     hasSearch: Boolean(filters.search.trim()),
-    hasExtraFilters: activeFilterCount > 0,
     category: filters.category,
     savedOnly,
+    sheetFilterCount,
   });
 
   function syncActiveCampusDetail(nextEvents: CampusEventItem[], eventId: string) {
@@ -473,22 +478,9 @@ export function EventsFeed({
     }
   }
 
-  function applyEmptyAction() {
-    if (emptyCopy.action === "all") {
-      setSavedOnly(false);
-      setFilters((prev) => ({ ...prev, timeframe: "all" }));
-    }
-    if (emptyCopy.action === "this_week") setFilters((prev) => ({ ...prev, timeframe: "this_week" }));
-    if (emptyCopy.action === "this_weekend") setFilters((prev) => ({ ...prev, timeframe: "this_weekend" }));
-    if (emptyCopy.action === "clear_search") setFilters((prev) => ({ ...prev, search: "" }));
-    if (emptyCopy.action === "clear_filters") {
-      setSavedOnly(false);
-      setFilters((prev) => ({
-        ...initialFilters,
-        search: prev.search,
-        timeframe: prev.timeframe === "tomorrow" || prev.timeframe === "this_month" ? "for_you" : prev.timeframe,
-      }));
-    }
+  function clearEventFilters() {
+    setSavedOnly(false);
+    setFilters(initialFilters);
   }
 
   const liveDetail =
@@ -543,15 +535,22 @@ export function EventsFeed({
             <h1 className="cq-events-title">Events</h1>
             <p className="cq-events-subtitle">Find something to do on campus.</p>
           </div>
-          <button
-            type="button"
-            className={`cq-events-saved ${savedOnly ? "cq-events-saved--on" : ""}`}
-            onClick={() => setSavedOnly((prev) => !prev)}
-            aria-pressed={savedOnly}
-            aria-label={savedOnly ? "Show all events" : "Show saved events"}
-          >
-            <Calendar className="h-5 w-5" strokeWidth={2.1} />
-          </button>
+          <div className="cq-events-header-actions">
+            {showAdminSyncLink ? (
+              <Link href="/internal/admin" className="cq-events-admin-link">
+                Admin sync status
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              className={`cq-events-saved ${savedOnly ? "cq-events-saved--on" : ""}`}
+              onClick={() => setSavedOnly((prev) => !prev)}
+              aria-pressed={savedOnly}
+              aria-label={savedOnly ? "Show all events" : "Show saved events"}
+            >
+              <Calendar className="h-5 w-5" strokeWidth={2.1} />
+            </button>
+          </div>
         </div>
         <p className="sr-only">
           For You ranks events from your interests and communities without hiding the rest of campus.
@@ -626,33 +625,21 @@ export function EventsFeed({
         </div>
       ) : null}
       {!loading && prioritizedEvents.length === 0 ? (
-        <div className="cq-events-empty">
-          <p className="cq-events-empty-title">{emptyCopy.title}</p>
-          <p className="cq-events-empty-detail">{emptyCopy.detail}</p>
-          <div className="cq-events-empty-actions">
-            {emptyCopy.action ? (
-              <button type="button" onClick={applyEmptyAction} className="cq-events-empty-btn">
-                {emptyCopy.action === "all"
-                  ? "Explore all upcoming events"
-                  : emptyCopy.action === "this_week"
-                    ? "See this week"
-                    : emptyCopy.action === "this_weekend"
-                      ? "See this weekend"
-                      : emptyCopy.action === "clear_search"
-                        ? "Clear search"
-                        : "Clear filters"}
-              </button>
-            ) : (
-              <button type="button" onClick={() => void loadEvents()} className="cq-events-empty-btn">
-                Refresh events
-              </button>
-            )}
-            {showAdminSyncLink ? (
-              <Link href="/internal/admin" className="cq-events-empty-btn cq-events-empty-btn--admin">
-                Admin sync status
-              </Link>
-            ) : null}
-          </div>
+        <div className="cq-events-zero" role="status">
+          <span className="cq-events-zero__icon" aria-hidden>
+            <CalendarSearch className="h-6 w-6" strokeWidth={1.75} />
+          </span>
+          <p className="cq-events-zero__title">{emptyCopy.title}</p>
+          <p className="cq-events-zero__detail">{emptyCopy.detail}</p>
+          {emptyCopy.action === "clear_filters" ? (
+            <button type="button" onClick={clearEventFilters} className="cq-events-zero__cta cq-tap-press">
+              Clear filters
+            </button>
+          ) : (
+            <button type="button" onClick={() => void loadEvents()} className="cq-events-zero__cta cq-tap-press">
+              Refresh events
+            </button>
+          )}
         </div>
       ) : null}
 
@@ -666,7 +653,7 @@ export function EventsFeed({
         />
       ) : null}
 
-      {!loading && showForYouSection ? (
+      {!loading && showForYouSection && prioritizedEvents.length > 0 ? (
         <section className="cq-events-foryou" aria-labelledby="cq-events-foryou-title">
           <div className="cq-events-section-head">
             <div>

@@ -50,6 +50,12 @@ export function isProfileSetupComplete(profile: ProfileRouteInput): boolean {
   return profile.onboarding_completed === true || profile.onboarding_character_completed === true;
 }
 
+/** Admins and internal testers are not sent through student email or demographic gates. */
+function skipsStudentVerificationGates(profile: ProfileRouteInput): boolean {
+  const role = profile.role ?? null;
+  return role === "admin" || role === "super_admin" || role === "beta_internal";
+}
+
 /**
  * Authenticated routing:
  * 1) campus email verification
@@ -66,7 +72,10 @@ export function resolveProfileRoute(
   profile: ProfileRouteInput,
   options?: ResolveProfileRouteOptions,
 ): ProfileRoute {
-  if (isCampusEmailVerificationRequired(profile)) {
+  const skipStudentGates = skipsStudentVerificationGates(profile);
+  const forceDemographics = options?.forceDemographicsQaReplay === true;
+
+  if (!skipStudentGates && isCampusEmailVerificationRequired(profile)) {
     return "demographics_gate";
   }
 
@@ -75,11 +84,13 @@ export function resolveProfileRoute(
   }
 
   if (
-    isDemographicsRequired({
-      profile,
-      preferences: options?.preferences,
-      forceQaReplay: options?.forceDemographicsQaReplay === true,
-    })
+    forceDemographics ||
+    (!skipStudentGates &&
+      isDemographicsRequired({
+        profile,
+        preferences: options?.preferences,
+        forceQaReplay: false,
+      }))
   ) {
     return "demographics_gate";
   }

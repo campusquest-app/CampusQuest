@@ -4,91 +4,97 @@ export const EVENTS_STALE_NOTICE = "Some event information may be out of date.";
 export const EVENTS_FOR_YOU_EMPTY_TITLE = "We're still learning what you like.";
 export const EVENTS_FOR_YOU_EMPTY_DETAIL = "Explore events below or update your interests.";
 
+const FILTER_DETAIL = "Try another category or clear your filters to see what else is happening on campus.";
+
+function dateFilterIsNarrow(timeframe?: EventsFeedTimeframe): boolean {
+  return Boolean(timeframe && timeframe !== "for_you" && timeframe !== "all");
+}
+
 export function eventsEmptyStateCopy(input: {
   hasLoadedEvents: boolean;
-  isAdmin: boolean;
+  /** Kept so older callers compile. Empty copy never mentions admin tools. */
+  isAdmin?: boolean;
   timeframe?: EventsFeedTimeframe;
   hasSearch?: boolean;
-  hasExtraFilters?: boolean;
   category?: string;
   savedOnly?: boolean;
-}): { title: string; detail: string; action?: "all" | "this_week" | "this_weekend" | "clear_search" | "clear_filters" } {
-  if (input.hasSearch) {
+  /** Organization, price, location, or sport filters from the filter sheet. */
+  sheetFilterCount?: number;
+}): { title: string; detail: string; action?: "clear_filters" } {
+  const category = input.category?.trim() ?? "";
+  const sheetFilters = Math.max(0, input.sheetFilterCount ?? 0);
+  let active = sheetFilters;
+  if (category) active += 1;
+  if (dateFilterIsNarrow(input.timeframe)) active += 1;
+  if (input.hasSearch) active += 1;
+  if (input.savedOnly) active += 1;
+
+  if (active >= 2) {
     return {
-      title: "No events match your search.",
-      detail: "Try a different name, organization, or location.",
-      action: "clear_search",
+      title: "No events match these filters",
+      detail: FILTER_DETAIL,
+      action: "clear_filters",
     };
   }
 
   if (input.savedOnly) {
     return {
-      title: "No saved events yet.",
+      title: "No saved events yet",
       detail: "Mark events as Interested or Going and they will show up here.",
-      action: "all",
-    };
-  }
-
-  if (input.hasLoadedEvents && input.category === "Athletics") {
-    return {
-      title: "No Athletics events coming up right now.",
-      detail: "Check back later or browse other campus events.",
       action: "clear_filters",
     };
   }
 
-  if (input.hasLoadedEvents && input.hasExtraFilters) {
+  if (input.hasSearch) {
     return {
-      title: "No events match your filters.",
-      detail: "Try clearing search or date filters to see more campus events.",
+      title: "No events match your search",
+      detail: "Try a different name, organization, or location.",
       action: "clear_filters",
     };
   }
 
-  if (input.hasLoadedEvents && input.timeframe === "today") {
+  if (category) {
     return {
-      title: "Nothing listed for today yet. Check this weekend.",
-      detail: "See what's happening Friday through Sunday.",
-      action: "this_weekend",
+      title: `No ${category} events`,
+      detail: FILTER_DETAIL,
+      action: "clear_filters",
     };
   }
 
-  if (input.hasLoadedEvents && input.timeframe === "this_weekend") {
+  if (input.timeframe === "today") {
     return {
-      title: "Nothing listed this weekend yet.",
-      detail: "Browse all upcoming campus events.",
-      action: "all",
+      title: "Nothing scheduled for today",
+      detail: FILTER_DETAIL,
+      action: "clear_filters",
     };
   }
 
-  if (input.hasLoadedEvents && input.timeframe === "this_week") {
+  if (input.timeframe === "this_weekend") {
     return {
-      title: "Nothing scheduled this week.",
-      detail: "Browse all upcoming campus events.",
-      action: "all",
+      title: "Nothing scheduled this weekend",
+      detail: FILTER_DETAIL,
+      action: "clear_filters",
     };
   }
 
-  if (input.hasLoadedEvents && input.timeframe === "for_you") {
+  if (input.timeframe === "this_week") {
     return {
-      title: "We're still learning what you like.",
-      detail: "Explore events below or update your interests.",
-      action: "all",
+      title: "Nothing scheduled this week",
+      detail: FILTER_DETAIL,
+      action: "clear_filters",
     };
   }
 
-  if (input.hasLoadedEvents) {
+  if (dateFilterIsNarrow(input.timeframe) || sheetFilters > 0) {
     return {
-      title: "No events match your filters.",
-      detail: "Try clearing search or date filters to see more campus events.",
+      title: "No events match these filters",
+      detail: FILTER_DETAIL,
       action: "clear_filters",
     };
   }
 
   return {
-    title: "No upcoming events right now.",
-    detail: input.isAdmin
-      ? "If this looks wrong, check event source sync in admin."
-      : "When campus events are published, they will show up here.",
+    title: "No upcoming events right now",
+    detail: "When campus events are published, they will show up here.",
   };
 }

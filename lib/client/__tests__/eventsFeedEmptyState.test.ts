@@ -9,50 +9,50 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 describe("events empty-state copy", () => {
-  it("never mentions Admin Sync Status for students", () => {
-    const copy = eventsEmptyStateCopy({ hasLoadedEvents: false, isAdmin: false });
-    expect(copy.title).toBe("No upcoming events right now.");
-    expect(copy.detail.toLowerCase()).not.toContain("admin");
-    expect(copy.detail.toLowerCase()).not.toContain("sync status");
+  it("never mentions admin tools, including for admin viewers", () => {
+    for (const isAdmin of [false, true]) {
+      const copy = eventsEmptyStateCopy({ hasLoadedEvents: false, isAdmin });
+      const combined = `${copy.title} ${copy.detail}`.toLowerCase();
+      expect(copy.title).toBe("No upcoming events right now");
+      expect(combined).not.toContain("admin");
+      expect(combined).not.toContain("sync status");
+      expect(combined).not.toContain("could not load synced");
+    }
   });
 
-  it("keeps a normal empty state when filters removed all matching events", () => {
-    const copy = eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false });
-    expect(copy.title).toBe("No events match your filters.");
+  it("uses a plain empty line when nothing is filtered", () => {
+    const copy = eventsEmptyStateCopy({ hasLoadedEvents: true, timeframe: "for_you" });
+    expect(copy.title).toBe("No upcoming events right now");
+    expect(copy.action).toBeUndefined();
   });
 
-  it("gives useful empty copy for For You, Today, and search", () => {
-    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, timeframe: "for_you" })).toMatchObject({
-      title: "We're still learning what you like.",
-      action: "all",
+  it("adapts to a single filter and stays generic when several are active", () => {
+    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, timeframe: "today" })).toMatchObject({
+      title: "Nothing scheduled for today",
+      action: "clear_filters",
     });
-    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, timeframe: "today" })).toMatchObject({
-      title: "Nothing listed for today yet. Check this weekend.",
-      action: "this_weekend",
+    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, timeframe: "this_weekend" })).toMatchObject({
+      title: "Nothing scheduled this weekend",
+      action: "clear_filters",
     });
-    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, timeframe: "this_weekend" })).toMatchObject({
-      title: "Nothing listed this weekend yet.",
-      action: "all",
+    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, category: "Athletics", timeframe: "for_you" })).toMatchObject({
+      title: "No Athletics events",
+      action: "clear_filters",
     });
-    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, hasSearch: true })).toMatchObject({
-      title: "No events match your search.",
-      action: "clear_search",
+    expect(
+      eventsEmptyStateCopy({ hasLoadedEvents: true, category: "Athletics", timeframe: "today" }),
+    ).toMatchObject({
+      title: "No events match these filters",
+      action: "clear_filters",
     });
-    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, isAdmin: false, category: "Athletics" })).toMatchObject({
-      title: "No Athletics events coming up right now.",
+    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, hasSearch: true, timeframe: "today" })).toMatchObject({
+      title: "No events match these filters",
+      action: "clear_filters",
     });
-  });
-
-  it("lets admins keep a diagnostics hint", () => {
-    const copy = eventsEmptyStateCopy({ hasLoadedEvents: false, isAdmin: true });
-    expect(copy.detail.toLowerCase()).toContain("admin");
-  });
-
-  it("never uses the old student empty copy that mentioned admin sync status", () => {
-    const student = eventsEmptyStateCopy({ hasLoadedEvents: false, isAdmin: false });
-    const combined = `${student.title} ${student.detail}`.toLowerCase();
-    expect(combined).not.toContain("could not load synced");
-    expect(combined).not.toContain("admin sync status");
+    expect(eventsEmptyStateCopy({ hasLoadedEvents: true, hasSearch: true })).toMatchObject({
+      title: "No events match your search",
+      action: "clear_filters",
+    });
   });
 });
 
@@ -131,8 +131,14 @@ describe("EventsFeed student vs admin controls", () => {
     expect(feedSrc).toContain('syncBanner?.kind === "warning"');
   });
 
-  it("only renders Admin sync status when showAdminSyncLink is true", () => {
+  it("keeps Admin sync status out of the zero-results state and behind the admin flag", () => {
     expect(feedSrc).toContain("showAdminSyncLink = false");
+    const zeroStart = feedSrc.indexOf('className="cq-events-zero"');
+    const zeroEnd = feedSrc.indexOf("HappeningSoonCarousel", zeroStart);
+    const zeroBlock = feedSrc.slice(zeroStart, zeroEnd);
+    expect(zeroBlock).toContain("Clear filters");
+    expect(zeroBlock).not.toContain("Admin sync status");
+    expect(zeroBlock).not.toContain("showAdminSyncLink");
     expect(feedSrc).toMatch(/\{showAdminSyncLink \? \([\s\S]*Admin sync status/);
   });
 

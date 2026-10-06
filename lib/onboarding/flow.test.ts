@@ -135,13 +135,13 @@ describe("demographic onboarding order", () => {
 });
 
 describe("demographic onboarding resume", () => {
-  it("starts new users on Welcome even when they already have an auth session", () => {
+  it("starts an authenticated user on the first real step, not the public welcome screen", () => {
     expect(
       resolveDemographicResumeStep({
         profile: { campus_email_verified_at: null },
         preferences: { exists: false, interests: [] },
       }),
-    ).toBe("welcome");
+    ).toBe("student_status");
   });
 
   it("does not treat unverified email as the current step when demographics are incomplete", () => {
@@ -211,10 +211,10 @@ describe("demographic onboarding resume", () => {
         preferences: { exists: false, interests: [] },
         draft: { step: "email_verification" },
       }),
-    ).toBe("welcome");
+    ).toBe("student_status");
   });
 
-  it("QA full replay starts at Welcome and follows the in-session draft, ignoring completed server rows", () => {
+  it("QA full replay starts at the first real step and follows the in-session draft", () => {
     expect(
       resolveDemographicResumeStep({
         profile: {
@@ -226,7 +226,7 @@ describe("demographic onboarding resume", () => {
         startAtEmailVerification: true,
         forceFullReplay: true,
       }),
-    ).toBe("welcome");
+    ).toBe("student_status");
 
     expect(
       resolveDemographicResumeStep({

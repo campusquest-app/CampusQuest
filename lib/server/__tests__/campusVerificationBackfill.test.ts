@@ -156,4 +156,13 @@ describe("onboarding routing after the backfill", () => {
       resolveProfileRoute({ ...completed, role: "admin", campus_email_verified_at: "2026-08-28T15:27:59.620Z" }),
     ).toBe("app");
   });
+
+  it("does not send an onboarded admin through the student verification gate", () => {
+    expect(
+      resolveProfileRoute({ ...completed, role: "admin", campus_email_verified_at: null }),
+    ).toBe("app");
+    expect(
+      resolveProfileRoute({ ...completed, role: "super_admin", campus_email_verified_at: null }),
+    ).toBe("app");
+  });
 });

@@ -2,7 +2,7 @@
 
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Calendar, Home, Map, MessageCircle } from "lucide-react";
+import { Calendar, Handshake, Home, Map } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { getCharacter, subscribeCharacterAvatar } from "@/lib/store";
 import { useIsDrawerOpen } from "@/lib/client/appDrawerStore";
@@ -30,7 +30,7 @@ export const CQ_FLOATING_ACTION_BOTTOM =
   "calc(var(--cq-bottom-nav-h, 4.75rem) + 1.25rem)";
 
 /** Non-Map tabs that participate in the sliding active indicator. */
-const INDICATOR_TABS: AppBottomNavTab[] = ["quad", "inbox", "events", "character"];
+const INDICATOR_TABS: AppBottomNavTab[] = ["quad", "partners", "events", "character"];
 
 const DOCK_TABS: AppBottomNavTab[] = [...APP_BOTTOM_NAV_TABS];
 
@@ -73,7 +73,6 @@ export function AppBottomNav({
   onSelectTab,
   userAvatar,
   avatarLoading = false,
-  unreadBadgeCount = 0,
   showDockLabels = false,
   autoHideOnScroll = false,
 }: {
@@ -81,8 +80,6 @@ export function AppBottomNav({
   onSelectTab: (tab: AppBottomNavTab) => void;
   userAvatar?: unknown;
   avatarLoading?: boolean;
-  /** Unread messages badge on Messages. */
-  unreadBadgeCount?: number;
   showDockLabels?: boolean;
   /** Social / Quad feed only: slide the whole bar off-screen while scrolling down. */
   autoHideOnScroll?: boolean;
@@ -92,7 +89,6 @@ export function AppBottomNav({
   const itemRefs = useRef<Partial<Record<AppBottomNavTab, HTMLButtonElement | null>>>({});
   const liveAvatar = useLiveUserAvatar(userAvatar);
   const characterName = useLiveCharacterName();
-  const showBadge = unreadBadgeCount > 0;
   const reduceMotion = useReducedMotion();
   const drawerOpen = useIsDrawerOpen();
   const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
@@ -289,19 +285,17 @@ export function AppBottomNav({
 
         <DockItem
           ref={(node) => {
-            itemRefs.current.inbox = node;
+            itemRefs.current.partners = node;
           }}
-          label={APP_BOTTOM_NAV_HINT_LABELS.inbox}
+          label="CampusQuest Partners"
+          hintLabel={APP_BOTTOM_NAV_HINT_LABELS.partners}
           hint={showDockLabels}
-          active={resolvedActive === "inbox"}
-          onClick={() => guardNav(() => onSelectTab("inbox"))}
-          badge={showBadge}
-          reserveBadge
+          active={resolvedActive === "partners"}
+          onClick={() => guardNav(() => onSelectTab("partners"))}
           icon={
-            <MessageCircle
+            <Handshake
               className="h-[26px] w-[26px]"
-              strokeWidth={resolvedActive === "inbox" ? 2.5 : 2}
-              fill={resolvedActive === "inbox" ? "currentColor" : "none"}
+              strokeWidth={resolvedActive === "partners" ? 2.5 : 2}
             />
           }
         />
@@ -364,6 +358,7 @@ export function AppBottomNav({
 const DockItem = forwardRef(function DockItem(
   {
     label,
+    hintLabel,
     active,
     onClick,
     icon,
@@ -372,6 +367,8 @@ const DockItem = forwardRef(function DockItem(
     hint = false,
   }: {
     label: string;
+    /** Shorter first-session hint text; defaults to `label`. */
+    hintLabel?: string;
     active: boolean;
     onClick: () => void;
     icon: ReactNode;
@@ -401,7 +398,7 @@ const DockItem = forwardRef(function DockItem(
     >
       <span className="cq-dock-nav__icon-wrap">
         {icon}
-        {hint ? <span className="cq-dock-nav__hint">{label}</span> : null}
+        {hint ? <span className="cq-dock-nav__hint">{hintLabel ?? label}</span> : null}
         {reserveBadge || badge ? (
           <span
             className={`cq-dock-nav__badge${badge ? "" : " cq-dock-nav__badge--hidden"}`}

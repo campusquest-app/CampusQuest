@@ -48,6 +48,7 @@ import { loadCampusIdentities, closeVerificationOnboarding, resetIdentityStore }
 import { useCampusIdentities } from "@/lib/client/useCampusIdentities";
 import { VerificationOnboarding } from "@/components/identity/VerificationOnboarding";
 import { EventsFeed } from "./EventsFeed";
+import { PartnersScreen } from "@/components/partners/PartnersScreen";
 import { OrganizationsHub } from "./OrganizationsHub";
 import { TheRealm } from "./TheRealm";
 import {
@@ -163,7 +164,6 @@ import { AuthOnboardingFlow } from "@/components/auth/AuthOnboardingFlow";
 import { shouldStartOnboardingAtEmailVerification } from "@/lib/onboarding/demographicOnboardingPolicy";
 import { DisplayNameGate } from "@/components/DisplayNameGate";
 import {
-  isProfileInitializingError,
   nextProfileReadyBackoffMs,
   shouldContinueProfileReadyRetry,
 } from "@/lib/client/profileReadyRetry";
@@ -201,9 +201,9 @@ const QRScannerModalLazy = dynamic(
   { ssr: false },
 );
 
-type Tab = "quad" | "friends" | "guilds" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations" | "realm" | "mini-games" | "achievements" | "quest-board" | "manual-log" | "progress-hub" | "skills-lore";
+type Tab = "quad" | "friends" | "guilds" | "battle" | "leaderboards" | "character" | "inbox" | "events" | "organizations" | "realm" | "partners" | "mini-games" | "achievements" | "quest-board" | "manual-log" | "progress-hub" | "skills-lore";
 
-const TAB_QUERY_VALUES: Tab[] = ["quad", "friends", "guilds", "battle", "leaderboards", "character", "inbox", "events", "organizations", "realm"];
+const TAB_QUERY_VALUES: Tab[] = ["quad", "friends", "guilds", "battle", "leaderboards", "character", "inbox", "events", "organizations", "realm", "partners"];
 
 function createXpGainSessionKey(prefix = "xp"): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -347,6 +347,8 @@ export function Dashboard() {
   } | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("bootstrapping");
   const [bootstrapNonce, setBootstrapNonce] = useState(0);
+  const bootstrapFailureRef = useRef(0);
+  const [bootstrapRecoverableError, setBootstrapRecoverableError] = useState(false);
   const [gatePrefillProfile, setGatePrefillProfile] = useState<MeProfileRow | null>(null);
   /** Set when the account-type screen must show; drives the new/existing-user variant. */
   const [roleGateProfile, setRoleGateProfile] = useState<MeProfileRow | null>(null);
@@ -922,7 +924,7 @@ export function Dashboard() {
 
   const bottomNavActive: AppBottomNavTab | "other" =
     tab === "quad" ||
-    tab === "inbox" ||
+    tab === "partners" ||
     tab === "realm" ||
     tab === "events" ||
     tab === "character"
@@ -977,7 +979,6 @@ export function Dashboard() {
       setTabEnterDirection(direction);
       setTab(nextTab);
       if (nextTab === "quad") setQuadFeedTab("public");
-      if (nextTab === "inbox") setInboxSubTab("messages");
       if (nextTab === "character") {
         setCharacterPane("profile");
         setProfileTab("posts");
@@ -1571,6 +1572,7 @@ export function Dashboard() {
 
       setBootstrapStatus("bootstrapping");
       setProfileRoute("unknown");
+      setBootstrapRecoverableError(false);
       setXpProgressBarPref(XP_PROGRESS_BAR_PREF_INITIAL);
       setXpProgressBarSaveError(null);
 
@@ -1905,26 +1907,35 @@ export function Dashboard() {
         });
 
         setProfileRoute(routeDecision);
+        bootstrapFailureRef.current = 0;
         setBootstrapStatus("authenticated");
       } catch (bootstrapError) {
-        if (!cancelled) {
-          if (isProfileInitializingError(bootstrapError) && !isMissingSessionError(bootstrapError)) {
-            logBootstrapDecision({
-              sessionFound: true,
-              sessionValidated: false,
-              onboardingCompleted: profileSnap?.onboarding_completed ?? null,
-              route: "unauthenticated",
-            });
-          }
-          await failUnauthenticated({ invalidateToken: !isProfileInitializingError(bootstrapError) });
+        if (cancelled) return;
+        const sessionMissing =
+          isMissingSessionError(bootstrapError) || !getAccessToken();
+        if (sessionMissing) {
+          bootstrapFailureRef.current = 0;
+          await failUnauthenticated({
+            invalidateToken: isMissingSessionError(bootstrapError) && Boolean(getAccessToken()),
+          });
           logBootstrapDecision({
-            sessionFound: true,
+            sessionFound: isMissingSessionError(bootstrapError),
             sessionValidated: false,
             onboardingCompleted: profileSnap?.onboarding_completed ?? null,
             route: "unauthenticated",
           });
           setBootstrapStatus("unauthenticated");
+          return;
         }
+        // A live session must not be cleared onto the public welcome screen
+        // because profile bootstrap failed.
+        bootstrapFailureRef.current += 1;
+        if (bootstrapFailureRef.current <= 3) {
+          await new Promise((resolve) => setTimeout(resolve, 600));
+          if (!cancelled) setBootstrapNonce((n) => n + 1);
+          return;
+        }
+        if (!cancelled) setBootstrapRecoverableError(true);
       }
     }
 
@@ -2138,7 +2149,7 @@ export function Dashboard() {
   const destinationRoute = resolveAppShellRoute({
     bootstrapStatus,
     profileRoute,
-    showPostLoginLoading: false,
+    showPostLoginLoading,
     hasCharacter: character != null,
   });
 
@@ -2151,7 +2162,27 @@ export function Dashboard() {
     />
   ) : null;
 
-  if (!decisionReady || destinationRoute === "hydrating") {
+  if (bootstrapRecoverableError && getAccessToken()) {
+    return (
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 bg-uri-navy px-6 text-center">
+        <p className="text-sm text-white/70">We couldn&apos;t open your account. Your session is still active.</p>
+        <button
+          type="button"
+          className="cq-onboard-btn-gold"
+          onClick={() => {
+            bootstrapFailureRef.current = 0;
+            setBootstrapRecoverableError(false);
+            setBootstrapStatus("bootstrapping");
+            setBootstrapNonce((n) => n + 1);
+          }}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  if (!decisionReady || destinationRoute === "hydrating" || destinationRoute === "loading") {
     return (
       <>
         {null}
@@ -2828,7 +2859,7 @@ export function Dashboard() {
         onTabEnterDirectionDone={() => setTabEnterDirection(null)}
         onTabChange={handleBottomNavSwipe}
         disabled={tabSwipeGestureDisabled}
-        className={`tab-content-enter cq-tab-shell${tab === "realm" ? " cq-tab-shell--realm" : ""}${tab === "events" ? " cq-tab-shell--events" : ""} ${tabFullBleed || tab === "events" ? "w-full pb-0" : "space-y-6 sm:space-y-7 px-4 pb-8"}`}
+        className={`tab-content-enter cq-tab-shell${tab === "realm" ? " cq-tab-shell--realm" : ""}${tab === "events" ? " cq-tab-shell--events" : ""}${tab === "partners" ? " cq-tab-shell--partners" : ""} ${tabFullBleed || tab === "events" || tab === "partners" ? "w-full pb-0" : "space-y-6 sm:space-y-7 px-4 pb-8"}`}
       >
         {tab === "inbox" && character && renderPilotCampusGate(
           <Inbox
@@ -2898,6 +2929,8 @@ export function Dashboard() {
               onOpenOrganization={openOrganizationFromEvents}
             />,
           )}
+
+        {tab === "partners" && renderPilotCampusGate(<PartnersScreen />)}
 
         {realmKeepAlive ? (
           <div className={tab === "realm" ? undefined : "hidden"} aria-hidden={tab !== "realm"}>
@@ -3084,7 +3117,6 @@ export function Dashboard() {
             activeTab={bottomNavActive}
             userAvatar={character?.avatar}
             avatarLoading={!character}
-            unreadBadgeCount={unreadNotificationCount}
             showDockLabels={shouldShowNavHints(navHintsSeenAt)}
             autoHideOnScroll={tab === "quad" && !quadChromeSuppressed}
             onSelectTab={(t) => {
@@ -3092,7 +3124,6 @@ export function Dashboard() {
               persistNavHintsSeen();
               setTab(t);
               if (t === "quad") setQuadFeedTab("public");
-              if (t === "inbox") setInboxSubTab("messages");
               if (t === "character") {
                 setCharacterPane("profile");
                 setProfileTab("posts");

@@ -9,6 +9,7 @@ export const BOTTOM_NAV_TOP_LEVEL_TABS = new Set([
   "character",
   "friends",
   "inbox",
+  "partners",
 ]);
 
 export type BottomNavVisibilityContext = {

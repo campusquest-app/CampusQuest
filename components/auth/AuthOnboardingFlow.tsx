@@ -104,8 +104,8 @@ export function AuthOnboardingFlow({
   const initialMajor = sanitizeDraftMajor(draft?.major) ?? null;
   const initialAcademicArea = sanitizeDraftAcademicArea(draft?.academicArea) ?? null;
 
-  const [step, setStep] = useState<Step>(() =>
-    resolveDemographicResumeStep({
+  const [step, setStep] = useState<Step>(() => {
+    const resolved = resolveDemographicResumeStep({
       profile: initialProfile,
       preferences: initialPreferences,
       draft: {
@@ -118,8 +118,9 @@ export function AuthOnboardingFlow({
       },
       startAtEmailVerification,
       forceFullReplay,
-    }),
-  );
+    });
+    return resolved === "welcome" ? "student_status" : resolved;
+  });
   const [studentStatus, setStudentStatus] = useState<StudentStatusId | null>(initialStudentStatus);
   const [graduationYear, setGraduationYear] = useState<number | null>(initialYear);
   const [graduateOther, setGraduateOther] = useState(initialGraduateOther);
@@ -166,7 +167,9 @@ export function AuthOnboardingFlow({
   const isQaAccount = shouldShowCampusVerificationQaControls(userEmail);
   const continueBlocked = !campusVerified;
   const resendLocked = resendAvailableInSeconds > 0 || codeSending;
-  const includeWelcome = !startAtEmailVerification;
+  // This flow only mounts after a session exists. The public welcome screen
+  // stays on AuthScreen for logged-out users.
+  const includeWelcome = false;
   const flowArgs = {
     studentStatus,
     includeWelcome,
@@ -401,6 +404,10 @@ export function AuthOnboardingFlow({
     setError(null);
     setStep(next);
   }
+
+  useEffect(() => {
+    if (step === "welcome") setStep("student_status");
+  }, [step]);
 
   useEffect(() => {
     if (trackedStart.current) return;

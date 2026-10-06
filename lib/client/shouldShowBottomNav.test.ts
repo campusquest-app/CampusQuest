@@ -16,6 +16,7 @@ describe("shouldShowBottomNav", () => {
     expect(shouldShowBottomNav({ ...base, tab: "events" })).toBe(true);
     expect(shouldShowBottomNav({ ...base, tab: "character" })).toBe(true);
     expect(shouldShowBottomNav({ ...base, tab: "inbox" })).toBe(true);
+    expect(shouldShowBottomNav({ ...base, tab: "partners" })).toBe(true);
   });
 
   it("hides on secondary tabs", () => {
