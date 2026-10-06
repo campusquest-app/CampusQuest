@@ -252,8 +252,16 @@ type FieldNoteCardProps = {
   variant?: "default" | "feed";
   onPostUpdated?: (note: FieldNote) => void;
   onPostDeleted?: (postId: string) => void;
+  /** When set, allows edit/delete for an organization representative who did not create the post. */
+  canManagePost?: boolean;
   onActionMessage?: (message: string) => void;
-  onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
+  onViewAuthor?: (author: {
+    userId: string;
+    username: string;
+    name: string;
+    avatar: string;
+    organizationId?: string;
+  }) => void;
   onSharePost?: (note: FieldNote) => void;
   canModeratePosts?: boolean;
   onViewEvent?: (eventId: string) => void;
@@ -320,6 +328,7 @@ function FieldNoteCardInner({
   variant = "default",
   onPostUpdated,
   onPostDeleted,
+  canManagePost,
   onActionMessage,
   onCommentsUpdated,
   onViewAuthor,
@@ -351,7 +360,7 @@ function FieldNoteCardInner({
   const menuDropdownRef = useRef<HTMLDivElement | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
   const isPersistedPost = note.isPersisted ?? isPersistedQuadPostId(note.id);
-  const isOwner = note.authorId === currentUserId && isPersistedPost;
+  const isOwner = (canManagePost ?? note.authorId === currentUserId) && isPersistedPost;
   const canModerateDelete = canModeratePosts && isPersistedPost && note.authorId !== currentUserId;
   const canReportPost = isPersistedPost && !isOwner;
   const showPostMenu = isOwner || canModerateDelete || canReportPost;
@@ -750,6 +759,7 @@ function FieldNoteCardInner({
       username: note.authorUsername,
       name: note.authorName,
       avatar: note.authorAvatar,
+      organizationId: note.postedAsType === "organization" ? note.postedAsId : undefined,
     });
   }
 

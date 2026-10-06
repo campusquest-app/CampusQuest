@@ -58,6 +58,7 @@ import {
 import { logMediaStage, logQuadUpload, logQuadUploadError } from "@/lib/client/quadUploadLog";
 import { probeVideoFile } from "@/lib/client/probeVideoFile";
 import { useCampusIdentities } from "@/lib/client/useCampusIdentities";
+import { canOfferLocalBusinessComposer, canOfferOrganizationComposer } from "@/lib/quad/localBusinessFeed";
 import { switchCampusIdentity } from "@/lib/client/identityStore";
 import { SwitchProfileSheet } from "@/components/identity/SwitchProfileSheet";
 
@@ -111,6 +112,7 @@ export function FieldNoteComposer({
   initialVideo = null,
   initialCarousel = null,
   autoOpenPhotoPicker = false,
+  defaultFeedDestination = "campus",
 }: {
   character: Character;
   onPosted: () => void;
@@ -132,6 +134,8 @@ export function FieldNoteComposer({
   /** Multi-media carousel from the picker step. */
   initialCarousel?: { items: ComposerCarouselItem[]; coverClientId: string | null } | null;
   autoOpenPhotoPicker?: boolean;
+  /** When opened from a dedicated feed, start on that destination for accounts allowed to post there. */
+  defaultFeedDestination?: "campus" | "local_businesses" | "organizations";
 }) {
   const seeded = seedCarouselItems({ initialCarousel, initialImage, initialVideo });
   const [body, setBody] = useState(initialBody);
@@ -161,6 +165,25 @@ export function FieldNoteComposer({
   const [cursor, setCursor] = useState(0);
   const identityState = useCampusIdentities();
   const postingIdentity = identityState.currentIdentity;
+  const verifiedBusinesses = identityState.identities.filter(
+    (identity) => identity.type === "student_business" && identity.verified,
+  );
+  const approvedOrganizations = identityState.identities.filter(
+    (identity) => identity.type === "organization" && identity.verified,
+  );
+  const canPostLocalBusinesses = canOfferLocalBusinessComposer(identityState.identities);
+  const canPostOrganizations = canOfferOrganizationComposer(identityState.identities);
+  const [feedDestination, setFeedDestination] = useState<"campus" | "local_businesses" | "organizations">(
+    defaultFeedDestination === "local_businesses" || defaultFeedDestination === "organizations"
+      ? defaultFeedDestination
+      : "campus",
+  );
+  const businessIdentity =
+    verifiedBusinesses.find((identity) => identity.id === postingIdentity?.id) ?? verifiedBusinesses[0] ?? null;
+  const organizationIdentity =
+    approvedOrganizations.find((identity) => identity.id === postingIdentity?.id) ?? approvedOrganizations[0] ?? null;
+  const postingToLocalBusinesses = canPostLocalBusinesses && feedDestination === "local_businesses" && Boolean(businessIdentity);
+  const postingToOrganizations = canPostOrganizations && feedDestination === "organizations" && Boolean(organizationIdentity);
   const [identityPickerOpen, setIdentityPickerOpen] = useState(false);
   const photoFileRef = useRef<HTMLInputElement>(null);
   const cameraFileRef = useRef<HTMLInputElement>(null);
@@ -372,6 +395,14 @@ export function FieldNoteComposer({
       setError(`Keep it under ${FIELD_NOTE_MAX_CHARS} characters.`);
       return;
     }
+    if (feedDestination === "local_businesses" && !postingToLocalBusinesses) {
+      setError("Only verified business accounts can post to Local Businesses.");
+      return;
+    }
+    if (feedDestination === "organizations" && !postingToOrganizations) {
+      setError("Only approved organization representatives can post to Organizations.");
+      return;
+    }
     setError(null);
     setSuccessMessage(null);
     postingLockRef.current = true;
@@ -399,11 +430,24 @@ export function FieldNoteComposer({
           publishIdempotencyKey: publishKeyRef.current,
           mediaId: published.length === 1 ? published[0]!.mediaId : undefined,
           posterUrl: cover?.mediaType === "video" ? cover.thumbnailUrl ?? undefined : undefined,
-          visibility,
+          visibility: postingToLocalBusinesses || postingToOrganizations ? "public" : visibility,
           ramMarks,
           authorStreakDays: character.streakDays ?? 0,
-          postedAsType: postingIdentity?.type ?? "personal",
-          postedAsId: postingIdentity?.id ?? character.id,
+          postedAsType: postingToOrganizations
+            ? "organization"
+            : postingToLocalBusinesses
+              ? "student_business"
+              : postingIdentity?.type ?? "personal",
+          postedAsId: postingToOrganizations
+            ? organizationIdentity?.id ?? character.id
+            : postingToLocalBusinesses
+              ? businessIdentity?.id ?? character.id
+              : postingIdentity?.id ?? character.id,
+          feedDestination: postingToOrganizations
+            ? "organizations"
+            : postingToLocalBusinesses
+              ? "local_businesses"
+              : "campus",
           ...(selectedLocation
             ? { locationId: selectedLocation.slug, locationName: selectedLocation.name }
             : {}),
@@ -489,9 +533,15 @@ export function FieldNoteComposer({
     }
   }
 
-  const previewName = postingIdentity?.displayName || character.name || "You";
-  const previewUsername = postingIdentity?.username || character.username || "you";
-  const previewAvatar = postingIdentity?.avatarUrl || character.avatar;
+  const previewSource =
+    postingToOrganizations && organizationIdentity
+      ? organizationIdentity
+      : postingToLocalBusinesses && businessIdentity
+        ? businessIdentity
+        : postingIdentity;
+  const previewName = previewSource?.displayName || character.name || "You";
+  const previewUsername = previewSource?.username || character.username || "you";
+  const previewAvatar = previewSource?.avatarUrl || character.avatar;
   const showPreview = body.trim().length > 0 || hasMedia;
   const uploadPct = overallUploadProgress(carouselItems);
 
@@ -535,9 +585,39 @@ export function FieldNoteComposer({
               className="cq-composer-posting-as"
               onClick={() => setIdentityPickerOpen(true)}
             >
-              Posting as: {previewName}
+              {postingToOrganizations ? "Post as:" : "Posting as:"} {previewName}
               <ChevronDown className="h-4 w-4" aria-hidden />
             </button>
+            {canPostLocalBusinesses || canPostOrganizations ? (
+              <div className="cq-composer-visibility" role="group" aria-label="Where to post">
+                <button
+                  type="button"
+                  onClick={() => setFeedDestination("campus")}
+                  className={`cq-composer-visibility-btn ${!postingToLocalBusinesses && !postingToOrganizations ? "cq-composer-visibility-btn--active" : ""}`}
+                >
+                  Campus Feed
+                </button>
+                {canPostOrganizations ? (
+                  <button
+                    type="button"
+                    onClick={() => setFeedDestination("organizations")}
+                    className={`cq-composer-visibility-btn ${postingToOrganizations ? "cq-composer-visibility-btn--active" : ""}`}
+                  >
+                    Organizations
+                  </button>
+                ) : null}
+                {canPostLocalBusinesses ? (
+                  <button
+                    type="button"
+                    onClick={() => setFeedDestination("local_businesses")}
+                    className={`cq-composer-visibility-btn ${postingToLocalBusinesses ? "cq-composer-visibility-btn--active" : ""}`}
+                  >
+                    Local Businesses
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {postingToLocalBusinesses || postingToOrganizations ? null : (
             <div className="cq-composer-visibility" role="group" aria-label="Who can see this post">
               <button
                 type="button"
@@ -554,6 +634,7 @@ export function FieldNoteComposer({
                 👥 Following
               </button>
             </div>
+            )}
           </div>
         </div>
 
@@ -917,8 +998,8 @@ export function FieldNoteComposer({
 
       {identityPickerOpen ? (
         <SwitchProfileSheet
-          identities={identityState.identities}
-          currentId={identityState.active.id || character.id}
+          identities={postingToOrganizations ? approvedOrganizations : identityState.identities}
+          currentId={(postingToOrganizations ? organizationIdentity?.id : identityState.active.id) || character.id}
           pendingRequests={[]}
           hideAdd
           onSelect={(identity) => {

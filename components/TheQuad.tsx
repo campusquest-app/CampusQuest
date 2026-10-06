@@ -14,7 +14,7 @@ import {
 } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
 import { submitQuadComment } from "@/lib/client/quadCommentActions";
-import { fetchQuadHomePosts, fetchQuadFriendsPosts, fetchQuadCommunityPosts } from "@/lib/client/quadPostsClient";
+import { fetchQuadHomePosts, fetchQuadFriendsPosts, fetchQuadCommunityPosts, fetchLocalBusinessPosts, fetchOrganizationPosts } from "@/lib/client/quadPostsClient";
 import { subscribeSocialSync } from "@/lib/client/socialSync";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { getCharacterById } from "@/lib/friendsStore";
@@ -37,7 +37,9 @@ import {
   isMissingSessionError,
 } from "@/lib/client/authSessionClient";
 import { isQuadCommunityChannel, QUAD_COMMUNITY_FEED_LABELS, type QuadCommunityChannel } from "@/lib/quadCommunityChannels";
-import { isMarketFeedTab, type QuadFeedTab } from "@/lib/client/quadFeedOptions";
+import { isLocalBusinessesFeedTab, isMarketFeedTab, type QuadFeedTab } from "@/lib/client/quadFeedOptions";
+import { useCampusIdentities } from "@/lib/client/useCampusIdentities";
+import { canManageOrganizationPost } from "@/lib/quad/localBusinessFeed";
 import { fetchMarketplaceListings } from "@/lib/client/marketplaceClient";
 import { interleaveMarketIntoCampusFeed } from "@/lib/identity/policy";
 import { CampusFeedListingCard } from "@/components/identity/CampusFeedListingCard";
@@ -102,7 +104,13 @@ export function TheQuad({
   onRefresh?: () => void;
   feedTab: QuadFeedTab;
   onFeedTabChange: (tab: QuadFeedTab) => void;
-  onViewAuthor?: (author: { userId: string; username: string; name: string; avatar: string }) => void;
+  onViewAuthor?: (author: {
+    userId: string;
+    username: string;
+    name: string;
+    avatar: string;
+    organizationId?: string;
+  }) => void;
   onSharePost?: (note: FieldNote) => void;
   /** When false, skip authed API calls (e.g. auth still bootstrapping). */
   sessionReady?: boolean;
@@ -145,6 +153,10 @@ export function TheQuad({
   const [marketRefreshKey, setMarketRefreshKey] = useState(0);
   const showQuadChrome = !chromeSuppressed;
   const recProfile = useRecommendationProfile(personalization);
+  const identityState = useCampusIdentities();
+  const managedOrganizationIds = identityState.identities
+    .filter((identity) => identity.type === "organization" && identity.verified)
+    .map((identity) => identity.id);
   const [reasonById, setReasonById] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -230,6 +242,46 @@ export function TheQuad({
         setCampusListings([]);
         setFeedError(null);
         setMarketRefreshKey((value) => value + 1);
+        onRefresh?.();
+        return;
+      }
+
+      if (feedTab === "student_organizations") {
+        setCampusListings([]);
+        try {
+          const remote = await fetchOrganizationPosts(character.id, 80);
+          const list = remote.map(enrichNote);
+          setNotes(cloneFeedNotesForDisplay(list));
+          setFeedError(null);
+        } catch (err) {
+          if (isMissingSessionError(err)) {
+            handleSessionMissing();
+            return;
+          }
+          setNotes([]);
+          setFeedError("Could not load Organizations.");
+        }
+        await refreshPlayerSnapshotSafe();
+        onRefresh?.();
+        return;
+      }
+
+      if (isLocalBusinessesFeedTab(feedTab)) {
+        setCampusListings([]);
+        try {
+          const remote = await fetchLocalBusinessPosts(character.id, 80);
+          const list = remote.map(enrichNote);
+          setNotes(cloneFeedNotesForDisplay(list));
+          setFeedError(null);
+        } catch (err) {
+          if (isMissingSessionError(err)) {
+            handleSessionMissing();
+            return;
+          }
+          setNotes([]);
+          setFeedError("Could not load Local Businesses.");
+        }
+        await refreshPlayerSnapshotSafe();
         onRefresh?.();
         return;
       }
@@ -395,6 +447,18 @@ export function TheQuad({
   }, [showQuadChrome]);
 
   const emptyCopy = useMemo(() => {
+    if (feedTab === "student_organizations") {
+      return {
+        title: "No organization posts yet",
+        body: "Posts from approved campus organizations will show up here.",
+      };
+    }
+    if (isLocalBusinessesFeedTab(feedTab)) {
+      return {
+        title: "No local business posts yet",
+        body: "Deals, updates, and posts from nearby businesses will show up here.",
+      };
+    }
     if (feedTab === "friends") {
       return {
         title: "Follow people to see their latest posts here",
@@ -431,7 +495,7 @@ export function TheQuad({
   );
 
   const syncNotesFromFeed = useCallback(() => {
-    if (feedTab === "friends" || isCommunityFeedTab(feedTab)) {
+    if (feedTab === "friends" || isCommunityFeedTab(feedTab) || isLocalBusinessesFeedTab(feedTab)) {
       setNotes((prev) =>
         cloneFeedNotesForDisplay(
           prev.map((note) => {
@@ -625,6 +689,10 @@ export function TheQuad({
   const feedLoadingLabel =
     isMarketFeedTab(feedTab)
       ? "Loading The Market…"
+      : feedTab === "student_organizations"
+      ? "Loading Organizations…"
+      : isLocalBusinessesFeedTab(feedTab)
+      ? "Loading Local Businesses…"
       : feedTab === "friends"
       ? "Loading Following feed…"
       : feedTab === "trending"
@@ -719,6 +787,14 @@ export function TheQuad({
                   onPostUpdated={handlePostUpdated}
                   onPostDeleted={handlePostDeleted}
                   canModeratePosts={canModeratePosts}
+                  canManagePost={canManageOrganizationPost({
+                    actorUserId: character.id,
+                    postUserId: item.note.authorId,
+                    postDestination: item.note.feedDestination,
+                    postedAsType: item.note.postedAsType,
+                    postedAsOrganizationId: item.note.postedAsId,
+                    actorOrganizationIds: managedOrganizationIds,
+                  })}
                   onActionMessage={handleActionMessage}
                   onViewAuthor={onViewAuthor}
                   onSharePost={onSharePost}

@@ -417,10 +417,10 @@ export function getFeed(viewerId: string | undefined, feedType: QuadFeedType): F
 
   if (feedType === "public") {
     for (const n of feed) {
-      if ((n.visibility ?? "public") === "public") addNote(n);
+      if ((n.visibility ?? "public") === "public" && n.feedDestination !== "local_businesses") addNote(n);
     }
     for (const n of remoteForMerge) {
-      if ((n.visibility ?? "public") === "public") addNote(n);
+      if ((n.visibility ?? "public") === "public" && n.feedDestination !== "local_businesses") addNote(n);
     }
     const hasPersistedPublicPosts = Array.from(byId.values()).some((n) => n.isPersisted);
     if (!hasPersistedPublicPosts) {
@@ -431,10 +431,22 @@ export function getFeed(viewerId: string | undefined, feedType: QuadFeedType): F
   } else {
     const friendIds = new Set(getFriends(viewerId).map((f) => f.userId));
     for (const n of feed) {
-      if (n.visibility === "friends" && (n.authorId === viewerId || friendIds.has(n.authorId))) addNote(n);
+      if (
+        n.visibility === "friends" &&
+        n.feedDestination !== "local_businesses" &&
+        (n.authorId === viewerId || friendIds.has(n.authorId))
+      ) {
+        addNote(n);
+      }
     }
     for (const n of remoteForMerge) {
-      if (n.visibility === "friends" && (n.authorId === viewerId || friendIds.has(n.authorId))) addNote(n);
+      if (
+        n.visibility === "friends" &&
+        n.feedDestination !== "local_businesses" &&
+        (n.authorId === viewerId || friendIds.has(n.authorId))
+      ) {
+        addNote(n);
+      }
     }
   }
 

@@ -2880,7 +2880,13 @@ export function Dashboard() {
             onRefresh={refresh}
             feedTab={quadFeedTab}
             onFeedTabChange={setQuadFeedTab}
-            onViewAuthor={(author) => void openFriendView(author.userId)}
+            onViewAuthor={(author) => {
+              if (author.organizationId) {
+                openOrganizationFromEvents(author.organizationId);
+                return;
+              }
+              void openFriendView(author.userId);
+            }}
             onSharePost={(note) => openSharePostFromNote(note, "quad")}
             sessionReady={bootstrapStatus === "authenticated"}
             onSessionMissing={handleClientSessionMissing}

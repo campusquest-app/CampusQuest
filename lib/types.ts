@@ -310,6 +310,8 @@ export interface FieldNote {
   coverMediaId?: string;
   /** public = show on Public Quad; friends = show only on Friends feed (you + your friends) */
   visibility?: QuadPostVisibility;
+  /** campus posts stay on Campus Feed. local_businesses posts stay on that feed. */
+  feedDestination?: "campus" | "local_businesses" | "organizations";
   /** Snapshot for feed badges (optional). */
   authorStreakDays?: number;
   /** Optional Realm location tag for future campus galleries. */

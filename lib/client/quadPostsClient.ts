@@ -53,6 +53,20 @@ export async function fetchQuadFriendsPosts(viewerId: string, limit = 80): Promi
   return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
 }
 
+export async function fetchLocalBusinessPosts(viewerId: string, limit = 80): Promise<FieldNote[]> {
+  const data = await fetchAuthed<{ posts: QuadPostApiRow[] }>(
+    `/api/quad/posts?feed=local_businesses&limit=${limit}`,
+  );
+  return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
+}
+
+export async function fetchOrganizationPosts(viewerId: string, limit = 80): Promise<FieldNote[]> {
+  const data = await fetchAuthed<{ posts: QuadPostApiRow[] }>(
+    `/api/quad/posts?feed=organizations&limit=${limit}`,
+  );
+  return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
+}
+
 export async function fetchQuadCommunityPosts(
   viewerId: string,
   community: "student_organizations" | "greek_life" | "athletics",
@@ -156,6 +170,7 @@ export async function createQuadPostRequest(
     mediaFileSizeBytes?: number;
     postedAsType?: "personal" | "student_business" | "organization";
     postedAsId?: string;
+    feedDestination?: "campus" | "local_businesses" | "organizations";
   },
   viewerId?: string,
 ): Promise<CreateQuadPostResult> {

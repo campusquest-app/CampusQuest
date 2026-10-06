@@ -31,6 +31,7 @@ import {
   getReadyQuadMedia,
 } from "@/lib/server/quadPostMedia";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
+import { localBusinessPostDenial, organizationPostDenial, postBelongsInFeed } from "@/lib/quad/localBusinessFeed";
 
 async function withTagsAndMentions(posts: QuadPostApiRow[]): Promise<QuadPostApiRow[]> {
   return (await enrichQuadPostsWithTagsAndMentions(posts)) as QuadPostApiRow[];
@@ -50,6 +51,10 @@ async function finalizeFeedPosts(
     viewerId: args.viewerId,
     posts: withPostedAs,
   });
+}
+
+function missingFeedDestinationColumn(error: { message?: string; details?: string } | null | undefined): boolean {
+  return /feed_destination/i.test(`${error?.message ?? ""} ${error?.details ?? ""}`);
 }
 
 function normalizeRamMarks(input: { id?: string; tag: string }[] | undefined): { id: string; tag: string }[] {
@@ -106,6 +111,43 @@ export async function GET(request: Request) {
       }
       const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, [post.id]);
       const enriched = enrichQuadPostsWithViewerReactions([post], viewerReactions);
+      return ok({
+        posts: await finalizeFeedPosts(enriched, {
+          userClient: auth.userClient,
+          viewerId: auth.user.id,
+        }),
+      });
+    }
+
+    if (feedParam === "organizations" || feedParam === "local_businesses") {
+      const destination = feedParam === "organizations" ? "organizations" : "local_businesses";
+      const listedQuery = await auth.userClient
+        .from("quad_posts")
+        .select(QUAD_POSTS_WITH_PROFILE_SELECT)
+        .eq("visibility", "public")
+        .eq("feed_destination", destination)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (missingFeedDestinationColumn(listedQuery.error)) {
+        return ok({ posts: [] as QuadPostApiRow[] });
+      }
+      if (listedQuery.error) {
+        logQuadPostError("list", listedQuery.error, { userId: auth.user.id });
+        throw new ApiError(
+          400,
+          listedQuery.error.message ?? "Could not load this feed.",
+          destination === "organizations" ? "ORGANIZATION_FEED_FAILED" : "LOCAL_BUSINESS_FEED_FAILED",
+        );
+      }
+      const hiddenIds = await listHiddenUserIds(auth.userClient);
+      const posts = ((listedQuery.data ?? []) as unknown as QuadPostApiRow[]).filter(
+        (post) =>
+          postBelongsInFeed(post.feed_destination, destination) &&
+          (post.user_id === auth.user.id || !hiddenIds.has(post.user_id)),
+      );
+      const postIds = posts.map((p) => p.id);
+      const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
+      const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
       return ok({
         posts: await finalizeFeedPosts(enriched, {
           userClient: auth.userClient,
@@ -192,7 +234,9 @@ export async function GET(request: Request) {
         query = query.eq("posted_as_type", "personal");
       }
     } else if (feedParam === "public" || !feedParam) {
-      query = query.eq("visibility", "public");
+      query = query
+        .eq("visibility", "public")
+        .or("feed_destination.eq.campus,feed_destination.eq.organizations,feed_destination.is.null");
     }
 
     const [{ data, error }, hiddenIds] = await Promise.all([
@@ -202,6 +246,15 @@ export async function GET(request: Request) {
 
     let listed = data;
     let listError = error;
+    if (listError && missingFeedDestinationColumn(listError)) {
+      let fallback = auth.userClient.from("quad_posts").select(QUAD_POSTS_WITH_PROFILE_SELECT);
+      if (authorIdParam) fallback = fallback.eq("user_id", authorIdParam);
+      else if (feedParam === "public" || !feedParam) fallback = fallback.eq("visibility", "public");
+      const retry = await fallback.order("created_at", { ascending: false }).limit(limit);
+      listed = retry.data;
+      listError = retry.error;
+    }
+
     if (listError && /posted_as_/i.test(`${listError.message ?? ""} ${listError.details ?? ""}`)) {
       let fallback = auth.userClient.from("quad_posts").select(QUAD_POSTS_WITH_PROFILE_SELECT);
       if (authorIdParam) fallback = fallback.eq("user_id", authorIdParam);
@@ -217,9 +270,11 @@ export async function GET(request: Request) {
     }
 
     // QA/test account posts stay visible to the author, hidden from everyone else.
-    const posts = ((listed ?? []) as unknown as QuadPostApiRow[]).filter(
-      (post) => post.user_id === auth.user.id || !hiddenIds.has(post.user_id),
-    );
+    const posts = ((listed ?? []) as unknown as QuadPostApiRow[]).filter((post) => {
+      if (post.user_id !== auth.user.id && hiddenIds.has(post.user_id)) return false;
+      if (!authorIdParam && !postBelongsInFeed(post.feed_destination, "campus")) return false;
+      return true;
+    });
     const postIds = posts.map((p) => p.id);
     const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
     const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
@@ -305,6 +360,25 @@ export async function POST(request: Request) {
       requestedType: input.postedAsType ?? "personal",
       requestedId: input.postedAsId ?? auth.user.id,
     });
+    const feedDestination = input.feedDestination ?? "campus";
+    const postingDenial =
+      localBusinessPostDenial({
+        feedDestination,
+        postedAsType: postingIdentity.type,
+        postedAsVerified: postingIdentity.type === "student_business",
+      }) ??
+      organizationPostDenial({
+        feedDestination,
+        postedAsType: postingIdentity.type,
+        postedAsVerified: postingIdentity.type === "organization",
+      });
+    if (postingDenial) {
+      throw new ApiError(
+        403,
+        postingDenial,
+        feedDestination === "organizations" ? "ORGANIZATION_POST_FORBIDDEN" : "LOCAL_BUSINESS_POST_FORBIDDEN",
+      );
+    }
 
     const insert = {
       user_id: auth.user.id,
@@ -324,25 +398,64 @@ export async function POST(request: Request) {
       media_processing_status: "ready" as const,
       media_count: mediaCount,
       cover_media_id: coverMediaId,
-      visibility,
       ram_marks: ramMarks,
       related_activity_id: input.relatedActivityId ?? null,
       related_quest_slug: input.relatedQuestSlug ?? null,
       author_streak_days: input.authorStreakDays ?? null,
       location_id: hasValidLocation ? locationId : null,
       location_name: hasValidLocation && locationName ? locationName.slice(0, 80) : null,
+      visibility: feedDestination === "campus" ? visibility : "public",
+      feed_destination: feedDestination,
     };
+    let insertPayload: Record<string, unknown> = insert;
     let { data: created, error: insErr } = await auth.userClient
       .from("quad_posts")
-      .insert(insert)
+      .insert(insertPayload)
       .select(QUAD_POSTS_WITH_PROFILE_SELECT)
       .single();
 
-    if (insErr && /posted_as_/i.test(`${insErr.message ?? ""} ${insErr.details ?? ""}`)) {
-      const { posted_as_type: _postedAsType, posted_as_id: _postedAsId, ...legacyInsert } = insert;
+    if (
+      insErr &&
+      feedDestination === "local_businesses" &&
+      /LOCAL_BUSINESS_FEED_FORBIDDEN|feed_destination/i.test(`${insErr.message ?? ""} ${insErr.details ?? ""}`)
+    ) {
+      throw new ApiError(
+        403,
+        "Only verified business accounts can post to Local Businesses.",
+        "LOCAL_BUSINESS_POST_FORBIDDEN",
+      );
+    }
+
+    if (
+      insErr &&
+      feedDestination === "organizations" &&
+      /ORGANIZATION_FEED_FORBIDDEN|feed_destination|POSTED_AS_FORBIDDEN/i.test(`${insErr.message ?? ""} ${insErr.details ?? ""}`)
+    ) {
+      throw new ApiError(
+        403,
+        "Only approved organization representatives can post to Organizations.",
+        "ORGANIZATION_POST_FORBIDDEN",
+      );
+    }
+
+    if (insErr && missingFeedDestinationColumn(insErr) && feedDestination === "campus") {
+      const { feed_destination: _feedDestination, ...withoutDestination } = insertPayload;
+      insertPayload = withoutDestination;
       const retry = await auth.userClient
         .from("quad_posts")
-        .insert(legacyInsert)
+        .insert(insertPayload)
+        .select(QUAD_POSTS_WITH_PROFILE_SELECT)
+        .single();
+      created = retry.data;
+      insErr = retry.error;
+    }
+
+    if (insErr && feedDestination === "campus" && /posted_as_/i.test(`${insErr.message ?? ""} ${insErr.details ?? ""}`)) {
+      const { posted_as_type: _postedAsType, posted_as_id: _postedAsId, ...legacyInsert } = insertPayload;
+      insertPayload = legacyInsert;
+      const retry = await auth.userClient
+        .from("quad_posts")
+        .insert(insertPayload)
         .select(QUAD_POSTS_WITH_PROFILE_SELECT)
         .single();
       created = retry.data;

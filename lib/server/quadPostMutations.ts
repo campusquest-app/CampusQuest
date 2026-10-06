@@ -15,17 +15,30 @@ export type QuadPostRow = {
   visibility: "public" | "friends";
   location_id: string | null;
   location_name: string | null;
+  feed_destination?: string | null;
+  posted_as_type?: string | null;
+  posted_as_id?: string | null;
 };
 
 async function fetchQuadPostRow(
   userClient: SupabaseClientLike,
   postId: string,
 ): Promise<QuadPostRow> {
-  const { data, error } = await userClient
+  let { data, error } = await userClient
     .from("quad_posts")
-    .select("id, user_id, body, proof_url, visibility, location_id, location_name")
+    .select("id, user_id, body, proof_url, visibility, location_id, location_name, feed_destination, posted_as_type, posted_as_id")
     .eq("id", postId)
     .maybeSingle();
+
+  if (error && /feed_destination/i.test(`${error.message ?? ""} ${error.details ?? ""}`)) {
+    const retry = await userClient
+      .from("quad_posts")
+      .select("id, user_id, body, proof_url, visibility, location_id, location_name")
+      .eq("id", postId)
+      .maybeSingle();
+    data = retry.data as typeof data;
+    error = retry.error;
+  }
 
   if (error) {
     throw new ApiError(400, error.message ?? "Could not load post.", "QUAD_POST_FETCH_FAILED");
@@ -37,16 +50,26 @@ async function fetchQuadPostRow(
   return data as QuadPostRow;
 }
 
+async function managesOrganizationPost(userClient: SupabaseClientLike, post: QuadPostRow): Promise<boolean> {
+  if (post.feed_destination !== "organizations" || post.posted_as_type !== "organization" || !post.posted_as_id) {
+    return false;
+  }
+  const { data, error } = await userClient.rpc("is_approved_organization_representative", {
+    p_organization_id: post.posted_as_id,
+  });
+  if (error) return false;
+  return data === true;
+}
+
 export async function getOwnedQuadPost(args: {
   userClient: SupabaseClientLike;
   postId: string;
   userId: string;
 }): Promise<QuadPostRow> {
   const post = await fetchQuadPostRow(args.userClient, args.postId);
-  if (post.user_id !== args.userId) {
-    throw new ApiError(403, "You can only change your own posts.", "QUAD_POST_FORBIDDEN");
-  }
-  return post;
+  if (post.user_id === args.userId) return post;
+  if (await managesOrganizationPost(args.userClient, post)) return post;
+  throw new ApiError(403, "You can only change your own posts.", "QUAD_POST_FORBIDDEN");
 }
 
 export async function deleteQuadPost(args: {
@@ -61,14 +84,15 @@ export async function deleteQuadPost(args: {
   // authorized admin client. Non-admins still resolve the post under their own RLS.
   const post = await fetchQuadPostRow(args.isAdmin ? args.adminClient : args.userClient, args.postId);
 
-  if (post.user_id !== args.userId && !args.isAdmin) {
+  const orgManager = post.user_id === args.userId ? false : await managesOrganizationPost(args.userClient, post);
+  if (post.user_id !== args.userId && !args.isAdmin && !orgManager) {
     throw new ApiError(403, "You can only delete your own posts.", "QUAD_POST_FORBIDDEN");
   }
 
   const useAdminClient = args.isAdmin && post.user_id !== args.userId;
   const client = useAdminClient ? args.adminClient : args.userClient;
   let query = client.from("quad_posts").delete().eq("id", args.postId);
-  if (!useAdminClient) {
+  if (!useAdminClient && !orgManager) {
     query = query.eq("user_id", args.userId);
   }
 

@@ -17,6 +17,9 @@ import { FieldNoteComposer } from "@/components/FieldNoteComposer";
 import { PostMediaPicker, type PickedMedia } from "@/components/posts/PostMediaPicker";
 import { revokeVideoObjectUrl } from "@/lib/client/probeVideoFile";
 import type { QuadFeedTab } from "@/components/TheQuad";
+import { isLocalBusinessesFeedTab } from "@/lib/client/quadFeedOptions";
+import { useCampusIdentities } from "@/lib/client/useCampusIdentities";
+import { canOfferLocalBusinessComposer, canOfferOrganizationComposer } from "@/lib/quad/localBusinessFeed";
 
 type Step = "media" | "compose";
 
@@ -37,6 +40,9 @@ export function QuadCreatePostFab({
   onXpReward?: (reward: QuadPostXpReward) => void;
   onMarketSell?: () => void;
 }) {
+  const identityState = useCampusIdentities();
+  const canPostLocalBusinesses = canOfferLocalBusinessComposer(identityState.identities);
+  const canPostOrganizations = canOfferOrganizationComposer(identityState.identities);
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("media");
   const [pendingMedia, setPendingMedia] = useState<PickedMedia>({ kind: "none" });
@@ -186,6 +192,13 @@ export function QuadCreatePostFab({
                 handleClose();
               }}
               onXpReward={onXpReward}
+              defaultFeedDestination={
+                feedTab === "student_organizations"
+                  ? "organizations"
+                  : isLocalBusinessesFeedTab(feedTab)
+                    ? "local_businesses"
+                    : "campus"
+              }
             />
           )}
         </div>
@@ -193,6 +206,8 @@ export function QuadCreatePostFab({
     ) : null;
 
   if (typeof document === "undefined") return null;
+  if (isLocalBusinessesFeedTab(feedTab) && !canPostLocalBusinesses) return null;
+  if (feedTab === "student_organizations" && !canPostOrganizations) return null;
 
   return (
     <>

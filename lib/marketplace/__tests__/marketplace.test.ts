@@ -27,6 +27,7 @@ describe("The Market feed selector", () => {
       "friends",
       "student_organizations",
       "market",
+      "local_businesses",
       "greek_life",
       "athletics",
     ]);

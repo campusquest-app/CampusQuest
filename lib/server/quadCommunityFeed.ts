@@ -8,6 +8,7 @@ import {
   type QuadCommunityChannel,
   isQuadCommunityChannel,
 } from "@/lib/quadCommunityChannels";
+import { postBelongsInFeed } from "@/lib/quad/localBusinessFeed";
 import { QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
 import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -142,12 +143,24 @@ export async function listCommunityQuadPosts(args: {
 
   // Fetch a slightly larger window then filter — PostgREST OR with large IN lists is awkward.
   const fetchLimit = Math.min(200, Math.max(limit * 3, limit));
-  const { data, error } = await userClient
+  let { data, error } = await userClient
     .from("quad_posts")
     .select(QUAD_POSTS_WITH_PROFILE_SELECT)
     .eq("visibility", "public")
+    .or("feed_destination.eq.campus,feed_destination.is.null")
     .order("created_at", { ascending: false })
     .limit(fetchLimit);
+
+  if (error && /feed_destination/i.test(`${error.message ?? ""} ${error.details ?? ""}`)) {
+    const retry = await userClient
+      .from("quad_posts")
+      .select(QUAD_POSTS_WITH_PROFILE_SELECT)
+      .eq("visibility", "public")
+      .order("created_at", { ascending: false })
+      .limit(fetchLimit);
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     throw new ApiError(400, error.message ?? "Could not load community feed.", "COMMUNITY_FEED_FAILED");
@@ -157,6 +170,7 @@ export async function listCommunityQuadPosts(args: {
   const taggedSet = new Set(taggedPostIds);
 
   const posts = ((data ?? []) as unknown as QuadPostApiRow[]).filter((post) => {
+    if (!postBelongsInFeed(post.feed_destination, "other")) return false;
     if (post.user_id !== userId && hiddenIds.has(post.user_id)) return false;
     return authorSet.has(post.user_id) || taggedSet.has(post.id);
   });

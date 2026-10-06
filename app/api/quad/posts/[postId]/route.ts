@@ -37,7 +37,7 @@ export async function PATCH(
     enforceRateLimit({ userId: auth.user.id, routeKey: "quad:posts:patch", limit: 60, windowMs: 60_000 });
 
     const input = await readJson(request, patchQuadPostSchema);
-    await getOwnedQuadPost({ userClient: auth.userClient, postId, userId: auth.user.id });
+    const existing = await getOwnedQuadPost({ userClient: auth.userClient, postId, userId: auth.user.id });
 
     const patch: Record<string, unknown> = {};
     if (input.body !== undefined) patch.body = input.body.trim().slice(0, 300);
@@ -51,13 +51,11 @@ export async function PATCH(
       patch.location_name = loc.location_name;
     }
 
-    const { data: updated, error: updErr } = await auth.userClient
-      .from("quad_posts")
-      .update(patch)
-      .eq("id", postId)
-      .eq("user_id", auth.user.id)
-      .select(QUAD_POSTS_WITH_PROFILE_SELECT)
-      .single();
+    let updateQuery = auth.userClient.from("quad_posts").update(patch).eq("id", postId);
+    if (existing.user_id === auth.user.id) {
+      updateQuery = updateQuery.eq("user_id", auth.user.id);
+    }
+    const { data: updated, error: updErr } = await updateQuery.select(QUAD_POSTS_WITH_PROFILE_SELECT).single();
 
     if (updErr || !updated) {
       logQuadPostError("update", updErr ?? new Error("update returned no row"), { postId, userId: auth.user.id });

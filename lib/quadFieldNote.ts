@@ -33,6 +33,7 @@ export type QuadPostApiRow = {
   media_height?: number | null;
   media_processing_status?: string | null;
   visibility: "public" | "friends";
+  feed_destination?: "campus" | "local_businesses" | "organizations" | null;
   ram_marks: unknown;
   related_activity_id?: string | null;
   related_quest_slug?: string | null;
@@ -130,6 +131,10 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
     mediaWidth: row.media_width ?? undefined,
     mediaHeight: row.media_height ?? undefined,
     visibility: row.visibility,
+    feedDestination:
+      row.feed_destination === "local_businesses" || row.feed_destination === "organizations"
+        ? row.feed_destination
+        : "campus",
     authorStreakDays: row.author_streak_days ?? undefined,
     locationId: row.location_id ?? undefined,
     locationName: row.location_name ?? undefined,
