@@ -26201,3 +26201,281 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   content: "";
   flex: 0 0 0.55rem;
 }
+
+/* Desktop logged-out landing. Mobile welcome stays the single-column shell. */
+.cq-auth-desktop-brand,
+.cq-auth-desktop-footer,
+.cq-auth-desktop-frame--landing {
+  display: none;
+}
+
+.cq-auth-landing-btn {
+  width: 100%;
+  min-height: 2.7rem;
+  border-radius: 0.7rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.cq-auth-landing-btn--primary {
+  background: rgb(36, 112, 196);
+  color: #fff;
+}
+
+.cq-auth-landing-btn--muted {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.cq-auth-landing-btn--outline {
+  background: transparent;
+  color: #8ebfff;
+  border: 1px solid rgba(142, 191, 255, 0.55);
+}
+
+.cq-auth-landing-btn:focus-visible,
+.cq-auth-desktop-panel__link:focus-visible,
+.cq-auth-desktop-footer a:focus-visible {
+  outline: 2px solid #8ebfff;
+  outline-offset: 2px;
+}
+
+@media (min-width: 1024px) {
+  .cq-auth-landing-mobile {
+    display: none;
+  }
+
+  .cq-auth-desktop-frame,
+  .cq-auth-desktop-frame--landing {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(20rem, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    width: 100%;
+    min-height: 100dvh;
+    height: 100dvh;
+    background: #071018;
+    overflow: hidden;
+  }
+
+  .cq-auth-desktop-brand {
+    display: flex;
+    grid-column: 1;
+    grid-row: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    padding: 1.6rem 2.25rem 1rem;
+    background: #071018;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .cq-auth-desktop-brand__logo img {
+    width: 3.4rem;
+    height: 3.4rem;
+    object-fit: contain;
+  }
+
+  .cq-auth-desktop-brand__stage {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 0.5rem 1.5rem 0;
+  }
+
+  .cq-auth-desktop-hero {
+    position: relative;
+    width: 100%;
+    height: min(28rem, 52vh);
+    margin-top: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cq-auth-desktop-knight {
+    width: min(24rem, 64%);
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  .cq-auth-desktop-headline {
+    margin: 0.35rem 0 0;
+    max-width: 16ch;
+    color: #fff;
+    font-size: clamp(2.15rem, 3.2vw, 3.55rem);
+    font-weight: 750;
+    letter-spacing: -0.035em;
+    line-height: 1.08;
+  }
+
+  .cq-auth-desktop-headline span {
+    color: #4c9bff;
+  }
+
+  .cq-auth-desktop-stage,
+  .cq-auth-desktop-frame > .cq-auth-shell {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    background: #0c1420;
+  }
+
+  .cq-auth-desktop-frame > .cq-auth-shell {
+    justify-content: center;
+  }
+
+  .cq-auth-desktop-frame > .cq-auth-shell::before {
+    display: none;
+  }
+
+  .cq-auth-desktop-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1.75rem;
+  }
+
+  .cq-auth-desktop-panel {
+    width: min(22rem, 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .cq-auth-desktop-panel__mark {
+    width: 6.4rem;
+    height: 6.4rem;
+    object-fit: contain;
+  }
+
+  .cq-auth-desktop-panel__account,
+  .cq-auth-desktop-panel__title {
+    margin: 0.9rem 0 1.15rem;
+    color: #fff;
+    text-align: center;
+  }
+
+  .cq-auth-desktop-panel__account {
+    font-size: 1.05rem;
+    font-weight: 650;
+  }
+
+  .cq-auth-desktop-panel__title {
+    font-size: 1.45rem;
+    font-weight: 750;
+    letter-spacing: -0.03em;
+  }
+
+  .cq-auth-desktop-panel__switch {
+    margin: 0.95rem 0 0;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.88rem;
+    text-align: center;
+  }
+
+  .cq-auth-desktop-panel__link {
+    color: #8ebfff;
+    font-weight: 700;
+  }
+
+  .cq-auth-desktop-panel__rule {
+    width: 100%;
+    height: 1px;
+    margin: 1.15rem 0 0.95rem;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .cq-auth-landing-btn + .cq-auth-landing-btn {
+    margin-top: 0.7rem;
+  }
+
+  .cq-auth-desktop-footer {
+    display: flex;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-items: center;
+    justify-content: center;
+    gap: 1.35rem;
+    min-height: 2.55rem;
+    padding: 0.35rem 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: #070d16;
+    color: rgba(255, 255, 255, 0.38);
+    font-size: 0.75rem;
+  }
+
+  .cq-auth-desktop-footer a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .cq-auth-desktop-footer a:hover {
+    color: rgba(255, 255, 255, 0.72);
+  }
+}
+
+.cq-auth-preview {
+  display: none;
+}
+
+@media (min-width: 1280px) {
+  .cq-auth-preview {
+    display: block;
+    position: absolute;
+    width: 11.25rem;
+    padding: 0.7rem 0.8rem 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.85rem;
+    background: rgba(10, 18, 30, 0.9);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  }
+
+  .cq-auth-preview--event {
+    left: 0;
+    top: 10%;
+  }
+
+  .cq-auth-preview--quest {
+    right: 0;
+    top: 36%;
+  }
+
+  .cq-auth-preview--memory {
+    left: 6%;
+    bottom: 6%;
+  }
+
+  .cq-auth-preview__kicker {
+    margin: 0;
+    color: #8ebfff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .cq-auth-preview__title {
+    margin: 0.2rem 0 0;
+    color: #fff;
+    font-size: 0.92rem;
+    font-weight: 700;
+  }
+
+  .cq-auth-preview__detail {
+    margin: 0.15rem 0 0;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+}
+
+@media (min-width: 1600px) {
+  .cq-auth-desktop-knight {
+    width: min(28rem, 56%);
+    max-height: min(32rem, 52vh);
+  }
+}

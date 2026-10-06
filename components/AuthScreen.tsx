@@ -46,6 +46,7 @@ import {
 } from "@/lib/client/authResendCooldown";
 import { mapAuthCallbackError, parseAuthCallbackParams } from "@/lib/client/authCallbackErrors";
 import { AuthEmailRecoveryCard } from "@/components/auth/AuthEmailRecoveryCard";
+import { AuthDesktopBrand, AuthDesktopFooter, AuthDesktopLanding } from "@/components/auth/AuthDesktopLanding";
 import { syncOnboardingQaReplayFromAccessToken } from "@/lib/client/onboardingQaSession";
 import { isAllowedSignupEmail, SCHOOL_EMAIL_REQUIRED_MESSAGE } from "@/lib/signupEmailPolicy";
 import { CAMPUSQUEST_LOGO_SRC } from "@/lib/branding";
@@ -145,6 +146,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const reduceMotion = useReducedMotion();
   const [mode, setMode] = useState<Mode>("welcome");
   const [email, setEmail] = useState("");
+  const [rememberedEmail, setRememberedEmail] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -196,7 +198,10 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     }
     if (!draft?.email) {
       const saved = localStorage.getItem(REMEMBER_EMAIL_KEY);
-      if (saved) setEmail(saved);
+      if (saved) {
+        setEmail(saved);
+        setRememberedEmail(saved);
+      }
     }
   }, []);
 
@@ -782,54 +787,76 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
 
   if (mode === "welcome") {
     return (
-      <div className="cq-onboard-shell cq-onboard-shell--dark">
-        <div className="cq-onboard-inner">
-          <div className="cq-onboard-hero text-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={CAMPUSQUEST_LOGO_SRC}
-              alt="CampusQuest"
-              className="cq-onboard-logo"
-              width={88}
-              height={88}
-              decoding="async"
-            />
-            <div className="cq-onboard-knight" aria-hidden>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={BRAND_KNIGHT.thumbsUp}
-                alt=""
-                className="cq-onboard-knight-img"
-                width={220}
-                height={220}
-                decoding="async"
-              />
+      <>
+        <div className="cq-auth-landing-mobile">
+          <div className="cq-onboard-shell cq-onboard-shell--dark">
+            <div className="cq-onboard-inner">
+              <div className="cq-onboard-hero text-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={CAMPUSQUEST_LOGO_SRC}
+                  alt="CampusQuest"
+                  className="cq-onboard-logo"
+                  width={88}
+                  height={88}
+                  decoding="async"
+                />
+                <div className="cq-onboard-knight" aria-hidden>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={BRAND_KNIGHT.thumbsUp}
+                    alt=""
+                    className="cq-onboard-knight-img"
+                    width={220}
+                    height={220}
+                    decoding="async"
+                  />
+                </div>
+                <h1 className="cq-onboard-title-dark">
+                  Welcome to <span className="cq-onboard-title-accent">CampusQuest</span>
+                </h1>
+                <p className="cq-onboard-sub-dark">
+                  Your campus. Your community.
+                  <br />
+                  Your quest.
+                </p>
+                <button type="button" className="cq-onboard-btn-gold" onClick={() => switchMode("signup")}>
+                  Join CampusQuest
+                </button>
+                <p className="cq-onboard-footer-link">
+                  Already have an account?{" "}
+                  <button type="button" className="cq-onboard-text-link" onClick={() => switchMode("signin")}>
+                    Sign in
+                  </button>
+                </p>
+              </div>
             </div>
-            <h1 className="cq-onboard-title-dark">
-              Welcome to <span className="cq-onboard-title-accent">CampusQuest</span>
-            </h1>
-            <p className="cq-onboard-sub-dark">
-              Your campus. Your community.
-              <br />
-              Your quest.
-            </p>
-            <button type="button" className="cq-onboard-btn-gold" onClick={() => switchMode("signup")}>
-              Join CampusQuest
-            </button>
-            <p className="cq-onboard-footer-link">
-              Already have an account?{" "}
-              <button type="button" className="cq-onboard-text-link" onClick={() => switchMode("signin")}>
-                Sign in
-              </button>
-            </p>
           </div>
         </div>
-      </div>
+        <AuthDesktopLanding
+          rememberedEmail={rememberedEmail}
+          onContinue={() => switchMode("signin")}
+          onUseAnother={() => {
+            setRememberedEmail(null);
+            setEmail("");
+            switchMode("signin");
+          }}
+          onJoin={() => switchMode("signup")}
+          onSignIn={() => switchMode("signin")}
+          onCreateAccount={() => {
+            setEmail("");
+            setUsername("");
+            switchMode("signup");
+          }}
+        />
+      </>
     );
   }
 
   return (
-    <div className="cq-auth-shell min-h-[100dvh] flex flex-col items-center px-5 py-6">
+    <div className="cq-auth-desktop-frame">
+      <AuthDesktopBrand />
+      <div className="cq-auth-shell min-h-[100dvh] flex flex-col items-center px-5 py-6">
       {isSubmitting ||
       signupLifecycle === "initializing" ||
       signupLifecycle === "auth_created" ||
@@ -1053,6 +1080,8 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
           </AnimatePresence>
         </div>
       </div>
+    </div>
+      <AuthDesktopFooter />
     </div>
   );
 }
