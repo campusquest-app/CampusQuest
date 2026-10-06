@@ -14451,6 +14451,71 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   background: rgb(36, 112, 196);
 }
 
+.cq-events-upgrade,
+.cq-events-plan-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: min(22rem, calc(100% - 2rem));
+  margin: 1.75rem auto 0.5rem;
+  padding: 0.25rem 0.5rem 0.5rem;
+}
+
+.cq-events-upgrade__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-bottom: 0.35rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.cq-events-upgrade__title,
+.cq-events-plan-status__title {
+  margin: 0;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.cq-events-upgrade__detail,
+.cq-events-plan-status__detail {
+  margin: 0.4rem 0 0;
+  max-width: 18.5rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.cq-events-upgrade__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  margin-top: 0.9rem;
+  padding: 0 1.05rem;
+  border-radius: 0.8rem;
+  color: #fff;
+  font-size: 0.84rem;
+  font-weight: 700;
+  background: rgb(36, 112, 196);
+  text-decoration: none;
+}
+
+.cq-events-upgrade__secondary {
+  margin-top: 0.55rem;
+  padding: 0.35rem 0.5rem;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.82rem;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .cq-events-empty {
   margin: 0 1rem;
   padding: 0.35rem 0.25rem 0.15rem;
