@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   eventCardCategoryChip,
   eventCardDisplayTitle,
+  eventCardFallbackAccent,
+  eventCardImageUrl,
   eventCardPrimaryActionLabel,
   eventCardSportSubtitle,
   eventCardVenueLabel,
@@ -75,6 +77,27 @@ describe("event card presentation", () => {
     expect(eventSourceChipLabel("fine_arts")).toBe("Fine Arts");
     expect(feedEventIsAthletics(athleticsEvent())).toBe(true);
     expect(eventCardCategoryChip(athleticsEvent())).toBe("Athletics");
+    expect(eventCardImageUrl(athleticsEvent())).toBe("/brand/uri-athletics-ram.webp");
+    expect(eventCardImageUrl(athleticsEvent({ imageUrl: "https://cdn.example/game.jpg" }))).toBe(
+      "https://cdn.example/game.jpg",
+    );
+    expect(eventCardImageUrl(athleticsEvent({ imageUrl: "   " }))).toBe("/brand/uri-athletics-ram.webp");
+  });
+
+  it("keeps the generic image fallback for non-athletics events", () => {
+    const arts = athleticsEvent({
+      id: "arts-1",
+      source: "fine_arts",
+      title: "Choir concert",
+      category: "Fine Arts",
+      sport: null,
+      opponent: null,
+      homeAway: null,
+      venueName: "Fine Arts Center",
+      location: "Fine Arts Center",
+      imageUrl: null,
+    });
+    expect(eventCardImageUrl(arts)).toBeNull();
   });
 
   it("filters the Arts rail onto Fine Arts events", () => {

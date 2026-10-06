@@ -6,6 +6,7 @@ import {
   eventCardCategoryChip,
   eventCardDisplayTitle,
   eventCardFallbackAccent,
+  eventCardImageUrl,
   eventCardSportSubtitle,
   eventCardVenueLabel,
   eventShowOnRealmEligible,
@@ -45,7 +46,7 @@ export function EventDiscoveryCard({
   const category = eventCardCategoryChip(item);
   const sport = eventCardSportSubtitle(item);
   const venue = eventCardVenueLabel(item);
-  const imageUrl = item.kind === "external" ? item.event.imageUrl : null;
+  const imageUrl = eventCardImageUrl(item);
   const interested =
     feedEventCanRsvp(item) &&
     ((item.kind === "campus" && isInterestedRsvp(item.event.myRsvpStatus)) ||
@@ -62,7 +63,13 @@ export function EventDiscoveryCard({
 
   return (
     <article className="cq-event-card cq-event-card--row">
-      <div className={`cq-event-card-thumb-wrap cq-event-fallback cq-event-fallback--${accent}`}>
+      <div
+        className={
+          imageUrl && athletics
+            ? "cq-event-card-thumb-wrap cq-event-card-thumb-wrap--photo"
+            : `cq-event-card-thumb-wrap cq-event-fallback cq-event-fallback--${accent}`
+        }
+      >
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

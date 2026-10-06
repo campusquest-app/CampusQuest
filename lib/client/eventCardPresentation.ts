@@ -153,6 +153,16 @@ export function eventCardFallbackAccent(item: FeedEvent): string {
   return "clubs";
 }
 
+/** Local URI Athletics mark used when a game has no event photo. */
+export const URI_ATHLETICS_CARD_IMAGE = "/brand/uri-athletics-ram.webp";
+
+export function eventCardImageUrl(item: FeedEvent): string | null {
+  const custom = item.kind === "external" ? item.event.imageUrl?.trim() : "";
+  if (custom) return custom;
+  if (feedEventIsAthletics(item)) return URI_ATHLETICS_CARD_IMAGE;
+  return null;
+}
+
 export function eventSearchHaystack(item: FeedEvent): {
   title: string;
   description: string;

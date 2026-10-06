@@ -14204,6 +14204,27 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   border-radius: 0.9rem;
 }
 
+.cq-event-card-thumb-wrap--photo {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  align-self: stretch;
+  height: auto;
+  background: #071428;
+}
+
+.cq-event-card-thumb-wrap--photo .cq-event-card-thumb {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: cover;
+  object-position: center;
+  background: #071428;
+}
+
 /* Mobile For You / discovery cards: landscape image on top, text below. */
 @media (max-width: 639px) {
   .cq-events-feed {

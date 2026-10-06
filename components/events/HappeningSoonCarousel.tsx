@@ -7,6 +7,7 @@ import {
   eventCardCategoryChip,
   eventCardDisplayTitle,
   eventCardFallbackAccent,
+  eventCardImageUrl,
   eventCardPrimaryActionLabel,
   eventCardSportSubtitle,
   eventCardVenueLabel,
@@ -55,7 +56,7 @@ function HappeningSoonCard({
   const when = formatEventCardWhen(event.startsAt);
   const whenIso = eventDateTimeIso(event.startsAt);
   const category = eventCardCategoryChip(item);
-  const imageUrl = item.kind === "external" ? item.event.imageUrl : null;
+  const imageUrl = eventCardImageUrl(item);
   const mapped = eventShowOnRealmEligible(item) && Boolean(onViewOnMap);
   const interested =
     feedEventCanRsvp(item) &&
