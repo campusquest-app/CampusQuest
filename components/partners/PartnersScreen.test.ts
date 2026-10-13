@@ -71,6 +71,9 @@ describe("Student Perks screen", () => {
     expect(html).toContain("Discover local favorites. Unlock exclusive student rewards.");
     expect(html).toContain("cq-perks-header__icon");
     expect(html).toContain('placeholder="Search businesses, food, and rewards..."');
+    expect(html).toContain('class="cq-perks-chips"');
+    expect(html).toContain('data-cq-horizontal-scroll="true"');
+    expect(html).toContain('data-cq-gesture-block="swipe-tab"');
     for (const chip of ["All", "Open Now", "Student Deals", "Food", "Coffee", "Dessert"]) {
       expect(html).toContain(`>${chip}</button>`);
     }
@@ -91,6 +94,28 @@ describe("Student Perks screen", () => {
     expect(featured).toContain("Closes at 10 PM");
     expect(featured).toContain("View Student Reward");
     expect(featured).not.toContain(sandbar.name);
+    expect(featured).not.toContain("cq-perks-featured--carousel");
+  });
+
+  it("turns multiple featured deals into a swipeable carousel without duplicating entries", () => {
+    const extra = definePartner({
+      ...daisys,
+      id: "second-featured-shop",
+      slug: "second-featured-shop",
+      name: "Second Featured Shop",
+    });
+    const html = renderScreen({ status: "ready", partners: [...PARTNER_DIRECTORY, extra] });
+    const start = html.indexOf("Featured Student Deals");
+    const featured = html.slice(start, html.indexOf('id="cq-perks-explore-title"'));
+    expect(featured).toContain("cq-perks-featured--carousel");
+    expect(featured).toContain('data-cq-horizontal-scroll="true"');
+    expect(featured).toContain('aria-roledescription="carousel"');
+    expect(featured).toContain("cq-perks-featured__slide");
+    expect(featured).toContain(DAISYS_HTML);
+    expect(featured).toContain("Second Featured Shop");
+    expect((featured.match(/cq-perks-featured__slide/g) ?? []).length).toBe(2);
+    expect(featured.split(`id="cq-perk-featured-${extra.id}-name"`).length - 1).toBe(1);
+    expect(featured.split(`id="cq-perk-featured-${daisys.id}-name"`).length - 1).toBe(1);
   });
 
   it("lists both businesses in Explore with category, live hours, and reward badges", () => {

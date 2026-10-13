@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { Gift, Heart, Lightbulb, Search, X } from "lucide-react";
 import { FeaturedDealCard, PartnerCard, type PartnerFavoriteProps } from "@/components/partners/PartnerCard";
 import { PartnerDetailSheet } from "@/components/partners/PartnerDetailSheet";
@@ -36,6 +44,67 @@ const NO_FAVORITES: PerksFavorites = {
   toggle: () => {},
   message: null,
 };
+
+const CAROUSEL_DRAG_PX = 10;
+
+function FeaturedDealsRail({
+  partners,
+  now,
+  onSelect,
+  onViewReward,
+  favoriteFor,
+}: {
+  partners: Partner[];
+  now: Date;
+  onSelect: (partner: Partner) => void;
+  onViewReward: (partner: Partner) => void;
+  favoriteFor: (partner: Partner) => PartnerFavoriteProps | undefined;
+}) {
+  const dragRef = useRef({ x: 0, moved: false });
+  const carousel = partners.length > 1;
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    dragRef.current = { x: event.clientX, moved: false };
+  };
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (Math.abs(event.clientX - dragRef.current.x) > CAROUSEL_DRAG_PX) {
+      dragRef.current.moved = true;
+    }
+  };
+  const onClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!dragRef.current.moved) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragRef.current.moved = false;
+  };
+
+  return (
+    <div
+      className={carousel ? "cq-perks-featured cq-perks-featured--carousel" : "cq-perks-featured"}
+      data-cq-horizontal-scroll={carousel ? "true" : undefined}
+      data-cq-gesture-block={carousel ? "swipe-tab" : undefined}
+      data-no-drawer-swipe={carousel ? "true" : undefined}
+      role={carousel ? "region" : undefined}
+      aria-roledescription={carousel ? "carousel" : undefined}
+      aria-label={carousel ? "Featured Student Deals" : undefined}
+      onPointerDown={carousel ? onPointerDown : undefined}
+      onPointerMove={carousel ? onPointerMove : undefined}
+      onClickCapture={carousel ? onClickCapture : undefined}
+    >
+      {partners.map((partner) => (
+        <div key={partner.id} className={carousel ? "cq-perks-featured__slide" : undefined}>
+          <FeaturedDealCard
+            partner={partner}
+            now={now}
+            onSelect={onSelect}
+            onViewReward={onViewReward}
+            favorite={favoriteFor(partner)}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function PartnersScreen() {
   const { state, reload } = usePartners();
@@ -90,6 +159,7 @@ export function PartnersScreenView({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [passPartnerId, setPassPartnerId] = useState<string | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const chipsRef = useRef<HTMLDivElement>(null);
 
   const partners = useMemo(() => (state.status === "ready" ? visiblePartners(state.partners) : []), [state]);
   const searched = useMemo(() => filterPartners(partners, query), [partners, query]);
@@ -133,6 +203,15 @@ export function PartnersScreenView({
     setFilter("all");
     setSavedOnly(false);
   }, []);
+
+  useEffect(() => {
+    const root = chipsRef.current;
+    if (!root) return;
+    const active = root.querySelector<HTMLElement>(".cq-perks-chip.is-active");
+    if (!active) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    active.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", inline: "nearest", block: "nearest" });
+  }, [filter]);
 
   const favoritesEnabled = favorites.status === "ready";
   const favoriteFor = (partner: Partner): PartnerFavoriteProps | undefined =>
@@ -200,7 +279,15 @@ export function PartnersScreenView({
         ) : null}
       </div>
 
-      <div className="cq-perks-chips" role="group" aria-label="Filter businesses">
+      <div
+        ref={chipsRef}
+        className="cq-perks-chips"
+        role="group"
+        aria-label="Filter businesses"
+        data-cq-horizontal-scroll="true"
+        data-cq-gesture-block="swipe-tab"
+        data-no-drawer-swipe="true"
+      >
         {PERKS_FILTERS.map((option) => (
           <button
             key={option.id}
@@ -240,18 +327,13 @@ export function PartnersScreenView({
               <h2 id="cq-perks-featured-title" className="cq-perks-section__title">
                 Featured Student Deals
               </h2>
-              <div className="cq-perks-featured">
-                {featured.map((partner) => (
-                  <FeaturedDealCard
-                    key={partner.id}
-                    partner={partner}
-                    now={now}
-                    onSelect={openDetail}
-                    onViewReward={openReward}
-                    favorite={favoriteFor(partner)}
-                  />
-                ))}
-              </div>
+              <FeaturedDealsRail
+                partners={featured}
+                now={now}
+                onSelect={openDetail}
+                onViewReward={openReward}
+                favoriteFor={favoriteFor}
+              />
             </section>
           ) : null}
 

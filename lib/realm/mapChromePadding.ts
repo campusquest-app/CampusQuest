@@ -9,9 +9,10 @@
  * 1. Home indicator / safe-area (inside dock clearance)
  * 2. Floating bottom nav (dock)
  * 3. Google logo + copyright attribution (dedicated clear band)
- * 4. CQ FABs / toasts (MapControl slots, already inset by Map.padding)
+ * 4. Toasts (BOTTOM MapControl slots, already inset by Map.padding)
  * 5. Map content
  * 6. Filter + search (top MapControl stack, below Realm header)
+ * 7. Map control FABs (RIGHT_TOP, CSS-offset below search / filters)
  *
  * See: https://developers.google.com/maps/documentation/javascript/policies
  */
@@ -31,7 +32,7 @@ export const MAP_CHROME_RIGHT_INSET_PX = 8;
 /** Breathing room on the left so the logo isn't flush against the safe-area. */
 export const MAP_CHROME_LEFT_INSET_PX = 8;
 
-/** Extra gap between RIGHT_BOTTOM FABs and the attribution band. */
+/** Extra gap between bottom toasts and the attribution band. */
 export const MAP_CHROME_FAB_GAP_PX = 8;
 
 export type MapChromePadding = {

@@ -120,7 +120,7 @@ export function RealmMapControls({
     .join(" ");
 
   return (
-    <MapControl position={ControlPosition.RIGHT_BOTTOM}>
+    <MapControl position={ControlPosition.RIGHT_TOP}>
       <div
         className={`cq-realm-map-controls${immersive ? " cq-realm-map-controls--immersive" : ""}`}
         onClick={(event) => event.stopPropagation()}

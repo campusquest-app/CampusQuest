@@ -7852,6 +7852,11 @@ html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-map-btn svg {
   padding-bottom: 0;
 }
 
+/* Partners owns dock clearance on `.cq-perks` so overflow clipping cannot hide it. */
+.cq-dashboard-scroll-pad:has(.cq-tab-shell--partners) {
+  padding-bottom: 0;
+}
+
 .cq-tab-shell--realm {
   display: flex;
   flex-direction: column;
@@ -13234,13 +13239,45 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 /*
- * RIGHT_BOTTOM MapControls are already inset by Map.padding (dock + attribution + gap).
- * Keep margins minimal so the stack sits in its dedicated band without covering Google chrome.
+ * RIGHT_TOP MapControls are inset by Map.padding. Extra clearance drops the
+ * stack below avatar / search / bell / filter chips so they stay tappable.
+ * Tokens (not one-off px) keep the offset working across phone, tablet, desktop, PWA.
  */
 .cq-realm-map-controls {
-  margin-right: 0.35rem;
-  margin-bottom: 0.2rem;
+  --cq-realm-map-controls-clearance: calc(
+    var(--cq-realm-top-chrome-offset, 10px) + 0.2rem + 2.75rem + 0.45rem + 2.125rem + 0.55rem
+  );
+  margin: var(--cq-realm-map-controls-clearance) max(0.4rem, env(safe-area-inset-right, 0px)) 0 0;
   pointer-events: none;
+  position: relative;
+  z-index: 8;
+  overflow: visible;
+}
+
+.cq-realm-map-controls--immersive {
+  --cq-realm-map-controls-clearance: calc(
+    env(safe-area-inset-top, 0px) + var(--cq-realm-top-chrome-offset, 10px) + 0.2rem + 2.75rem + 0.45rem +
+      2.125rem + 0.55rem
+  );
+}
+
+@media (min-width: 768px) {
+  .cq-realm-map-controls {
+    --cq-realm-map-controls-clearance: calc(
+      var(--cq-realm-top-chrome-offset, 10px) + 0.35rem + 2.75rem + 0.45rem + 2.125rem + 0.65rem
+    );
+  }
+
+  .cq-realm-map-controls--immersive {
+    --cq-realm-map-controls-clearance: calc(
+      env(safe-area-inset-top, 0px) + var(--cq-realm-top-chrome-offset, 10px) + 0.35rem + 2.75rem + 0.45rem +
+        2.125rem + 0.65rem
+    );
+  }
+}
+
+.cq-realm-map-canvas .gmnoprint:has(.cq-realm-map-controls) {
+  overflow: visible;
 }
 
 .cq-realm-map-controls-stack {
@@ -13301,10 +13338,17 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 .cq-realm-map-controls-stack--expanded .cq-realm-map-controls-expandable {
-  max-height: 28rem;
+  max-height: min(28rem, calc(100dvh - var(--cq-realm-map-controls-clearance, 8rem) - 7.5rem));
   opacity: 1;
-  overflow: visible;
+  overflow-x: visible;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   transition: max-height 320ms cubic-bezier(0.34, 1.2, 0.64, 1), opacity 220ms ease;
+}
+
+.cq-realm-map-controls-stack--expanded .cq-realm-map-controls-expandable::-webkit-scrollbar {
+  display: none;
 }
 
 .cq-realm-map-controls-item--visible-collapsed {
@@ -13959,7 +14003,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 
 /* Student Perks (CampusQuest Partners) */
 .cq-tab-shell--partners {
-  padding-bottom: var(--cq-feed-bottom-clearance, calc(var(--cq-bottom-nav-h, 4.75rem) + 0.875rem));
+  padding-bottom: 0;
 }
 
 .cq-perks {
@@ -13970,8 +14014,9 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   width: 100%;
   max-width: 46rem;
   margin: 0 auto;
-  padding: 0 0 1.25rem;
+  padding: 0 0 calc(var(--cq-feed-bottom-clearance, calc(var(--cq-bottom-nav-h, 4.75rem) + 0.875rem)) + 0.35rem);
   overflow-x: clip;
+  scroll-padding-bottom: var(--cq-feed-bottom-clearance, calc(var(--cq-bottom-nav-h, 4.75rem) + 0.875rem));
 }
 
 .cq-perks-header {
@@ -14123,10 +14168,14 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 .cq-perks-chips {
   display: flex;
   gap: 0.45rem;
-  padding: 0.1rem 1rem 0.2rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0.1rem 1.35rem 0.2rem 1rem;
   overflow-x: auto;
   scrollbar-width: none;
   overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
   scroll-padding-inline: 1rem;
 }
@@ -14138,6 +14187,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 .cq-perks-chip {
   flex-shrink: 0;
   min-height: 2.15rem;
+  scroll-margin-inline: 1rem;
   padding: 0 0.95rem;
   border-radius: 999px;
   border: 1px solid rgba(104, 171, 232, 0.2);
@@ -14185,6 +14235,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  min-width: 0;
   padding: 0 1rem;
 }
 
@@ -14210,10 +14261,58 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   gap: 0.65rem;
 }
 
+.cq-perks-featured:not(.cq-perks-featured--carousel) > div {
+  display: contents;
+}
+
+.cq-perks-featured--carousel {
+  display: flex;
+  gap: 0.7rem;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  margin: 0 -1rem;
+  padding: 0.05rem 1rem 0.3rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 1rem;
+  touch-action: pan-x pan-y;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cq-perks-featured--carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.cq-perks-featured__slide {
+  flex: 0 0 calc(100% - 1.15rem);
+  min-width: 0;
+  scroll-snap-align: start;
+}
+
 @container (min-width: 44rem) {
   .cq-perks-featured,
   .cq-perks-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cq-perks-featured--carousel {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    scroll-snap-type: none;
+    touch-action: auto;
+  }
+
+  .cq-perks-featured__slide {
+    flex: none;
+    width: auto;
+    max-width: none;
+    scroll-snap-align: none;
   }
 }
 
@@ -14649,6 +14748,13 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   aspect-ratio: 16 / 8;
   max-height: 12.5rem;
   overflow: hidden;
+}
+
+.cq-perk-featured__media .cq-partner-media,
+.cq-perk-featured__media .cq-partner-media__photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .cq-perk-featured__shade {
@@ -15754,7 +15860,73 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   }
 }
 
+@media (max-width: 767px) {
+  .cq-perks {
+    gap: 0.72rem;
+  }
+
+  .cq-perks-header {
+    gap: 0.6rem;
+    padding: max(0.7rem, calc(env(safe-area-inset-top, 0px) + 0.38rem)) 1rem 0;
+  }
+
+  .cq-perks-header__icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    margin-top: 0.05rem;
+  }
+
+  .cq-perks-header__title {
+    font-size: 1.58rem;
+  }
+
+  .cq-perks-header__subtitle {
+    margin-top: 0.16rem;
+    font-size: 0.82rem;
+  }
+
+  .cq-perks-saved-toggle {
+    min-height: 2.1rem;
+    margin-top: 0.05rem;
+  }
+
+  .cq-perks-search__input {
+    min-height: 2.6rem;
+  }
+
+  .cq-perks-chips {
+    padding: 0.02rem 1.35rem 0.08rem 1rem;
+  }
+
+  .cq-perks-body {
+    gap: 1.05rem;
+  }
+
+  .cq-perks-section {
+    gap: 0.5rem;
+  }
+
+  .cq-perk-featured__media {
+    aspect-ratio: 16 / 6.8;
+    max-height: 10.6rem;
+  }
+
+  .cq-perk-featured__body {
+    gap: 0.48rem;
+    padding: 0.65rem 0.85rem 0.75rem;
+  }
+
+  .cq-perk-skeleton--featured {
+    height: 14.5rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .cq-perks-featured--carousel {
+    scroll-snap-type: x proximity;
+    scroll-behavior: auto;
+  }
+
   .cq-perk-featured,
   .cq-perk-sheet,
   .cq-perk-modal,
@@ -22637,7 +22809,7 @@ html[data-cq-map-exploring] .cq-realm-map-controls,
 html[data-cq-map-exploring] .cq-realm-map-controls-stack {
   opacity: 0.72;
   transform: scale(0.92);
-  transform-origin: bottom right;
+  transform-origin: top right;
   transition:
     opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
     transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
