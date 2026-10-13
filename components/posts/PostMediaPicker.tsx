@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Camera, ImagePlus, Video, X } from "lucide-react";
+import { Camera, Image as ImageIcon, ImagePlus, Video, X } from "lucide-react";
 import {
   QUAD_CAROUSEL_MAX_ITEMS,
   carouselMaxItemsErrorMessage,
@@ -44,6 +44,7 @@ export function PostMediaPicker({
   const libraryRef = useRef<HTMLInputElement>(null);
   const cameraPhotoRef = useRef<HTMLInputElement>(null);
   const cameraVideoRef = useRef<HTMLInputElement>(null);
+  const atLimit = items.length >= QUAD_CAROUSEL_MAX_ITEMS;
 
   function clearAll() {
     for (const item of items) revokeCarouselItem(item);
@@ -163,7 +164,7 @@ export function PostMediaPicker({
         </button>
       </header>
 
-      <div className="cq-mediapicker-stage px-3">
+      <div className={`cq-mediapicker-stage px-3${items.length === 0 ? " cq-mediapicker-stage--empty" : ""}`}>
         {items.length > 0 ? (
           <ComposerCarouselEditor
             items={items}
@@ -195,13 +196,20 @@ export function PostMediaPicker({
         )}
       </div>
 
-      {error ? (
-        <p className="cq-composer-error px-4" role="alert">
-          {error}
-        </p>
-      ) : (
-        <p className="px-4 text-center text-xs text-white/45">{carouselMaxItemsErrorMessage()}</p>
-      )}
+      <div className="cq-mediapicker-helper">
+        {error ? (
+          <p className="cq-composer-error" role="alert">
+            {error}
+          </p>
+        ) : (
+          <p className="cq-mediapicker-helper-text">{carouselMaxItemsErrorMessage()}</p>
+        )}
+        {items.length > 0 ? (
+          <button type="button" onClick={clearAll} className="cq-mediapicker-clear">
+            Clear all
+          </button>
+        ) : null}
+      </div>
 
       <input
         ref={libraryRef}
@@ -240,43 +248,34 @@ export function PostMediaPicker({
         aria-label="Record a video"
       />
 
-      <div className="cq-mediapicker-actions">
+      <div className="cq-mediapicker-sources" role="group" aria-label="Add media from">
         <button
           type="button"
           onClick={() => cameraPhotoRef.current?.click()}
-          className="cq-mediapicker-action"
-          disabled={items.length >= QUAD_CAROUSEL_MAX_ITEMS}
+          className="cq-mediapicker-source"
+          disabled={atLimit}
         >
-          <Camera className="h-5 w-5" />
-          <span>Photo</span>
+          <Camera className="cq-mediapicker-source-icon" strokeWidth={1.9} aria-hidden />
+          <span className="cq-mediapicker-source-label">Camera</span>
         </button>
         <button
           type="button"
           onClick={() => cameraVideoRef.current?.click()}
-          className="cq-mediapicker-action"
-          disabled={items.length >= QUAD_CAROUSEL_MAX_ITEMS}
+          className="cq-mediapicker-source"
+          disabled={atLimit}
         >
-          <Video className="h-5 w-5" />
-          <span>Record</span>
+          <Video className="cq-mediapicker-source-icon" strokeWidth={1.9} aria-hidden />
+          <span className="cq-mediapicker-source-label">Video</span>
         </button>
         <button
           type="button"
           onClick={() => libraryRef.current?.click()}
-          className="cq-mediapicker-action"
-          disabled={items.length >= QUAD_CAROUSEL_MAX_ITEMS}
+          className="cq-mediapicker-source"
+          disabled={atLimit}
         >
-          <ImagePlus className="h-5 w-5" />
-          <span>Photo/Video</span>
+          <ImageIcon className="cq-mediapicker-source-icon" strokeWidth={1.9} aria-hidden />
+          <span className="cq-mediapicker-source-label">Library</span>
         </button>
-        {items.length === 0 ? (
-          <button type="button" onClick={() => onNext({ kind: "none" })} className="cq-mediapicker-action">
-            <span>Text only</span>
-          </button>
-        ) : (
-          <button type="button" onClick={clearAll} className="cq-mediapicker-action">
-            <span>Clear</span>
-          </button>
-        )}
       </div>
     </div>
   );
