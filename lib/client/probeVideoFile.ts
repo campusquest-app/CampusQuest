@@ -9,6 +9,7 @@ import {
   videoProcessErrorMessage,
   videoTooLargeErrorMessage,
 } from "@/lib/quadVideo";
+import { blobHasAudioTrack } from "@/lib/videoContainerAudio";
 
 export type ProbedVideo = {
   file: File;
@@ -47,6 +48,21 @@ function revokeQuietly(url: string) {
   } catch {
     // ignore
   }
+}
+
+function browserReportsAudio(video: HTMLVideoElement): boolean | null {
+  const anyVideo = video as HTMLVideoElement & {
+    mozHasAudio?: boolean;
+    webkitAudioDecodedByteCount?: number;
+    audioTracks?: { length: number };
+  };
+  if (anyVideo.mozHasAudio === true) return true;
+  if (anyVideo.mozHasAudio === false) return false;
+  if (typeof anyVideo.webkitAudioDecodedByteCount === "number" && anyVideo.webkitAudioDecodedByteCount > 0) {
+    return true;
+  }
+  if (typeof anyVideo.audioTracks?.length === "number") return anyVideo.audioTracks.length > 0;
+  return null;
 }
 
 function teardownVideo(video: HTMLVideoElement) {
@@ -94,12 +110,13 @@ export async function probeVideoFile(
 
   const timeoutMs = opts.timeoutMs ?? VIDEO_PROBE_TIMEOUT_MS;
   const objectUrl = URL.createObjectURL(file);
+  const containerAudio = blobHasAudioTrack(file);
   try {
     const meta = await new Promise<{
       durationSeconds: number;
       width: number;
       height: number;
-      hasAudio: boolean;
+      hasAudio: boolean | null;
     }>((resolve, reject) => {
       const video = document.createElement("video");
       let settled = false;
@@ -129,21 +146,10 @@ export async function probeVideoFile(
           finish(() => reject(new Error(videoDurationErrorMessage())));
           return;
         }
-        const anyVideo = video as HTMLVideoElement & {
-          mozHasAudio?: boolean;
-          webkitAudioDecodedByteCount?: number;
-          audioTracks?: { length: number };
-        };
-        // Best-effort browser detection. Playback always keeps the file's audio track;
-        // this flag is metadata only and is re-stored from the upload path.
-        const hasAudio =
-          anyVideo.mozHasAudio === true ||
-          (typeof anyVideo.webkitAudioDecodedByteCount === "number" &&
-            anyVideo.webkitAudioDecodedByteCount > 0) ||
-          (typeof anyVideo.audioTracks?.length === "number" && anyVideo.audioTracks.length > 0);
         const width = video.videoWidth || 0;
         const height = video.videoHeight || 0;
-        finish(() => resolve({ durationSeconds, width, height, hasAudio }));
+        const browserAudio = browserReportsAudio(video);
+        finish(() => resolve({ durationSeconds, width, height, hasAudio: browserAudio }));
       };
       video.onerror = () => {
         finish(() => reject(new Error(videoProcessErrorMessage())));
@@ -151,13 +157,16 @@ export async function probeVideoFile(
       video.src = objectUrl;
     });
 
+    const sniffed = await containerAudio;
     return {
       file,
       objectUrl,
       durationSeconds: meta.durationSeconds,
       width: meta.width,
       height: meta.height,
-      hasAudio: meta.hasAudio,
+      // Container scan wins. Browser track lists are empty at loadedmetadata in
+      // Chrome and Safari, so an inconclusive probe keeps the audio track.
+      hasAudio: sniffed ?? meta.hasAudio ?? true,
       mimeType: mime.startsWith("video/") ? mime : "video/mp4",
     };
   } catch (error) {

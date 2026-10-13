@@ -831,6 +831,7 @@ function FieldNoteCardInner({
         src={proofImgUrl}
         poster={note.posterUrl}
         durationSeconds={note.mediaDurationSeconds}
+        hasAudio={note.mediaHasAudio}
         autoplayWhenVisible={isFeed}
       />
     ) : isImgUrl ? (

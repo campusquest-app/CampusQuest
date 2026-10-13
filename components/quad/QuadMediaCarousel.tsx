@@ -436,7 +436,7 @@ export function QuadMediaCarousel({
                       poster={item.thumbnailUrl}
                       durationSeconds={item.durationSeconds}
                       autoplayWhenVisible={isFeed && active}
-                      showMuteControl={item.hasAudio !== false}
+                      hasAudio={item.hasAudio}
                       className="cq-quad-feed-media-frame"
                       onError={() => markFailed(item.id)}
                     />
@@ -456,7 +456,7 @@ export function QuadMediaCarousel({
                     poster={item.thumbnailUrl}
                     durationSeconds={item.durationSeconds}
                     autoplayWhenVisible={false}
-                    showMuteControl={item.hasAudio !== false}
+                    hasAudio={item.hasAudio}
                     className="cq-quad-feed-media-frame"
                     onError={() => markFailed(item.id)}
                   />

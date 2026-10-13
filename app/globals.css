@@ -3518,7 +3518,7 @@ html[data-cq-media-pinching] {
   overscroll-behavior: none;
 }
 
-.quad-feed-media-wrap button {
+.quad-feed-media-wrap button:not([data-cq-video-control]) {
   display: block;
   width: 100%;
   max-width: 100%;
@@ -3552,6 +3552,56 @@ html[data-cq-media-pinching] {
   width: 100%;
   max-height: min(70vh, 720px);
   background: #000;
+}
+
+.quad-feed-media-wrap button.cq-quad-video-sound,
+.cq-quad-video-sound {
+  position: absolute;
+  z-index: 12;
+  right: 0.7rem;
+  bottom: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.cq-quad-video-sound svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  stroke: #fff;
+  transition: opacity 160ms ease;
+}
+
+.cq-quad-video-sound:hover {
+  background: rgba(0, 0, 0, 0.74);
+}
+
+.cq-quad-video-sound:active {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-quad-video-sound,
+  .cq-quad-video-sound svg {
+    transition: none;
+  }
 }
 
 .cq-quad-media-slide .cq-quad-video-el,

@@ -1,3 +1,4 @@
+import { sniffVideoHasAudioFromUrl } from "@/lib/videoContainerAudio";
 import { ApiError } from "@/lib/server/http";
 import { createAdminClient } from "@/lib/server/supabase";
 import { sniffImageMimeFromBuffer } from "@/lib/server/sniffImageMime";
@@ -460,6 +461,17 @@ export async function completeDirectUpload(args: {
   }
 
   const ready: MediaRow = { ...row, processing_status: "ready", file_size_bytes: actualBytes };
+  if (row.media_type === "video") {
+    try {
+      const detected = await sniffVideoHasAudioFromUrl(publicUrl(admin, row.storage_path));
+      if (detected != null && detected !== (row.has_audio === true)) {
+        await admin.from("quad_post_media").update({ has_audio: detected }).eq("id", row.id).eq("uploader_id", args.userId);
+        ready.has_audio = detected;
+      }
+    } catch {
+      // Playback still uses the original file. A failed sniff must not fail the upload.
+    }
+  }
   if (row.media_type === "video" && args.poster && args.poster.buffer.length > 0) {
     try {
       const { thumbnailPath } = await uploadQuadPosterBuffer({

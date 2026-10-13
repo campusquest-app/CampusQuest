@@ -8,16 +8,25 @@ import {
   setQuadFeedUnmuted,
   subscribeQuadFeedMute,
 } from "@/lib/client/quadFeedMuteStore";
+import { setVideoElementMuted, shouldShowVideoMuteControl, unmuteVideoElement } from "@/lib/client/quadVideoPlayback";
+import { sniffVideoHasAudioFromUrl } from "@/lib/videoContainerAudio";
 
 let activePlayerId: string | null = null;
 const playerRegistry = new Map<string, HTMLVideoElement>();
+const activeListeners = new Set<() => void>();
 
 function claimPlayback(id: string) {
-  if (activePlayerId && activePlayerId !== id) {
-    const prev = playerRegistry.get(activePlayerId);
-    if (prev && !prev.paused) prev.pause();
-  }
   activePlayerId = id;
+  for (const [otherId, other] of Array.from(playerRegistry)) {
+    if (otherId === id) continue;
+    try {
+      other.pause();
+    } catch {
+      /* ignore */
+    }
+    setVideoElementMuted(other, true);
+  }
+  for (const listener of Array.from(activeListeners)) listener();
 }
 
 export function QuadVideoPlayer({
@@ -27,6 +36,7 @@ export function QuadVideoPlayer({
   durationSeconds,
   autoplayWhenVisible = true,
   showMuteControl = true,
+  hasAudio,
   className = "",
   onError,
 }: {
@@ -35,47 +45,84 @@ export function QuadVideoPlayer({
   poster?: string | null;
   durationSeconds?: number | null;
   autoplayWhenVisible?: boolean;
-  /** When false, hide speaker control (silent videos). */
+  /** When false, hide speaker control (caller already knows this video is silent). */
   showMuteControl?: boolean;
+  /**
+   * Stored hint. `false` is not trusted on its own — older uploads were marked
+   * silent because the browser could not see the audio track at metadata time.
+   */
+  hasAudio?: boolean | null;
   className?: string;
   onError?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [unmuted, setUnmuted] = useState(getQuadFeedUnmuted);
+  const [soundOn, setSoundOn] = useState(false);
+  const [confirmedSilent, setConfirmedSilent] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(durationSeconds ?? 0);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => subscribeQuadFeedMute(() => setUnmuted(getQuadFeedUnmuted())), []);
+  useEffect(() => subscribeQuadFeedMute(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (!getQuadFeedUnmuted() || activePlayerId !== playerId) {
+      setVideoElementMuted(el, true);
+      setSoundOn(false);
+    }
+  }), [playerId]);
 
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
     playerRegistry.set(playerId, el);
+    el.setAttribute("playsinline", "true");
+    el.setAttribute("webkit-playsinline", "true");
     return () => {
       try {
         el.pause();
       } catch {
         /* ignore */
       }
+      setVideoElementMuted(el, true);
       playerRegistry.delete(playerId);
       if (activePlayerId === playerId) activePlayerId = null;
     };
   }, [playerId]);
 
   useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    el.muted = !unmuted;
-  }, [unmuted]);
+    const sync = () => {
+      if (activePlayerId !== playerId) setSoundOn(false);
+    };
+    activeListeners.add(sync);
+    return () => {
+      activeListeners.delete(sync);
+    };
+  }, [playerId]);
+
+  useEffect(() => {
+    if (!showMuteControl || hasAudio === true) {
+      setConfirmedSilent(false);
+      return;
+    }
+    setConfirmedSilent(false);
+    let cancelled = false;
+    void sniffVideoHasAudioFromUrl(src).then((result) => {
+      if (!cancelled) setConfirmedSilent(!shouldShowVideoMuteControl(result));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasAudio, showMuteControl, src]);
 
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
     if (!autoplayWhenVisible) {
       el.pause();
+      setVideoElementMuted(el, true);
+      setSoundOn(false);
       return;
     }
     const root = rootRef.current;
@@ -87,10 +134,25 @@ export function QuadVideoPlayer({
         if (!entry) return;
         if (entry.intersectionRatio >= 0.6) {
           claimPlayback(playerId);
-          el.muted = !getQuadFeedUnmuted();
-          void el.play().catch(() => undefined);
+          if (!getQuadFeedUnmuted()) {
+            setVideoElementMuted(el, true);
+            setSoundOn(false);
+            void el.play().catch(() => undefined);
+            return;
+          }
+          void unmuteVideoElement(el).then((ok) => {
+            if (ok) {
+              setSoundOn(true);
+              return;
+            }
+            setVideoElementMuted(el, true);
+            setSoundOn(false);
+            void el.play().catch(() => undefined);
+          });
         } else {
           el.pause();
+          setVideoElementMuted(el, true);
+          setSoundOn(false);
         }
       },
       { threshold: [0, 0.6, 1] },
@@ -101,58 +163,78 @@ export function QuadVideoPlayer({
 
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "hidden") {
-        videoRef.current?.pause();
-      }
+      if (document.visibilityState === "hidden") videoRef.current?.pause();
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
   function togglePlay(e: React.MouseEvent) {
+    e.preventDefault();
     e.stopPropagation();
     const el = videoRef.current;
     if (!el) return;
     if (el.paused) {
       claimPlayback(playerId);
-      void el.play().catch(() => undefined);
+      if (getQuadFeedUnmuted()) {
+        void unmuteVideoElement(el).then((ok) => setSoundOn(ok));
+      } else {
+        setVideoElementMuted(el, true);
+        void el.play().catch(() => undefined);
+      }
     } else {
       el.pause();
     }
   }
 
-  function toggleMute(e: React.MouseEvent) {
+  function toggleMute(e: React.MouseEvent | React.PointerEvent) {
+    e.preventDefault();
     e.stopPropagation();
-    const next = !unmuted;
-    setUnmuted(next);
-    setQuadFeedUnmuted(next);
     const el = videoRef.current;
-    if (el) {
-      const t = el.currentTime;
-      el.muted = !next;
-      // Ensure mute toggle does not restart playback.
-      if (Math.abs(el.currentTime - t) > 0.05) el.currentTime = t;
+    if (!el) return;
+    if (soundOn) {
+      setVideoElementMuted(el, true);
+      setSoundOn(false);
+      setQuadFeedUnmuted(false);
+      return;
     }
+    const time = el.currentTime;
+    claimPlayback(playerId);
+    void unmuteVideoElement(el).then((ok) => {
+      if (!ok) {
+        setVideoElementMuted(el, true);
+        setSoundOn(false);
+        return;
+      }
+      if (Number.isFinite(time) && Math.abs(el.currentTime - time) > 0.35) {
+        try {
+          el.currentTime = time;
+        } catch {
+          /* keep playing from the browser's position */
+        }
+      }
+      setSoundOn(true);
+      setQuadFeedUnmuted(true);
+    });
+  }
+
+  function stopControlPointer(e: React.PointerEvent) {
+    e.stopPropagation();
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === " " || e.key === "k" || e.key === "K") {
       e.preventDefault();
       togglePlay(e as unknown as React.MouseEvent);
-    } else if (e.key === "m" || e.key === "M") {
+    } else if ((e.key === "m" || e.key === "M") && showMuteControl && !confirmedSilent) {
       e.preventDefault();
       toggleMute(e as unknown as React.MouseEvent);
     } else if (e.key === "f" || e.key === "F") {
       e.preventDefault();
-      const el = videoRef.current;
-      if (!el) return;
-      if (document.fullscreenElement) {
-        void document.exitFullscreen().catch(() => undefined);
-      } else if (el.requestFullscreen) {
-        void el.requestFullscreen().catch(() => undefined);
-      }
     }
   }
+
+  const muteVisible = showMuteControl && !confirmedSilent;
 
   return (
     <div
@@ -170,7 +252,9 @@ export function QuadVideoPlayer({
         poster={poster || undefined}
         playsInline
         preload="metadata"
-        muted={!unmuted}
+        muted={!soundOn}
+        controls={false}
+        disablePictureInPicture
         className="cq-quad-video-el w-full object-contain focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-uri-keaney"
         onClick={togglePlay}
         onPlay={() => {
@@ -200,19 +284,24 @@ export function QuadVideoPlayer({
         </div>
       ) : null}
 
-      {showMuteControl ? (
+      {muteVisible ? (
         <button
           type="button"
+          data-cq-video-control="mute"
+          onPointerDown={stopControlPointer}
           onClick={toggleMute}
-          className="absolute bottom-3 right-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white"
-          aria-label={unmuted ? "Mute video" : "Unmute video"}
+          className="cq-quad-video-sound"
+          aria-pressed={soundOn}
+          aria-label={soundOn ? "Mute video" : "Unmute video"}
         >
-          {unmuted ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+          {soundOn ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />}
         </button>
       ) : null}
 
       <button
         type="button"
+        data-cq-video-control="play"
+        onPointerDown={stopControlPointer}
         onClick={togglePlay}
         className="absolute bottom-3 left-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white"
         aria-label={playing ? "Pause video" : "Play video"}

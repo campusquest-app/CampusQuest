@@ -106,6 +106,35 @@ describe("validation before any upload starts", () => {
     await expect(probeWithDuration(181)).rejects.toThrow("This video is longer than the 3-minute limit.");
   });
 
+  it("keeps audio when the browser cannot see tracks but the container has an audio handler", async () => {
+    const payload = new Uint8Array(12);
+    payload.set(Array.from("soun", (ch) => ch.charCodeAt(0)), 8);
+    const hdlr = new Uint8Array(8 + payload.length);
+    hdlr.set([0, 0, 0, hdlr.length], 0);
+    hdlr.set(Array.from("hdlr", (ch) => ch.charCodeAt(0)), 4);
+    hdlr.set(payload, 8);
+    const mdia = new Uint8Array(8 + hdlr.length);
+    mdia.set([0, 0, 0, mdia.length], 0);
+    mdia.set(Array.from("mdia", (ch) => ch.charCodeAt(0)), 4);
+    mdia.set(hdlr, 8);
+    const trak = new Uint8Array(8 + mdia.length);
+    trak.set([0, 0, 0, trak.length], 0);
+    trak.set(Array.from("trak", (ch) => ch.charCodeAt(0)), 4);
+    trak.set(mdia, 8);
+    const moov = new Uint8Array(8 + trak.length);
+    moov.set([0, 0, 0, moov.length], 0);
+    moov.set(Array.from("moov", (ch) => ch.charCodeAt(0)), 4);
+    moov.set(trak, 8);
+    const file = new File([moov], "IMG_5.MOV", { type: "video/quicktime" });
+    const pending = probeVideoFile(file);
+    const video = created[0]! as ReturnType<typeof silentVideo> & { duration: number; videoWidth: number; videoHeight: number };
+    video.duration = 12;
+    video.videoWidth = 1080;
+    video.videoHeight = 1920;
+    (video.onloadedmetadata as () => void)();
+    await expect(pending).resolves.toMatchObject({ hasAudio: true, durationSeconds: 12 });
+  });
+
   it("rejects an oversize video and an unsupported type without loading them", async () => {
     const huge = new File([new Uint8Array(8)], "IMG_3.MOV", { type: "video/quicktime" });
     Object.defineProperty(huge, "size", { value: 251 * 1024 * 1024 });
