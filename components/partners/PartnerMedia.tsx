@@ -4,48 +4,51 @@ import { useState } from "react";
 import { Store } from "lucide-react";
 import type { Partner } from "@/lib/partners/types";
 
+type MediaVariant = "thumb" | "featured" | "hero";
+
 /** Real business photo, else the business logo on a light tile, else a neutral placeholder. */
-export function PartnerMedia({ partner, variant }: { partner: Partner; variant: "card" | "hero" }) {
+export function PartnerMedia({ partner, variant }: { partner: Partner; variant: MediaVariant }) {
   const [coverFailed, setCoverFailed] = useState(false);
   const [logoFailed, setLogoFailed] = useState(false);
   const base = `cq-partner-media cq-partner-media--${variant}`;
+  const loading = variant === "hero" ? "eager" : "lazy";
 
   if (partner.coverImageUrl && !coverFailed) {
     return (
-      <div className={base}>
+      <span className={base}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={partner.coverImageUrl}
           alt={`Photo from ${partner.name}`}
           className="cq-partner-media__photo"
-          loading={variant === "card" ? "lazy" : "eager"}
+          loading={loading}
           decoding="async"
           onError={() => setCoverFailed(true)}
         />
-      </div>
+      </span>
     );
   }
 
   if (partner.logoUrl && !logoFailed) {
     return (
-      <div className={`${base} cq-partner-media--logo`}>
+      <span className={`${base} cq-partner-media--logo`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={partner.logoUrl}
           alt={`${partner.name} logo`}
           className="cq-partner-media__logo-fill"
-          loading={variant === "card" ? "lazy" : "eager"}
+          loading={loading}
           decoding="async"
           onError={() => setLogoFailed(true)}
         />
-      </div>
+      </span>
     );
   }
 
   return (
-    <div className={`${base} cq-partner-media--placeholder`} role="img" aria-label={`${partner.name} photo coming soon`}>
+    <span className={`${base} cq-partner-media--placeholder`} role="img" aria-label={`${partner.name} photo coming soon`}>
       <Store className="cq-partner-media__placeholder-icon" aria-hidden strokeWidth={1.8} />
-    </div>
+    </span>
   );
 }
 

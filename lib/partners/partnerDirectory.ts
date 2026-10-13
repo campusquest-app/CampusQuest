@@ -1,3 +1,4 @@
+import { DEFAULT_PARTNER_TIME_ZONE, everyDay } from "@/lib/partners/partnerHours";
 import type { Partner } from "@/lib/partners/types";
 
 type PartnerInput = Pick<Partner, "id" | "name" | "slug"> & Partial<Omit<Partner, "id" | "name" | "slug">>;
@@ -8,6 +9,8 @@ export function definePartner(input: PartnerInput): Partner {
     logoUrl: null,
     coverImageUrl: null,
     categories: [],
+    keywords: [],
+    filterTags: [],
     description: null,
     address: null,
     latitude: null,
@@ -18,6 +21,8 @@ export function definePartner(input: PartnerInput): Partner {
     offerTitle: null,
     offerDescription: null,
     discountValue: null,
+    rewardTerms: null,
+    rewardPaused: false,
     questTitle: null,
     questDescription: null,
     redemptionInstructions: null,
@@ -35,7 +40,8 @@ export function definePartner(input: PartnerInput): Partner {
 /**
  * Official CampusQuest Partners, in display order.
  * Images must be the business's own assets (website, ordering page, or files they send us) stored under
- * /public/partners/<slug>/ — never generated or stock imagery. Leave hours and rewards null until confirmed.
+ * /public/partners/<slug>/ — never generated or stock imagery. Hours must come from the business's own
+ * published listing (record `source` + `checkedOn`); leave hours and rewards null until confirmed.
  */
 export const PARTNER_DIRECTORY: Partner[] = [
   definePartner({
@@ -46,9 +52,17 @@ export const PARTNER_DIRECTORY: Partner[] = [
     coverImageUrl: "/partners/daisys/cover.jpg",
     logoUrl: "/partners/daisys/logo.jpg",
     categories: ["Chicken", "Ice Cream"],
+    keywords: ["chicken sandwich", "tenders", "wings", "fries", "Warwick ice cream", "dessert"],
+    filterTags: ["food", "dessert"],
     description:
       "Grilled and fried chicken sandwiches, tenders, and Warwick ice cream on Point Judith Road in Narragansett.",
     address: "106 Point Judith Rd, Narragansett, RI",
+    hours: {
+      timeZone: DEFAULT_PARTNER_TIME_ZONE,
+      weekly: everyDay({ open: "12:00", close: "22:00" }),
+      source: "Daisy\u2019s website (\u201cOpen everyday 12\u201310 P.M.\u201d)",
+      checkedOn: "2026-10-12",
+    },
     offerType: "standard_offer",
     discountValue: "20% OFF",
     offerTitle: "for URI students",
@@ -62,9 +76,21 @@ export const PARTNER_DIRECTORY: Partner[] = [
     // Logo is the restaurant image published on their Toast ordering page. No photos have been provided yet.
     logoUrl: "/partners/sandbar/logo.png",
     categories: ["Coffee", "Breakfast", "Drinks"],
+    keywords: ["latte", "cold brew", "espresso", "matcha", "chai", "bagel", "breakfast sandwich", "lemonade"],
+    filterTags: ["coffee", "food"],
     description:
       "Coffee shop serving signature lattes, cold brew, refreshers, and breakfast sandwiches on Point Judith Road.",
     address: "106 Point Judith Rd, Narragansett, RI",
+    hours: {
+      timeZone: DEFAULT_PARTNER_TIME_ZONE,
+      weekly: everyDay({ open: "07:00", close: "12:00" }),
+      source: "The Sandbar Cafe\u2019s Toast ordering page",
+      checkedOn: "2026-10-12",
+    },
     menuUrl: "https://order.toasttab.com/online/the-sandbar-cafe-106-point-judith-road",
   }),
 ];
+
+export function findPartnerById(id: string): Partner | null {
+  return PARTNER_DIRECTORY.find((partner) => partner.id === id && partner.isActive) ?? null;
+}

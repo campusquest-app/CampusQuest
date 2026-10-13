@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { definePartner } from "@/lib/partners/partnerDirectory";
+import { everyDay } from "@/lib/partners/partnerHours";
 import {
+  applyPerksFilter,
   filterPartners,
+  PERKS_FILTERS,
+  partnerRewardOfferState,
   isOfferLive,
   mapPartnerRow,
   partnerDirectionsUrl,
@@ -78,6 +82,17 @@ describe("filterPartners", () => {
     expect(filterPartners(list, "narragansett").map((p) => p.id)).toEqual(["d", "s"]);
   });
 
+  it("matches food type and menu keywords", () => {
+    const withKeywords = [
+      { ...daisys, filterTags: ["food" as const, "dessert" as const], keywords: ["tenders", "wings"] },
+      { ...sandbar, filterTags: ["coffee" as const], keywords: ["latte", "cold brew"] },
+    ];
+    expect(filterPartners(withKeywords, "latte").map((p) => p.id)).toEqual(["s"]);
+    expect(filterPartners(withKeywords, "cold brew").map((p) => p.id)).toEqual(["s"]);
+    expect(filterPartners(withKeywords, "dessert").map((p) => p.id)).toEqual(["d"]);
+    expect(filterPartners(withKeywords, "tenders").map((p) => p.id)).toEqual(["d"]);
+  });
+
   it("requires every term to match", () => {
     expect(filterPartners(list, "coffee chicken")).toEqual([]);
     expect(filterPartners(list, "pizza")).toEqual([]);
@@ -121,6 +136,8 @@ describe("mapPartnerRow", () => {
       logo_url: "https://cdn.test/logo.png",
       cover_image_url: "https://cdn.test/cover.png",
       categories: ["Food", ""],
+      keywords: ["latte", ""],
+      filter_tags: ["coffee", "pizza"],
       description: "desc",
       address: "1 Test St",
       latitude: 41.48,
@@ -131,6 +148,8 @@ describe("mapPartnerRow", () => {
       offer_title: "Offer",
       offer_description: "Offer desc",
       discount_value: "15%",
+      reward_terms: null,
+      reward_paused: null,
       quest_title: "Quest",
       quest_description: "Quest desc",
       redemption_instructions: "Show the app",
@@ -146,7 +165,10 @@ describe("mapPartnerRow", () => {
     expect(mapped).toMatchObject({
       id: "row-id",
       categories: ["Food"],
+      keywords: ["latte"],
+      filterTags: ["coffee"],
       hours: null,
+      rewardPaused: false,
       offerType: "standard_offer",
       discountValue: "15%",
       menuUrl: "https://example.test/menu",
@@ -154,5 +176,85 @@ describe("mapPartnerRow", () => {
     });
     expect(Object.keys(mapped)).toHaveLength(Object.keys(row).length);
     expect(mapPartnerRow({ ...row, offer_type: "bogus" as never }).offerType).toBeNull();
+  });
+
+  it("parses structured hours JSON and drops malformed hours", () => {
+    const hoursRow: PartnerRow = {
+      id: "r",
+      name: "R",
+      slug: "r",
+      logo_url: null,
+      cover_image_url: null,
+      categories: null,
+      keywords: null,
+      filter_tags: null,
+      description: null,
+      address: null,
+      latitude: null,
+      longitude: null,
+      hours: { timeZone: "America/New_York", weekly: everyDay({ open: "07:00", close: "12:00" }) },
+      partner_since: null,
+      offer_type: null,
+      offer_title: null,
+      offer_description: null,
+      discount_value: null,
+      reward_terms: null,
+      reward_paused: true,
+      quest_title: null,
+      quest_description: null,
+      redemption_instructions: null,
+      starts_at: null,
+      ends_at: null,
+      website_url: null,
+      menu_url: null,
+      directions_url: null,
+      instagram_url: null,
+      is_active: true,
+    };
+    const base = mapPartnerRow(hoursRow);
+    expect(base.hours?.weekly).toHaveLength(7);
+    expect(base.rewardPaused).toBe(true);
+    expect(mapPartnerRow({ ...hoursRow, hours: ["Mon 9-5"] }).hours).toBeNull();
+  });
+});
+
+describe("partnerRewardOfferState", () => {
+  it("is coming soon when no reward is configured", () => {
+    expect(partnerRewardOfferState(partner(), NOW)).toBe("coming_soon");
+  });
+
+  it("is active, expired, scheduled, or paused based on the configured window", () => {
+    const reward = { discountValue: "20% OFF" };
+    expect(partnerRewardOfferState(partner(reward), NOW)).toBe("active");
+    expect(partnerRewardOfferState(partner({ ...reward, endsAt: "2026-10-01T00:00:00Z" }), NOW)).toBe("expired");
+    expect(partnerRewardOfferState(partner({ ...reward, startsAt: "2026-11-01T00:00:00Z" }), NOW)).toBe("coming_soon");
+    expect(partnerRewardOfferState(partner({ ...reward, rewardPaused: true }), NOW)).toBe("unavailable");
+    expect(partnerHasLiveReward(partner({ ...reward, rewardPaused: true }), NOW)).toBe(false);
+  });
+});
+
+describe("applyPerksFilter", () => {
+  const openAllDay = { timeZone: "America/New_York", weekly: everyDay({ open: "00:00", close: "24:00" }) };
+  const closedAllWeek = { timeZone: "America/New_York", weekly: everyDay() };
+  const list = [
+    partner({ id: "food", filterTags: ["food", "dessert"], discountValue: "20% OFF", hours: openAllDay }),
+    partner({ id: "coffee", filterTags: ["coffee"], hours: closedAllWeek }),
+    partner({ id: "unknown", filterTags: ["food"], hours: null }),
+  ];
+
+  it("filters by open now using live hours and never treats unknown hours as open", () => {
+    expect(applyPerksFilter(list, "open", NOW).map((p) => p.id)).toEqual(["food"]);
+  });
+
+  it("filters by student deals and category chips", () => {
+    expect(applyPerksFilter(list, "deals", NOW).map((p) => p.id)).toEqual(["food"]);
+    expect(applyPerksFilter(list, "food", NOW).map((p) => p.id)).toEqual(["food", "unknown"]);
+    expect(applyPerksFilter(list, "coffee", NOW).map((p) => p.id)).toEqual(["coffee"]);
+    expect(applyPerksFilter(list, "dessert", NOW).map((p) => p.id)).toEqual(["food"]);
+    expect(applyPerksFilter(list, "all", NOW)).toHaveLength(3);
+  });
+
+  it("exposes exactly the six requested chips in order", () => {
+    expect(PERKS_FILTERS.map((f) => f.label)).toEqual(["All", "Open Now", "Student Deals", "Food", "Coffee", "Dessert"]);
   });
 });
