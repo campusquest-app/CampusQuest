@@ -13,7 +13,7 @@ export function useMapZoom(): number {
     const sync = () => setZoom(map.getZoom() ?? URI_MAP_DEFAULT_ZOOM);
     sync();
     const listener = map.addListener("zoom_changed", sync);
-    return () => listener.remove();
+    return () => google.maps.event.removeListener(listener);
   }, [map]);
 
   return zoom;

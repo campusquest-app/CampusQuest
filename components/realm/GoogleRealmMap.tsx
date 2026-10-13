@@ -789,6 +789,21 @@ export function GoogleRealmMap({
   onOpenNotifications?: () => void;
 }) {
   const [apiError, setApiError] = useState(false);
+
+  // Key/referrer/billing rejections replace Maps prototypes with no-ops, so any
+  // later map call misbehaves. Swap to the error card instead of crashing the app.
+  useEffect(() => {
+    const w = window as Window & { gm_authFailure?: () => void };
+    const previous = w.gm_authFailure;
+    w.gm_authFailure = () => {
+      previous?.();
+      setApiError(true);
+    };
+    return () => {
+      w.gm_authFailure = previous;
+    };
+  }, []);
+
   const [internalFilter, setInternalFilter] = useState<MapMarkerFilter>("for_you");
   const filter = markerFilter ?? internalFilter;
   const setFilter = onMarkerFilterChange ?? setInternalFilter;

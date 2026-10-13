@@ -72,7 +72,12 @@ export function RealmMapVectorDiagnostics({ enabled }: { enabled: boolean }) {
         );
       }
 
-      testVectorCamera(map);
+      // Read-only: moving the camera here would flatten whatever the user just did.
+      console.info("[cq:realm-map] capabilities", {
+        vector: isVectorMapRendering(map),
+        mapCapabilities:
+          typeof map.getMapCapabilities === "function" ? map.getMapCapabilities() : "unavailable",
+      });
     };
 
     // Wait for first-open fly / initial settle so the camera test is not overwritten.
@@ -90,56 +95,4 @@ export function RealmMapVectorDiagnostics({ enabled }: { enabled: boolean }) {
   }, [enabled, map]);
 
   return null;
-}
-
-function testVectorCamera(map: google.maps.Map): void {
-  const startingZoom = map.getZoom() ?? 17;
-  const before = {
-    renderingType:
-      typeof map.getRenderingType === "function" ? map.getRenderingType() : "unavailable",
-    heading: map.getHeading() ?? 0,
-    tilt: map.getTilt() ?? 0,
-    zoom: startingZoom,
-  };
-
-  if (startingZoom < 18) {
-    map.setZoom(18);
-  }
-
-  window.setTimeout(() => {
-    if (typeof map.moveCamera === "function") {
-      map.moveCamera({
-        heading: 45,
-        tilt: 45,
-        zoom: Math.max(map.getZoom() ?? 18, 18),
-      });
-    } else {
-      map.setHeading?.(45);
-      map.setTilt?.(45);
-    }
-
-    window.setTimeout(() => {
-      const after = {
-        renderingType:
-          typeof map.getRenderingType === "function" ? map.getRenderingType() : "unavailable",
-        requestedHeading: 45,
-        actualHeading: map.getHeading(),
-        requestedTilt: 45,
-        actualTilt: map.getTilt(),
-        actualZoom: map.getZoom(),
-        vector: isVectorMapRendering(map),
-      };
-      console.info("[cq:realm-map] vector camera test — before", before);
-      console.table(after);
-
-      // Restore flat north so the user doesn't land mid-test.
-      if (typeof map.moveCamera === "function") {
-        map.moveCamera({
-          heading: 0,
-          tilt: 0,
-          zoom: after.actualZoom ?? 18,
-        });
-      }
-    }, 800);
-  }, 500);
 }

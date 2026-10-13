@@ -58,12 +58,8 @@ export function RealmMapVectorInit({
       return;
     }
 
-    // Prefer setRenderingType when available; Map ID still owns cloud style.
-    const renderingType = google.maps.RenderingType?.VECTOR;
-    if (renderingType != null && typeof map.setRenderingType === "function") {
-      map.setRenderingType(renderingType);
-    }
-
+    // renderingType is construction-only (passed via the <Map> prop). Maps JS 3.66+
+    // throws "Setting map 'renderingType' after instantiation is not supported."
     const vector = isVectorMapRendering(map);
     onVectorRendering?.(vector);
     if (process.env.NODE_ENV === "development" && !vector && !warnedRef.current) {

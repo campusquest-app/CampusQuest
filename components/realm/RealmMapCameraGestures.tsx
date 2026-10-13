@@ -55,7 +55,8 @@ export function RealmMapCameraGestures({
     const onTouchStart = (event: TouchEvent) => {
       if (event.touches.length >= 1) setPanningAttr(true);
     };
-    const onTouchEnd = () => setPanningAttr(false);
+    // Lifting one finger of a pinch/rotate must not release the swipe lock early.
+    const onTouchEnd = (event: TouchEvent) => setPanningAttr(event.touches.length > 0);
     const onTouchCancel = () => setPanningAttr(false);
 
     div.addEventListener("touchstart", onTouchStart, { passive: true });
