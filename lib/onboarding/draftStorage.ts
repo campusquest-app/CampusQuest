@@ -1,6 +1,6 @@
 import type { AcademicAreaId } from "@/lib/onboarding/academicAreas";
 import { isKnownAcademicArea } from "@/lib/onboarding/academicAreas";
-import { isDemographicOnboardingStep, type DemographicOnboardingStep } from "@/lib/onboarding/flow";
+import { canonicalizeDemographicStep, type DemographicOnboardingStep } from "@/lib/onboarding/flow";
 import type { CommunityId, InterestId, StudentStatusId } from "@/lib/onboarding/taxonomy";
 import { isKnownStudentStatus } from "@/lib/onboarding/taxonomy";
 
@@ -75,7 +75,7 @@ export function clearOnboardingDraft(userId?: string | null) {
 }
 
 export function sanitizeDraftStep(value: unknown): DemographicOnboardingStep | null {
-  return isDemographicOnboardingStep(value) ? value : null;
+  return canonicalizeDemographicStep(value);
 }
 
 export function sanitizeDraftStudentStatus(value: unknown): StudentStatusId | null {

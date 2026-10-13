@@ -14,8 +14,10 @@ import {
   eventShowOnRealmEligible,
   feedEventCanRsvp,
   feedEventSourceKey,
+  isEventLive,
 } from "@/lib/client/eventCardPresentation";
 import { formatEventCardWhen, eventDateTimeIso } from "@/lib/client/eventDateTime";
+import { useLiveNow } from "@/lib/client/useLiveNow";
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
 import { isInterestedRsvp } from "@/lib/client/eventInterested";
 import type { RankedFeedEvent } from "@/lib/client/happeningSoon";
@@ -57,7 +59,8 @@ function HappeningSoonCard({
   const whenIso = eventDateTimeIso(event.startsAt);
   const category = eventCardCategoryChip(item);
   const imageUrl = eventCardImageUrl(item);
-  const mapped = eventShowOnRealmEligible(item) && Boolean(onViewOnMap);
+  const now = useLiveNow();
+  const showOnRealm = Boolean(onViewOnMap) && eventShowOnRealmEligible(item) && isEventLive(item, now);
   const interested =
     feedEventCanRsvp(item) &&
     ((item.kind === "campus" && isInterestedRsvp(item.event.myRsvpStatus)) ||
@@ -113,7 +116,7 @@ function HappeningSoonCard({
         </div>
       </div>
       <div className="cq-happening-card-actions">
-        {mapped ? (
+        {showOnRealm ? (
           <button type="button" className="cq-happening-card-action" onClick={onViewOnMap}>
             Show on Realm
           </button>
@@ -146,6 +149,7 @@ export function HappeningSoonCarousel({
 }) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [index, setIndex] = useState(0);
+  const now = useLiveNow();
 
   const syncIndex = useCallback(() => {
     const root = scrollerRef.current;
@@ -197,7 +201,7 @@ export function HappeningSoonCarousel({
               eager={rowIndex === 0}
               onView={() => onView(row.item)}
               onViewOnMap={
-                onViewOnMap && eventShowOnRealmEligible(row.item)
+                onViewOnMap && eventShowOnRealmEligible(row.item) && isEventLive(row.item, now)
                   ? () => onViewOnMap(row.item.event.id)
                   : undefined
               }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronLeft, GraduationCap, Lock, Search, User } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft } from "lucide-react";
 import { patchAuthed, postAuthed, fetchAuthed } from "@/lib/client/dashboardApi";
 import { getAccessToken } from "@/lib/client/apiSession";
 import { readAccessTokenClaims } from "@/lib/client/jwtClaims";
@@ -12,10 +12,16 @@ import { CampusEmailOtpInput } from "@/components/auth/CampusEmailOtpInput";
 import { AcademicAreaPicker } from "@/components/auth/AcademicAreaPicker";
 import { trackOnboardingEvent } from "@/lib/client/onboardingAnalytics";
 import type { AcademicAreaId } from "@/lib/onboarding/academicAreas";
+import {
+  buildAvatarOnboardingSavePayload,
+  canCompleteAvatarOnboarding,
+  createDefaultAvatarConfig,
+} from "@/lib/avatarConfig";
+import { CHARACTER_CLASSES } from "@/lib/characterClasses";
 import { graduationYearOptions } from "@/lib/onboarding/graduationYear";
+import { shouldShowScrollCue } from "@/lib/onboarding/scrollCue";
 import {
   BRAND_KNIGHT,
-  BRAND_LOGO_OFFICIAL,
   COMMUNITY_OPTIONS,
   INSTITUTIONS,
   INTEREST_OPTIONS,
@@ -54,10 +60,12 @@ import { KnightStage, OnboardingProgressHeader } from "@/components/onboarding/K
 
 type Step = DemographicOnboardingStep;
 
+const FEATURED_INTEREST_COUNT = 12;
+
 function ambientForStep(step: Step): { density: OnboardingAmbientDensity; campusHaze: boolean } {
   if (step === "welcome") return { density: "normal", campusHaze: true };
-  if (step === "success") return { density: "celebrate", campusHaze: false };
-  if (step === "email_verification") return { density: "calm", campusHaze: false };
+  if (step === "ready") return { density: "celebrate", campusHaze: false };
+  if (step === "campus") return { density: "calm", campusHaze: false };
   return { density: "normal", campusHaze: false };
 }
 
@@ -119,7 +127,7 @@ export function AuthOnboardingFlow({
       startAtEmailVerification,
       forceFullReplay,
     });
-    return resolved === "welcome" ? "student_status" : resolved;
+    return resolved === "welcome" ? "about_you" : resolved;
   });
   const [studentStatus, setStudentStatus] = useState<StudentStatusId | null>(initialStudentStatus);
   const [graduationYear, setGraduationYear] = useState<number | null>(initialYear);
@@ -129,7 +137,6 @@ export function AuthOnboardingFlow({
   const [communities, setCommunities] = useState<CommunityId[]>(initialCommunities);
   const [major, setMajor] = useState<string | null>(initialMajor);
   const [academicArea, setAcademicArea] = useState<AcademicAreaId | null>(initialAcademicArea);
-  const [schoolQuery, setSchoolQuery] = useState("");
   const [showSchoolRequest, setShowSchoolRequest] = useState(false);
   const [requestedSchoolName, setRequestedSchoolName] = useState(draft?.requestedSchoolName ?? "");
   const [schoolRequestSaved, setSchoolRequestSaved] = useState(Boolean(draft?.requestedSchoolName));
@@ -138,6 +145,7 @@ export function AuthOnboardingFlow({
   const [notice, setNotice] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [sparkInterestId, setSparkInterestId] = useState<InterestId | null>(null);
+  const [showAllInterests, setShowAllInterests] = useState(false);
   const [campusVerified, setCampusVerified] = useState(() => isCampusEmailVerified(initialProfile ?? {}));
   const [emailMasked, setEmailMasked] = useState("");
   const [hasActiveChallenge, setHasActiveChallenge] = useState(false);
@@ -161,6 +169,41 @@ export function AuthOnboardingFlow({
     new Date(),
     studentStatus === "graduate_student" ? { extraFutureYears: 2 } : undefined,
   );
+  const gradScrollRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollCue, setShowScrollCue] = useState(false);
+
+  useEffect(() => {
+    if (step === "welcome" || step === "ready") {
+      setShowScrollCue(false);
+      return undefined;
+    }
+    const scroller = gradScrollRef.current;
+    if (!scroller) return undefined;
+
+    const sync = () => {
+      setShowScrollCue(
+        shouldShowScrollCue({
+          scrollHeight: scroller.scrollHeight,
+          clientHeight: scroller.clientHeight,
+          scrollTop: scroller.scrollTop,
+        }),
+      );
+    };
+
+    sync();
+    const frame = window.requestAnimationFrame(sync);
+    scroller.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync);
+    const observer = new ResizeObserver(sync);
+    observer.observe(scroller);
+    if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      scroller.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+      observer.disconnect();
+    };
+  }, [step]);
 
   const claims = readAccessTokenClaims(getAccessToken());
   const userEmail = claims?.email ?? "";
@@ -225,13 +268,10 @@ export function AuthOnboardingFlow({
   useEffect(() => {
     const next: Record<Step, string | null> = {
       welcome: BRAND_KNIGHT.welcoming,
-      student_status: BRAND_KNIGHT.heroic,
-      graduation_year: BRAND_KNIGHT.pointing,
-      school: BRAND_KNIGHT.presenting,
-      interests: BRAND_KNIGHT.presentingRight,
-      communities: BRAND_KNIGHT.thumbsUp,
-      email_verification: BRAND_KNIGHT.heroic,
-      success: BRAND_KNIGHT.heroic,
+      about_you: BRAND_KNIGHT.welcoming,
+      campus: BRAND_KNIGHT.presenting,
+      personalize: BRAND_KNIGHT.presentingRight,
+      ready: BRAND_KNIGHT.heroic,
     };
     const src = next[step];
     if (!src) return;
@@ -269,7 +309,7 @@ export function AuthOnboardingFlow({
   }
 
   useEffect(() => {
-    if (step !== "email_verification") return;
+    if (step !== "campus") return;
     void refreshCampusVerificationStatus();
   }, [step]);
 
@@ -322,7 +362,7 @@ export function AuthOnboardingFlow({
       setResendAvailableInSeconds(result.resendAvailableInSeconds);
       if (result.alreadyVerified) {
         setCampusVerified(true);
-        setNotice(CAMPUS_EMAIL_USER_MESSAGES.alreadyVerified);
+        setNotice(null);
       } else {
         setHasActiveChallenge(true);
         setCampusVerified(false);
@@ -330,7 +370,7 @@ export function AuthOnboardingFlow({
         setNotice(CAMPUS_EMAIL_USER_MESSAGES.sent);
         trackOnboardingEvent({
           eventName: "onboarding_verification_sent",
-          stepNumber: 6,
+          stepNumber: 2,
           elapsedMs: elapsedMs(),
         });
       }
@@ -359,10 +399,10 @@ export function AuthOnboardingFlow({
         setCampusVerified(true);
         setHasActiveChallenge(false);
         setOtpCode("");
-        setNotice(CAMPUS_EMAIL_USER_MESSAGES.alreadyVerified);
+        setNotice(null);
         trackOnboardingEvent({
           eventName: "onboarding_verification_completed",
-          stepNumber: 6,
+          stepNumber: 2,
           elapsedMs: elapsedMs(),
         });
       }
@@ -406,7 +446,7 @@ export function AuthOnboardingFlow({
   }
 
   useEffect(() => {
-    if (step === "welcome") setStep("student_status");
+    if (step === "welcome") setStep("about_you");
   }, [step]);
 
   useEffect(() => {
@@ -415,11 +455,6 @@ export function AuthOnboardingFlow({
     trackedStart.current = true;
     trackOnboardingEvent({ eventName: "onboarding_started", stepNumber: 1, elapsedMs: elapsedMs() });
   }, [step, forceFullReplay]);
-
-  function proceedToEmailVerification() {
-    go("email_verification");
-    void sendCampusCode();
-  }
 
   function goBack() {
     const prev = previousDemographicStep({ current: step, ...flowArgs });
@@ -463,26 +498,61 @@ export function AuthOnboardingFlow({
     });
   }
 
-  async function continueFromCommunities() {
+  const visibleInterests =
+    showAllInterests || interests.some((id) => INTEREST_OPTIONS.findIndex((opt) => opt.id === id) >= FEATURED_INTEREST_COUNT)
+      ? INTEREST_OPTIONS
+      : INTEREST_OPTIONS.slice(0, FEATURED_INTEREST_COUNT);
+  const aboutYouReady =
+    Boolean(studentStatus) &&
+    (!shouldAskGraduationYear(studentStatus) || graduateOther || graduationYear != null);
+  const showQaVerification = process.env.NODE_ENV !== "production" && isQaAccount;
+
+  async function continueFromAboutYou() {
+    if (!aboutYouReady || !studentStatus) return;
+    trackOnboardingEvent({
+      eventName: "onboarding_status_completed",
+      stepNumber: 1,
+      elapsedMs: elapsedMs(),
+    });
+    void persistProfilePatch({
+      studentStatus,
+      classYear: graduateOther || !shouldAskGraduationYear(studentStatus) ? null : graduationYear,
+      major: major ?? "",
+      academicArea,
+    });
+    go("campus");
+  }
+
+  async function continueFromCampus() {
+    if (!campusVerified) {
+      setError("Verify your URI email before continuing.");
+      return;
+    }
+    setError(null);
+    void persistProfilePatch({ institutionId: "uri" });
+    go("personalize");
+  }
+
+  async function continueFromPersonalize() {
     if (submitLock.current || submitting) return;
     if (!studentStatus || interests.length < MIN_INTERESTS) {
-      setError("Please complete your onboarding selections.");
+      setError("Pick at least 3 interests to continue.");
       return;
     }
     submitLock.current = true;
     setSubmitting(true);
     setError(null);
     try {
-      if (!forceFullReplay) {
+      if (!forceFullReplay && !startAtEmailVerification) {
         await saveDemographics();
       }
       trackOnboardingEvent({
         eventName: "onboarding_communities_completed",
-        stepNumber: 5,
+        stepNumber: 3,
         elapsedMs: elapsedMs(),
         skipped: communities.length === 0,
       });
-      proceedToEmailVerification();
+      go("ready");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save. Your progress is kept — try again.");
     } finally {
@@ -493,11 +563,34 @@ export function AuthOnboardingFlow({
     }
   }
 
-  async function finishAndExplore() {
+  async function saveStarterAvatar() {
+    const profile = await fetchAuthed<{
+      display_name?: string | null;
+      username?: string | null;
+      onboarding_character_completed?: boolean | null;
+      onboarding_completed?: boolean | null;
+    }>("/api/me/profile");
+    if (profile.onboarding_character_completed === true || profile.onboarding_completed === true) return;
+    const displayName = profile.display_name?.trim() ?? "";
+    const username = profile.username?.trim() ?? "";
+    const config = createDefaultAvatarConfig();
+    if (!canCompleteAvatarOnboarding({ displayName, username, config })) {
+      throw new Error("We couldn't assign a starter avatar. Customize your avatar instead.");
+    }
+    const starterWeapon = CHARACTER_CLASSES.find((entry) => entry.id === config.classType)?.starterWeapon ?? null;
+    await patchAuthed("/api/me/profile", buildAvatarOnboardingSavePayload({
+      displayName,
+      username,
+      config,
+      starterWeapon,
+    }));
+  }
+
+  async function finishAndExplore(customizeAvatar: boolean) {
     if (submitLock.current || submitting) return;
     if (continueBlocked) {
       setError("Verify your URI email before continuing.");
-      go("email_verification");
+      go("campus");
       return;
     }
     if (!startAtEmailVerification && (!studentStatus || interests.length < MIN_INTERESTS)) {
@@ -509,8 +602,11 @@ export function AuthOnboardingFlow({
     setSubmitting(true);
     setError(null);
     try {
-      if (!startAtEmailVerification) {
+      if (!startAtEmailVerification && !forceFullReplay) {
         await saveDemographics();
+      }
+      if (!customizeAvatar && !forceFullReplay) {
+        await saveStarterAvatar();
       }
       trackOnboardingEvent({
         eventName: "onboarding_preferences_saved",
@@ -528,17 +624,9 @@ export function AuthOnboardingFlow({
     }
   }
 
-  async function continueAfterVerifiedEmail() {
-    if (!campusVerified) {
-      setError("Verify your URI email before continuing.");
-      return;
-    }
-    go("success");
-  }
-
   const ambient = ambientForStep(step);
   const showBack =
-    step !== "welcome" && step !== "success" && !(startAtEmailVerification && step === "email_verification");
+    step !== "welcome" && step !== "about_you" && !(startAtEmailVerification && step === "campus");
 
   return (
     <div className="cq-onboard-shell cq-onboard-shell--light">
@@ -555,483 +643,338 @@ export function AuthOnboardingFlow({
       ) : null}
 
       <div className="cq-onboard-inner">
-        {step === "welcome" ? (
-          <div className="cq-onboard-hero text-center">
-            <div className="cq-onboard-logo-wrap">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={BRAND_LOGO_OFFICIAL}
-                alt="CampusQuest"
-                className="cq-onboard-logo"
-                width={88}
-                height={88}
-                decoding="async"
-              />
-            </div>
-            <KnightStage src={BRAND_KNIGHT.thumbsUp} size="lg" ring="lg" />
-            <h1 className="cq-onboard-title">
-              Welcome to <span className="cq-onboard-title-accent">CampusQuest</span>
-            </h1>
-            <p className="cq-onboard-sub">
-              Your campus. Your community.
-              <br />
-              Your quest.
-            </p>
-            <button
-              type="button"
-              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-8"
-              onClick={() => go("student_status")}
-            >
-              Join CampusQuest
-            </button>
-            <p className="cq-onboard-footer-link">
-              Already have an account?{" "}
-              <button
-                type="button"
-                className="cq-onboard-text-link"
-                onClick={() => {
-                  clearOnboardingDraft(userId);
-                  onRequestSignIn?.();
-                  if (!onRequestSignIn) void onComplete();
-                }}
-              >
-                Sign in
-              </button>
-            </p>
-          </div>
-        ) : null}
-
-        {step === "student_status" ? (
-          <div className="cq-onboard-step">
-            <div className="cq-onboard-knight-with-bubble">
-              <KnightStage src={BRAND_KNIGHT.welcoming} size="lg" ring="lg" />
-              <p className="cq-onboard-speech" aria-hidden="true">
-                Let&apos;s begin your quest.
-              </p>
-            </div>
-            <h2 className="cq-onboard-question">Tell us about yourself</h2>
-            <div className="cq-onboard-stack mt-6">
-              {STUDENT_STATUS_OPTIONS.map((opt) => {
-                const selected = studentStatus === opt.id;
-                const faculty = opt.id === "faculty_staff";
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    className={`cq-onboard-choice cq-onboard-choice--icon ${
-                      selected ? "cq-onboard-choice--primary" : ""
-                    }`}
-                    onClick={() => {
-                      setStudentStatus(opt.id);
-                      trackOnboardingEvent({
-                        eventName: "onboarding_status_completed",
-                        stepNumber: 1,
-                        elapsedMs: elapsedMs(),
-                      });
-                      if (faculty) {
-                        setGraduationYear(null);
-                        setGraduateOther(true);
-                        void persistProfilePatch({ studentStatus: opt.id, classYear: null });
-                        go("school");
-                      } else {
-                        void persistProfilePatch({ studentStatus: opt.id });
-                        go("graduation_year");
-                      }
-                    }}
-                  >
-                    {faculty ? (
-                      <User className="h-5 w-5 shrink-0" aria-hidden />
-                    ) : (
-                      <GraduationCap className="h-5 w-5 shrink-0" aria-hidden />
-                    )}
-                    <span>{opt.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-
-        {step === "graduation_year" ? (
-          <div className="cq-onboard-step">
-            <KnightStage src={BRAND_KNIGHT.heroic} size="md" ring="md" />
-            <h2 className="cq-onboard-question">When do you expect to graduate?</h2>
-            <p className="cq-onboard-support">
-              {studentStatus === "graduate_student"
-                ? "Pick the year that fits, or Not sure if you don't have one."
-                : "Choose a year. Academic standing can change — this is just for personalization."}
-            </p>
-            <div className="cq-onboard-stack mt-5">
-              {yearOptions.map((opt) => {
-                const selected =
-                  opt.year == null ? graduateOther : !graduateOther && graduationYear === opt.year;
-                return (
-                  <button
-                    key={opt.label}
-                    type="button"
-                    className={`cq-onboard-choice cq-onboard-choice--row ${selected ? "cq-onboard-choice--selected" : ""}`}
-                    onClick={() => {
-                      if (opt.year == null) {
-                        setGraduateOther(true);
-                        setGraduationYear(null);
-                        void persistProfilePatch({ classYear: null });
-                      } else {
+        {step === "about_you" ? (
+          <div className="cq-onboard-step cq-onboard-step--flow">
+            <div ref={gradScrollRef} className="cq-onboard-grad-scroll">
+              <div>
+                <KnightStage src={BRAND_KNIGHT.welcoming} size="md" ring="md" />
+                <h2 className="cq-onboard-question">Tell us about yourself</h2>
+                <p className="cq-onboard-support">Help us personalize your CampusQuest experience.</p>
+                <div className="cq-onboard-stack mt-5" role="group" aria-label="Role">
+                  {STUDENT_STATUS_OPTIONS.map((opt) => {
+                    const selected = studentStatus === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        aria-pressed={selected}
+                        className={`cq-onboard-choice cq-onboard-choice--row ${selected ? "cq-onboard-choice--selected" : ""}`}
+                        onClick={() => setStudentStatus(opt.id)}
+                      >
+                        <span>{opt.label}</span>
+                        {selected ? <Check className="h-5 w-5 shrink-0" aria-hidden /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                {studentStatus && shouldAskGraduationYear(studentStatus) ? (
+                  <div>
+                    <label className="cq-onboard-field-label" htmlFor="cq-grad-year">
+                      Expected graduation
+                    </label>
+                    <select
+                      id="cq-grad-year"
+                      className="cq-onboard-year-select"
+                      value={graduateOther ? "other" : graduationYear == null ? "" : String(graduationYear)}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (!value) return;
+                        if (value === "other") {
+                          setGraduateOther(true);
+                          setGraduationYear(null);
+                          void persistProfilePatch({ studentStatus, classYear: null });
+                          return;
+                        }
+                        const year = Number(value);
                         setGraduateOther(false);
-                        setGraduationYear(opt.year);
-                        void persistProfilePatch({ classYear: opt.year });
-                      }
-                    }}
-                  >
-                    <span>{opt.label}</span>
-                    {selected ? <Check className="h-5 w-5 shrink-0" aria-hidden /> : null}
-                  </button>
-                );
-              })}
+                        setGraduationYear(year);
+                        void persistProfilePatch({ studentStatus, classYear: year });
+                      }}
+                    >
+                      <option value="">Select a year</option>
+                      {yearOptions
+                        .filter((opt) => opt.year != null)
+                        .map((opt) => (
+                          <option key={opt.year} value={opt.year ?? ""}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      <option value="other">Not sure / Other</option>
+                    </select>
+                  </div>
+                ) : null}
+                {studentStatus ? (
+                  <AcademicAreaPicker
+                      academicArea={academicArea}
+                      major={major}
+                      onChange={(next) => {
+                        setAcademicArea(next.academicArea);
+                        setMajor(next.major);
+                        void persistProfilePatch({
+                          academicArea: next.academicArea,
+                          major: next.major,
+                        });
+                      }}
+                    />
+                ) : null}
+              </div>
             </div>
-            <AcademicAreaPicker
-              academicArea={academicArea}
-              major={major}
-              onChange={(next) => {
-                setAcademicArea(next.academicArea);
-                setMajor(next.major);
-                void persistProfilePatch({
-                  academicArea: next.academicArea,
-                  major: next.major,
-                });
-              }}
-            />
-            <button
-              type="button"
-              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-40"
-              disabled={!graduateOther && graduationYear == null}
-              onClick={() => {
-                trackOnboardingEvent({
-                  eventName: "onboarding_graduation_completed",
-                  stepNumber: 2,
-                  elapsedMs: elapsedMs(),
-                });
-                go("school");
-              }}
+            <div
+              className={`cq-onboard-scroll-cue ${showScrollCue ? "" : "cq-onboard-scroll-cue--off"}`}
+              aria-hidden={showScrollCue ? undefined : true}
             >
-              Continue
-            </button>
+              <span>Scroll for more</span>
+              <ChevronDown className="h-4 w-4" aria-hidden />
+            </div>
+            <div className="cq-onboard-sticky-footer">
+              <button
+                type="button"
+                className="cq-onboard-btn-primary cq-onboard-btn-primary--glow disabled:opacity-40"
+                disabled={!aboutYouReady}
+                onClick={() => void continueFromAboutYou()}
+              >
+                Continue
+              </button>
+              {error ? <p className="cq-onboard-error mt-3">{error}</p> : null}
+            </div>
           </div>
         ) : null}
 
-        {step === "school" ? (
-          <div className="cq-onboard-step">
-            <KnightStage src={BRAND_KNIGHT.pointing} size="md" ring="md" />
-            <h2 className="cq-onboard-question">What school do you go to?</h2>
-            <p className="cq-onboard-support">URI is the campus currently live on CampusQuest.</p>
-            <div className="cq-onboard-search cq-onboard-search--input">
-              <Search className="h-4 w-4 text-slate-400" aria-hidden />
-              <input
-                type="search"
-                value={schoolQuery}
-                onChange={(event) => setSchoolQuery(event.target.value)}
-                placeholder="Search for your school."
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-                aria-label="Search for your school"
-              />
+        {step === "campus" ? (
+          <div className="cq-onboard-step cq-onboard-step--flow">
+            <div ref={gradScrollRef} className="cq-onboard-grad-scroll">
+              <div>
+                <KnightStage src={BRAND_KNIGHT.presenting} size="md" ring="md" />
+                <h2 className="cq-onboard-question">Your campus</h2>
+                <p className="cq-onboard-support">CampusQuest is currently live at the University of Rhode Island.</p>
+                <button
+                  type="button"
+                  aria-pressed
+                  className="cq-onboard-school cq-onboard-school--selected mt-5"
+                  onClick={() => void persistProfilePatch({ institutionId: "uri" })}
+                >
+                  <span className="cq-onboard-school-mark" aria-hidden>
+                    URI
+                  </span>
+                  <span className="min-w-0 text-left">
+                    <span className="block font-semibold">{INSTITUTIONS.uri.name}</span>
+                    <span className="block text-sm opacity-80">{INSTITUTIONS.uri.city}</span>
+                  </span>
+                  <Check className="ml-auto h-5 w-5 shrink-0" aria-hidden />
+                </button>
+                {showSchoolRequest ? (
+                  <div className="cq-onboard-school-request">
+                    <label className="cq-onboard-field-label" htmlFor="cq-school-request">
+                      Which school should we add?
+                    </label>
+                    <input
+                      id="cq-school-request"
+                      className="cq-onboard-year-select mt-2"
+                      value={requestedSchoolName}
+                      onChange={(event) => setRequestedSchoolName(event.target.value)}
+                    />
+                    <div className="mt-3 flex justify-end gap-3">
+                      <button type="button" className="cq-onboard-text-btn" onClick={() => setShowSchoolRequest(false)}>
+                        Never mind
+                      </button>
+                      <button
+                        type="button"
+                        className="cq-onboard-btn-primary cq-onboard-btn-primary--inline disabled:opacity-40"
+                        disabled={requestedSchoolName.trim().length < 2}
+                        onClick={() => {
+                          const name = requestedSchoolName.trim();
+                          setSchoolRequestSaved(true);
+                          setShowSchoolRequest(false);
+                          void persistProfilePatch({ requestedSchoolName: name, institutionId: "uri" });
+                        }}
+                      >
+                        Submit
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" className="cq-onboard-muted-link" onClick={() => setShowSchoolRequest(true)}>
+                    {schoolRequestSaved ? "School request saved" : "Can’t find your school?"}
+                  </button>
+                )}
+
+                <h3 className="cq-onboard-section-label">Verify your URI email</h3>
+                {campusVerified ? (
+                  <p className="cq-onboard-verified">
+                    <Check className="h-4 w-4" aria-hidden /> URI email verified
+                  </p>
+                ) : (
+                  <>
+                    <p className="cq-onboard-support">{emailMasked || userEmail || "your URI email"}</p>
+                    {hasActiveChallenge ? (
+                      <CampusEmailOtpInput
+                        value={otpCode}
+                        disabled={codeVerifying || codeSending}
+                        onChange={(next) => {
+                          setOtpCode(next);
+                          setError(null);
+                        }}
+                        onComplete={(code) => void verifyCampusCode(code)}
+                      />
+                    ) : null}
+                    <button
+                      type="button"
+                      className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-4 disabled:opacity-50"
+                      disabled={codeSending || resendLocked}
+                      onClick={() => void sendCampusCode()}
+                    >
+                      {codeSending ? "Sending…" : hasActiveChallenge ? "Resend code" : "Send verification code"}
+                    </button>
+                    {showQaVerification ? (
+                      <button
+                        type="button"
+                        className="cq-onboard-muted-link"
+                        disabled={qaSending}
+                        onClick={() => void sendQaTestVerificationEmail()}
+                      >
+                        {qaSending ? "Sending test email..." : "Send test verification email"}
+                      </button>
+                    ) : null}
+                    {notice ? <p className="cq-onboard-notice mt-3">{notice}</p> : null}
+                  </>
+                )}
+              </div>
             </div>
-            {(schoolQuery.trim() === "" ||
-              INSTITUTIONS.uri.name.toLowerCase().includes(schoolQuery.trim().toLowerCase()) ||
-              "uri".includes(schoolQuery.trim().toLowerCase())) ? (
+            <div
+              className={`cq-onboard-scroll-cue ${showScrollCue ? "" : "cq-onboard-scroll-cue--off"}`}
+              aria-hidden={showScrollCue ? undefined : true}
+            >
+              <span>Scroll for more</span>
+              <ChevronDown className="h-4 w-4" aria-hidden />
+            </div>
+            <div className="cq-onboard-sticky-footer">
               <button
                 type="button"
-                className="cq-onboard-school cq-onboard-school--selected"
-                onClick={() => {
-                  void persistProfilePatch({ institutionId: "uri" });
-                  trackOnboardingEvent({
-                    eventName: "onboarding_school_completed",
-                    stepNumber: 3,
-                    elapsedMs: elapsedMs(),
-                  });
-                  go("interests");
-                }}
+                className="cq-onboard-btn-primary cq-onboard-btn-primary--glow disabled:opacity-40"
+                disabled={!campusVerified || submitting}
+                onClick={() => void continueFromCampus()}
               >
-                <span className="cq-onboard-school-mark" aria-hidden>
-                  R
-                </span>
-                <span className="text-left">
-                  <span className="block font-semibold text-slate-900">{INSTITUTIONS.uri.name}</span>
-                  <span className="block text-sm text-slate-500">{INSTITUTIONS.uri.city}</span>
-                </span>
-                <Check className="ml-auto h-5 w-5 shrink-0 text-white" aria-hidden />
+                Continue
               </button>
-            ) : (
-              <p className="cq-onboard-support mt-4">No matching campus is live yet. URI is available today.</p>
-            )}
-            <button
-              type="button"
-              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6"
-              onClick={() => {
-                void persistProfilePatch({ institutionId: "uri" });
-                trackOnboardingEvent({
-                  eventName: "onboarding_school_completed",
-                  stepNumber: 3,
-                  elapsedMs: elapsedMs(),
-                });
-                go("interests");
-              }}
-            >
-              Continue
-            </button>
-            {schoolRequestSaved ? (
-              <p className="cq-onboard-notice mt-4">Thanks — we noted your campus. URI onboarding continues.</p>
-            ) : showSchoolRequest ? (
-              <div className="cq-onboard-school-request">
-                <label htmlFor="cq-requested-school" className="cq-onboard-support">
-                  Which school are you looking for?
-                </label>
-                <input
-                  id="cq-requested-school"
-                  className="cq-auth-input mt-2"
-                  value={requestedSchoolName}
-                  onChange={(event) => setRequestedSchoolName(event.target.value)}
-                  placeholder="School name"
-                  autoComplete="organization"
-                />
-                <div className="cq-onboard-row-actions mt-3">
-                  <button type="button" className="cq-onboard-text-btn" onClick={() => setShowSchoolRequest(false)}>
-                    Never mind
+              {error ? <p className="cq-onboard-error mt-3">{error}</p> : null}
+            </div>
+          </div>
+        ) : null}
+
+        {step === "personalize" ? (
+          <div className={`cq-onboard-step cq-onboard-step--flow ${showScrollCue ? "cq-onboard-step--more" : ""}`}>
+            <div ref={gradScrollRef} className="cq-onboard-grad-scroll">
+              <div>
+                <KnightStage src={BRAND_KNIGHT.presentingRight} size="md" ring="md" />
+                <h2 className="cq-onboard-question">Make CampusQuest yours</h2>
+                <p className="cq-onboard-support">
+                  Choose a few things you care about. We’ll use them to personalize your feed, events, and recommendations.
+                </p>
+                <h3 className="cq-onboard-section-label">Interests</h3>
+                <p className="cq-onboard-counter" aria-live="polite">
+                  {interests.length < MIN_INTERESTS
+                    ? `${interests.length} of ${MIN_INTERESTS} selected`
+                    : `${interests.length} selected`}
+                </p>
+                <div className="cq-onboard-chip-grid" role="group" aria-label="Interests">
+                  {visibleInterests.map((opt) => {
+                    const selected = interests.includes(opt.id);
+                    const spark = sparkInterestId === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        aria-pressed={selected}
+                        className={`cq-onboard-chip ${selected ? "cq-onboard-chip--selected" : ""} ${
+                          spark ? "cq-onboard-chip--spark" : ""
+                        }`}
+                        onClick={() => toggleInterest(opt.id)}
+                      >
+                        {selected ? <Check className="h-3.5 w-3.5" aria-hidden /> : null}
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {INTEREST_OPTIONS.length > FEATURED_INTEREST_COUNT ? (
+                  <button type="button" className="cq-onboard-more" onClick={() => setShowAllInterests((open) => !open)}>
+                    {showAllInterests ? "Show fewer interests" : "+ More interests"}
                   </button>
-                  <button
-                    type="button"
-                    className="cq-onboard-btn-primary cq-onboard-btn-primary--inline disabled:opacity-40"
-                    disabled={requestedSchoolName.trim().length < 2}
-                    onClick={() => {
-                      const name = requestedSchoolName.trim();
-                      setSchoolRequestSaved(true);
-                      setShowSchoolRequest(false);
-                      void persistProfilePatch({ requestedSchoolName: name, institutionId: "uri" });
-                    }}
-                  >
-                    Submit
-                  </button>
+                ) : null}
+
+                <h3 className="cq-onboard-section-label">
+                  Campus communities <span className="font-semibold text-slate-400">(optional)</span>
+                </h3>
+                <p className="cq-onboard-support">Choose any that apply to you.</p>
+                <div className="cq-onboard-community-grid" role="group" aria-label="Campus communities">
+                  {COMMUNITY_OPTIONS.map((opt) => {
+                    const selected = communities.includes(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        aria-pressed={selected}
+                        className={`cq-onboard-community ${selected ? "cq-onboard-community--selected" : ""}`}
+                        onClick={() => toggleCommunity(opt.id)}
+                      >
+                        <span>{opt.label}</span>
+                        {selected ? <Check className="h-4 w-4 shrink-0" aria-hidden /> : null}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            ) : (
-              <button
-                type="button"
-                className="cq-onboard-muted-link mt-4"
-                onClick={() => setShowSchoolRequest(true)}
-              >
-                Can&apos;t find your school?
-              </button>
-            )}
-          </div>
-        ) : null}
-
-        {step === "interests" ? (
-          <div className="cq-onboard-step">
-            <KnightStage src={BRAND_KNIGHT.presenting} size="sm" ring="sm" />
-            <h2 className="cq-onboard-question">What are you interested in?</h2>
-            <p className="cq-onboard-support">
-              Pick {MIN_INTERESTS} or more. We&apos;ll personalize your feed, events, and campus recommendations.
-            </p>
-            <div className="cq-onboard-chip-grid" role="group" aria-label="Interests">
-              {INTEREST_OPTIONS.map((opt) => {
-                const selected = interests.includes(opt.id);
-                const spark = sparkInterestId === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    aria-pressed={selected}
-                    className={`cq-onboard-chip ${selected ? "cq-onboard-chip--selected" : ""} ${
-                      spark ? "cq-onboard-chip--spark" : ""
-                    }`}
-                    onClick={() => toggleInterest(opt.id)}
-                  >
-                    {selected ? <Check className="h-3.5 w-3.5" aria-hidden /> : null}
-                    {opt.label}
-                  </button>
-                );
-              })}
             </div>
-            <button
-              type="button"
-              disabled={interests.length < MIN_INTERESTS}
-              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-40"
-              onClick={() => {
-                trackOnboardingEvent({
-                  eventName: "onboarding_interests_completed",
-                  stepNumber: 4,
-                  elapsedMs: elapsedMs(),
-                });
-                go("communities");
-              }}
+            <div
+              className={`cq-onboard-scroll-cue ${showScrollCue ? "" : "cq-onboard-scroll-cue--off"}`}
+              aria-hidden={showScrollCue ? undefined : true}
             >
-              Continue
-            </button>
-          </div>
-        ) : null}
-
-        {step === "communities" ? (
-          <div className="cq-onboard-step">
-            <KnightStage src={BRAND_KNIGHT.presentingRight} size="sm" ring="sm" />
-            <h2 className="cq-onboard-question">What parts of campus are you connected to?</h2>
-            <p className="cq-onboard-support">
-              These are affiliations, programs, and networks — skip any that don&apos;t apply.
-            </p>
-            <div className="cq-onboard-community-grid" role="group" aria-label="Communities">
-              {COMMUNITY_OPTIONS.map((opt) => {
-                const selected = communities.includes(opt.id);
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    aria-pressed={selected}
-                    className={`cq-onboard-community ${selected ? "cq-onboard-community--selected" : ""}`}
-                    onClick={() => toggleCommunity(opt.id)}
-                  >
-                    <span>{opt.label}</span>
-                    {selected ? <Check className="h-4 w-4 shrink-0" aria-hidden /> : null}
-                  </button>
-                );
-              })}
+              <span>Scroll for more</span>
+              <ChevronDown className="h-4 w-4" aria-hidden />
             </div>
-            <div className="cq-onboard-row-actions mt-6">
+            <div className="cq-onboard-sticky-footer">
               <button
                 type="button"
-                className="cq-onboard-text-btn disabled:opacity-50"
-                disabled={submitting}
-                onClick={() => void continueFromCommunities()}
-              >
-                Skip
-              </button>
-              <button
-                type="button"
-                className="cq-onboard-btn-primary cq-onboard-btn-primary--inline cq-onboard-btn-primary--glow disabled:opacity-50"
-                disabled={submitting}
-                onClick={() => void continueFromCommunities()}
+                className="cq-onboard-btn-primary cq-onboard-btn-primary--glow disabled:opacity-40"
+                disabled={interests.length < MIN_INTERESTS || submitting}
+                onClick={() => void continueFromPersonalize()}
               >
                 {submitting ? "Saving…" : "Continue"}
               </button>
+              {error ? <p className="cq-onboard-error mt-3">{error}</p> : null}
             </div>
-            {error ? <p className="cq-onboard-error mt-3">{error}</p> : null}
           </div>
         ) : null}
 
-        {step === "email_verification" ? (
-          <div className="cq-onboard-step">
-            <KnightStage src={BRAND_KNIGHT.thumbsUp} size="md" ring="lg" />
-            <h2 className="cq-onboard-question">
-              {campusVerified ? "URI email verified" : "Check your URI email"}
-            </h2>
-            <p className="cq-onboard-support">
-              {campusVerified
-                ? CAMPUS_EMAIL_USER_MESSAGES.alreadyVerified
-                : hasActiveChallenge
-                  ? `We sent a 6-digit verification code to ${emailMasked || "your URI email"}`
-                  : "We'll send a 6-digit verification code to your URI email."}
-            </p>
-            <p className="cq-onboard-support">Use your URI email address (@uri.edu) to verify.</p>
-
-            {!campusVerified ? (
-              <>
-                <CampusEmailOtpInput
-                  value={otpCode}
-                  disabled={codeVerifying || codeSending}
-                  onChange={(next) => {
-                    setOtpCode(next);
-                    setError(null);
-                  }}
-                  onComplete={(code) => void verifyCampusCode(code)}
-                />
-                <button
-                  type="button"
-                  className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50"
-                  disabled={codeVerifying || otpCode.length !== 6}
-                  onClick={() => void verifyCampusCode(otpCode)}
-                >
-                  {codeVerifying ? "Verifying…" : "Verify"}
-                </button>
-                <p className="cq-onboard-footer-link mt-4">
-                  Didn&apos;t get it?{" "}
-                  <button
-                    type="button"
-                    className="cq-onboard-text-link disabled:opacity-50"
-                    disabled={resendLocked}
-                    onClick={() => void sendCampusCode()}
-                  >
-                    {codeSending
-                      ? "Sending…"
-                      : resendAvailableInSeconds > 0
-                        ? CAMPUS_EMAIL_USER_MESSAGES.cooldown(resendAvailableInSeconds)
-                        : hasActiveChallenge
-                          ? "Resend code"
-                          : "Send code"}
-                  </button>
-                </p>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50"
-                disabled={submitting}
-                onClick={() => void continueAfterVerifiedEmail()}
-              >
-                {submitting ? "Saving…" : "Continue"}
-              </button>
-            )}
-
-            {isQaAccount ? (
-              <div className="mt-6">
-                <button
-                  type="button"
-                  className="cq-onboard-text-btn disabled:opacity-50"
-                  disabled={qaSending}
-                  onClick={() => void sendQaTestVerificationEmail()}
-                >
-                  {qaSending ? "Sending test email..." : "Send test verification email"}
-                </button>
+        {step === "ready" ? (
+          <div className="cq-onboard-step cq-onboard-step--flow">
+            <div className="cq-onboard-grad-scroll">
+              <div className="text-center">
+                <KnightStage src={BRAND_KNIGHT.heroic} size="md" ring="md" />
+                <h2 className="cq-onboard-question">You’re in.</h2>
+                <p className="cq-onboard-support">Your CampusQuest is ready.</p>
+                <p className="cq-onboard-support">Your campus is waiting.</p>
               </div>
-            ) : null}
-
-            {notice ? <p className="cq-onboard-notice mt-3">{notice}</p> : null}
-            {error ? <p className="cq-onboard-error mt-3">{error}</p> : null}
-
-            <p className="cq-onboard-privacy mt-8">
-              <Lock className="inline h-3.5 w-3.5" aria-hidden /> Your email stays private to CampusQuest account
-              security.
-            </p>
-          </div>
-        ) : null}
-
-        {step === "success" ? (
-          <div className="cq-onboard-hero text-center">
-            <div className="cq-onboard-logo-wrap cq-onboard-logo-wrap--celebrate">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={BRAND_LOGO_OFFICIAL}
-                alt="CampusQuest"
-                className="cq-onboard-logo"
-                width={88}
-                height={88}
-                decoding="async"
-              />
             </div>
-            <KnightStage src={BRAND_KNIGHT.heroic} size="lg" ring="lg" />
-            <h1 className="cq-onboard-title cq-onboard-title--celebrate">Preferences saved!</h1>
-            <p className="cq-onboard-sub cq-onboard-sub--strong">Your CampusQuest is taking shape.</p>
-            <p className="cq-onboard-sub mt-2">
-              Now make CampusQuest yours.
-              <br />
-              Choose your avatar. You can change it anytime.
-            </p>
-            {error ? <p className="cq-onboard-error mt-4">{error}</p> : null}
-            <button
-              type="button"
-              className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-8 disabled:opacity-60"
-              disabled={submitting}
-              onClick={() => void finishAndExplore()}
-            >
-              {submitting ? "Saving…" : "Continue"}
-            </button>
+            <div className="cq-onboard-sticky-footer cq-onboard-actions-stack">
+              <button
+                type="button"
+                className="cq-onboard-btn-primary cq-onboard-btn-primary--glow disabled:opacity-60"
+                disabled={submitting}
+                onClick={() => void finishAndExplore(false)}
+              >
+                {submitting ? "Saving…" : "Enter CampusQuest"}
+              </button>
+              <button
+                type="button"
+                className="cq-onboard-text-btn"
+                disabled={submitting}
+                onClick={() => void finishAndExplore(true)}
+              >
+                Customize avatar
+              </button>
+              {error ? <p className="cq-onboard-error mt-3">{error}</p> : null}
+            </div>
           </div>
         ) : null}
       </div>

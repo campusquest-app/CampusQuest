@@ -3,6 +3,11 @@
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { uploadImageBlob } from "@/lib/client/uploadImageWithProgress";
 import type { OrganizationClaimMatch, VerificationIdentityType, VerificationRequestSummary } from "@/lib/identity/types";
+import type {
+  GreekOrganizationType,
+  OrganizationAvailability,
+  OrgVerificationVariant,
+} from "@/lib/identity/organizationVerification";
 
 export type SubmitVerificationInput = {
   identityType: VerificationIdentityType;
@@ -18,8 +23,25 @@ export type SubmitVerificationInput = {
   imageUrl?: string | null;
   reasonForAccess?: string | null;
   requestedIdentityId?: string | null;
+  organizationVariant?: OrgVerificationVariant | null;
+  greekType?: GreekOrganizationType | null;
+  nationalAffiliation?: string | null;
+  advisorName?: string | null;
+  advisorEmail?: string | null;
   applicantConfirmation: true;
 };
+
+export async function checkOrganizationAvailability(
+  name: string,
+  organizationId?: string | null,
+): Promise<OrganizationAvailability> {
+  const qs = new URLSearchParams({ name });
+  if (organizationId) qs.set("organizationId", organizationId);
+  const data = await fetchAuthed<{ status: OrganizationAvailability }>(
+    `/api/verification/organizations/availability?${qs.toString()}`,
+  );
+  return data.status;
+}
 
 export async function submitVerificationRequest(input: SubmitVerificationInput): Promise<{
   request: VerificationRequestSummary;

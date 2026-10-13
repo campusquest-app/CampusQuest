@@ -2,23 +2,22 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Calendar, CalendarSearch, Search, SlidersHorizontal } from "lucide-react";
-import { CANONICAL_EVENT_CATEGORIES } from "@/lib/eventSources/categories";
+import { Calendar, CalendarSearch, Search, SlidersHorizontal, X } from "lucide-react";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { EventDetailScreen } from "@/components/events/EventDetailScreen";
 import { EventDiscoveryCard } from "@/components/events/EventDiscoveryCard";
-import { EventsCategoryRail } from "@/components/events/EventsCategoryRail";
 import { EventsFilterSheet } from "@/components/events/EventsFilterSheet";
 import { ForYouUpgrade } from "@/components/events/ForYouUpgrade";
 import { HappeningSoonCarousel } from "@/components/events/HappeningSoonCarousel";
 import { ScreenBackHeader } from "@/components/ui/BackButton";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
+import { timeframeAfterWhenChange, type EventsWhenFilter } from "@/lib/client/eventsFeedFilters";
 import {
-  type EventsFeedTimeframe,
-  isUpcomingEvent,
-  matchesEventsSearch,
-  matchesEventsTimeframe,
-} from "@/lib/client/eventsFeedFilters";
+  activeEventFilterChips,
+  eventPassesListFilters,
+  removeActiveEventFilter,
+  type EventsFeedFilterState,
+} from "@/lib/client/eventsFeedQuery";
 import {
   EVENTS_FOR_YOU_EMPTY_DETAIL,
   EVENTS_FOR_YOU_EMPTY_TITLE,
@@ -26,21 +25,15 @@ import {
   eventsEmptyStateCopy,
 } from "@/lib/client/eventsFeedEmptyState";
 import {
-  countActiveEventFilters,
   EVENTS_SEARCH_PLACEHOLDER,
   eventsSyncBanner,
   scoreEventsSearch,
 } from "@/lib/client/eventDiscovery";
-import {
-  eventMatchesCategoryRail,
-  eventSearchHaystack,
-  feedEventIsSaved,
-} from "@/lib/client/eventCardPresentation";
+import { eventSearchHaystack } from "@/lib/client/eventCardPresentation";
 import {
   type CampusEventItem,
   type ExternalFeedEventItem,
   type FeedEvent,
-  feedEventLocationText,
 } from "@/lib/client/eventFeedTypes";
 import { applyCampusRsvpStatus, nextInterestedRsvpStatus } from "@/lib/client/eventInterested";
 import { forYouSurface, shouldPersonalizeForYouEvents } from "@/lib/basic/forYouAccess";
@@ -55,31 +48,24 @@ import {
 } from "@/lib/recommendations";
 import type { RecommendationScore } from "@/lib/recommendations/types";
 
-type Filters = {
-  search: string;
-  category: string;
-  organizationKey: string;
-  isPaid: "all" | "free" | "paid";
-  location: string;
-  timeframe: EventsFeedTimeframe;
-  sport: string;
-};
+type Filters = EventsFeedFilterState;
 
 const initialFilters: Filters = {
   search: "",
-  category: "",
+  categories: [],
+  when: [],
   organizationKey: "",
   isPaid: "all",
+  foodOnly: false,
   location: "",
   timeframe: "for_you",
   sport: "",
 };
 
-const TIMEFRAME_OPTIONS: Array<{ value: EventsFeedTimeframe; label: string }> = [
+const TIMEFRAME_OPTIONS: Array<{ value: "for_you" | "today" | "this_weekend"; label: string }> = [
   { value: "for_you", label: "For You" },
   { value: "today", label: "Today" },
   { value: "this_weekend", label: "This Weekend" },
-  { value: "all", label: "All" },
 ];
 
 export function EventsFeed({
@@ -109,6 +95,7 @@ export function EventsFeed({
   const [error, setError] = useState<string | null>(null);
   const [syncBanner, setSyncBanner] = useState<ReturnType<typeof eventsSyncBanner>>(null);
   const [filters, setFilters] = useState<Filters>(initialFilters);
+  const [draftFilters, setDraftFilters] = useState<Filters>(initialFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [savedOnly, setSavedOnly] = useState(false);
   const [forYouExpanded, setForYouExpanded] = useState(false);
@@ -118,7 +105,6 @@ export function EventsFeed({
   const loadAbortRef = useRef<AbortController | null>(null);
   const recProfile = useRecommendationProfile(personalization);
   const forYouAccess = useForYouAccess();
-  const activeFilterCount = countActiveEventFilters(filters);
 
   async function loadEvents() {
     loadAbortRef.current?.abort();
@@ -226,7 +212,6 @@ export function EventsFeed({
     }
   }, [loading, events, externalEvents]);
 
-  const categories = useMemo(() => [...CANONICAL_EVENT_CATEGORIES], []);
   const sports = useMemo(
     () =>
       Array.from(
@@ -253,55 +238,27 @@ export function EventsFeed({
       .map((name) => ({ key: `ext:${encodeURIComponent(name)}`, label: name }));
     return [...campus, ...externalNames];
   }, [events, externalEvents]);
+  const organizationLabel =
+    organizationOptions.find((option) => option.key === filters.organizationKey)?.label ?? "";
+  const activeChips = activeEventFilterChips(filters, organizationLabel);
 
   const allFeedEvents = useMemo<FeedEvent[]>(() => {
     const campus = events.map((event) => ({ kind: "campus" as const, event }));
     const external = externalEvents.map((event) => ({ kind: "external" as const, event }));
     return [...campus, ...external];
   }, [events, externalEvents]);
+  const draftMatchCount = useMemo(
+    () =>
+      allFeedEvents.filter((item) =>
+        eventPassesListFilters(item, { ...draftFilters, search: filters.search }, savedOnly),
+      ).length,
+    [allFeedEvents, draftFilters, filters.search, savedOnly],
+  );
 
   const prioritizedEvents = useMemo(() => {
-    const locationNeedle = filters.location.trim().toLowerCase();
     const searchQuery = filters.search.trim();
 
-    const filtered = allFeedEvents.filter((item) => {
-      const startsAt = item.event.startsAt;
-      if (!isUpcomingEvent(startsAt)) return false;
-      if (!matchesEventsTimeframe(startsAt, filters.timeframe)) return false;
-      if (savedOnly && !feedEventIsSaved(item)) return false;
-
-      const haystack = eventSearchHaystack(item);
-      const isPaid = item.kind === "external" ? false : item.event.isPaid;
-
-      if (!matchesEventsSearch(haystack, filters.search)) {
-        return false;
-      }
-      if (filters.category.trim() && !eventMatchesCategoryRail(item, filters.category)) {
-        return false;
-      }
-      if (filters.sport.trim()) {
-        if (item.kind !== "external" || !(item.event.sport ?? "").toLowerCase().includes(filters.sport.trim().toLowerCase())) {
-          return false;
-        }
-      }
-      if (locationNeedle && !feedEventLocationText(item).toLowerCase().includes(locationNeedle)) return false;
-      if (filters.isPaid === "paid" && !isPaid) return false;
-      if (filters.isPaid === "free" && isPaid) return false;
-
-      if (filters.organizationKey) {
-        if (filters.organizationKey.startsWith("campus:")) {
-          const orgId = filters.organizationKey.slice("campus:".length);
-          if (item.kind !== "campus" || item.event.hostOrganization?.id !== orgId) return false;
-        } else if (filters.organizationKey.startsWith("ext:")) {
-          const orgName = decodeURIComponent(filters.organizationKey.slice("ext:".length)).toLowerCase();
-          if (item.kind !== "external" || (item.event.organizationName ?? "").toLowerCase() !== orgName) {
-            return false;
-          }
-        }
-      }
-
-      return true;
-    });
+    const filtered = allFeedEvents.filter((item) => eventPassesListFilters(item, filters, savedOnly));
 
     const searchScoreFor = (item: FeedEvent) => scoreEventsSearch(eventSearchHaystack(item), searchQuery);
     const personalizeForYou = shouldPersonalizeForYouEvents({
@@ -384,19 +341,20 @@ export function EventsFeed({
     [prioritizedEvents, filters.timeframe, filters.search, savedOnly, forYouExpanded],
   );
 
-  const sheetFilterCount =
-    (filters.organizationKey.trim() ? 1 : 0) +
-    (filters.isPaid !== "all" ? 1 : 0) +
-    (filters.location.trim() ? 1 : 0) +
-    (filters.sport.trim() ? 1 : 0);
-
   const emptyCopy = eventsEmptyStateCopy({
     hasLoadedEvents: events.length + externalEvents.length > 0,
-    timeframe: filters.timeframe,
+    timeframe: filters.when.length === 1 ? filters.when[0] : filters.timeframe,
     hasSearch: Boolean(filters.search.trim()),
-    category: filters.category,
+    category: filters.categories.length === 1 ? filters.categories[0] : "",
     savedOnly,
-    sheetFilterCount,
+    sheetFilterCount:
+      Math.max(0, filters.categories.length - (filters.categories.length === 1 ? 1 : 0)) +
+      (filters.when.length > 1 ? filters.when.length : 0) +
+      (filters.organizationKey.trim() ? 1 : 0) +
+      (filters.isPaid !== "all" ? 1 : 0) +
+      (filters.foodOnly ? 1 : 0) +
+      (filters.location.trim() ? 1 : 0) +
+      (filters.sport.trim() ? 1 : 0),
   });
 
   function syncActiveCampusDetail(nextEvents: CampusEventItem[], eventId: string) {
@@ -508,7 +466,52 @@ export function EventsFeed({
 
   function browseAllEvents() {
     setSavedOnly(false);
-    setFilters((prev) => ({ ...prev, timeframe: "all" }));
+    setFilters((prev) => ({ ...prev, timeframe: "all", when: [] }));
+  }
+
+  function openFilters() {
+    setDraftFilters({
+      ...filters,
+      categories: [...filters.categories],
+      when: [...filters.when],
+    });
+    setFiltersOpen(true);
+  }
+
+  function closeFilters() {
+    setFiltersOpen(false);
+  }
+
+  function applyDraftFilters() {
+    setSavedOnly(false);
+    setFilters((prev) => ({
+      ...draftFilters,
+      search: prev.search,
+      timeframe: timeframeAfterWhenChange(prev.timeframe, draftFilters.when),
+    }));
+    setFiltersOpen(false);
+  }
+
+  function clearSheetFilters() {
+    setSavedOnly(false);
+    const next = { ...initialFilters, search: filters.search };
+    setFilters(next);
+    setDraftFilters(next);
+    setFiltersOpen(false);
+  }
+
+  function selectQuickFilter(value: "for_you" | "today" | "this_weekend") {
+    setSavedOnly(false);
+    setFilters((prev) => {
+      if (value === "for_you") return { ...prev, when: [], timeframe: "for_you" };
+      return { ...prev, when: [value], timeframe: value };
+    });
+  }
+
+  function quickFilterSelected(value: "for_you" | EventsWhenFilter) {
+    if (savedOnly) return false;
+    if (value === "for_you") return filters.timeframe === "for_you" && filters.when.length === 0;
+    return filters.when.length === 1 && filters.when[0] === value;
   }
 
   const liveDetail =
@@ -523,11 +526,12 @@ export function EventsFeed({
 
   const searching = Boolean(filters.search.trim()) || savedOnly;
   const hasNarrowingFilter =
-    Boolean(filters.category.trim()) ||
+    filters.categories.length > 0 ||
     Boolean(filters.sport.trim()) ||
     Boolean(filters.location.trim()) ||
     Boolean(filters.organizationKey.trim()) ||
-    filters.isPaid !== "all";
+    filters.isPaid !== "all" ||
+    filters.foodOnly;
   const forYouView = forYouSurface({
     timeframe: filters.timeframe,
     searching,
@@ -606,42 +610,57 @@ export function EventsFeed({
           aria-label={EVENTS_SEARCH_PLACEHOLDER}
           className="cq-events-search-input"
         />
+      </div>
+
+      <div className="cq-events-time-pills" role="toolbar" aria-label="Event filters" data-cq-horizontal-scroll="true" data-cq-gesture-block="swipe-tab">
+        {TIMEFRAME_OPTIONS.map((option) => {
+          const selected = quickFilterSelected(option.value);
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => selectQuickFilter(option.value)}
+              className={`cq-events-time-pill ${selected ? "cq-events-time-pill--on" : ""}`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
         <button
           type="button"
-          onClick={() => setFiltersOpen(true)}
-          className="cq-events-search-filter"
+          onClick={openFilters}
+          className={`cq-events-time-pill cq-events-filter-pill ${
+            filtersOpen || activeChips.length > 0 ? "cq-events-filter-pill--on" : ""
+          }`}
           aria-expanded={filtersOpen}
           aria-haspopup="dialog"
-          aria-label={activeFilterCount > 0 ? `Filters, ${activeFilterCount} active` : "Filters"}
+          aria-label={activeChips.length > 0 ? `Filters, ${activeChips.length} active` : "Filters"}
         >
-          <SlidersHorizontal className="h-4 w-4" strokeWidth={2.2} />
+          <SlidersHorizontal className="h-4 w-4" aria-hidden />
+          Filters
         </button>
       </div>
 
-      <div className="cq-events-time-pills" role="tablist" aria-label="Event time" data-cq-horizontal-scroll="true" data-cq-gesture-block="swipe-tab">
-        {TIMEFRAME_OPTIONS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            role="tab"
-            aria-selected={filters.timeframe === option.value && !savedOnly}
-            onClick={() => {
-              setSavedOnly(false);
-              setFilters((prev) => ({ ...prev, timeframe: option.value }));
-            }}
-            className={`cq-events-time-pill ${
-              filters.timeframe === option.value && !savedOnly ? "cq-events-time-pill--on" : ""
-            }`}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-
-      <EventsCategoryRail
-        selected={filters.category}
-        onSelect={(id) => setFilters((prev) => ({ ...prev, category: id, sport: id === "Athletics" ? prev.sport : "" }))}
-      />
+      {activeChips.length > 0 ? (
+        <div className="cq-events-active-filters" aria-label="Active filters">
+          {activeChips.map((chip) => (
+            <span key={chip.id} className="cq-events-active-chip">
+              {chip.label}
+              <button
+                type="button"
+                onClick={() => {
+                  setFilters((prev) => removeActiveEventFilter(prev, chip.id));
+                  setDraftFilters((prev) => removeActiveEventFilter(prev, chip.id));
+                }}
+                aria-label={`Remove ${chip.label} filter`}
+              >
+                <X className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       {error ? (
         <ScreenDataState
@@ -748,20 +767,14 @@ export function EventsFeed({
 
       <EventsFilterSheet
         open={filtersOpen}
-        values={filters}
-        categories={categories}
+        draft={draftFilters}
+        resultCount={draftMatchCount}
         sports={sports}
         organizations={organizationOptions}
-        onChange={(patch) => setFilters((prev) => ({ ...prev, ...patch }))}
-        onClose={() => setFiltersOpen(false)}
-        onClear={() =>
-          setFilters((prev) => ({
-            ...initialFilters,
-            search: prev.search,
-            timeframe:
-              prev.timeframe === "tomorrow" || prev.timeframe === "this_month" ? "for_you" : prev.timeframe,
-          }))
-        }
+        onChange={setDraftFilters}
+        onClose={closeFilters}
+        onClear={clearSheetFilters}
+        onApply={applyDraftFilters}
       />
     </section>
     {liveDetail ? (

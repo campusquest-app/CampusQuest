@@ -1,79 +1,123 @@
 "use client";
 
-import { BadgeCheck, ChevronRight, Handshake, Sparkles } from "lucide-react";
+import { BadgeCheck, ChevronRight, Clock, ExternalLink, MapPin, Navigation } from "lucide-react";
+import { PartnerLogoChip, PartnerMedia } from "@/components/partners/PartnerMedia";
+import { partnerDirectionsUrl, partnerHasLiveReward, partnerPrimaryLink } from "@/lib/partners/partnerStatus";
 import type { Partner } from "@/lib/partners/types";
-import type { PartnerDisplayState } from "@/lib/partners/partnerStatus";
 
-export function partnerCtaLabel(partner: Partner): string {
-  return partner.questTitle ? "View Quest" : "View Partner";
+export function PartnerBadge() {
+  return (
+    <span className="cq-partner-badge">
+      <BadgeCheck className="h-3.5 w-3.5" aria-hidden strokeWidth={2.4} />
+      CampusQuest Partner
+    </span>
+  );
+}
+
+export function PartnerCategoryChips({ categories }: { categories: string[] }) {
+  if (categories.length === 0) return null;
+  return (
+    <ul className="cq-partner-chips" aria-label="Categories">
+      {categories.map((category) => (
+        <li key={category} className="cq-partner-chip">
+          {category}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The configured student reward, or a muted "coming soon" line. Never fabricates an offer. */
+export function PartnerReward({ partner, now, size }: { partner: Partner; now?: Date; size: "card" | "detail" }) {
+  if (!partnerHasLiveReward(partner, now)) {
+    return (
+      <div className={`cq-partner-reward cq-partner-reward--${size} cq-partner-reward--pending`}>
+        <span className="cq-partner-reward__pending">Student reward coming soon</span>
+      </div>
+    );
+  }
+  return (
+    <div className={`cq-partner-reward cq-partner-reward--${size}`}>
+      {partner.discountValue ? <strong className="cq-partner-reward__value">{partner.discountValue}</strong> : null}
+      {partner.offerTitle ? <span className="cq-partner-reward__title">{partner.offerTitle}</span> : null}
+    </div>
+  );
 }
 
 export function PartnerCard({
   partner,
-  state = "active",
   onSelect,
+  now,
 }: {
   partner: Partner;
-  state?: PartnerDisplayState;
-  onSelect?: (partner: Partner) => void;
+  onSelect: (partner: Partner) => void;
+  now?: Date;
 }) {
-  const expired = state === "expired";
-  const imageUrl = partner.logoUrl ?? partner.coverImageUrl;
-  const offerLine = partner.offerTitle ?? partner.offerDescription;
+  const directionsUrl = partnerDirectionsUrl(partner);
+  const primaryLink = partnerPrimaryLink(partner);
+  const titleId = `cq-partner-${partner.id}-name`;
 
   return (
-    <article
-      className={`cq-partner-card${partner.isFeatured && !expired ? " cq-partner-card--featured" : ""}${
-        expired ? " cq-partner-card--expired" : ""
-      }`}
-      aria-label={partner.name}
-    >
+    <article className="cq-partner-card" aria-labelledby={titleId}>
       <div className="cq-partner-card__media">
-        {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt="" className="cq-partner-card__img" loading="lazy" decoding="async" />
-        ) : (
-          <Handshake className="cq-partner-card__img-fallback" aria-hidden strokeWidth={1.8} />
-        )}
+        <PartnerMedia partner={partner} variant="card" />
+        <PartnerLogoChip partner={partner} size="sm" />
       </div>
 
-      <div className="cq-partner-card__body">
-        <div className="cq-partner-card__badges">
-          <span className="cq-partner-badge">
-            <BadgeCheck className="h-3.5 w-3.5" aria-hidden strokeWidth={2.4} />
-            CampusQuest Partner
-          </span>
-          {partner.isCampusQuestDay ? (
-            <span className="cq-partner-badge cq-partner-badge--day">
-              <Sparkles className="h-3.5 w-3.5" aria-hidden strokeWidth={2.4} />
-              CampusQuest Day
-            </span>
-          ) : null}
-          {expired ? <span className="cq-partner-badge cq-partner-badge--expired">Offer ended</span> : null}
-        </div>
-
-        <h3 className="cq-partner-card__name">{partner.name}</h3>
-        {partner.category ? <p className="cq-partner-card__category">{partner.category}</p> : null}
-
-        {partner.discountValue || offerLine ? (
-          <p className="cq-partner-card__offer">
-            {partner.discountValue ? <strong className="cq-partner-card__discount">{partner.discountValue}</strong> : null}
-            {partner.discountValue && offerLine ? " · " : null}
-            {offerLine}
+      <div className="cq-partner-card__info">
+        <h3 id={titleId} className="cq-partner-card__name">
+          {partner.name}
+        </h3>
+        <PartnerBadge />
+        <PartnerCategoryChips categories={partner.categories} />
+        {partner.address ? (
+          <p className="cq-partner-card__meta">
+            <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden strokeWidth={2.2} />
+            <span>{partner.address}</span>
           </p>
         ) : null}
+        {partner.hours?.[0] ? (
+          <p className="cq-partner-card__meta">
+            <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden strokeWidth={2.2} />
+            <span>{partner.hours[0]}</span>
+          </p>
+        ) : null}
+      </div>
 
-        {partner.questTitle ? <p className="cq-partner-card__quest">Quest: {partner.questTitle}</p> : null}
+      <PartnerReward partner={partner} now={now} size="card" />
 
-        {onSelect && !expired ? (
-          <button
-            type="button"
-            className="cq-partner-card__cta cq-tap-press touch-manipulation"
-            onClick={() => onSelect(partner)}
+      <div className="cq-partner-card__actions">
+        <button
+          type="button"
+          className="cq-partner-btn cq-partner-btn--primary cq-tap-press touch-manipulation"
+          onClick={() => onSelect(partner)}
+        >
+          View Partner
+          <ChevronRight className="h-4 w-4" aria-hidden strokeWidth={2.4} />
+        </button>
+        {directionsUrl ? (
+          <a
+            className="cq-partner-btn cq-tap-press touch-manipulation"
+            href={directionsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Directions to ${partner.name}`}
           >
-            {partnerCtaLabel(partner)}
-            <ChevronRight className="h-4 w-4" aria-hidden strokeWidth={2.4} />
-          </button>
+            <Navigation className="h-4 w-4" aria-hidden strokeWidth={2.2} />
+            Directions
+          </a>
+        ) : null}
+        {primaryLink ? (
+          <a
+            className="cq-partner-btn cq-tap-press touch-manipulation"
+            href={primaryLink.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`${partner.name} ${primaryLink.label.toLowerCase()}`}
+          >
+            <ExternalLink className="h-4 w-4" aria-hidden strokeWidth={2.2} />
+            {primaryLink.label}
+          </a>
         ) : null}
       </div>
     </article>

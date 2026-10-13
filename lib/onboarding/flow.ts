@@ -10,26 +10,47 @@ import {
   shouldAskGraduationYear,
 } from "@/lib/onboarding/taxonomy";
 
-export type DemographicOnboardingStep =
-  | "welcome"
-  | "student_status"
-  | "graduation_year"
-  | "school"
-  | "interests"
-  | "communities"
-  | "email_verification"
-  | "success";
+/**
+ * Required onboarding screens. Graduation year lives on About You.
+ * School and URI email live on Campus. Interests and communities live on Personalize.
+ * Legacy step ids from in-progress drafts are canonicalized below.
+ */
+export type DemographicOnboardingStep = "welcome" | "about_you" | "campus" | "personalize" | "ready";
 
 export const DEMOGRAPHIC_ONBOARDING_STEPS: DemographicOnboardingStep[] = [
   "welcome",
-  "student_status",
-  "graduation_year",
-  "school",
-  "interests",
-  "communities",
-  "email_verification",
-  "success",
+  "about_you",
+  "campus",
+  "personalize",
+  "ready",
 ];
+
+const REQUIRED_ONBOARDING_STEPS: DemographicOnboardingStep[] = [
+  "about_you",
+  "campus",
+  "personalize",
+  "ready",
+];
+
+const LEGACY_STEP_TO_CURRENT: Record<string, DemographicOnboardingStep> = {
+  welcome: "welcome",
+  student_status: "about_you",
+  graduation_year: "about_you",
+  about_you: "about_you",
+  school: "campus",
+  email_verification: "campus",
+  campus: "campus",
+  interests: "personalize",
+  communities: "personalize",
+  personalize: "personalize",
+  success: "ready",
+  ready: "ready",
+};
+
+export function canonicalizeDemographicStep(value: unknown): DemographicOnboardingStep | null {
+  if (typeof value !== "string") return null;
+  return LEGACY_STEP_TO_CURRENT[value] ?? null;
+}
 
 export type DemographicStepsArgs = {
   studentStatus?: string | null;
@@ -40,24 +61,19 @@ export type DemographicStepsArgs = {
 };
 
 export function isDemographicOnboardingStep(value: unknown): value is DemographicOnboardingStep {
-  return (
-    typeof value === "string" &&
-    (DEMOGRAPHIC_ONBOARDING_STEPS as readonly string[]).includes(value)
-  );
+  return canonicalizeDemographicStep(value) === value && typeof value === "string";
 }
 
 export function demographicStepsForUser(args: DemographicStepsArgs): DemographicOnboardingStep[] {
   if (args.emailOnly) {
-    const steps: DemographicOnboardingStep[] = ["email_verification"];
-    if (args.includeSuccess !== false) steps.push("success");
+    const steps: DemographicOnboardingStep[] = ["campus"];
+    if (args.includeSuccess !== false) steps.push("ready");
     return steps;
   }
   const steps: DemographicOnboardingStep[] = [];
   if (args.includeWelcome) steps.push("welcome");
-  steps.push("student_status");
-  if (shouldAskGraduationYear(args.studentStatus)) steps.push("graduation_year");
-  steps.push("school", "interests", "communities", "email_verification");
-  if (args.includeSuccess !== false) steps.push("success");
+  steps.push("about_you", "campus", "personalize");
+  if (args.includeSuccess !== false) steps.push("ready");
   return steps;
 }
 
@@ -80,25 +96,19 @@ export function previousDemographicStep(
 }
 
 /**
- * Progress uses the full demographic sequence even when the user resumed on
- * email verification. Welcome and success are not counted.
+ * Progress is the four required screens. Welcome is the logged-out marketing
+ * screen and is not counted. Avatar setup is not part of this sequence.
  */
 export function demographicProgress(args: DemographicStepsArgs & { current: DemographicOnboardingStep }): {
   current: number;
   total: number;
   label: string;
 } | null {
-  if (args.current === "welcome" || args.current === "success") return null;
-  const steps = demographicStepsForUser({
-    studentStatus: args.studentStatus,
-    includeWelcome: false,
-    includeSuccess: false,
-    emailOnly: false,
-  });
-  const idx = steps.indexOf(args.current);
+  if (args.current === "welcome") return null;
+  const idx = REQUIRED_ONBOARDING_STEPS.indexOf(args.current);
   if (idx < 0) return null;
   const current = idx + 1;
-  const total = steps.length;
+  const total = REQUIRED_ONBOARDING_STEPS.length;
   return {
     current,
     total,
@@ -152,16 +162,16 @@ export function resolveDemographicResumeStep(input: {
   startAtEmailVerification?: boolean;
   forceFullReplay?: boolean;
 }): DemographicOnboardingStep {
-  const draftStep = isDemographicOnboardingStep(input.draft?.step) ? input.draft.step : null;
+  const draftStep = canonicalizeDemographicStep(input.draft?.step);
 
   if (input.forceFullReplay) {
     // Welcome is the logged-out marketing screen. A signed-in replay starts
     // at the first real step.
-    return draftStep && draftStep !== "welcome" ? draftStep : "student_status";
+    return draftStep && draftStep !== "welcome" ? draftStep : "about_you";
   }
 
   if (input.startAtEmailVerification) {
-    return isCampusEmailVerified(input.profile ?? {}) ? "success" : "email_verification";
+    return isCampusEmailVerified(input.profile ?? {}) ? "ready" : "campus";
   }
 
   const studentStatus = input.draft?.studentStatus ?? input.profile?.student_status ?? null;
@@ -177,7 +187,6 @@ export function resolveDemographicResumeStep(input: {
   const interests = draftInterests.length > 0 ? draftInterests : prefInterests;
   const prefsExist = input.preferences?.exists === true;
   const emailVerified = isCampusEmailVerified(input.profile ?? {});
-
   const steps = demographicStepsForUser({
     studentStatus,
     includeWelcome: true,
@@ -185,27 +194,24 @@ export function resolveDemographicResumeStep(input: {
     emailOnly: false,
   });
   const draftIdx = stepIndex(draftStep, steps);
+  const passedAbout = Boolean(institution) || draftIdx >= stepIndex("campus", steps);
 
   if (!isKnownStudentStatus(studentStatus)) {
-    // An authenticated session never resumes on the public welcome screen.
-    return "student_status";
+    return "about_you";
   }
 
   if (shouldAskGraduationYear(studentStatus)) {
-    const passedSchool = Boolean(institution) || draftIdx >= stepIndex("school", steps);
-    const graduationAnswered = classYear != null || graduateOther || passedSchool;
-    if (!graduationAnswered) return "graduation_year";
+    const graduationAnswered = classYear != null || graduateOther || passedAbout;
+    if (!graduationAnswered) return "about_you";
   }
 
-  const passedSchool = Boolean(institution) || draftIdx >= stepIndex("interests", steps);
-  if (!passedSchool) return "school";
+  if (!institution || !emailVerified) return "campus";
 
-  if (interests.length < MIN_INTERESTS) return "interests";
-  if (draftStep === "interests") return "interests";
+  if (interests.length < MIN_INTERESTS) return "personalize";
+  if (draftStep === "personalize") return "personalize";
 
-  const passedCommunities = prefsExist || draftIdx >= stepIndex("email_verification", steps);
-  if (!passedCommunities) return "communities";
+  const passedReady = prefsExist || draftIdx >= stepIndex("ready", steps);
+  if (!passedReady) return "personalize";
 
-  if (!emailVerified) return "email_verification";
-  return "success";
+  return "ready";
 }

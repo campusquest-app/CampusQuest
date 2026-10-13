@@ -26,6 +26,18 @@ import type {
   VerificationStatus,
 } from "@/lib/identity/types";
 import { isVerificationIdentityType, isVerificationStatus } from "@/lib/identity/policy";
+import {
+  composeOrganizationRequestNotes,
+  escapeIlikeExact,
+  isOrganizationManagerRow,
+  ORG_REQUEST_PENDING_MESSAGE,
+  ORG_VERIFICATION_CAMPUS,
+  organizationAvailabilityMessage,
+  resolveOrganizationAvailability,
+  type GreekOrganizationType,
+  type OrganizationAvailability,
+  type OrgVerificationVariant,
+} from "@/lib/identity/organizationVerification";
 
 type UserClient = ReturnType<typeof createAdminClient>;
 
@@ -116,6 +128,67 @@ export async function searchOrganizationsForClaim(args: {
   });
 }
 
+/**
+ * Whether a CampusQuest page for this organization is already managed (verified)
+ * or has an open request from any student. Uses the service-role client because
+ * students cannot read other applicants' requests; only a status is returned.
+ */
+export async function getOrganizationAvailability(args: {
+  admin: UserClient;
+  name: string;
+  organizationId?: string | null;
+}): Promise<OrganizationAvailability> {
+  const exactName = escapeIlikeExact(args.name);
+  const organizationIds = new Set<string>();
+  if (args.organizationId) organizationIds.add(args.organizationId);
+  if (exactName.length >= 2) {
+    const { data: orgs, error: orgError } = await args.admin
+      .from("student_organizations")
+      .select("id")
+      .eq("is_approved", true)
+      .ilike("name", exactName)
+      .limit(10);
+    if (orgError) throw new ApiError(400, "Could not check this organization.", "ORG_AVAILABILITY_FAILED");
+    for (const row of orgs ?? []) organizationIds.add(String(row.id));
+  }
+
+  let hasManagedOrganization = false;
+  if (organizationIds.size > 0) {
+    const { data: members, error: memberError } = await args.admin
+      .from("organization_members")
+      .select("org_role, role, status")
+      .in("organization_id", Array.from(organizationIds));
+    if (memberError) throw new ApiError(400, "Could not check this organization.", "ORG_AVAILABILITY_FAILED");
+    hasManagedOrganization = (members ?? []).some((row) =>
+      isOrganizationManagerRow(row as { org_role?: string | null; role?: string | null; status?: string | null }),
+    );
+  }
+
+  const { data: openByName, error: openError } = await args.admin
+    .from("verification_requests")
+    .select("id, status")
+    .eq("identity_type", "organization")
+    .in("status", ["pending_review", "needs_info"])
+    .ilike("name", exactName)
+    .limit(1);
+  if (openError) throw new ApiError(400, "Could not check this organization.", "ORG_AVAILABILITY_FAILED");
+  let hasOpenRequest = (openByName ?? []).length > 0;
+
+  if (!hasOpenRequest && args.organizationId) {
+    const { data: openById, error: openIdError } = await args.admin
+      .from("verification_requests")
+      .select("id, status")
+      .eq("identity_type", "organization")
+      .in("status", ["pending_review", "needs_info"])
+      .eq("requested_identity_id", args.organizationId)
+      .limit(1);
+    if (openIdError) throw new ApiError(400, "Could not check this organization.", "ORG_AVAILABILITY_FAILED");
+    hasOpenRequest = (openById ?? []).length > 0;
+  }
+
+  return resolveOrganizationAvailability({ hasManagedOrganization, hasOpenRequest });
+}
+
 export async function listMyVerificationRequests(args: {
   userClient: UserClient;
   userId: string;
@@ -150,8 +223,15 @@ export async function submitVerificationRequest(args: {
     imageUrl?: string | null;
     reasonForAccess?: string | null;
     requestedIdentityId?: string | null;
+    organizationVariant?: OrgVerificationVariant | null;
+    greekType?: GreekOrganizationType | null;
+    nationalAffiliation?: string | null;
+    advisorName?: string | null;
+    advisorEmail?: string | null;
     applicantConfirmation: true;
   };
+  /** Injected in tests; defaults to the service-role client. */
+  adminClient?: UserClient;
 }): Promise<{ request: VerificationRequestSummary; emailQueued: boolean }> {
   await assertAccountCanSocialize(args.userClient, args.userId);
   await requireVerifiedSchoolForCoreAccess({
@@ -184,6 +264,31 @@ export async function submitVerificationRequest(args: {
     }
   }
 
+  const isOrganization = args.input.identityType === "organization";
+  if (isOrganization) {
+    const availability = await getOrganizationAvailability({
+      admin: args.adminClient ?? createAdminClient(),
+      name: args.input.name,
+      organizationId: args.input.requestedIdentityId ?? null,
+    });
+    const message = organizationAvailabilityMessage(availability);
+    if (message) {
+      throw new ApiError(409, message, availability === "verified" ? "ORG_ALREADY_VERIFIED" : "ORG_REQUEST_PENDING");
+    }
+  }
+
+  const reasonForAccess = isOrganization
+    ? composeOrganizationRequestNotes({
+        reasonForAccess: args.input.reasonForAccess,
+        campus: ORG_VERIFICATION_CAMPUS,
+        variant: args.input.organizationVariant ?? null,
+        greekType: args.input.greekType ?? null,
+        nationalAffiliation: args.input.nationalAffiliation,
+        advisorName: args.input.advisorName,
+        advisorEmail: args.input.advisorEmail,
+      })
+    : args.input.reasonForAccess?.trim() || null;
+
   const insert = {
     applicant_user_id: args.userId,
     identity_type: args.input.identityType,
@@ -201,7 +306,7 @@ export async function submitVerificationRequest(args: {
     applicant_role: args.input.applicantRole?.trim() || null,
     logo_url: args.input.logoUrl?.trim() || null,
     image_url: args.input.imageUrl?.trim() || null,
-    reason_for_access: args.input.reasonForAccess?.trim() || null,
+    reason_for_access: reasonForAccess,
     applicant_confirmation: true,
     status: "pending_review",
     submitted_at: new Date().toISOString(),
@@ -210,7 +315,11 @@ export async function submitVerificationRequest(args: {
   const { data, error } = await args.userClient.from("verification_requests").insert(insert).select("id").single();
   if (error || !data) {
     if (error?.code === "23505") {
-      throw new ApiError(409, "You already have an open request for this name.", "VERIFICATION_DUPLICATE");
+      throw new ApiError(
+        409,
+        isOrganization ? ORG_REQUEST_PENDING_MESSAGE : "You already have an open request for this name.",
+        "VERIFICATION_DUPLICATE",
+      );
     }
     throw new ApiError(400, "Could not submit this request.", "VERIFICATION_SUBMIT_FAILED");
   }

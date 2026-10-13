@@ -11,10 +11,22 @@ import { BUSINESS_VERIFICATION_CATEGORIES, IDENTITY_TYPE_LABELS, VERIFICATION_ST
 import { ORGANIZATION_REQUEST_CATEGORIES, ORGANIZATION_REQUEST_CATEGORY_LABELS } from "@/lib/organizationRequestCategories";
 import type { OrganizationClaimMatch, VerificationApplicantSnapshot, VerificationIdentityType } from "@/lib/identity/types";
 import {
+  checkOrganizationAvailability,
   searchOrganizationMatches,
   submitVerificationRequest,
   uploadVerificationImage,
 } from "@/lib/client/verificationClient";
+import {
+  GREEK_ORGANIZATION_TYPE_LABELS,
+  GREEK_ORGANIZATION_TYPES,
+  ORG_REQUEST_SUBMITTED_BODY,
+  ORG_REQUEST_SUBMITTED_TITLE,
+  ORG_VERIFICATION_AUTHORIZATION_COPY,
+  ORG_VERIFICATION_CAMPUS,
+  organizationAvailabilityMessage,
+  type GreekOrganizationType,
+  type OrgVerificationVariant,
+} from "@/lib/identity/organizationVerification";
 import { ApiRequestError } from "@/lib/client/dashboardApi";
 import { loadCampusIdentities } from "@/lib/client/identityStore";
 
@@ -43,18 +55,25 @@ export function VerificationOnboarding({
   applicant,
   userId,
   presetType = null,
+  orgVariant = null,
   onClose,
 }: {
   applicant: VerificationApplicantSnapshot | null;
   userId: string;
   presetType?: VerificationIdentityType | null;
+  orgVariant?: OrgVerificationVariant | null;
   onClose: () => void;
 }) {
   useRegisterImmersiveScreen(true);
   const [step, setStep] = useState<Step>(presetType ? "name" : "type");
   const [identityType, setIdentityType] = useState<VerificationIdentityType | null>(presetType);
+  const isGreek = identityType === "organization" && orgVariant === "greek";
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState(isGreek ? "greek_life" : "");
+  const [greekType, setGreekType] = useState<GreekOrganizationType | null>(null);
+  const [nationalAffiliation, setNationalAffiliation] = useState("");
+  const [advisorName, setAdvisorName] = useState("");
+  const [advisorEmail, setAdvisorEmail] = useState("");
   const [description, setDescription] = useState("");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [socialUrl, setSocialUrl] = useState("");
@@ -90,8 +109,57 @@ export function VerificationOnboarding({
   }, [identityType, step]);
 
   const knight = knightForStep(step);
-  const title =
-    identityType === "organization" ? "Campus Organization" : identityType === "student_business" ? "Student Business" : "Campus presence";
+  const title = isGreek
+    ? "Greek Organization"
+    : identityType === "organization"
+      ? "Campus Organization"
+      : identityType === "student_business"
+        ? "Student Business"
+        : "Campus presence";
+  const categoryReady = isGreek ? Boolean(greekType && nationalAffiliation.trim()) : Boolean(category);
+
+  async function ensureOrganizationAvailable(organizationId: string | null): Promise<boolean> {
+    try {
+      const status = await checkOrganizationAvailability(name.trim(), organizationId);
+      const message = organizationAvailabilityMessage(status);
+      if (message) {
+        setError(message);
+        return false;
+      }
+    } catch {
+      // The submit endpoint re-checks; a failed pre-check should not block the form.
+    }
+    return true;
+  }
+
+  async function continueFromClaim() {
+    setError(null);
+    setBusy(true);
+    try {
+      if (claimedOrg && !(await ensureOrganizationAvailable(claimedOrg.id))) return;
+      setStep("category");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function continueFromAbout() {
+    if (description.trim().length < 1) {
+      setError("Add a short description to continue.");
+      return;
+    }
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (organizationEmail.trim() && !emailPattern.test(organizationEmail.trim())) {
+      setError(`Enter a valid ${isGreek ? "chapter" : "organization"} email.`);
+      return;
+    }
+    if (advisorEmail.trim() && !emailPattern.test(advisorEmail.trim())) {
+      setError("Enter a valid advisor email.");
+      return;
+    }
+    setError(null);
+    setStep("image");
+  }
 
   function goBack() {
     setError(null);
@@ -115,6 +183,10 @@ export function VerificationOnboarding({
     setError(null);
     if (identityType === "organization") {
       setBusy(true);
+      if (!(await ensureOrganizationAvailable(null))) {
+        setBusy(false);
+        return;
+      }
       try {
         const found = await searchOrganizationMatches(name.trim());
         setMatches(found);
@@ -162,6 +234,15 @@ export function VerificationOnboarding({
         logoUrl,
         reasonForAccess: reasonForAccess.trim() || null,
         requestedIdentityId: claimedOrg?.id ?? null,
+        ...(identityType === "organization"
+          ? {
+              organizationVariant: isGreek ? ("greek" as const) : ("general" as const),
+              greekType: isGreek ? greekType : null,
+              nationalAffiliation: isGreek ? nationalAffiliation.trim() || null : null,
+              advisorName: advisorName.trim() || null,
+              advisorEmail: advisorEmail.trim() || null,
+            }
+          : {}),
         applicantConfirmation: true,
       });
       setSubmittedName(result.request.name);
@@ -226,10 +307,14 @@ export function VerificationOnboarding({
         {step === "name" ? (
           <>
             <h1 className="cq-onboard-title">
-              {identityType === "organization" ? "What's your organization called?" : "What's your business called?"}
+              {isGreek
+                ? "What's your chapter called?"
+                : identityType === "organization"
+                  ? "What's your organization called?"
+                  : "What's your business called?"}
             </h1>
             <label className="cq-verify-label" htmlFor="cq-verify-name">
-              {identityType === "organization" ? "Organization name" : "Business name"}
+              {isGreek ? "Chapter / organization name" : identityType === "organization" ? "Organization name" : "Business name"}
             </label>
             <input
               id="cq-verify-name"
@@ -267,13 +352,48 @@ export function VerificationOnboarding({
             <button type="button" className="cq-verify-text-btn" onClick={() => setClaimedOrg(null)}>
               This is a new organization
             </button>
-            <button type="button" className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50" onClick={() => setStep("category")}>
+            <button type="button" className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50" disabled={busy} onClick={() => void continueFromClaim()}>
               Continue
             </button>
           </>
         ) : null}
 
-        {step === "category" ? (
+        {step === "category" && isGreek ? (
+          <>
+            <h1 className="cq-onboard-title">Tell us about your chapter</h1>
+            <p className="cq-verify-label">Fraternity or sorority</p>
+            <div className="cq-verify-chips" role="radiogroup" aria-label="Fraternity or sorority">
+              {GREEK_ORGANIZATION_TYPES.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="radio"
+                  aria-checked={greekType === id}
+                  className={`cq-verify-chip ${greekType === id ? "cq-verify-chip--on" : ""}`}
+                  onClick={() => setGreekType(id)}
+                >
+                  {GREEK_ORGANIZATION_TYPE_LABELS[id]}
+                </button>
+              ))}
+            </div>
+            <label className="cq-verify-label" htmlFor="cq-verify-national">
+              National organization / affiliation
+            </label>
+            <input
+              id="cq-verify-national"
+              className="cq-verify-input"
+              value={nationalAffiliation}
+              maxLength={120}
+              onChange={(event) => setNationalAffiliation(event.target.value)}
+              placeholder="Write “Local” if there isn't one"
+            />
+            <button type="button" className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50" disabled={!categoryReady} onClick={() => setStep("about")}>
+              Continue
+            </button>
+          </>
+        ) : null}
+
+        {step === "category" && !isGreek ? (
           <>
             <h1 className="cq-onboard-title">
               {identityType === "organization" ? "What kind of organization is it?" : "What kind of business is it?"}
@@ -311,19 +431,27 @@ export function VerificationOnboarding({
           <>
             <h1 className="cq-onboard-title">Tell us about it</h1>
             <label className="cq-verify-label" htmlFor="cq-verify-bio">
-              Short description
+              {identityType === "organization" && !isGreek ? "Organization description" : "Short description"}
             </label>
             <textarea id="cq-verify-bio" className="cq-verify-textarea" value={description} maxLength={2000} onChange={(event) => setDescription(event.target.value)} />
             {identityType === "organization" ? (
               <>
+                <label className="cq-verify-label" htmlFor="cq-verify-email">
+                  {isGreek ? "Official chapter email" : "Official organization email"}
+                </label>
+                <input id="cq-verify-email" type="email" className="cq-verify-input" value={organizationEmail} onChange={(event) => setOrganizationEmail(event.target.value)} placeholder="If available" />
+                <label className="cq-verify-label" htmlFor="cq-verify-advisor">
+                  {isGreek ? "Chapter advisor name" : "Advisor name"}
+                </label>
+                <input id="cq-verify-advisor" className="cq-verify-input" value={advisorName} maxLength={120} onChange={(event) => setAdvisorName(event.target.value)} placeholder="Optional" />
+                <label className="cq-verify-label" htmlFor="cq-verify-advisor-email">
+                  {isGreek ? "Chapter advisor email" : "Advisor email"}
+                </label>
+                <input id="cq-verify-advisor-email" type="email" className="cq-verify-input" value={advisorEmail} maxLength={180} onChange={(event) => setAdvisorEmail(event.target.value)} placeholder="Optional" />
                 <label className="cq-verify-label" htmlFor="cq-verify-uri">
                   URInvolved page
                 </label>
                 <input id="cq-verify-uri" className="cq-verify-input" value={urinvolvedUrl} onChange={(event) => setUrinvolvedUrl(event.target.value)} placeholder="Optional" />
-                <label className="cq-verify-label" htmlFor="cq-verify-email">
-                  Organization email
-                </label>
-                <input id="cq-verify-email" className="cq-verify-input" value={organizationEmail} onChange={(event) => setOrganizationEmail(event.target.value)} placeholder="Optional" />
                 <label className="cq-verify-label" htmlFor="cq-verify-role">
                   Your role
                 </label>
@@ -342,7 +470,7 @@ export function VerificationOnboarding({
               Website
             </label>
             <input id="cq-verify-web" className="cq-verify-input" value={websiteUrl} onChange={(event) => setWebsiteUrl(event.target.value)} placeholder="Optional" />
-            <button type="button" className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50" disabled={description.trim().length < 1} onClick={() => setStep("image")}>
+            <button type="button" className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50" disabled={description.trim().length < 1} onClick={continueFromAbout}>
               Continue
             </button>
           </>
@@ -372,15 +500,18 @@ export function VerificationOnboarding({
           <>
             <h1 className="cq-onboard-title">Confirm and submit</h1>
             <div className="cq-verify-card">
+              {identityType === "organization" ? <p className="cq-verify-choice-sub">Student contact</p> : null}
               <p><strong>{applicant?.displayName || "Student"}</strong></p>
               <p>{applicant?.email || "Verified campus email on file"}</p>
               <p>@{applicant?.username || "username"}</p>
+              {identityType === "organization" ? <p>{ORG_VERIFICATION_CAMPUS}</p> : null}
             </div>
             <label className="cq-verify-check">
               <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
               <span>
-                I confirm that I own, operate, or am authorized to represent this{" "}
-                {identityType === "organization" ? "organization" : "business"}.
+                {identityType === "organization"
+                  ? ORG_VERIFICATION_AUTHORIZATION_COPY
+                  : "I confirm that I own, operate, or am authorized to represent this business."}
               </span>
             </label>
             <button type="button" className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50" disabled={!confirmed || busy} onClick={() => void submit()}>
@@ -391,9 +522,13 @@ export function VerificationOnboarding({
 
         {step === "success" ? (
           <>
-            <h1 className="cq-onboard-title">Verification Submitted</h1>
+            <h1 className="cq-onboard-title">
+              {identityType === "organization" ? ORG_REQUEST_SUBMITTED_TITLE : "Verification Submitted"}
+            </h1>
             <p className="cq-onboard-sub">
-              Your request has been sent to the CampusQuest team for review. You can keep using CampusQuest while we review it.
+              {identityType === "organization"
+                ? ORG_REQUEST_SUBMITTED_BODY
+                : "Your request has been sent to the CampusQuest team for review. You can keep using CampusQuest while we review it."}
             </p>
             <div className="cq-verify-card">
               <p className="cq-verify-choice-title">{submittedName}</p>

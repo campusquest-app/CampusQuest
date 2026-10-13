@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import {
   ACADEMIC_AREA_OPTIONS,
   academicAreaLabel,
@@ -24,8 +24,8 @@ export function AcademicAreaPicker({
 
   return (
     <div className="cq-onboard-major">
-      <label htmlFor="cq-academic-search" className="cq-onboard-support">
-        What are you studying? <span className="text-slate-400">(optional)</span>
+      <label htmlFor="cq-academic-search" className="cq-onboard-field-label">
+        Major or academic area <span className="font-semibold text-slate-400">(optional)</span>
       </label>
       {selectedLabel ? (
         <button
@@ -52,55 +52,65 @@ export function AcademicAreaPicker({
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
+              role="combobox"
+              aria-expanded={query.trim().length > 0}
+              aria-controls="cq-academic-suggestions"
+              aria-autocomplete="list"
             />
           </div>
-          <div className="cq-onboard-major-list" role="listbox" aria-label="Academic areas and majors">
-            {(query.trim() ? choices.majors : []).map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                role="option"
-                className="cq-onboard-choice cq-onboard-choice--row"
-                onClick={() => {
-                  onChange({ academicArea: opt.academicArea, major: opt.label });
-                  setQuery("");
-                }}
-                aria-selected={false}
-              >
-                <span>
-                  <span className="block">{opt.label}</span>
-                  <span className="block text-xs text-slate-500">{academicAreaLabel(opt.academicArea)}</span>
-                </span>
-              </button>
-            ))}
-            {choices.areas.map((opt) => {
-              const selected = academicArea === opt.id && !major;
-              return (
+          {query.trim() ? (
+            <div
+              id="cq-academic-suggestions"
+              className="cq-onboard-major-list"
+              role="listbox"
+              aria-label="Academic areas and majors"
+            >
+              {choices.majors.slice(0, 6).map((opt) => (
                 <button
                   key={opt.id}
                   type="button"
                   role="option"
-                  aria-selected={selected}
-                  className={`cq-onboard-choice cq-onboard-choice--row ${selected ? "cq-onboard-choice--selected" : ""}`}
+                  className="cq-onboard-choice cq-onboard-choice--row"
                   onClick={() => {
-                    onChange({
-                      academicArea: opt.id,
-                      major: null,
-                    });
+                    onChange({ academicArea: opt.academicArea, major: opt.label });
+                    setQuery("");
+                  }}
+                  aria-selected={false}
+                >
+                  <span>
+                    <span className="block">{opt.label}</span>
+                    <span className="block text-xs text-slate-500">{academicAreaLabel(opt.academicArea)}</span>
+                  </span>
+                </button>
+              ))}
+              {choices.areas.slice(0, 4).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  className="cq-onboard-choice cq-onboard-choice--row"
+                  onClick={() => {
+                    onChange({ academicArea: opt.id, major: null });
                     setQuery("");
                   }}
                 >
                   <span>{opt.label}</span>
-                  {selected ? <Check className="h-5 w-5 shrink-0" aria-hidden /> : null}
                 </button>
-              );
-            })}
-            {!query.trim() ? (
-              <p className="cq-onboard-support mt-2">
-                Pick a broad area if you don&apos;t see your major. You can skip this.
-              </p>
-            ) : null}
-          </div>
+              ))}
+              {choices.majors.length === 0 && choices.areas.length === 0 ? (
+                <p className="cq-onboard-support">No matches. Try another major or area.</p>
+              ) : null}
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="cq-onboard-choice cq-onboard-choice--row mt-3"
+              onClick={() => onChange({ academicArea: "undecided", major: null })}
+            >
+              Undecided / Not sure
+            </button>
+          )}
         </>
       )}
     </div>

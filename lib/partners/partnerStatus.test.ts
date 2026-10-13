@@ -1,105 +1,114 @@
 import { describe, expect, it } from "vitest";
+import { definePartner } from "@/lib/partners/partnerDirectory";
 import {
-  derivePartnerDisplayState,
-  groupPartnersForDisplay,
-  hasVisiblePartners,
+  filterPartners,
+  isOfferLive,
   mapPartnerRow,
+  partnerDirectionsUrl,
+  partnerHasLiveReward,
+  partnerPrimaryLink,
+  visiblePartners,
 } from "@/lib/partners/partnerStatus";
 import type { Partner, PartnerRow } from "@/lib/partners/types";
 
 const NOW = new Date("2026-10-05T12:00:00Z");
 
 function partner(overrides: Partial<Partner> = {}): Partner {
-  return {
-    id: "test-id",
-    name: "Test Partner",
-    slug: "test-partner",
-    logoUrl: null,
-    coverImageUrl: null,
-    category: null,
-    description: null,
-    address: null,
-    latitude: null,
-    longitude: null,
-    partnerSince: null,
-    offerType: null,
-    offerTitle: null,
-    offerDescription: null,
-    discountValue: null,
-    questTitle: null,
-    questDescription: null,
-    redemptionInstructions: null,
-    startsAt: null,
-    endsAt: null,
-    websiteUrl: null,
-    instagramUrl: null,
-    isActive: true,
-    isFeatured: false,
-    isCampusQuestDay: false,
-    ...overrides,
-  };
+  return definePartner({ id: "test-id", name: "Test Partner", slug: "test-partner", ...overrides });
 }
 
-describe("derivePartnerDisplayState", () => {
-  it("treats an active partner with no schedule as active", () => {
-    expect(derivePartnerDisplayState(partner(), NOW)).toBe("active");
-  });
-
-  it("is inactive whenever is_active is false, regardless of dates", () => {
-    expect(derivePartnerDisplayState(partner({ isActive: false }), NOW)).toBe("inactive");
-    expect(
-      derivePartnerDisplayState(partner({ isActive: false, endsAt: "2026-01-01T00:00:00Z" }), NOW),
-    ).toBe("inactive");
-  });
-
-  it("is expired once ends_at has passed (inclusive)", () => {
-    expect(derivePartnerDisplayState(partner({ endsAt: "2026-10-05T11:59:59Z" }), NOW)).toBe("expired");
-    expect(derivePartnerDisplayState(partner({ endsAt: NOW.toISOString() }), NOW)).toBe("expired");
-  });
-
-  it("is upcoming before starts_at", () => {
-    expect(derivePartnerDisplayState(partner({ startsAt: "2026-10-06T00:00:00Z" }), NOW)).toBe("upcoming");
-  });
-
-  it("is active inside the window and ignores unparseable dates", () => {
-    expect(
-      derivePartnerDisplayState(
-        partner({ startsAt: "2026-10-01T00:00:00Z", endsAt: "2026-10-10T00:00:00Z" }),
-        NOW,
-      ),
-    ).toBe("active");
-    expect(derivePartnerDisplayState(partner({ endsAt: "not-a-date" }), NOW)).toBe("active");
+describe("visiblePartners", () => {
+  it("drops inactive partners and keeps data order", () => {
+    const list = [partner({ id: "a" }), partner({ id: "b", isActive: false }), partner({ id: "c" })];
+    expect(visiblePartners(list).map((p) => p.id)).toEqual(["a", "c"]);
   });
 });
 
-describe("groupPartnersForDisplay", () => {
-  it("returns empty sections for zero partners", () => {
-    const sections = groupPartnersForDisplay([], NOW);
-    expect(sections).toEqual({ featured: [], active: [], expired: [] });
-    expect(hasVisiblePartners(sections)).toBe(false);
+describe("isOfferLive / partnerHasLiveReward", () => {
+  it("is live with no schedule", () => {
+    expect(isOfferLive(partner(), NOW)).toBe(true);
   });
 
-  it("splits featured, active and expired; hides inactive and upcoming", () => {
-    const featured = partner({ id: "f", isFeatured: true });
-    const active = partner({ id: "a" });
-    const expired = partner({ id: "e", endsAt: "2026-09-01T00:00:00Z" });
-    const expiredFeatured = partner({ id: "ef", isFeatured: true, endsAt: "2026-09-01T00:00:00Z" });
-    const inactive = partner({ id: "i", isActive: false });
-    const upcoming = partner({ id: "u", startsAt: "2026-12-01T00:00:00Z" });
-
-    const sections = groupPartnersForDisplay([featured, active, expired, expiredFeatured, inactive, upcoming], NOW);
-    expect(sections.featured.map((p) => p.id)).toEqual(["f"]);
-    expect(sections.active.map((p) => p.id)).toEqual(["a"]);
-    expect(sections.expired.map((p) => p.id)).toEqual(["e", "ef"]);
-    expect(hasVisiblePartners(sections)).toBe(true);
+  it("is not live before startsAt or once endsAt has passed (inclusive)", () => {
+    expect(isOfferLive(partner({ startsAt: "2026-10-06T00:00:00Z" }), NOW)).toBe(false);
+    expect(isOfferLive(partner({ endsAt: NOW.toISOString() }), NOW)).toBe(false);
+    expect(isOfferLive(partner({ endsAt: "not-a-date" }), NOW)).toBe(true);
   });
 
-  it("shows nothing when every partner is inactive or upcoming", () => {
-    const sections = groupPartnersForDisplay(
-      [partner({ isActive: false }), partner({ startsAt: "2027-01-01T00:00:00Z" })],
-      NOW,
+  it("requires a configured discount or title", () => {
+    expect(partnerHasLiveReward(partner(), NOW)).toBe(false);
+    expect(partnerHasLiveReward(partner({ discountValue: "20% OFF" }), NOW)).toBe(true);
+    expect(partnerHasLiveReward(partner({ discountValue: "20% OFF", endsAt: "2026-09-01T00:00:00Z" }), NOW)).toBe(
+      false,
     );
-    expect(hasVisiblePartners(sections)).toBe(false);
+  });
+});
+
+describe("filterPartners", () => {
+  const daisys = partner({
+    id: "d",
+    name: "Daisy\u2019s Chicken & Ice Cream",
+    categories: ["Chicken", "Ice Cream"],
+    address: "106 Point Judith Rd, Narragansett, RI",
+  });
+  const sandbar = partner({
+    id: "s",
+    name: "The Sandbar Cafe",
+    categories: ["Coffee", "Breakfast", "Drinks"],
+    address: "106 Point Judith Rd, Narragansett, RI",
+  });
+  const list = [daisys, sandbar];
+
+  it("returns everything for a blank query", () => {
+    expect(filterPartners(list, "   ")).toEqual(list);
+  });
+
+  it("matches name case-insensitively, with or without the apostrophe", () => {
+    expect(filterPartners(list, "daisy").map((p) => p.id)).toEqual(["d"]);
+    expect(filterPartners(list, "DAISYS").map((p) => p.id)).toEqual(["d"]);
+    expect(filterPartners(list, "daisy's").map((p) => p.id)).toEqual(["d"]);
+  });
+
+  it("matches categories", () => {
+    expect(filterPartners(list, "coffee").map((p) => p.id)).toEqual(["s"]);
+    expect(filterPartners(list, "ice cream").map((p) => p.id)).toEqual(["d"]);
+  });
+
+  it("matches location", () => {
+    expect(filterPartners(list, "narragansett").map((p) => p.id)).toEqual(["d", "s"]);
+  });
+
+  it("requires every term to match", () => {
+    expect(filterPartners(list, "coffee chicken")).toEqual([]);
+    expect(filterPartners(list, "pizza")).toEqual([]);
+  });
+});
+
+describe("partner links", () => {
+  it("uses an explicit directions URL first", () => {
+    expect(partnerDirectionsUrl(partner({ directionsUrl: "https://maps.test/x", address: "1 St" }))).toBe(
+      "https://maps.test/x",
+    );
+  });
+
+  it("builds a maps search from name + address", () => {
+    const url = partnerDirectionsUrl(partner({ name: "Cafe", address: "1 Main St, Kingston, RI" }));
+    expect(url).toBe(
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("Cafe, 1 Main St, Kingston, RI")}`,
+    );
+  });
+
+  it("returns null with no location", () => {
+    expect(partnerDirectionsUrl(partner())).toBeNull();
+  });
+
+  it("prefers menu over website and hides the action when neither exists", () => {
+    expect(partnerPrimaryLink(partner({ menuUrl: "https://m.test", websiteUrl: "https://w.test" }))).toEqual({
+      label: "Menu",
+      href: "https://m.test",
+    });
+    expect(partnerPrimaryLink(partner({ websiteUrl: "https://w.test" }))?.label).toBe("Website");
+    expect(partnerPrimaryLink(partner())).toBeNull();
   });
 });
 
@@ -111,13 +120,14 @@ describe("mapPartnerRow", () => {
       slug: "row-partner",
       logo_url: "https://cdn.test/logo.png",
       cover_image_url: "https://cdn.test/cover.png",
-      category: "Food",
+      categories: ["Food", ""],
       description: "desc",
       address: "1 Test St",
       latitude: 41.48,
       longitude: -71.52,
+      hours: [],
       partner_since: "2026-10-01",
-      offer_type: "campusquest_day",
+      offer_type: "standard_offer",
       offer_title: "Offer",
       offer_description: "Offer desc",
       discount_value: "15%",
@@ -127,22 +137,20 @@ describe("mapPartnerRow", () => {
       starts_at: "2026-10-01T00:00:00Z",
       ends_at: "2026-10-31T00:00:00Z",
       website_url: "https://example.test",
+      menu_url: "https://example.test/menu",
+      directions_url: null,
       instagram_url: "https://instagram.com/test",
       is_active: true,
-      is_featured: true,
-      is_campusquest_day: true,
     };
     const mapped = mapPartnerRow(row);
     expect(mapped).toMatchObject({
       id: "row-id",
-      logoUrl: "https://cdn.test/logo.png",
-      coverImageUrl: "https://cdn.test/cover.png",
-      partnerSince: "2026-10-01",
-      offerType: "campusquest_day",
+      categories: ["Food"],
+      hours: null,
+      offerType: "standard_offer",
       discountValue: "15%",
+      menuUrl: "https://example.test/menu",
       redemptionInstructions: "Show the app",
-      isFeatured: true,
-      isCampusQuestDay: true,
     });
     expect(Object.keys(mapped)).toHaveLength(Object.keys(row).length);
     expect(mapPartnerRow({ ...row, offer_type: "bogus" as never }).offerType).toBeNull();

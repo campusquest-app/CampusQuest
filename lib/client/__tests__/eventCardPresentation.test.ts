@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   eventCardCategoryChip,
@@ -10,6 +11,7 @@ import {
   eventMatchesCategoryRail,
   eventShowOnRealmEligible,
   feedEventIsAthletics,
+  isEventLive,
 } from "@/lib/client/eventCardPresentation";
 import { eventSourceChipLabel } from "@/lib/eventSources/catalog";
 import type { ExternalFeedEventItem, FeedEvent } from "@/lib/client/eventFeedTypes";
@@ -130,5 +132,96 @@ describe("event card presentation", () => {
         }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("isEventLive", () => {
+  const startsAt = "2026-10-06T22:00:00.000Z";
+  const endsAt = "2026-10-07T00:00:00.000Z";
+
+  it("hides an event that starts in 2 hours", () => {
+    expect(isEventLive(athleticsEvent({ startsAt, endsAt }), new Date("2026-10-06T20:00:00.000Z"))).toBe(false);
+  });
+
+  it("shows an event at the start instant", () => {
+    expect(isEventLive(athleticsEvent({ startsAt, endsAt }), new Date(startsAt))).toBe(true);
+  });
+
+  it("shows an event halfway through", () => {
+    expect(isEventLive(athleticsEvent({ startsAt, endsAt }), new Date("2026-10-06T23:00:00.000Z"))).toBe(true);
+  });
+
+  it("hides an event one minute after it ends", () => {
+    expect(isEventLive(athleticsEvent({ startsAt, endsAt }), new Date("2026-10-07T00:01:00.000Z"))).toBe(false);
+  });
+
+  it("keeps the event live at the exact end instant", () => {
+    expect(isEventLive(athleticsEvent({ startsAt, endsAt }), new Date(endsAt))).toBe(true);
+  });
+
+  it("hides an event tomorrow", () => {
+    expect(
+      isEventLive(
+        athleticsEvent({
+          startsAt: "2026-10-07T22:00:00.000Z",
+          endsAt: "2026-10-08T00:00:00.000Z",
+        }),
+        new Date("2026-10-06T22:00:00.000Z"),
+      ),
+    ).toBe(false);
+  });
+
+  it("hides malformed or missing start times", () => {
+    const now = new Date("2026-10-06T22:30:00.000Z");
+    expect(isEventLive(athleticsEvent({ startsAt: "not-a-time", endsAt }), now)).toBe(false);
+    expect(isEventLive(athleticsEvent({ startsAt: null, endsAt }), now)).toBe(false);
+    expect(isEventLive(athleticsEvent({ startsAt: "", endsAt }), now)).toBe(false);
+  });
+
+  it("reuses the two-hour campus default when the end time is missing", () => {
+    expect(isEventLive(athleticsEvent({ startsAt, endsAt: null }), new Date("2026-10-06T23:00:00.000Z"))).toBe(true);
+    expect(isEventLive(athleticsEvent({ startsAt, endsAt: null }), new Date("2026-10-07T00:00:00.000Z"))).toBe(true);
+    expect(isEventLive(athleticsEvent({ startsAt, endsAt: null }), new Date("2026-10-07T00:01:00.000Z"))).toBe(false);
+    expect(isEventLive(athleticsEvent({ startsAt, endsAt: null }), new Date("2026-10-06T20:00:00.000Z"))).toBe(false);
+  });
+
+  it("prefers a real end over the two-hour default", () => {
+    const shortEnd = "2026-10-06T22:30:00.000Z";
+    expect(isEventLive(athleticsEvent({ startsAt, endsAt: shortEnd }), new Date("2026-10-06T22:20:00.000Z"))).toBe(
+      true,
+    );
+    expect(isEventLive(athleticsEvent({ startsAt, endsAt: shortEnd }), new Date("2026-10-06T22:31:00.000Z"))).toBe(
+      false,
+    );
+  });
+
+  it("stays live across midnight when the stored end is after midnight", () => {
+    const lateStart = "2026-10-07T03:30:00.000Z";
+    const afterMidnight = "2026-10-07T04:30:00.000Z";
+    expect(
+      isEventLive(athleticsEvent({ startsAt: lateStart, endsAt: afterMidnight }), new Date("2026-10-07T04:00:00.000Z")),
+    ).toBe(true);
+    expect(
+      isEventLive(athleticsEvent({ startsAt: lateStart, endsAt: afterMidnight }), new Date("2026-10-07T04:31:00.000Z")),
+    ).toBe(false);
+  });
+
+  it("uses absolute instants across the daylight-saving change", () => {
+    const dstStart = "2026-03-08T06:30:00.000Z";
+    const dstEnd = "2026-03-08T07:30:00.000Z";
+    expect(isEventLive(athleticsEvent({ startsAt: dstStart, endsAt: dstEnd }), new Date("2026-03-08T07:00:00.000Z"))).toBe(
+      true,
+    );
+    expect(isEventLive(athleticsEvent({ startsAt: dstStart, endsAt: dstEnd }), new Date("2026-03-08T07:31:00.000Z"))).toBe(
+      false,
+    );
+  });
+
+  it("gates Show on Realm cards on the shared live helper", () => {
+    const discovery = readFileSync("components/events/EventDiscoveryCard.tsx", "utf8");
+    const happening = readFileSync("components/events/HappeningSoonCarousel.tsx", "utf8");
+    expect(discovery).toContain("isEventLive(item, now)");
+    expect(happening).toContain("isEventLive(item, now)");
+    expect(happening).toContain("isEventLive(row.item, now)");
   });
 });

@@ -91,6 +91,32 @@ export function matchesEventsTimeframe(
   return true;
 }
 
+export type EventsWhenFilter = "today" | "tomorrow" | "this_weekend" | "this_week";
+
+/** An event matches when it falls in any selected window. No selection means every date. */
+export function matchesAnyEventsWhen(
+  startsAt: string | null,
+  when: readonly EventsWhenFilter[],
+  now: Date = new Date(),
+): boolean {
+  if (when.length === 0) return true;
+  return when.some((filter) => matchesEventsTimeframe(startsAt, filter, now));
+}
+
+/**
+ * Date mode after the When checkboxes change.
+ * One window uses that timeframe. Several windows browse without For You.
+ * Clearing windows returns to For You, unless the user is already in browse-all.
+ */
+export function timeframeAfterWhenChange(
+  current: EventsFeedTimeframe,
+  when: readonly EventsWhenFilter[],
+): EventsFeedTimeframe {
+  if (when.length === 1) return when[0];
+  if (when.length > 1) return "all";
+  return current === "all" ? "all" : "for_you";
+}
+
 export function matchesEventsSearch(
   fields: {
     title: string;

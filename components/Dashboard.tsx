@@ -3164,6 +3164,7 @@ export function Dashboard() {
           applicant={identityUi.applicant}
           userId={character.id}
           presetType={identityUi.verificationPreset}
+          orgVariant={identityUi.verificationOrgVariant}
           onClose={closeVerificationOnboarding}
         />
       ) : null}

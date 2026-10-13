@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEMOGRAPHIC_ONBOARDING_STEPS,
+  canonicalizeDemographicStep,
   demographicProgress,
   demographicStepsForUser,
   nextDemographicStep,
@@ -9,152 +10,138 @@ import {
 } from "@/lib/onboarding/flow";
 
 describe("demographic onboarding order", () => {
-  it("uses Welcome → status → graduation → school → interests → communities → email → success", () => {
+  it("uses four required screens after the logged-out welcome", () => {
     expect(DEMOGRAPHIC_ONBOARDING_STEPS).toEqual([
       "welcome",
-      "student_status",
-      "graduation_year",
-      "school",
-      "interests",
-      "communities",
-      "email_verification",
-      "success",
+      "about_you",
+      "campus",
+      "personalize",
+      "ready",
     ]);
     expect(
       demographicStepsForUser({ studentStatus: "current_student", includeWelcome: true }),
-    ).toEqual([
-      "welcome",
-      "student_status",
-      "graduation_year",
-      "school",
-      "interests",
-      "communities",
-      "email_verification",
-      "success",
-    ]);
+    ).toEqual(["welcome", "about_you", "campus", "personalize", "ready"]);
   });
 
-  it("skips graduation year for faculty/staff", () => {
+  it("keeps faculty and students on the same four screens", () => {
     expect(demographicStepsForUser({ studentStatus: "faculty_staff" })).toEqual([
-      "student_status",
-      "school",
-      "interests",
-      "communities",
-      "email_verification",
-      "success",
+      "about_you",
+      "campus",
+      "personalize",
+      "ready",
     ]);
-    expect(nextDemographicStep({ current: "student_status", studentStatus: "faculty_staff" })).toBe("school");
-    expect(demographicStepsForUser({ studentStatus: "faculty_staff" })).not.toContain("graduation_year");
+    expect(demographicStepsForUser({ studentStatus: "graduate_student" })).toEqual([
+      "about_you",
+      "campus",
+      "personalize",
+      "ready",
+    ]);
+    expect(nextDemographicStep({ current: "about_you", studentStatus: "faculty_staff" })).toBe("campus");
+    expect(nextDemographicStep({ current: "campus", studentStatus: "current_student" })).toBe("personalize");
+    expect(nextDemographicStep({ current: "personalize", studentStatus: "current_student" })).toBe("ready");
+    expect(nextDemographicStep({ current: "ready", studentStatus: "current_student" })).toBeNull();
   });
 
-  it("skips graduation year for the legacy not_student answer", () => {
-    expect(demographicStepsForUser({ studentStatus: "not_student" })).not.toContain("graduation_year");
+  it("maps legacy in-progress steps onto the four-screen flow", () => {
+    expect(canonicalizeDemographicStep("graduation_year")).toBe("about_you");
+    expect(canonicalizeDemographicStep("school")).toBe("campus");
+    expect(canonicalizeDemographicStep("email_verification")).toBe("campus");
+    expect(canonicalizeDemographicStep("interests")).toBe("personalize");
+    expect(canonicalizeDemographicStep("communities")).toBe("personalize");
+    expect(canonicalizeDemographicStep("success")).toBe("ready");
   });
 
-  it("keeps graduation year for current, incoming, and graduate students", () => {
-    for (const status of ["current_student", "incoming_student", "graduate_student", "current_or_incoming"] as const) {
-      expect(demographicStepsForUser({ studentStatus: status })).toContain("graduation_year");
-      expect(nextDemographicStep({ current: "student_status", studentStatus: status })).toBe("graduation_year");
-      expect(nextDemographicStep({ current: "graduation_year", studentStatus: status })).toBe("school");
-    }
-  });
-
-  it("does not treat graduate students as a faculty skip", () => {
-    expect(nextDemographicStep({ current: "graduation_year", studentStatus: "graduate_student" })).toBe("school");
-  });
-
-  it("places URI email after communities and success after verification", () => {
-    expect(nextDemographicStep({ current: "communities", studentStatus: "current_student" })).toBe(
-      "email_verification",
-    );
-    expect(nextDemographicStep({ current: "email_verification", studentStatus: "current_student" })).toBe("success");
-    expect(nextDemographicStep({ current: "success", studentStatus: "current_student" })).toBeNull();
-  });
-
-  it("limits the email-only remainder to verification then success", () => {
+  it("limits an email-only remainder to campus verification then the final screen", () => {
     expect(demographicStepsForUser({ emailOnly: true, studentStatus: "current_student" })).toEqual([
-      "email_verification",
-      "success",
+      "campus",
+      "ready",
     ]);
-    expect(nextDemographicStep({ current: "email_verification", emailOnly: true })).toBe("success");
-    expect(previousDemographicStep({ current: "email_verification", emailOnly: true })).toBeNull();
-    expect(nextDemographicStep({ current: "success", emailOnly: true })).toBeNull();
+    expect(nextDemographicStep({ current: "campus", emailOnly: true })).toBe("ready");
+    expect(previousDemographicStep({ current: "campus", emailOnly: true })).toBeNull();
   });
 
   it("walks back without restarting the flow", () => {
-    expect(previousDemographicStep({ current: "school", studentStatus: "current_student" })).toBe(
-      "graduation_year",
-    );
-    expect(previousDemographicStep({ current: "interests", studentStatus: "faculty_staff" })).toBe("school");
+    expect(previousDemographicStep({ current: "campus", studentStatus: "current_student" })).toBe("about_you");
+    expect(previousDemographicStep({ current: "personalize", studentStatus: "faculty_staff" })).toBe("campus");
     expect(
       previousDemographicStep({
-        current: "student_status",
+        current: "about_you",
         studentStatus: "current_student",
         includeWelcome: true,
       }),
     ).toBe("welcome");
   });
 
-  it("reports Getting started progress against the full sequence, never 1 of 1 for email", () => {
-    const student = demographicProgress({
-      current: "school",
-      studentStatus: "current_student",
-      includeWelcome: true,
-    });
-    expect(student).toEqual({
-      current: 3,
-      total: 6,
-      label: "Getting started · 3 of 6",
-    });
-
-    const faculty = demographicProgress({
-      current: "interests",
-      studentStatus: "faculty_staff",
-    });
-    expect(faculty).toEqual({
-      current: 3,
-      total: 5,
-      label: "Getting started · 3 of 5",
+  it("reports Getting started progress as 1–4 of 4, including the final screen", () => {
+    expect(
+      demographicProgress({
+        current: "campus",
+        studentStatus: "current_student",
+      }),
+    ).toEqual({
+      current: 2,
+      total: 4,
+      label: "Getting started · 2 of 4",
     });
 
     expect(
       demographicProgress({
-        current: "email_verification",
+        current: "personalize",
+        studentStatus: "faculty_staff",
+      }),
+    ).toEqual({
+      current: 3,
+      total: 4,
+      label: "Getting started · 3 of 4",
+    });
+
+    expect(
+      demographicProgress({
+        current: "ready",
+        studentStatus: "current_student",
+      }),
+    ).toEqual({
+      current: 4,
+      total: 4,
+      label: "Getting started · 4 of 4",
+    });
+
+    expect(
+      demographicProgress({
+        current: "campus",
         studentStatus: "current_student",
         emailOnly: true,
       }),
     ).toEqual({
-      current: 6,
-      total: 6,
-      label: "Getting started · 6 of 6",
+      current: 2,
+      total: 4,
+      label: "Getting started · 2 of 4",
     });
 
     expect(demographicProgress({ current: "welcome", studentStatus: "current_student" })).toBeNull();
-    expect(demographicProgress({ current: "success", studentStatus: "current_student" })).toBeNull();
   });
 });
 
 describe("demographic onboarding resume", () => {
-  it("starts an authenticated user on the first real step, not the public welcome screen", () => {
+  it("starts an authenticated user on About You, not the public welcome screen", () => {
     expect(
       resolveDemographicResumeStep({
         profile: { campus_email_verified_at: null },
         preferences: { exists: false, interests: [] },
       }),
-    ).toBe("student_status");
+    ).toBe("about_you");
   });
 
-  it("does not treat unverified email as the current step when demographics are incomplete", () => {
+  it("stays on About You until a required graduation year is answered", () => {
     expect(
       resolveDemographicResumeStep({
         profile: { campus_email_verified_at: null, student_status: "current_student" },
         preferences: { exists: false, interests: [] },
-        startAtEmailVerification: false,
       }),
-    ).toBe("graduation_year");
+    ).toBe("about_you");
   });
 
-  it("resumes the first incomplete demographic step", () => {
+  it("sends an unverified student with a saved year to campus before personalization", () => {
     expect(
       resolveDemographicResumeStep({
         profile: {
@@ -165,23 +152,29 @@ describe("demographic onboarding resume", () => {
         },
         preferences: { exists: false, interests: ["athletics"] },
       }),
-    ).toBe("interests");
+    ).toBe("campus");
+  });
 
+  it("resumes personalization once campus email is verified and interests are incomplete", () => {
     expect(
       resolveDemographicResumeStep({
         profile: {
           student_status: "current_student",
           institution_id: "uri",
           class_year: 2027,
-          campus_email_verified_at: null,
+          campus_email_verified_at: "2026-08-25T00:00:00.000Z",
         },
         preferences: { exists: false, interests: ["athletics", "music", "tech"] },
-        draft: { step: "communities", studentStatus: "current_student", interests: ["athletics", "music", "tech"] },
+        draft: {
+          step: "communities",
+          studentStatus: "current_student",
+          interests: ["athletics", "music", "tech"],
+        },
       }),
-    ).toBe("communities");
+    ).toBe("personalize");
   });
 
-  it("goes directly to OTP when demographics are complete and only verification remains", () => {
+  it("opens campus verification when demographics are complete and only the URI email remains", () => {
     expect(
       resolveDemographicResumeStep({
         profile: {
@@ -192,29 +185,29 @@ describe("demographic onboarding resume", () => {
         preferences: { exists: true, interests: ["athletics", "music", "tech"], institutionId: "uri" },
         startAtEmailVerification: true,
       }),
-    ).toBe("email_verification");
+    ).toBe("campus");
   });
 
-  it("shows success when email is already verified in an email-only remainder", () => {
+  it("opens the final screen when an email-only remainder is already verified", () => {
     expect(
       resolveDemographicResumeStep({
         profile: { campus_email_verified_at: "2026-08-25T00:00:00.000Z" },
         startAtEmailVerification: true,
       }),
-    ).toBe("success");
+    ).toBe("ready");
   });
 
-  it("ignores a stale email_verification draft when earlier required fields are missing", () => {
+  it("ignores a stale verification draft when earlier required fields are missing", () => {
     expect(
       resolveDemographicResumeStep({
         profile: { campus_email_verified_at: null },
         preferences: { exists: false, interests: [] },
         draft: { step: "email_verification" },
       }),
-    ).toBe("student_status");
+    ).toBe("about_you");
   });
 
-  it("QA full replay starts at the first real step and follows the in-session draft", () => {
+  it("QA full replay starts at About You and follows the canonical draft step", () => {
     expect(
       resolveDemographicResumeStep({
         profile: {
@@ -226,7 +219,7 @@ describe("demographic onboarding resume", () => {
         startAtEmailVerification: true,
         forceFullReplay: true,
       }),
-    ).toBe("student_status");
+    ).toBe("about_you");
 
     expect(
       resolveDemographicResumeStep({
@@ -238,10 +231,10 @@ describe("demographic onboarding resume", () => {
         draft: { step: "school", studentStatus: "incoming_student" },
         forceFullReplay: true,
       }),
-    ).toBe("school");
+    ).toBe("campus");
   });
 
-  it("honors a same-session draft so refresh returns to the current step", () => {
+  it("honors a same-session campus draft", () => {
     expect(
       resolveDemographicResumeStep({
         profile: { student_status: "current_student", campus_email_verified_at: null },
@@ -252,17 +245,17 @@ describe("demographic onboarding resume", () => {
           graduationYear: 2029,
         },
       }),
-    ).toBe("school");
+    ).toBe("campus");
   });
 
-  it("keeps a user on interests after refresh once the minimum selection is met", () => {
+  it("keeps a verified user on personalization after the interest minimum is met", () => {
     expect(
       resolveDemographicResumeStep({
         profile: {
           student_status: "current_student",
           institution_id: "uri",
           class_year: 2028,
-          campus_email_verified_at: null,
+          campus_email_verified_at: "2026-08-25T00:00:00.000Z",
         },
         preferences: { exists: false, interests: [] },
         draft: {
@@ -271,6 +264,6 @@ describe("demographic onboarding resume", () => {
           interests: ["athletics", "music", "tech"],
         },
       }),
-    ).toBe("interests");
+    ).toBe("personalize");
   });
 });

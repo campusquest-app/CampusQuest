@@ -1,41 +1,76 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { Search, X } from "lucide-react";
 import { PartnerCard } from "@/components/partners/PartnerCard";
-import { PartnersEmptyState } from "@/components/partners/PartnersEmptyState";
+import { PartnerDetailSheet } from "@/components/partners/PartnerDetailSheet";
+import { PartnersNoResults } from "@/components/partners/PartnersNoResults";
 import { usePartners, type PartnersLoadState } from "@/lib/client/usePartners";
-import { groupPartnersForDisplay, hasVisiblePartners } from "@/lib/partners/partnerStatus";
+import { filterPartners, visiblePartners } from "@/lib/partners/partnerStatus";
 import type { Partner } from "@/lib/partners/types";
 
-export function PartnersScreen({ onSelectPartner }: { onSelectPartner?: (partner: Partner) => void }) {
+export function PartnersScreen() {
   const { state, reload } = usePartners();
-  return <PartnersScreenView state={state} onRetry={reload} onSelectPartner={onSelectPartner} />;
+  return <PartnersScreenView state={state} onRetry={reload} />;
 }
 
 export function PartnersScreenView({
   state,
   onRetry,
-  onSelectPartner,
   now,
+  initialQuery = "",
 }: {
   state: PartnersLoadState;
   onRetry: () => void;
-  onSelectPartner?: (partner: Partner) => void;
   now?: Date;
+  initialQuery?: string;
 }) {
-  const sections = useMemo(
-    () => (state.status === "ready" ? groupPartnersForDisplay(state.partners, now) : null),
-    [state, now],
-  );
+  const [query, setQuery] = useState(initialQuery);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const partners = useMemo(() => (state.status === "ready" ? visiblePartners(state.partners) : []), [state]);
+  const results = useMemo(() => filterPartners(partners, query), [partners, query]);
+  const selected = selectedId ? partners.find((partner) => partner.id === selectedId) ?? null : null;
+  const searching = query.trim().length > 0;
+
+  const handleSelect = useCallback((partner: Partner) => setSelectedId(partner.id), []);
+  const handleClose = useCallback(() => setSelectedId(null), []);
 
   return (
     <section className="cq-partners-screen" aria-labelledby="cq-partners-title" aria-busy={state.status === "loading"}>
-      <header className="cq-events-header">
+      <header className="cq-partners-header">
         <h1 id="cq-partners-title" className="cq-events-title">
           CampusQuest Partners
         </h1>
         <p className="cq-events-subtitle">Explore local businesses. Unlock exclusive student rewards.</p>
       </header>
+
+      <div className="cq-partners-search" role="search">
+        <Search className="cq-partners-search__icon" aria-hidden strokeWidth={2.2} />
+        <label htmlFor="cq-partners-search-input" className="sr-only">
+          Search partners
+        </label>
+        <input
+          id="cq-partners-search-input"
+          type="search"
+          enterKeyHint="search"
+          autoComplete="off"
+          placeholder="Search partners..."
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          className="cq-partners-search__input"
+        />
+        {searching ? (
+          <button
+            type="button"
+            className="cq-partners-search__clear touch-manipulation"
+            onClick={() => setQuery("")}
+            aria-label="Clear search"
+          >
+            <X className="h-4 w-4" aria-hidden strokeWidth={2.4} />
+          </button>
+        ) : null}
+      </div>
 
       {state.status === "loading" ? (
         <div className="cq-partners-list" aria-label="Loading partners">
@@ -49,43 +84,23 @@ export function PartnersScreenView({
             Try again
           </button>
         </div>
-      ) : sections && hasVisiblePartners(sections) ? (
+      ) : results.length > 0 ? (
         <>
-          <PartnerSection title="Featured" partners={sections.featured} onSelect={onSelectPartner} />
-          <PartnerSection
-            title={sections.featured.length > 0 ? "All partners" : undefined}
-            partners={sections.active}
-            onSelect={onSelectPartner}
-          />
-          <PartnerSection title="Past offers" partners={sections.expired} state="expired" />
+          <p className="sr-only" aria-live="polite">
+            {results.length === 1 ? "1 partner" : `${results.length} partners`}
+          </p>
+          <div className="cq-partners-list">
+            {results.map((partner) => (
+              <PartnerCard key={partner.id} partner={partner} onSelect={handleSelect} now={now} />
+            ))}
+          </div>
+          <p className="cq-partners-more">More CampusQuest partners coming soon.</p>
         </>
       ) : (
-        <PartnersEmptyState />
+        <PartnersNoResults searching={searching} />
       )}
-    </section>
-  );
-}
 
-function PartnerSection({
-  title,
-  partners,
-  state = "active",
-  onSelect,
-}: {
-  title?: ReactNode;
-  partners: Partner[];
-  state?: "active" | "expired";
-  onSelect?: (partner: Partner) => void;
-}) {
-  if (partners.length === 0) return null;
-  return (
-    <div className="cq-partners-section">
-      {title ? <h2 className="cq-partners-section__title">{title}</h2> : null}
-      <div className="cq-partners-list">
-        {partners.map((partner) => (
-          <PartnerCard key={partner.id} partner={partner} state={state} onSelect={onSelect} />
-        ))}
-      </div>
-    </div>
+      {selected ? <PartnerDetailSheet partner={selected} onClose={handleClose} /> : null}
+    </section>
   );
 }

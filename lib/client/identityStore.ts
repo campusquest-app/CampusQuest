@@ -9,6 +9,7 @@ import type {
   VerificationIdentityType,
   VerificationRequestSummary,
 } from "@/lib/identity/types";
+import type { OrgVerificationVariant } from "@/lib/identity/organizationVerification";
 
 const SESSION_KEY = "cq-active-identity-v1";
 
@@ -20,6 +21,7 @@ export type IdentitySnapshot = {
   loaded: boolean;
   verificationOpen: boolean;
   verificationPreset: VerificationIdentityType | null;
+  verificationOrgVariant: OrgVerificationVariant | null;
 };
 
 const EMPTY: IdentitySnapshot = {
@@ -30,6 +32,7 @@ const EMPTY: IdentitySnapshot = {
   loaded: false,
   verificationOpen: false,
   verificationPreset: null,
+  verificationOrgVariant: null,
 };
 
 let snapshot: IdentitySnapshot = EMPTY;
@@ -76,13 +79,21 @@ export function setIdentitySnapshot(partial: Partial<IdentitySnapshot>) {
   emit();
 }
 
-export function openVerificationOnboarding(preset: VerificationIdentityType | null = null) {
-  snapshot = { ...snapshot, verificationOpen: true, verificationPreset: preset };
+export function openVerificationOnboarding(
+  preset: VerificationIdentityType | null = null,
+  orgVariant: OrgVerificationVariant | null = null,
+) {
+  snapshot = {
+    ...snapshot,
+    verificationOpen: true,
+    verificationPreset: preset,
+    verificationOrgVariant: preset === "organization" ? orgVariant : null,
+  };
   emit();
 }
 
 export function closeVerificationOnboarding() {
-  snapshot = { ...snapshot, verificationOpen: false, verificationPreset: null };
+  snapshot = { ...snapshot, verificationOpen: false, verificationPreset: null, verificationOrgVariant: null };
   emit();
 }
 

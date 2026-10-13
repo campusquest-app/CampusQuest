@@ -45,6 +45,8 @@ import { interleaveMarketIntoCampusFeed } from "@/lib/identity/policy";
 import { CampusFeedListingCard } from "@/components/identity/CampusFeedListingCard";
 import type { MarketplaceListing, MarketplaceSeller } from "@/lib/marketplace/types";
 import { TheMarketFeed } from "@/components/market/TheMarketFeed";
+import { OrgVerificationCta } from "@/components/quad/OrgVerificationCta";
+import type { OrgVerificationVariant } from "@/lib/identity/organizationVerification";
 import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
 import {
   fieldNoteToRecommendationEntity,
@@ -56,6 +58,12 @@ export type { QuadFeedTab };
 
 function isCommunityFeedTab(tab: QuadFeedTab): tab is QuadCommunityChannel {
   return isQuadCommunityChannel(tab);
+}
+
+function orgVerificationCtaVariant(tab: QuadFeedTab): OrgVerificationVariant | null {
+  if (tab === "student_organizations") return "general";
+  if (tab === "greek_life") return "greek";
+  return null;
 }
 
 /** Synced by ResizeObserver — feed content clears this fixed header height */
@@ -686,6 +694,8 @@ export function TheQuad({
         )
       : null;
 
+  const orgCtaVariant = orgVerificationCtaVariant(feedTab);
+
   const feedLoadingLabel =
     isMarketFeedTab(feedTab)
       ? "Loading The Market…"
@@ -714,6 +724,7 @@ export function TheQuad({
           className="cq-quad-feed-body w-full flex-1"
           style={{ paddingTop: showQuadChrome ? quadChromeStackPadding : "0px" }}
         >
+          {orgCtaVariant ? <OrgVerificationCta variant={orgCtaVariant} /> : null}
           {isMarketFeedTab(feedTab) ? (
             <TheMarketFeed
               viewerId={character.id}

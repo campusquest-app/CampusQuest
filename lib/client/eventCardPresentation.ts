@@ -3,6 +3,7 @@ import type { CanonicalEventCategory } from "@/lib/eventSources/types";
 import { eventHasMappedLocation } from "@/lib/client/eventDiscovery";
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
 import { feedEventHostName, feedEventLocationText } from "@/lib/client/eventFeedTypes";
+import { isEventLiveNow } from "@/lib/realm/eventVisibility";
 
 export const EVENTS_CATEGORY_RAIL = [
   { id: "Athletics", label: "Athletics", match: "Athletics", accent: "athletics", icon: "trophy" },
@@ -62,6 +63,17 @@ export function eventCardCategoryChip(item: FeedEvent): string {
   return category === "Fine Arts" ? "Arts" : category;
 }
 
+/** Sheet labels. Card chips keep the shorter rail labels. */
+export const EVENTS_FILTER_CATEGORY_LABELS: Record<EventsCategoryRailId, string> = {
+  Athletics: "Athletics",
+  Clubs: "Clubs & Organizations",
+  Arts: "Arts & Entertainment",
+  Career: "Career",
+  Academic: "Academic",
+  Recreation: "Recreation",
+  Social: "Social",
+};
+
 export function eventMatchesCategoryRail(
   item: FeedEvent,
   railId: string | null | undefined,
@@ -85,6 +97,13 @@ export function eventMatchesCategoryRail(
           title: item.event.title,
         };
   return eventMatchesCanonicalCategory(event, match);
+}
+
+/** Empty selection matches every event. Otherwise any selected category matches. */
+export function eventMatchesAnyCategoryRail(item: FeedEvent, railIds: readonly string[]): boolean {
+  const selected = railIds.map((id) => id.trim()).filter(Boolean);
+  if (selected.length === 0) return true;
+  return selected.some((id) => eventMatchesCategoryRail(item, id));
 }
 
 export function eventCardDisplayTitle(item: FeedEvent): string {
@@ -140,6 +159,16 @@ export function eventShowOnRealmEligible(item: FeedEvent): boolean {
     source: item.event.source,
     homeAway: item.event.homeAway,
   });
+}
+
+/**
+ * True only while the event is happening now.
+ * Compares stored instants, not formatted display strings.
+ * A missing or unusable end reuses the shared Realm default (start + 2 hours,
+ * clamped to the end of that campus day). Invalid or missing start times are not live.
+ */
+export function isEventLive(item: FeedEvent, now: Date = new Date()): boolean {
+  return isEventLiveNow(item.event.startsAt, item.event.endsAt, now);
 }
 
 export function eventCardFallbackAccent(item: FeedEvent): string {

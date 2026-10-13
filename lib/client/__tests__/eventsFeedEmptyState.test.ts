@@ -123,11 +123,12 @@ describe("EventsFeed student vs admin controls", () => {
     expect(feedSrc).toContain('{ value: "for_you", label: "For You" }');
     expect(feedSrc).toContain('{ value: "today", label: "Today" }');
     expect(feedSrc).toContain('{ value: "this_weekend", label: "This Weekend" }');
-    expect(feedSrc).toContain('{ value: "all", label: "All" }');
+    expect(feedSrc).not.toContain('{ value: "all", label: "All" }');
     expect(feedSrc).toContain("rankRecommendationEntities");
     expect(feedSrc).toContain("without hiding the rest of campus");
     expect(feedSrc).toContain("HappeningSoonCarousel");
-    expect(feedSrc).toContain("EventsCategoryRail");
+    expect(feedSrc).toContain("cq-events-filter-pill");
+    expect(feedSrc).not.toContain("EventsCategoryRail");
     expect(feedSrc).toContain('syncBanner?.kind === "warning"');
   });
 

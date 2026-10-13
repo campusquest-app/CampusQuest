@@ -13,8 +13,10 @@ import {
   feedEventCanRsvp,
   feedEventIsAthletics,
   feedEventSourceKey,
+  isEventLive,
 } from "@/lib/client/eventCardPresentation";
 import { formatEventCardWhen, formatEventDateTimeRange, eventDateTimeIso } from "@/lib/client/eventDateTime";
+import { useLiveNow } from "@/lib/client/useLiveNow";
 import { eventCardRecommendationReason } from "@/lib/client/eventDiscovery";
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
 import { isInterestedRsvp } from "@/lib/client/eventInterested";
@@ -57,7 +59,8 @@ export function EventDiscoveryCard({
   const source = feedEventSourceKey(item);
   const sourceLabel = eventSourceChipLabel(source);
   const accent = eventCardFallbackAccent(item);
-  const mapped = eventShowOnRealmEligible(item) && Boolean(onViewOnMap);
+  const now = useLiveNow();
+  const showOnRealm = Boolean(onViewOnMap) && eventShowOnRealmEligible(item) && isEventLive(item, now);
   const athletics = feedEventIsAthletics(item);
   const canRsvp = feedEventCanRsvp(item);
 
@@ -97,6 +100,11 @@ export function EventDiscoveryCard({
           <span className="cq-event-card-source">{sourceLabel}</span>
         ) : null}
         <div className="cq-event-card-actions">
+          {showOnRealm ? (
+            <button type="button" onClick={onViewOnMap} className="cq-event-card-action">
+              Show on Realm
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onView}
@@ -105,11 +113,6 @@ export function EventDiscoveryCard({
           >
             {athletics ? "View Game" : "View Event"}
           </button>
-          {mapped ? (
-            <button type="button" onClick={onViewOnMap} className="cq-event-card-action">
-              {athletics ? "Map" : "Show on Realm"}
-            </button>
-          ) : null}
           {canRsvp && onRsvpGoing && !athletics ? (
             <button
               type="button"

@@ -200,8 +200,8 @@ export function AdminVerificationSection({ initialRequestId }: { initialRequestI
               ) : null}
               {detail.reasonForAccess ? (
                 <div>
-                  <dt className="text-[11px] uppercase text-white/40">Reason</dt>
-                  <dd>{detail.reasonForAccess}</dd>
+                  <dt className="text-[11px] uppercase text-white/40">Details &amp; reason</dt>
+                  <dd className="whitespace-pre-line">{detail.reasonForAccess}</dd>
                 </div>
               ) : null}
             </dl>

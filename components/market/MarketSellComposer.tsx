@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Lock, X } from "lucide-react";
+import { MarketPhotoPicker } from "@/components/market/MarketPhotoPicker";
+import { prepareQuadImage } from "@/lib/client/prepareQuadImage";
+import {
+  MARKETPLACE_PHOTO_REQUIRED_MESSAGE,
+  marketplacePhotoSelectionNotice,
+  resolveListingPhotoUrls,
+  selectMarketplacePhotos,
+} from "@/lib/marketplace/listingPhotos";
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 import {
   MARKETPLACE_CATEGORIES,
@@ -38,9 +47,13 @@ type Draft = {
   meetupArea: MarketplaceMeetupArea;
   availabilityNote: string;
   businessId: string | null;
-  photoFiles: File[];
-  existingPhotoUrls: string[];
+  /** Display order; the first photo is the cover. New files upload on publish. */
+  photos: DraftPhoto[];
 };
+
+type DraftPhoto =
+  | { id: string; kind: "existing"; url: string }
+  | { id: string; kind: "file"; file: File; url: string };
 
 const EMPTY_DRAFT: Draft = {
   listingKind: "item",
@@ -53,8 +66,7 @@ const EMPTY_DRAFT: Draft = {
   meetupArea: "memorial_union",
   availabilityNote: "",
   businessId: null,
-  photoFiles: [],
-  existingPhotoUrls: [],
+  photos: [],
 };
 
 export function MarketSellComposer({
@@ -83,14 +95,71 @@ export function MarketSellComposer({
           meetupArea: editing.meetupArea,
           availabilityNote: editing.availabilityNote ?? "",
           businessId: editing.businessId,
-          photoFiles: [],
-          existingPhotoUrls: editing.media.map((item) => item.url),
+          photos: editing.media.map((item, index) => ({ id: `existing-${index}`, kind: "existing" as const, url: item.url })),
         }
       : EMPTY_DRAFT,
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState<string | null>(null);
+  const [photosTouched, setPhotosTouched] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [photoNotice, setPhotoNotice] = useState<string | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const photoSectionRef = useRef<HTMLDivElement>(null);
+  const photosRef = useRef<DraftPhoto[]>(draft.photos);
+  photosRef.current = draft.photos;
+
+  useEffect(() => setPortalReady(true), []);
+
+  useEffect(
+    () => () => {
+      for (const photo of photosRef.current) {
+        if (photo.kind === "file") URL.revokeObjectURL(photo.url);
+      }
+    },
+    [],
+  );
+
+  const photoError =
+    draft.photos.length === 0 && (photosTouched || submitAttempted) ? MARKETPLACE_PHOTO_REQUIRED_MESSAGE : null;
+
+  function addPhotoFiles(files: File[]) {
+    setPhotosTouched(true);
+    const selection = selectMarketplacePhotos(draft.photos.length, files);
+    setPhotoNotice(marketplacePhotoSelectionNotice(selection));
+    if (selection.accepted.length === 0) return;
+    const added: DraftPhoto[] = selection.accepted.map((file) => ({
+      id: `file-${crypto.randomUUID()}`,
+      kind: "file",
+      file,
+      url: URL.createObjectURL(file),
+    }));
+    setDraft((prev) => ({ ...prev, photos: [...prev.photos, ...added] }));
+  }
+
+  function removePhoto(id: string) {
+    setPhotosTouched(true);
+    setPhotoNotice(null);
+    const target = draft.photos.find((photo) => photo.id === id);
+    if (target?.kind === "file") URL.revokeObjectURL(target.url);
+    setDraft((prev) => ({ ...prev, photos: prev.photos.filter((photo) => photo.id !== id) }));
+  }
+
+  const [revealPhotosToken, setRevealPhotosToken] = useState(0);
+
+  useEffect(() => {
+    if (revealPhotosToken === 0) return;
+    photoSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    fileRef.current?.focus({ preventScroll: true });
+  }, [revealPhotosToken]);
+
+  function blockForMissingPhotos() {
+    setSubmitAttempted(true);
+    setStep("form");
+    setRevealPhotosToken((value) => value + 1);
+  }
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -108,19 +177,6 @@ export function MarketSellComposer({
     [businesses],
   );
   const hasVerifiedBusiness = verifiedBusinesses.length > 0;
-
-  const previews = useMemo(() => {
-    const fromFiles = draft.photoFiles.map((file) => URL.createObjectURL(file));
-    return [...draft.existingPhotoUrls, ...fromFiles];
-  }, [draft.existingPhotoUrls, draft.photoFiles]);
-
-  useEffect(() => {
-    return () => {
-      for (const url of previews) {
-        if (url.startsWith("blob:")) URL.revokeObjectURL(url);
-      }
-    };
-  }, [previews]);
 
   const kindLabel =
     draft.listingKind === "service" ? "Publish Service" : draft.listingKind === "business_post" ? "Publish" : "List Item";
@@ -143,7 +199,6 @@ export function MarketSellComposer({
   }
 
   function validateForm(): string | null {
-    if (previews.length < 1) return "Add at least one photo.";
     if (draft.title.trim().length < 3) return "Add a title.";
     if (draft.listingKind === "item" && !draft.condition) return "Choose a condition.";
     if ((draft.listingKind === "business_post" || draft.listingKind === "service") && !draft.businessId) {
@@ -157,6 +212,10 @@ export function MarketSellComposer({
   }
 
   async function publish() {
+    if (draft.photos.length === 0) {
+      blockForMissingPhotos();
+      return;
+    }
     const problem = validateForm();
     if (problem) {
       setError(problem);
@@ -165,10 +224,15 @@ export function MarketSellComposer({
     setBusy(true);
     setError(null);
     try {
-      const uploaded: string[] = [...draft.existingPhotoUrls];
-      for (const file of draft.photoFiles) {
-        uploaded.push(await uploadMarketplaceImage(file, file.name || "listing.jpg"));
-      }
+      const uploaded = await resolveListingPhotoUrls(draft.photos, {
+        upload: async (file) => {
+          const prepared = await prepareQuadImage(file);
+          return uploadMarketplaceImage(prepared.file, prepared.file.name || "listing.jpg");
+        },
+        onProgress: (current, total) =>
+          setBusyLabel(total > 1 ? `Uploading photo ${current} of ${total}…` : "Uploading photo…"),
+      });
+      setBusyLabel(null);
       const payload = {
         listingKind: draft.listingKind,
         title: draft.title.trim(),
@@ -193,10 +257,13 @@ export function MarketSellComposer({
       setError(err instanceof Error ? err.message : "Could not publish this listing.");
     } finally {
       setBusy(false);
+      setBusyLabel(null);
     }
   }
 
-  return (
+  const coverUrl = draft.photos[0]?.url ?? null;
+
+  const sheet = (
     <div className="cq-composer-overlay" role="dialog" aria-modal="true" aria-label="Sell on The Market">
       <div className="cq-composer-shell cq-market-composer" onClick={(event) => event.stopPropagation()}>
         <div className="cq-create-sheet-head">
@@ -292,8 +359,15 @@ export function MarketSellComposer({
         {step === "form" ? (
           <form
             className="cq-market-form"
+            noValidate
             onSubmit={(event) => {
               event.preventDefault();
+              setSubmitAttempted(true);
+              if (draft.photos.length === 0) {
+                setError(null);
+                blockForMissingPhotos();
+                return;
+              }
               const problem = validateForm();
               if (problem) {
                 setError(problem);
@@ -303,28 +377,6 @@ export function MarketSellComposer({
               setStep("preview");
             }}
           >
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              multiple
-              hidden
-              onChange={(event) => {
-                const files = Array.from(event.target.files ?? []).slice(0, MARKETPLACE_MAX_PHOTOS - draft.existingPhotoUrls.length);
-                setDraft((prev) => ({ ...prev, photoFiles: files }));
-              }}
-            />
-            <button type="button" className="cq-market-btn cq-market-btn--secondary" onClick={() => fileRef.current?.click()}>
-              Add photos
-            </button>
-            {previews.length > 0 ? (
-              <div className="cq-market-photo-row">
-                {previews.map((url) => (
-                  <img key={url} src={url} alt="" className="cq-market-photo-thumb" />
-                ))}
-              </div>
-            ) : null}
-
             <label className="cq-market-label" htmlFor="cq-market-title">
               {draft.listingKind === "service" ? "Service title" : "Title"}
             </label>
@@ -334,6 +386,18 @@ export function MarketSellComposer({
               {draft.listingKind === "item" ? "Price" : "Starting price"}
             </label>
             <input id="cq-market-price" className="cq-market-input" inputMode="decimal" value={draft.price} onChange={(event) => setDraft((prev) => ({ ...prev, price: event.target.value }))} />
+
+            <div ref={photoSectionRef}>
+              <MarketPhotoPicker
+                ref={fileRef}
+                photos={draft.photos}
+                max={MARKETPLACE_MAX_PHOTOS}
+                error={photoError}
+                notice={photoNotice}
+                onAddFiles={addPhotoFiles}
+                onRemove={removePhoto}
+              />
+            </div>
 
             <label className="cq-market-label" htmlFor="cq-market-category">Category</label>
             <select id="cq-market-category" className="cq-market-input" value={draft.category} onChange={(event) => setDraft((prev) => ({ ...prev, category: event.target.value as MarketplaceCategory }))}>
@@ -404,6 +468,10 @@ export function MarketSellComposer({
 
         {step === "preview" ? (
           <div className="cq-market-form">
+            {coverUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- local blob previews
+              <img src={coverUrl} alt="Cover photo" className="cq-market-preview-cover" />
+            ) : null}
             <p className="cq-market-card-title">{draft.title}</p>
             <p className="cq-market-card-price">{centsToPriceLabel(dollarsToCents(Number(draft.price) || 0), draft.startingPrice || draft.listingKind !== "item")}</p>
             <p className="cq-market-card-copy">{draft.description}</p>
@@ -417,7 +485,7 @@ export function MarketSellComposer({
               disabled={busy || (draft.listingKind !== "item" && !draft.businessId)}
               onClick={() => void publish()}
             >
-                {busy ? "Publishing…" : kindLabel}
+                {busy ? busyLabel ?? "Publishing…" : kindLabel}
               </button>
             </div>
           </div>
@@ -425,4 +493,9 @@ export function MarketSellComposer({
       </div>
     </div>
   );
+
+  // Portal out of the tab swipe shell: its `will-change: transform` would otherwise
+  // trap this fixed overlay beneath the Quad header.
+  if (!portalReady) return null;
+  return createPortal(sheet, document.body);
 }
