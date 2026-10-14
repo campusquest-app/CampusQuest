@@ -6,6 +6,7 @@ import { useDebouncedValue } from "@/lib/client/useDebouncedValue";
 import { searchTagEntities, TAG_SEARCH_DEBOUNCE_MS, type TagSearchResult } from "@/lib/client/tagSearchClient";
 import { tagEntityKey, type ComposerTagSelection } from "@/lib/postTags";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
+import { CqModalLayer } from "@/components/ui/CqModalLayer";
 
 type Filter = "all" | "people" | "organizations" | "events";
 
@@ -36,7 +37,10 @@ export function TagPickerSheet({
 
   useEffect(() => {
     if (!open) return;
-    const t = window.setTimeout(() => inputRef.current?.focus(), 50);
+    // iOS only raises the keyboard for focus inside the tap itself; a deferred focus
+    // there just scrolls the page. Auto-focus where a hardware keyboard is likely.
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    const t = window.setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 50);
     return () => window.clearTimeout(t);
   }, [open]);
 
@@ -67,8 +71,6 @@ export function TagPickerSheet({
       cancelled = true;
     };
   }, [debounced, filter, open]);
-
-  if (!open) return null;
 
   function toggle(hit: TagSearchResult) {
     const key = `${hit.entityType}:${hit.entityId}`;
@@ -102,10 +104,14 @@ export function TagPickerSheet({
   ];
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-labelledby="add-tags-title">
-      <button type="button" className="absolute inset-0 bg-black/70" aria-label="Close" onClick={onClose} />
-      <div className="relative z-10 flex max-h-[min(92dvh,100%)] w-full max-w-lg flex-col rounded-t-3xl border border-white/15 bg-uri-navy shadow-2xl sm:rounded-2xl pb-[env(safe-area-inset-bottom)]">
-        <header className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
+    <CqModalLayer
+      open={open}
+      onDismiss={onClose}
+      labelledBy="add-tags-title"
+      panelClassName="h-[min(600px,100%)] border border-white/15 bg-uri-navy shadow-2xl"
+    >
+        <div className="cq-modal-grabber" aria-hidden />
+        <header className="cq-modal-header flex items-center justify-between gap-2 border-b border-white/10 px-4 py-2 sm:py-3">
           <button type="button" onClick={onClose} className="min-h-[44px] px-2 text-sm text-white/70">
             Cancel
           </button>
@@ -117,7 +123,7 @@ export function TagPickerSheet({
           </button>
         </header>
 
-        <div className="flex gap-1 overflow-x-auto px-3 pt-3" role="tablist" aria-label="Tag filters">
+        <div className="cq-modal-header flex gap-1 overflow-x-auto px-3 pt-3" role="tablist" aria-label="Tag filters">
           {filters.map((f) => (
             <button
               key={f.id}
@@ -134,21 +140,23 @@ export function TagPickerSheet({
           ))}
         </div>
 
-        <div className="px-3 pt-3">
+        <div className="cq-modal-header px-3 pt-3">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" />
             <input
               ref={inputRef}
+              enterKeyHint="search"
+              aria-label="Search people, organizations, and events"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search CampusQuest"
-              className="w-full min-h-[44px] rounded-xl border border-white/15 bg-white/10 py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-white/40"
+              className="w-full min-h-[44px] rounded-xl border border-white/15 bg-white/10 py-2.5 pl-9 pr-3 text-base text-white placeholder:text-white/40 sm:text-sm"
             />
           </label>
         </div>
 
         {selected.length > 0 ? (
-          <div className="border-b border-white/10 px-3 py-3">
+          <div className="cq-modal-header max-h-28 overflow-y-auto overscroll-contain border-b border-white/10 px-3 py-3">
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/50">Selected</p>
             <div className="flex flex-wrap gap-2">
               {selected.map((s) => (
@@ -166,7 +174,7 @@ export function TagPickerSheet({
           </div>
         ) : null}
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+        <div className="cq-modal-body px-2 py-2">
           {loading ? <p className="px-2 py-4 text-sm text-white/50">Searching…</p> : null}
           {error ? <p className="px-2 py-2 text-sm text-amber-400">{error}</p> : null}
           {!loading && debounced.length > 0 && results.length === 0 ? (
@@ -216,7 +224,6 @@ export function TagPickerSheet({
             })}
           </ul>
         </div>
-      </div>
-    </div>
+    </CqModalLayer>
   );
 }

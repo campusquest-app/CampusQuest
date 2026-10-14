@@ -3,6 +3,7 @@ import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import { AppRootProviders } from "@/components/AppRootProviders";
 import "./globals.css";
 import "./manual-log.css";
+import "./modal-layer.css";
 
 const display = Space_Grotesk({
   variable: "--font-display",

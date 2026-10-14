@@ -284,30 +284,32 @@ export function QuadVideoPlayer({
         </div>
       ) : null}
 
-      {muteVisible ? (
+      <div className="cq-quad-video-controls">
         <button
           type="button"
-          data-cq-video-control="mute"
+          data-cq-video-control="play"
           onPointerDown={stopControlPointer}
-          onClick={toggleMute}
-          className="cq-quad-video-sound"
-          aria-pressed={soundOn}
-          aria-label={soundOn ? "Mute video" : "Unmute video"}
+          onClick={togglePlay}
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white"
+          aria-label={playing ? "Pause video" : "Play video"}
         >
-          {soundOn ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />}
+          {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
         </button>
-      ) : null}
 
-      <button
-        type="button"
-        data-cq-video-control="play"
-        onPointerDown={stopControlPointer}
-        onClick={togglePlay}
-        className="absolute bottom-3 left-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white"
-        aria-label={playing ? "Pause video" : "Play video"}
-      >
-        {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-      </button>
+        {muteVisible ? (
+          <button
+            type="button"
+            data-cq-video-control="mute"
+            onPointerDown={stopControlPointer}
+            onClick={toggleMute}
+            className="cq-quad-video-sound"
+            aria-pressed={soundOn}
+            aria-label={soundOn ? "Mute video" : "Unmute video"}
+          >
+            {soundOn ? <Volume2 aria-hidden /> : <VolumeX aria-hidden />}
+          </button>
+        ) : null}
+      </div>
 
       <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-1 bg-white/20">
         <div className="h-full bg-uri-keaney" style={{ width: `${Math.min(100, progress * 100)}%` }} />

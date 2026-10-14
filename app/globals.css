@@ -3554,12 +3554,28 @@ html[data-cq-media-pinching] {
   background: #000;
 }
 
-.quad-feed-media-wrap button.cq-quad-video-sound,
-.cq-quad-video-sound {
+/* Play/pause + mute share one group anchored to the player root (position: relative),
+   kept clear of the 4px progress bar along the bottom edge. */
+.cq-quad-video-controls {
   position: absolute;
   z-index: 12;
-  right: 0.7rem;
-  bottom: 0.7rem;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: calc(100% - 1.5rem);
+  pointer-events: none;
+}
+
+.cq-quad-video-controls > button {
+  flex: none;
+  pointer-events: auto;
+}
+
+.quad-feed-media-wrap button.cq-quad-video-sound,
+.cq-quad-video-sound {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
