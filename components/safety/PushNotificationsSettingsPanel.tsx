@@ -135,28 +135,40 @@ export function PushNotificationsSettingsPanel({ onBack }: { onBack: () => void 
         )}
 
         <section className="rounded-2xl border border-white/[0.08] bg-cq-card/60 divide-y divide-white/[0.06]">
-          {(
-            [
-              ["pushEnabled", "Push notifications", "Master switch for native alerts"],
-              ["messagesEnabled", "Messages", "Direct and group message alerts"],
-              ["socialEnabled", "Social activity", "Tags, mentions, comments, connection requests"],
-              ["eventsEnabled", "Events & opportunities", "Organization and event announcements"],
-            ] as const
-          ).map(([key, label, description]) => (
-            <label key={key} className="flex items-center justify-between gap-3 px-4 py-3">
-              <span className="min-w-0">
-                <span className="block text-sm font-medium text-white">{label}</span>
-                <span className="block text-xs text-white/45">{description}</span>
-              </span>
-              <input
-                type="checkbox"
-                className="h-5 w-5 accent-sky-400"
-                checked={settings[key]}
-                disabled={saving || loading}
-                onChange={(e) => void save({ [key]: e.target.checked })}
-              />
-            </label>
-          ))}
+          {(() => {
+            const deliveryOn = native && osStatus === "granted";
+            return (
+              <>
+                {!deliveryOn ? (
+                  <p className="px-4 py-3 text-xs text-white/50">
+                    These stay off until this device can deliver alerts.
+                  </p>
+                ) : null}
+                {(
+                  [
+                    ["pushEnabled", "Push notifications", "Master switch for native alerts"],
+                    ["messagesEnabled", "Messages", "Direct and group message alerts"],
+                    ["socialEnabled", "Social activity", "Tags, mentions, comments, connection requests"],
+                    ["eventsEnabled", "Events & opportunities", "Organization and event announcements"],
+                  ] as const
+                ).map(([key, label, description]) => (
+                  <label key={key} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-white">{label}</span>
+                      <span className="block text-xs text-white/45">{description}</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="h-5 w-5 accent-sky-400"
+                      checked={deliveryOn && settings[key]}
+                      disabled={saving || loading || !deliveryOn}
+                      onChange={(e) => void save({ [key]: e.target.checked })}
+                    />
+                  </label>
+                ))}
+              </>
+            );
+          })()}
         </section>
       </div>
     </DrawerSubPanelShell>

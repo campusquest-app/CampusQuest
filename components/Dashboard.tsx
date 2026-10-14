@@ -264,6 +264,7 @@ export function Dashboard() {
   const [inboxDeepLink, setInboxDeepLink] = useState<InboxDeepLink | null>(null);
   const pushDeepLinkNonceRef = useRef(0);
   const [characterPane, setCharacterPane] = useState<CharacterPane>("sheet");
+  const [profileEditRequest, setProfileEditRequest] = useState(0);
   const [profileTab, setProfileTab] = useState<ProfileTab>("posts");
   const [tabEnterDirection, setTabEnterDirection] = useState<SwipeNavDirection | null>(null);
   const [realmKeepAlive, setRealmKeepAlive] = useState(false);
@@ -911,6 +912,10 @@ export function Dashboard() {
         case "organizations":
           navigateToTab("organizations");
           break;
+        case "greek-life":
+          setTab("quad");
+          setQuadFeedTab("greek_life");
+          break;
         case "guilds":
           navigateToTab("guilds");
           break;
@@ -922,6 +927,7 @@ export function Dashboard() {
           setTab("battle");
           break;
         case "inbox":
+          setInboxSubTab("notifications");
           setTab("inbox");
           break;
         case "character-sheet":
@@ -1380,10 +1386,10 @@ export function Dashboard() {
   const handleSettingsAction = useCallback(
     (action: SettingsActionId) => {
       switch (action) {
-        case "account":
         case "profile-character":
           setTab("character");
           setCharacterPane("profile");
+          setProfileEditRequest((n) => n + 1);
           break;
         case "account-type":
           setShowAccountTypeModal(true);
@@ -1391,34 +1397,20 @@ export function Dashboard() {
         case "notifications":
           setTab("inbox");
           break;
-        case "privacy":
-          if (typeof window !== "undefined") {
-            window.location.href = "/support";
-          }
+        case "qr-permissions":
+          openQrScanner();
           break;
+        case "account":
+        case "privacy":
+        case "campus":
+        case "appearance":
+        case "sound":
         case "blocked-users":
         case "tags-mentions":
         case "push-notifications":
         case "delete-account":
         case "demographics":
-          // Handled inside AppSideDrawer sub-panels.
           break;
-        case "campus":
-          setTab("character");
-          setCharacterPane("profile");
-          break;
-        case "qr-permissions":
-          openQrScanner();
-          break;
-        case "appearance":
-          break;
-        case "sound":
-          setMusicMuted((muted) => {
-            const next = !muted;
-            setGameMusicMuted(next);
-            return next;
-          });
-          return;
         default:
           break;
       }
@@ -2163,15 +2155,15 @@ export function Dashboard() {
   const startBossChestReveal = useCallback(() => {
     if (bossDefeatPhase !== "teaser" || bossChestPhase !== "idle") return;
 
-    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-      navigator.vibrate?.([18, 40, 24]);
-    }
+    void import("@/lib/client/hapticsPreference").then(({ pulseHaptic }) => {
+      pulseHaptic([18, 40, 24]);
+    });
     setBossChestPhase("opening");
     bossChestSequenceTimersRef.current.push(
       window.setTimeout(() => {
-        if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-          navigator.vibrate?.([10, 20, 40]);
-        }
+        void import("@/lib/client/hapticsPreference").then(({ pulseHaptic }) => {
+          pulseHaptic([10, 20, 40]);
+        });
         setBossChestPhase("open");
       }, 900),
       // Hold the open chest state for 2 seconds before transitioning.
@@ -2638,6 +2630,7 @@ export function Dashboard() {
         showXpProgressBar={FEATURE_FLAGS.progression && xpProgressBarPref.enabled}
         xpProgressBarPrefLoaded={xpProgressBarPref.loaded}
         onToggleShowXpProgressBar={handleToggleShowXpProgressBar}
+        onMusicMutedChange={setMusicMuted}
         xpProgressBarSaveError={xpProgressBarSaveError}
         activeContext={{ tab, quadFeedTab, characterPane, profileTab }}
         drawerWidth={drawerWidth}
@@ -3169,6 +3162,7 @@ export function Dashboard() {
                 activeProfileTab={profileTab}
                 onProfileTabChange={setProfileTab}
                 onOpenLeaderboard={() => navigateToTab("leaderboards")}
+                editIdentityRequest={profileEditRequest}
               />
             ) : (
               <CharacterCard

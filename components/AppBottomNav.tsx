@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Calendar, Handshake, Home, Map } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
@@ -14,6 +14,9 @@ import {
   readScrollY,
   resolveBottomNavScrollRoot,
 } from "@/lib/client/bottomNavAutoHide";
+import { dockCradlePath, DOCK_CRADLE_FILL } from "@/lib/client/dockCradlePath";
+
+const DEFAULT_CRADLE = { w: 390, h: 96, d: dockCradlePath({ width: 390, height: 96 }) };
 
 export type { AppBottomNavTab } from "@/lib/client/appBottomNavTabs";
 export { APP_BOTTOM_NAV_TABS } from "@/lib/client/appBottomNavTabs";
@@ -82,6 +85,7 @@ export function AppBottomNav({
   autoHideOnScroll?: boolean;
 }) {
   const navRef = useRef<HTMLElement | null>(null);
+  const [cradle, setCradle] = useState(DEFAULT_CRADLE);
   const liveAvatar = useLiveUserAvatar(userAvatar);
   const characterName = useLiveCharacterName();
   const reduceMotion = useReducedMotion();
@@ -104,6 +108,14 @@ export function AppBottomNav({
           : navRect.top;
       const raw = Math.ceil(navRect.bottom - top);
       document.documentElement.style.setProperty(BOTTOM_NAV_CSS_VAR, `${Math.max(72, raw)}px`);
+      const slide = el.querySelector(".cq-dock-nav__slide");
+      const box = slide instanceof HTMLElement ? slide.getBoundingClientRect() : navRect;
+      const w = Math.max(1, Math.round(box.width));
+      const h = Math.max(1, Math.round(box.height));
+      setCradle((current) => {
+        if (current.w === w && current.h === h) return current;
+        return { w, h, d: dockCradlePath({ width: w, height: h }) };
+      });
     };
 
     sync();
@@ -213,6 +225,14 @@ export function AppBottomNav({
       transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
     >
       <div className="cq-dock-nav__slide">
+      <svg
+        className="cq-dock-nav__shape"
+        viewBox={`0 0 ${cradle.w} ${cradle.h}`}
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        <path d={cradle.d} fill={DOCK_CRADLE_FILL} />
+      </svg>
       <div className="cq-dock-nav__rail">
         <DockItem
           label="Home"

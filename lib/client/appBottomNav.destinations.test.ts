@@ -34,6 +34,8 @@ describe("primary bottom navigation destinations", () => {
   it("keeps Map as the center dock action", () => {
     expect(APP_BOTTOM_NAV_TABS[2]).toBe("realm");
     expect(navSrc).toContain("cq-dock-nav__map-btn");
+    expect(navSrc).toContain("cq-dock-nav__shape");
+    expect(navSrc).toContain("dockCradlePath");
     expect(navSrc).toContain("autoHideOnScroll");
     expect(navSrc).toContain("autoHideOnScroll = false");
     expect(dashboardSrc).toContain("autoHideOnScroll={tab === \"quad\" && !quadChromeSuppressed}");
@@ -66,8 +68,7 @@ describe("primary bottom navigation destinations", () => {
     expect(profileXpSrc).toContain("Leaderboard");
     expect(characterSrc).toContain("Leaderboard");
     expect(progressSrc).toContain("Leaderboard");
-    expect(drawerSrc).toContain('id: "leaderboards"');
-    expect(drawerSrc).toContain('label: "Leaderboard"');
+    expect(drawerSrc).not.toContain('label: "Leaderboard"');
   });
 
   it("does not highlight Events while viewing Leaderboard", () => {

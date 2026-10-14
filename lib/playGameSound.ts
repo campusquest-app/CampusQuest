@@ -57,11 +57,13 @@ function beep(frequency: number, durationMs: number, type: OscillatorType = "sin
 }
 
 export function playXpDing(): void {
+  if (isGameMusicMuted()) return;
   beep(880, 60, "sine", 0.06);
   window.setTimeout(() => beep(1174, 45, "sine", 0.05), 70);
 }
 
 export function playLevelUpFanfare(): void {
+  if (isGameMusicMuted()) return;
   const notes = [523, 659, 784, 1046];
   notes.forEach((f, i) => {
     window.setTimeout(() => beep(f, 120, "triangle", 0.07), i * 95);
@@ -69,12 +71,14 @@ export function playLevelUpFanfare(): void {
 }
 
 export function playStreakWhoosh(): void {
+  if (isGameMusicMuted()) return;
   beep(220, 40, "sawtooth", 0.04);
   window.setTimeout(() => beep(440, 50, "sine", 0.05), 45);
 }
 
 /** Triumphant fanfare when an achievement unlocks. */
 export function playAchievementUnlock(): void {
+  if (isGameMusicMuted()) return;
   const notes = [392, 523, 659, 784, 988];
   notes.forEach((f, i) => {
     window.setTimeout(() => beep(f, 140, i % 2 === 0 ? "triangle" : "sine", 0.08), i * 85);
@@ -83,6 +87,7 @@ export function playAchievementUnlock(): void {
 
 /** Quest completion reward sting. */
 export function playQuestComplete(): void {
+  if (isGameMusicMuted()) return;
   beep(523, 100, "triangle", 0.07);
   window.setTimeout(() => beep(659, 100, "sine", 0.07), 90);
   window.setTimeout(() => beep(784, 160, "triangle", 0.09), 180);

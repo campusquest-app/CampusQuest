@@ -2,7 +2,7 @@
 
 import type { FieldNote } from "@/lib/types";
 import { getPostThumbnailUrl, isCarouselPost, isTextOnlyPost, isVideoPost } from "./profilePostUtils";
-import { Images, Video } from "lucide-react";
+import { Heart, Images, MessageCircle, Video } from "lucide-react";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
 
 function TextPostTile({ note }: { note: FieldNote }) {
@@ -17,10 +17,35 @@ function TextPostTile({ note }: { note: FieldNote }) {
       }}
     >
       <span className="line-clamp-4 text-[10px] font-medium leading-snug text-white/90 sm:text-[11px]">{preview}</span>
-      {note.nodCount > 0 ? (
-        <span className="mt-1 self-end text-[10px] font-semibold text-white/60">♥ {note.nodCount}</span>
-      ) : null}
     </div>
+  );
+}
+
+function EngagementIndicator({ note }: { note: FieldNote }) {
+  const likes = note.nodCount;
+  const comments = note.commentCount ?? 0;
+  if (likes <= 0 && comments <= 0) return null;
+  const label = [
+    likes > 0 ? `${likes} ${likes === 1 ? "like" : "likes"}` : null,
+    comments > 0 ? `${comments} ${comments === 1 ? "comment" : "comments"}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return (
+    <span className="cq-profile-tile-stats" aria-label={label}>
+      {likes > 0 ? (
+        <span className="cq-profile-tile-stat">
+          <Heart className="h-3 w-3" fill="currentColor" aria-hidden />
+          {likes.toLocaleString()}
+        </span>
+      ) : null}
+      {comments > 0 ? (
+        <span className="cq-profile-tile-stat">
+          <MessageCircle className="h-3 w-3" aria-hidden />
+          {comments.toLocaleString()}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -97,19 +122,15 @@ export function ProfilePostsGrid({
               <TextPostTile note={note} />
             ) : null}
             {isCarouselPost(note) ? (
-              <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/55 p-1 text-white" aria-hidden>
+              <span className="cq-profile-tile-kind" aria-hidden>
                 <Images className="h-3.5 w-3.5" />
               </span>
             ) : isVideoPost(note) ? (
-              <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/55 p-1 text-white" aria-hidden>
+              <span className="cq-profile-tile-kind" aria-hidden>
                 <Video className="h-3.5 w-3.5" />
               </span>
             ) : null}
-            {(note.nodCount > 0 || note.hypeCount > 0) && thumb ? (
-              <span className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                ♥ {note.nodCount}
-              </span>
-            ) : null}
+            <EngagementIndicator note={note} />
           </button>
         );
       })}

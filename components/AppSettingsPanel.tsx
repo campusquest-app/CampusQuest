@@ -157,7 +157,7 @@ export function AppSettingsPanel({
   const xpBarDisabled = !xpProgressBarPrefLoaded || !onToggleShowXpProgressBar;
 
   return (
-    <DrawerSubPanelShell title="Settings" onBack={onBack}>
+    <DrawerSubPanelShell title="Settings" onBack={onBack} scrollStorageKey="settings-root">
         <div className="space-y-5">
           {sections.map((section) => (
             <section key={section.title}>

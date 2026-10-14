@@ -15,12 +15,9 @@ import { sharePostToConversations, type SharePostTarget } from "@/lib/client/dmM
 import { useRegisterImmersiveScreen } from "@/lib/client/nestedImmersiveScreen";
 
 function vibrateShare(): void {
-  if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
-  try {
-    navigator.vibrate?.([10, 30, 14]);
-  } catch {
-    /* unsupported */
-  }
+  void import("@/lib/client/hapticsPreference").then(({ pulseHaptic }) => {
+    pulseHaptic([10, 30, 14]);
+  });
 }
 
 export function SharePostSheet({

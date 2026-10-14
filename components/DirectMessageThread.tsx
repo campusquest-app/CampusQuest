@@ -125,11 +125,9 @@ function DmMessageBubbleRow({
   const openActions = () => {
     if (m.pending || m.failed) return;
     onOpenActions(m.id);
-    try {
-      navigator.vibrate?.(8);
-    } catch {
-      /* haptics optional */
-    }
+    void import("@/lib/client/hapticsPreference").then(({ pulseHaptic }) => {
+      pulseHaptic(8);
+    });
   };
 
   const onPointerDown = (e: React.PointerEvent) => {

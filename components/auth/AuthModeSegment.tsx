@@ -5,11 +5,9 @@ import { motion, useReducedMotion } from "framer-motion";
 export type AuthMode = "signin" | "signup";
 
 function hapticTap() {
-  try {
-    navigator.vibrate?.(8);
-  } catch {
-    /* optional */
-  }
+  void import("@/lib/client/hapticsPreference").then(({ pulseHaptic }) => {
+    pulseHaptic(8);
+  });
 }
 
 /** iOS-style Sign Up / Sign In capsule with sliding cyan pill. */

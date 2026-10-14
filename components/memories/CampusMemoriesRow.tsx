@@ -39,12 +39,9 @@ function liveCountLabel(group: CampusMemoryGroup): string | null {
 
 /** Tiny optional haptic tick so bubble taps feel physical on mobile. */
 function hapticTap(): void {
-  if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
-  try {
-    navigator.vibrate(8);
-  } catch {
-    /* optional */
-  }
+  void import("@/lib/client/hapticsPreference").then(({ pulseHaptic }) => {
+    pulseHaptic(8);
+  });
 }
 
 /**

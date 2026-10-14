@@ -8,7 +8,8 @@ import { ProfileSocialHeader } from "./ProfileSocialHeader";
 import { ProfileStatsRow } from "./ProfileStatsRow";
 import { ProfileXpCard } from "./ProfileXpCard";
 import { ProfileActionButtons } from "./ProfileActionButtons";
-import { ProfileTabNav, type ProfileTab } from "./ProfileTabNav";
+import { ProfilePostsFilter, ProfileTabNav, type ProfileTab } from "./ProfileTabNav";
+import { useOwnSchoolAffiliation } from "@/lib/client/profileAffiliation";
 import { ProfilePostsGrid } from "./ProfilePostsGrid";
 import { ProfileMemoriesGrid } from "./ProfileMemoriesGrid";
 import { ProfilePostDetail } from "./ProfilePostDetail";
@@ -154,6 +155,8 @@ export function ProfileSocialPage({
   }, [tab, onProfileTabChange]);
 
   const locked = !isOwner && !canViewPrivateContent;
+  // showLevel is false while an org identity is active — the school belongs to the personal profile only.
+  const schoolAffiliation = useOwnSchoolAffiliation(isOwner && showLevel && !identitySubtitle ? viewer.id : null);
 
   const loadTagged = useCallback(async () => {
     setTaggedLoading(true);
@@ -219,6 +222,7 @@ export function ProfileSocialPage({
         onSwitchIdentity={isOwner ? onSwitchIdentity : undefined}
         identityVerified={identityVerified}
         identitySubtitle={identitySubtitle}
+        schoolAffiliation={schoolAffiliation}
         showLevel={showLevel}
       />
 
@@ -325,6 +329,9 @@ export function ProfileSocialPage({
               <p className="border-b border-amber-400/30 bg-amber-500/15 px-4 py-2 text-sm text-amber-200">{reactionNotice}</p>
             ) : null}
 
+            {tab === "posts" || tab === "tagged" ? (
+              <ProfilePostsFilter active={tab} onChange={handleProfileTabChange} />
+            ) : null}
             {tab === "posts" ? (
               <ProfilePostsGrid
                 posts={posts}

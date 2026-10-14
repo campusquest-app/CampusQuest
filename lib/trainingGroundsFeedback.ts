@@ -38,7 +38,7 @@ export function playTrainingSuccess(): void {
 }
 
 export function vibrateTrainingComplete(): void {
-  if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-    navigator.vibrate(12);
-  }
+  void import("@/lib/client/hapticsPreference").then(({ pulseHaptic }) => {
+    pulseHaptic(12);
+  });
 }

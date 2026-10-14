@@ -119,6 +119,8 @@ export async function nativeShare(data: {
 }
 
 export async function nativeImpact(style: "light" | "medium" | "heavy" = "light"): Promise<void> {
+  const { isHapticsEnabled } = await import("@/lib/client/hapticsPreference");
+  if (!isHapticsEnabled()) return;
   const cap = getCapacitor();
   const map = { light: "LIGHT", medium: "MEDIUM", heavy: "HEAVY" } as const;
   if (cap?.isNativePlatform?.() && cap.Plugins?.Haptics?.impact) {

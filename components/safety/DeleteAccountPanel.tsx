@@ -7,6 +7,7 @@ import { ApiRequestError } from "@/lib/client/dashboardApi";
 import { clearAccessToken } from "@/lib/client/apiSession";
 import { invalidateMeSessionCache, resetMeSessionInflight } from "@/lib/client/meSessionCache";
 import { signOutSupabaseSession } from "@/lib/client/supabaseSession";
+import { canConfirmAccountDeletion } from "@/lib/client/settingsDestinations";
 
 export function DeleteAccountPanel({
   onBack,
@@ -20,7 +21,7 @@ export function DeleteAccountPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canDelete = confirmation.trim() === "DELETE" && !busy;
+  const canDelete = canConfirmAccountDeletion(confirmation) && !busy;
 
   async function handleDelete() {
     if (!canDelete) return;
@@ -63,6 +64,7 @@ export function DeleteAccountPanel({
           <ul className="mt-2 list-disc space-y-1 pl-4 text-[12px] text-rose-100/70">
             <li>Your profile, posts, messages, and progress are removed</li>
             <li>This cannot be undone</li>
+            <li>Records the law requires us to keep may remain after the account is removed</li>
             <li>You can create a new account later with the same email</li>
           </ul>
         </div>

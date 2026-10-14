@@ -1,6 +1,9 @@
 "use client";
 
 import { CQ_BOTTOM_NAV_CLEARANCE } from "@/components/AppBottomNav";
+import { dockCradlePath, DOCK_CRADLE_FILL } from "@/lib/client/dockCradlePath";
+
+const SKELETON_CRADLE = dockCradlePath({ width: 390, height: 96 });
 
 /**
  * Shown while session token exists but profile+stats hydration is still in flight.
@@ -23,6 +26,10 @@ export function DashboardBootstrapShellSkeleton() {
       </div>
 
       <div className="cq-dock-nav" aria-hidden>
+        <div className="cq-dock-nav__slide">
+        <svg className="cq-dock-nav__shape" viewBox="0 0 390 96" preserveAspectRatio="none" aria-hidden>
+          <path d={SKELETON_CRADLE} fill={DOCK_CRADLE_FILL} />
+        </svg>
         <div className="cq-dock-nav__rail">
           <div className="flex w-full items-center justify-between gap-1 px-1">
             <div className="cq-skeleton mx-auto h-10 w-10 rounded-full" />
@@ -31,6 +38,7 @@ export function DashboardBootstrapShellSkeleton() {
             <div className="cq-skeleton mx-auto h-10 w-10 rounded-full" />
             <div className="cq-skeleton mx-auto h-10 w-10 rounded-full" />
           </div>
+        </div>
         </div>
       </div>
     </div>

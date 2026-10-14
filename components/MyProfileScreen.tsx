@@ -67,6 +67,7 @@ export function MyProfileScreen({
   activeProfileTab,
   onProfileTabChange,
   onOpenLeaderboard,
+  editIdentityRequest = 0,
 }: {
   character: Character;
   onLogout?: () => void | Promise<void>;
@@ -80,6 +81,8 @@ export function MyProfileScreen({
   activeProfileTab?: ProfileTab;
   onProfileTabChange?: (tab: ProfileTab) => void;
   onOpenLeaderboard?: () => void;
+  /** Incremented by Settings → Profile to open the existing identity editor. */
+  editIdentityRequest?: number;
 }) {
   const identityState = useCampusIdentities();
   const currentIdentity = identityState.currentIdentity;
@@ -107,6 +110,14 @@ export function MyProfileScreen({
   const [identityUsernameDraft, setIdentityUsernameDraft] = useState(character.username);
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [identitySaving, setIdentitySaving] = useState(false);
+
+  useEffect(() => {
+    if (editIdentityRequest < 1) return;
+    setIdentityNameDraft(character.name);
+    setIdentityUsernameDraft(character.username);
+    setIdentityError(null);
+    setShowEditIdentity(true);
+  }, [editIdentityRequest, character.name, character.username]);
   const [cooldownSnap, setCooldownSnap] = useState<Pick<
     MeProfileRow,
     "onboarding_character_completed" | "display_name_changed_at" | "username_changed_at" | "weekly_identity_budget"

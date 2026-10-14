@@ -42,7 +42,7 @@ describe("feature flag navigation gating", () => {
 
   it("hides the Codex profile tab while FEATURE_FLAGS.codex is false", () => {
     const tabs = getVisibleProfileTabs(FEATURE_FLAGS);
-    expect(tabs.map((t) => t.id)).toEqual(["posts", "tagged", "memories", "activity"]);
+    expect(tabs.map((t) => t.id)).toEqual(["posts", "memories", "activity"]);
     expect(tabs.some((t) => t.id === "collectibles")).toBe(false);
   });
 

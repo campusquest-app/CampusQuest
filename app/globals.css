@@ -66,6 +66,7 @@
   --cq-topnav-h: 0px;
   --cq-quad-header-h: 2.35rem;
   --cq-bottom-nav-h: 5.2rem;
+  --cq-dock-cradle-rise: 22px;
   --cq-dock-bottom-offset: 0px;
   --cq-dock-scale: 1;
   --cq-dock-opacity: 1;
@@ -2065,6 +2066,17 @@ html[data-cq-share-sheet-open] .cq-dock-nav {
 }
 
 /* Disable bottom nav while the hamburger drawer is open or animating closed. */
+html[data-cq-drawer-open],
+html[data-cq-drawer-open] body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html[data-cq-drawer-open] .cq-app-shell {
+  overflow: hidden;
+  pointer-events: none;
+}
+
 html[data-cq-drawer-open] .cq-dock-nav,
 html[data-cq-drawer-open] .cq-dock-nav__rail {
   pointer-events: none;
@@ -7115,12 +7127,11 @@ html[data-cq-media-pinching] {
   bottom: 0;
   z-index: 10051;
   overflow: hidden;
+  overscroll-behavior: contain;
   width: min(22rem, 86vw);
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   background-color: #0a1628;
-  backdrop-filter: blur(20px) saturate(1.02);
-  -webkit-backdrop-filter: blur(20px) saturate(1.02);
-  box-shadow: 8px 0 32px -8px rgba(0, 0, 0, 0.45);
+  box-shadow: 8px 0 28px -10px rgba(0, 0, 0, 0.5);
   transform: translate3d(-100%, 0, 0);
   will-change: transform;
   pointer-events: none;
@@ -7138,8 +7149,8 @@ html[data-cq-media-pinching] {
 .cq-drawer-profile-sticky {
   position: relative;
   z-index: 2;
-  border-bottom: 1px solid rgba(104, 171, 232, 0.14);
-  background: linear-gradient(180deg, rgba(56, 189, 248, 0.1) 0%, rgba(10, 22, 40, 0) 72%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0a1628;
 }
 
 .cq-drawer-identity {
@@ -7154,25 +7165,13 @@ html[data-cq-media-pinching] {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.cq-drawer-identity-avatar-wrap::before {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border-radius: 9999px;
-  background: radial-gradient(circle, rgba(76, 201, 255, 0.34) 0%, rgba(76, 201, 255, 0) 70%);
-  opacity: 0.75;
-  pointer-events: none;
-}
-
 .cq-drawer-identity-avatar {
   position: relative;
   z-index: 1;
-  box-shadow: 0 0 20px -6px rgba(76, 201, 255, 0.45);
 }
 
 .cq-drawer-identity-progress-fill {
   background: linear-gradient(90deg, #3b9fd9 0%, #68abe8 55%, #8ed4ff 100%);
-  box-shadow: 0 0 10px rgba(76, 201, 255, 0.35);
 }
 
 .cq-drawer-nav {
@@ -7211,13 +7210,13 @@ html[data-cq-media-pinching] {
 }
 
 .cq-drawer-section-label {
-  margin: 0 0 0.375rem;
+  margin: 0 0 0.25rem;
   padding: 0 0.5rem;
   font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.38);
+  color: rgba(255, 255, 255, 0.4);
   user-select: none;
 }
 
@@ -7262,7 +7261,8 @@ html[data-cq-media-pinching] {
 }
 
 .cq-drawer-item--active {
-  background: rgba(56, 189, 248, 0.1);
+  background: rgba(56, 189, 248, 0.12);
+  box-shadow: inset 2px 0 0 #68abe8;
 }
 
 .cq-drawer-item:hover:not(.cq-drawer-item--active) {
@@ -7284,11 +7284,12 @@ html[data-cq-media-pinching] {
 }
 
 .cq-drawer-backdrop {
-  background: rgba(2, 10, 24, 0.55);
-  backdrop-filter: blur(16px) saturate(0.85);
-  -webkit-backdrop-filter: blur(16px) saturate(0.85);
+  background: rgba(2, 10, 24, 0.52);
+  backdrop-filter: blur(12px) saturate(0.9);
+  -webkit-backdrop-filter: blur(12px) saturate(0.9);
   opacity: 0;
   pointer-events: none;
+  touch-action: none;
 }
 
 /* App-wide confirm modals (logout, sign out) — above drawer + bottom nav */
@@ -7515,11 +7516,24 @@ html[data-cq-quad-hidden="true"] .cq-quad-header-shell {
 }
 
 .cq-dock-nav__slide {
+  position: relative;
+  overflow: visible;
   transform: translate3d(0, 0, 0);
   transition:
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 180ms ease;
   will-change: transform;
+}
+
+.cq-dock-nav__shape {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
 }
 
 .cq-dock-nav--autohidden {
@@ -7541,18 +7555,18 @@ html[data-cq-quad-hidden="true"] .cq-quad-header-shell {
 .cq-dock-nav__rail {
   pointer-events: auto;
   position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(44px, 1fr) minmax(44px, 1fr) 4.35rem minmax(44px, 1fr) minmax(44px, 1fr);
   align-items: start;
   justify-items: center;
   gap: 0;
   box-sizing: border-box;
-  min-height: calc(4.85rem + env(safe-area-inset-bottom, 0px));
-  padding: 0.4rem 0.4rem calc(0.32rem + env(safe-area-inset-bottom, 0px));
+  min-height: calc(var(--cq-dock-cradle-rise, 22px) + 4.45rem + env(safe-area-inset-bottom, 0px));
+  padding: var(--cq-dock-cradle-rise, 22px) 0.4rem calc(0.32rem + env(safe-area-inset-bottom, 0px));
   border-radius: 0;
-  background: #071422;
+  background: transparent;
   border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: none;
   overflow: visible;
 }
@@ -7562,8 +7576,7 @@ html[data-cq-realm-immersive] .cq-dock-nav {
 }
 
 html[data-cq-realm-immersive] .cq-dock-nav__rail {
-  background: #071422;
-  border-top-color: rgba(255, 255, 255, 0.06);
+  background: transparent;
   box-shadow: none;
 }
 
@@ -7572,9 +7585,9 @@ html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav {
 }
 
 html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__rail {
-  min-height: calc(4.85rem + env(safe-area-inset-bottom, 0px));
-  padding-top: 0.4rem;
-  background: #071422;
+  min-height: calc(var(--cq-dock-cradle-rise, 22px) + 4.45rem + env(safe-area-inset-bottom, 0px));
+  padding-top: var(--cq-dock-cradle-rise, 22px);
+  background: transparent;
 }
 
 html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__item {
@@ -7765,16 +7778,24 @@ html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__item {
   width: 100%;
   min-width: 44px;
   min-height: 44px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.cq-dock-nav__map-slot .cq-dock-nav__map-btn {
+  pointer-events: auto;
 }
 
 .cq-dock-nav__map-btn {
   position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: -1.15rem;
-  height: 3.65rem;
-  width: 3.65rem;
+  --cq-dock-map-size: 3.65rem;
+  margin-top: calc(var(--cq-dock-map-size) / -2 - 0.15rem);
+  height: var(--cq-dock-map-size);
+  width: var(--cq-dock-map-size);
   min-height: 2.75rem;
   min-width: 2.75rem;
   border-radius: 999px;
@@ -17428,10 +17449,15 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   padding: 0.625rem 0.75rem 0.375rem;
 }
 
+/* Avatar beside one identity column: name, handle, verified school, title, bio. */
 .cq-profile-header-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.75rem;
+}
+
+.cq-profile-identity {
+  padding-top: 0.25rem;
 }
 
 .cq-profile-avatar-shell--header {
@@ -17441,7 +17467,33 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 .cq-profile-bio-add {
-  margin-top: 0.375rem;
+  display: inline-flex;
+  align-items: center;
+  margin: -0.25rem 0 -0.625rem;
+  padding: 0.625rem 0.75rem 0.625rem 0;
+  border: 0;
+  background: transparent;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.cq-profile-affiliation {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: rgba(186, 230, 253, 0.92);
+}
+
+.cq-profile-affiliation-icon {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  color: #4cc9ff;
 }
 
 /* —— Profile typography scale (compressed, Instagram-first) —— */
@@ -17494,29 +17546,34 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   color: rgba(255, 255, 255, 0.85);
 }
 
-/* —— Stats row (Instagram density, RPG polish) —— */
+/* —— Stats row: compact inline counts ("12 Posts · 340 Friends") —— */
 .cq-profile-stats {
   display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-  gap: 0;
-  padding: 0.25rem 0.75rem 0.375rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-start;
+  column-gap: 1rem;
+  row-gap: 0.25rem;
+  padding: 0.5rem 0.75rem 0.5rem;
   background: transparent;
 }
 
 .cq-profile-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.0625rem;
-  padding: 0.125rem 0.25rem;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.25rem;
+  min-height: 1.75rem;
+  padding: 0;
   border: none;
   background: transparent;
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
+  white-space: nowrap;
 }
 
 .cq-profile-stat--interactive {
+  margin: -0.5rem -0.375rem;
+  padding: 0.5rem 0.375rem;
   cursor: pointer;
   transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease;
 }
@@ -17526,29 +17583,34 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   opacity: 0.82;
 }
 
+.cq-profile-stat--interactive .cq-profile-stat-label {
+  text-decoration: underline;
+  text-decoration-color: rgba(76, 201, 255, 0.35);
+  text-underline-offset: 3px;
+}
+
 .cq-profile-stat-value {
-  font-size: 1.4375rem;
-  font-weight: 900;
+  font-size: 0.9375rem;
+  font-weight: 800;
   line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   color: var(--cq-text-on-blue, #fff);
 }
 
 .cq-profile-stat-label {
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   font-weight: 500;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.6);
 }
 
+/* Inset grid with even gutters and softly rounded tiles. */
 .cq-profile-posts-grid,
 .cq-profile-memories-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
+  gap: 0.25rem;
   width: 100%;
-  padding: 0;
+  padding: 0.375rem 0.375rem 0;
   margin: 0;
 }
 
@@ -17556,8 +17618,68 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 .cq-profile-memory-tile {
   aspect-ratio: 1 / 1;
   width: 100%;
-  border-radius: 0;
+  border-radius: 0.5rem;
   overflow: hidden;
+}
+
+.cq-profile-tile-kind {
+  position: absolute;
+  top: 0.3125rem;
+  right: 0.3125rem;
+  display: inline-flex;
+  padding: 0.1875rem;
+  border-radius: 0.375rem;
+  background: rgba(4, 30, 66, 0.6);
+  color: #fff;
+  pointer-events: none;
+}
+
+.cq-profile-tile-stats {
+  position: absolute;
+  left: 0.3125rem;
+  bottom: 0.3125rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 999px;
+  background: rgba(4, 30, 66, 0.68);
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #fff;
+  pointer-events: none;
+}
+
+.cq-profile-tile-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cq-profile-posts-filter {
+  display: flex;
+  gap: 0.375rem;
+  padding: 0.5rem 0.375rem 0.125rem;
+}
+
+.cq-profile-posts-filter-btn {
+  min-height: 2rem;
+  padding: 0 0.875rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+.cq-profile-posts-filter-btn--active {
+  border-color: rgba(76, 201, 255, 0.45);
+  background: rgba(76, 201, 255, 0.16);
+  color: #bae6fd;
 }
 
 .cq-profile-tab-panel {
@@ -20949,11 +21071,11 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   color: rgba(186, 230, 253, 0.9);
 }
 
-/* —— Adventures completed (centered, compact) —— */
+/* —— Adventures completed (compact, aligned with the stats row) —— */
 .cq-profile-adventures {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.35rem;
   margin: 0;
   padding: 0.25rem 0.75rem 0.375rem;

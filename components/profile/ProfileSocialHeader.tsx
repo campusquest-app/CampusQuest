@@ -5,7 +5,7 @@ import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { getEquippedTitleLabel } from "@/lib/achievementEngine";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { formatStreakBadge } from "@/lib/streakMessaging";
-import { ChevronDown } from "lucide-react";
+import { BadgeCheck, ChevronDown } from "lucide-react";
 import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 export function ProfileSocialHeader({
@@ -17,10 +17,13 @@ export function ProfileSocialHeader({
   onSwitchIdentity,
   identityVerified = false,
   identitySubtitle,
+  schoolAffiliation,
   showLevel = true,
 }: {
   character: Character;
   isOwner: boolean;
+  /** Verified school name (owner only, from school verification). Never inferred. */
+  schoolAffiliation?: string | null;
   guildLabel?: string | null;
   onEditBio?: () => void;
   onOpenMenu?: () => void;
@@ -65,7 +68,7 @@ export function ProfileSocialHeader({
           ) : null}
         </button>
 
-        <div className="min-w-0 flex-1">
+        <div className="cq-profile-identity min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <button
@@ -81,6 +84,13 @@ export function ProfileSocialHeader({
                 {onSwitchIdentity ? <ChevronDown className="cq-profile-switch-chevron" aria-hidden /> : null}
               </button>
               <p className="cq-profile-handle truncate">@{character.username}</p>
+              {schoolAffiliation && !identitySubtitle ? (
+                <p className="cq-profile-affiliation">
+                  <BadgeCheck className="cq-profile-affiliation-icon" aria-hidden />
+                  <span className="truncate">{schoolAffiliation}</span>
+                  <span className="sr-only">(verified)</span>
+                </p>
+              ) : null}
               {identitySubtitle ? <p className="cq-profile-rank truncate">{identitySubtitle}</p> : title ? (
                 <p className="cq-profile-rank truncate">
                   {title}
@@ -116,20 +126,20 @@ export function ProfileSocialHeader({
               ) : null}
             </div>
           ) : null}
+
+          {character.bio ? (
+            <p className="cq-profile-bio break-words">{character.bio}</p>
+          ) : isOwner && onEditBio ? (
+            <button
+              type="button"
+              onClick={onEditBio}
+              className="cq-profile-press cq-profile-bio-add text-uri-keaney hover:text-uri-keaney/80"
+            >
+              + Add bio
+            </button>
+          ) : null}
         </div>
       </div>
-
-      {character.bio ? (
-        <p className="cq-profile-bio break-words">{character.bio}</p>
-      ) : isOwner ? (
-        <button
-          type="button"
-          onClick={onEditBio}
-          className="cq-profile-press cq-profile-bio-add text-sm font-medium text-uri-keaney hover:text-uri-keaney/80"
-        >
-          + Add bio
-        </button>
-      ) : null}
     </header>
   );
 }

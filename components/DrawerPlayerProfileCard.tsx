@@ -50,7 +50,7 @@ export function DrawerPlayerProfileCard({
     <button
       type="button"
       onClick={onOpenProfile}
-      className={`cq-drawer-identity group w-full px-4 text-left touch-manipulation ${showProgression ? "py-4" : "py-3"}`}
+      className={`cq-drawer-identity group min-h-[44px] w-full px-4 text-left touch-manipulation ${showProgression ? "py-4" : "py-3"}`}
       aria-label={`Open profile for ${character.name}`}
     >
       <div className={`flex gap-3 ${showProgression ? "items-start" : "items-center"}`}>
