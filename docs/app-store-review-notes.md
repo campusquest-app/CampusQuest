@@ -11,7 +11,7 @@ DEMO ACCOUNT (campus-verified reviewer account)
 Email: qa_signup@campusquestapp.com
 Password: <<REVIEWER_PASSWORD — set in App Store Connect only>>
 
-This account bypasses the university-email requirement so you can sign in directly. It is a normal student account (no admin rights). Its onboarding is reset automatically each time it signs in so you always see the first-run flow. If sign-in ever fails, email <<SUPPORT_EMAIL — see docs/app-store-go-no-go.md>> and we will reset it within a few hours.
+This account bypasses the university-email requirement so you can sign in directly. It is a normal student account (no admin rights). Its onboarding is reset automatically each time it signs in so you always see the first-run flow. If sign-in ever fails, email support@campusquestapp.com and we will reset it within a few hours.
 
 WHAT TO TEST (suggested order, ~10 minutes)
 1. Sign in with the demo account. Accept the Terms / Privacy / Community Guidelines consent screen.
@@ -38,7 +38,7 @@ NOTES FOR THE REVIEWER
 - Privacy Policy: https://campusquestapp.com/legal/privacy
 - Terms of Service: https://campusquestapp.com/legal/terms
 - Community Guidelines: https://campusquestapp.com/legal/community-guidelines
-- Support: https://campusquestapp.com/support
+- Support: https://campusquestapp.com/support (email support@campusquestapp.com)
 
 Thank you for reviewing CampusQuest.
 

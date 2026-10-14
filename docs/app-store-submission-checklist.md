@@ -26,9 +26,9 @@ Companion files: `docs/app-store-go-no-go.md`, `docs/app-store-review-notes.md`,
 - [ ] Restrict NEXT_PUBLIC_GOOGLE_MAPS_API_KEY to the production web/iOS application and required Maps APIs.
 - [ ] If a server key is added, restrict it by IP/None + Geocoding API only.
 
-## 4. Support contact (manual — likely blocker)
+## 4. Support contact
 
-- [ ] `support@campusquest.app` is referenced in the Support page, Settings, Delete-account panel, Privacy Policy and Terms, but `campusquest.app` has **no MX record** (checked 2026-10-14; `campusquestapp.com` does have Google MX). Either add mail routing for `campusquest.app` or tell me the real support mailbox and I will update the 9 references (legal pages included — those two edits need your sign-off as policy text).
+- [x] Support address is `support@campusquestapp.com` (verified working; `campusquestapp.com` has Google MX). It is used on the Support page, Settings, Help & Support, Delete-account panel, Privacy Policy and Terms.
 
 ## 5. Apple Developer / App Store Connect (manual)
 

@@ -28,10 +28,10 @@ export function PrivacySupportSettingsPanel({ onBack }: { onBack: () => void }) 
           ))}
           <li>
             <a
-              href="mailto:support@campusquest.app"
+              href="mailto:support@campusquestapp.com"
               className="flex min-h-11 items-center px-3 py-3 text-sm font-semibold text-cyan-100 touch-manipulation"
             >
-              Email support@campusquest.app
+              Email support@campusquestapp.com
             </a>
           </li>
         </ul>

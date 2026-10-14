@@ -110,7 +110,7 @@ const SUPPORT_LINKS: { id: string; label: string; description: string; icon: Luc
     label: "Report a Problem",
     description: "Flag bugs or unsafe behavior",
     icon: MessageCircleWarning,
-    href: "mailto:support@campusquest.app?subject=CampusQuest%20Report",
+    href: "mailto:support@campusquestapp.com?subject=CampusQuest%20Report",
   },
   {
     id: "contact",

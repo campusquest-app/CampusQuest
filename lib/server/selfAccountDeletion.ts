@@ -25,7 +25,7 @@ export async function deleteOwnAccount(args: {
   if (role === "admin" || role === "super_admin" || (userEmail && isAdminEmail(userEmail))) {
     throw new ApiError(
       403,
-      "Admin accounts cannot be deleted from the app. Contact support@campusquest.app.",
+      "Admin accounts cannot be deleted from the app. Contact support@campusquestapp.com.",
       "ACCOUNT_DELETE_ADMIN_FORBIDDEN",
     );
   }

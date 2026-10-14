@@ -47,7 +47,7 @@ const sections = [
     title: "7. Account Deletion",
     body: [
       "You can delete your account in the app under Settings → Delete account.",
-      "You may also request deletion by emailing support@campusquest.app from the address on your account.",
+      "You may also request deletion by emailing support@campusquestapp.com from the address on your account.",
       "Account deletion removes your profile and associated account data from our primary systems. Some information may be retained when legally required or needed for safety, fraud prevention, or dispute resolution. Media objects stored with our providers may take additional time to fully purge from backups.",
     ],
   },
@@ -61,7 +61,7 @@ const sections = [
   },
   {
     title: "10. Contact Information",
-    body: ["For privacy-related questions: support@campusquest.app"],
+    body: ["For privacy-related questions: support@campusquestapp.com"],
   },
 ];
 

@@ -52,7 +52,7 @@ const sections = [
   },
   {
     title: "10. Contact",
-    body: ["Questions: support@campusquest.app"],
+    body: ["Questions: support@campusquestapp.com"],
   },
 ];
 

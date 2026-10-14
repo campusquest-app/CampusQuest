@@ -33,7 +33,6 @@ Overall: **NOT READY to submit today** — code is ready; production is not depl
 | Item | Why Cursor cannot do it | Manual action |
 | --- | --- | --- |
 | Production migration + deploy | Remote mutation; requires your explicit approval | Reply to the checkpoint ("Approve production migration + deployment?") |
-| Support mailbox deliverability | External DNS/mail config; `campusquest.app` has no MX | Add MX/mailbox for `support@campusquest.app`, or give me the real address to substitute in 9 places (2 are legal pages) |
 | Apple Distribution certificate + App Store provisioning profile | Apple Developer portal | Xcode → Accounts → download/create; then Product → Archive → Upload |
 | App Store Connect record, App Privacy, Age Rating, screenshots, review notes | Apple web forms | Use `docs/app-store-metadata-draft.md`, `docs/app-store-review-notes.md`, checklist §6 |
 | Reviewer account password | Secret; must exist in Production env and App Store Connect | Confirm `QA_TEST_ACCOUNT_PASSWORD` is set in Vercel Production and the account exists (`node scripts/ensure-qa-account.mjs` against prod **after** approval) |
@@ -47,8 +46,6 @@ Overall: **NOT READY to submit today** — code is ready; production is not depl
 | --- | --- |
 | Production is not running this code | Current production predates the security closure; the new migration (`20261014180000_security_closure_launch.sql`) has not been applied. Submitting a build that points at production before deploy would expose the un-hardened backend to reviewers. **Deploy first, then upload the build.** |
 | No distribution signing assets on this Mac | Archive/upload impossible until a Distribution identity and profile exist (only "Apple Development" present, 0 profiles). |
-| Support email likely undeliverable | Apple requires a working support contact; `support@campusquest.app` domain has no MX record. Treat as blocker until confirmed deliverable or changed. |
-
 ## DEFERRED AFTER LAUNCH
 
 | Item | Status | Note |

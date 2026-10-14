@@ -101,8 +101,8 @@ export function DeleteAccountPanel({
 
         <p className="text-[11px] text-white/40">
           Need help instead? Email{" "}
-          <a className="text-cyan-300/90 underline" href="mailto:support@campusquest.app">
-            support@campusquest.app
+          <a className="text-cyan-300/90 underline" href="mailto:support@campusquestapp.com">
+            support@campusquestapp.com
           </a>{" "}
           or visit{" "}
           <a className="text-cyan-300/90 underline" href="/support">

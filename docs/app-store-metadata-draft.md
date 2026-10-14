@@ -94,7 +94,7 @@ Contact: your name, phone, email (**fill**).
 
 ## Items for human / legal review (no code change made)
 
-1. `support@campusquest.app` appears in Privacy Policy §7/§10 and Terms §Questions; the `campusquest.app` domain has no MX record (see checklist §4). Deliverability must be confirmed or the address changed.
+1. Resolved: Privacy Policy §7/§10 and Terms §Questions now use the verified support address `support@campusquestapp.com` (see checklist §4).
 2. Privacy Policy §1 mentions "QR scanning" and "nearby quests/check-ins" as uses of camera/location; these features are hidden for launch. Suggested wording: drop "QR scanning" and "nearby quests/check-ins" (keep "campus map, directions, placing campus events").
 3. Privacy Policy §4 "limited client-side game or onboarding state" — still accurate (equipped cosmetics key in `game_state_json`), keep.
 4. Data & Personalization Consent page has a "Beta Service" section — decide whether the product is still described as beta at App Store launch.

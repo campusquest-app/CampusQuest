@@ -44,8 +44,8 @@ export default function SupportPage() {
         <h2 className="text-lg font-semibold">Contact</h2>
         <p className="text-sm text-white/65">
           Email{" "}
-          <a className="font-medium text-cyan-300 underline" href="mailto:support@campusquest.app">
-            support@campusquest.app
+          <a className="font-medium text-cyan-300 underline" href="mailto:support@campusquestapp.com">
+            support@campusquestapp.com
           </a>
         </p>
         <p className="text-sm text-white/55">
@@ -75,9 +75,9 @@ export default function SupportPage() {
           To report alleged copyright or trademark infringement, email{" "}
           <a
             className="font-medium text-cyan-300 underline"
-            href="mailto:support@campusquest.app?subject=Infringement%20Report"
+            href="mailto:support@campusquestapp.com?subject=Infringement%20Report"
           >
-            support@campusquest.app
+            support@campusquestapp.com
           </a>{" "}
           with:
         </p>
@@ -129,8 +129,8 @@ export default function SupportPage() {
         <h2 className="text-lg font-semibold">Delete your account</h2>
         <p className="text-sm text-white/65">
           In the app: Settings → Account → Delete account. Or email{" "}
-          <a className="text-cyan-300 underline" href="mailto:support@campusquest.app?subject=Delete%20Account">
-            support@campusquest.app
+          <a className="text-cyan-300 underline" href="mailto:support@campusquestapp.com?subject=Delete%20Account">
+            support@campusquestapp.com
           </a>{" "}
           from the address on your account.
         </p>

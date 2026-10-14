@@ -40,7 +40,7 @@ Notes:
 
 ## Contact
 
-`support@campusquest.app`
+`support@campusquestapp.com`
 
 ## Public policy URLs
 
