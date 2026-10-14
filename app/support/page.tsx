@@ -14,7 +14,7 @@ const PERMISSIONS = [
   },
   {
     name: "Camera",
-    why: "Scans official CampusQuest QR codes and lets you take photos for messages or memories.",
+    why: "Lets you take photos and videos for posts, messages, memories, and your profile.",
   },
   {
     name: "Photos / media library",
@@ -26,7 +26,7 @@ const PERMISSIONS = [
   },
   {
     name: "Notifications",
-    why: "Delivers message alerts, quest reminders, and important safety notices when enabled.",
+    why: "Delivers message alerts, event reminders, and important safety notices when enabled.",
   },
 ] as const;
 
