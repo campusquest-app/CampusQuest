@@ -25,7 +25,7 @@ Overall: **NOT READY to submit today** — code is ready; production is not depl
 | Privacy manifest | FIXED | `PrivacyInfo.xcprivacy` added to target Resources: tracking=false, 9 collected types matching source, accessed APIs `UserDefaults CA92.1`, `FileTimestamp C617.1`; `plutil -lint` OK; present in built `App.app` | `native/ios/App/App/PrivacyInfo.xcprivacy`, `project.pbxproj` |
 | iOS Release compile | FIXED | `xcodebuild … -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO build` → **BUILD SUCCEEDED** (Xcode 26.3, Capacitor 8.5.0 via SPM) | `/tmp/cq-ios-release-build.log` |
 | Automated verification | FIXED | typecheck ✓ · lint ✓ (2 pre-existing warnings) · vitest 253 files / 1874 tests ✓ · `next build` ✓ | — |
-| Reviewer account | READY | `qa_signup@campusquestapp.com`, exact-match campus bypass only, role `qa`, hidden/test flags, onboarding reset on login; no universal bypass; password lives only in env / App Store Connect | `lib/internalAccount.ts`, `lib/server/qaTestAccount.ts` |
+| Reviewer account | READY | `qa_signup@campusquestapp.com`, exact-match campus pre-verification (`campus_email_verified_at` set by `ensure-qa-account.mjs`, kept across the login onboarding reset; no OTP or mailbox needed), role `qa`, hidden/test flags; no universal bypass; password lives only in env / App Store Connect | `lib/internalAccount.ts`, `lib/server/qaTestAccount.ts` |
 | Apple submission files | READY | review notes, checklist, metadata draft, this file | `docs/app-store-*.md` |
 
 ## NEEDS MANUAL ACTION

@@ -11,6 +11,11 @@ import {
 } from "@/lib/internalAccount";
 import { isProtectedAccountEmail } from "@/lib/server/protectedAccounts";
 import { isOnboardingQaEmail, logOnboardingQa } from "@/lib/onboardingQa";
+import {
+  buildAppReviewProfilePatch,
+  isAppReviewAccountEmail,
+  isDesignatedAppReviewAccount,
+} from "@/lib/appReviewAccount";
 
 export {
   isInternalAccount,
@@ -181,8 +186,12 @@ function isMissingColumnError(error: { code?: string; message?: string } | null)
 async function updateProfileResetTolerant(
   admin: ReturnType<typeof createAdminClient>,
   userId: string,
+  options: { preserveCampusVerification: boolean },
 ): Promise<void> {
   const patch: Record<string, unknown> = { ...PROFILE_ONBOARDING_RESET };
+  if (options.preserveCampusVerification) {
+    delete patch.campus_email_verified_at;
+  }
   // Try the full patch first; drop optional columns one by one if the schema lacks them.
   for (let attempt = 0; attempt <= OPTIONAL_RESET_COLUMNS.length; attempt += 1) {
     const { error } = await admin
@@ -228,7 +237,7 @@ export async function resetQaOnboardingState(userId: string): Promise<void> {
 
   const { data: profile, error: loadError } = await admin
     .from("profiles")
-    .select("id, is_test_user")
+    .select("id, is_test_user, role")
     .eq("id", userId)
     .maybeSingle();
 
@@ -253,7 +262,11 @@ export async function resetQaOnboardingState(userId: string): Promise<void> {
     );
   }
 
-  await updateProfileResetTolerant(admin, userId);
+  // The App Review account is provisioned campus-verified (reviewers cannot
+  // read its mailbox); every other test account must re-verify after a reset.
+  await updateProfileResetTolerant(admin, userId, {
+    preserveCampusVerification: isDesignatedAppReviewAccount(email, profile),
+  });
 
   // Onboarding-adjacent state: discovery prefs, legal consents (so the consent
   // screens show again), tutorial/beginner progress, and any earned rewards.
@@ -342,6 +355,25 @@ export async function ensureQaTestAccount(): Promise<EnsureQaAccountResult> {
     bio: "",
     ...QA_ACCOUNT_PROFILE_FLAGS,
   };
+  if (isAppReviewAccountEmail(email)) {
+    const { data: existing, error: existingError } = await admin
+      .from("profiles")
+      .select("role, is_test_user, campus_email_verified_at")
+      .eq("id", userId)
+      .maybeSingle();
+    if (existingError) {
+      throw new ApiError(400, existingError.message, "QA_ACCOUNT_PROFILE_FAILED");
+    }
+    try {
+      Object.assign(qaProfile, buildAppReviewProfilePatch({ email, existing }));
+    } catch (error) {
+      throw new ApiError(
+        409,
+        error instanceof Error ? error.message : "Could not provision the App Review account.",
+        "QA_ACCOUNT_PROFILE_FAILED",
+      );
+    }
+  }
   let { error: profileError } = await admin.from("profiles").upsert(qaProfile, { onConflict: "id" });
   if (profileError && isMissingColumnError(profileError)) {
     // Pre-migration schema without is_internal_tester — role 'qa' still grants the bypass.

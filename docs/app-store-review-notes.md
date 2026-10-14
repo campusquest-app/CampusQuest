@@ -11,10 +11,10 @@ DEMO ACCOUNT (campus-verified reviewer account)
 Email: qa_signup@campusquestapp.com
 Password: <<REVIEWER_PASSWORD — set in App Store Connect only>>
 
-This account bypasses the university-email requirement so you can sign in directly. It is a normal student account (no admin rights). Its onboarding is reset automatically each time it signs in so you always see the first-run flow. If sign-in ever fails, email support@campusquestapp.com and we will reset it within a few hours.
+This account's university email is already verified, so you do not need access to its mailbox and will not be asked for a 6-digit verification code. On the "Your campus" onboarding step it shows "URI email verified" — just tap Continue. It is a normal student account (no admin rights). Its onboarding is reset automatically each time it signs in so you always see the first-run flow; the email verification is kept. If sign-in ever fails, email support@campusquestapp.com and we will reset it within a few hours.
 
 WHAT TO TEST (suggested order, ~10 minutes)
-1. Sign in with the demo account. Accept the Terms / Privacy / Community Guidelines consent screen.
+1. Sign in with the demo account. Accept the Terms / Privacy / Community Guidelines consent screen, then complete the short onboarding (the campus step is already verified) to reach the app.
 2. The Quad (Home tab): scroll the campus feed, open a post, tap the ••• menu → Report. Reports go to our moderation queue.
 3. Create a post: tap the compose button, add text and (optionally) a photo from your library. Delete it afterwards from the post's ••• menu if you like.
 4. Comments: open any post, add a comment, then use the comment's menu → Report.
@@ -47,5 +47,5 @@ Thank you for reviewing CampusQuest.
 ## Internal notes (do not paste)
 
 - Demo account provisioning: `QA_TEST_ACCOUNT_EMAIL`/`QA_TEST_ACCOUNT_PASSWORD` + `node scripts/ensure-qa-account.mjs` (see `docs/store-reviewer-account.md`). Reset at any time via `POST /api/internal/admin/qa-account/reset` as an admin.
-- The bypass is an exact-match email (`lib/internalAccount.ts`); it grants campus access only, never admin authority.
+- Campus verification is pre-provisioned, not bypassed: `ensure-qa-account.mjs` sets `profiles.campus_email_verified_at` (the column a 6-digit code sets) for the exact email in `lib/appReviewAccount.ts` only, and refuses any other email. The login-time onboarding reset preserves that timestamp only for this email with `role = 'qa'` + `is_test_user`. Role stays `qa`, never admin. Because `.env.local` may set a different `QA_TEST_ACCOUNT_EMAIL`, run it as `QA_TEST_ACCOUNT_EMAIL=qa_signup@campusquestapp.com node scripts/ensure-qa-account.mjs`.
 - `docs/app-review-notes.md` is the previous draft; this file supersedes it (that draft still lists the QR-scanner test step, which is disabled for launch).

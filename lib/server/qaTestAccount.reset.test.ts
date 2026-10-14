@@ -81,7 +81,7 @@ describe("QA onboarding reset safety", () => {
       code: "QA_RESET_NOT_TEST_USER",
     } satisfies Partial<ApiError>);
     // Only a lookup ran — no profile update / deletes that could corrupt auth.
-    expect(select).toHaveBeenCalledWith("id, is_test_user");
+    expect(select).toHaveBeenCalledWith("id, is_test_user, role");
   });
 
   it("treats only is_test_user=true as a test profile flag", () => {

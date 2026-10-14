@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 /**
- * Provision (or reset) the permanent QA onboarding test account.
+ * Provision (or reset) the designated App Review / QA account. Idempotent.
  *
  * - Creates auth user qa_signup@campusquestapp.com if missing (email pre-confirmed).
  * - Flags its profile: is_test_user = true, is_hidden = true, is_internal_tester = true, role = 'qa'.
- *   (Exact email + flags permanently bypass the campus email verification gate.)
- * - Resets all onboarding/progress state so the next sign-in starts at Sign Up.
+ * - Pre-verifies campus email by setting profiles.campus_email_verified_at (kept if
+ *   already set), the same column a student's 6-digit code sets. App Store reviewers
+ *   cannot read this mailbox. Open verification codes are invalidated.
+ * - Resets onboarding/progress state and legal consents so the next sign-in shows
+ *   Terms acceptance and onboarding, with the campus step already verified.
  * - Never deletes the account; auth credentials are preserved.
  *
  * Usage: node scripts/ensure-qa-account.mjs
  * Requires: NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
  *           QA_TEST_ACCOUNT_PASSWORD (only on first creation)
  *
- * Exact email only — other @campusquestapp.com addresses are NOT treated as QA.
+ * Refuses to run for any other email (see lib/appReviewAccount.ts).
  */
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -49,6 +52,14 @@ const email = (process.env.QA_TEST_ACCOUNT_EMAIL ?? "qa_signup@campusquestapp.co
 
 if (!url || !serviceKey) {
   console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
+  process.exit(1);
+}
+
+const { buildAppReviewProfilePatch, isAppReviewAccountEmail, APP_REVIEW_ACCOUNT_ROLE } = await import(
+  "../lib/appReviewAccount.ts"
+);
+if (!isAppReviewAccountEmail(email)) {
+  console.error("Refusing to run: this script only provisions the designated App Review account.");
   process.exit(1);
 }
 
@@ -92,15 +103,30 @@ if (!userId) {
   console.log(`QA auth user already exists: ${email} (${userId}).`);
 }
 
+const { data: existingProfile, error: existingError } = await admin
+  .from("profiles")
+  .select("role, is_test_user, campus_email_verified_at")
+  .eq("id", userId)
+  .maybeSingle();
+if (existingError) {
+  console.error(`Profile lookup failed: ${existingError.message}`);
+  process.exit(1);
+}
+
+let reviewerPatch;
+try {
+  reviewerPatch = buildAppReviewProfilePatch({ email, existing: existingProfile });
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
+
 const qaProfile = {
   id: userId,
   username: "campusquestqa",
   display_name: "CampusQuest QA",
   bio: "",
-  role: "qa",
-  is_test_user: true,
-  is_hidden: true,
-  is_internal_tester: true,
+  ...reviewerPatch,
   onboarding_completed: false,
   onboarding_completed_at: null,
   onboarding_character_completed: false,
@@ -143,4 +169,34 @@ for (const [table, column] of [
   }
 }
 
-console.log(`QA account ready (created=${created}). Next sign-in starts at the first Sign Up screen.`);
+const { error: challengeError } = await admin
+  .from("campus_email_verification_challenges")
+  .update({ invalidated_at: new Date().toISOString() })
+  .eq("user_id", userId)
+  .is("consumed_at", null)
+  .is("invalidated_at", null);
+if (challengeError && challengeError.code !== "42P01") {
+  console.warn(`Invalidating open verification codes skipped: ${challengeError.message}`);
+}
+
+const { data: finalProfile, error: finalError } = await admin
+  .from("profiles")
+  .select("role, is_test_user, is_hidden, is_internal_tester, campus_email_verified_at, onboarding_completed")
+  .eq("id", userId)
+  .single();
+if (
+  finalError ||
+  finalProfile.role !== APP_REVIEW_ACCOUNT_ROLE ||
+  finalProfile.is_test_user !== true ||
+  finalProfile.is_hidden !== true ||
+  !finalProfile.campus_email_verified_at
+) {
+  console.error("QA account verification failed after provisioning — profile is not in the expected state.");
+  process.exit(1);
+}
+
+console.log(
+  `QA account ready (created=${created}, role=${finalProfile.role}, hidden=${finalProfile.is_hidden}, ` +
+    `campus_verified=${Boolean(finalProfile.campus_email_verified_at)}, onboarding_completed=${finalProfile.onboarding_completed}). ` +
+    "Next sign-in shows Terms + onboarding with the campus step already verified.",
+);
