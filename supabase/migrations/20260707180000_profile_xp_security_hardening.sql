@@ -73,20 +73,30 @@ alter table public.xp_logs add constraint xp_logs_source_type_check
   ));
 
 -- Extend activity feed for admin XP adjustments.
-alter table public.user_activity_events drop constraint if exists user_activity_events_activity_type_check;
-alter table public.user_activity_events add constraint user_activity_events_activity_type_check
-  check (
-    activity_type in (
-      'qr_check_in',
-      'quest_completed',
-      'xp_reward',
-      'manual_log',
-      'post_created',
-      'memory_saved',
-      'achievement',
-      'admin_xp_adjustment'
+-- The table is created by a later timestamp (20260717120000). Fresh databases
+-- skip this alter; that create includes admin_xp_adjustment.
+do $$
+begin
+  if to_regclass('public.user_activity_events') is null then
+    return;
+  end if;
+  execute 'alter table public.user_activity_events drop constraint if exists user_activity_events_activity_type_check';
+  execute $c$
+    alter table public.user_activity_events add constraint user_activity_events_activity_type_check
+    check (
+      activity_type in (
+        'qr_check_in',
+        'quest_completed',
+        'xp_reward',
+        'manual_log',
+        'post_created',
+        'memory_saved',
+        'achievement',
+        'admin_xp_adjustment'
+      )
     )
-  );
+  $c$;
+end $$;
 
 -- Prevent authenticated users from changing profiles.role (admin escalation).
 create or replace function public.block_profiles_role_escalation()

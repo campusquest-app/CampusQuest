@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/server/http";
+import { secretsEqual } from "@/lib/server/secretCompare";
 
 export function assertCronSecret(request: Request) {
   const secret = process.env.CRON_SECRET?.trim();
@@ -12,7 +13,7 @@ export function assertCronSecret(request: Request) {
   }
 
   const token = authHeader.slice("Bearer ".length).trim();
-  if (token !== secret) {
+  if (!secretsEqual(token, secret)) {
     throw new ApiError(401, "Invalid cron secret.", "UNAUTHORIZED");
   }
 }

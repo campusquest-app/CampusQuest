@@ -1,5 +1,6 @@
 import { resolveProfileAvatar } from "@/lib/avatarSource";
 import { ApiError } from "@/lib/server/http";
+import { sniffImageMimeFromBytes } from "@/lib/server/sniffImageMime";
 import { QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
 import { getAcceptedFriendUserIds } from "@/lib/server/friendProfileAccess";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -56,6 +57,81 @@ const DATA_IMAGE_RE = /^data:(image\/(?:jpeg|jpg|png|webp|gif));base64,(.+)$/i;
 const DATA_AUDIO_RE = /^data:(audio\/(?:webm|mp4|mpeg|ogg|wav)(?:;[^;]*)*);base64,(.+)$/i;
 const MAX_DM_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_DM_AUDIO_BYTES = 8 * 1024 * 1024;
+const DM_SIGNED_URL_SECONDS = 10 * 60;
+const DM_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+export function sniffAudioMimeFromBytes(buffer: Buffer): string | null {
+  if (buffer.length >= 12 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WAVE") {
+    return "audio/wav";
+  }
+  if (buffer.length >= 4 && buffer.toString("ascii", 0, 4) === "OggS") return "audio/ogg";
+  if (buffer.length >= 3 && buffer.toString("ascii", 0, 3) === "ID3") return "audio/mpeg";
+  if (buffer.length >= 2 && buffer[0] === 0xff && (buffer[1]! & 0xe0) === 0xe0) return "audio/mpeg";
+  if (buffer.length >= 4 && buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) {
+    return "audio/webm";
+  }
+  if (buffer.length >= 12 && buffer.toString("ascii", 4, 8) === "ftyp") {
+    const brand = buffer.toString("ascii", 8, 12).toLowerCase();
+    if (brand.startsWith("m4a") || brand === "mp42" || brand === "isom" || brand.startsWith("mp4")) return "audio/mp4";
+  }
+  return null;
+}
+
+export function parseDmStorageRef(raw: string): { bucket: "dm-images" | "dm-audio"; path: string } | null {
+  const trimmed = raw.trim();
+  const direct = /^(dm-images|dm-audio)\/(.+)$/.exec(trimmed);
+  if (direct?.[1] === "dm-images" || direct?.[1] === "dm-audio") {
+    return { bucket: direct[1], path: direct[2] };
+  }
+  try {
+    const url = new URL(trimmed);
+    const match = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/(dm-images|dm-audio)\/(.+)$/);
+    if (!match || (match[1] !== "dm-images" && match[1] !== "dm-audio")) return null;
+    return { bucket: match[1], path: decodeURIComponent(match[2]) };
+  } catch {
+    return null;
+  }
+}
+
+export function assertDmMediaPath(path: string, conversationId: string): void {
+  if (!path || path.includes("..") || path.includes("\\") || path.startsWith("/")) {
+    throw new ApiError(400, "Invalid media path.", "DM_MEDIA_PATH_INVALID");
+  }
+  const [folder, owner, file] = path.split("/");
+  if (folder !== conversationId || !owner || !file || path.split("/").length < 3) {
+    throw new ApiError(403, "Conversation access denied.", "CONVERSATION_FORBIDDEN");
+  }
+}
+
+export function storedDmMediaRef(raw: string, conversationId: string, expectedBucket: "dm-images" | "dm-audio"): string {
+  const parsed = parseDmStorageRef(raw);
+  if (!parsed || parsed.bucket !== expectedBucket) {
+    throw new ApiError(400, "Media must be uploaded to this conversation.", "DM_MEDIA_REF_INVALID");
+  }
+  assertDmMediaPath(parsed.path, conversationId);
+  return `${parsed.bucket}/${parsed.path}`;
+}
+
+export async function signDmMediaRef(raw: string | null): Promise<string | null> {
+  if (!raw?.trim()) return null;
+  const parsed = parseDmStorageRef(raw);
+  if (!parsed) return null;
+  try {
+    assertDmMediaPath(parsed.path, parsed.path.split("/")[0] ?? "");
+  } catch {
+    return null;
+  }
+  const admin = createAdminClient();
+  const signed = await admin.storage.from(parsed.bucket).createSignedUrl(parsed.path, DM_SIGNED_URL_SECONDS);
+  if (signed.error || !signed.data?.signedUrl) return null;
+  return signed.data.signedUrl;
+}
+
+export async function presentDirectMessageMedia<T extends { imageUrl: string | null }>(dto: T): Promise<T> {
+  if (!dto.imageUrl) return dto;
+  const signed = await signDmMediaRef(dto.imageUrl);
+  return { ...dto, imageUrl: signed };
+}
 
 const MESSAGE_SELECT =
   "id, conversation_id, sender_id, recipient_id, content, type, image_url, shared_post_id, shared_post_type, metadata, created_at, read_at";
@@ -175,6 +251,10 @@ export async function uploadDmImage(args: {
   if (buffer.length > MAX_DM_IMAGE_BYTES) {
     throw new ApiError(400, "Image is too large (max 5 MB).", "DM_IMAGE_TOO_LARGE");
   }
+  const sniffed = sniffImageMimeFromBytes(buffer);
+  if (!sniffed || !DM_IMAGE_MIMES.has(sniffed) || sniffed !== mime) {
+    throw new ApiError(400, "Image contents do not match an allowed type.", "DM_IMAGE_TYPE_MISMATCH");
+  }
 
   const { data: participant, error: participantError } = await userClient
     .from("direct_conversation_participants")
@@ -201,12 +281,9 @@ export async function uploadDmImage(args: {
     throw new ApiError(400, uploadError.message, "DM_IMAGE_UPLOAD_FAILED");
   }
 
-  const { data: publicUrlData } = admin.storage.from(DM_IMAGES_BUCKET).getPublicUrl(storagePath);
-  const publicUrl = publicUrlData.publicUrl?.trim();
-  if (!publicUrl) {
-    throw new ApiError(500, "Could not resolve image URL.", "DM_IMAGE_URL_FAILED");
-  }
-  return publicUrl;
+  const signed = await signDmMediaRef(`${DM_IMAGES_BUCKET}/${storagePath}`);
+  if (!signed) throw new ApiError(500, "Could not resolve image URL.", "DM_IMAGE_URL_FAILED");
+  return signed;
 }
 
 function extensionForAudioMime(mime: string): string {
@@ -259,6 +336,11 @@ export async function uploadDmAudio(args: {
   if (buffer.length > MAX_DM_AUDIO_BYTES) {
     throw new ApiError(400, "Audio is too large (max 8 MB).", "DM_AUDIO_TOO_LARGE");
   }
+  const declaredAudio = mime.split(";")[0]!.trim();
+  const sniffedAudio = sniffAudioMimeFromBytes(buffer);
+  if (!sniffedAudio || sniffedAudio !== declaredAudio) {
+    throw new ApiError(400, "Audio contents do not match an allowed type.", "DM_AUDIO_TYPE_MISMATCH");
+  }
 
   const { data: participant, error: participantError } = await userClient
     .from("direct_conversation_participants")
@@ -285,12 +367,9 @@ export async function uploadDmAudio(args: {
     throw new ApiError(400, uploadError.message, "DM_AUDIO_UPLOAD_FAILED");
   }
 
-  const { data: publicUrlData } = admin.storage.from(DM_AUDIO_BUCKET).getPublicUrl(storagePath);
-  const publicUrl = publicUrlData.publicUrl?.trim();
-  if (!publicUrl) {
-    throw new ApiError(500, "Could not resolve audio URL.", "DM_AUDIO_URL_FAILED");
-  }
-  return publicUrl;
+  const signed = await signDmMediaRef(`${DM_AUDIO_BUCKET}/${storagePath}`);
+  if (!signed) throw new ApiError(500, "Could not resolve audio URL.", "DM_AUDIO_URL_FAILED");
+  return signed;
 }
 
 async function viewerCanSeeQuadPost(args: {

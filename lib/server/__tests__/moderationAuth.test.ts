@@ -20,6 +20,8 @@ vi.mock("@/lib/server/authBootstrap", () => ({
   findAuthUserIdByEmail: vi.fn(async (email: string) => {
     if (email === "role-admin@uri.edu") return "role-admin-id";
     if (email === "student@uri.edu") return "student-id";
+    if (email === "listed-admin@campusquestapp.com") return "listed-admin-id";
+    if (email === "nicklockhart22@uri.edu") return "fallback-id";
     return null;
   }),
 }));
@@ -54,14 +56,52 @@ describe("assertPlatformModerationAdminEmail", () => {
     });
   }
 
-  it("allows env-listed moderation admins", async () => {
+  it("allows a confirmed env-listed moderation admin", async () => {
+    getUserById.mockResolvedValue({
+      data: {
+        user: {
+          id: "listed-admin-id",
+          email: "listed-admin@campusquestapp.com",
+          email_confirmed_at: "2026-01-01T00:00:00Z",
+        },
+      },
+      error: null,
+    });
     const { assertPlatformModerationAdminEmail } = await import("@/lib/server/moderationAuth");
     await expect(
       assertPlatformModerationAdminEmail(request("listed-admin@campusquestapp.com")),
     ).resolves.toBe("listed-admin@campusquestapp.com");
   });
 
-  it("allows platform admin email fallbacks", async () => {
+  it("rejects an unconfirmed allow-list email", async () => {
+    getUserById.mockResolvedValue({
+      data: {
+        user: {
+          id: "listed-admin-id",
+          email: "listed-admin@campusquestapp.com",
+          email_confirmed_at: null,
+          confirmed_at: null,
+        },
+      },
+      error: null,
+    });
+    const { assertPlatformModerationAdminEmail } = await import("@/lib/server/moderationAuth");
+    await expect(
+      assertPlatformModerationAdminEmail(request("listed-admin@campusquestapp.com")),
+    ).rejects.toMatchObject({ status: 403, code: "FORBIDDEN" });
+  });
+
+  it("allows a confirmed platform admin email fallback", async () => {
+    getUserById.mockResolvedValue({
+      data: {
+        user: {
+          id: "fallback-id",
+          email: "nicklockhart22@uri.edu",
+          email_confirmed_at: "2026-01-01T00:00:00Z",
+        },
+      },
+      error: null,
+    });
     const { assertPlatformModerationAdminEmail } = await import("@/lib/server/moderationAuth");
     await expect(
       assertPlatformModerationAdminEmail(request("nicklockhart22@uri.edu")),

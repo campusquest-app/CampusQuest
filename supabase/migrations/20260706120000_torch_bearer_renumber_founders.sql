@@ -40,6 +40,13 @@ begin
   select count(*)::int into v_n3 from public.beta_founders where founder_number = 3;
   select count(*)::int into v_n4 from public.beta_founders where founder_number = 4;
 
+  -- Fresh databases have no founders. This repair only applied to the
+  -- production rows that existed when the gap was closed.
+  if v_total = 0 then
+    raise notice 'CQ_TORCH_BEARER_RENUMBER_SKIP: no founders on a fresh database';
+    return;
+  end if;
+
   -- Idempotent: already renumbered → verify integrity and exit.
   if v_total = 3 and v_n1 = 1 and v_n2 = 1 and v_n3 = 1 and v_n4 = 0 then
     select min(g)::int into v_next

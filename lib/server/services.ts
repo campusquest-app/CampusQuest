@@ -1,6 +1,7 @@
 import { User } from "@supabase/supabase-js";
 import { DATA_CONSENT_VERSION } from "@/lib/legal/policy";
 import { progressionRewardsEnabled } from "@/lib/featureFlags";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { ApiError } from "@/lib/server/http";
 import { processXpMilestoneCrossings } from "@/lib/server/xpMilestones";
 import {
@@ -337,6 +338,7 @@ export async function claimBeginnerQuestReward(args: {
   userId: string;
   questId: "profile" | "activity" | "boss" | "leaderboard" | "guild";
 }) {
+  assertLaunchProgressionEnabled();
   const { userClient, userId, questId } = args;
   const xpAmount = BEGINNER_QUEST_XP[questId];
 
@@ -441,6 +443,7 @@ export async function logActivity(args: {
   activityId: string;
   minutes?: number;
 }) {
+  assertLaunchProgressionEnabled();
   const { userClient, userId, activityId, minutes } = args;
   assertSafeMinutes(minutes);
 
@@ -535,6 +538,7 @@ export async function completeQuest(args: {
   userId: string;
   userQuestId: string;
 }) {
+  assertLaunchProgressionEnabled();
   const { userClient, userId, userQuestId } = args;
   const { data: userQuest, error: uqError } = await userClient
     .from("user_quests")
@@ -635,6 +639,7 @@ export async function scanQrQuest(args: {
   userId: string;
   qrCode: string;
 }) {
+  assertLaunchProgressionEnabled();
   const { userClient, userId, qrCode } = args;
 
   const logScan = async (payload: {
@@ -1117,6 +1122,7 @@ export async function joinGuild(args: {
   userId: string;
   guildId: string;
 }) {
+  assertLaunchProgressionEnabled();
   const { userClient, userId, guildId } = args;
   const adminClient = createAdminClient();
 
@@ -1170,6 +1176,7 @@ export async function createGuild(args: {
   description?: string;
   isPublic?: boolean;
 }) {
+  assertLaunchProgressionEnabled();
   const { userClient, userId, name, description, isPublic = true } = args;
   const adminClient = createAdminClient();
 

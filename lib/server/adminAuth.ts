@@ -1,9 +1,5 @@
 import { ApiError } from "@/lib/server/http";
-import {
-  isAdminEmail,
-  isAuthEmailConfirmed,
-  userHasModerationAdminAccess,
-} from "@/lib/server/adminEmails";
+import { isAdminEmail } from "@/lib/server/adminEmails";
 import { fetchProfileRole, roleAtLeast, userHasPlatformAdminAccess } from "@/lib/server/permissions";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { headers } from "next/headers";
@@ -28,9 +24,6 @@ export async function requireAdminUser(request?: Request): Promise<AuthedUser & 
   const auth = await requireAuthUser(request ?? getRequestFromServerHeaders());
   const email = auth.user.email;
   if (!email) {
-    throw new ApiError(401, "Unauthorized.", "UNAUTHORIZED");
-  }
-  if (!isAuthEmailConfirmed(auth.user)) {
     throw new ApiError(401, "Unauthorized.", "UNAUTHORIZED");
   }
   const profileRole = await fetchProfileRole(auth.userClient, auth.user.id, { email: auth.user.email });

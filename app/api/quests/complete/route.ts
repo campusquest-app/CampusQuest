@@ -2,12 +2,14 @@ import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { completeQuest } from "@/lib/server/services";
 import { enforceRateLimit } from "@/lib/server/security";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { completeQuestSchema, readJson } from "@/lib/server/validation";
 
 export async function POST(request: Request) {
   try {
+    assertLaunchProgressionEnabled();
     const auth = await requireAuthUser(request as any);
     enforceRateLimit({ userId: auth.user.id, routeKey: "quest:complete", limit: 15, windowMs: 60_000 });
     const input = await readJson(request, completeQuestSchema);

@@ -2,6 +2,7 @@ import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { completeAdminQuestForUser } from "@/lib/server/adminQuests";
 import { enforceRateLimit } from "@/lib/server/security";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { completeAdminQuestSchema, readJson, uuidSchema } from "@/lib/server/validation";
 
@@ -14,6 +15,7 @@ async function parseQuestId(context: { params: Promise<{ questId: string }> }): 
 
 export async function POST(request: Request, context: { params: Promise<{ questId: string }> }) {
   try {
+    assertLaunchProgressionEnabled();
     const auth = await requireAuthUser(request);
     const questId = await parseQuestId(context);
     enforceRateLimit({

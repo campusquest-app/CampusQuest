@@ -52,7 +52,11 @@ async function main() {
   if (!existsSync(sqlPath)) abort(`Migration file not found: ${sqlPath}`);
 
   const migrationSql = readFileSync(sqlPath, "utf8");
-  const client = new pg.Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+  const localDb = /localhost|127\.0\.0\.1/.test(dbUrl);
+  const client = new pg.Client({
+    connectionString: dbUrl,
+    ssl: localDb ? undefined : { rejectUnauthorized: true },
+  });
 
   await client.connect();
 

@@ -5,6 +5,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      "server-only": path.resolve(__dirname, "lib/test/server-only-stub.ts"),
     },
   },
   // Next.js tsconfig uses jsx:"preserve"; tests need real JSX output.

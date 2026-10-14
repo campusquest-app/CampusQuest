@@ -3,7 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/server/http";
 import { isInternalAccount } from "@/lib/internalAccount";
 import { isAdminEmailFallback } from "@/lib/platformAdmin";
-import { isAdminEmail, isAuthEmailConfirmed, userHasModerationAdminAccess } from "@/lib/server/adminEmails";
+import { isAdminEmail, userHasModerationAdminAccess } from "@/lib/server/adminEmails";
 
 export type ProfileRole = "student" | "faculty_staff" | "qa" | "beta_internal" | "admin" | "super_admin";
 
@@ -46,15 +46,10 @@ function isMissingProfileRoleColumn(error: { message?: string; code?: string } |
 
 type ProfileRoleRow = { role?: string | null };
 
-function emailImpliesAdminRole(email?: string | null): boolean {
-  if (!email) return false;
-  return isAdminEmail(email) || isAdminEmailFallback(email);
-}
-
 /**
- * Reads profiles.role with safe fallbacks:
- * - null/unknown role → student
- * - missing column (pre-migration) → student, or super_admin for moderation allow-list email
+ * Reads profiles.role with safe fallbacks.
+ * A session email never upgrades the returned role. Admin authority is the
+ * persisted profiles.role, or a separately confirmed allow-list check.
  */
 export async function fetchProfileRole(
   userClient: SupabaseClient,
@@ -69,17 +64,12 @@ export async function fetchProfileRole(
 
   if (error) {
     if (isMissingProfileRoleColumn(error)) {
-      if (options?.email && emailImpliesAdminRole(options.email)) return "super_admin";
       return "student";
     }
     throw new ApiError(400, error.message, "PROFILE_ROLE_FETCH_FAILED");
   }
 
-  const role = normalizeProfileRole((data as ProfileRoleRow | null)?.role);
-  if (role === "student" && options?.email && emailImpliesAdminRole(options.email)) {
-    return "super_admin";
-  }
-  return role;
+  return normalizeProfileRole((data as ProfileRoleRow | null)?.role);
 }
 
 export type ProfileAccessFlags = {
@@ -122,10 +112,7 @@ export async function fetchProfileAccessFlags(
     is_test_user?: boolean | null;
     is_hidden?: boolean | null;
   } | null;
-  let role = normalizeProfileRole(row?.role);
-  if (role === "student" && options?.email && emailImpliesAdminRole(options.email)) {
-    role = "super_admin";
-  }
+  const role = normalizeProfileRole(row?.role);
   return {
     role,
     isInternalTester: isInternalAccount(
@@ -140,12 +127,20 @@ export async function fetchProfileAccessFlags(
   };
 }
 
-/** Platform admin: DB role, moderation allow-list, or dev email fallback (confirmed email required for email paths). */
+/** Auth confirmation timestamp. Ignores the campus-access feature flag. */
+export function hasVerifiedAuthEmail(user: {
+  email_confirmed_at?: string | null;
+  confirmed_at?: string | null;
+}): boolean {
+  return Boolean(user.email_confirmed_at ?? user.confirmed_at);
+}
+
+/** Platform admin: persisted role, or a confirmed allow-listed email. Unverified email is never enough. */
 export function userHasPlatformAdminAccess(user: User, profileRole: ProfileRole): boolean {
   if (roleAtLeast(profileRole, "admin")) return true;
-  if (!isAuthEmailConfirmed(user)) return false;
-  if (userHasModerationAdminAccess(user)) return true;
-  return isAdminEmailFallback(user.email);
+  if (!hasVerifiedAuthEmail(user)) return false;
+  if (isAdminEmail(user.email ?? "") || isAdminEmailFallback(user.email)) return true;
+  return false;
 }
 
 /** Alias for campus-access and feature gates. */

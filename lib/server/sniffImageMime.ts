@@ -1,6 +1,7 @@
 /** Best-effort image MIME detection from magic bytes + filename (server-safe). */
 
-export function sniffImageMimeFromBuffer(buffer: Buffer, fileName?: string | null): string | null {
+/** Magic bytes only. Filename and client Content-Type are not evidence. */
+export function sniffImageMimeFromBytes(buffer: Buffer): string | null {
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
     return "image/jpeg";
   }
@@ -20,15 +21,19 @@ export function sniffImageMimeFromBuffer(buffer: Buffer, fileName?: string | nul
   ) {
     return "image/webp";
   }
-  if (buffer.length >= 6 && buffer.toString("ascii", 0, 6) === "GIF87a") return "image/gif";
-  if (buffer.length >= 6 && buffer.toString("ascii", 0, 6) === "GIF89a") return "image/gif";
-
+  if (buffer.length >= 6 && (buffer.toString("ascii", 0, 6) === "GIF87a" || buffer.toString("ascii", 0, 6) === "GIF89a")) {
+    return "image/gif";
+  }
   if (buffer.length >= 12 && buffer.toString("ascii", 4, 8) === "ftyp") {
     const brand = buffer.toString("ascii", 8, 12).toLowerCase();
-    if (brand.startsWith("hei") || brand === "mif1" || brand === "msf1") {
-      return "image/heic";
-    }
+    if (brand.startsWith("hei") || brand === "mif1" || brand === "msf1") return "image/heic";
   }
+  return null;
+}
+
+export function sniffImageMimeFromBuffer(buffer: Buffer, fileName?: string | null): string | null {
+  const fromBytes = sniffImageMimeFromBytes(buffer);
+  if (fromBytes) return fromBytes;
 
   const name = (fileName ?? "").toLowerCase();
   if (name.endsWith(".png")) return "image/png";

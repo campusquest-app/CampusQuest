@@ -11,7 +11,8 @@ create table if not exists public.user_activity_events (
       'manual_log',
       'post_created',
       'memory_saved',
-      'achievement'
+      'achievement',
+      'admin_xp_adjustment'
     )
   ),
   title text not null check (char_length(trim(title)) between 1 and 200),

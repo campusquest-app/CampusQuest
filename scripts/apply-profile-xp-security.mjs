@@ -80,7 +80,11 @@ async function applyWithPg() {
     return false;
   }
 
-  const client = new pg.default.Client({ connectionString, ssl: { rejectUnauthorized: false } });
+  const localDb = /localhost|127\.0\.0\.1/.test(connectionString);
+  const client = new pg.default.Client({
+    connectionString,
+    ssl: localDb ? undefined : { rejectUnauthorized: true },
+  });
   await client.connect();
   try {
     for (const file of MIGRATION_FILES) {

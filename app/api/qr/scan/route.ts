@@ -2,12 +2,14 @@ import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { scanCampusQuestQrCode } from "@/lib/server/qrCodeScan";
 import { enforceRateLimit } from "@/lib/server/security";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { campusQrScanSchema, readJson } from "@/lib/server/validation";
 
 export async function POST(request: Request) {
   try {
+    assertLaunchProgressionEnabled();
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "qr:scan", limit: 40, windowMs: 60_000 });
     const input = await readJson(request, campusQrScanSchema);

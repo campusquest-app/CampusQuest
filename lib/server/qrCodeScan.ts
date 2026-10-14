@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/server/http";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { getTrustedStatsWriteClient } from "@/lib/server/trustedStatsWrite";
 import { recordQrScanActivityEvent } from "@/lib/server/userActivityEvents";
 import { canBypassQrScanLimits, fetchProfileRole, type ProfileRole } from "@/lib/server/permissions";
@@ -552,6 +553,7 @@ export async function scanCampusQuestQrCode(args: {
   idempotencyKey?: string | null;
   userEmail?: string | null;
 }) {
+  assertLaunchProgressionEnabled();
   const { userClient, userId } = args;
   const code = normalizeQrCode(args.code);
   logQrScanServer("validation_request", { code, userId: userId.slice(0, 8) });

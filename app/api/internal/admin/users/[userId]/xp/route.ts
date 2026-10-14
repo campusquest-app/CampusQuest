@@ -1,5 +1,6 @@
 import { fail, ok, ApiError } from "@/lib/server/http";
 import { requireAdminUser } from "@/lib/server/adminAuth";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { adminAdjustUserXp } from "@/lib/server/adminXpAdjustment";
 import { enforceRateLimit } from "@/lib/server/security";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -7,6 +8,7 @@ import { adminXpAdjustSchema, readJson, uuidSchema } from "@/lib/server/validati
 
 export async function GET(request: Request, context: { params: { userId: string } }) {
   try {
+    assertLaunchProgressionEnabled();
     const auth = await requireAdminUser(request);
     enforceRateLimit({
       userId: auth.user.id,
@@ -49,6 +51,7 @@ export async function GET(request: Request, context: { params: { userId: string 
 
 export async function POST(request: Request, context: { params: { userId: string } }) {
   try {
+    assertLaunchProgressionEnabled();
     const auth = await requireAdminUser(request);
     enforceRateLimit({
       userId: auth.user.id,
