@@ -23,7 +23,10 @@ import {
   logActivity,
   scanQrQuest,
 } from "@/lib/server/services";
-import { sniffImageMimeFromBytes } from "@/lib/server/sniffImageMime";
+import { assertImageBytesMatchDeclaredMime, sniffImageMimeFromBytes } from "@/lib/server/sniffImageMime";
+import { attemptBossBattle, startBossBattle } from "@/lib/server/services";
+import { adminAdjustUserXp, repairSuspiciousUserXp } from "@/lib/server/adminXpAdjustment";
+import { processXpMilestoneCrossings } from "@/lib/server/xpMilestones";
 
 const root = process.cwd();
 
@@ -68,6 +71,30 @@ describe("hidden gamification is denied before any database write", () => {
     ).rejects.toSatisfy(featureDisabled);
   });
 
+  it("rejects boss combat, milestone unlocks, and admin XP adjustments", async () => {
+    await expect(
+      attemptBossBattle({ userClient: userClient as never, userId: "student", bossId: "boss" }),
+    ).rejects.toSatisfy(featureDisabled);
+    await expect(
+      startBossBattle({ userClient: userClient as never, userId: "student", bossId: "boss" }),
+    ).rejects.toSatisfy(featureDisabled);
+    await expect(
+      adminAdjustUserXp({
+        adminUserId: "admin",
+        adminEmail: "admin@campusquestapp.com",
+        targetUserId: "student",
+        amount: 500,
+        action: "add",
+        reason: "manual grant",
+      }),
+    ).rejects.toSatisfy(featureDisabled);
+    await expect(repairSuspiciousUserXp({ username: "student" })).rejects.toSatisfy(featureDisabled);
+    // Client-supplied XP numbers must never unlock milestones while progression is off.
+    await expect(
+      processXpMilestoneCrossings({ userId: "student", previousTotalXp: 0, currentTotalXp: 999_999 }),
+    ).resolves.toEqual({ newlyUnlocked: [] });
+  });
+
   it("keeps the student-callable reward routes behind the same gate", () => {
     const routes = [
       "app/api/activities/log/route.ts",
@@ -79,9 +106,14 @@ describe("hidden gamification is denied before any database write", () => {
       "app/api/guilds/join/route.ts",
       "app/api/guilds/route.ts",
       "app/api/me/boss/route.ts",
+      "app/api/bosses/attempt/route.ts",
+      "app/api/bosses/start/route.ts",
+      "app/api/bosses/join/route.ts",
+      "app/api/me/milestones/evaluate/route.ts",
       "app/api/proof/upload/route.ts",
       "app/api/quests/admin/[questId]/complete/route.ts",
       "app/api/internal/admin/users/[userId]/xp/route.ts",
+      "app/api/internal/admin/repair-suspicious-xp/route.ts",
     ];
     for (const route of routes) {
       const source = fs.readFileSync(path.join(root, route), "utf8");
@@ -121,6 +153,13 @@ describe("DM media stays inside the conversation", () => {
     expect(sniffImageMimeFromBytes(png)).toBe("image/png");
     expect(sniffImageMimeFromBytes(Buffer.from("not-an-image"))).toBeNull();
     expect(sniffAudioMimeFromBytes(Buffer.from("RIFF....WAVE", "ascii"))).toBe("audio/wav");
+    expect(assertImageBytesMatchDeclaredMime(png, "image/png")).toBe("image/png");
+    expect(() => assertImageBytesMatchDeclaredMime(png, "image/jpeg")).toThrow(ApiError);
+    expect(() => assertImageBytesMatchDeclaredMime(Buffer.from("<svg onload=alert(1)>"), "image/png")).toThrow(
+      ApiError,
+    );
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+    expect(assertImageBytesMatchDeclaredMime(jpeg, "image/jpg")).toBe("image/jpeg");
   });
 });
 

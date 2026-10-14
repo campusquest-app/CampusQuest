@@ -1,3 +1,4 @@
+import { progressionRewardsEnabled } from "@/lib/featureFlags";
 import { ApiError } from "@/lib/server/http";
 import { createAdminClient } from "@/lib/server/supabase";
 
@@ -34,6 +35,8 @@ export async function processXpMilestoneCrossings(args: {
   previousTotalXp: number;
   currentTotalXp: number;
 }): Promise<{ newlyUnlocked: XpMilestoneKey[] }> {
+  // Launch kill switch: milestone unlocks are progression rewards.
+  if (!progressionRewardsEnabled()) return { newlyUnlocked: [] };
   const previousTotalXp = Math.max(0, Math.floor(args.previousTotalXp));
   const currentTotalXp = Math.max(0, Math.floor(args.currentTotalXp));
   if (currentTotalXp < previousTotalXp) {

@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/server/http";
 import { logAdminAuditAction } from "@/lib/server/audit";
 import { calculateLevelProgression } from "@/lib/server/gameplay";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { createAdminClient } from "@/lib/server/supabase";
 import { getTrustedStatsWriteClient } from "@/lib/server/trustedStatsWrite";
 
@@ -14,6 +15,7 @@ export async function adminAdjustUserXp(args: {
   action: AdminXpAdjustAction;
   reason: string;
 }) {
+  assertLaunchProgressionEnabled();
   const { adminUserId, adminEmail, targetUserId, amount, action, reason } = args;
 
   if (!Number.isInteger(amount) || amount <= 0) {
@@ -178,6 +180,7 @@ export async function recomputeUserXpFromLedger(userId: string): Promise<{
 
 /** Find and repair users with suspicious XP (e.g. exploit victims/cheaters). */
 export async function repairSuspiciousUserXp(args?: { username?: string; minXp?: number }) {
+  assertLaunchProgressionEnabled();
   const admin = createAdminClient();
   const minXp = args?.minXp ?? 50_000;
 

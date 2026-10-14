@@ -230,6 +230,12 @@ export const resolveQuadPostReportSchema = z.object({
   reviewerEmail: z.string().trim().email().optional(),
 });
 
+export const resolveContentReportSchema = z.object({
+  reportId: uuidSchema,
+  status: z.enum(["resolved", "dismissed", "reviewing"]),
+  moderatorNote: z.string().trim().max(1000).optional(),
+});
+
 export const deleteReportedQuadPostSchema = z.object({
   postId: uuidSchema,
   moderatorNote: z.string().trim().max(1000).optional(),

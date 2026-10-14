@@ -1511,6 +1511,7 @@ export async function startBossBattle(args: {
   userId: string;
   bossId: string;
 }) {
+  assertLaunchProgressionEnabled();
   const { userClient, userId, bossId } = args;
   const { data: boss, error: bossError } = await userClient
     .from("bosses")
@@ -1558,6 +1559,7 @@ export async function attemptBossBattle(args: {
   activityId?: string;
   questCompletionId?: string;
 }) {
+  assertLaunchProgressionEnabled();
   const { userClient, userId, bossId, activityId, questCompletionId } = args;
   const { data: boss, error: bossError } = await userClient
     .from("bosses")

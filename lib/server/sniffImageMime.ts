@@ -1,4 +1,5 @@
 /** Best-effort image MIME detection from magic bytes + filename (server-safe). */
+import { ApiError } from "@/lib/server/http";
 
 /** Magic bytes only. Filename and client Content-Type are not evidence. */
 export function sniffImageMimeFromBytes(buffer: Buffer): string | null {
@@ -29,6 +30,23 @@ export function sniffImageMimeFromBytes(buffer: Buffer): string | null {
     if (brand.startsWith("hei") || brand === "mif1" || brand === "msf1") return "image/heic";
   }
   return null;
+}
+
+/**
+ * Launch upload hardening: the stored content type must be backed by the
+ * bytes. Throws when the buffer is not a recognizable image or when the magic
+ * bytes disagree with the declared MIME (e.g. HTML/SVG uploaded as image/png).
+ */
+export function assertImageBytesMatchDeclaredMime(buffer: Buffer, declaredMime: string): string {
+  const declared = declaredMime.toLowerCase().trim().replace("image/jpg", "image/jpeg");
+  const sniffed = sniffImageMimeFromBytes(buffer);
+  if (!sniffed) {
+    throw new ApiError(400, "This image format is not supported.", "IMAGE_FORMAT_UNSUPPORTED");
+  }
+  if (sniffed !== declared) {
+    throw new ApiError(400, "Image contents do not match the declared type.", "IMAGE_TYPE_MISMATCH");
+  }
+  return sniffed;
 }
 
 export function sniffImageMimeFromBuffer(buffer: Buffer, fileName?: string | null): string | null {

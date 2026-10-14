@@ -3,6 +3,7 @@
 import type { ModerationTabId } from "@/lib/admin/navigation";
 import { AppealsModerationCard } from "@/components/AppealsModerationCard";
 import { CampusContentModerationCard } from "@/components/CampusContentModerationCard";
+import { ContentReportsModerationCard } from "@/components/ContentReportsModerationCard";
 import { QuadPostModerationCard } from "@/components/QuadPostModerationCard";
 import { ModerationDashboardCard } from "@/components/ModerationDashboardCard";
 import { UserSafetyManagementCard } from "@/components/UserSafetyManagementCard";
@@ -37,6 +38,7 @@ export function AdminModerationSection({
       {activeTab === "content" ? (
         <div className="space-y-4">
           <QuadPostModerationCard />
+          <ContentReportsModerationCard />
           <CampusContentModerationCard />
         </div>
       ) : null}

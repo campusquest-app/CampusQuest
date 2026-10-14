@@ -16,6 +16,13 @@ vi.mock("../audit", () => ({
   logAdminAuditAction: vi.fn().mockResolvedValue(undefined),
 }));
 
+// These cases cover the adjustment logic itself; the launch kill switch that
+// refuses every adjustment while progression is off is covered in
+// securityClosure.test.ts.
+vi.mock("../launchProgression", () => ({
+  assertLaunchProgressionEnabled: () => undefined,
+}));
+
 import { adminAdjustUserXp } from "../adminXpAdjustment";
 
 function chain(result: { data?: unknown; error?: { message: string } | null }) {
