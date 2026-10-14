@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { isAdminEmail } from "@/lib/server/adminAuth";
+import { secretsEqual } from "@/lib/server/secretCompare";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { activatePolicyVersion, getActivePolicyVersion } from "@/lib/server/services";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -11,7 +12,7 @@ function assertLegalAdminKey(request: Request) {
     throw new ApiError(500, "Missing LEGAL_POLICY_ADMIN_KEY for legal policy route.", "LEGAL_POLICY_ADMIN_KEY_MISSING");
   }
   const provided = request.headers.get("x-legal-policy-admin-key");
-  if (!provided || provided !== expected) {
+  if (!secretsEqual(provided, expected)) {
     throw new ApiError(403, "Forbidden.", "FORBIDDEN");
   }
 }

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { updateStreak } from "@/lib/server/gameplay";
 import { enforceRateLimit } from "@/lib/server/security";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { requireAuthUser } from "@/lib/server/supabase";
 
 const streakSchema = z.object({
@@ -11,6 +12,7 @@ const streakSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    assertLaunchProgressionEnabled();
     const auth = await requireAuthUser(request as any);
     enforceRateLimit({ userId: auth.user.id, routeKey: "streak:update", limit: 60, windowMs: 60_000 });
     const payload = streakSchema.parse(await request.json());

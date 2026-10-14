@@ -15,7 +15,13 @@ import { canEnterAuthenticatedApp, hasConfirmedEmail } from "@/lib/authAccess";
 import { createAdminClient, createPublicClient } from "@/lib/server/supabase";
 import { tryAwardTorchBearerBadge } from "@/lib/server/betaFounders";
 import { touchUserActivityById } from "@/lib/server/userActivity";
+import { enforceKeyedRateLimit } from "@/lib/server/security";
 import { authLoginSchema, readJson } from "@/lib/server/validation";
+
+function loginClientIp(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return forwarded || request.headers.get("x-real-ip")?.trim() || "unknown";
+}
 
 function loginFail(failure: ClassifiedSignInFailure, debug?: Record<string, unknown>) {
   const logFailure = failure.status >= 500 ? logAuthError : logAuthFlow;
@@ -35,6 +41,22 @@ function loginFail(failure: ClassifiedSignInFailure, debug?: Record<string, unkn
 export async function POST(request: Request) {
   try {
     const input = await readJson(request, authLoginSchema);
+    enforceKeyedRateLimit({
+      key: loginClientIp(request),
+      routeKey: "auth:login:ip",
+      limit: 20,
+      windowMs: 15 * 60_000,
+      message: "Too many sign-in attempts. Try again shortly.",
+      code: "LOGIN_RATE_LIMITED",
+    });
+    enforceKeyedRateLimit({
+      key: input.email.trim().toLowerCase(),
+      routeKey: "auth:login:email",
+      limit: 8,
+      windowMs: 15 * 60_000,
+      message: "Too many sign-in attempts. Try again shortly.",
+      code: "LOGIN_RATE_LIMITED",
+    });
     const supabase = createPublicClient();
 
     const { data, error } = await supabase.auth.signInWithPassword({

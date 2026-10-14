@@ -518,7 +518,7 @@ describe("AUD-001 (G/J) POST /api/me/boss refuses client-selected rewards", () =
     vi.clearAllMocks();
   });
 
-  it("returns 403 without persisting a boss drop or inventory grant", async () => {
+  it("returns feature-disabled before a client can select a boss reward", async () => {
     const logSecurityEvent = vi.fn(async () => undefined);
     vi.doMock("../supabase", () => ({
       requireAuthUser: async () => ({
@@ -547,11 +547,12 @@ describe("AUD-001 (G/J) POST /api/me/boss refuses client-selected rewards", () =
       }),
     );
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(404);
     const body = (await response.json()) as { error?: { code?: string } };
-    expect(body.error?.code).toBe("BOSS_DROP_SELF_GRANT_FORBIDDEN");
-    expect(logSecurityEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: "user-1", eventType: "blocked_boss_drop_grant" }),
+    expect(body.error?.code).toBe("FEATURE_DISABLED");
+    expect(logSecurityEvent).not.toHaveBeenCalled();
+    expect(fs.readFileSync(path.join(process.cwd(), "app/api/me/boss/route.ts"), "utf8")).toContain(
+      "BOSS_DROP_SELF_GRANT_FORBIDDEN",
     );
   });
 });

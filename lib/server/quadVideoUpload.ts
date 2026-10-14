@@ -10,6 +10,7 @@ import {
   videoProcessErrorMessage,
   videoTooLargeErrorMessage,
 } from "@/lib/quadVideo";
+import { assertImageBytesMatchDeclaredMime } from "@/lib/server/sniffImageMime";
 
 const QUAD_MEDIA_BUCKET = "quad-post-images";
 
@@ -184,6 +185,7 @@ export async function uploadQuadPosterBuffer(args: {
   if (args.buffer.length === 0 || args.buffer.length > 5 * 1024 * 1024) {
     throw new ApiError(400, "Poster image is invalid or too large.", "POSTER_SIZE");
   }
+  assertImageBytesMatchDeclaredMime(args.buffer, mime);
   const admin = createAdminClient();
   const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
   const thumbnailPath = `${args.userId}/quad-media/${args.mediaId}/poster.${ext}`;

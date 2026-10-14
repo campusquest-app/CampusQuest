@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiRequestError, fetchAuthed } from "@/lib/client/dashboardApi";
 import { AppealsModerationCard } from "@/components/AppealsModerationCard";
 import { CampusContentModerationCard } from "@/components/CampusContentModerationCard";
+import { ContentReportsModerationCard } from "@/components/ContentReportsModerationCard";
 import { QuadPostModerationCard } from "@/components/QuadPostModerationCard";
 import { ModerationDashboardCard } from "@/components/ModerationDashboardCard";
 import { OrganizationModerationCard } from "@/components/OrganizationModerationCard";
@@ -105,6 +106,7 @@ export function InternalModerationDashboard() {
         <AppealsModerationCard />
         <ModerationDashboardCard />
         <QuadPostModerationCard />
+        <ContentReportsModerationCard />
         <CampusContentModerationCard />
         <OrganizationModerationCard />
       </div>

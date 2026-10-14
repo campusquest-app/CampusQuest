@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/server/http";
 import { createAdminClient } from "@/lib/server/supabase";
+import { assertImageBytesMatchDeclaredMime } from "@/lib/server/sniffImageMime";
 import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
 import { createContentReport } from "@/lib/server/contentReports";
 import { createNotification } from "@/lib/server/notifications";
@@ -872,6 +873,7 @@ export async function uploadMarketplaceImage(args: {
   if (args.buffer.length === 0 || args.buffer.length > 25 * 1024 * 1024) {
     throw new ApiError(400, "This image file is too large.", "IMAGE_TOO_LARGE");
   }
+  assertImageBytesMatchDeclaredMime(args.buffer, mime);
   const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
   const path = `${args.userId}/marketplace/${crypto.randomUUID()}.${ext}`;
   const svc = admin();

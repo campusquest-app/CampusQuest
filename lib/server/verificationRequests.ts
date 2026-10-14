@@ -1,3 +1,4 @@
+import { cleanedSearchTerm, sanitizeIlikeNeedle } from "@/lib/server/friendsGuildsSearch";
 import { ApiError } from "@/lib/server/http";
 import { createAdminClient } from "@/lib/server/supabase";
 import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
@@ -88,19 +89,23 @@ export async function searchOrganizationsForClaim(args: {
   userClient: UserClient;
   query: string;
 }): Promise<OrganizationClaimMatch[]> {
-  const needle = args.query.trim();
+  const needle = cleanedSearchTerm(args.query);
+  if (needle.length < 2) {
+    throw new ApiError(400, "Enter at least 2 characters.", "ORG_SEARCH_QUERY_INVALID");
+  }
+  const pattern = sanitizeIlikeNeedle(args.query);
   const { data, error } = await args.userClient
     .from("student_organizations")
     .select("id, name, category, logo_url, description, source")
     .eq("is_approved", true)
-    .ilike("name", `%${needle}%`)
+    .ilike("name", pattern)
     .limit(12);
   if (error) {
     const fallback = await args.userClient
       .from("student_organizations")
       .select("id, name, category, logo_url, description")
       .eq("is_approved", true)
-      .ilike("name", `%${needle}%`)
+      .ilike("name", pattern)
       .limit(12);
     if (fallback.error) throw new ApiError(400, "Could not search organizations.", "ORG_SEARCH_FAILED");
     return rankOrganizationClaimMatches({

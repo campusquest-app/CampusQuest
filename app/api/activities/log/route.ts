@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { logActivity } from "@/lib/server/services";
@@ -8,6 +9,7 @@ import { logActivitySchema, readJson } from "@/lib/server/validation";
 
 export async function POST(request: Request) {
   try {
+    assertLaunchProgressionEnabled();
     const auth = await requireAuthUser(request as any);
     enforceRateLimit({ userId: auth.user.id, routeKey: "activity:log", limit: 20, windowMs: 60_000 });
     const input = await readJson(request, logActivitySchema);

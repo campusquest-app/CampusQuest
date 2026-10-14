@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/server/http";
 import { createAdminClient } from "@/lib/server/supabase";
 import { logPipelineFailure, logPipelineStep, readErrorCode } from "@/lib/server/pipelineLog";
+import { assertImageBytesMatchDeclaredMime } from "@/lib/server/sniffImageMime";
 
 /**
  * Disambiguate quad_posts → profiles embed (post_likes also links both tables).
@@ -77,6 +78,7 @@ export async function normalizeQuadPostProofUrl(
   if (buffer.length > MAX_PROOF_BYTES) {
     throw new ApiError(400, "Proof image is too large (max 4 MB).", "PROOF_TOO_LARGE");
   }
+  assertImageBytesMatchDeclaredMime(buffer, mime);
 
   const admin = createAdminClient();
   const ext = extensionForMime(mime);
@@ -147,6 +149,18 @@ export async function uploadImageBufferToStorage(args: {
       detail: { bytes: args.buffer.length, maxBytes: MAX_UPLOAD_IMAGE_BYTES },
     });
     throw new ApiError(413, "Image is too large (max 8 MB).", "IMAGE_TOO_LARGE");
+  }
+  try {
+    assertImageBytesMatchDeclaredMime(args.buffer, normalizedMime);
+  } catch (error) {
+    logPipelineFailure({
+      pipeline,
+      step: "validate-bytes",
+      status: 400,
+      code: error instanceof ApiError ? error.code : "IMAGE_FORMAT_UNSUPPORTED",
+      detail: { mime: normalizedMime },
+    });
+    throw error;
   }
   logPipelineStep(pipeline, "validate-image", { bytes: args.buffer.length, mime: normalizedMime });
 

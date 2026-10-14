@@ -56,8 +56,13 @@ export type GuildSearchRow = {
   logoUrl: string | null;
 };
 
-function sanitizeIlikeNeedle(query: string): string {
-  return `%${query.replace(/[%_,]/g, "").trim()}%`;
+export function sanitizeIlikeNeedle(query: string): string {
+  const cleaned = query.replace(/[%_,]/g, "").trim().slice(0, 120);
+  return `%${cleaned}%`;
+}
+
+export function cleanedSearchTerm(query: string): string {
+  return query.replace(/[%_,]/g, "").trim().slice(0, 120);
 }
 
 function normalizeQuery(raw: string): string {

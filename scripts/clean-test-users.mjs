@@ -365,7 +365,11 @@ async function main() {
   let result;
   if (connectionString) {
     const pg = await import("pg");
-    const client = new pg.default.Client({ connectionString, ssl: { rejectUnauthorized: false } });
+    const localDb = /localhost|127\.0\.0\.1/.test(connectionString);
+    const client = new pg.default.Client({
+      connectionString,
+      ssl: localDb ? undefined : { rejectUnauthorized: true },
+    });
     await client.connect();
     try {
       result = await cleanupWithPg(client, admin, deleteIds, protectedUsers);

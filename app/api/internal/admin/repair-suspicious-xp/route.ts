@@ -1,6 +1,7 @@
 import { fail, ok } from "@/lib/server/http";
 import { requireAdminUser } from "@/lib/server/adminAuth";
 import { repairSuspiciousUserXp } from "@/lib/server/adminXpAdjustment";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { enforceRateLimit } from "@/lib/server/security";
 import { z } from "zod";
 
@@ -11,6 +12,7 @@ const repairSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    assertLaunchProgressionEnabled();
     const auth = await requireAdminUser(request);
     enforceRateLimit({
       userId: auth.user.id,

@@ -33,7 +33,7 @@ On every login, the QA profile’s onboarding state is wiped so you can re-test 
 
 | Asset | URL |
 |--------|-----|
-| Privacy Policy | `https://campusquest.app/legal/privacy` |
-| Terms of Service | `https://campusquest.app/legal/terms` |
-| Community Guidelines | `https://campusquest.app/legal/community-guidelines` |
-| Support | `https://campusquest.app/support` |
+| Privacy Policy | `https://campusquestapp.com/legal/privacy` |
+| Terms of Service | `https://campusquestapp.com/legal/terms` |
+| Community Guidelines | `https://campusquestapp.com/legal/community-guidelines` |
+| Support | `https://campusquestapp.com/support` |

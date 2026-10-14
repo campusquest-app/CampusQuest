@@ -29,6 +29,7 @@ export function userHasModerationAdminAccess(user: {
 }): boolean {
   const email = user.email?.trim();
   if (!email) return false;
-  if (!isAuthEmailConfirmed(user)) return false;
+  // Allow-list email is not authority until the auth provider has confirmed it.
+  if (!user.email_confirmed_at && !user.confirmed_at) return false;
   return isAdminEmail(email);
 }

@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/server/http";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { logAdminAuditAction } from "@/lib/server/audit";
 import { addXpInternal } from "@/lib/server/services";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -802,6 +803,7 @@ export async function completeAdminQuestForUser(args: {
   proofUrl?: string;
   qrCodeId?: string;
 }) {
+  assertLaunchProgressionEnabled();
   const admin = createAdminClient();
   const { data: quest, error: questError } = await admin
     .from("admin_quests")

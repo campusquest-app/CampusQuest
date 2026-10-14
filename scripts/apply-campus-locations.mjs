@@ -84,7 +84,11 @@ async function applyWithPg() {
     throw new Error(`Migration not found: ${path}`);
   }
 
-  const client = new pg.default.Client({ connectionString, ssl: { rejectUnauthorized: false } });
+  const localDb = /localhost|127\.0\.0\.1/.test(connectionString);
+  const client = new pg.default.Client({
+    connectionString,
+    ssl: localDb ? undefined : { rejectUnauthorized: true },
+  });
   await client.connect();
   try {
     const sql = readFileSync(path, "utf8");

@@ -2,10 +2,12 @@ import { fail, ok, ApiError } from "@/lib/server/http";
 import { logSecurityEvent } from "@/lib/server/profileSecurity";
 import { enforceRateLimit } from "@/lib/server/security";
 import { fetchBossDropsForUser } from "@/lib/server/bossDrops";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { requireAuthUser } from "@/lib/server/supabase";
 
 export async function GET(request: Request) {
   try {
+    assertLaunchProgressionEnabled();
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:boss:get", limit: 120, windowMs: 60_000 });
     const { searchParams } = new URL(request.url);
@@ -13,7 +15,7 @@ export async function GET(request: Request) {
     const drops = await fetchBossDropsForUser(auth.userClient, auth.user.id, limit);
     return ok({ drops });
   } catch (error) {
-    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+    if (error instanceof ApiError && (error.code === "FEATURE_DISABLED" || error.status === 401 || error.status === 403)) {
       return fail(error);
     }
     return ok({ drops: [] });
@@ -22,6 +24,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    assertLaunchProgressionEnabled();
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:boss:post", limit: 60, windowMs: 60_000 });
 

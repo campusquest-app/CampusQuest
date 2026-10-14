@@ -38,12 +38,7 @@ type GeocodeApiResponse = {
 export const MIN_PUBLIC_MAP_CONFIDENCE = 0.75;
 
 function googleMapsApiKey(): string | null {
-  return (
-    process.env.GOOGLE_MAPS_GEOCODING_API_KEY?.trim() ||
-    process.env.GOOGLE_MAPS_SERVER_API_KEY?.trim() ||
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ||
-    null
-  );
+  return process.env.GOOGLE_MAPS_GEOCODING_API_KEY?.trim() || process.env.GOOGLE_MAPS_SERVER_API_KEY?.trim() || null;
 }
 
 export function buildUriBuildingGeocodeQuery(buildingName: string): string {

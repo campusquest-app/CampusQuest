@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
+import { assertLaunchProgressionEnabled } from "@/lib/server/launchProgression";
 import { enforceRateLimit } from "@/lib/server/security";
 import { getUserXpMilestoneStatus, processXpMilestoneCrossings } from "@/lib/server/xpMilestones";
 import { requireAuthUser } from "@/lib/server/supabase";
@@ -13,6 +14,7 @@ const evaluateSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    assertLaunchProgressionEnabled();
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:milestones:evaluate", limit: 40, windowMs: 60_000 });
     const input = await readJson(request, evaluateSchema);

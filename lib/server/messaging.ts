@@ -3,6 +3,8 @@ import { ApiError } from "@/lib/server/http";
 import {
   buildSharedPostPreview,
   mapDirectMessageRow,
+  presentDirectMessageMedia,
+  storedDmMediaRef,
   MESSAGE_SELECT,
   type DirectMessageType,
   type SharedPostType,
@@ -1127,7 +1129,7 @@ export async function listConversations(args: { userClient: SupabaseClientLike; 
     const participant = participantByConvo.get(conversationId);
     const memberRows = participantsByConvo.get(conversationId) ?? [];
     const latest = latestByConversation.get(conversationId);
-    const latestMessage = latest ? mapDirectMessageRow(latest, false) : null;
+    const latestMessage = latest ? await presentDirectMessageMedia(mapDirectMessageRow(latest, false)) : null;
     const lastReadAt = participant?.last_read_at ?? null;
 
     if (convoType === "group") {
@@ -1321,11 +1323,13 @@ export async function listConversationMessages(args: {
     }
   }
 
-  const mappedMessages = msgRows.reverse().map((message) => {
-    const dto = mapDirectMessageRow(message, favSet.has(message.id));
-    const sender = senderMap.get(message.sender_id);
-    return sender ? { ...dto, sender } : dto;
-  });
+  const mappedMessages = await Promise.all(
+    msgRows.reverse().map(async (message) => {
+      const dto = await presentDirectMessageMedia(mapDirectMessageRow(message, favSet.has(message.id)));
+      const sender = senderMap.get(message.sender_id);
+      return sender ? { ...dto, sender } : dto;
+    }),
+  );
 
   // Re-resolve shared posts from the referenced post ID so edits/deletes
   // surface live ("This post is no longer available.") without storing a copy.
@@ -1579,7 +1583,12 @@ export async function sendConversationMessage(args: {
       recipient_id: recipientId,
       content: trimmed,
       type,
-      image_url: type === "image" || type === "audio" ? imageUrl?.trim() ?? null : null,
+      image_url:
+        type === "image"
+          ? storedDmMediaRef(imageUrl?.trim() ?? "", conversationId, "dm-images")
+          : type === "audio"
+            ? storedDmMediaRef(imageUrl?.trim() ?? "", conversationId, "dm-audio")
+            : null,
       shared_post_id: type === "shared_post" ? sharedPostId : null,
       shared_post_type: type === "shared_post" ? sharedPostType : null,
       metadata: messageMetadata,
@@ -1626,7 +1635,7 @@ export async function sendConversationMessage(args: {
     }
   } catch {}
 
-  return mapDirectMessageRow(inserted, false);
+  return presentDirectMessageMedia(mapDirectMessageRow(inserted, false));
 }
 
 export async function sharePostToConversations(args: {

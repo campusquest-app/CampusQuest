@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/server/http";
+import { secretsEqual } from "@/lib/server/secretCompare";
 import { requireAdminUser } from "@/lib/server/adminAuth";
 
 function bearerToken(request: Request): string | null {
@@ -12,7 +13,7 @@ export function hasInternalRepairSecret(request: Request): boolean {
   if (!token) return false;
   const dedicated = process.env.CQ_INTERNAL_REPAIR_SECRET?.trim();
   const cron = process.env.CRON_SECRET?.trim();
-  return Boolean((dedicated && token === dedicated) || (cron && token === cron));
+  return secretsEqual(token, dedicated) || secretsEqual(token, cron);
 }
 
 /** GitHub Actions / cron: signed secret. Admins: confirmed platform-admin session. */

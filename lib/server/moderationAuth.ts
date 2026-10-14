@@ -8,11 +8,11 @@
 
 import type { User } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/server/http";
-import { isAdminEmailFallback } from "@/lib/platformAdmin";
-import { isAdminEmail, isAuthEmailConfirmed } from "@/lib/server/adminEmails";
+import { secretsEqual } from "@/lib/server/secretCompare";
 import { findAuthUserIdByEmail } from "@/lib/server/authBootstrap";
 import {
   fetchProfileRole,
+  hasVerifiedAuthEmail,
   roleAtLeast,
   userHasPlatformAdminAccess,
 } from "@/lib/server/permissions";
@@ -24,7 +24,7 @@ export function assertModerationApiKey(request: Request): void {
     throw new ApiError(500, "Missing MESSAGE_MODERATION_API_KEY for moderation route.", "MODERATION_KEY_MISSING");
   }
   const provided = request.headers.get("x-message-moderation-key");
-  if (!provided || provided !== expected) {
+  if (!secretsEqual(provided, expected)) {
     throw new ApiError(403, "Forbidden.", "FORBIDDEN");
   }
 }
@@ -39,10 +39,6 @@ export async function assertPlatformModerationAdminEmail(request: Request): Prom
     throw new ApiError(403, "Forbidden.", "FORBIDDEN");
   }
 
-  if (isAdminEmail(adminEmail) || isAdminEmailFallback(adminEmail)) {
-    return adminEmail;
-  }
-
   const userId = await findAuthUserIdByEmail(adminEmail);
   if (!userId) {
     throw new ApiError(403, "Forbidden.", "FORBIDDEN");
@@ -53,7 +49,7 @@ export async function assertPlatformModerationAdminEmail(request: Request): Prom
   if (error || !data.user) {
     throw new ApiError(403, "Forbidden.", "FORBIDDEN");
   }
-  if (!isAuthEmailConfirmed(data.user)) {
+  if (!hasVerifiedAuthEmail(data.user)) {
     throw new ApiError(403, "Forbidden.", "FORBIDDEN");
   }
 

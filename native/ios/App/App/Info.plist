@@ -27,13 +27,13 @@
 	<key>NSCameraUsageDescription</key>
 	<string>CampusQuest uses the camera to take photos and videos for Quad posts, campus memories, and profile media.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>CampusQuest uses the microphone when you record videos for Quad posts and campus memories.</string>
+	<string>CampusQuest uses the microphone when you record videos for Quad posts and campus memories, or send a voice note in direct messages.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>CampusQuest needs photo library access so you can choose photos and videos for Quad posts, campus memories, and your profile.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>CampusQuest can save media you capture to your photo library when you choose to keep it.</string>
+	<string>CampusQuest can save a photo or video to your photo library when you choose Save from the share sheet.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>CampusQuest uses your location while you use the app for The Realm map, nearby quests, check-ins, and campus event placement.</string>
+	<string>CampusQuest uses your location while you use the app to show where you are on The Realm campus map, give directions, and place campus events.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIBackgroundModes</key>

@@ -66,7 +66,8 @@
   --cq-topnav-h: 0px;
   --cq-quad-header-h: 2.35rem;
   --cq-bottom-nav-h: 5.2rem;
-  --cq-dock-cradle-rise: 22px;
+  --cq-dock-cradle-rise: 30px;
+  --cq-dock-cradle-gap: 7px;
   --cq-dock-bottom-offset: 0px;
   --cq-dock-scale: 1;
   --cq-dock-opacity: 1;
@@ -7527,11 +7528,14 @@ html[data-cq-quad-hidden="true"] .cq-quad-header-shell {
 
 .cq-dock-nav__shape {
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: calc(-1 * var(--cq-dock-cradle-rise, 30px));
   z-index: 0;
   display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
   pointer-events: none;
   overflow: visible;
 }
@@ -7562,8 +7566,8 @@ html[data-cq-quad-hidden="true"] .cq-quad-header-shell {
   justify-items: center;
   gap: 0;
   box-sizing: border-box;
-  min-height: calc(var(--cq-dock-cradle-rise, 22px) + 4.45rem + env(safe-area-inset-bottom, 0px));
-  padding: var(--cq-dock-cradle-rise, 22px) 0.4rem calc(0.32rem + env(safe-area-inset-bottom, 0px));
+  --cq-dock-pad-top: 0.85rem;
+  padding: var(--cq-dock-pad-top) 0.4rem calc(0.7rem + env(safe-area-inset-bottom, 0px));
   border-radius: 0;
   background: transparent;
   border: none;
@@ -7585,8 +7589,6 @@ html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav {
 }
 
 html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__rail {
-  min-height: calc(var(--cq-dock-cradle-rise, 22px) + 4.45rem + env(safe-area-inset-bottom, 0px));
-  padding-top: var(--cq-dock-cradle-rise, 22px);
   background: transparent;
 }
 
@@ -7793,7 +7795,9 @@ html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__item {
   align-items: center;
   justify-content: center;
   --cq-dock-map-size: 3.65rem;
-  margin-top: calc(var(--cq-dock-map-size) / -2 - 0.15rem);
+  margin-top: calc(
+    var(--cq-dock-cradle-gap, 7px) - var(--cq-dock-cradle-rise, 30px) - var(--cq-dock-pad-top, 0.85rem)
+  );
   height: var(--cq-dock-map-size);
   width: var(--cq-dock-map-size);
   min-height: 2.75rem;

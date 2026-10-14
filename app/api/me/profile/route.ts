@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { resolveIsPlatformAdmin } from "@/lib/server/campusAccess";
+import { hasVerifiedAuthEmail } from "@/lib/server/permissions";
 import { fail, ok, ApiError } from "@/lib/server/http";
 import {
   formatNextChangeDateLabel,
@@ -79,7 +80,7 @@ export async function GET(request: Request) {
     // Self-heal: users recognized as admins by the authorization system but
     // with a legacy NULL role get role='admin' server-side, so they are never
     // shown the student/faculty-staff prompt. Never downgrades existing roles.
-    if ((profileRow.role ?? null) == null && profileRow.is_test_user !== true) {
+    if ((profileRow.role ?? null) == null && profileRow.is_test_user !== true && hasVerifiedAuthEmail(auth.user)) {
       try {
         const isPlatformAdminUser = await resolveIsPlatformAdmin(auth.userClient, auth.user);
         if (isPlatformAdminUser) {

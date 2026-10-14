@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { reviewProofSubmission } from "@/lib/server/services";
+import { secretsEqual } from "@/lib/server/secretCompare";
 import { proofReviewSchema, readJson } from "@/lib/server/validation";
 
 function assertReviewKey(request: Request) {
@@ -9,7 +10,7 @@ function assertReviewKey(request: Request) {
     throw new ApiError(500, "Missing PROOF_REVIEW_API_KEY for review route.", "PROOF_REVIEW_KEY_MISSING");
   }
   const provided = request.headers.get("x-proof-review-key");
-  if (!provided || provided !== expected) {
+  if (!secretsEqual(provided, expected)) {
     throw new ApiError(403, "Forbidden.", "FORBIDDEN");
   }
 }

@@ -17,6 +17,7 @@ import {
   type ReadyQuadVideoMedia,
 } from "@/lib/server/quadVideoUpload";
 import { QUAD_VIDEO_MAX_DURATION_SECONDS, videoDurationErrorMessage } from "@/lib/quadVideo";
+import { assertImageBytesMatchDeclaredMime } from "@/lib/server/sniffImageMime";
 
 const QUAD_MEDIA_BUCKET = "quad-post-images";
 const MAX_IMAGE_BYTES = QUAD_IMAGE_MAX_BYTES;
@@ -103,6 +104,7 @@ export async function uploadQuadImageBuffer(args: {
       "IMAGE_TOO_LARGE",
     );
   }
+  assertImageBytesMatchDeclaredMime(args.buffer, mime);
 
   console.info("[cq][quad-media][server] image_upload_start", {
     userId: args.userId,

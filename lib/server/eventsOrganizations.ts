@@ -10,6 +10,7 @@ import {
   requestOrganizationJoin,
   setOrganizationFollow,
 } from "@/lib/server/organizationManagement";
+import { fetchProfileRole, roleAtLeast } from "@/lib/server/permissions";
 import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { requireVerifiedSchoolForCoreAccess } from "@/lib/server/schoolVerification";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -214,7 +215,7 @@ export async function createEvent(args: {
   }
 
   const hostOrganizationIdStored = hostOrganizationId ?? null;
-  const adminCreated = Boolean(userEmail && isAdminEmail(userEmail));
+  const adminCreated = Boolean(userEmail && isAdminEmail(userEmail) && (emailConfirmedAt || confirmedAt));
   const sourceType = adminCreated ? "manual" : "campusquest";
 
   const { data, error } = await userClient
@@ -413,7 +414,7 @@ export async function deleteEvent(args: {
     throw new ApiError(403, "This event is outside your verified campus.", "EVENT_SCHOOL_MISMATCH");
   }
 
-  const adminAllowed = Boolean(userEmail && isAdminEmail(userEmail));
+  const adminAllowed = Boolean(userEmail && isAdminEmail(userEmail) && (emailConfirmedAt || confirmedAt));
   let orgAdminAllowed = false;
   if (existing.host_organization_id && !adminAllowed && existing.created_by !== userId) {
     try {
@@ -734,7 +735,7 @@ export async function updateOrganization(args: {
     isApproved?: boolean;
   };
 }) {
-  const { userClient, userId, organizationId, userEmail, input } = args;
+  const { userClient, userId, organizationId, input } = args;
   const admin = createAdminClient();
   await assertAccountCanSocialize(userClient, userId);
   const { data: org, error: orgError } = await userClient
@@ -753,7 +754,8 @@ export async function updateOrganization(args: {
     .maybeSingle();
   if (memberError) throw new ApiError(400, memberError.message, "ORGANIZATION_MEMBERSHIP_LOOKUP_FAILED");
 
-  const isAdmin = Boolean(userEmail && isAdminEmail(userEmail));
+  const editorRole = await fetchProfileRole(admin, userId);
+  const isAdmin = roleAtLeast(editorRole, "admin");
   const normalizedRole = membership ? ((membership as any).org_role ?? membership.role) : null;
   const canEdit =
     org.created_by === userId ||
@@ -785,7 +787,7 @@ export async function deleteOrganization(args: {
   userEmail?: string | null;
   organizationId: string;
 }) {
-  const { userClient, userId, userEmail, organizationId } = args;
+  const { userClient, userId, organizationId } = args;
   const admin = createAdminClient();
   const { data: org, error: orgError } = await userClient
     .from("student_organizations")
@@ -794,7 +796,8 @@ export async function deleteOrganization(args: {
     .maybeSingle();
   if (orgError) throw new ApiError(400, orgError.message, "ORGANIZATION_LOOKUP_FAILED");
   if (!org) throw new ApiError(404, "Organization not found.", "ORGANIZATION_NOT_FOUND");
-  const isAdmin = Boolean(userEmail && isAdminEmail(userEmail));
+  const deleterRole = await fetchProfileRole(admin, userId);
+  const isAdmin = roleAtLeast(deleterRole, "admin");
   if (org.created_by !== userId && !isAdmin) {
     throw new ApiError(403, "You do not have permission to remove this organization.", "ORGANIZATION_DELETE_FORBIDDEN");
   }

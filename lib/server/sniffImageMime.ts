@@ -1,6 +1,8 @@
 /** Best-effort image MIME detection from magic bytes + filename (server-safe). */
+import { ApiError } from "@/lib/server/http";
 
-export function sniffImageMimeFromBuffer(buffer: Buffer, fileName?: string | null): string | null {
+/** Magic bytes only. Filename and client Content-Type are not evidence. */
+export function sniffImageMimeFromBytes(buffer: Buffer): string | null {
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
     return "image/jpeg";
   }
@@ -20,15 +22,36 @@ export function sniffImageMimeFromBuffer(buffer: Buffer, fileName?: string | nul
   ) {
     return "image/webp";
   }
-  if (buffer.length >= 6 && buffer.toString("ascii", 0, 6) === "GIF87a") return "image/gif";
-  if (buffer.length >= 6 && buffer.toString("ascii", 0, 6) === "GIF89a") return "image/gif";
-
+  if (buffer.length >= 6 && (buffer.toString("ascii", 0, 6) === "GIF87a" || buffer.toString("ascii", 0, 6) === "GIF89a")) {
+    return "image/gif";
+  }
   if (buffer.length >= 12 && buffer.toString("ascii", 4, 8) === "ftyp") {
     const brand = buffer.toString("ascii", 8, 12).toLowerCase();
-    if (brand.startsWith("hei") || brand === "mif1" || brand === "msf1") {
-      return "image/heic";
-    }
+    if (brand.startsWith("hei") || brand === "mif1" || brand === "msf1") return "image/heic";
   }
+  return null;
+}
+
+/**
+ * Launch upload hardening: the stored content type must be backed by the
+ * bytes. Throws when the buffer is not a recognizable image or when the magic
+ * bytes disagree with the declared MIME (e.g. HTML/SVG uploaded as image/png).
+ */
+export function assertImageBytesMatchDeclaredMime(buffer: Buffer, declaredMime: string): string {
+  const declared = declaredMime.toLowerCase().trim().replace("image/jpg", "image/jpeg");
+  const sniffed = sniffImageMimeFromBytes(buffer);
+  if (!sniffed) {
+    throw new ApiError(400, "This image format is not supported.", "IMAGE_FORMAT_UNSUPPORTED");
+  }
+  if (sniffed !== declared) {
+    throw new ApiError(400, "Image contents do not match the declared type.", "IMAGE_TYPE_MISMATCH");
+  }
+  return sniffed;
+}
+
+export function sniffImageMimeFromBuffer(buffer: Buffer, fileName?: string | null): string | null {
+  const fromBytes = sniffImageMimeFromBytes(buffer);
+  if (fromBytes) return fromBytes;
 
   const name = (fileName ?? "").toLowerCase();
   if (name.endsWith(".png")) return "image/png";
