@@ -17,7 +17,9 @@ const nextConfig = {
       "font-src 'self' data: https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
       "media-src 'self' blob: https://*.supabase.co",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://maps.googleapis.com https://maps.gstatic.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://maps.googleapis.com https://maps.gstatic.com https://www.gstatic.com",
+      // Google Maps vector (Map ID) rendering decodes tiles in blob: Web Workers.
+      "worker-src 'self' blob:",
       "frame-src 'self' https://www.youtube-nocookie.com https://www.google.com https://maps.google.com",
       "object-src 'none'",
       "base-uri 'self'",
