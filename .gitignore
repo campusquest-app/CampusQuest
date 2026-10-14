@@ -31,3 +31,4 @@ supabase/.temp
 native/node_modules/
 native/ios/App/Pods/
 native/ios/DerivedData/
+.env*
