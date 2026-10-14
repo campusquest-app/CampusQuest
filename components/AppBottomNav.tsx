@@ -14,9 +14,13 @@ import {
   readScrollY,
   resolveBottomNavScrollRoot,
 } from "@/lib/client/bottomNavAutoHide";
-import { dockCradlePath, DOCK_CRADLE_FILL } from "@/lib/client/dockCradlePath";
+import { dockCradlePath, DOCK_CRADLE_FILL, DOCK_CRADLE_RISE_PX } from "@/lib/client/dockCradlePath";
 
-const DEFAULT_CRADLE = { w: 390, h: 96, d: dockCradlePath({ width: 390, height: 96 }) };
+const DEFAULT_CRADLE = {
+  w: 390,
+  h: 76 + DOCK_CRADLE_RISE_PX,
+  d: dockCradlePath({ width: 390, height: 76 + DOCK_CRADLE_RISE_PX }),
+};
 
 export type { AppBottomNavTab } from "@/lib/client/appBottomNavTabs";
 export { APP_BOTTOM_NAV_TABS } from "@/lib/client/appBottomNavTabs";
@@ -101,17 +105,14 @@ export function AppBottomNav({
 
     const sync = (): void => {
       const navRect = el.getBoundingClientRect();
-      const mapBtn = el.querySelector(".cq-dock-nav__map-btn");
-      const top =
-        mapBtn instanceof HTMLElement
-          ? Math.min(navRect.top, mapBtn.getBoundingClientRect().top)
-          : navRect.top;
-      const raw = Math.ceil(navRect.bottom - top);
-      document.documentElement.style.setProperty(BOTTOM_NAV_CSS_VAR, `${Math.max(72, raw)}px`);
       const slide = el.querySelector(".cq-dock-nav__slide");
       const box = slide instanceof HTMLElement ? slide.getBoundingClientRect() : navRect;
+      const layoutH = Math.ceil(box.height);
+      if (layoutH > 0) {
+        document.documentElement.style.setProperty(BOTTOM_NAV_CSS_VAR, `${layoutH}px`);
+      }
       const w = Math.max(1, Math.round(box.width));
-      const h = Math.max(1, Math.round(box.height));
+      const h = Math.max(1, Math.round(box.height)) + DOCK_CRADLE_RISE_PX;
       setCradle((current) => {
         if (current.w === w && current.h === h) return current;
         return { w, h, d: dockCradlePath({ width: w, height: h }) };
