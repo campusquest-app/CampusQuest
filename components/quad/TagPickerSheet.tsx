@@ -7,6 +7,7 @@ import { searchTagEntities, TAG_SEARCH_DEBOUNCE_MS, type TagSearchResult } from 
 import { tagEntityKey, type ComposerTagSelection } from "@/lib/postTags";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { CqModalLayer } from "@/components/ui/CqModalLayer";
+import { createSingleFlight } from "@/lib/client/singleFlight";
 
 type Filter = "all" | "people" | "organizations" | "events";
 
@@ -22,7 +23,8 @@ export function TagPickerSheet({
   selected: ComposerTagSelection[];
   onChange: (next: ComposerTagSelection[]) => void;
   onClose: () => void;
-  onDone: () => void;
+  /** Return a promise to keep the sheet in a saving state until it settles. */
+  onDone: () => void | Promise<void>;
   /** Single-pick mode closes after one selection (photo tagging). */
   mode?: "multi" | "single";
 }) {
@@ -31,6 +33,8 @@ export function TagPickerSheet({
   const [results, setResults] = useState<TagSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const doneFlight = useMemo(() => createSingleFlight(setSaving), []);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounced = useDebouncedValue(query.trim(), TAG_SEARCH_DEBOUNCE_MS);
   const selectedKeys = useMemo(() => new Set(selected.map(tagEntityKey)), [selected]);
@@ -73,6 +77,7 @@ export function TagPickerSheet({
   }, [debounced, filter, open]);
 
   function toggle(hit: TagSearchResult) {
+    if (saving) return;
     const key = `${hit.entityType}:${hit.entityId}`;
     const nextItem: ComposerTagSelection = {
       entityType: hit.entityType,
@@ -107,19 +112,41 @@ export function TagPickerSheet({
     <CqModalLayer
       open={open}
       onDismiss={onClose}
+      dismissible={!saving}
       labelledBy="add-tags-title"
       panelClassName="h-[min(600px,100%)] border border-white/15 bg-uri-navy shadow-2xl"
     >
         <div className="cq-modal-grabber" aria-hidden />
         <header className="cq-modal-header flex items-center justify-between gap-2 border-b border-white/10 px-4 py-2 sm:py-3">
-          <button type="button" onClick={onClose} className="min-h-[44px] px-2 text-sm text-white/70">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="min-h-[44px] px-2 text-sm text-white/70 disabled:opacity-40"
+          >
             Cancel
           </button>
           <h2 id="add-tags-title" className="font-display text-base font-bold text-white">
             Add tags
           </h2>
-          <button type="button" onClick={onDone} className="min-h-[44px] px-2 text-sm font-semibold text-uri-keaney">
-            Done
+          <button
+            type="button"
+            onClick={() => void doneFlight.run(onDone)}
+            disabled={saving}
+            aria-busy={saving}
+            className="inline-flex min-h-[44px] items-center gap-1.5 px-2 text-sm font-semibold text-uri-keaney disabled:opacity-70"
+          >
+            {saving ? (
+              <>
+                <span
+                  className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-uri-keaney/30 border-t-uri-keaney motion-reduce:animate-none"
+                  aria-hidden
+                />
+                Saving…
+              </>
+            ) : (
+              "Done"
+            )}
           </button>
         </header>
 
@@ -164,6 +191,7 @@ export function TagPickerSheet({
                   key={tagEntityKey(s)}
                   type="button"
                   onClick={() => onChange(selected.filter((x) => tagEntityKey(x) !== tagEntityKey(s)))}
+                  disabled={saving}
                   className="inline-flex min-h-[36px] items-center gap-1 rounded-full border border-uri-keaney/40 bg-uri-keaney/15 px-2.5 text-xs text-uri-keaney"
                 >
                   {s.displayLabel}

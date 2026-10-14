@@ -5,6 +5,7 @@ import {
   collectMapRecommendationSources,
   findMapFocusForEvent,
   forYouRecommendationLimit,
+  isActiveUpcomingMapRecommendation,
   rankMapRecommendations,
 } from "@/lib/realm/mapRecommendations";
 import { hasUsableMapCoords } from "@/lib/realm/mapCoords";
@@ -141,6 +142,15 @@ describe("For You map recommendations", () => {
       ],
     });
     expect(sources.map((source) => source.event?.id)).toEqual(["later-game"]);
+  });
+
+  it("treats ended and cancelled time labels as inactive upcoming items", () => {
+    expect(isActiveUpcomingMapRecommendation({ kind: "place", timeLabel: "Campus place" })).toBe(true);
+    expect(isActiveUpcomingMapRecommendation({ kind: "event", timeLabel: "Today · 7:00 PM" })).toBe(true);
+    expect(isActiveUpcomingMapRecommendation({ kind: "event", timeLabel: "LIVE NOW" })).toBe(true);
+    expect(isActiveUpcomingMapRecommendation({ kind: "event", timeLabel: "Ended" })).toBe(false);
+    expect(isActiveUpcomingMapRecommendation({ kind: "event", timeLabel: "CANCELLED" })).toBe(false);
+    expect(isActiveUpcomingMapRecommendation({ kind: "event", timeLabel: "Canceled" })).toBe(false);
   });
 
   it("surfaces recommended events and skips invalid coordinates", () => {

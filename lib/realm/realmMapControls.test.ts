@@ -17,13 +17,18 @@ describe("Realm map control placement", () => {
   it("keeps layers, highlights, campus home, and locate on the same stack", () => {
     expect(controls).toContain("toggleLayer");
     expect(controls).toContain("Rhody Highlights");
-    expect(controls).toContain("Back to campus");
+    expect(controls).toContain("Back to Campus");
     expect(controls).toContain("Center map on my location");
     expect(controls).toContain("camera.toggleTilt");
     expect(controls).toContain("camera.toggleBuildings");
+    expect(controls).toContain("GraduationCap");
+    expect(controls).toContain("returnToCampusHome");
+    const goToCampus = controls.slice(controls.indexOf("const goToCampus"), controls.indexOf("const locate"));
+    expect(goToCampus).toContain("returnToCampusHome");
+    expect(goToCampus).not.toContain("onLocate");
     const layersAt = controls.indexOf("aria-label={mapLayer === \"campus\"");
     const highlightsAt = controls.indexOf("Rhody Highlights");
-    const campusAt = controls.indexOf("Back to campus");
+    const campusAt = controls.indexOf("Back to Campus");
     const locateAt = controls.indexOf("Center map on my location");
     expect(layersAt).toBeGreaterThan(-1);
     expect(layersAt).toBeLessThan(highlightsAt);
@@ -36,5 +41,12 @@ describe("Realm map control placement", () => {
     expect(css).toContain("env(safe-area-inset-top");
     expect(css).toContain("env(safe-area-inset-right");
     expect(css).toContain("transform-origin: top right");
+  });
+
+  it("styles Back to Campus as a 44px navy circle with a cyan outline", () => {
+    expect(controls).toContain("cq-realm-float-btn--campus");
+    expect(css).toContain(".cq-realm-float-btn--campus");
+    expect(css).toMatch(/\.cq-realm-float-btn--campus[\s\S]*?min-width:\s*44px/);
+    expect(css).toMatch(/\.cq-realm-float-btn--campus[\s\S]*?rgba\(103, 232, 249/);
   });
 });

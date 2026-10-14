@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { Character, FieldNote } from "@/lib/types";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { getActivityLogs } from "@/lib/store";
 import { ProfileSocialHeader } from "./ProfileSocialHeader";
 import { ProfileStatsRow } from "./ProfileStatsRow";
@@ -22,7 +23,6 @@ import { ReportContentSheet } from "@/components/safety/ReportContentSheet";
 import { postAuthed } from "@/lib/client/dashboardApi";
 import { fetchTaggedPosts } from "@/lib/client/quadPostsClient";
 import type { ProfileRelationshipStatus } from "@/lib/client/userProfileViewClient";
-import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 export function ProfileSocialPage({
   character,
@@ -225,7 +225,7 @@ export function ProfileSocialPage({
       <ProfileStatsRow
         items={[
           { label: "Posts", value: displayPostCount },
-          { label: "Level", value: character.level },
+          ...(FEATURE_FLAGS.progression && showLevel ? [{ label: "Level", value: character.level }] : []),
           ...(canViewPrivateContent
             ? [
                 {
@@ -246,7 +246,7 @@ export function ProfileSocialPage({
         ]}
       />
 
-      {showLevel ? (
+      {FEATURE_FLAGS.progression && showLevel ? (
         <ProfileXpCard character={character} onOpenLeaderboard={isOwner ? onOpenLeaderboard : undefined} />
       ) : null}
 

@@ -5,6 +5,7 @@ import { bumpActivityFeedRefresh } from "@/lib/client/activityFeedRefresh";
 import type { Character, CharacterStats, ActivityLog, BossProgress as BossProgressType, CurrentBoss, UserBoss, StatKey } from "./types";
 import { STAT_KEYS, MAX_STAT } from "./types";
 import { xpToLevel, DAILY_MINIMUM_XP } from "./level";
+import { progressionRewardsEnabled } from "./featureFlags";
 import { getActivityById, isStudyActivityForBoss } from "./activities";
 import { getSampleBosses } from "./bosses";
 import { registerCharacter as registerCharacterInFriends, getCharacterById } from "./friendsStore";
@@ -1399,6 +1400,7 @@ export function grantMiniGameTrainingXp(characterId: string, stat: StatKey, base
 
 /** Grant XP to a character (e.g. when their post gets vouches). Works for current user or friends. */
 export function addXpToCharacter(characterId: string, amount: number): void {
+  if (!progressionRewardsEnabled()) return;
   const td = todayString();
   const current = loadCharacter();
   if (current && current.id === characterId) {

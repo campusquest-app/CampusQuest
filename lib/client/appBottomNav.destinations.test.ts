@@ -17,9 +17,11 @@ describe("primary bottom navigation destinations", () => {
     expect(navSrc).toContain('onSelectTab("partners")');
     expect(APP_BOTTOM_NAV_HINT_LABELS.partners).toBe("Community Quests");
     expect(navSrc).toContain('label="Community Quests"');
-    expect(navSrc).toContain("Community\\nQuests");
+    expect(navSrc).toContain('caption="Perks"');
+    expect(navSrc).not.toContain("Community\\nQuests");
     expect(navSrc).not.toContain('label="Student Perks"');
     expect(navSrc).toContain("<Handshake");
+    expect(navSrc).not.toContain("<Store");
     expect(navSrc).not.toContain("MessageCircle");
     expect(BOTTOM_NAV_SWIPE_TABS).toEqual(APP_BOTTOM_NAV_TABS);
     expect(navSrc).toContain("APP_BOTTOM_NAV_HINT_LABELS.events");

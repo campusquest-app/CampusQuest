@@ -183,7 +183,7 @@ import type { CampusQuestQrActivityPayloadParsed } from "@/lib/qrCampusQuestActi
 import { AppSideDrawer, type AppDrawerDestination } from "@/components/AppSideDrawer";
 import type { SettingsActionId } from "@/components/AppSettingsPanel";
 import { AppBottomNav, type AppBottomNavTab } from "@/components/AppBottomNav";
-import { FEATURE_FLAGS, FEATURE_FLAG_FALLBACK_TAB, FEATURE_FLAG_PROFILE_FALLBACK } from "@/lib/featureFlags";
+import { FEATURE_FLAGS, FEATURE_FLAG_FALLBACK_TAB, FEATURE_FLAG_PROFILE_FALLBACK, allowStudentSurface } from "@/lib/featureFlags";
 import { MobileGestureLayerProvider } from "@/components/mobile/MobileGestureLayerProvider";
 import { DashboardTabSwipeShell } from "@/components/mobile/DashboardTabSwipeShell";
 import { type SwipeNavDirection } from "@/lib/client/mobileGestures";
@@ -380,12 +380,7 @@ export function Dashboard() {
     const t = searchParams.get("tab");
     if (!t || !TAB_QUERY_VALUES.includes(t as Tab)) return;
     // Disabled features: replace deep links instead of briefly rendering the tab.
-    if (t === "manual-log" && !FEATURE_FLAGS.manualLog) {
-      setTab(FEATURE_FLAG_FALLBACK_TAB);
-      router.replace("/");
-      return;
-    }
-    if (t === "battle" && !FEATURE_FLAGS.bossBattles) {
+    if (!allowStudentSurface(t)) {
       setTab(FEATURE_FLAG_FALLBACK_TAB);
       router.replace("/");
       return;
@@ -394,12 +389,12 @@ export function Dashboard() {
   }, [searchParams, router]);
 
   useEffect(() => {
-    if (tab === "manual-log" && !FEATURE_FLAGS.manualLog) {
+    if (!allowStudentSurface(tab)) {
       setTab(FEATURE_FLAG_FALLBACK_TAB);
       return;
     }
-    if (tab === "battle" && !FEATURE_FLAGS.bossBattles) {
-      setTab(FEATURE_FLAG_FALLBACK_TAB);
+    if (!FEATURE_FLAGS.progression && characterPane === "sheet") {
+      setCharacterPane("profile");
       return;
     }
     // Codex lives on the Profile "collectibles" tab — bounce to Profile → Posts.
@@ -408,7 +403,7 @@ export function Dashboard() {
       setCharacterPane(FEATURE_FLAG_PROFILE_FALLBACK.characterPane);
       setProfileTab(FEATURE_FLAG_PROFILE_FALLBACK.profileTab);
     }
-  }, [tab, profileTab]);
+  }, [tab, profileTab, characterPane]);
 
   useEffect(() => {
     if (tab === "realm") setRealmKeepAlive(true);
@@ -702,7 +697,7 @@ export function Dashboard() {
 
   const handleQuadPostXpReward = useCallback(
     (reward: QuadPostXpReward) => {
-      if (reward.awarded && reward.xpAmount > 0) {
+      if (FEATURE_FLAGS.progression && reward.awarded && reward.xpAmount > 0) {
         playXpDing();
         setGainToast({
           xp: reward.xpAmount,
@@ -746,6 +741,7 @@ export function Dashboard() {
   const adminQrUnlimited = moderationAdminNavVisible(pilotCampusState);
 
   const openQrScanner = useCallback(() => {
+    if (!FEATURE_FLAGS.progression) return;
     logRewardFlow("scanner_opened");
     if (readMobileViewport()) void unlockMobileForgeAudio();
     void unlockRewardAudioSilently();
@@ -755,6 +751,10 @@ export function Dashboard() {
 
   /** Switch tabs while recording the previous tab on a back-stack (deduped, no duplicate routes). */
   const navigateToTab = useCallback((next: Tab) => {
+    if (!allowStudentSurface(next)) {
+      setTab(FEATURE_FLAG_FALLBACK_TAB);
+      return;
+    }
     const current = tabRef.current;
     if (current === next) return;
     const history = tabHistoryRef.current;
@@ -883,6 +883,10 @@ export function Dashboard() {
 
   const handleDrawerNavigate = useCallback(
     (dest: AppDrawerDestination | "mini-games" | "achievements" | "quest-board" | "settings" | "manual-log" | "progress-hub" | "skills-lore" | "collectibles" | "scan") => {
+      if (!allowStudentSurface(dest)) {
+        setTab(FEATURE_FLAG_FALLBACK_TAB);
+        return;
+      }
       switch (dest) {
         case "friends":
           setTab("friends");
@@ -2631,7 +2635,7 @@ export function Dashboard() {
         showAdminNav={moderationAdminNavVisible(pilotCampusState)}
         unreadNotificationCount={unreadNotificationCount}
         musicMuted={musicMuted}
-        showXpProgressBar={xpProgressBarPref.enabled}
+        showXpProgressBar={FEATURE_FLAGS.progression && xpProgressBarPref.enabled}
         xpProgressBarPrefLoaded={xpProgressBarPref.loaded}
         onToggleShowXpProgressBar={handleToggleShowXpProgressBar}
         xpProgressBarSaveError={xpProgressBarSaveError}
@@ -2649,7 +2653,7 @@ export function Dashboard() {
         onConfirm={() => void confirmLogout()}
       />
       {showAccountTypeModal && <AccountTypeModal onClose={() => setShowAccountTypeModal(false)} />}
-      {xpGainSession ? (
+      {FEATURE_FLAGS.progression && xpGainSession ? (
         <LevelUpOverlay
           session={xpGainSession}
           minimumDurationMs={
@@ -2670,7 +2674,7 @@ export function Dashboard() {
         />
       ) : null}
       <div className={`${screenShake ? "cq-screen-shake " : ""}cq-dashboard-scroll-pad${tab === "realm" ? " cq-dashboard-scroll-pad--realm" : ""}`}>
-        {gainToast?.lastBossDrop && typeof document !== "undefined" && createPortal(
+        {FEATURE_FLAGS.progression && gainToast?.lastBossDrop && typeof document !== "undefined" && createPortal(
           bossDefeatPhase === "teaser" ? (
             <div
               className={`fixed inset-0 z-[100] flex items-center justify-center p-4 lootbox-teaser-enter ${
@@ -2838,7 +2842,7 @@ export function Dashboard() {
           ),
           document.body
         )}
-        {gainToast &&
+        {FEATURE_FLAGS.progression && gainToast &&
           !gainToast.lastBossDrop &&
           typeof document !== "undefined" &&
           createPortal(
@@ -2859,7 +2863,7 @@ export function Dashboard() {
             document.body
           )}
 
-      {pendingMilestonePopup && character && typeof document !== "undefined" && createPortal(
+      {FEATURE_FLAGS.progression && pendingMilestonePopup && character && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="xp-milestone-title">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => void dismissMilestonePopup()} aria-hidden />
           <div
@@ -2954,7 +2958,7 @@ export function Dashboard() {
             chromeSuppressed={quadChromeSuppressed}
             canModeratePosts={moderationAdminNavVisible(pilotCampusState)}
             onPostXpReward={handleQuadPostXpReward}
-            showXpProgressBar={shouldRenderXpProgressBar(xpProgressBarPref)}
+            showXpProgressBar={FEATURE_FLAGS.progression && shouldRenderXpProgressBar(xpProgressBarPref)}
             personalization={onboardingPreferences}
             onViewEvent={openTaggedEvent}
             onViewOnMap={openLocationOnMap}
@@ -2979,7 +2983,7 @@ export function Dashboard() {
             />,
           )}
 
-        {tab === "guilds" &&
+        {FEATURE_FLAGS.progression && tab === "guilds" &&
           renderPilotCampusGate(
             <GuildsScreen character={character} onRefresh={refresh} onBack={goBackTab} />,
           )}
@@ -3039,7 +3043,9 @@ export function Dashboard() {
                 onOpenOwnProfile={() => setTab("character")}
                 unreadCount={unreadNotificationCount}
                 onCreatePost={() => setTab("quad")}
-                onViewQuests={() => setTab("quest-board")}
+                onViewQuests={
+                  FEATURE_FLAGS.progression ? () => setTab("quest-board") : undefined
+                }
                 onOpenOrganization={(organizationId) => {
                   try {
                     window.sessionStorage.setItem("cq_open_org_id", organizationId);
@@ -3070,7 +3076,7 @@ export function Dashboard() {
 
         {tab === "organizations" && renderPilotCampusGate(<OrganizationsHub personalization={onboardingPreferences} onBack={goBackTab} />)}
 
-        {tab === "leaderboards" && (
+        {FEATURE_FLAGS.progression && tab === "leaderboards" && (
           <Leaderboards
             character={character}
             onRefresh={refreshAuthoritativeProfileInBackground}
@@ -3079,21 +3085,21 @@ export function Dashboard() {
           />
         )}
 
-        {FEATURE_FLAGS.bossBattles && tab === "battle" && (
+        {FEATURE_FLAGS.progression && FEATURE_FLAGS.bossBattles && tab === "battle" && (
           <div className="space-y-4 sm:space-y-5">
             <BossBattles character={character} onRefresh={refresh} />
           </div>
         )}
 
-        {tab === "mini-games" && (
+        {FEATURE_FLAGS.progression && tab === "mini-games" && (
           <TrainingGrounds character={character} onRefresh={refresh} onBack={() => setTab("quad")} />
         )}
 
-        {tab === "achievements" && (
+        {FEATURE_FLAGS.progression && tab === "achievements" && (
           <TrophyRoom character={character} onRefresh={refresh} />
         )}
 
-        {tab === "quest-board" && (
+        {FEATURE_FLAGS.progression && tab === "quest-board" && (
           <QuestBoard
             character={character}
             onRefresh={refreshAuthoritativeProfileInBackground}
@@ -3102,24 +3108,24 @@ export function Dashboard() {
           />
         )}
 
-        {FEATURE_FLAGS.manualLog && tab === "manual-log" && character && (
+        {FEATURE_FLAGS.progression && FEATURE_FLAGS.manualLog && tab === "manual-log" && character && (
           <ManualLogScreen character={character} onLog={handleLog} onBack={() => setTab("quad")} />
         )}
 
-        {tab === "progress-hub" && character && (
+        {FEATURE_FLAGS.progression && tab === "progress-hub" && character && (
           <ProgressHubScreen
             character={character}
             onOpenLeaderboard={() => navigateToTab("leaderboards")}
           />
         )}
 
-        {tab === "skills-lore" && character && (
+        {FEATURE_FLAGS.progression && tab === "skills-lore" && character && (
           <SkillsLoreScreen character={character} onRefresh={refresh} />
         )}
 
         {tab === "character" && character ? (
           <div className="cq-profile-screen">
-            {!friendView && !friendViewLoading ? (
+            {FEATURE_FLAGS.progression && !friendView && !friendViewLoading ? (
               <CharacterProfilePaneToggle value={characterPane} onChange={setCharacterPane} />
             ) : null}
             {friendViewLoading ? (
@@ -3152,7 +3158,7 @@ export function Dashboard() {
                   Dismiss
                 </button>
               </div>
-            ) : characterPane === "profile" ? (
+            ) : characterPane === "profile" || !FEATURE_FLAGS.progression ? (
               <MyProfileScreen
                 character={character}
                 onLogout={handleLogout}
@@ -3229,7 +3235,7 @@ export function Dashboard() {
         />
       ) : null}
 
-      {character && qrScannerEverOpened ? (
+      {FEATURE_FLAGS.progression && character && qrScannerEverOpened ? (
         <QRScannerModalLazy
           open={qrScannerOpen}
           onClose={() => {

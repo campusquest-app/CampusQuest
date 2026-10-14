@@ -68,7 +68,10 @@ export function shouldShowBackToCampus(sample: CampusCameraSample, currentlyVisi
   return isAwayFromHome(sample, SHOW_METERS, SHOW_ZOOM_DELTA, SHOW_HEADING, SHOW_TILT);
 }
 
-/** Pan to URI Kingston center at the default zoom, bearing, and pitch. Does not change layers. */
+/**
+ * Animate to URI Kingston center at the default zoom, bearing, and pitch.
+ * Uses the shared campus constants — does not change layers, filters, or GPS.
+ */
 export function returnToCampusHome(map: google.maps.Map): void {
   const target = {
     center: URI_MAP_CENTER,
@@ -77,13 +80,15 @@ export function returnToCampusHome(map: google.maps.Map): void {
     tilt: CAMPUS_HOME_TILT,
   };
   const reduced =
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (reduced) {
-    map.setCenter(target.center);
-    map.setZoom(target.zoom);
-    if (typeof map.setHeading === "function") map.setHeading(target.heading);
-    if (typeof map.setTilt === "function") map.setTilt(target.tilt);
+    moveMapCamera(map, target);
     return;
   }
-  moveMapCamera(map, target);
+  if (typeof map.setHeading === "function") map.setHeading(target.heading);
+  if (typeof map.setTilt === "function") map.setTilt(target.tilt);
+  map.panTo(target.center);
+  map.setZoom(target.zoom);
 }

@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  canSeekVideo,
   formatVideoDuration,
   isAllowedVideoMime,
   looksLikeVideoUrl,
   QUAD_VIDEO_MAX_DURATION_SECONDS,
   resolveQuadVideoMaxBytes,
+  seekRatioFromClientX,
+  seekTimeByDelta,
+  seekTimeForRatio,
   videoDurationErrorMessage,
 } from "@/lib/quadVideo";
 import { sniffVideoContainer } from "@/lib/server/quadVideoUpload";
@@ -26,6 +30,27 @@ describe("quad video helpers", () => {
     expect(formatVideoDuration(0)).toBe("0:00");
     expect(formatVideoDuration(65)).toBe("1:05");
     expect(formatVideoDuration(180)).toBe("3:00");
+  });
+
+  it("seeks only when the media has a finite duration", () => {
+    expect(canSeekVideo({ duration: 12, seekableLength: 1, readyState: 1 })).toBe(true);
+    expect(canSeekVideo({ duration: Number.POSITIVE_INFINITY, seekableLength: 1, readyState: 2 })).toBe(false);
+    expect(canSeekVideo({ duration: Number.NaN, seekableLength: 1 })).toBe(false);
+    expect(canSeekVideo({ duration: 12, seekableLength: 0, readyState: 1 })).toBe(false);
+    expect(canSeekVideo({ duration: 12, seekableLength: 0, readyState: 0 })).toBe(true);
+  });
+
+  it("maps a pointer to a clamped time without leaving the video", () => {
+    expect(seekRatioFromClientX(0, 0, 200)).toBe(0);
+    expect(seekRatioFromClientX(100, 0, 200)).toBe(0.5);
+    expect(seekRatioFromClientX(400, 0, 200)).toBe(1);
+    expect(seekRatioFromClientX(10, 0, 0)).toBe(0);
+    expect(seekTimeForRatio(0.5, 20)).toBe(10);
+    expect(seekTimeForRatio(-1, 20)).toBe(0);
+    expect(seekTimeForRatio(2, 20)).toBe(20);
+    expect(seekTimeForRatio(0.5, Number.POSITIVE_INFINITY)).toBeNull();
+    expect(seekTimeByDelta(18, 5, 20)).toBe(20);
+    expect(seekTimeByDelta(2, -5, 20)).toBe(0);
   });
 
   it("enforces 180 second max constant", () => {

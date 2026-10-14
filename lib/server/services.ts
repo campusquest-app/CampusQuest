@@ -1,5 +1,6 @@
 import { User } from "@supabase/supabase-js";
 import { DATA_CONSENT_VERSION } from "@/lib/legal/policy";
+import { progressionRewardsEnabled } from "@/lib/featureFlags";
 import { ApiError } from "@/lib/server/http";
 import { processXpMilestoneCrossings } from "@/lib/server/xpMilestones";
 import {
@@ -1869,6 +1870,24 @@ export async function fetchLeaderboards(userClient: SupabaseClientLike) {
 
 export async function addXpInternal(args: AddXpArgs) {
   const { userClient, userId, amount, sourceType, sourceId, questCompletionId, activityId, note, applyStreakUpdate } = args;
+  if (!progressionRewardsEnabled()) {
+    return {
+      xpLog: {
+        id: "progression-disabled",
+        user_id: userId,
+        source_type: sourceType === "streak_bonus" ? "bonus" : sourceType,
+        source_id: sourceId ?? null,
+        activity_id: activityId ?? null,
+        quest_completion_id: questCompletionId ?? null,
+        xp_amount: 0,
+        note: note ?? null,
+        created_at: new Date().toISOString(),
+      },
+      progression: calculateLevelProgression(0),
+      milestonesUnlocked: [] as Awaited<ReturnType<typeof processXpMilestoneCrossings>>["newlyUnlocked"],
+      leveledUp: false,
+    };
+  }
   assertSafeXpGrant(sourceType, amount);
   const { data: stats, error: statsError } = await userClient
     .from("user_stats")

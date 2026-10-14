@@ -224,8 +224,7 @@ export function AppBottomNav({
 
         <DockItem
           label="Community Quests"
-          caption={"Community\nQuests"}
-          itemClassName="cq-dock-nav__item--quests"
+          caption="Perks"
           active={resolvedActive === "partners"}
           onClick={() => guardNav(() => onSelectTab("partners"))}
           icon={<Handshake className="cq-dock-nav__glyph" strokeWidth={2.25} />}
@@ -243,7 +242,7 @@ export function AppBottomNav({
           >
             <span className="cq-dock-nav__map-ring cq-pulse-glow" aria-hidden />
             <span className="cq-dock-nav__map-ring cq-dock-nav__map-ring--outer cq-pulse-glow" aria-hidden />
-            <Map className="relative z-[1] h-[26px] w-[26px]" strokeWidth={2.2} />
+            <Map className="relative z-[1] h-[26px] w-[26px]" strokeWidth={2.25} />
             {showDockLabels ? (
               <span className="cq-dock-nav__hint cq-dock-nav__hint--map">{APP_BOTTOM_NAV_HINT_LABELS.realm}</span>
             ) : null}

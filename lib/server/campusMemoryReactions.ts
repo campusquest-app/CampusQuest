@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/server/http";
 import { createAdminClient } from "@/lib/server/supabase";
 import { addXpInternal } from "@/lib/server/services";
+import { progressionRewardsEnabled } from "@/lib/featureFlags";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type CampusMemoryReactionMeta = {
@@ -123,16 +124,18 @@ export async function starCampusMemory(args: {
 
   let xpAwarded = false;
   if (!insertError) {
-    const admin = createAdminClient();
-    await addXpInternal({
-      userClient: admin,
-      userId: args.userId,
-      amount: 1,
-      sourceType: "campus_memory_star",
-      sourceId: args.memoryId,
-      note: "Starred a campus Memory",
-    });
-    xpAwarded = true;
+    if (progressionRewardsEnabled()) {
+      const admin = createAdminClient();
+      await addXpInternal({
+        userClient: admin,
+        userId: args.userId,
+        amount: 1,
+        sourceType: "campus_memory_star",
+        sourceId: args.memoryId,
+        note: "Starred a campus Memory",
+      });
+      xpAwarded = true;
+    }
   } else if (insertError.code === "23505") {
     // Already starred — idempotent, no duplicate XP.
   } else if (isMissingReactionsTable(insertError)) {

@@ -87,9 +87,11 @@ describe("Community Quests screen", () => {
 
   it("features Daisy's 20% OFF with photo, open status, and a View Quest Deal button", () => {
     const html = renderScreen(ready);
-    const start = html.indexOf("Featured Community Quests");
+    const start = html.indexOf('id="cq-perks-featured-title"');
     const featured = html.slice(start, html.indexOf('id="cq-perks-explore-title"'));
     expect(start).toBeGreaterThan(-1);
+    expect(featured).toContain("Featured Community Quests");
+    expect(featured).toContain("cq-perks-section__pin");
     expect(featured).toContain(DAISYS_HTML);
     expect(featured).toContain("20% OFF");
     expect(featured).toContain("Go on a quest for 20% OFF at Daisy");

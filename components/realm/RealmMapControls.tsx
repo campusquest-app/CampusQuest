@@ -195,22 +195,24 @@ export function RealmMapControls({
           >
             <Layers className="h-[18px] w-[18px]" strokeWidth={2.2} />
           </button>
-          <button
-            type="button"
-            onClick={onOpenHighlights}
-            className="cq-realm-float-btn cq-realm-float-btn--highlights cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-12 w-12 items-center justify-center touch-manipulation"
-            aria-label="Rhody Highlights"
-            title="Rhody Highlights"
-          >
-            <Sparkles className="h-[18px] w-[18px]" strokeWidth={2.2} />
-          </button>
+          {onOpenHighlights ? (
+            <button
+              type="button"
+              onClick={onOpenHighlights}
+              className="cq-realm-float-btn cq-realm-float-btn--highlights cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-12 w-12 items-center justify-center touch-manipulation"
+              aria-label="Rhody Highlights"
+              title="Rhody Highlights"
+            >
+              <Sparkles className="h-[18px] w-[18px]" strokeWidth={2.2} />
+            </button>
+          ) : null}
           {showBackToCampus ? (
             <button
               type="button"
               onClick={goToCampus}
-              className="cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-12 w-12 items-center justify-center touch-manipulation"
-              aria-label="Back to campus"
-              title="Back to campus"
+              className="cq-realm-float-btn cq-realm-float-btn--campus cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-12 w-12 min-h-[44px] min-w-[44px] items-center justify-center touch-manipulation"
+              aria-label="Back to Campus"
+              title="Back to Campus"
             >
               <GraduationCap className="h-[18px] w-[18px]" strokeWidth={2.2} />
             </button>

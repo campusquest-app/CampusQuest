@@ -3,19 +3,28 @@ import {
   FEATURE_FLAGS,
   FEATURE_FLAG_FALLBACK_TAB,
   FEATURE_FLAG_PROFILE_FALLBACK,
+  allowStudentSurface,
   filterQuestsForFeatureFlags,
   isBossBattleQuest,
   isManualLogOnlyQuest,
+  progressionRewardsEnabled,
 } from "@/lib/featureFlags";
 
 describe("featureFlags", () => {
-  it("defaults to hiding Manual Log, Boss Battles, Codex, and Equipment", () => {
+  it("defaults to hiding unfinished progression plus Manual Log, Boss Battles, Codex, and Equipment", () => {
+    expect(FEATURE_FLAGS.progression).toBe(false);
+    expect(progressionRewardsEnabled()).toBe(false);
     expect(FEATURE_FLAGS.manualLog).toBe(false);
     expect(FEATURE_FLAGS.bossBattles).toBe(false);
     expect(FEATURE_FLAGS.codex).toBe(false);
     expect(FEATURE_FLAGS.equipment).toBe(false);
     expect(FEATURE_FLAGS.requireEmailVerification).toBe(false);
-    expect(FEATURE_FLAG_FALLBACK_TAB).toBe("quest-board");
+    expect(FEATURE_FLAG_FALLBACK_TAB).toBe("quad");
+    expect(allowStudentSurface("quad")).toBe(true);
+    expect(allowStudentSurface("partners")).toBe(true);
+    for (const id of ["scan", "character-sheet", "guilds", "leaderboards", "quest-board", "mini-games", "battle", "manual-log"]) {
+      expect(allowStudentSurface(id)).toBe(false);
+    }
     expect(FEATURE_FLAG_PROFILE_FALLBACK).toEqual({
       tab: "character",
       characterPane: "profile",

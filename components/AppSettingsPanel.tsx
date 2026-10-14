@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { DrawerSubPanelShell } from "./DrawerSubPanelShell";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 export type SettingsActionId =
   | "account"
@@ -140,13 +141,25 @@ export function AppSettingsPanel({
     onAction(id);
   }
 
+  const showProgression = FEATURE_FLAGS.progression;
+  const sections = SETTINGS_SECTIONS.map((section) => ({
+    ...section,
+    rows: section.rows
+      .filter((row) => showProgression || row.id !== "qr-permissions")
+      .map((row) => {
+        if (showProgression) return row;
+        if (row.id === "profile-character") return { ...row, label: "Profile", description: "Name, photo, and bio" };
+        if (row.id === "sound") return { ...row, description: "App sounds and feedback" };
+        return row;
+      }),
+  })).filter((section) => section.rows.length > 0);
   const xpBarChecked = xpProgressBarPrefLoaded && showXpProgressBar;
   const xpBarDisabled = !xpProgressBarPrefLoaded || !onToggleShowXpProgressBar;
 
   return (
     <DrawerSubPanelShell title="Settings" onBack={onBack}>
         <div className="space-y-5">
-          {SETTINGS_SECTIONS.map((section) => (
+          {sections.map((section) => (
             <section key={section.title}>
               <p className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300/45">
                 {section.title}
@@ -190,7 +203,7 @@ export function AppSettingsPanel({
                     </li>
                   );
                 })}
-                {section.title === "Experience" ? (
+                {showProgression && section.title === "Experience" ? (
                   <li>
                     <div className="flex w-full items-center gap-3 px-3 py-3.5">
                       <span className="min-w-0 flex-1">

@@ -6,6 +6,7 @@ import { getEquippedTitleLabel } from "@/lib/achievementEngine";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { formatStreakBadge } from "@/lib/streakMessaging";
 import { ChevronDown } from "lucide-react";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 export function ProfileSocialHeader({
   character,
@@ -28,8 +29,9 @@ export function ProfileSocialHeader({
   identitySubtitle?: string | null;
   showLevel?: boolean;
 }) {
-  const title = getEquippedTitleLabel(character) || getClassTitle(character.classId);
-  const realm = getClassRealm(character.classId);
+  const showProgression = FEATURE_FLAGS.progression && showLevel;
+  const title = showProgression ? getEquippedTitleLabel(character) || getClassTitle(character.classId) : "";
+  const realm = showProgression ? getClassRealm(character.classId) : "";
 
   return (
     <header className="cq-profile-header cq-profile-fade-in">
@@ -53,7 +55,7 @@ export function ProfileSocialHeader({
               />
             </div>
           </div>
-          {showLevel ? (
+          {showProgression ? (
             <span
               className="cq-profile-level-pip absolute -bottom-0.5 -left-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney px-1 text-[10px] font-bold leading-none text-white"
               aria-label={`Level ${character.level}`}
@@ -104,7 +106,7 @@ export function ProfileSocialHeader({
             ) : null}
           </div>
 
-          {guildLabel || character.streakDays >= 3 ? (
+          {showProgression && (guildLabel || character.streakDays >= 3) ? (
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
               {guildLabel ? <span className="cq-profile-meta-chip">{guildLabel}</span> : null}
               {character.streakDays >= 3 ? (

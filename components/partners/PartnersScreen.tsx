@@ -9,7 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Heart, Lightbulb, Search, Store, X } from "lucide-react";
+import { Heart, Lightbulb, MapPin, Search, Store, X } from "lucide-react";
 import { FeaturedDealCard, PartnerCard, type PartnerFavoriteProps } from "@/components/partners/PartnerCard";
 import { PartnerDetailSheet } from "@/components/partners/PartnerDetailSheet";
 import { PartnersNoResults } from "@/components/partners/PartnersNoResults";
@@ -327,6 +327,7 @@ export function PartnersScreenView({
           {featured.length > 0 ? (
             <section className="cq-perks-section" aria-labelledby="cq-perks-featured-title">
               <h2 id="cq-perks-featured-title" className="cq-perks-section__title">
+                <MapPin className="cq-perks-section__pin" aria-hidden strokeWidth={2.3} />
                 Featured Community Quests
               </h2>
               <FeaturedDealsRail

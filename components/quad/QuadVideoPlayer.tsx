@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Pause, Play, Volume2, VolumeX } from "lucide-react";
-import { formatVideoDuration } from "@/lib/quadVideo";
+import { canSeekVideo, formatVideoDuration, seekRatioFromClientX, seekTimeByDelta, seekTimeForRatio } from "@/lib/quadVideo";
 import {
   getQuadFeedUnmuted,
   setQuadFeedUnmuted,
@@ -57,11 +57,20 @@ export function QuadVideoPlayer({
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const scrubbingRef = useRef(false);
+  const holdProgressRef = useRef(false);
+  const wasPlayingRef = useRef(false);
+  const intendedTimeRef = useRef<number | null>(null);
+  const correctingRef = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [soundOn, setSoundOn] = useState(false);
   const [confirmedSilent, setConfirmedSilent] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(durationSeconds ?? 0);
+  const [scrubTime, setScrubTime] = useState(0);
+  const [scrubbing, setScrubbing] = useState(false);
+  const [canSeek, setCanSeek] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => subscribeQuadFeedMute(() => {
@@ -169,6 +178,114 @@ export function QuadVideoPlayer({
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (document.documentElement.getAttribute("data-cq-media-gesture-lock") === "scrub") {
+        document.documentElement.removeAttribute("data-cq-media-gesture-lock");
+      }
+    };
+  }, []);
+
+  function syncMedia(el: HTMLVideoElement) {
+    const nextDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : 0;
+    const nextCanSeek = canSeekVideo({
+      duration: el.duration,
+      seekableLength: el.seekable ? el.seekable.length : null,
+      readyState: el.readyState,
+    });
+    setDuration((current) => (current === nextDuration ? current : nextDuration));
+    setCanSeek((current) => (current === nextCanSeek ? current : nextCanSeek));
+  }
+
+  function publishProgress(time: number, mediaDuration: number) {
+    if (!Number.isFinite(mediaDuration) || mediaDuration <= 0) return;
+    setProgress(Math.min(1, Math.max(0, time / mediaDuration)));
+    setScrubTime(time);
+  }
+
+  function commitSeek(time: number) {
+    const el = videoRef.current;
+    if (!el) return;
+    const mediaDuration = Number.isFinite(el.duration) ? el.duration : duration;
+    const next = seekTimeForRatio(mediaDuration > 0 ? time / mediaDuration : 0, mediaDuration);
+    if (next == null) return;
+    intendedTimeRef.current = next;
+    holdProgressRef.current = true;
+    const alreadyThere = Number.isFinite(el.currentTime) && Math.abs(el.currentTime - next) < 0.05;
+    try {
+      el.currentTime = next;
+    } catch {
+      holdProgressRef.current = false;
+      intendedTimeRef.current = null;
+    }
+    if (alreadyThere) {
+      holdProgressRef.current = false;
+      intendedTimeRef.current = null;
+    }
+    publishProgress(next, mediaDuration);
+  }
+
+  function seekToClientX(clientX: number) {
+    const el = videoRef.current;
+    const track = trackRef.current;
+    if (!el || !track) return;
+    if (!canSeekVideo({
+      duration: el.duration,
+      seekableLength: el.seekable ? el.seekable.length : null,
+      readyState: el.readyState,
+    })) return;
+    const rect = track.getBoundingClientRect();
+    const ratio = seekRatioFromClientX(clientX, rect.left, rect.width);
+    const time = seekTimeForRatio(ratio, el.duration);
+    if (time == null) return;
+    commitSeek(time);
+  }
+
+  function seekBy(delta: number) {
+    const el = videoRef.current;
+    if (!el) return;
+    const next = seekTimeByDelta(el.currentTime, delta, el.duration);
+    if (next == null) return;
+    wasPlayingRef.current = !el.paused;
+    commitSeek(next);
+    if (wasPlayingRef.current && el.paused) void el.play().catch(() => undefined);
+  }
+
+  function setScrubGestureLock(active: boolean) {
+    if (typeof document === "undefined") return;
+    if (active) document.documentElement.setAttribute("data-cq-media-gesture-lock", "scrub");
+    else if (document.documentElement.getAttribute("data-cq-media-gesture-lock") === "scrub") {
+      document.documentElement.removeAttribute("data-cq-media-gesture-lock");
+    }
+  }
+
+  function beginScrub(pointerId: number, target: HTMLElement, clientX: number) {
+    const el = videoRef.current;
+    if (!el || !canSeek) return;
+    wasPlayingRef.current = !el.paused;
+    scrubbingRef.current = true;
+    setScrubbing(true);
+    setScrubGestureLock(true);
+    try {
+      target.setPointerCapture(pointerId);
+    } catch {
+      /* pointer may already be released */
+    }
+    seekToClientX(clientX);
+  }
+
+  function endScrub(clientX: number | null) {
+    if (!scrubbingRef.current) return;
+    if (clientX != null) seekToClientX(clientX);
+    scrubbingRef.current = false;
+    setScrubbing(false);
+    setScrubGestureLock(false);
+    const el = videoRef.current;
+    if (el && wasPlayingRef.current && el.paused) {
+      void el.play().catch(() => undefined);
+    }
+  }
+
   function togglePlay(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -231,10 +348,26 @@ export function QuadVideoPlayer({
       toggleMute(e as unknown as React.MouseEvent);
     } else if (e.key === "f" || e.key === "F") {
       e.preventDefault();
+    } else if (canSeek && (e.key === "ArrowRight" || e.key === "ArrowLeft" || e.key === "Home" || e.key === "End")) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!scrubbing) setScrubbing(true);
+      const step = e.shiftKey ? 10 : 5;
+      if (e.key === "ArrowRight") seekBy(step);
+      else if (e.key === "ArrowLeft") seekBy(-step);
+      else if (e.key === "Home") seekBy(-Number.MAX_SAFE_INTEGER);
+      else seekBy(Number.MAX_SAFE_INTEGER);
+    }
+  }
+
+  function onSeekKeyUp(e: React.KeyboardEvent) {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft" || e.key === "Home" || e.key === "End") {
+      setScrubbing(false);
     }
   }
 
   const muteVisible = showMuteControl && !confirmedSilent;
+  const shownTime = scrubbing ? scrubTime : progress * duration;
 
   return (
     <div
@@ -242,6 +375,7 @@ export function QuadVideoPlayer({
       className={`relative w-full bg-black ${className}`}
       tabIndex={0}
       onKeyDown={onKeyDown}
+      onKeyUp={onSeekKeyUp}
       data-cq-media-control="true"
       data-cq-gesture-block="swipe-tab"
       data-no-drawer-swipe="true"
@@ -261,18 +395,59 @@ export function QuadVideoPlayer({
           claimPlayback(playerId);
           setPlaying(true);
         }}
-        onPause={() => setPlaying(false)}
-        onWaiting={() => setLoading(true)}
+        onPause={() => {
+          if (scrubbingRef.current) return;
+          setPlaying(false);
+        }}
+        onWaiting={() => {
+          if (scrubbingRef.current) return;
+          setLoading(true);
+        }}
         onPlaying={() => setLoading(false)}
         onLoadedData={() => setLoading(false)}
         onError={() => {
           setLoading(false);
           onError?.();
         }}
+        onLoadedMetadata={(event) => syncMedia(event.currentTarget)}
+        onDurationChange={(event) => syncMedia(event.currentTarget)}
+        onProgress={(event) => syncMedia(event.currentTarget)}
+        onCanPlay={(event) => syncMedia(event.currentTarget)}
+        onSeeked={() => {
+          const el = videoRef.current;
+          const intended = intendedTimeRef.current;
+          if (!el || intended == null) {
+            holdProgressRef.current = false;
+            return;
+          }
+          if (!correctingRef.current && Math.abs(el.currentTime - intended) > 0.35) {
+            correctingRef.current = true;
+            try {
+              el.currentTime = intended;
+            } catch {
+              correctingRef.current = false;
+              intendedTimeRef.current = null;
+              holdProgressRef.current = false;
+            }
+            return;
+          }
+          correctingRef.current = false;
+          intendedTimeRef.current = null;
+          holdProgressRef.current = false;
+          if (el.readyState >= 2) setLoading(false);
+          if (Number.isFinite(el.duration) && el.duration > 0) publishProgress(el.currentTime, el.duration);
+        }}
         onTimeUpdate={() => {
           const el = videoRef.current;
-          if (!el || !el.duration) return;
-          setProgress(el.currentTime / el.duration);
+          if (!el || !el.duration || scrubbingRef.current) return;
+          if (!Number.isFinite(el.duration)) return;
+          if (holdProgressRef.current) {
+            const intended = intendedTimeRef.current;
+            if (intended != null && Math.abs(el.currentTime - intended) > 0.35) return;
+            holdProgressRef.current = false;
+            intendedTimeRef.current = null;
+          }
+          publishProgress(el.currentTime, el.duration);
           setDuration(el.duration);
         }}
         aria-label={playing ? "Pause video" : "Play video"}
@@ -311,10 +486,65 @@ export function QuadVideoPlayer({
         ) : null}
       </div>
 
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-1 bg-white/20">
-        <div className="h-full bg-uri-keaney" style={{ width: `${Math.min(100, progress * 100)}%` }} />
+      <div
+        ref={trackRef}
+        className={`cq-quad-video-scrub${scrubbing ? " cq-quad-video-scrub--active" : ""}${canSeek ? "" : " cq-quad-video-scrub--disabled"}`}
+        role="slider"
+        tabIndex={canSeek ? 0 : -1}
+        aria-label="Video timeline"
+        aria-orientation="horizontal"
+        aria-disabled={!canSeek}
+        aria-valuemin={0}
+        aria-valuemax={Math.max(0, Math.round(duration))}
+        aria-valuenow={Math.max(0, Math.round(shownTime))}
+        aria-valuetext={
+          duration > 0
+            ? `${formatVideoDuration(shownTime)} of ${formatVideoDuration(duration)}`
+            : "Video timeline unavailable"
+        }
+        data-cq-video-control="scrub"
+        data-cq-gesture-block="all"
+        data-cq-horizontal-scroll="true"
+        data-no-drawer-swipe="true"
+        onPointerDown={(event) => {
+          if (!canSeek) return;
+          if (event.pointerType === "mouse" && event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          beginScrub(event.pointerId, event.currentTarget, event.clientX);
+        }}
+        onPointerMove={(event) => {
+          if (!scrubbingRef.current) return;
+          event.preventDefault();
+          event.stopPropagation();
+          seekToClientX(event.clientX);
+        }}
+        onPointerUp={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          endScrub(event.clientX);
+        }}
+        onPointerCancel={() => endScrub(null)}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      >
+        {scrubbing && duration > 0 ? (
+          <span className="cq-quad-video-scrub__time">
+            {formatVideoDuration(scrubTime)} / {formatVideoDuration(duration)}
+          </span>
+        ) : null}
+        <div className="cq-quad-video-scrub__bar">
+          <div className="cq-quad-video-scrub__fill" style={{ width: `${Math.min(100, progress * 100)}%` }} />
+          <span
+            className="cq-quad-video-scrub__handle"
+            style={{ left: `clamp(6px, ${Math.min(100, progress * 100)}%, calc(100% - 6px))` }}
+            aria-hidden
+          />
+        </div>
       </div>
-      {duration > 0 ? (
+      {duration > 0 && !scrubbing ? (
         <span className="pointer-events-none absolute right-3 top-3 rounded bg-black/55 px-1.5 py-0.5 text-[11px] font-semibold text-white">
           {formatVideoDuration(duration)}
         </span>

@@ -37,7 +37,7 @@ import { DeleteAccountPanel } from "@/components/safety/DeleteAccountPanel";
 import { DemographicsSettingsPanel } from "@/components/DemographicsSettingsPanel";
 import { DRAWER_SNAP_MS } from "@/lib/client/drawerGeometry";
 import { setIsDrawerOpen } from "@/lib/client/appDrawerStore";
-import { FEATURE_FLAGS } from "@/lib/featureFlags";
+import { allowStudentSurface } from "@/lib/featureFlags";
 
 export type AppDrawerDestination =
   | "friends"
@@ -128,18 +128,22 @@ const SETTINGS_NAV: MenuItem[] = [
   { id: "help", label: "Help / Support", icon: <HelpCircle className={ICON} aria-hidden /> },
 ];
 
+function getMainNav(): MenuItem[] {
+  return MAIN_NAV.filter((item) => allowStudentSurface(item.id));
+}
+
 function getProgressNav(): MenuItem[] {
-  return PROGRESS_NAV.filter((item) => item.id !== "manual-log" || FEATURE_FLAGS.manualLog);
+  return PROGRESS_NAV.filter((item) => allowStudentSurface(item.id));
 }
 
 function getMiniGamesNav(): MenuItem[] {
-  return MINI_GAMES_NAV.filter((item) => item.id !== "battle" || FEATURE_FLAGS.bossBattles);
+  return MINI_GAMES_NAV.filter((item) => allowStudentSurface(item.id));
 }
 
 function getFlatMenuSections(): MenuSection[] {
   const progressItems = getProgressNav();
   return [
-    { id: "main", title: "Main", items: MAIN_NAV },
+    { id: "main", title: "Main", items: getMainNav() },
     ...(progressItems.length > 0 ? [{ id: "progress", title: "Progress", items: progressItems }] : []),
     { id: "campus", title: "Campus", items: CAMPUS_NAV },
     { id: "settings", title: "Settings", items: SETTINGS_NAV },
@@ -326,9 +330,7 @@ export function AppSideDrawer({
   const panelPointerEvents = drawerTranslateX > -drawerWidth + 8 ? "auto" : "none";
 
   const handleItem = (id: MenuItemId) => {
-    if (id === "manual-log" && !FEATURE_FLAGS.manualLog) return;
-    if (id === "battle" && !FEATURE_FLAGS.bossBattles) return;
-    if (id === "collectibles" && !FEATURE_FLAGS.codex) return;
+    if (!allowStudentSurface(id)) return;
     if (id === "settings") {
       setPanel("settings");
       return;

@@ -3,9 +3,10 @@
 import { useMemo, useState } from "react";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { buildRhodyHighlights, type AthleticsHighlight } from "@/lib/realm/discoverySheet";
-import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
+import { isActiveUpcomingMapRecommendation, type MapRecommendationItem } from "@/lib/realm/mapRecommendations";
 import { DiscoverForYou, DiscoverRecommendations } from "./DiscoverForYou";
 import { RhodyHighlights } from "./RhodyHighlights";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 function youtubeEmbedUrl(videoId: string, autoplay: boolean): string | null {
   if (!/^[\w-]{6,16}$/.test(videoId)) return null;
@@ -42,7 +43,10 @@ export function RealmHighlightsSheet({
   const reducedMotion =
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const embedUrl = playing?.youtubeVideoId ? youtubeEmbedUrl(playing.youtubeVideoId, !reducedMotion) : null;
-  const upcoming = items.filter((item) => item.kind !== "event" || item.timeLabel !== "Ended");
+  const upcoming = items.filter((item) => {
+    if (!FEATURE_FLAGS.progression && item.kind === "quest") return false;
+    return isActiveUpcomingMapRecommendation(item);
+  });
   const empty = !loading && highlights.length === 0 && upcoming.length === 0;
 
   return (

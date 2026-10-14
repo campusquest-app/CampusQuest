@@ -23,6 +23,8 @@ export function RhodyHighlights({
   /** Return true when the sheet plays the clip itself. */
   onPlayItem?: (item: AthleticsHighlight) => boolean;
 }) {
+  if (items.length === 0) return null;
+
   return (
     <section className="cq-rhody-highlights cq-rhody-highlights--wide" aria-label="Rhody Highlights">
       <header className="cq-rhody-highlights__head">

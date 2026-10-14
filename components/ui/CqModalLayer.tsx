@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { acquireModalLayer, isTopModalLayer } from "@/lib/client/modalLayer";
+import {
+  acquireModalLayer,
+  guardModalTouchMove,
+  isolateModalLayer,
+  isTopModalLayer,
+} from "@/lib/client/modalLayer";
 
 /**
  * Top-level modal layer: portaled to document.body so `position: fixed` is never
@@ -34,6 +39,8 @@ export function CqModalLayer({
   children: ReactNode;
 }) {
   const [mounted, setMounted] = useState(false);
+  const [layerEl, setLayerEl] = useState<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
   const dismissRef = useRef(onDismiss);
   const dismissibleRef = useRef(dismissible);
   dismissRef.current = onDismiss;
@@ -57,15 +64,31 @@ export function CqModalLayer({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !layerEl) return undefined;
+    const opener = document.activeElement as HTMLElement | null;
+    const restoreInert = isolateModalLayer(layerEl);
+    const releaseTouch = guardModalTouchMove(layerEl);
+    // Focus the panel itself (not a field) so iOS does not raise the keyboard.
+    if (!layerEl.contains(document.activeElement)) panelRef.current?.focus({ preventScroll: true });
+    return () => {
+      releaseTouch();
+      restoreInert();
+      if (opener?.isConnected && !opener.closest("[inert]")) opener.focus({ preventScroll: true });
+    };
+  }, [open, layerEl]);
+
   if (!open || !mounted) return null;
 
   const panelProps = {
     className: `cq-modal-panel ${panelClassName}`.trim(),
+    tabIndex: -1,
     onClick: (event: React.MouseEvent) => event.stopPropagation(),
   };
 
   return createPortal(
     <div
+      ref={setLayerEl}
       className="cq-modal-layer"
       role="dialog"
       aria-modal="true"
@@ -81,11 +104,24 @@ export function CqModalLayer({
         }}
       />
       {panelAs === "form" ? (
-        <form {...panelProps} onSubmit={onSubmit}>
+        <form
+          {...panelProps}
+          ref={(el) => {
+            panelRef.current = el;
+          }}
+          onSubmit={onSubmit}
+        >
           {children}
         </form>
       ) : (
-        <div {...panelProps}>{children}</div>
+        <div
+          {...panelProps}
+          ref={(el) => {
+            panelRef.current = el;
+          }}
+        >
+          {children}
+        </div>
       )}
     </div>,
     document.body,

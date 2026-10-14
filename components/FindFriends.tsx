@@ -18,6 +18,7 @@ import type { Character, Friend } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS } from "@/lib/types";
 import { StatIcon } from "@/components/stats/StatIcon";
 import { AvatarDisplay } from "./AvatarDisplay";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { formatStreakBadge } from "@/lib/streakMessaging";
 import { PeopleLiveSearchField } from "./friends/FriendsGuildsLiveSearch";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
@@ -410,19 +411,21 @@ function FriendCard({
           ) : (
             <p className="text-sm text-uri-keaney/90">@{friend.username}</p>
           )}
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <span className="text-uri-keaney font-mono text-sm font-semibold bg-uri-keaney/15 px-1.5 py-0.5 rounded">
-              Lv.{friend.level}
-            </span>
-            <span className="text-white/60 text-sm font-mono">{friend.totalXP.toLocaleString()} XP</span>
-            {(() => {
-              const badge = formatStreakBadge(friend.streakDays);
-              return badge ? <span className="text-amber-400/90 text-xs">{badge}</span> : null;
-            })()}
-          </div>
-          {(title || guild) && (
+          {FEATURE_FLAGS.progression ? (
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <span className="text-uri-keaney font-mono text-sm font-semibold bg-uri-keaney/15 px-1.5 py-0.5 rounded">
+                Lv.{friend.level}
+              </span>
+              <span className="text-white/60 text-sm font-mono">{friend.totalXP.toLocaleString()} XP</span>
+              {(() => {
+                const badge = formatStreakBadge(friend.streakDays);
+                return badge ? <span className="text-amber-400/90 text-xs">{badge}</span> : null;
+              })()}
+            </div>
+          ) : null}
+          {FEATURE_FLAGS.progression && (title || guild) ? (
             <p className="mt-1.5 text-xs text-white/60">{[title, guild].filter(Boolean).join(" · ")}</p>
-          )}
+          ) : null}
           <div className="flex gap-2 mt-2 flex-wrap">
             {onMessage && (
               <button
@@ -434,7 +437,7 @@ function FriendCard({
               </button>
             )}
           </div>
-          {statsAvailable ? (
+          {FEATURE_FLAGS.progression && statsAvailable ? (
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
               {STAT_KEYS.map((key) => (
                 <div
@@ -451,9 +454,9 @@ function FriendCard({
                 </div>
               ))}
             </div>
-          ) : (
+          ) : FEATURE_FLAGS.progression ? (
             <p className="mt-3 text-xs text-white/60">Stats unavailable</p>
-          )}
+          ) : null}
         </div>
       </div>
     </li>

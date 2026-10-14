@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FEATURE_FLAGS } from "@/lib/featureFlags";
+import { FEATURE_FLAGS, allowStudentSurface } from "@/lib/featureFlags";
 import { getVisibleProfileTabs } from "@/components/profile/ProfileTabNav";
 
 describe("feature flag navigation gating", () => {
@@ -16,6 +16,8 @@ describe("feature flag navigation gating", () => {
       { id: "mini-games" },
     ].filter((item) => item.id !== "battle" || FEATURE_FLAGS.bossBattles);
 
+    expect(progressNav.filter((item) => allowStudentSurface(item.id)).map((i) => i.id)).toEqual([]);
+    expect(miniGamesNav.filter((item) => allowStudentSurface(item.id)).map((i) => i.id)).toEqual([]);
     expect(progressNav.map((i) => i.id)).toEqual(["scan", "character-sheet", "quest-board"]);
     expect(miniGamesNav.map((i) => i.id)).toEqual(["mini-games"]);
     expect(progressNav.some((i) => i.id === "manual-log")).toBe(false);

@@ -127,12 +127,9 @@ export function NotificationsCenter({
   }, [actionToast]);
 
   const sortedNotifications = useMemo(() => {
-    return [...notifications].sort((a, b) => {
-      const fa = a.isFavorited ? 1 : 0;
-      const fb = b.isFavorited ? 1 : 0;
-      if (fa !== fb) return fb - fa;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
+    return [...notifications].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
   }, [notifications]);
 
   async function markRead(notificationId: string) {

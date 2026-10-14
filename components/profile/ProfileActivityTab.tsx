@@ -9,6 +9,7 @@ import { fetchMyActivityFeed } from "@/lib/client/activityFeedClient";
 import { subscribeActivityFeedRefresh } from "@/lib/client/activityFeedRefresh";
 import { isServerBackedUserId } from "@/lib/client/gameStateSync";
 import { formatProfileTime } from "./profilePostUtils";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 const ACCENT_CLASS = {
   xp: "text-uri-keaney",
@@ -59,12 +60,14 @@ export function ProfileActivityTab({
         title: view.def.name,
       }));
 
-    return mergeActivityFeed({
+    const merged = mergeActivityFeed({
       localLogs: getActivityLogs(character.id),
       serverEvents: isOwner ? serverEvents : [],
       achievements,
       limit: 50,
     });
+    if (FEATURE_FLAGS.progression) return merged;
+    return merged.filter((item) => item.feedType === "post_created" || item.feedType === "memory_saved");
   }, [character, isOwner, refreshKey, serverEvents]);
 
   if (items.length === 0) {
@@ -75,7 +78,9 @@ export function ProfileActivityTab({
         </span>
         <p className="mt-3 font-display text-base font-semibold text-white">No activity yet</p>
         <p className="mt-1 max-w-xs text-sm text-white/60">
-          Scan QR codes, complete quests, and log campus activities to build your timeline.
+          {FEATURE_FLAGS.progression
+            ? "Scan QR codes, complete quests, and log campus activities to build your timeline."
+            : "Posts and campus memories you share will show up here."}
         </p>
       </div>
     );

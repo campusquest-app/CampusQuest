@@ -22,6 +22,7 @@ import type { QuadCommentActionResult } from "@/lib/client/quadCommentActions";
 import { toggleQuadCommentLike } from "@/lib/client/quadCommentActions";
 import { AvatarDisplay } from "./AvatarDisplay";
 import { formatStreakBadge } from "@/lib/streakMessaging";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { CampusQuestNodHeartPop } from "./CampusQuestNodHeartPop";
 import { FieldNoteEditModal } from "./FieldNoteEditModal";
 import { PostCommentsSheet } from "./posts/PostCommentsSheet";
@@ -140,6 +141,7 @@ function formatTime(ts: number): string {
 }
 
 function streakBadge(days: number | undefined): string | null {
+  if (!FEATURE_FLAGS.progression) return null;
   if (days == null || days < 3) return null;
   return formatStreakBadge(days);
 }
@@ -968,7 +970,7 @@ function FieldNoteCardInner({
             icon={ShieldCheck}
             count={note.verifyCount ?? 0}
             label={hasVerified ? "Remove verify" : "Verify"}
-            title="Verify legit — you +5 XP, author +5 XP"
+            title={FEATURE_FLAGS.progression ? "Verify legit — you +5 XP, author +5 XP" : "Verify legit"}
           />
           <ReactionButton
             active={hasAssisted}
@@ -976,7 +978,7 @@ function FieldNoteCardInner({
             icon={Swords}
             count={note.assistCount ?? 0}
             label={hasAssisted ? "Remove assist" : "Assist"}
-            title="Assist — guild race points + author XP"
+            title={FEATURE_FLAGS.progression ? "Assist — guild race points + author XP" : "Assist"}
           />
         </div>
       )}
@@ -1197,31 +1199,29 @@ function FieldNoteCardInner({
         selected={editTagSelections}
         onChange={setEditTagSelections}
         onClose={() => setAddTagsOpen(false)}
-        onDone={() => {
-          void (async () => {
-            if (!editTagSelections.length) {
-              setAddTagsOpen(false);
-              return;
-            }
-            setActionPending(true);
-            try {
-              await postAuthed(`/api/quad/posts/${note.id}/tags`, {
-                tags: editTagSelections.map((t) => ({
-                  entityType: t.entityType,
-                  entityId: t.entityId,
-                  displayLabel: t.displayLabel,
-                  subtitle: t.subtitle ?? null,
-                  mentionSlug: t.mentionSlug ?? null,
-                })),
-              });
-              setAddTagsOpen(false);
-              showToast("Tags updated");
-            } catch (err) {
-              showToast(err instanceof Error ? err.message : "Could not add tags.");
-            } finally {
-              setActionPending(false);
-            }
-          })();
+        onDone={async () => {
+          if (!editTagSelections.length) {
+            setAddTagsOpen(false);
+            return;
+          }
+          setActionPending(true);
+          try {
+            await postAuthed(`/api/quad/posts/${note.id}/tags`, {
+              tags: editTagSelections.map((t) => ({
+                entityType: t.entityType,
+                entityId: t.entityId,
+                displayLabel: t.displayLabel,
+                subtitle: t.subtitle ?? null,
+                mentionSlug: t.mentionSlug ?? null,
+              })),
+            });
+            setAddTagsOpen(false);
+            showToast("Tags updated");
+          } catch (err) {
+            showToast(err instanceof Error ? err.message : "Could not add tags.");
+          } finally {
+            setActionPending(false);
+          }
         }}
       />
 

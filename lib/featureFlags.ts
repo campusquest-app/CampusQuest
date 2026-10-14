@@ -7,6 +7,13 @@
  * routes, and data remain intact while a flag is `false`.
  */
 export const FEATURE_FLAGS = {
+  /**
+   * Launch gate for unfinished gamification. Set `true` to restore CQ Scanner,
+   * character stats, leaderboards, the gamification quest board, mini games,
+   * guilds, and XP rewards. Community Quests (local businesses and student
+   * deals) stay available either way. No data is deleted while this is `false`.
+   */
+  progression: false,
   /** Temporarily hidden — set `true` to restore Manual Log UI and deep links. */
   manualLog: false,
   /** Temporarily hidden — set `true` to restore Boss Battles UI and deep links. */
@@ -25,8 +32,43 @@ export const FEATURE_FLAGS = {
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;
 
-/** Preferred landing tab when a disabled top-level feature route is opened. */
-export const FEATURE_FLAG_FALLBACK_TAB = "quest-board" as const;
+/** Preferred landing tab when a disabled feature route is opened. */
+export const FEATURE_FLAG_FALLBACK_TAB = "quad" as const;
+
+/** Student surfaces that stay hidden until `FEATURE_FLAGS.progression` is on. */
+export const PROGRESSION_SURFACE_IDS = [
+  "scan",
+  "character-sheet",
+  "guilds",
+  "leaderboards",
+  "quest-board",
+  "manual-log",
+  "battle",
+  "mini-games",
+  "achievements",
+  "progress-hub",
+  "skills-lore",
+] as const;
+
+export type ProgressionSurfaceId = (typeof PROGRESSION_SURFACE_IDS)[number];
+
+export function isProgressionSurface(id: string): id is ProgressionSurfaceId {
+  return (PROGRESSION_SURFACE_IDS as readonly string[]).includes(id);
+}
+
+/** False while launch hides this surface. Manual Log, Boss Battles, and Codex keep their own flags. */
+export function allowStudentSurface(id: string): boolean {
+  if (isProgressionSurface(id) && !FEATURE_FLAGS.progression) return false;
+  if (id === "manual-log" && !FEATURE_FLAGS.manualLog) return false;
+  if (id === "battle" && !FEATURE_FLAGS.bossBattles) return false;
+  if (id === "collectibles" && !FEATURE_FLAGS.codex) return false;
+  return true;
+}
+
+/** Server and client XP grants stay off until progression returns. */
+export function progressionRewardsEnabled(): boolean {
+  return FEATURE_FLAGS.progression;
+}
 
 /**
  * Preferred landing when a disabled Codex/Equipment surface is opened.
