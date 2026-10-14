@@ -157,6 +157,14 @@ describe("App Review account campus verification", () => {
     expect(profileUpdates[0]).toMatchObject({ onboarding_completed: false });
   });
 
+  it("reset never writes null into the NOT NULL jsonb profile columns", async () => {
+    const { profileUpdates } = fakeAdmin(reviewerProfile, APP_REVIEW_ACCOUNT_EMAIL);
+    await resetQaOnboardingState("reviewer-1");
+    for (const column of ["game_state_json", "equipment_loadout_json", "character_stats_json"]) {
+      expect(profileUpdates[0][column]).toEqual({});
+    }
+  });
+
   it("other QA test accounts still lose campus verification on reset", async () => {
     const { profileUpdates } = fakeAdmin({ ...reviewerProfile, id: "legacy-qa" }, "qa-signup@campusquest.app");
     await resetQaOnboardingState("legacy-qa");

@@ -135,9 +135,10 @@ const PROFILE_ONBOARDING_RESET = {
   nav_hints_seen_at: null,
   beginner_chain_completed_at: null,
   beginner_chain_celebration_seen_at: null,
-  game_state_json: null,
-  equipment_loadout_json: null,
-  character_stats_json: null,
+  // NOT NULL DEFAULT '{}'::jsonb in production.
+  game_state_json: {},
+  equipment_loadout_json: {},
+  character_stats_json: {},
   guild_id: null,
   streak_days: 0,
   last_activity_date: null,
