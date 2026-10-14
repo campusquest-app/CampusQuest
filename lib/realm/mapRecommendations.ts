@@ -99,6 +99,8 @@ export function collectMapRecommendationSources(args: {
 
     for (const event of group.events) {
       if (isEventCancelled(event)) continue;
+      const countdown = getEventCountdownState(event.startsAt, event.endsAt, args.now, false);
+      if (countdown.kind === "ended" || countdown.kind === "cancelled") continue;
       if (!isEventVisibleOnMap({ end_time: effectiveEventEndIso(event.startsAt, event.endsAt) }, args.now)) continue;
       const key = eventDedupeKey(event);
       if (seenEvents.has(key)) continue;

@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
+import { forwardRef, useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Calendar, Handshake, Home, Map } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
@@ -29,12 +29,9 @@ export const CQ_BOTTOM_NAV_CLEARANCE =
 export const CQ_FLOATING_ACTION_BOTTOM =
   "calc(var(--cq-bottom-nav-h, 4.75rem) + 1.25rem)";
 
-/** Non-Map tabs that participate in the sliding active indicator. */
-const INDICATOR_TABS: AppBottomNavTab[] = ["quad", "partners", "events", "character"];
-
 const DOCK_TABS: AppBottomNavTab[] = [...APP_BOTTOM_NAV_TABS];
 
-const BOTTOM_NAV_AVATAR_PX = 28;
+const BOTTOM_NAV_AVATAR_PX = 26;
 
 function useLiveUserAvatar(fallback?: unknown): unknown {
   return useSyncExternalStore(
@@ -85,21 +82,14 @@ export function AppBottomNav({
   autoHideOnScroll?: boolean;
 }) {
   const navRef = useRef<HTMLElement | null>(null);
-  const railRef = useRef<HTMLDivElement | null>(null);
-  const itemRefs = useRef<Partial<Record<AppBottomNavTab, HTMLButtonElement | null>>>({});
   const liveAvatar = useLiveUserAvatar(userAvatar);
   const characterName = useLiveCharacterName();
   const reduceMotion = useReducedMotion();
   const drawerOpen = useIsDrawerOpen();
-  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
-
   const resolvedActive: AppBottomNavTab | null =
     activeTab === "other" || !DOCK_TABS.includes(activeTab as AppBottomNavTab)
       ? null
       : (activeTab as AppBottomNavTab);
-
-  const indicatorTab =
-    resolvedActive && INDICATOR_TABS.includes(resolvedActive) ? resolvedActive : null;
 
   useLayoutEffect(() => {
     const el = navRef.current;
@@ -132,37 +122,6 @@ export function AppBottomNav({
       document.documentElement.style.removeProperty(BOTTOM_NAV_CSS_VAR);
     };
   }, []);
-
-  useLayoutEffect(() => {
-    if (!indicatorTab) {
-      setIndicator(null);
-      return undefined;
-    }
-    const rail = railRef.current;
-    const activeEl = itemRefs.current[indicatorTab];
-    if (!rail || !activeEl) return undefined;
-
-    const syncIndicator = (): void => {
-      const railRect = rail.getBoundingClientRect();
-      const itemRect = activeEl.getBoundingClientRect();
-      setIndicator({
-        left: itemRect.left - railRect.left,
-        width: itemRect.width,
-      });
-    };
-
-    syncIndicator();
-    let ro: ResizeObserver | undefined;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(() => syncIndicator());
-      ro.observe(rail);
-    }
-    window.addEventListener("resize", syncIndicator);
-    return () => {
-      ro?.disconnect();
-      window.removeEventListener("resize", syncIndicator);
-    };
-  }, [indicatorTab]);
 
   useEffect(() => {
     const el = navRef.current;
@@ -254,50 +213,22 @@ export function AppBottomNav({
       transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
     >
       <div className="cq-dock-nav__slide">
-      <div ref={railRef} className="cq-dock-nav__rail">
-        {indicator ? (
-          <span
-            className="cq-dock-nav__indicator"
-            aria-hidden
-            style={{
-              left: indicator.left,
-              width: indicator.width,
-            }}
-          />
-        ) : null}
-
+      <div className="cq-dock-nav__rail">
         <DockItem
-          ref={(node) => {
-            itemRefs.current.quad = node;
-          }}
-          label={APP_BOTTOM_NAV_HINT_LABELS.quad}
-          hint={showDockLabels}
+          label="Home"
+          caption={APP_BOTTOM_NAV_HINT_LABELS.quad}
           active={resolvedActive === "quad"}
           onClick={() => guardNav(() => onSelectTab("quad"))}
-          icon={
-            <Home
-              className="h-[26px] w-[26px]"
-              strokeWidth={resolvedActive === "quad" ? 2.5 : 2}
-              fill={resolvedActive === "quad" ? "currentColor" : "none"}
-            />
-          }
+          icon={<Home className="cq-dock-nav__glyph" strokeWidth={2.25} />}
         />
 
         <DockItem
-          ref={(node) => {
-            itemRefs.current.partners = node;
-          }}
-          label="CampusQuest Partners"
-          hintLabel={APP_BOTTOM_NAV_HINT_LABELS.partners}
-          hint={showDockLabels}
+          label="Community Quests"
+          caption={"Community\nQuests"}
+          itemClassName="cq-dock-nav__item--quests"
           active={resolvedActive === "partners"}
           onClick={() => guardNav(() => onSelectTab("partners"))}
-          icon={
-            <Handshake
-              className="h-[26px] w-[26px]"
-              strokeWidth={resolvedActive === "partners" ? 2.5 : 2}
-            />
-          }
+          icon={<Handshake className="cq-dock-nav__glyph" strokeWidth={2.25} />}
         />
 
         <div className="cq-dock-nav__map-slot">
@@ -320,28 +251,14 @@ export function AppBottomNav({
         </div>
 
         <DockItem
-          ref={(node) => {
-            itemRefs.current.events = node;
-          }}
           label={APP_BOTTOM_NAV_HINT_LABELS.events}
-          hint={showDockLabels}
           active={resolvedActive === "events"}
           onClick={() => guardNav(() => onSelectTab("events"))}
-          icon={
-            <Calendar
-              className="h-[26px] w-[26px]"
-              strokeWidth={resolvedActive === "events" ? 2.5 : 2}
-              fill={resolvedActive === "events" ? "currentColor" : "none"}
-            />
-          }
+          icon={<Calendar className="cq-dock-nav__glyph" strokeWidth={2.25} />}
         />
 
         <DockProfileItem
-          ref={(node) => {
-            itemRefs.current.character = node;
-          }}
           label={APP_BOTTOM_NAV_HINT_LABELS.character}
-          hint={showDockLabels}
           active={resolvedActive === "character"}
           onClick={() => guardNav(() => onSelectTab("character"))}
           avatar={liveAvatar}
@@ -358,24 +275,24 @@ export function AppBottomNav({
 const DockItem = forwardRef(function DockItem(
   {
     label,
-    hintLabel,
+    caption,
     active,
     onClick,
     icon,
     badge = false,
     reserveBadge = false,
-    hint = false,
+    itemClassName,
   }: {
     label: string;
-    /** Shorter first-session hint text; defaults to `label`. */
-    hintLabel?: string;
+    /** Visible caption when it should be shorter than the accessible name. */
+    caption?: string;
     active: boolean;
     onClick: () => void;
     icon: ReactNode;
     badge?: boolean;
     /** Keep layout stable when badge appears/disappears. */
     reserveBadge?: boolean;
-    hint?: boolean;
+    itemClassName?: string;
   },
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
@@ -394,11 +311,10 @@ const DockItem = forwardRef(function DockItem(
             ? `${label}, current page`
             : label
       }
-      className={`cq-dock-nav__item touch-manipulation cq-tap-press ${active ? "cq-dock-nav__item--active" : ""}`}
+      className={`cq-dock-nav__item touch-manipulation cq-tap-press ${active ? "cq-dock-nav__item--active" : ""}${itemClassName ? ` ${itemClassName}` : ""}`}
     >
       <span className="cq-dock-nav__icon-wrap">
         {icon}
-        {hint ? <span className="cq-dock-nav__hint">{hintLabel ?? label}</span> : null}
         {reserveBadge || badge ? (
           <span
             className={`cq-dock-nav__badge${badge ? "" : " cq-dock-nav__badge--hidden"}`}
@@ -406,6 +322,8 @@ const DockItem = forwardRef(function DockItem(
           />
         ) : null}
       </span>
+      <span className="cq-dock-nav__label">{caption ?? label}</span>
+      <span className="cq-dock-nav__dot" aria-hidden />
     </button>
   );
 });
@@ -419,7 +337,6 @@ const DockProfileItem = forwardRef(function DockProfileItem(
     initials,
     useInitials = false,
     loading,
-    hint = false,
   }: {
     label: string;
     active: boolean;
@@ -428,7 +345,6 @@ const DockProfileItem = forwardRef(function DockProfileItem(
     initials: string;
     useInitials?: boolean;
     loading?: boolean;
-    hint?: boolean;
   },
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
@@ -441,24 +357,27 @@ const DockProfileItem = forwardRef(function DockProfileItem(
       aria-label={active ? "Profile, current page" : "Profile"}
       className={`cq-dock-nav__item cq-dock-nav__item--profile touch-manipulation cq-tap-press ${active ? "cq-dock-nav__item--active" : ""}`}
     >
-      <span className={`cq-dock-nav__avatar ${active ? "cq-dock-nav__avatar--active" : ""}`}>
-        {loading ? (
-          <span className="cq-dock-nav__avatar-placeholder" aria-hidden />
-        ) : useInitials ? (
-          <span className="cq-dock-nav__avatar-initials" aria-hidden>
-            {initials}
-          </span>
-        ) : (
-          <AvatarDisplay
-            key={typeof avatar === "string" ? avatar : JSON.stringify(avatar ?? "")}
-            avatar={avatar}
-            size={BOTTOM_NAV_AVATAR_PX}
-            fitParent
-            showProp={false}
-          />
-        )}
+      <span className="cq-dock-nav__icon-wrap">
+        <span className={`cq-dock-nav__avatar ${active ? "cq-dock-nav__avatar--active" : ""}`}>
+          {loading ? (
+            <span className="cq-dock-nav__avatar-placeholder" aria-hidden />
+          ) : useInitials ? (
+            <span className="cq-dock-nav__avatar-initials" aria-hidden>
+              {initials}
+            </span>
+          ) : (
+            <AvatarDisplay
+              key={typeof avatar === "string" ? avatar : JSON.stringify(avatar ?? "")}
+              avatar={avatar}
+              size={BOTTOM_NAV_AVATAR_PX}
+              fitParent
+              showProp={false}
+            />
+          )}
+        </span>
       </span>
-      {hint ? <span className="cq-dock-nav__hint">{label}</span> : null}
+      <span className="cq-dock-nav__label">{label}</span>
+      <span className="cq-dock-nav__dot" aria-hidden />
     </button>
   );
 });

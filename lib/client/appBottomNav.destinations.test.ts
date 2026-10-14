@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { APP_BOTTOM_NAV_TABS } from "@/lib/client/appBottomNavTabs";
+import { APP_BOTTOM_NAV_HINT_LABELS, APP_BOTTOM_NAV_TABS } from "@/lib/client/appBottomNavTabs";
 import { BOTTOM_NAV_SWIPE_TABS } from "@/lib/client/mobileGestures";
 
 describe("primary bottom navigation destinations", () => {
@@ -15,6 +15,10 @@ describe("primary bottom navigation destinations", () => {
   it("uses Feed, Partners, Explore/Map, Events, and Profile", () => {
     expect(APP_BOTTOM_NAV_TABS).toEqual(["quad", "partners", "realm", "events", "character"]);
     expect(navSrc).toContain('onSelectTab("partners")');
+    expect(APP_BOTTOM_NAV_HINT_LABELS.partners).toBe("Community Quests");
+    expect(navSrc).toContain('label="Community Quests"');
+    expect(navSrc).toContain("Community\\nQuests");
+    expect(navSrc).not.toContain('label="Student Perks"');
     expect(navSrc).toContain("<Handshake");
     expect(navSrc).not.toContain("MessageCircle");
     expect(BOTTOM_NAV_SWIPE_TABS).toEqual(APP_BOTTOM_NAV_TABS);

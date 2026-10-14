@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type TouchEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type TouchEvent } from "react";
 import { ControlPosition, MapControl, useMap } from "@vis.gl/react-google-maps";
 import {
   Building2,
   Compass,
+  GraduationCap,
   Layers,
   LocateFixed,
   Move3d,
@@ -13,7 +14,9 @@ import {
   PanelRightOpen,
   RotateCcw,
   RotateCw,
+  Sparkles,
 } from "lucide-react";
+import { returnToCampusHome, shouldShowBackToCampus } from "@/lib/realm/campusHomeCamera";
 import { useRealmMapCamera } from "./useRealmMapCamera";
 import { URI_MAP_DEFAULT_ZOOM } from "@/lib/realm/googleMapPose";
 import { isRealmVector3dEnabled } from "@/lib/realm/googleMapConfig";
@@ -35,6 +38,7 @@ export function RealmMapControls({
   immersive = false,
   vector3dEnabled = isRealmVector3dEnabled(),
   onBuildingsOverlayChange,
+  onOpenHighlights,
   mapRef,
 }: {
   expanded: boolean;
@@ -50,16 +54,65 @@ export function RealmMapControls({
   immersive?: boolean;
   vector3dEnabled?: boolean;
   onBuildingsOverlayChange?: (show: boolean) => void;
+  onOpenHighlights?: () => void;
   mapRef?: React.MutableRefObject<google.maps.Map | null>;
 }) {
   const map = useMap();
   const touchStartYRef = useRef<number | null>(null);
+  const [showBackToCampus, setShowBackToCampus] = useState(false);
+  const backVisibleRef = useRef(false);
   const camera = useRealmMapCamera({
     mapLayer,
     vector3dEnabled,
     onNotice: onDenied,
     onShowFallbackBuildingsChange: onBuildingsOverlayChange,
   });
+
+  useEffect(() => {
+    if (!map) return undefined;
+    let timer = 0;
+    const sync = () => {
+      const center = map.getCenter();
+      if (!center) return;
+      const next = shouldShowBackToCampus(
+        {
+          lat: center.lat(),
+          lng: center.lng(),
+          zoom: map.getZoom() ?? URI_MAP_DEFAULT_ZOOM,
+          heading: map.getHeading() ?? 0,
+          tilt: map.getTilt() ?? 0,
+        },
+        backVisibleRef.current,
+      );
+      if (next === backVisibleRef.current) return;
+      backVisibleRef.current = next;
+      setShowBackToCampus(next);
+    };
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(sync, 280);
+    };
+    const listeners = [
+      map.addListener("idle", sync),
+      map.addListener("center_changed", schedule),
+      map.addListener("zoom_changed", schedule),
+      map.addListener("heading_changed", schedule),
+      map.addListener("tilt_changed", schedule),
+    ];
+    sync();
+    return () => {
+      window.clearTimeout(timer);
+      listeners.forEach((listener) => google.maps.event.removeListener(listener));
+    };
+  }, [map]);
+
+  const goToCampus = useCallback(() => {
+    const activeMap = mapRef?.current ?? map;
+    if (!activeMap) return;
+    resetUserCameraInteraction();
+    if (followMode) onToggleFollow();
+    returnToCampusHome(activeMap);
+  }, [followMode, map, mapRef, onToggleFollow]);
 
   const locate = useCallback(() => {
     onLocate((pos) => {
@@ -130,54 +183,55 @@ export function RealmMapControls({
         onTouchEnd={handleStackTouchEnd}
       >
         <div className={stackClass}>
-          {!expanded ? (
-            <>
-              <button
-                type="button"
-                onClick={toggleLayer}
-                className={`cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-12 w-12 items-center justify-center touch-manipulation${
-                  mapLayer === "satellite" ? " cq-realm-float-btn--active" : ""
-                }`}
-                aria-label={mapLayer === "campus" ? "Switch to satellite view" : "Switch to campus view"}
-                aria-pressed={mapLayer === "satellite"}
-                title={mapLayer === "campus" ? "Satellite view" : "Campus view"}
-              >
-                <Layers className="h-[18px] w-[18px]" strokeWidth={2.2} />
-              </button>
-              <button
-                type="button"
-                onClick={locate}
-                disabled={locating}
-                className={`cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-12 w-12 items-center justify-center touch-manipulation disabled:opacity-60${
-                  followMode ? " cq-realm-float-btn--active" : ""
-                }`}
-                aria-label={followMode ? "Stop following your location" : "Center map on my location"}
-                title={followMode ? "Following location" : "My location"}
-              >
-                <LocateFixed
-                  className={`h-[18px] w-[18px] ${locating ? "animate-pulse" : ""}`}
-                  strokeWidth={2.2}
-                />
-              </button>
-            </>
-          ) : null}
-
-          <div className="cq-realm-map-controls-expandable" aria-hidden={!expanded}>
+          <button
+            type="button"
+            onClick={toggleLayer}
+            className={`cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-12 w-12 items-center justify-center touch-manipulation${
+              mapLayer === "satellite" ? " cq-realm-float-btn--active" : ""
+            }`}
+            aria-label={mapLayer === "campus" ? "Switch to satellite view" : "Switch to campus view"}
+            aria-pressed={mapLayer === "satellite"}
+            title={mapLayer === "campus" ? "Satellite view" : "Campus view"}
+          >
+            <Layers className="h-[18px] w-[18px]" strokeWidth={2.2} />
+          </button>
+          <button
+            type="button"
+            onClick={onOpenHighlights}
+            className="cq-realm-float-btn cq-realm-float-btn--highlights cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-12 w-12 items-center justify-center touch-manipulation"
+            aria-label="Rhody Highlights"
+            title="Rhody Highlights"
+          >
+            <Sparkles className="h-[18px] w-[18px]" strokeWidth={2.2} />
+          </button>
+          {showBackToCampus ? (
             <button
               type="button"
-              onClick={locate}
-              disabled={locating}
-              className="cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--delay-1 flex h-11 w-11 items-center justify-center touch-manipulation disabled:opacity-60"
-              aria-label="Center map on my location"
-              title="My location"
-              tabIndex={expanded ? 0 : -1}
+              onClick={goToCampus}
+              className="cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-12 w-12 items-center justify-center touch-manipulation"
+              aria-label="Back to campus"
+              title="Back to campus"
             >
-              <LocateFixed
-                className={`h-[18px] w-[18px] ${locating ? "animate-pulse" : ""}`}
-                strokeWidth={2.2}
-              />
+              <GraduationCap className="h-[18px] w-[18px]" strokeWidth={2.2} />
             </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={locate}
+            disabled={locating}
+            className={`cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--visible-collapsed flex h-12 w-12 items-center justify-center touch-manipulation disabled:opacity-60${
+              followMode ? " cq-realm-float-btn--active" : ""
+            }`}
+            aria-label={followMode ? "Stop following your location" : "Center map on my location"}
+            title={followMode ? "Following location" : "My location"}
+          >
+            <LocateFixed
+              className={`h-[18px] w-[18px] ${locating ? "animate-pulse" : ""}`}
+              strokeWidth={2.2}
+            />
+          </button>
 
+          <div className="cq-realm-map-controls-expandable" aria-hidden={!expanded}>
             <button
               type="button"
               onClick={handleFollowToggle}
@@ -290,20 +344,6 @@ export function RealmMapControls({
               tabIndex={expanded ? 0 : -1}
             >
               <Navigation className="h-[18px] w-[18px]" strokeWidth={2.2} />
-            </button>
-
-            <button
-              type="button"
-              onClick={toggleLayer}
-              className={`cq-realm-float-btn cq-realm-map-controls-item cq-realm-map-controls-item--delay-6 flex h-11 w-11 items-center justify-center touch-manipulation${
-                mapLayer === "satellite" ? " cq-realm-float-btn--active" : ""
-              }`}
-              aria-label={mapLayer === "campus" ? "Switch to satellite view" : "Switch to campus view"}
-              aria-pressed={mapLayer === "satellite"}
-              title={mapLayer === "campus" ? "Satellite view" : "Campus view"}
-              tabIndex={expanded ? 0 : -1}
-            >
-              <Layers className="h-[18px] w-[18px]" strokeWidth={2.2} />
             </button>
           </div>
 

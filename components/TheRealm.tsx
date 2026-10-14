@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { NotificationDestination } from "@/components/NotificationsCenter";
 import { RealmMap } from "@/components/realm/RealmMap";
 import type { RealmLocation } from "@/lib/realm/locations";
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
@@ -27,6 +28,8 @@ export function TheRealm({
   onFindMyCampus,
   onViewAllRecommendations,
   onOpenNotifications,
+  onOpenNotificationDestination,
+  onUnreadCountChange,
   onOpenOwnProfile,
   unreadCount = 0,
 }: {
@@ -61,6 +64,8 @@ export function TheRealm({
   onFindMyCampus?: () => void;
   onViewAllRecommendations?: () => void;
   onOpenNotifications?: () => void;
+  onOpenNotificationDestination?: (notification: NotificationDestination) => void;
+  onUnreadCountChange?: (count: number) => void;
   onOpenOwnProfile?: () => void;
   unreadCount?: number;
 }) {
@@ -101,6 +106,8 @@ export function TheRealm({
           onFindMyCampus={onFindMyCampus}
           onViewAllRecommendations={onViewAllRecommendations}
           onOpenNotifications={onOpenNotifications}
+          onOpenNotificationDestination={onOpenNotificationDestination}
+          onUnreadCountChange={onUnreadCountChange}
           onOpenOwnProfile={onOpenOwnProfile}
           unreadCount={unreadCount}
         />

@@ -78,7 +78,7 @@ export function PartnerCard({
   );
 }
 
-/** Large card for "Featured Student Deals". Only rendered for partners with a live, configured reward. */
+/** Large card for "Featured Community Quests". Only rendered for partners with a live, configured reward. */
 export function FeaturedDealCard({
   partner,
   now,
@@ -130,12 +130,7 @@ export function FeaturedDealCard({
             <h3 id={titleId} className="cq-perk-featured__name">
               {partner.name}
             </h3>
-            {partner.offerTitle ? (
-              <p className="cq-perk-featured__offer">
-                {partner.discountValue ? `${partner.discountValue} ` : ""}
-                {partner.offerTitle}
-              </p>
-            ) : null}
+            {partner.offerTitle ? <p className="cq-perk-featured__offer">{partner.offerTitle}</p> : null}
           </div>
         </div>
         <PartnerOpenStatus status={status} />
@@ -145,7 +140,7 @@ export function FeaturedDealCard({
           onClick={() => onViewReward(partner)}
         >
           <Gift className="h-4 w-4" aria-hidden strokeWidth={2.3} />
-          View Student Reward
+          View Quest Deal
         </button>
       </div>
     </article>

@@ -52,7 +52,9 @@ import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 import { geoToRealmMapPercent, realmMapPercentToGeo } from "@/lib/realm/geoToMapPercent";
 import { GoogleRealmMap } from "./GoogleRealmMap";
-import { RealmDiscoverySheet } from "./RealmDiscoverySheet";
+import { RealmHighlightsSheet } from "./RealmHighlightsSheet";
+import { RealmOverlaySheet } from "./RealmOverlaySheet";
+import { NotificationsCenter, type NotificationDestination } from "@/components/NotificationsCenter";
 import { RealmArrivalCard } from "./RealmArrivalCard";
 import { RealmIntroCoach } from "./RealmIntroCoach";
 import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
@@ -75,10 +77,6 @@ import {
 } from "@/lib/realm/firstEntry";
 import type { RealmDirectionsLoadResult } from "./RealmDirectionsOverlay.types";
 import { logWalkRoute } from "@/lib/realm/walkRouteLog";
-import {
-  buildNearbyPlaceCardsFromLandmarks,
-  type DiscoverySheetSnap,
-} from "@/lib/realm/discoverySheet";
 import { RealmRouteSheet } from "./RealmRouteSheet";
 import type {
   RealmDirectionsDestination,
@@ -173,6 +171,8 @@ export function RealmMap({
   onFindMyCampus,
   onViewAllRecommendations,
   onOpenNotifications,
+  onOpenNotificationDestination,
+  onUnreadCountChange,
   onOpenOwnProfile,
   unreadCount = 0,
 }: {
@@ -207,6 +207,8 @@ export function RealmMap({
   onFindMyCampus?: () => void;
   onViewAllRecommendations?: () => void;
   onOpenNotifications?: () => void;
+  onOpenNotificationDestination?: (notification: NotificationDestination) => void;
+  onUnreadCountChange?: (count: number) => void;
   onOpenOwnProfile?: () => void;
   unreadCount?: number;
 }) {
@@ -257,11 +259,8 @@ export function RealmMap({
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
   const [railFocus, setRailFocus] = useState<{ lat: number; lng: number } | null>(null);
   // Idle map shows a collapsed peek only; For You content opens via the For You filter pill.
-  const [discoverySnap, setDiscoverySnap] = useState<DiscoverySheetSnap>("collapsed");
-  const [discoveryPadPx, setDiscoveryPadPx] = useState(0);
-  const [userFix, setUserFix] = useState<{ lat: number; lng: number; accuracy?: number | null } | null>(null);
-  const [userLocating, setUserLocating] = useState(true);
-  const locateAttemptedRef = useRef(false);
+  const [highlightsOpen, setHighlightsOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const recProfile = useRecommendationProfile(personalization);
   const focusSeqRef = useRef(0);
   const pendingWalkAfterFocusRef = useRef(false);
@@ -617,8 +616,6 @@ export function RealmMap({
     setSheetOpen(false);
     setSearchPin(null);
     setFlyToForce(false);
-    // Closing a marker/backdrop must not remount the full For You stack.
-    setDiscoverySnap("collapsed");
     if (!isRouteSheetOpen) {
       setActiveMarkerId(null);
       setSelectedMapContent(null);
@@ -631,16 +628,10 @@ export function RealmMap({
 
   const handleMarkerFilterChange = useCallback((next: MapMarkerFilter) => {
     setMarkerFilter(next);
-    // Discovery content opens only from an explicit For You control.
-    setDiscoverySnap(next === "for_you" ? "default" : "collapsed");
   }, []);
 
   const handleMapBackgroundClick = useCallback(() => {
-    if (sheetOpen) {
-      closeSheet();
-      return;
-    }
-    setDiscoverySnap("collapsed");
+    if (sheetOpen) closeSheet();
   }, [closeSheet, sheetOpen]);
 
   useEffect(() => {
@@ -845,18 +836,6 @@ export function RealmMap({
   const searchRecScores = useMemo(() => recommendationScoreBySearchId(mapRecommendations), [mapRecommendations]);
   const recCounts = useMemo(() => mapRecommendationCounts(mapRecommendations), [mapRecommendations]);
 
-  const discoveryItems = useMemo(
-    () =>
-      rankMapRecommendations({
-        landmarks: recommendationLandmarks,
-        groups: supplementaryPins,
-        profile: recProfile,
-        now: new Date(),
-        limit: 16,
-      }),
-    [recommendationLandmarks, supplementaryPins, recProfile],
-  );
-
   const discoveryGroups = useMemo(() => {
     const fromLandmarks = locations
       .map((location) => location.mapContent)
@@ -864,39 +843,11 @@ export function RealmMap({
     return [...fromLandmarks, ...supplementaryPins];
   }, [locations, supplementaryPins]);
 
-  const nearbyPlaces = useMemo(
-    () => buildNearbyPlaceCardsFromLandmarks(recommendationLandmarks, userFix, 6),
-    [recommendationLandmarks, userFix],
-  );
-
-  const handleUserFix = useCallback((pos: { lat: number; lng: number; accuracy?: number | null } | null) => {
-    setUserFix((prev) => {
-      if (!pos && !prev) return prev;
-      if (
-        pos &&
-        prev &&
-        pos.lat === prev.lat &&
-        pos.lng === prev.lng &&
-        pos.accuracy === prev.accuracy
-      ) {
-        return prev;
-      }
-      return pos;
-    });
-  }, []);
-
-  const handleUserLocating = useCallback((locating: boolean) => {
-    if (locating) locateAttemptedRef.current = true;
-    if (!locating && !locateAttemptedRef.current) return;
-    setUserLocating(locating);
-  }, []);
-
-  const showDiscoverySheet =
-    !showArrival && !showIntro && !editMode && !sheetOpen && !isRouteSheetOpen;
-
   useEffect(() => {
-    if (!showDiscoverySheet) setDiscoveryPadPx(0);
-  }, [showDiscoverySheet]);
+    if (isActive) return;
+    setHighlightsOpen(false);
+    setNotificationsOpen(false);
+  }, [isActive]);
 
   const syncRecommendationForMarker = useCallback(
     (markerId: string) => {
@@ -924,24 +875,6 @@ export function RealmMap({
       openSupplementaryPin(group);
     }
   }, [locations, supplementaryPins, openLocation, openSupplementaryPin]);
-
-  const openPlaceFromCarousel = useCallback(
-    (place: { markerId: string }) => {
-      const rec =
-        discoveryItems.find((item) => item.markerId === place.markerId) ??
-        mapRecommendations.find((item) => item.markerId === place.markerId);
-      if (rec) {
-        focusRecommendation(rec, true);
-        return;
-      }
-      const location = locations.find((row) => row.id === place.markerId);
-      if (location) {
-        openLocation(location);
-        syncRecommendationForMarker(place.markerId);
-      }
-    },
-    [discoveryItems, mapRecommendations, locations, focusRecommendation, openLocation, syncRecommendationForMarker],
-  );
 
   const handleTapLandmark = useCallback(
     (id: RealmLocationId) => {
@@ -1301,6 +1234,7 @@ export function RealmMap({
         ref={mapRootRef}
         data-cq-gesture-block="all"
         data-no-drawer-swipe="true"
+        data-cq-map-sheet={highlightsOpen || notificationsOpen ? "open" : undefined}
         className={`realm-map-shell relative overflow-hidden ${
           immersive ? "realm-map-shell--immersive" : "rounded-2xl"
         } ${useGoogleMap ? "realm-map-shell--google" : ""} ${panning ? "realm-map-shell--panning" : ""} ${
@@ -1365,20 +1299,25 @@ export function RealmMap({
             recommendedMarkerIds={forYouMarkerIds}
             suppressLegacyWelcome={showArrival || showIntro}
             recommendationScoreById={searchRecScores}
-            onUserFix={handleUserFix}
-            onUserLocating={handleUserLocating}
+            gesturesLocked={highlightsOpen || notificationsOpen}
+            onOpenHighlights={() => {
+              setNotificationsOpen(false);
+              setHighlightsOpen(true);
+            }}
+            onOpenNotifications={() => {
+              setHighlightsOpen(false);
+              setNotificationsOpen(true);
+            }}
             viewerAvatar={viewer?.avatar ?? null}
             viewerName={viewer?.name ?? null}
             unreadCount={unreadCount}
             onOpenProfile={onOpenOwnProfile}
-            onOpenNotifications={onOpenNotifications}
             urinvolvedEditPins={urinvolvedEditPins}
             selectedUrinvolvedEventId={selectedUrinvolvedEventId}
             onSelectUrinvolvedEvent={setSelectedUrinvolvedEventId}
             onUrinvolvedEventDragEnd={(id, lat, lng) => void handleUrinvolvedEventDragEnd(id, lat, lng)}
             onPlaceSelected={handlePlaceSelected}
             searchPin={searchPin}
-            extraBottomPx={showDiscoverySheet ? discoveryPadPx : 0}
           />
         ) : (
           <TransformWrapper
@@ -1574,22 +1513,39 @@ export function RealmMap({
           </div>
         ) : null}
 
-        {showDiscoverySheet ? (
-          <RealmDiscoverySheet
-            items={discoveryItems}
-            groups={discoveryGroups}
-            nearbyPlaces={nearbyPlaces}
-            snap={discoverySnap}
-            onSnapChange={setDiscoverySnap}
-            onHeightChange={setDiscoveryPadPx}
-            onOpenRecommendation={(item) => focusRecommendation(item, true)}
-            onOpenPlace={openPlaceFromCarousel}
-            onViewAthletics={onViewAthletics}
-            onFindMyCampus={onFindMyCampus}
-            onViewAllRecommendations={onViewAllRecommendations}
-            walkOrigin={userFix}
-            locating={userLocating}
-          />
+        {highlightsOpen ? (
+          <RealmOverlaySheet title="Rhody Highlights" onClose={() => setHighlightsOpen(false)}>
+            <RealmHighlightsSheet
+              items={mapRecommendations}
+              groups={discoveryGroups}
+              loading={!mapGroupsLoaded}
+              onOpenRecommendation={(item) => {
+                setHighlightsOpen(false);
+                focusRecommendation(item, true);
+              }}
+              onViewAthletics={onViewAthletics}
+              onFindMyCampus={onFindMyCampus}
+              onViewAllRecommendations={onViewAllRecommendations}
+            />
+          </RealmOverlaySheet>
+        ) : null}
+
+        {notificationsOpen ? (
+          <RealmOverlaySheet title="Notifications" onClose={() => setNotificationsOpen(false)}>
+            <NotificationsCenter
+              embedded
+              theme="inbox"
+              onUnreadCountChange={onUnreadCountChange}
+              onOpenDestination={(notification) => {
+                setNotificationsOpen(false);
+                if (onOpenNotificationDestination) {
+                  onOpenNotificationDestination(notification);
+                  return;
+                }
+                onOpenNotifications?.();
+              }}
+            />
+          </RealmOverlaySheet>
         ) : null}
       </div>
 

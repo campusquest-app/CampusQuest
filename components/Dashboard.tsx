@@ -765,6 +765,64 @@ export function Dashboard() {
     setTab(next);
   }, []);
 
+  const openNotificationDestination = useCallback(
+    (notification: {
+      type: string;
+      relatedEntityType: string | null;
+      relatedEntityId: string | null;
+      actorId?: string | null;
+    }) => {
+      const entityType = notification.relatedEntityType;
+      const entityId = notification.relatedEntityId;
+      if (entityType === "event" && entityId) {
+        try {
+          window.sessionStorage.setItem("cq_open_event_id", entityId);
+        } catch {
+          /* ignore */
+        }
+        setTab("events");
+        return;
+      }
+      if (entityType === "conversation" && entityId) {
+        pushDeepLinkNonceRef.current += 1;
+        setInboxSubTab("messages");
+        setTab("inbox");
+        setInboxDeepLink({
+          nonce: pushDeepLinkNonceRef.current,
+          conversationId: entityId,
+          preferSubTab: "messages",
+        });
+        return;
+      }
+      if (entityType === "quad_post" && entityId) {
+        pushDeepLinkNonceRef.current += 1;
+        setInboxSubTab("notifications");
+        setTab("inbox");
+        setInboxDeepLink({
+          nonce: pushDeepLinkNonceRef.current,
+          postId: entityId,
+          preferSubTab: "notifications",
+          revealPhotoTags:
+            notification.type === "quad_post_tag" || notification.type === "quad_post_tag_approval",
+        });
+        return;
+      }
+      if ((entityType === "student_organization" || entityType === "organization") && entityId) {
+        try {
+          window.sessionStorage.setItem("cq_open_org_id", entityId);
+        } catch {
+          /* ignore */
+        }
+        navigateToTab("organizations");
+        return;
+      }
+      if (notification.actorId) {
+        void openFriendView(notification.actorId);
+      }
+    },
+    [navigateToTab, openFriendView],
+  );
+
   /** Return to the previous tab on the back-stack, falling back to the Quad when empty (deep links). */
   const goBackTab = useCallback(() => {
     const previous = tabHistoryRef.current.pop();
@@ -2976,6 +3034,8 @@ export function Dashboard() {
                 }}
                 onViewAllRecommendations={() => setTab("events")}
                 onOpenNotifications={() => setTab("inbox")}
+                onOpenNotificationDestination={openNotificationDestination}
+                onUnreadCountChange={setUnreadNotificationCount}
                 onOpenOwnProfile={() => setTab("character")}
                 unreadCount={unreadNotificationCount}
                 onCreatePost={() => setTab("quad")}

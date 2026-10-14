@@ -1,4 +1,6 @@
 import type { GroupedMapLocation, MapEventPin } from "@/lib/mapLocationGroups";
+import { CAMPUS_TIME_ZONE, formatCampusTime, isOnCampusDay } from "@/lib/realm/campusTime";
+import { isEventCancelled } from "@/lib/realm/eventCountdown";
 import { distanceMeters } from "@/lib/realm/realmFirstOpen";
 import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
 import {
@@ -278,7 +280,7 @@ export function collectAthleticsHighlights(
   const seen = new Set<string>();
   for (const group of groups) {
     for (const event of group.events ?? []) {
-      if (!isAthleticsEvent(event)) continue;
+      if (!isAthleticsEvent(event) || isEventCancelled(event)) continue;
       const start = Date.parse(event.startsAt);
       const startMs = Number.isFinite(start) ? start : nowMs;
       const endedAt = startMs + 4 * 60 * 60 * 1000;
@@ -447,13 +449,15 @@ function athleticsFallbackImage(sport: string, index: number): string {
 function eventTimeShort(startsAt: string, now: Date): string | null {
   const start = new Date(startsAt);
   if (Number.isNaN(start.getTime())) return null;
-  const sameDay =
-    start.getFullYear() === now.getFullYear() &&
-    start.getMonth() === now.getMonth() &&
-    start.getDate() === now.getDate();
-  const time = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  if (sameDay) return `Today • ${time}`;
-  const day = start.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const time = formatCampusTime(start);
+  if (time === "Time TBD") return null;
+  if (isOnCampusDay(start, now)) return `Today • ${time}`;
+  const day = new Intl.DateTimeFormat("en-US", {
+    timeZone: CAMPUS_TIME_ZONE,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(start);
   return `${day} • ${time}`;
 }
 

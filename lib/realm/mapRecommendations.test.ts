@@ -102,6 +102,47 @@ describe("For You map recommendations", () => {
     },
   ];
 
+  it("skips ended and cancelled events in upcoming recommendations", () => {
+    const sources = collectMapRecommendationSources({
+      landmarks: [],
+      now: NOW,
+      groups: [
+        group({
+          groupKey: "the-quad",
+          locationName: "The Quad",
+          events: [
+            {
+              id: "ended-rally",
+              title: "Morning Rally",
+              startsAt: "2026-08-25T12:00:00.000Z",
+              endsAt: "2026-08-25T14:00:00.000Z",
+              organizationName: null,
+              eventUrl: null,
+            },
+            {
+              id: "cancelled-game",
+              title: "Soccer",
+              startsAt: "2026-08-25T20:00:00.000Z",
+              endsAt: "2026-08-25T22:00:00.000Z",
+              organizationName: null,
+              eventUrl: null,
+              cancelled: true,
+            },
+            {
+              id: "later-game",
+              title: "Evening Game",
+              startsAt: "2026-08-25T20:00:00.000Z",
+              endsAt: "2026-08-25T22:00:00.000Z",
+              organizationName: null,
+              eventUrl: null,
+            },
+          ],
+        }),
+      ],
+    });
+    expect(sources.map((source) => source.event?.id)).toEqual(["later-game"]);
+  });
+
   it("surfaces recommended events and skips invalid coordinates", () => {
     const groups: GroupedMapLocation[] = [
       group({

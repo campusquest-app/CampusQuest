@@ -65,7 +65,7 @@ export const PARTNER_DIRECTORY: Partner[] = [
     },
     offerType: "standard_offer",
     discountValue: "20% OFF",
-    offerTitle: "for URI students",
+    offerTitle: "Go on a quest for 20% OFF at Daisy\u2019s",
     redemptionInstructions: "Show your CampusQuest account at checkout.",
     websiteUrl: "https://daisysnarragansett.com/",
   }),

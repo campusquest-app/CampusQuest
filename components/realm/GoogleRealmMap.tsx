@@ -33,6 +33,7 @@ import {
 } from "@/lib/realm/googleMapConfig";
 import {
   URI_MAP_CENTER,
+  URI_MAP_DEFAULT_ZOOM,
   URI_MAP_MAX_ZOOM,
   URI_MAP_MIN_ZOOM,
   URI_MAP_TYPE_ID,
@@ -78,8 +79,6 @@ import { useNow } from "@/lib/client/useNow";
 import { getGroupCountdown, type GroupCountdown } from "@/lib/realm/eventCountdown";
 import type { RealmDirectionsRequest } from "@/lib/realm/realmDirectionsTypes";
 import {
-  REALM_DISCOVERY_OVERVIEW_CENTER,
-  REALM_FIRST_OPEN_END_ZOOM,
   REALM_HEART_OF_CAMPUS,
   discoveryPriorityScore,
   distanceMeters,
@@ -735,6 +734,8 @@ export function GoogleRealmMap({
   suppressLegacyWelcome = false,
   recommendationScoreById,
   extraBottomPx = 0,
+  gesturesLocked = false,
+  onOpenHighlights,
   onUserFix,
   onUserLocating,
   viewerAvatar = null,
@@ -780,6 +781,8 @@ export function GoogleRealmMap({
   suppressLegacyWelcome?: boolean;
   recommendationScoreById?: Record<string, number>;
   extraBottomPx?: number;
+  gesturesLocked?: boolean;
+  onOpenHighlights?: () => void;
   onUserFix?: (pos: { lat: number; lng: number; accuracy?: number | null } | null) => void;
   onUserLocating?: (locating: boolean) => void;
   viewerAvatar?: string | null;
@@ -1141,11 +1144,11 @@ export function GoogleRealmMap({
           colorScheme={useVectorMapId ? ColorScheme.DARK : undefined}
           styles={useVectorMapId ? undefined : mapLayer === "campus" ? CQ_REALM_MAP_STYLE : undefined}
           mapTypeId={mapLayer === "campus" ? URI_MAP_TYPE_ID : "satellite"}
-          defaultCenter={REALM_DISCOVERY_OVERVIEW_CENTER}
-          defaultZoom={REALM_FIRST_OPEN_END_ZOOM}
+          defaultCenter={URI_MAP_CENTER}
+          defaultZoom={URI_MAP_DEFAULT_ZOOM}
           minZoom={URI_MAP_MIN_ZOOM}
           maxZoom={URI_MAP_MAX_ZOOM}
-          gestureHandling="greedy"
+          gestureHandling={gesturesLocked ? "none" : "greedy"}
           rotateControl
           tiltInteractionEnabled
           headingInteractionEnabled
@@ -1184,7 +1187,6 @@ export function GoogleRealmMap({
           {tilesLoaded && isActive && !editMode && !firstOpenDoneRef.current ? (
             <RealmMapFirstOpenCamera
               enabled
-              locateOnce={geolocation.locateOnce}
               onResolved={(center) => {
                 firstOpenDoneRef.current = true;
                 handleDiscoveryResolved(center);
@@ -1369,6 +1371,7 @@ export function GoogleRealmMap({
             immersive={immersive}
             vector3dEnabled={vector3dEnabled}
             onBuildingsOverlayChange={setShowFallbackBuildings}
+            onOpenHighlights={onOpenHighlights}
             mapRef={mapRef}
           />
 

@@ -11,6 +11,13 @@ import { AvatarDisplay } from "./AvatarDisplay";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
 import { PendingTagsInbox } from "@/components/quad/PendingTagsInbox";
 
+export type NotificationDestination = {
+  type: string;
+  relatedEntityType: string | null;
+  relatedEntityId: string | null;
+  actorId?: string | null;
+};
+
 type NotificationItem = {
   id: string;
   type: string;
@@ -30,12 +37,29 @@ type NotificationItem = {
   favoritedAt?: string | null;
 };
 
+function notificationHasDestination(notification: NotificationItem): boolean {
+  const type = notification.relatedEntityType;
+  const id = notification.relatedEntityId;
+  if (
+    id &&
+    (type === "quad_post" ||
+      type === "conversation" ||
+      type === "event" ||
+      type === "student_organization" ||
+      type === "organization")
+  ) {
+    return true;
+  }
+  return Boolean(notification.actorId);
+}
+
 export function NotificationsCenter({
   onUnreadCountChange,
   personalization: _personalization,
   embedded,
   theme = "default",
   onOpenQuadPost,
+  onOpenDestination,
 }: {
   onUnreadCountChange?: (count: number) => void;
   personalization?: { discoveryFocus?: string[] } | null;
@@ -44,6 +68,8 @@ export function NotificationsCenter({
   theme?: "default" | "inbox";
   /** Open a Quad post from a tag/like/comment notification (marks read first). */
   onOpenQuadPost?: (postId: string, options?: { revealPhotoTags?: boolean }) => void;
+  /** Open the notification's existing destination (post, event, chat, profile, org). */
+  onOpenDestination?: (notification: NotificationDestination) => void;
 }) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -381,29 +407,40 @@ export function NotificationsCenter({
             isQuadPostNotif &&
             notification.relatedEntityType === "quad_post" &&
             Boolean(notification.relatedEntityId);
+          const canOpenDestination = Boolean(onOpenDestination) && notificationHasDestination(notification);
+          const canOpen = canOpenPost || canOpenDestination;
 
           return (
             <article
               key={notification.id}
-              className={`${itemClass(Boolean(notification.readAt))}${canOpenPost ? " cursor-pointer" : ""}`}
-              role={canOpenPost ? "button" : undefined}
-              tabIndex={canOpenPost ? 0 : undefined}
+              className={`${itemClass(Boolean(notification.readAt))}${canOpen ? " cursor-pointer" : ""}`}
+              role={canOpen ? "button" : undefined}
+              tabIndex={canOpen ? 0 : undefined}
               onClick={
-                canOpenPost
+                canOpen
                   ? () => {
                       void (async () => {
                         if (!notification.readAt) await markRead(notification.id);
-                        onOpenQuadPost?.(notification.relatedEntityId!, {
-                          revealPhotoTags:
-                            notification.type === "quad_post_tag" ||
-                            notification.type === "quad_post_tag_approval",
+                        if (canOpenPost) {
+                          onOpenQuadPost?.(notification.relatedEntityId!, {
+                            revealPhotoTags:
+                              notification.type === "quad_post_tag" ||
+                              notification.type === "quad_post_tag_approval",
+                          });
+                          return;
+                        }
+                        onOpenDestination?.({
+                          type: notification.type,
+                          relatedEntityType: notification.relatedEntityType,
+                          relatedEntityId: notification.relatedEntityId,
+                          actorId: notification.actorId ?? null,
                         });
                       })();
                     }
                   : undefined
               }
               onKeyDown={
-                canOpenPost
+                canOpen
                   ? (event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
@@ -511,7 +548,10 @@ export function NotificationsCenter({
                       <button
                         type="button"
                         disabled={respondingTagKey?.startsWith(`${notification.id}:`)}
-                        onClick={() => void handleTagApprovalFromNotification(notification, "approve")}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleTagApprovalFromNotification(notification, "approve");
+                        }}
                         className={`min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 ${
                           isInbox
                             ? "bg-[#0095f6] text-white"
@@ -523,7 +563,10 @@ export function NotificationsCenter({
                       <button
                         type="button"
                         disabled={respondingTagKey?.startsWith(`${notification.id}:`)}
-                        onClick={() => void handleTagApprovalFromNotification(notification, "reject")}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleTagApprovalFromNotification(notification, "reject");
+                        }}
                         className={`min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 ${
                           isInbox
                             ? "bg-white/10 text-white"

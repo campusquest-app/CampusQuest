@@ -64,13 +64,16 @@ function renderDetail(partner: Partner, now = AFTERNOON, initialHoursOpen = fals
   );
 }
 
-describe("Student Perks screen", () => {
-  it("renders the header, gift icon, search placeholder, and all six filter chips", () => {
+describe("Community Quests screen", () => {
+  it("renders the header, storefront icon, search placeholder, and all six filter chips", () => {
     const html = renderScreen({ status: "loading" });
-    expect(html).toContain("Student Perks");
-    expect(html).toContain("Discover local favorites. Unlock exclusive student rewards.");
+    expect(html).toContain("Community");
+    expect(html).toContain("cq-perks-header__accent");
+    expect(html).toContain("Quests");
+    expect(html).toContain("Go on a quest to local businesses near your campus. Find deals, support local, and discover new spots.");
     expect(html).toContain("cq-perks-header__icon");
-    expect(html).toContain('placeholder="Search businesses, food, and rewards..."');
+    expect(html).toContain("lucide-store");
+    expect(html).toContain('placeholder="Search businesses, food, and quests..."');
     expect(html).toContain('class="cq-perks-chips"');
     expect(html).toContain('data-cq-horizontal-scroll="true"');
     expect(html).toContain('data-cq-gesture-block="swipe-tab"');
@@ -82,17 +85,18 @@ describe("Student Perks screen", () => {
     expect(html).not.toContain("CampusQuest Partners</h1>");
   });
 
-  it("features Daisy's 20% OFF with photo, open status, and a View Student Reward button", () => {
+  it("features Daisy's 20% OFF with photo, open status, and a View Quest Deal button", () => {
     const html = renderScreen(ready);
-    const start = html.indexOf("Featured Student Deals");
+    const start = html.indexOf("Featured Community Quests");
     const featured = html.slice(start, html.indexOf('id="cq-perks-explore-title"'));
     expect(start).toBeGreaterThan(-1);
     expect(featured).toContain(DAISYS_HTML);
     expect(featured).toContain("20% OFF");
+    expect(featured).toContain("Go on a quest for 20% OFF at Daisy");
     expect(featured).toContain('src="/partners/daisys/cover.jpg"');
     expect(featured).toContain("Open Now");
     expect(featured).toContain("Closes at 10 PM");
-    expect(featured).toContain("View Student Reward");
+    expect(featured).toContain("View Quest Deal");
     expect(featured).not.toContain(sandbar.name);
     expect(featured).not.toContain("cq-perks-featured--carousel");
   });
@@ -105,7 +109,7 @@ describe("Student Perks screen", () => {
       name: "Second Featured Shop",
     });
     const html = renderScreen({ status: "ready", partners: [...PARTNER_DIRECTORY, extra] });
-    const start = html.indexOf("Featured Student Deals");
+    const start = html.indexOf("Featured Community Quests");
     const featured = html.slice(start, html.indexOf('id="cq-perks-explore-title"'));
     expect(featured).toContain("cq-perks-featured--carousel");
     expect(featured).toContain('data-cq-horizontal-scroll="true"');
@@ -121,6 +125,7 @@ describe("Student Perks screen", () => {
   it("lists both businesses in Explore with category, live hours, and reward badges", () => {
     const explore = exploreSection(renderScreen(ready));
     expect(explore).toContain("Explore Local Businesses");
+    expect(explore).toContain("Go on a quest to discover local favorites near your campus.");
     expect(explore.indexOf(DAISYS_HTML)).toBeLessThan(explore.indexOf(sandbar.name));
     expect(explore).toContain("Chicken \u00b7 Ice Cream");
     expect(explore).toContain("Coffee \u00b7 Breakfast \u00b7 Drinks");
@@ -158,7 +163,7 @@ describe("Student Perks screen", () => {
     const coffee = renderScreen(ready, { filter: "coffee" });
     expect(exploreSection(coffee)).toContain(sandbar.name);
     expect(exploreSection(coffee)).not.toContain(DAISYS_HTML);
-    expect(coffee).not.toContain("Featured Student Deals");
+    expect(coffee).not.toContain("Featured Community Quests");
     expect(exploreSection(renderScreen(ready, { filter: "dessert" }))).not.toContain(sandbar.name);
     const food = exploreSection(renderScreen(ready, { filter: "food" }));
     expect(food).toContain(DAISYS_HTML);
@@ -171,7 +176,7 @@ describe("Student Perks screen", () => {
     expect(latte).not.toContain(DAISYS_HTML);
     expect(exploreSection(renderScreen(ready, { query: "ice cream" }))).toContain(DAISYS_HTML);
     expect(exploreSection(renderScreen(ready, { query: "dessert" }))).not.toContain(sandbar.name);
-    expect(renderScreen(ready, { query: "daisy" })).not.toContain("Featured Student Deals");
+    expect(renderScreen(ready, { query: "daisy" })).not.toContain("Featured Community Quests");
   });
 
   it("shows a no-results state with a reset button", () => {
@@ -192,6 +197,8 @@ describe("Student Perks screen", () => {
   it("shows saved businesses and an empty saved state", () => {
     const savedHtml = renderScreen(ready, { savedOnly: true, favorites: favorites(["the-sandbar-cafe"]) });
     expect(savedHtml).toContain("Saved Businesses");
+    expect(savedHtml).toContain(">Saved</span>");
+    expect(exploreSection(savedHtml)).not.toContain("Go on a quest to discover local favorites near your campus.");
     expect(exploreSection(savedHtml)).toContain(sandbar.name);
     expect(exploreSection(savedHtml)).not.toContain(DAISYS_HTML);
     expect(savedHtml).toContain('aria-pressed="true"');
@@ -266,8 +273,8 @@ describe("PartnerDetailView", () => {
     expect(html).toContain("Open Now");
     expect(html).toContain("Today: 12 PM \u2013 10 PM");
     expect(html).toContain("20% OFF");
-    expect(html).toContain("for URI students");
-    expect(html).toContain("View Student Reward");
+    expect(html).toContain("Go on a quest for 20% OFF at Daisy");
+    expect(html).toContain("View Quest Deal");
     expect(html).toContain("Show your CampusQuest account at checkout.");
     expect(html).toContain("106 Point Judith Rd, Narragansett, RI");
     expect(html).toContain(">Directions<");
@@ -292,7 +299,7 @@ describe("PartnerDetailView", () => {
     const html = renderDetail(sandbar);
     expect(html).toContain("Coming soon");
     expect(html).toContain("Student reward coming soon.");
-    expect(html).not.toContain("View Student Reward");
+    expect(html).not.toContain("View Quest Deal");
     expect(html).toContain('href="https://order.toasttab.com/online/the-sandbar-cafe-106-point-judith-road"');
     expect(html).not.toContain(">Website<");
     expect(html).toContain("Closed");
@@ -301,10 +308,10 @@ describe("PartnerDetailView", () => {
   it("shows expired and temporarily unavailable rewards without a pass button", () => {
     const expired = renderDetail({ ...daisys, endsAt: "2026-10-01T00:00:00Z" });
     expect(expired).toContain("This student reward has ended.");
-    expect(expired).not.toContain("View Student Reward");
+    expect(expired).not.toContain("View Quest Deal");
     const paused = renderDetail({ ...daisys, rewardPaused: true });
     expect(paused).toContain("Temporarily unavailable");
-    expect(paused).not.toContain("View Student Reward");
+    expect(paused).not.toContain("View Quest Deal");
   });
 
   it("shows Hours Unavailable and hides link buttons when data is missing", () => {
@@ -331,7 +338,7 @@ const PASS: StudentRewardPass = {
   partnerName: daisys.name,
   partnerLogoUrl: daisys.logoUrl,
   discountValue: "20% OFF",
-  offerTitle: "for URI students",
+  offerTitle: "Go on a quest for 20% OFF at Daisy\u2019s",
   offerDescription: null,
   rewardTerms: null,
   redemptionInstructions: "Show your CampusQuest account at checkout.",
@@ -362,7 +369,8 @@ describe("RewardPassView", () => {
     expect(html).toContain('src="/partners/daisys/logo.jpg"');
     expect(html).toContain("20% OFF");
     expect(html).toContain("Verified URI Student");
-    expect(html).toContain("for URI students");
+    expect(html).toContain("Community Quests");
+    expect(html).toContain("Go on a quest for 20% OFF at Daisy");
     expect(html).toContain("Show this screen at checkout");
     expect(html).toContain("cq-pass__live-dot");
     expect(html).toContain("Pass K7Q-29F");
@@ -472,6 +480,7 @@ describe("partners directory data", () => {
 
   it("keeps Daisy's 20% OFF and does not invent a Sandbar reward or terms", () => {
     expect(daisys.discountValue).toBe("20% OFF");
+    expect(daisys.offerTitle).toBe("Go on a quest for 20% OFF at Daisy\u2019s");
     expect(daisys.rewardTerms).toBeNull();
     expect(sandbar.discountValue).toBeNull();
     expect(sandbar.offerTitle).toBeNull();
