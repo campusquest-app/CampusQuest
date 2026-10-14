@@ -1,4 +1,4 @@
-/** Safe haptics + XP celebration sounds (unlock on Scan QR before reward). */
+import { isHapticsEnabled } from "@/lib/client/hapticsPreference";
 export {
   beginXpForgeFill,
   computeForgeStrikeCount,
@@ -38,6 +38,7 @@ export function playLevelUpSound(): void {
 }
 
 export function vibrateXpGain(): void {
+  if (!isHapticsEnabled()) return;
   if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
   try {
     navigator.vibrate?.(12);
@@ -47,6 +48,7 @@ export function vibrateXpGain(): void {
 }
 
 export function vibrateLevelUp(): void {
+  if (!isHapticsEnabled()) return;
   if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
   try {
     navigator.vibrate?.([18, 40, 22, 55, 28]);

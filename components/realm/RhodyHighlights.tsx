@@ -16,10 +16,15 @@ function openHighlight(item: AthleticsHighlight, onViewAthletics?: () => void) {
 export function RhodyHighlights({
   items,
   onViewAthletics,
+  onPlayItem,
 }: {
   items: AthleticsHighlight[];
   onViewAthletics?: () => void;
+  /** Return true when the sheet plays the clip itself. */
+  onPlayItem?: (item: AthleticsHighlight) => boolean;
 }) {
+  if (items.length === 0) return null;
+
   return (
     <section className="cq-rhody-highlights cq-rhody-highlights--wide" aria-label="Rhody Highlights">
       <header className="cq-rhody-highlights__head">
@@ -46,7 +51,10 @@ export function RhodyHighlights({
               type="button"
               className="cq-rhody-highlights__row"
               aria-label={item.playable ? `Play ${item.title}` : item.title}
-              onClick={() => openHighlight(item, onViewAthletics)}
+              onClick={() => {
+                if (onPlayItem?.(item)) return;
+                openHighlight(item, onViewAthletics);
+              }}
             >
               <span className="cq-rhody-highlights__thumb">
                 {/* eslint-disable-next-line @next/next/no-img-element */}

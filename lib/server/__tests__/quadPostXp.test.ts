@@ -18,6 +18,10 @@ vi.mock("@/lib/server/quadPosts", () => ({
   logQuadPostError: vi.fn(),
 }));
 
+vi.mock("@/lib/featureFlags", () => ({
+  progressionRewardsEnabled: () => true,
+}));
+
 import { countQuadPostXpGrantsToday, maybeAwardQuadPostCreationXp } from "@/lib/server/quadPostXp";
 
 type GrantTableMock = {

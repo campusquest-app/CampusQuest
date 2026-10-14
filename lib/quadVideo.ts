@@ -61,6 +61,36 @@ export function formatVideoDuration(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** Live streams and unloaded media have no finite seekable duration. */
+export function canSeekVideo(input: {
+  duration: number;
+  seekableLength?: number | null;
+  readyState?: number;
+}): boolean {
+  if (!Number.isFinite(input.duration) || input.duration <= 0) return false;
+  if (input.seekableLength === 0 && (input.readyState ?? 0) >= 1) return false;
+  return true;
+}
+
+/** Map a pointer position to a 0–1 ratio across the full track, clamped inside it. */
+export function seekRatioFromClientX(clientX: number, left: number, width: number): number {
+  if (!Number.isFinite(clientX) || !Number.isFinite(left) || !Number.isFinite(width) || width <= 0) return 0;
+  return Math.min(1, Math.max(0, (clientX - left) / width));
+}
+
+/** Convert a ratio into a time that stays inside the media, including the ends. */
+export function seekTimeForRatio(ratio: number, duration: number): number | null {
+  if (!canSeekVideo({ duration })) return null;
+  const clamped = Math.min(1, Math.max(0, Number.isFinite(ratio) ? ratio : 0));
+  return Math.min(duration, Math.max(0, clamped * duration));
+}
+
+export function seekTimeByDelta(current: number, delta: number, duration: number): number | null {
+  if (!canSeekVideo({ duration })) return null;
+  const base = Number.isFinite(current) ? current : 0;
+  return Math.min(duration, Math.max(0, base + delta));
+}
+
 export function videoDurationErrorMessage(): string {
   return `This video is longer than the ${QUAD_VIDEO_MAX_DURATION_SECONDS / 60}-minute limit.`;
 }

@@ -18,6 +18,7 @@ export function BlockedUsersPanel({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -43,6 +44,7 @@ export function BlockedUsersPanel({ onBack }: { onBack: () => void }) {
     try {
       await deleteAuthed(`/api/social/blocks/${userId}`);
       setRows((prev) => prev.filter((r) => r.userId !== userId));
+      setConfirmId(null);
       setNotice("User unblocked.");
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "Could not unblock user.");
@@ -94,14 +96,35 @@ export function BlockedUsersPanel({ onBack }: { onBack: () => void }) {
                 <p className="truncate text-sm font-semibold text-white/90">{row.displayName}</p>
                 <p className="truncate text-[11px] text-white/40">@{row.username}</p>
               </div>
-              <button
-                type="button"
-                disabled={busyId === row.userId}
-                onClick={() => void handleUnblock(row.userId)}
-                className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/[0.06] disabled:opacity-45"
-              >
-                {busyId === row.userId ? "…" : "Unblock"}
-              </button>
+              {confirmId === row.userId ? (
+                <div className="flex shrink-0 gap-1.5">
+                  <button
+                    type="button"
+                    disabled={busyId === row.userId}
+                    onClick={() => void handleUnblock(row.userId)}
+                    className="rounded-lg border border-cyan-300/40 px-2.5 py-1.5 text-xs font-semibold text-cyan-100 hover:bg-white/[0.06] disabled:opacity-45 touch-manipulation"
+                  >
+                    {busyId === row.userId ? "…" : "Confirm"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyId === row.userId}
+                    onClick={() => setConfirmId(null)}
+                    className="rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/[0.06] disabled:opacity-45 touch-manipulation"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busyId === row.userId}
+                  onClick={() => setConfirmId(row.userId)}
+                  className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/[0.06] disabled:opacity-45 touch-manipulation"
+                >
+                  Unblock
+                </button>
+              )}
             </li>
           ))}
         </ul>

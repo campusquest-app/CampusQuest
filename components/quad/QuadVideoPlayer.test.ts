@@ -24,6 +24,23 @@ describe("QuadVideoPlayer controls layout", () => {
     expect(player.match(/data-cq-video-control="mute"/g)).toHaveLength(1);
   });
 
+  it("seeks from the shared timeline with pointer and keyboard handlers", () => {
+    expect(player).toContain('data-cq-video-control="scrub"');
+    expect(player).toContain('role="slider"');
+    expect(player).toContain("seekToClientX");
+    expect(player).toContain('e.key === "ArrowRight"');
+    expect(player).toContain('e.key === "ArrowLeft"');
+    expect(player).toContain("data-cq-gesture-block=\"all\"");
+    expect(player.match(/cq-quad-video-scrub/g)?.length).toBeGreaterThan(0);
+    expect(player).not.toContain("pointer-events-none absolute bottom-0");
+    const scrubRule = cssRule(".cq-quad-video-scrub");
+    expect(scrubRule).toMatch(/left:\s*0/);
+    expect(scrubRule).toMatch(/right:\s*0/);
+    expect(scrubRule).toMatch(/touch-action:\s*none/);
+    expect(cssRule(".cq-quad-video-scrub__bar")).toMatch(/height:\s*4px/);
+    expect(cssRule(".cq-quad-video-scrub--active .cq-quad-video-scrub__handle")).toMatch(/opacity:\s*1/);
+  });
+
   it("positions only the group, not the individual buttons", () => {
     const groupRule = cssRule(".cq-quad-video-controls");
     expect(groupRule).toMatch(/position:\s*absolute/);

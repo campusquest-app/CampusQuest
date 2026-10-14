@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { URI_MAP_CENTER, URI_MAP_DEFAULT_ZOOM } from "@/lib/realm/googleMapPose";
 import {
   REALM_HEART_OF_CAMPUS,
-  REALM_DISCOVERY_OVERVIEW_CENTER,
   REALM_FIRST_OPEN_END_ZOOM,
   discoveryPriorityScore,
   distanceMeters,
@@ -9,29 +9,28 @@ import {
 } from "@/lib/realm/realmFirstOpen";
 
 describe("resolveFirstOpenCameraTarget", () => {
-  it("opens on a campus overview instead of a dining-hall close-up", () => {
+  it("opens on the URI Kingston campus center", () => {
     const target = resolveFirstOpenCameraTarget({ lat: 41.4891, lng: -71.5295 });
     expect(target.source).toBe("campus-heart");
-    expect(target.lat).toBeCloseTo(REALM_DISCOVERY_OVERVIEW_CENTER.lat, 4);
-    expect(target.lng).toBeCloseTo(REALM_DISCOVERY_OVERVIEW_CENTER.lng, 4);
-    expect(target.lat).toBeGreaterThan(41.4849);
-    expect(target.lat).toBeLessThan(41.4891);
+    expect(target.lat).toBeCloseTo(URI_MAP_CENTER.lat, 4);
+    expect(target.lng).toBeCloseTo(URI_MAP_CENTER.lng, 4);
   });
 
-  it("uses the same overview when location is missing", () => {
+  it("uses the same campus center when location is missing", () => {
     const target = resolveFirstOpenCameraTarget(null);
     expect(target.source).toBe("campus-heart");
-    expect(target.lat).toBeCloseTo(REALM_DISCOVERY_OVERVIEW_CENTER.lat, 4);
+    expect(target.lat).toBeCloseTo(URI_MAP_CENTER.lat, 4);
+    expect(target.lng).toBeCloseTo(URI_MAP_CENTER.lng, 4);
   });
 
   it("does not follow off-campus GPS for the initial camera", () => {
     const target = resolveFirstOpenCameraTarget({ lat: 40.7, lng: -74.0 });
     expect(target.source).toBe("campus-heart");
+    expect(target.lat).toBeCloseTo(URI_MAP_CENTER.lat, 4);
   });
 
-  it("keeps the first-open zoom in the campus-overview band", () => {
-    expect(REALM_FIRST_OPEN_END_ZOOM).toBeGreaterThanOrEqual(15.4);
-    expect(REALM_FIRST_OPEN_END_ZOOM).toBeLessThan(16.1);
+  it("opens at the default campus zoom", () => {
+    expect(REALM_FIRST_OPEN_END_ZOOM).toBe(URI_MAP_DEFAULT_ZOOM);
   });
 });
 

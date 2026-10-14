@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
 import { compactRecommendationSecondaryLine } from "@/lib/realm/forYouRailCopy";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 export function RealmForYouRail({
   items,
@@ -35,7 +36,9 @@ export function RealmForYouRail({
     });
   }, [selectedId]);
 
-  if (items.length === 0) return null;
+  const visibleItems = FEATURE_FLAGS.progression ? items : items.filter((item) => item.kind !== "quest");
+
+  if (visibleItems.length === 0) return null;
 
   return (
     <section className="cq-realm-foryou-rail" aria-label="Recommended around campus">
@@ -55,7 +58,7 @@ export function RealmForYouRail({
         onPointerDown={(event) => event.stopPropagation()}
         onTouchStart={(event) => event.stopPropagation()}
       >
-        {items.map((item) => {
+        {visibleItems.map((item) => {
           const selected = item.id === selectedId;
           const secondary = compactRecommendationSecondaryLine(item);
           const kindLabel = item.kind === "event" ? "Event" : item.kind === "quest" ? "Quest" : "Place";

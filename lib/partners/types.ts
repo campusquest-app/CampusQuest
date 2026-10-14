@@ -94,7 +94,7 @@ export type Partner = {
   hours: PartnerHours | null;
   partnerSince: string | null;
   offerType: PartnerOfferType | null;
-  /** Headline under the discount, e.g. "for URI students". */
+  /** Headline under the discount, e.g. "Go on a quest for 20% OFF at Daisy's". */
   offerTitle: string | null;
   offerDescription: string | null;
   /** Free text so it can hold "20% OFF" or "Free drink with any sandwich". */

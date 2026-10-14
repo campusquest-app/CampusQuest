@@ -74,6 +74,14 @@ export function AccountTypeModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
   if (typeof document === "undefined") return null;
 
   return createPortal(
@@ -107,7 +115,7 @@ export function AccountTypeModal({ onClose }: { onClose: () => void }) {
           </p>
         ) : (
           <>
-            <p className="text-sm text-white/60 mb-4">
+            <p className="text-sm text-white/60 mb-3">
               Current type:{" "}
               <span className="font-semibold text-white">
                 {isQaAccount ? roleLabel("qa") : roleLabel(currentRole)}
@@ -115,6 +123,10 @@ export function AccountTypeModal({ onClose }: { onClose: () => void }) {
               {isQaAccount && isSelectableRole(currentRole) && (
                 <span className="text-white/50"> · testing as {roleLabel(currentRole)}</span>
               )}
+            </p>
+            <p className="mb-4 text-sm leading-relaxed text-white/55">
+              Students and faculty use the same campus tools. Faculty and staff can also create campus events.
+              Admin access cannot be chosen here.
             </p>
 
             {isLockedRole ? (

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { APP_BOTTOM_NAV_TABS } from "@/lib/client/appBottomNavTabs";
+import { APP_BOTTOM_NAV_HINT_LABELS, APP_BOTTOM_NAV_TABS } from "@/lib/client/appBottomNavTabs";
 import { BOTTOM_NAV_SWIPE_TABS } from "@/lib/client/mobileGestures";
 
 describe("primary bottom navigation destinations", () => {
@@ -15,7 +15,13 @@ describe("primary bottom navigation destinations", () => {
   it("uses Feed, Partners, Explore/Map, Events, and Profile", () => {
     expect(APP_BOTTOM_NAV_TABS).toEqual(["quad", "partners", "realm", "events", "character"]);
     expect(navSrc).toContain('onSelectTab("partners")');
+    expect(APP_BOTTOM_NAV_HINT_LABELS.partners).toBe("Community Quests");
+    expect(navSrc).toContain('label="Community Quests"');
+    expect(navSrc).toContain('caption="Perks"');
+    expect(navSrc).not.toContain("Community\\nQuests");
+    expect(navSrc).not.toContain('label="Student Perks"');
     expect(navSrc).toContain("<Handshake");
+    expect(navSrc).not.toContain("<Store");
     expect(navSrc).not.toContain("MessageCircle");
     expect(BOTTOM_NAV_SWIPE_TABS).toEqual(APP_BOTTOM_NAV_TABS);
     expect(navSrc).toContain("APP_BOTTOM_NAV_HINT_LABELS.events");
@@ -28,6 +34,8 @@ describe("primary bottom navigation destinations", () => {
   it("keeps Map as the center dock action", () => {
     expect(APP_BOTTOM_NAV_TABS[2]).toBe("realm");
     expect(navSrc).toContain("cq-dock-nav__map-btn");
+    expect(navSrc).toContain("cq-dock-nav__shape");
+    expect(navSrc).toContain("dockCradlePath");
     expect(navSrc).toContain("autoHideOnScroll");
     expect(navSrc).toContain("autoHideOnScroll = false");
     expect(dashboardSrc).toContain("autoHideOnScroll={tab === \"quad\" && !quadChromeSuppressed}");
@@ -60,8 +68,7 @@ describe("primary bottom navigation destinations", () => {
     expect(profileXpSrc).toContain("Leaderboard");
     expect(characterSrc).toContain("Leaderboard");
     expect(progressSrc).toContain("Leaderboard");
-    expect(drawerSrc).toContain('id: "leaderboards"');
-    expect(drawerSrc).toContain('label: "Leaderboard"');
+    expect(drawerSrc).not.toContain('label: "Leaderboard"');
   });
 
   it("does not highlight Events while viewing Leaderboard", () => {

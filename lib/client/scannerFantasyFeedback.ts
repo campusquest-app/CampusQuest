@@ -25,12 +25,9 @@ export function playSigilXpBurst(): void {}
 export function playSigilLevelUp(): void {}
 
 function vibrateIfSupported(pattern: number | number[]): void {
-  if (typeof navigator === "undefined" || !navigator.vibrate) return;
-  try {
-    navigator.vibrate(pattern);
-  } catch {
-    /* ignore */
-  }
+  void import("@/lib/client/hapticsPreference").then(({ pulseHaptic }) => {
+    pulseHaptic(pattern);
+  });
 }
 
 export function vibrateSigil(style: SigilVibrateStyle = "light"): void {

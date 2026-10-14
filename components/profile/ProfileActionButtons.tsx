@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Settings2, Share2 } from "lucide-react";
 import type { Character } from "@/lib/types";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 /**
  * Instagram-style action row for the profile owner: Edit Profile, Share Profile,
@@ -24,7 +25,9 @@ export function ProfileActionButtons({
     const { nativeShare } = await import("@/lib/client/capacitorNative");
     const result = await nativeShare({
       title: `${character.name} on CampusQuest`,
-      text: `Check out @${character.username} (Level ${character.level}) on CampusQuest!`,
+      text: FEATURE_FLAGS.progression
+        ? `Check out @${character.username} (Level ${character.level}) on CampusQuest!`
+        : `Check out @${character.username} on CampusQuest!`,
       url,
     });
     if (result === "copied") {

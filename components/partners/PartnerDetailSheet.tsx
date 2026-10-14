@@ -60,11 +60,11 @@ function RewardSection({
 
   if (state === "active") {
     return (
-      <section className="cq-perk-reward cq-perk-reward--active" aria-label="Student reward">
+      <section className="cq-perk-reward cq-perk-reward--active" aria-label="Quest deal">
         <div className="cq-perk-reward__head">
           <span className="cq-perk-reward__eyebrow">
             <Gift className="h-3.5 w-3.5" aria-hidden strokeWidth={2.4} />
-            Student reward
+            Quest deal
           </span>
           <span className="cq-perk-reward__state">Active</span>
         </div>
@@ -79,7 +79,7 @@ function RewardSection({
           onClick={() => onViewReward(partner)}
         >
           <Gift className="h-4 w-4" aria-hidden strokeWidth={2.3} />
-          View Student Reward
+          View Quest Deal
         </button>
         {partner.redemptionInstructions ? (
           <p className="cq-perk-reward__fine">{partner.redemptionInstructions}</p>
@@ -98,11 +98,11 @@ function RewardSection({
         : { label: "Coming soon", text: start ? `Student reward starts ${start}.` : "Student reward coming soon." };
 
   return (
-    <section className={`cq-perk-reward cq-perk-reward--${state}`} aria-label="Student reward">
+    <section className={`cq-perk-reward cq-perk-reward--${state}`} aria-label="Quest deal">
       <div className="cq-perk-reward__head">
         <span className="cq-perk-reward__eyebrow">
           <Gift className="h-3.5 w-3.5" aria-hidden strokeWidth={2.4} />
-          Student reward
+          Quest deal
         </span>
         <span className="cq-perk-reward__state">{copy.label}</span>
       </div>

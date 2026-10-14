@@ -9,6 +9,7 @@ import {
 } from "@/components/realm/LocationQuestSection";
 import { LocationActivityCard } from "./LocationActivityCard";
 import { shouldShowLocationActivitySection } from "@/lib/realm/locationActivityVisibility";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 function initialQuestState(locationId: CampusLocationId | null): LocationQuestSectionState {
   return {
@@ -41,11 +42,14 @@ export function LocationActivitySection({
   showAll?: boolean;
   eventsLoaded?: boolean;
 }) {
-  const [questState, setQuestState] = useState(() => initialQuestState(locationId));
+  const showQuests = FEATURE_FLAGS.progression;
+  const [questState, setQuestState] = useState(() =>
+    showQuests ? initialQuestState(locationId) : { count: 0, initialLoading: false, loaded: true },
+  );
 
   useEffect(() => {
-    setQuestState(initialQuestState(locationId));
-  }, [locationId]);
+    setQuestState(showQuests ? initialQuestState(locationId) : { count: 0, initialLoading: false, loaded: true });
+  }, [locationId, showQuests]);
 
   const handleQuestState = useCallback(
     (next: LocationQuestSectionState) => {
@@ -96,7 +100,7 @@ export function LocationActivitySection({
         </div>
       ) : null}
 
-      {locationId ? (
+      {showQuests && locationId ? (
         <LocationQuestSection
           key={locationId}
           locationId={locationId}

@@ -83,7 +83,7 @@ describe("issueStudentRewardPass", () => {
       partnerId: DAISYS,
       partnerName: "Daisy\u2019s Chicken & Ice Cream",
       discountValue: "20% OFF",
-      offerTitle: "for URI students",
+      offerTitle: "Go on a quest for 20% OFF at Daisy\u2019s",
       verifiedLabel: "Verified URI Student",
       studentName: "Nick L.",
       issuedAt: NOW.toISOString(),

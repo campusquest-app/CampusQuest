@@ -247,7 +247,7 @@ export function RewardPassView({
             <X className="h-5 w-5" aria-hidden strokeWidth={2.4} />
           </button>
           <h2 id={titleId} className="cq-pass__brand">
-            CampusQuest <span>Student Perks</span>
+            CampusQuest <span>Community Quests</span>
           </h2>
           <span className="cq-pass__top-spacer" aria-hidden />
         </header>

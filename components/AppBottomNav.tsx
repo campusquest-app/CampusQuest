@@ -14,6 +14,9 @@ import {
   readScrollY,
   resolveBottomNavScrollRoot,
 } from "@/lib/client/bottomNavAutoHide";
+import { dockCradlePath, DOCK_CRADLE_FILL } from "@/lib/client/dockCradlePath";
+
+const DEFAULT_CRADLE = { w: 390, h: 96, d: dockCradlePath({ width: 390, height: 96 }) };
 
 export type { AppBottomNavTab } from "@/lib/client/appBottomNavTabs";
 export { APP_BOTTOM_NAV_TABS } from "@/lib/client/appBottomNavTabs";
@@ -29,12 +32,9 @@ export const CQ_BOTTOM_NAV_CLEARANCE =
 export const CQ_FLOATING_ACTION_BOTTOM =
   "calc(var(--cq-bottom-nav-h, 4.75rem) + 1.25rem)";
 
-/** Non-Map tabs that participate in the sliding active indicator. */
-const INDICATOR_TABS: AppBottomNavTab[] = ["quad", "partners", "events", "character"];
-
 const DOCK_TABS: AppBottomNavTab[] = [...APP_BOTTOM_NAV_TABS];
 
-const BOTTOM_NAV_AVATAR_PX = 28;
+const BOTTOM_NAV_AVATAR_PX = 26;
 
 function useLiveUserAvatar(fallback?: unknown): unknown {
   return useSyncExternalStore(
@@ -85,21 +85,15 @@ export function AppBottomNav({
   autoHideOnScroll?: boolean;
 }) {
   const navRef = useRef<HTMLElement | null>(null);
-  const railRef = useRef<HTMLDivElement | null>(null);
-  const itemRefs = useRef<Partial<Record<AppBottomNavTab, HTMLButtonElement | null>>>({});
+  const [cradle, setCradle] = useState(DEFAULT_CRADLE);
   const liveAvatar = useLiveUserAvatar(userAvatar);
   const characterName = useLiveCharacterName();
   const reduceMotion = useReducedMotion();
   const drawerOpen = useIsDrawerOpen();
-  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
-
   const resolvedActive: AppBottomNavTab | null =
     activeTab === "other" || !DOCK_TABS.includes(activeTab as AppBottomNavTab)
       ? null
       : (activeTab as AppBottomNavTab);
-
-  const indicatorTab =
-    resolvedActive && INDICATOR_TABS.includes(resolvedActive) ? resolvedActive : null;
 
   useLayoutEffect(() => {
     const el = navRef.current;
@@ -114,6 +108,14 @@ export function AppBottomNav({
           : navRect.top;
       const raw = Math.ceil(navRect.bottom - top);
       document.documentElement.style.setProperty(BOTTOM_NAV_CSS_VAR, `${Math.max(72, raw)}px`);
+      const slide = el.querySelector(".cq-dock-nav__slide");
+      const box = slide instanceof HTMLElement ? slide.getBoundingClientRect() : navRect;
+      const w = Math.max(1, Math.round(box.width));
+      const h = Math.max(1, Math.round(box.height));
+      setCradle((current) => {
+        if (current.w === w && current.h === h) return current;
+        return { w, h, d: dockCradlePath({ width: w, height: h }) };
+      });
     };
 
     sync();
@@ -132,37 +134,6 @@ export function AppBottomNav({
       document.documentElement.style.removeProperty(BOTTOM_NAV_CSS_VAR);
     };
   }, []);
-
-  useLayoutEffect(() => {
-    if (!indicatorTab) {
-      setIndicator(null);
-      return undefined;
-    }
-    const rail = railRef.current;
-    const activeEl = itemRefs.current[indicatorTab];
-    if (!rail || !activeEl) return undefined;
-
-    const syncIndicator = (): void => {
-      const railRect = rail.getBoundingClientRect();
-      const itemRect = activeEl.getBoundingClientRect();
-      setIndicator({
-        left: itemRect.left - railRect.left,
-        width: itemRect.width,
-      });
-    };
-
-    syncIndicator();
-    let ro: ResizeObserver | undefined;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(() => syncIndicator());
-      ro.observe(rail);
-    }
-    window.addEventListener("resize", syncIndicator);
-    return () => {
-      ro?.disconnect();
-      window.removeEventListener("resize", syncIndicator);
-    };
-  }, [indicatorTab]);
 
   useEffect(() => {
     const el = navRef.current;
@@ -254,50 +225,29 @@ export function AppBottomNav({
       transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
     >
       <div className="cq-dock-nav__slide">
-      <div ref={railRef} className="cq-dock-nav__rail">
-        {indicator ? (
-          <span
-            className="cq-dock-nav__indicator"
-            aria-hidden
-            style={{
-              left: indicator.left,
-              width: indicator.width,
-            }}
-          />
-        ) : null}
-
+      <svg
+        className="cq-dock-nav__shape"
+        viewBox={`0 0 ${cradle.w} ${cradle.h}`}
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        <path d={cradle.d} fill={DOCK_CRADLE_FILL} />
+      </svg>
+      <div className="cq-dock-nav__rail">
         <DockItem
-          ref={(node) => {
-            itemRefs.current.quad = node;
-          }}
-          label={APP_BOTTOM_NAV_HINT_LABELS.quad}
-          hint={showDockLabels}
+          label="Home"
+          caption={APP_BOTTOM_NAV_HINT_LABELS.quad}
           active={resolvedActive === "quad"}
           onClick={() => guardNav(() => onSelectTab("quad"))}
-          icon={
-            <Home
-              className="h-[26px] w-[26px]"
-              strokeWidth={resolvedActive === "quad" ? 2.5 : 2}
-              fill={resolvedActive === "quad" ? "currentColor" : "none"}
-            />
-          }
+          icon={<Home className="cq-dock-nav__glyph" strokeWidth={2.25} />}
         />
 
         <DockItem
-          ref={(node) => {
-            itemRefs.current.partners = node;
-          }}
-          label="CampusQuest Partners"
-          hintLabel={APP_BOTTOM_NAV_HINT_LABELS.partners}
-          hint={showDockLabels}
+          label="Community Quests"
+          caption="Perks"
           active={resolvedActive === "partners"}
           onClick={() => guardNav(() => onSelectTab("partners"))}
-          icon={
-            <Handshake
-              className="h-[26px] w-[26px]"
-              strokeWidth={resolvedActive === "partners" ? 2.5 : 2}
-            />
-          }
+          icon={<Handshake className="cq-dock-nav__glyph" strokeWidth={2.25} />}
         />
 
         <div className="cq-dock-nav__map-slot">
@@ -312,7 +262,7 @@ export function AppBottomNav({
           >
             <span className="cq-dock-nav__map-ring cq-pulse-glow" aria-hidden />
             <span className="cq-dock-nav__map-ring cq-dock-nav__map-ring--outer cq-pulse-glow" aria-hidden />
-            <Map className="relative z-[1] h-[26px] w-[26px]" strokeWidth={2.2} />
+            <Map className="relative z-[1] h-[26px] w-[26px]" strokeWidth={2.25} />
             {showDockLabels ? (
               <span className="cq-dock-nav__hint cq-dock-nav__hint--map">{APP_BOTTOM_NAV_HINT_LABELS.realm}</span>
             ) : null}
@@ -320,28 +270,14 @@ export function AppBottomNav({
         </div>
 
         <DockItem
-          ref={(node) => {
-            itemRefs.current.events = node;
-          }}
           label={APP_BOTTOM_NAV_HINT_LABELS.events}
-          hint={showDockLabels}
           active={resolvedActive === "events"}
           onClick={() => guardNav(() => onSelectTab("events"))}
-          icon={
-            <Calendar
-              className="h-[26px] w-[26px]"
-              strokeWidth={resolvedActive === "events" ? 2.5 : 2}
-              fill={resolvedActive === "events" ? "currentColor" : "none"}
-            />
-          }
+          icon={<Calendar className="cq-dock-nav__glyph" strokeWidth={2.25} />}
         />
 
         <DockProfileItem
-          ref={(node) => {
-            itemRefs.current.character = node;
-          }}
           label={APP_BOTTOM_NAV_HINT_LABELS.character}
-          hint={showDockLabels}
           active={resolvedActive === "character"}
           onClick={() => guardNav(() => onSelectTab("character"))}
           avatar={liveAvatar}
@@ -358,24 +294,24 @@ export function AppBottomNav({
 const DockItem = forwardRef(function DockItem(
   {
     label,
-    hintLabel,
+    caption,
     active,
     onClick,
     icon,
     badge = false,
     reserveBadge = false,
-    hint = false,
+    itemClassName,
   }: {
     label: string;
-    /** Shorter first-session hint text; defaults to `label`. */
-    hintLabel?: string;
+    /** Visible caption when it should be shorter than the accessible name. */
+    caption?: string;
     active: boolean;
     onClick: () => void;
     icon: ReactNode;
     badge?: boolean;
     /** Keep layout stable when badge appears/disappears. */
     reserveBadge?: boolean;
-    hint?: boolean;
+    itemClassName?: string;
   },
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
@@ -394,11 +330,10 @@ const DockItem = forwardRef(function DockItem(
             ? `${label}, current page`
             : label
       }
-      className={`cq-dock-nav__item touch-manipulation cq-tap-press ${active ? "cq-dock-nav__item--active" : ""}`}
+      className={`cq-dock-nav__item touch-manipulation cq-tap-press ${active ? "cq-dock-nav__item--active" : ""}${itemClassName ? ` ${itemClassName}` : ""}`}
     >
       <span className="cq-dock-nav__icon-wrap">
         {icon}
-        {hint ? <span className="cq-dock-nav__hint">{hintLabel ?? label}</span> : null}
         {reserveBadge || badge ? (
           <span
             className={`cq-dock-nav__badge${badge ? "" : " cq-dock-nav__badge--hidden"}`}
@@ -406,6 +341,8 @@ const DockItem = forwardRef(function DockItem(
           />
         ) : null}
       </span>
+      <span className="cq-dock-nav__label">{caption ?? label}</span>
+      <span className="cq-dock-nav__dot" aria-hidden />
     </button>
   );
 });
@@ -419,7 +356,6 @@ const DockProfileItem = forwardRef(function DockProfileItem(
     initials,
     useInitials = false,
     loading,
-    hint = false,
   }: {
     label: string;
     active: boolean;
@@ -428,7 +364,6 @@ const DockProfileItem = forwardRef(function DockProfileItem(
     initials: string;
     useInitials?: boolean;
     loading?: boolean;
-    hint?: boolean;
   },
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
@@ -441,24 +376,27 @@ const DockProfileItem = forwardRef(function DockProfileItem(
       aria-label={active ? "Profile, current page" : "Profile"}
       className={`cq-dock-nav__item cq-dock-nav__item--profile touch-manipulation cq-tap-press ${active ? "cq-dock-nav__item--active" : ""}`}
     >
-      <span className={`cq-dock-nav__avatar ${active ? "cq-dock-nav__avatar--active" : ""}`}>
-        {loading ? (
-          <span className="cq-dock-nav__avatar-placeholder" aria-hidden />
-        ) : useInitials ? (
-          <span className="cq-dock-nav__avatar-initials" aria-hidden>
-            {initials}
-          </span>
-        ) : (
-          <AvatarDisplay
-            key={typeof avatar === "string" ? avatar : JSON.stringify(avatar ?? "")}
-            avatar={avatar}
-            size={BOTTOM_NAV_AVATAR_PX}
-            fitParent
-            showProp={false}
-          />
-        )}
+      <span className="cq-dock-nav__icon-wrap">
+        <span className={`cq-dock-nav__avatar ${active ? "cq-dock-nav__avatar--active" : ""}`}>
+          {loading ? (
+            <span className="cq-dock-nav__avatar-placeholder" aria-hidden />
+          ) : useInitials ? (
+            <span className="cq-dock-nav__avatar-initials" aria-hidden>
+              {initials}
+            </span>
+          ) : (
+            <AvatarDisplay
+              key={typeof avatar === "string" ? avatar : JSON.stringify(avatar ?? "")}
+              avatar={avatar}
+              size={BOTTOM_NAV_AVATAR_PX}
+              fitParent
+              showProp={false}
+            />
+          )}
+        </span>
       </span>
-      {hint ? <span className="cq-dock-nav__hint">{label}</span> : null}
+      <span className="cq-dock-nav__label">{label}</span>
+      <span className="cq-dock-nav__dot" aria-hidden />
     </button>
   );
 });

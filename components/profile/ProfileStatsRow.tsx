@@ -20,7 +20,7 @@ function StatSegment({ item }: { item: StatItem }) {
   const content = (
     <>
       {item.loading ? (
-        <span className="cq-skeleton mx-auto block h-6 w-9 rounded" aria-hidden />
+        <span className="cq-skeleton inline-block h-4 w-7 rounded" aria-hidden />
       ) : (
         <StatValue value={item.value} />
       )}
@@ -33,14 +33,14 @@ function StatSegment({ item }: { item: StatItem }) {
       <button
         type="button"
         onClick={item.onClick}
-        className="cq-profile-stat cq-profile-stat--interactive cq-profile-press min-w-0 flex-1"
+        className="cq-profile-stat cq-profile-stat--interactive cq-profile-press"
       >
         {content}
       </button>
     );
   }
 
-  return <div className="cq-profile-stat min-w-0 flex-1">{content}</div>;
+  return <div className="cq-profile-stat">{content}</div>;
 }
 
 export function ProfileStatsRow({ items }: { items: StatItem[] }) {

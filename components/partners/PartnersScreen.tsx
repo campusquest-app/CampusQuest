@@ -9,7 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Gift, Heart, Lightbulb, Search, X } from "lucide-react";
+import { Heart, Lightbulb, MapPin, Search, Store, X } from "lucide-react";
 import { FeaturedDealCard, PartnerCard, type PartnerFavoriteProps } from "@/components/partners/PartnerCard";
 import { PartnerDetailSheet } from "@/components/partners/PartnerDetailSheet";
 import { PartnersNoResults } from "@/components/partners/PartnersNoResults";
@@ -86,7 +86,7 @@ function FeaturedDealsRail({
       data-no-drawer-swipe={carousel ? "true" : undefined}
       role={carousel ? "region" : undefined}
       aria-roledescription={carousel ? "carousel" : undefined}
-      aria-label={carousel ? "Featured Student Deals" : undefined}
+      aria-label={carousel ? "Featured Community Quests" : undefined}
       onPointerDown={carousel ? onPointerDown : undefined}
       onPointerMove={carousel ? onPointerMove : undefined}
       onClickCapture={carousel ? onClickCapture : undefined}
@@ -230,13 +230,15 @@ export function PartnersScreenView({
     <section className="cq-perks" aria-labelledby="cq-perks-title" aria-busy={state.status === "loading"}>
       <header className="cq-perks-header">
         <span className="cq-perks-header__icon" aria-hidden>
-          <Gift className="h-5 w-5" strokeWidth={2.3} />
+          <Store className="h-5 w-5" strokeWidth={2.3} />
         </span>
         <div className="cq-perks-header__text">
           <h1 id="cq-perks-title" className="cq-perks-header__title">
-            Student Perks
+            Community <span className="cq-perks-header__accent">Quests</span>
           </h1>
-          <p className="cq-perks-header__subtitle">Discover local favorites. Unlock exclusive student rewards.</p>
+          <p className="cq-perks-header__subtitle">
+            Go on a quest to local businesses near your campus. Find deals, support local, and discover new spots.
+          </p>
         </div>
         {favorites.status !== "unavailable" ? (
           <button
@@ -255,14 +257,14 @@ export function PartnersScreenView({
       <div className="cq-perks-search" role="search">
         <Search className="cq-perks-search__icon" aria-hidden strokeWidth={2.2} />
         <label htmlFor="cq-perks-search-input" className="sr-only">
-          Search businesses, food, and rewards
+          Search businesses, food, and quests
         </label>
         <input
           id="cq-perks-search-input"
           type="search"
           enterKeyHint="search"
           autoComplete="off"
-          placeholder="Search businesses, food, and rewards..."
+          placeholder="Search businesses, food, and quests..."
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           className={`cq-perks-search__input${searching ? " has-value" : ""}`}
@@ -315,7 +317,7 @@ export function PartnersScreenView({
         </div>
       ) : state.status === "error" ? (
         <div className="cq-perks-error" role="alert">
-          <p className="cq-perks-error__text">We couldn&apos;t load Student Perks right now.</p>
+          <p className="cq-perks-error__text">We couldn&apos;t load Community Quests right now.</p>
           <button type="button" className="cq-perk-btn cq-perk-btn--secondary cq-tap-press touch-manipulation" onClick={onRetry}>
             Try again
           </button>
@@ -325,7 +327,8 @@ export function PartnersScreenView({
           {featured.length > 0 ? (
             <section className="cq-perks-section" aria-labelledby="cq-perks-featured-title">
               <h2 id="cq-perks-featured-title" className="cq-perks-section__title">
-                Featured Student Deals
+                <MapPin className="cq-perks-section__pin" aria-hidden strokeWidth={2.3} />
+                Featured Community Quests
               </h2>
               <FeaturedDealsRail
                 partners={featured}
@@ -341,6 +344,9 @@ export function PartnersScreenView({
             <h2 id="cq-perks-explore-title" className="cq-perks-section__title">
               {savedOnly ? "Saved Businesses" : "Explore Local Businesses"}
             </h2>
+            {!savedOnly ? (
+              <p className="cq-perks-section__sub">Go on a quest to discover local favorites near your campus.</p>
+            ) : null}
             <p className="sr-only" aria-live="polite">
               {results.length === 1 ? "1 business" : `${results.length} businesses`}
             </p>

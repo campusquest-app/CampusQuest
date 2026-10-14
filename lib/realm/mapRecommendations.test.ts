@@ -5,6 +5,7 @@ import {
   collectMapRecommendationSources,
   findMapFocusForEvent,
   forYouRecommendationLimit,
+  isActiveUpcomingMapRecommendation,
   rankMapRecommendations,
 } from "@/lib/realm/mapRecommendations";
 import { hasUsableMapCoords } from "@/lib/realm/mapCoords";
@@ -101,6 +102,56 @@ describe("For You map recommendations", () => {
       }),
     },
   ];
+
+  it("skips ended and cancelled events in upcoming recommendations", () => {
+    const sources = collectMapRecommendationSources({
+      landmarks: [],
+      now: NOW,
+      groups: [
+        group({
+          groupKey: "the-quad",
+          locationName: "The Quad",
+          events: [
+            {
+              id: "ended-rally",
+              title: "Morning Rally",
+              startsAt: "2026-08-25T12:00:00.000Z",
+              endsAt: "2026-08-25T14:00:00.000Z",
+              organizationName: null,
+              eventUrl: null,
+            },
+            {
+              id: "cancelled-game",
+              title: "Soccer",
+              startsAt: "2026-08-25T20:00:00.000Z",
+              endsAt: "2026-08-25T22:00:00.000Z",
+              organizationName: null,
+              eventUrl: null,
+              cancelled: true,
+            },
+            {
+              id: "later-game",
+              title: "Evening Game",
+              startsAt: "2026-08-25T20:00:00.000Z",
+              endsAt: "2026-08-25T22:00:00.000Z",
+              organizationName: null,
+              eventUrl: null,
+            },
+          ],
+        }),
+      ],
+    });
+    expect(sources.map((source) => source.event?.id)).toEqual(["later-game"]);
+  });
+
+  it("treats ended and cancelled time labels as inactive upcoming items", () => {
+    expect(isActiveUpcomingMapRecommendation({ kind: "place", timeLabel: "Campus place" })).toBe(true);
+    expect(isActiveUpcomingMapRecommendation({ kind: "event", timeLabel: "Today · 7:00 PM" })).toBe(true);
+    expect(isActiveUpcomingMapRecommendation({ kind: "event", timeLabel: "LIVE NOW" })).toBe(true);
+    expect(isActiveUpcomingMapRecommendation({ kind: "event", timeLabel: "Ended" })).toBe(false);
+    expect(isActiveUpcomingMapRecommendation({ kind: "event", timeLabel: "CANCELLED" })).toBe(false);
+    expect(isActiveUpcomingMapRecommendation({ kind: "event", timeLabel: "Canceled" })).toBe(false);
+  });
 
   it("surfaces recommended events and skips invalid coordinates", () => {
     const groups: GroupedMapLocation[] = [

@@ -141,9 +141,33 @@ export function AppHelpSupportPanel({ onBack }: { onBack: () => void }) {
 
   const visibleArticles = useMemo(() => {
     return HELP_ARTICLES.filter((article) => {
+      if (!FEATURE_FLAGS.progression && ["how-xp", "how-qr", "boss-battles", "guilds"].includes(article.id)) {
+        return false;
+      }
       if (article.id === "boss-battles" && !FEATURE_FLAGS.bossBattles) return false;
       return true;
     }).map((article) => {
+      if (!FEATURE_FLAGS.progression && article.id === "how-campusquest") {
+        return {
+          ...article,
+          summary: "Your campus, connected.",
+          body: [
+            "CampusQuest is your home for posts, campus events, the map, organizations, and Community Quests.",
+            "The bottom nav keeps Home, Perks, Map, Events, and Profile one tap away.",
+            "Open the menu for friends, notifications, and account settings.",
+          ],
+        };
+      }
+      if (!FEATURE_FLAGS.progression && article.id === "faq") {
+        return {
+          ...article,
+          body: [
+            "How do I change my name or avatar? Edit them from your Profile tab.",
+            "Is CampusQuest only for one school? Access may be campus-specific. Verify your school email when prompted.",
+            "Where are student deals? Open Community Quests from the bottom navigation.",
+          ],
+        };
+      }
       if (FEATURE_FLAGS.bossBattles) return article;
       if (article.id === "how-campusquest") {
         return {

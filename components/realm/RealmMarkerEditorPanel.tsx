@@ -2,6 +2,7 @@
 
 import { ChevronDown, MapPin, Save, X } from "lucide-react";
 import { useState } from "react";
+import type { MarkerPlacementPoint } from "@/lib/realm/mapPlacement";
 import { RealmMapDebugContent } from "./RealmMapDebugPanel";
 import { RealmUrinvolvedPlacementPanel } from "./RealmUrinvolvedPlacementPanel";
 import type { RealmMapLayerReport } from "./useRealmMapDiagnostics";
@@ -23,11 +24,15 @@ export function RealmMarkerEditorPanel({
   onSave,
   savePending,
   saveMessage,
+  saveMessageTone = "success",
   newLocationName = "",
   onNewLocationNameChange,
   placingNewLocation = false,
+  placementPreview = null,
   onStartPlacingNewLocation,
   onCancelPlacingNewLocation,
+  onConfirmPlacement,
+  onRepositionPlacement,
   createLocationPending = false,
   selectedUrinvolvedEventId = null,
   onSelectUrinvolvedEventId,
@@ -41,11 +46,15 @@ export function RealmMarkerEditorPanel({
   onSave: () => void;
   savePending?: boolean;
   saveMessage?: string | null;
+  saveMessageTone?: "success" | "error";
   newLocationName?: string;
   onNewLocationNameChange?: (value: string) => void;
   placingNewLocation?: boolean;
+  placementPreview?: MarkerPlacementPoint | null;
   onStartPlacingNewLocation?: () => void;
   onCancelPlacingNewLocation?: () => void;
+  onConfirmPlacement?: () => void;
+  onRepositionPlacement?: () => void;
   createLocationPending?: boolean;
   selectedUrinvolvedEventId?: string | null;
   onSelectUrinvolvedEventId?: (id: string | null) => void;
@@ -55,6 +64,8 @@ export function RealmMarkerEditorPanel({
   const [debugExpanded, setDebugExpanded] = useState(false);
 
   if (!debug.isAdmin) return null;
+
+  if (placingNewLocation) return null;
 
   if (!debug.editMode) {
     return (
@@ -126,7 +137,14 @@ export function RealmMarkerEditorPanel({
           </button>
         </div>
 
-        {saveMessage ? <p className="mt-2 text-[10px] text-emerald-300">{saveMessage}</p> : null}
+        {saveMessage ? (
+          <p
+            className={`mt-2 text-[10px] ${saveMessageTone === "error" ? "text-rose-300" : "text-emerald-300"}`}
+            role={saveMessageTone === "error" ? "alert" : "status"}
+          >
+            {saveMessage}
+          </p>
+        ) : null}
 
         <div className="mt-3 space-y-2 rounded-lg border border-white/10 bg-white/[0.03] p-2.5">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-uri-keaney/90">Add location</p>
@@ -137,15 +155,37 @@ export function RealmMarkerEditorPanel({
             placeholder="e.g. Edwards Hall"
             className="w-full rounded-lg border border-white/15 bg-black/30 px-2.5 py-2 text-xs text-white placeholder:text-white/35"
           />
-          {placingNewLocation ? (
-            <button
-              type="button"
-              onClick={onCancelPlacingNewLocation}
-              disabled={createLocationPending}
-              className="w-full rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-semibold text-amber-100"
-            >
-              {createLocationPending ? "Creating…" : "Tap the map to place — Cancel"}
-            </button>
+          {placementPreview ? (
+            <div className="space-y-1.5 rounded-lg border border-uri-keaney/35 bg-uri-keaney/10 px-2.5 py-2">
+              <p className="text-[11px] font-semibold text-white">{newLocationName.trim() || "New marker"}</p>
+              <p className="font-mono text-[10px] text-cyan-100/80">
+                {placementPreview.lat.toFixed(5)}, {placementPreview.lng.toFixed(5)}
+              </p>
+              <button
+                type="button"
+                onClick={onConfirmPlacement}
+                disabled={createLocationPending || !newLocationName.trim()}
+                className="w-full rounded-lg border border-emerald-400/45 bg-emerald-500/20 px-3 py-2 text-xs font-bold text-emerald-100 disabled:opacity-50"
+              >
+                {createLocationPending ? "Saving…" : "Confirm placement"}
+              </button>
+              <button
+                type="button"
+                onClick={onRepositionPlacement}
+                disabled={createLocationPending}
+                className="w-full rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80"
+              >
+                Reposition
+              </button>
+              <button
+                type="button"
+                onClick={onCancelPlacingNewLocation}
+                disabled={createLocationPending}
+                className="w-full rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white/60"
+              >
+                Discard preview
+              </button>
+            </div>
           ) : (
             <button
               type="button"

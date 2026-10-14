@@ -362,10 +362,10 @@ async function fetchNotificationsForUser(args: {
     return query.order("created_at", { ascending: false }).range(safeOffset, safeOffset + safeLimit - 1);
   };
 
-  let { data, error } = await runQuery(extendedSelect, true);
+  let { data, error } = await runQuery(extendedSelect, false);
 
   if (isMissingColumnError(error, "actor_id") || isMissingColumnError(error, "friend_request_id")) {
-    ({ data, error } = await runQuery(withoutActorSelect, true));
+    ({ data, error } = await runQuery(withoutActorSelect, false));
   }
 
   if (isMissingColumnError(error, "is_favorited") || isMissingColumnError(error, "favorited_at")) {

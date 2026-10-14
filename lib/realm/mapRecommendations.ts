@@ -84,6 +84,17 @@ function eventTimeLabel(event: MapEventPin, now: Date): string {
   return isOnCampusDay(start, now) ? `Today · ${time}` : time;
 }
 
+const INACTIVE_EVENT_LABELS = new Set(["ENDED", "CANCELLED", "CANCELED"]);
+
+/** Highlights / For You should never promote ended or cancelled events. */
+export function isActiveUpcomingMapRecommendation(
+  item: Pick<MapRecommendationItem, "kind" | "timeLabel">,
+): boolean {
+  if (item.kind !== "event") return true;
+  const label = item.timeLabel?.trim().toUpperCase() ?? "";
+  return !INACTIVE_EVENT_LABELS.has(label);
+}
+
 export function collectMapRecommendationSources(args: {
   landmarks: MapRecommendationLandmark[];
   groups: GroupedMapLocation[];
@@ -99,6 +110,8 @@ export function collectMapRecommendationSources(args: {
 
     for (const event of group.events) {
       if (isEventCancelled(event)) continue;
+      const countdown = getEventCountdownState(event.startsAt, event.endsAt, args.now, false);
+      if (countdown.kind === "ended" || countdown.kind === "cancelled") continue;
       if (!isEventVisibleOnMap({ end_time: effectiveEventEndIso(event.startsAt, event.endsAt) }, args.now)) continue;
       const key = eventDedupeKey(event);
       if (seenEvents.has(key)) continue;

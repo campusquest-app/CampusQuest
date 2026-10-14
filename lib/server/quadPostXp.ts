@@ -7,6 +7,7 @@ import {
 import { ApiError } from "@/lib/server/http";
 import { logQuadPostError } from "@/lib/server/quadPosts";
 import { addXpInternal } from "@/lib/server/services";
+import { progressionRewardsEnabled } from "@/lib/featureFlags";
 import { createAdminClient } from "@/lib/server/supabase";
 
 type SupabaseClientLike = ReturnType<typeof createAdminClient>;
@@ -41,6 +42,9 @@ export async function maybeAwardQuadPostCreationXp(args: {
   postId: string;
 }): Promise<QuadPostXpReward> {
   const { userId, postId } = args;
+  if (!progressionRewardsEnabled()) {
+    return { awarded: false, xpAmount: 0 };
+  }
   const admin = createAdminClient();
 
   try {

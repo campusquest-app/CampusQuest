@@ -51,8 +51,17 @@ import { buildUrinvolvedEditPinsFromGroups, type UrinvolvedEditPin } from "@/lib
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 import { geoToRealmMapPercent, realmMapPercentToGeo } from "@/lib/realm/geoToMapPercent";
+import {
+  beginMarkerPlacement,
+  previewMarkerPlacement,
+  repositionMarkerPlacement,
+  resetMarkerPlacement,
+  type MarkerPlacement,
+} from "@/lib/realm/mapPlacement";
 import { GoogleRealmMap } from "./GoogleRealmMap";
-import { RealmDiscoverySheet } from "./RealmDiscoverySheet";
+import { RealmHighlightsSheet } from "./RealmHighlightsSheet";
+import { RealmOverlaySheet } from "./RealmOverlaySheet";
+import { NotificationsCenter, type NotificationDestination } from "@/components/NotificationsCenter";
 import { RealmArrivalCard } from "./RealmArrivalCard";
 import { RealmIntroCoach } from "./RealmIntroCoach";
 import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
@@ -75,10 +84,6 @@ import {
 } from "@/lib/realm/firstEntry";
 import type { RealmDirectionsLoadResult } from "./RealmDirectionsOverlay.types";
 import { logWalkRoute } from "@/lib/realm/walkRouteLog";
-import {
-  buildNearbyPlaceCardsFromLandmarks,
-  type DiscoverySheetSnap,
-} from "@/lib/realm/discoverySheet";
 import { RealmRouteSheet } from "./RealmRouteSheet";
 import type {
   RealmDirectionsDestination,
@@ -173,6 +178,8 @@ export function RealmMap({
   onFindMyCampus,
   onViewAllRecommendations,
   onOpenNotifications,
+  onOpenNotificationDestination,
+  onUnreadCountChange,
   onOpenOwnProfile,
   unreadCount = 0,
 }: {
@@ -207,6 +214,8 @@ export function RealmMap({
   onFindMyCampus?: () => void;
   onViewAllRecommendations?: () => void;
   onOpenNotifications?: () => void;
+  onOpenNotificationDestination?: (notification: NotificationDestination) => void;
+  onUnreadCountChange?: (count: number) => void;
   onOpenOwnProfile?: () => void;
   unreadCount?: number;
 }) {
@@ -243,9 +252,11 @@ export function RealmMap({
   const mapRootRef = useRef<HTMLDivElement>(null);
   const mapStageRef = useRef<HTMLDivElement>(null);
   const { locations: catalogRows, reload: reloadCatalog } = useCampusLocations({ active: isActive });
-  const [placingNewLocation, setPlacingNewLocation] = useState(false);
+  const [placement, setPlacement] = useState<MarkerPlacement>({ placing: false, preview: null });
   const [newLocationName, setNewLocationName] = useState("");
   const [createLocationPending, setCreateLocationPending] = useState(false);
+  const [saveMessageTone, setSaveMessageTone] = useState<"success" | "error">("success");
+  const mapPannedRef = useRef(false);
   const [selectedUrinvolvedEventId, setSelectedUrinvolvedEventId] = useState<string | null>(null);
   const [directionsRequest, setDirectionsRequest] = useState<RealmDirectionsRequest | null>(null);
   const [directionsStatus, setDirectionsStatus] = useState<RealmDirectionsStatus>({ status: "idle" });
@@ -257,11 +268,8 @@ export function RealmMap({
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
   const [railFocus, setRailFocus] = useState<{ lat: number; lng: number } | null>(null);
   // Idle map shows a collapsed peek only; For You content opens via the For You filter pill.
-  const [discoverySnap, setDiscoverySnap] = useState<DiscoverySheetSnap>("collapsed");
-  const [discoveryPadPx, setDiscoveryPadPx] = useState(0);
-  const [userFix, setUserFix] = useState<{ lat: number; lng: number; accuracy?: number | null } | null>(null);
-  const [userLocating, setUserLocating] = useState(true);
-  const locateAttemptedRef = useRef(false);
+  const [highlightsOpen, setHighlightsOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const recProfile = useRecommendationProfile(personalization);
   const focusSeqRef = useRef(0);
   const pendingWalkAfterFocusRef = useRef(false);
@@ -617,8 +625,6 @@ export function RealmMap({
     setSheetOpen(false);
     setSearchPin(null);
     setFlyToForce(false);
-    // Closing a marker/backdrop must not remount the full For You stack.
-    setDiscoverySnap("collapsed");
     if (!isRouteSheetOpen) {
       setActiveMarkerId(null);
       setSelectedMapContent(null);
@@ -631,16 +637,10 @@ export function RealmMap({
 
   const handleMarkerFilterChange = useCallback((next: MapMarkerFilter) => {
     setMarkerFilter(next);
-    // Discovery content opens only from an explicit For You control.
-    setDiscoverySnap(next === "for_you" ? "default" : "collapsed");
   }, []);
 
   const handleMapBackgroundClick = useCallback(() => {
-    if (sheetOpen) {
-      closeSheet();
-      return;
-    }
-    setDiscoverySnap("collapsed");
+    if (sheetOpen) closeSheet();
   }, [closeSheet, sheetOpen]);
 
   useEffect(() => {
@@ -682,10 +682,12 @@ export function RealmMap({
     async (coords: { x: number; y: number; lat?: number; lng?: number }) => {
       const name = newLocationName.trim();
       if (!name) {
+        setSaveMessageTone("error");
         setSaveMessage("Enter a location name first.");
         return;
       }
       setCreateLocationPending(true);
+      setSaveMessage(null);
       try {
         const row = await createCampusLocationFromMarker({
           name,
@@ -699,12 +701,18 @@ export function RealmMap({
           [row.slug]: { x: coords.x, y: coords.y, lat: coords.lat, lng: coords.lng },
         }));
         setEditorSelectedId(row.slug);
-        setPlacingNewLocation(false);
+        setPlacement(resetMarkerPlacement());
         setNewLocationName("");
-        setSaveMessage(`Created ${row.name}. Save positions to persist the map layout.`);
+        setSaveMessageTone("success");
+        const where =
+          typeof coords.lat === "number" && typeof coords.lng === "number"
+            ? ` at ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`
+            : "";
+        setSaveMessage(`Saved ${row.name}${where}.`);
         await reloadCatalog();
       } catch (err) {
-        setSaveMessage(err instanceof Error ? err.message : "Could not create location.");
+        setSaveMessageTone("error");
+        setSaveMessage(err instanceof Error ? err.message : "Could not save this marker.");
       } finally {
         setCreateLocationPending(false);
       }
@@ -714,13 +722,19 @@ export function RealmMap({
 
   const handleMapStageClickForNewLocation = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!editMode || !placingNewLocation || !mapStageRef.current) return;
-      if ((e.target as HTMLElement).closest(".realm-pin")) return;
+      if (!editMode || !placement.placing || !mapStageRef.current) return;
+      if (mapPannedRef.current) return;
+      if ((e.target as HTMLElement).closest(".realm-pin, .cq-realm-place-preview")) return;
       const { x, y } = pointerToPercent(mapStageRef.current, e.clientX, e.clientY);
-      void handleCreateLocationAt({ x, y });
+      const geo = realmMapPercentToGeo(x, y);
+      setPlacement((current) => previewMarkerPlacement(current, geo.latitude, geo.longitude));
     },
-    [editMode, placingNewLocation, handleCreateLocationAt],
+    [editMode, placement.placing],
   );
+
+  const handleGooglePlaceNewLocation = useCallback((lat: number, lng: number, dragged = false) => {
+    setPlacement((current) => previewMarkerPlacement(current, lat, lng, { dragged }));
+  }, []);
 
   const handleEnterEdit = useCallback(() => {
     if (!isAdmin) return;
@@ -729,6 +743,8 @@ export function RealmMap({
     setSelectedLocation(null);
     setActiveMarkerId(null);
     setSaveMessage(null);
+    setSaveMessageTone("success");
+    setPlacement(resetMarkerPlacement());
     setDraftPositions(getSavedPositions());
   }, [isAdmin, getSavedPositions]);
 
@@ -738,6 +754,8 @@ export function RealmMap({
     setSelectedUrinvolvedEventId(null);
     setDraggingId(null);
     setSaveMessage(null);
+    setSaveMessageTone("success");
+    setPlacement(resetMarkerPlacement());
     setDraftPositions(getSavedPositions());
   }, [getSavedPositions]);
 
@@ -753,12 +771,14 @@ export function RealmMap({
         updatedBy: saved.updatedBy,
       });
       setDraftPositions(resolveMarkerPositions(saved.positions));
+      setSaveMessageTone("success");
       setSaveMessage("Saved — marker positions updated for all students.");
       if (process.env.NODE_ENV === "development") {
         console.info("[Realm Marker Editor] saved to server:", saved.positions);
       }
     } catch (e) {
       saveMarkerPositionOverrides(positions);
+      setSaveMessageTone("error");
       setSaveMessage(
         e instanceof Error
           ? `Saved locally only — server save failed: ${e.message}`
@@ -845,18 +865,6 @@ export function RealmMap({
   const searchRecScores = useMemo(() => recommendationScoreBySearchId(mapRecommendations), [mapRecommendations]);
   const recCounts = useMemo(() => mapRecommendationCounts(mapRecommendations), [mapRecommendations]);
 
-  const discoveryItems = useMemo(
-    () =>
-      rankMapRecommendations({
-        landmarks: recommendationLandmarks,
-        groups: supplementaryPins,
-        profile: recProfile,
-        now: new Date(),
-        limit: 16,
-      }),
-    [recommendationLandmarks, supplementaryPins, recProfile],
-  );
-
   const discoveryGroups = useMemo(() => {
     const fromLandmarks = locations
       .map((location) => location.mapContent)
@@ -864,39 +872,11 @@ export function RealmMap({
     return [...fromLandmarks, ...supplementaryPins];
   }, [locations, supplementaryPins]);
 
-  const nearbyPlaces = useMemo(
-    () => buildNearbyPlaceCardsFromLandmarks(recommendationLandmarks, userFix, 6),
-    [recommendationLandmarks, userFix],
-  );
-
-  const handleUserFix = useCallback((pos: { lat: number; lng: number; accuracy?: number | null } | null) => {
-    setUserFix((prev) => {
-      if (!pos && !prev) return prev;
-      if (
-        pos &&
-        prev &&
-        pos.lat === prev.lat &&
-        pos.lng === prev.lng &&
-        pos.accuracy === prev.accuracy
-      ) {
-        return prev;
-      }
-      return pos;
-    });
-  }, []);
-
-  const handleUserLocating = useCallback((locating: boolean) => {
-    if (locating) locateAttemptedRef.current = true;
-    if (!locating && !locateAttemptedRef.current) return;
-    setUserLocating(locating);
-  }, []);
-
-  const showDiscoverySheet =
-    !showArrival && !showIntro && !editMode && !sheetOpen && !isRouteSheetOpen;
-
   useEffect(() => {
-    if (!showDiscoverySheet) setDiscoveryPadPx(0);
-  }, [showDiscoverySheet]);
+    if (isActive) return;
+    setHighlightsOpen(false);
+    setNotificationsOpen(false);
+  }, [isActive]);
 
   const syncRecommendationForMarker = useCallback(
     (markerId: string) => {
@@ -924,24 +904,6 @@ export function RealmMap({
       openSupplementaryPin(group);
     }
   }, [locations, supplementaryPins, openLocation, openSupplementaryPin]);
-
-  const openPlaceFromCarousel = useCallback(
-    (place: { markerId: string }) => {
-      const rec =
-        discoveryItems.find((item) => item.markerId === place.markerId) ??
-        mapRecommendations.find((item) => item.markerId === place.markerId);
-      if (rec) {
-        focusRecommendation(rec, true);
-        return;
-      }
-      const location = locations.find((row) => row.id === place.markerId);
-      if (location) {
-        openLocation(location);
-        syncRecommendationForMarker(place.markerId);
-      }
-    },
-    [discoveryItems, mapRecommendations, locations, focusRecommendation, openLocation, syncRecommendationForMarker],
-  );
 
   const handleTapLandmark = useCallback(
     (id: RealmLocationId) => {
@@ -1301,6 +1263,7 @@ export function RealmMap({
         ref={mapRootRef}
         data-cq-gesture-block="all"
         data-no-drawer-swipe="true"
+        data-cq-map-sheet={highlightsOpen || notificationsOpen ? "open" : undefined}
         className={`realm-map-shell relative overflow-hidden ${
           immersive ? "realm-map-shell--immersive" : "rounded-2xl"
         } ${useGoogleMap ? "realm-map-shell--google" : ""} ${panning ? "realm-map-shell--panning" : ""} ${
@@ -1351,6 +1314,17 @@ export function RealmMap({
             }}
             onSelectEditorMarker={setEditorSelectedId}
             onMarkerGeoChange={updateMarkerGeoPosition}
+            placingNewLocation={placement.placing}
+            placementPreview={
+              placement.preview
+                ? { lat: placement.preview.lat, lng: placement.preview.lng, label: newLocationName.trim() || "New marker" }
+                : null
+            }
+            onPlaceNewLocation={handleGooglePlaceNewLocation}
+            onPlacementPreviewMove={(lat, lng) => {
+              const point = previewMarkerPlacement({ placing: true, preview: placement.preview }, lat, lng);
+              if (point.preview) setPlacement({ placing: false, preview: point.preview });
+            }}
             onMapReady={() => setUriMapLoaded(true)}
             directionsRequest={directionsRequest}
             onDirectionsLoaded={handleDirectionsLoaded}
@@ -1365,20 +1339,25 @@ export function RealmMap({
             recommendedMarkerIds={forYouMarkerIds}
             suppressLegacyWelcome={showArrival || showIntro}
             recommendationScoreById={searchRecScores}
-            onUserFix={handleUserFix}
-            onUserLocating={handleUserLocating}
+            gesturesLocked={highlightsOpen || notificationsOpen}
+            onOpenHighlights={() => {
+              setNotificationsOpen(false);
+              setHighlightsOpen(true);
+            }}
+            onOpenNotifications={() => {
+              setHighlightsOpen(false);
+              setNotificationsOpen(true);
+            }}
             viewerAvatar={viewer?.avatar ?? null}
             viewerName={viewer?.name ?? null}
             unreadCount={unreadCount}
             onOpenProfile={onOpenOwnProfile}
-            onOpenNotifications={onOpenNotifications}
             urinvolvedEditPins={urinvolvedEditPins}
             selectedUrinvolvedEventId={selectedUrinvolvedEventId}
             onSelectUrinvolvedEvent={setSelectedUrinvolvedEventId}
             onUrinvolvedEventDragEnd={(id, lat, lng) => void handleUrinvolvedEventDragEnd(id, lat, lng)}
             onPlaceSelected={handlePlaceSelected}
             searchPin={searchPin}
-            extraBottomPx={showDiscoverySheet ? discoveryPadPx : 0}
           />
         ) : (
           <TransformWrapper
@@ -1409,9 +1388,15 @@ export function RealmMap({
             doubleClick={{ disabled: true }}
             alignmentAnimation={{ animationTime: 280, velocityAlignmentTime: 320 }}
             onPanningStart={() => {
+              mapPannedRef.current = true;
               if (!mapPanningDisabled) setPanning(true);
             }}
-            onPanningStop={() => setPanning(false)}
+            onPanningStop={() => {
+              setPanning(false);
+              window.setTimeout(() => {
+                mapPannedRef.current = false;
+              }, 0);
+            }}
             onInit={syncMapScale}
             onTransformed={syncMapScale}
           >
@@ -1429,7 +1414,7 @@ export function RealmMap({
                 <div
                   ref={mapStageRef}
                   className="realm-map-stage relative h-full w-full"
-                  onClick={placingNewLocation ? handleMapStageClickForNewLocation : undefined}
+                  onClick={placement.placing ? handleMapStageClickForNewLocation : undefined}
                 >
                   <div className="realm-map-surface relative h-full w-full overflow-hidden rounded-md">
                     <RealmCampusMapLayer calibrateMode={calibrateMode} onLoadStateChange={setUriMapLoaded} />
@@ -1480,6 +1465,14 @@ export function RealmMap({
                             onDragEnd={(lat, lng) => void handleUrinvolvedEventDragEnd(pin.externalEventId, lat, lng)}
                           />
                         ))}
+                    {placement.preview ? (
+                      <span
+                        className="cq-realm-place-preview"
+                        style={{ left: `${placement.preview.x}%`, top: `${placement.preview.y}%` }}
+                      >
+                        {newLocationName.trim() || "New marker"}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1495,17 +1488,42 @@ export function RealmMap({
           onSave={() => void handleSave()}
           savePending={savePending}
           saveMessage={saveMessage}
+          saveMessageTone={saveMessageTone}
           newLocationName={newLocationName}
           onNewLocationNameChange={setNewLocationName}
-          placingNewLocation={placingNewLocation}
-          onStartPlacingNewLocation={() => setPlacingNewLocation(true)}
-          onCancelPlacingNewLocation={() => setPlacingNewLocation(false)}
+          placingNewLocation={placement.placing}
+          placementPreview={placement.preview}
+          onStartPlacingNewLocation={() => {
+            if (!newLocationName.trim()) return;
+            setSaveMessage(null);
+            setPlacement(beginMarkerPlacement());
+          }}
+          onCancelPlacingNewLocation={() => setPlacement(resetMarkerPlacement())}
+          onConfirmPlacement={() => {
+            if (!placement.preview) return;
+            void handleCreateLocationAt({
+              x: placement.preview.x,
+              y: placement.preview.y,
+              lat: placement.preview.lat,
+              lng: placement.preview.lng,
+            });
+          }}
+          onRepositionPlacement={() => setPlacement((current) => repositionMarkerPlacement(current))}
           createLocationPending={createLocationPending}
           selectedUrinvolvedEventId={selectedUrinvolvedEventId}
           onSelectUrinvolvedEventId={setSelectedUrinvolvedEventId}
           onUrinvolvedPlacementsChanged={() => void reloadMapGroups()}
           selectedLandmarkRealmId={editorSelectedId}
         />
+
+        {editMode && placement.placing ? (
+          <div className="cq-realm-place-hint" data-no-drawer-swipe="true" data-cq-gesture-block="all">
+            <p>Tap anywhere on the map to place your marker.</p>
+            <button type="button" onClick={() => setPlacement(resetMarkerPlacement())}>
+              Cancel
+            </button>
+          </div>
+        ) : null}
 
         {useGoogleMap && isRouteSheetOpen ? (
           <RealmRouteSheet
@@ -1574,22 +1592,39 @@ export function RealmMap({
           </div>
         ) : null}
 
-        {showDiscoverySheet ? (
-          <RealmDiscoverySheet
-            items={discoveryItems}
-            groups={discoveryGroups}
-            nearbyPlaces={nearbyPlaces}
-            snap={discoverySnap}
-            onSnapChange={setDiscoverySnap}
-            onHeightChange={setDiscoveryPadPx}
-            onOpenRecommendation={(item) => focusRecommendation(item, true)}
-            onOpenPlace={openPlaceFromCarousel}
-            onViewAthletics={onViewAthletics}
-            onFindMyCampus={onFindMyCampus}
-            onViewAllRecommendations={onViewAllRecommendations}
-            walkOrigin={userFix}
-            locating={userLocating}
-          />
+        {highlightsOpen ? (
+          <RealmOverlaySheet title="Rhody Highlights" onClose={() => setHighlightsOpen(false)}>
+            <RealmHighlightsSheet
+              items={mapRecommendations}
+              groups={discoveryGroups}
+              loading={!mapGroupsLoaded}
+              onOpenRecommendation={(item) => {
+                setHighlightsOpen(false);
+                focusRecommendation(item, true);
+              }}
+              onViewAthletics={onViewAthletics}
+              onFindMyCampus={onFindMyCampus}
+              onViewAllRecommendations={onViewAllRecommendations}
+            />
+          </RealmOverlaySheet>
+        ) : null}
+
+        {notificationsOpen ? (
+          <RealmOverlaySheet title="Notifications" onClose={() => setNotificationsOpen(false)}>
+            <NotificationsCenter
+              embedded
+              theme="inbox"
+              onUnreadCountChange={onUnreadCountChange}
+              onOpenDestination={(notification) => {
+                setNotificationsOpen(false);
+                if (onOpenNotificationDestination) {
+                  onOpenNotificationDestination(notification);
+                  return;
+                }
+                onOpenNotifications?.();
+              }}
+            />
+          </RealmOverlaySheet>
         ) : null}
       </div>
 

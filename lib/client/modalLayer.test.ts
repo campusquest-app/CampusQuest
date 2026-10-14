@@ -125,6 +125,120 @@ describe("modal layer", () => {
     expect(dom.html.hasAttribute(MODAL_KEYBOARD_ATTR)).toBe(false);
     expect(dom.vvListeners.size).toBe(0);
   });
+
+  it("scrolls the focused field above the pinned footer once the keyboard shrinks the sheet", async () => {
+    const { acquireModalLayer } = await loadModule();
+    const body = {
+      scrollTop: 100,
+      getBoundingClientRect: () => ({ top: 120, bottom: 400 }),
+    };
+    const field = {
+      closest: (sel: string) => (sel === ".cq-modal-body" ? body : null),
+      getBoundingClientRect: () => ({ top: 380, bottom: 460 }),
+    };
+    (document as unknown as { activeElement: unknown }).activeElement = field;
+    const frames: (() => void)[] = [];
+    (window as unknown as { requestAnimationFrame: unknown }).requestAnimationFrame = (fn: () => void) =>
+      frames.push(fn);
+
+    const layer = acquireModalLayer();
+    expect(frames).toHaveLength(0);
+    dom.visualViewport.height = 480;
+    dom.vvListeners.get("resize")?.();
+    frames.forEach((fn) => fn());
+    expect(body.scrollTop).toBe(100 + (460 - 400) + 12);
+    layer.release();
+  });
+});
+
+describe("background isolation", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("makes everything outside the top layer inert and restores only what it changed", async () => {
+    const app = { inert: false };
+    const alreadyInert = { inert: true };
+    const edit = { inert: false };
+    const tags = { inert: false };
+    const children = [app, alreadyInert, edit];
+    vi.stubGlobal("document", { body: { children } });
+    const { isolateModalLayer } = await loadModule();
+
+    const restoreEdit = isolateModalLayer(edit as unknown as Element);
+    expect([app.inert, alreadyInert.inert, edit.inert]).toEqual([true, true, false]);
+
+    children.push(tags);
+    const restoreTags = isolateModalLayer(tags as unknown as Element);
+    expect(edit.inert).toBe(true);
+    expect(tags.inert).toBe(false);
+
+    restoreTags();
+    expect([app.inert, edit.inert]).toEqual([true, false]);
+    restoreEdit();
+    expect([app.inert, alreadyInert.inert, edit.inert]).toEqual([false, true, false]);
+  });
+});
+
+describe("modal touch guard", () => {
+  type Node = {
+    tagName: string;
+    parentElement: Node | null;
+    overflowX?: string;
+    overflowY?: string;
+    scrollTop?: number;
+    scrollLeft?: number;
+    scrollHeight?: number;
+    clientHeight?: number;
+    scrollWidth?: number;
+    clientWidth?: number;
+  };
+  const styleOf = (el: Element) => {
+    const n = el as unknown as Node;
+    return { overflowX: n.overflowX ?? "visible", overflowY: n.overflowY ?? "visible" };
+  };
+  const layer: Node = { tagName: "DIV", parentElement: null };
+  const panel: Node = { tagName: "FORM", parentElement: layer };
+  const asEl = (n: Node) => n as unknown as Element;
+
+  it("cancels drags on non-scrolling chrome (header, footer, backdrop)", async () => {
+    const { canModalTouchScroll } = await loadModule();
+    const header: Node = { tagName: "HEADER", parentElement: panel };
+    expect(canModalTouchScroll(asEl(header), asEl(layer), 0, -40, styleOf)).toBe(false);
+    expect(canModalTouchScroll(asEl(layer), asEl(layer), 0, 40, styleOf)).toBe(false);
+  });
+
+  it("allows the modal body to scroll but not chain past its edges", async () => {
+    const { canModalTouchScroll } = await loadModule();
+    const body: Node = {
+      tagName: "DIV",
+      parentElement: panel,
+      overflowY: "auto",
+      scrollTop: 0,
+      scrollHeight: 900,
+      clientHeight: 400,
+    };
+    const row: Node = { tagName: "BUTTON", parentElement: body };
+    expect(canModalTouchScroll(asEl(row), asEl(layer), 0, -30, styleOf)).toBe(true);
+    expect(canModalTouchScroll(asEl(row), asEl(layer), 0, 30, styleOf)).toBe(false);
+    body.scrollTop = 500;
+    expect(canModalTouchScroll(asEl(row), asEl(layer), 0, -30, styleOf)).toBe(false);
+    expect(canModalTouchScroll(asEl(row), asEl(layer), 0, 30, styleOf)).toBe(true);
+  });
+
+  it("allows horizontal filter rows and text inputs", async () => {
+    const { canModalTouchScroll } = await loadModule();
+    const filters: Node = {
+      tagName: "DIV",
+      parentElement: panel,
+      overflowX: "auto",
+      scrollLeft: 0,
+      scrollWidth: 500,
+      clientWidth: 300,
+    };
+    const chip: Node = { tagName: "BUTTON", parentElement: filters };
+    expect(canModalTouchScroll(asEl(chip), asEl(layer), -40, 2, styleOf)).toBe(true);
+    const input: Node = { tagName: "INPUT", parentElement: panel };
+    expect(canModalTouchScroll(asEl(input), asEl(layer), 0, 30, styleOf)).toBe(true);
+  });
 });
 
 describe("Edit Post and Add Tags use the shared modal layer", () => {
@@ -159,6 +273,14 @@ describe("Edit Post and Add Tags use the shared modal layer", () => {
     }
     expect(edit).toContain("cq-modal-footer");
     expect(edit).toMatch(/dismissible=\{!saving\}/);
+  });
+
+  it("isolates the background, guards touch scrolling, and manages focus", () => {
+    expect(layer).toContain("isolateModalLayer(layerEl)");
+    expect(layer).toContain("guardModalTouchMove(layerEl)");
+    expect(layer).toContain("tabIndex: -1");
+    expect(layer).toMatch(/opener\.focus\(\{ preventScroll: true \}\)/);
+    expect(css).toContain(".cq-modal-panel:focus");
   });
 
   it("focuses tag search without scrolling the page", () => {

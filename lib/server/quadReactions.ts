@@ -7,6 +7,7 @@ import {
 import { createAdminClient } from "@/lib/server/supabase";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 import { QUAD_SPARK_XP_AMOUNT } from "@/lib/quadSparkXp";
+import { progressionRewardsEnabled } from "@/lib/featureFlags";
 
 export type QuadReactionType = "like" | "spark";
 
@@ -353,6 +354,7 @@ async function maybeAwardSparkXp(args: {
   sparkerUserId: string;
 }): Promise<void> {
   const { postId, postAuthorId, sparkerUserId } = args;
+  if (!progressionRewardsEnabled()) return;
   if (postAuthorId === sparkerUserId) return;
 
   const admin = createAdminClient();

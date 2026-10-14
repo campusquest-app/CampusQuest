@@ -16,6 +16,7 @@ import type { RealmLocationId } from "@/lib/realm/locations";
 import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
 import { hasUsableMapCoords } from "@/lib/realm/mapCoords";
+import { latLngFromMapClick } from "@/lib/realm/mapPlacement";
 import {
   canonicalMarkerRevealOpacity,
   groupMatchesFilter,
@@ -33,6 +34,7 @@ import {
 } from "@/lib/realm/googleMapConfig";
 import {
   URI_MAP_CENTER,
+  URI_MAP_DEFAULT_ZOOM,
   URI_MAP_MAX_ZOOM,
   URI_MAP_MIN_ZOOM,
   URI_MAP_TYPE_ID,
@@ -78,8 +80,6 @@ import { useNow } from "@/lib/client/useNow";
 import { getGroupCountdown, type GroupCountdown } from "@/lib/realm/eventCountdown";
 import type { RealmDirectionsRequest } from "@/lib/realm/realmDirectionsTypes";
 import {
-  REALM_DISCOVERY_OVERVIEW_CENTER,
-  REALM_FIRST_OPEN_END_ZOOM,
   REALM_HEART_OF_CAMPUS,
   discoveryPriorityScore,
   distanceMeters,
@@ -712,6 +712,10 @@ export function GoogleRealmMap({
   onTapSupplementary,
   onSelectEditorMarker,
   onMarkerGeoChange,
+  placingNewLocation = false,
+  placementPreview = null,
+  onPlaceNewLocation,
+  onPlacementPreviewMove,
   onMapReady,
   immersive = false,
   isActive = true,
@@ -735,6 +739,8 @@ export function GoogleRealmMap({
   suppressLegacyWelcome = false,
   recommendationScoreById,
   extraBottomPx = 0,
+  gesturesLocked = false,
+  onOpenHighlights,
   onUserFix,
   onUserLocating,
   viewerAvatar = null,
@@ -756,6 +762,10 @@ export function GoogleRealmMap({
   onTapSupplementary: (group: GroupedMapLocation) => void;
   onSelectEditorMarker: (id: RealmLocationId) => void;
   onMarkerGeoChange: (id: RealmLocationId, lat: number, lng: number) => void;
+  placingNewLocation?: boolean;
+  placementPreview?: { lat: number; lng: number; label: string } | null;
+  onPlaceNewLocation?: (lat: number, lng: number) => void;
+  onPlacementPreviewMove?: (lat: number, lng: number) => void;
   onMapReady?: () => void;
   immersive?: boolean;
   isActive?: boolean;
@@ -780,6 +790,8 @@ export function GoogleRealmMap({
   suppressLegacyWelcome?: boolean;
   recommendationScoreById?: Record<string, number>;
   extraBottomPx?: number;
+  gesturesLocked?: boolean;
+  onOpenHighlights?: () => void;
   onUserFix?: (pos: { lat: number; lng: number; accuracy?: number | null } | null) => void;
   onUserLocating?: (locating: boolean) => void;
   viewerAvatar?: string | null;
@@ -1051,16 +1063,22 @@ export function GoogleRealmMap({
             ? "Campus places will appear here."
             : "Exploring campus landmarks — check back for live quests and events.";
 
+  const suppressMapClickRef = useRef(false);
+
   const handleMapClick = useCallback(
-    (event: { detail: { latLng: { lat: number; lng: number } | null } }) => {
+    (event: { detail?: { latLng?: { lat: number; lng: number } | null } | null }) => {
+      if (suppressMapClickRef.current) return;
       setControlsExpanded(false);
+      const latLng = latLngFromMapClick(event);
+      if (editMode && placingNewLocation) {
+        if (latLng) onPlaceNewLocation?.(latLng.lat, latLng.lng);
+        return;
+      }
       onMapBackgroundClick?.();
-      if (!editMode || !editorSelectedId) return;
-      const latLng = event.detail.latLng;
-      if (!latLng) return;
+      if (!editMode || !editorSelectedId || !latLng) return;
       onMarkerGeoChange(editorSelectedId, latLng.lat, latLng.lng);
     },
-    [editMode, editorSelectedId, onMapBackgroundClick, onMarkerGeoChange],
+    [editMode, editorSelectedId, onMapBackgroundClick, onMarkerGeoChange, onPlaceNewLocation, placingNewLocation],
   );
 
   const directionsActive = Boolean(directionsRequest);
@@ -1141,11 +1159,11 @@ export function GoogleRealmMap({
           colorScheme={useVectorMapId ? ColorScheme.DARK : undefined}
           styles={useVectorMapId ? undefined : mapLayer === "campus" ? CQ_REALM_MAP_STYLE : undefined}
           mapTypeId={mapLayer === "campus" ? URI_MAP_TYPE_ID : "satellite"}
-          defaultCenter={REALM_DISCOVERY_OVERVIEW_CENTER}
-          defaultZoom={REALM_FIRST_OPEN_END_ZOOM}
+          defaultCenter={URI_MAP_CENTER}
+          defaultZoom={URI_MAP_DEFAULT_ZOOM}
           minZoom={URI_MAP_MIN_ZOOM}
           maxZoom={URI_MAP_MAX_ZOOM}
-          gestureHandling="greedy"
+          gestureHandling={gesturesLocked ? "none" : "greedy"}
           rotateControl
           tiltInteractionEnabled
           headingInteractionEnabled
@@ -1160,10 +1178,16 @@ export function GoogleRealmMap({
           backgroundColor={MAP_BACKGROUND}
           reuseMaps
           onTilesLoaded={() => markTilesReady("onTilesLoaded")}
-          onDragstart={() => document.documentElement.toggleAttribute("data-realm-map-panning", true)}
+          onDragstart={() => {
+            suppressMapClickRef.current = true;
+            document.documentElement.toggleAttribute("data-realm-map-panning", true);
+          }}
           onDragend={() => {
             document.documentElement.removeAttribute("data-realm-map-panning");
             markUserCameraInteraction();
+            window.setTimeout(() => {
+              suppressMapClickRef.current = false;
+            }, 120);
           }}
           onClick={handleMapClick}
         >
@@ -1184,7 +1208,6 @@ export function GoogleRealmMap({
           {tilesLoaded && isActive && !editMode && !firstOpenDoneRef.current ? (
             <RealmMapFirstOpenCamera
               enabled
-              locateOnce={geolocation.locateOnce}
               onResolved={(center) => {
                 firstOpenDoneRef.current = true;
                 handleDiscoveryResolved(center);
@@ -1305,10 +1328,19 @@ export function GoogleRealmMap({
                         type="button"
                         className="cq-realm-map-bell touch-manipulation"
                         aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
-                        onClick={onOpenNotifications}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onOpenNotifications();
+                        }}
                       >
                         <Bell className="h-4 w-4" strokeWidth={2.1} aria-hidden />
-                        {unreadCount > 0 ? <span className="cq-realm-map-bell__dot" aria-hidden /> : null}
+                        {unreadCount > 0 ? (
+                          <span className="cq-realm-map-bell__count">
+                            {unreadCount > 9 ? "9+" : unreadCount}
+                          </span>
+                        ) : null}
                       </button>
                     ) : null}
                   </div>
@@ -1324,7 +1356,7 @@ export function GoogleRealmMap({
             </MapControl>
           ) : null}
 
-          {editMode ? (
+          {editMode && !placingNewLocation ? (
             <MapControl position={ControlPosition.TOP_CENTER}>
               <p className="cq-realm-map-edit-hint mt-3">
                 Drag a pin — or select one, then tap the map to place it. Save from the marker editor.
@@ -1339,6 +1371,27 @@ export function GoogleRealmMap({
               heading={geolocation.fix.heading}
               showLabel={!discovery.labelsHidden}
             />
+          ) : null}
+
+          {placementPreview && hasUsableMapCoords(placementPreview.lat, placementPreview.lng) ? (
+            <CampusQuestMapMarker
+              position={{ lat: placementPreview.lat, lng: placementPreview.lng }}
+              zIndex={5200}
+              draggable
+              onDragEnd={(lat, lng) => onPlacementPreviewMove?.(lat, lng)}
+            >
+              <RealmMapMarker
+                variant="default"
+                label={placementPreview.label}
+                activityState="active"
+                activityCount={0}
+                revealOpacity={1}
+                color="gold"
+                zoomTier="near"
+                editMode
+                editorSelected
+              />
+            </CampusQuestMapMarker>
           ) : null}
 
           {searchPin ? (
@@ -1369,6 +1422,7 @@ export function GoogleRealmMap({
             immersive={immersive}
             vector3dEnabled={vector3dEnabled}
             onBuildingsOverlayChange={setShowFallbackBuildings}
+            onOpenHighlights={onOpenHighlights}
             mapRef={mapRef}
           />
 

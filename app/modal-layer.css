@@ -44,6 +44,11 @@
   animation: cq-modal-sheet-in 240ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* Panel receives programmatic focus on open; fields keep their own focus rings. */
+.cq-modal-panel:focus {
+  outline: none;
+}
+
 /* Keyboard covers the home indicator — reclaim that space for content. */
 html[data-cq-modal-keyboard] .cq-modal-panel {
   padding-bottom: 0;

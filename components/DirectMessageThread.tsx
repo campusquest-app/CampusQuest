@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Ban, EyeOff, MoreHorizontal, Sparkles, UserRound } from "lucide-react";
 import type { Character, FieldNote } from "@/lib/types";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import type { Friend } from "@/lib/types";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import {
@@ -124,11 +125,9 @@ function DmMessageBubbleRow({
   const openActions = () => {
     if (m.pending || m.failed) return;
     onOpenActions(m.id);
-    try {
-      navigator.vibrate?.(8);
-    } catch {
-      /* haptics optional */
-    }
+    void import("@/lib/client/hapticsPreference").then(({ pulseHaptic }) => {
+      pulseHaptic(8);
+    });
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -975,7 +974,8 @@ export function DirectMessageThread({
             <div className="min-w-0 flex-1 pr-1">
               <p className="truncate text-[16px] font-bold leading-tight text-white">{otherUser.name}</p>
               <p className="truncate text-xs text-white/60">
-                @{otherUser.username} · Level {displayLevel}
+                @{otherUser.username}
+                {FEATURE_FLAGS.progression ? ` · Level ${displayLevel}` : ""}
               </p>
             </div>
           </button>

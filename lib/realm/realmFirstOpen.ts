@@ -6,6 +6,7 @@
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 import {
   URI_MAP_CENTER,
+  URI_MAP_DEFAULT_ZOOM,
   moveMapCamera,
 } from "@/lib/realm/googleMapPose";
 
@@ -18,17 +19,17 @@ export const REALM_HEART_OF_CAMPUS = {
 } as const;
 
 /**
- * Default first-open camera: central URI overview covering Rec Center through
- * Mainfare / Library / Engineering / Quad / Business / Butterfield / Union.
+ * Wider campus frame kept for discovery scoring. The map itself opens on
+ * URI_MAP_CENTER at URI_MAP_DEFAULT_ZOOM.
  */
 export const REALM_DISCOVERY_OVERVIEW_CENTER = {
   lat: 41.48705,
   lng: -71.52975,
 } as const;
 
-/** Start zoomed out, then ease into a campus-overview discovery zoom. */
-export const REALM_FIRST_OPEN_START_ZOOM = 15.35;
-export const REALM_FIRST_OPEN_END_ZOOM = 15.72;
+/** Start zoomed out, then ease into the campus home zoom. */
+export const REALM_FIRST_OPEN_START_ZOOM = 16.4;
+export const REALM_FIRST_OPEN_END_ZOOM = URI_MAP_DEFAULT_ZOOM;
 
 export const REALM_FIRST_OPEN_FLY_MS = 1000;
 export const REALM_LOCATE_TIMEOUT_MS = 2200;
@@ -64,7 +65,7 @@ export function markRealmWelcomeSeen(): void {
 export function resolveFirstOpenCameraTarget(
   _userPos: { lat: number; lng: number } | null,
 ): { lat: number; lng: number; source: "user" | "campus-heart" } {
-  return { ...REALM_DISCOVERY_OVERVIEW_CENTER, source: "campus-heart" };
+  return { lat: URI_MAP_CENTER.lat, lng: URI_MAP_CENTER.lng, source: "campus-heart" };
 }
 
 function easeOutCubic(t: number): number {

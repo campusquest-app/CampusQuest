@@ -52,7 +52,10 @@ export function CampusQuestMapMarker({
 
     class MarkerOverlay extends google.maps.OverlayView {
       onAdd() {
-        this.getPanes()?.overlayMouseTarget.appendChild(div);
+        const pane = this.getPanes()?.overlayMouseTarget;
+        if (pane instanceof HTMLElement) pane.style.pointerEvents = "none";
+        div.style.pointerEvents = "auto";
+        pane?.appendChild(div);
       }
       draw() {
         const projection = this.getProjection();
