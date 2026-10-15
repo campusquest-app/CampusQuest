@@ -65,6 +65,7 @@ import { RealmMapCameraGestures } from "./RealmMapCameraGestures";
 import { RealmMapChromePadding } from "./RealmMapChromePadding";
 import { RealmMapControls } from "./RealmMapControls";
 import { RealmMapFirstOpenCamera } from "./RealmMapFirstOpenCamera";
+import { RealmMapSessionCamera } from "./RealmMapSessionCamera";
 import { RealmMapSearch } from "./RealmMapSearch";
 import { RealmMapFilterPills } from "./RealmMapFilterPills";
 import { RealmWelcomeCard } from "./RealmWelcomeCard";
@@ -1237,6 +1238,7 @@ export function GoogleRealmMap({
               }}
             />
           ) : null}
+          <RealmMapSessionCamera enabled={isActive && tilesLoaded && !editMode} />
           <RealmMapFlyTo target={flyToTarget} enabled={flyToEnabled && isActive} force={flyToForce} />
           <RealmMapContainerObserver surfaceRef={surfaceRef} />
           <RealmMapVectorInit

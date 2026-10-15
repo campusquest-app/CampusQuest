@@ -185,15 +185,46 @@ export function resolveExternalEventPlacement(args: {
       override.matchStatus === "verified" ||
       override.manuallyVerified)
   ) {
-    // Even protected overrides that clearly name a campus building must attach
-    // to that landmark — never keep a duplicate coords pin at the same building.
+    // Admin drag placements store custom lat/lng with realm_location_id cleared.
+    // Those coordinates are authoritative — never snap back to a building match
+    // from the venue text (that was reverting Save Position / drag edits).
+    const isManualDrag =
+      override.matchReason === "manual_drag" ||
+      (override.customLat != null &&
+        override.customLng != null &&
+        override.realmLocationId == null &&
+        override.matchStatus === "manually_adjusted");
+
+    if (isManualDrag && override.customLat != null && override.customLng != null) {
+      const match = overrideToMatch(override, args.catalog);
+      return {
+        match,
+        meta: match
+          ? {
+              rawLocation,
+              normalizedLocation: override.normalizedLocationText ?? normalizeEventLocationText(rawLocation),
+              confidence: override.matchConfidence ?? 1,
+              matchReason: override.matchReason ?? "manual_drag",
+              needsReview: false,
+              matchedText: match.matchedText,
+            }
+          : null,
+        override,
+        renderOnMap: Boolean(match),
+        appliedOverride: true,
+        resolutionDebug: override.resolutionDebug,
+      };
+    }
+
+    // Verified / manually assigned realm pins that still name a campus building
+    // attach to that landmark so we do not spawn a second coords pin beside it.
     const registry = args.registry ?? [];
     const buildingAttach = resolveEventLocationFromRegistrySync({
       fields: args.fields,
       registry,
       catalog: args.catalog,
     });
-    if (buildingAttach.match?.kind === "realm") {
+    if (buildingAttach.match?.kind === "realm" && !override.customLat && !override.customLng) {
       return {
         match: buildingAttach.match,
         meta: buildingAttach.meta,

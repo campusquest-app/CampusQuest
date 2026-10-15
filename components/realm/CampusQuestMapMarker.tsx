@@ -3,12 +3,18 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useMap } from "@vis.gl/react-google-maps";
+import { shouldFireMapMarkerTap } from "@/lib/client/mapMarkerTap";
 
 /**
  * HTML marker rendered through a google.maps.OverlayView.
  *
  * Works with vector Map IDs (satellite + tilt) where AdvancedMarkerElement
  * would require cloud styling. Supports tap, z-index, and admin drag.
+ *
+ * iOS WKWebView notes:
+ * - Fire on pointerup (do not wait for synthesized click).
+ * - touch-action: manipulation so the browser delivers pointer events.
+ * - Keep a ≥44×44 CSS-px hit target on the overlay container.
  */
 export function CampusQuestMapMarker({
   position,
@@ -49,6 +55,12 @@ export function CampusQuestMapMarker({
     // when touch-action is none. Drag still calls preventDefault on pointerdown.
     div.style.touchAction = "manipulation";
     div.style.overflow = "visible";
+    // Large enough for a reliable finger tap without disabling map gestures elsewhere.
+    div.style.minWidth = "44px";
+    div.style.minHeight = "44px";
+    div.style.display = "flex";
+    div.style.alignItems = "flex-end";
+    div.style.justifyContent = "center";
     div.setAttribute("data-map-marker", "true");
     div.setAttribute("data-no-drawer-swipe", "true");
 
@@ -80,6 +92,7 @@ export function CampusQuestMapMarker({
     setContainer(div);
 
     const drag = { active: false, pointerId: -1, moved: false, latLng: null as google.maps.LatLng | null };
+    const tap = { x: 0, y: 0, t: 0 };
     let lastTapAt = 0;
     const fireTap = () => {
       const now = Date.now();
@@ -100,6 +113,9 @@ export function CampusQuestMapMarker({
     const onPointerDown = (e: PointerEvent) => {
       // Never let a press on a marker start a map pan.
       e.stopPropagation();
+      tap.x = e.clientX;
+      tap.y = e.clientY;
+      tap.t = Date.now();
       if (!draggableRef.current) return;
       e.preventDefault();
       drag.active = true;
@@ -136,7 +152,7 @@ export function CampusQuestMapMarker({
       map.setOptions({ draggable: true });
       if (moved && latLng) {
         onDragEndRef.current?.(latLng.lat(), latLng.lng());
-      } else {
+      } else if (shouldFireMapMarkerTap(tap, { x: e.clientX, y: e.clientY })) {
         // A press without movement counts as a tap (select in edit mode).
         fireTap();
       }
@@ -148,7 +164,10 @@ export function CampusQuestMapMarker({
         return;
       }
       e.stopPropagation();
-      fireTap();
+      // Require a short stationary press so map pans that start on a pin do not open it.
+      if (shouldFireMapMarkerTap(tap, { x: e.clientX, y: e.clientY })) {
+        fireTap();
+      }
     };
 
     const onClickDom = (e: MouseEvent) => {

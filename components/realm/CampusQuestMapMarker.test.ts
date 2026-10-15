@@ -17,4 +17,10 @@ describe("CampusQuestMapMarker iOS hit-testing", () => {
     expect(src).toContain('div.addEventListener("pointerup", onPointerUpTap)');
     expect(src).toContain('div.addEventListener("click", onClickDom)');
   });
+
+  it("uses a 44px touch target and rejects pan-like pointer travel", () => {
+    expect(src).toContain('div.style.minWidth = "44px"');
+    expect(src).toContain('div.style.minHeight = "44px"');
+    expect(src).toContain("shouldFireMapMarkerTap");
+  });
 });

@@ -60,7 +60,7 @@ function eventItem(partial: {
       source: "urinvolved",
       cancelled: false,
       locationText: partial.locationText,
-      placementStatus: partial.placementStatus ?? "manually_adjusted",
+      placementStatus: partial.placementStatus ?? "resolved",
     },
   };
 }
@@ -82,7 +82,7 @@ describe("resolveCanonicalLandmarkForExternalEvent", () => {
     expect(slug).toBe("weldin-hall");
   });
 
-  it("reattaches dragged coords pins whose venue text aliases to Weldin", () => {
+  it("preserves admin-dragged coords instead of snapping back to Weldin", () => {
     const slug = resolveCanonicalLandmarkForExternalEvent(
       eventItem({
         locationText: "Weldin Hall First Floor Lounge",
@@ -97,7 +97,7 @@ describe("resolveCanonicalLandmarkForExternalEvent", () => {
       }),
       [WELDIN, LIBRARY],
     );
-    expect(slug).toBe("weldin-hall");
+    expect(slug).toBeNull();
   });
 
   it("maps Weldin Lounge / Weldin aliases to one landmark", () => {
@@ -105,6 +105,7 @@ describe("resolveCanonicalLandmarkForExternalEvent", () => {
       const slug = resolveCanonicalLandmarkForExternalEvent(
         eventItem({
           locationText: text,
+          placementStatus: "resolved",
           match: {
             kind: "coords",
             locationName: text,
@@ -138,12 +139,13 @@ describe("resolveCanonicalLandmarkForExternalEvent", () => {
 });
 
 describe("one grouped marker identity", () => {
-  it("collapses event + landmark activity onto a single groupKey", () => {
+  it("collapses auto-matched events onto a single landmark groupKey", () => {
     const aliases = ["Weldin Hall First Floor Lounge", "Weldin Lounge", "Weldin"];
     const slugs = aliases.map((text) =>
       resolveCanonicalLandmarkForExternalEvent(
         eventItem({
           locationText: text,
+          placementStatus: "resolved",
           match: {
             kind: "coords",
             locationName: text,
@@ -156,5 +158,23 @@ describe("one grouped marker identity", () => {
       ),
     );
     expect(new Set(slugs)).toEqual(new Set(["weldin-hall"]));
+  });
+
+  it("keeps manually dragged events off the landmark groupKey", () => {
+    const slug = resolveCanonicalLandmarkForExternalEvent(
+      eventItem({
+        locationText: "Weldin Hall",
+        placementStatus: "manually_adjusted",
+        match: {
+          kind: "coords",
+          locationName: "Custom location",
+          latitude: 41.483,
+          longitude: -71.534,
+          matchedText: "Weldin Hall",
+        },
+      }),
+      [WELDIN, LIBRARY],
+    );
+    expect(slug).toBeNull();
   });
 });

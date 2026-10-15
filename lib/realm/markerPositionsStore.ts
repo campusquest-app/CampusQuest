@@ -70,7 +70,17 @@ export function getDefaultMarkerPositions(catalogLocations?: RealmLocation[]): M
   const out: MarkerPositionMap = {};
   const locations = catalogLocations ?? realmLocationsFromCatalog();
   for (const loc of locations) {
-    out[loc.id] = { x: loc.x, y: loc.y };
+    const entry: MarkerPosition = { x: loc.x, y: loc.y };
+    // Prefer catalog geo when present so Google-layer pins are not left on
+    // hardcoded fallbacks after a percent-only override merge.
+    const withGeo = loc as RealmLocation & { lat?: number; lng?: number; latitude?: number; longitude?: number };
+    const lat = withGeo.lat ?? withGeo.latitude;
+    const lng = withGeo.lng ?? withGeo.longitude;
+    if (typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
+      entry.lat = lat;
+      entry.lng = lng;
+    }
+    out[loc.id] = entry;
   }
   return out;
 }

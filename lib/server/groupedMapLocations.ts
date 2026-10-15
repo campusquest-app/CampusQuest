@@ -269,7 +269,10 @@ function externalEventPerIdMeta(match: {
   };
 }
 
-function isDragPlacedUrinvolvedEvent(item: Awaited<ReturnType<typeof getTodayExternalEventsForMap>>[number]): boolean {
+/** Admin-dragged URInvolved events keep custom coords (not re-attached to landmarks). */
+export function isDragPlacedUrinvolvedEvent(
+  item: Awaited<ReturnType<typeof getTodayExternalEventsForMap>>[number],
+): boolean {
   return item.pin.placementStatus === "manually_adjusted" && item.match.kind === "coords";
 }
 
@@ -277,11 +280,15 @@ function isDragPlacedUrinvolvedEvent(item: Awaited<ReturnType<typeof getTodayExt
  * Prefer the canonical campus landmark for any event whose venue text matches
  * a campus_locations row (name/alias/slug). Prevents purple coords pins from
  * duplicating blue landmarks at the same building.
+ *
+ * Manual drag placements are excluded — authorized overrides must keep the
+ * saved custom coordinates after Save Position / reload / sync.
  */
 export function resolveCanonicalLandmarkForExternalEvent(
   item: Awaited<ReturnType<typeof getTodayExternalEventsForMap>>[number],
   registry: CampusBuildingRegistryEntry[],
 ): string | null {
+  if (isDragPlacedUrinvolvedEvent(item)) return null;
   if (item.match.kind === "realm") return item.match.realmLocationId;
 
   const locationText =
@@ -416,30 +423,31 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
     addCampusEventRows(buckets, (eventsResult.data ?? []) as CampusEventMapRow[], now);
   }
 
-  // Today's URInvolved events, grouped onto the matching realm locations.
-  // Always prefer attaching to a canonical campus landmark when the venue text
-  // or match names a known building — never render a second pin at that building.
+  // Today's URInvolved events. Manual drag overrides keep custom coordinates;
+  // otherwise attach to a canonical campus landmark when the venue names one.
   const [externalEvents, buildingRegistry] = await Promise.all([
     externalEventsPromise,
     buildingRegistryPromise,
   ]);
 
   for (const item of externalEvents) {
-    const landmarkSlug = resolveCanonicalLandmarkForExternalEvent(item, buildingRegistry);
-    let meta: Omit<GroupBucket, "qrCodes" | "quests" | "events"> | null = landmarkSlug
-      ? resolveGroupMeta({ locationId: landmarkSlug })
-      : null;
+    let meta: Omit<GroupBucket, "qrCodes" | "quests" | "events"> | null = null;
 
-    // True off-landmark placements only (no campus building match).
-    if (!meta && isDragPlacedUrinvolvedEvent(item) && item.pin.externalEventId && item.match.kind === "coords") {
+    // Manual drag / Save Position overrides win over landmark re-attachment so
+    // authorized edits do not snap back on reload or sync.
+    if (isDragPlacedUrinvolvedEvent(item) && item.pin.externalEventId && item.match.kind === "coords") {
       meta = externalEventPerIdMeta({
         externalEventId: item.pin.externalEventId,
         locationName: item.match.locationName,
         latitude: item.match.latitude,
         longitude: item.match.longitude,
       });
-    } else if (!meta && item.match.kind === "coords") {
-      meta = externalEventCoordsMeta(item.match);
+    } else {
+      const landmarkSlug = resolveCanonicalLandmarkForExternalEvent(item, buildingRegistry);
+      meta = landmarkSlug ? resolveGroupMeta({ locationId: landmarkSlug }) : null;
+      if (!meta && item.match.kind === "coords") {
+        meta = externalEventCoordsMeta(item.match);
+      }
     }
 
     if (!meta) continue;
