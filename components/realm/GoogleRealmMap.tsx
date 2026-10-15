@@ -78,6 +78,7 @@ import { RealmMapMarker } from "./RealmMapMarker";
 import { markerRevealOpacity, markerZoomTier, useMapZoom } from "./useMapZoom";
 import { useNow } from "@/lib/client/useNow";
 import { getGroupCountdown, type GroupCountdown } from "@/lib/realm/eventCountdown";
+import { filterLiveOrUpcomingMapEvents } from "@/lib/realm/eventVisibility";
 import type { RealmDirectionsRequest } from "@/lib/realm/realmDirectionsTypes";
 import {
   REALM_HEART_OF_CAMPUS,
@@ -346,14 +347,18 @@ function RealmMapMarkers({
       const posA = geoPositions[a.id] ?? REALM_HEART_OF_CAMPUS;
       const posB = geoPositions[b.id] ?? REALM_HEART_OF_CAMPUS;
       const scoreA = discoveryPriorityScore({
-        hasEvents: (a.mapContent?.events.length ?? 0) > 0 || a.upcomingEvents > 0,
+        hasEvents:
+          filterLiveOrUpcomingMapEvents(a.mapContent?.events ?? [], now).length > 0 ||
+          (!a.mapContent && a.upcomingEvents > 0),
         hasQuests: (a.mapContent?.quests.length ?? 0) > 0 || a.activeQuests > 0,
         hasMemories: a.activeMomentCount > 0,
         major: a.major,
         distanceM: distanceMeters(origin, posA),
       });
       const scoreB = discoveryPriorityScore({
-        hasEvents: (b.mapContent?.events.length ?? 0) > 0 || b.upcomingEvents > 0,
+        hasEvents:
+          filterLiveOrUpcomingMapEvents(b.mapContent?.events ?? [], now).length > 0 ||
+          (!b.mapContent && b.upcomingEvents > 0),
         hasQuests: (b.mapContent?.quests.length ?? 0) > 0 || b.activeQuests > 0,
         hasMemories: b.activeMomentCount > 0,
         major: b.major,
@@ -370,20 +375,20 @@ function RealmMapMarkers({
     const filtered = supplementaryPins.filter((group) => {
       if (!hasUsableMapCoords(group.lat, group.lng)) return false;
       if (filter === "for_you") return groupMatchesFilter(group, filter, now, recIds);
-      return mapLocationActivityCount(group) > 0 && groupMatchesFilter(group, filter, now, recIds);
+      return mapLocationActivityCount(group, undefined, now) > 0 && groupMatchesFilter(group, filter, now, recIds);
     });
     return [...filtered].sort((a, b) => {
       const posA = { lat: a.lat ?? origin.lat, lng: a.lng ?? origin.lng };
       const posB = { lat: b.lat ?? origin.lat, lng: b.lng ?? origin.lng };
       const scoreA = discoveryPriorityScore({
-        hasEvents: a.events.length > 0,
+        hasEvents: filterLiveOrUpcomingMapEvents(a.events, now).length > 0,
         hasQuests: a.quests.length > 0,
         hasMemories: false,
         major: false,
         distanceM: distanceMeters(origin, posA),
       });
       const scoreB = discoveryPriorityScore({
-        hasEvents: b.events.length > 0,
+        hasEvents: filterLiveOrUpcomingMapEvents(b.events, now).length > 0,
         hasQuests: b.quests.length > 0,
         hasMemories: false,
         major: false,
@@ -406,7 +411,7 @@ function RealmMapMarkers({
 
     for (const landmark of visibleLandmarks) {
       const pos = geoPositions[landmark.id] ?? REALM_HEART_OF_CAMPUS;
-      const variant = resolveLandmarkMarkerVariant(landmark);
+      const variant = resolveLandmarkMarkerVariant(landmark, now);
       entries.push({
         id: landmark.id,
         lat: pos.lat,
@@ -418,7 +423,7 @@ function RealmMapMarkers({
     }
     for (const group of visibleGroups) {
       if (group.lat == null || group.lng == null) continue;
-      const variant = resolveGroupMarkerVariant(group);
+      const variant = resolveGroupMarkerVariant(group, now);
       entries.push({
         id: group.groupKey,
         lat: group.lat,
@@ -436,20 +441,19 @@ function RealmMapMarkers({
         if (landmark) {
           return (
             (landmark.mapContent?.quests.length ?? 0) > 0 ||
-            (landmark.mapContent?.events.length ?? 0) > 0 ||
-            landmark.upcomingEvents > 0 ||
+            filterLiveOrUpcomingMapEvents(landmark.mapContent?.events ?? [], now).length > 0 ||
             landmark.activeMomentCount > 0 ||
             (landmark.mapContent?.qrCodes.length ?? 0) > 0
           );
         }
         const group = visibleGroups.find((g) => g.groupKey === e.id);
-        return Boolean(group && mapLocationActivityCount(group) > 0);
+        return Boolean(group && mapLocationActivityCount(group, undefined, now) > 0);
       })
       .sort((a, b) => a.distanceM - b.distanceM);
     if (withContent[0]) withContent[0].preferGold = true;
 
     return assignVisibleMarkerColors(entries);
-  }, [visibleLandmarks, visibleGroups, geoPositions, discoveryCenter, userPos]);
+  }, [visibleLandmarks, visibleGroups, geoPositions, discoveryCenter, userPos, now]);
 
   function colorFor(id: string): MarkerPaletteColor {
     return markerColors.get(id) ?? "electric-blue";
@@ -459,14 +463,14 @@ function RealmMapMarkers({
     const content = landmark.mapContent;
     return (
       (content?.quests.length ?? 0) +
-      (content?.events.length ?? 0) +
+      filterLiveOrUpcomingMapEvents(content?.events ?? [], now).length +
       (content?.qrCodes.length ?? 0) +
       Math.max(0, landmark.activeMomentCount)
     );
   }
 
   function groupOpportunityCount(group: GroupedMapLocation): number {
-    return group.quests.length + group.events.length + group.qrCodes.length;
+    return group.quests.length + filterLiveOrUpcomingMapEvents(group.events, now).length + group.qrCodes.length;
   }
 
   // Dev debug panel: full pipeline summary from map data to rendered markers.
@@ -549,7 +553,7 @@ function RealmMapMarkers({
           return null;
         }
         const reveal = canonicalMarkerRevealOpacity(markerRevealOpacity(mapZoom, landmark.major), isSelected);
-        const counts = landmarkActivityCounts(landmark);
+        const counts = landmarkActivityCounts(landmark, now);
         const { state: activityState, activityCount } = getLocationActivityState(counts, isSelected);
         const discovery = resolveDiscoveryForMarker(
           landmark.id,
@@ -581,7 +585,7 @@ function RealmMapMarkers({
             }}
           >
             <RealmMapMarker
-              variant={resolveLandmarkMarkerVariant(landmark)}
+              variant={resolveLandmarkMarkerVariant(landmark, now)}
               label={landmark.shortLabel}
               landmarkId={landmark.id}
               major={landmark.major}
@@ -620,7 +624,7 @@ function RealmMapMarkers({
         ) {
           return null;
         }
-        const counts = groupActivityCounts(group);
+        const counts = groupActivityCounts(group, now);
         const { state: activityState, activityCount } = getLocationActivityState(counts, isSelected);
         const discovery = resolveDiscoveryForMarker(
           group.groupKey,
@@ -641,7 +645,7 @@ function RealmMapMarkers({
             onClick={() => handleGroupTap(group)}
           >
             <RealmMapMarker
-              variant={resolveGroupMarkerVariant(group)}
+              variant={resolveGroupMarkerVariant(group, now)}
               label={group.locationName}
               activityState={activityState}
               activityCount={activityCount}
@@ -910,6 +914,25 @@ export function GoogleRealmMap({
       clearRealmMapWatchdog();
     };
   }, [isActive, markTilesReady]);
+
+  useEffect(() => {
+    if (!isActive) return undefined;
+    // Vector tiles decode in blob: workers; if CSP blocks them the basemap stays
+    // blank while DOM markers still render, so surface the error state instead.
+    const onViolation = (event: SecurityPolicyViolationEvent) => {
+      const blocked = event.blockedURI ?? "";
+      const directive = event.effectiveDirective || event.violatedDirective || "";
+      const isMapWorker = directive.startsWith("worker-src") && blocked.startsWith("blob");
+      const isMapOrigin = /^https:\/\/(maps\.googleapis\.com|maps\.gstatic\.com|www\.gstatic\.com)/.test(blocked);
+      if (!isMapWorker && !isMapOrigin) return;
+      console.error("[cq:realm-map] Content-Security-Policy blocked the basemap", { directive });
+      resetRealmMapTilesReady();
+      tilesReadyRef.current = false;
+      setApiError(true);
+    };
+    document.addEventListener("securitypolicyviolation", onViolation);
+    return () => document.removeEventListener("securitypolicyviolation", onViolation);
+  }, [isActive]);
 
   useEffect(() => {
     if (!tilesLoaded || editMode) return undefined;

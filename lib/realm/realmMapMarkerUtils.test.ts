@@ -34,6 +34,32 @@ describe("realmMapMarkerUtils", () => {
         mapContent: null,
       }),
     ).toBe("quest");
+
+    expect(
+      resolveLandmarkMarkerVariant(
+        {
+          activeQuests: 0,
+          upcomingEvents: 1,
+          activeMomentCount: 0,
+          mapContent: {
+            quests: [],
+            qrCodes: [],
+            events: [
+              {
+                id: "c",
+                title: "Karaoke Night",
+                cancelled: true,
+                startsAt: "2026-07-09T22:30:00.000Z",
+                endsAt: "2026-07-09T23:30:00.000Z",
+                organizationName: null,
+                eventUrl: null,
+              },
+            ],
+          },
+        },
+        new Date("2026-07-09T22:00:00.000Z"),
+      ),
+    ).toBe("default");
   });
 
   it("picks legendary quest first for preview", () => {

@@ -45,8 +45,11 @@ import { CampusMemoryViewer } from "@/components/memories/CampusMemoryViewer";
 import { LocationMemoriesGallery } from "@/components/memories/LocationMemoriesGallery";
 import { useGroupedMapLocations } from "@/lib/client/mapLocationGroupsClient";
 import { saveUrinvolvedPlacement } from "@/lib/client/urinvolvedMapPlacementsClient";
-import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
+import type { GroupedMapLocation, MapEventPin } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount, mapLocationQuestCount } from "@/lib/mapLocationGroups";
+import { filterLiveOrUpcomingMapEvents } from "@/lib/realm/eventVisibility";
+import { mapEventPinToFeedEvent, singleLiveEventForMarkerTap } from "@/lib/realm/mapEventPinToFeedEvent";
+import { EventDetailScreen } from "@/components/events/EventDetailScreen";
 import { buildUrinvolvedEditPinsFromGroups, type UrinvolvedEditPin } from "@/lib/realm/urinvolvedEditPins";
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
@@ -247,6 +250,7 @@ export function RealmMap({
     active: isActive,
   });
   const [selectedMapContent, setSelectedMapContent] = useState<GroupedMapLocation | null>(null);
+  const [selectedEventPin, setSelectedEventPin] = useState<MapEventPin | null>(null);
   const [mapScale, setMapScale] = useState(1);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const mapRootRef = useRef<HTMLDivElement>(null);
@@ -333,7 +337,9 @@ export function RealmMap({
       const activeMomentCount = stats?.activeCount ?? 0;
       const mapContent = groupsByRealmId.get(location.id) ?? null;
       const activeQuests = mapContent ? mapLocationQuestCount(mapContent, location.id) : 0;
-      const upcomingEvents = mapContent?.events.length ?? 0;
+      const liveEvents = mapContent ? filterLiveOrUpcomingMapEvents(mapContent.events) : [];
+      const upcomingEvents = liveEvents.length;
+      const nextEvent = liveEvents[0];
       return {
         ...location,
         moments: [],
@@ -342,13 +348,13 @@ export function RealmMap({
         upcomingEvents,
         quests: [],
         eventTimer:
-          upcomingEvents > 0 && mapContent?.events[0]
+          nextEvent
             ? {
-                status: new Date(mapContent.events[0].startsAt) <= new Date() ? ("active" as const) : ("countdown" as const),
-                label: mapContent.events[0].title,
+                status: new Date(nextEvent.startsAt) <= new Date() ? ("active" as const) : ("countdown" as const),
+                label: nextEvent.title,
                 minutesUntilStart: Math.max(
                   0,
-                  Math.round((new Date(mapContent.events[0].startsAt).getTime() - Date.now()) / 60_000),
+                  Math.round((new Date(nextEvent.startsAt).getTime() - Date.now()) / 60_000),
                 ),
               }
             : { status: "countdown" as const, minutesUntilStart: 999, label: "No scheduled events" },
@@ -488,6 +494,7 @@ export function RealmMap({
         }
         setSelectedLocation(location);
         setSelectedMapContent(normalizeGroupedMapContent(location.mapContent));
+        setSelectedEventPin(null);
         setActiveMarkerId(location.id);
         setSheetOpen(true);
         setMarkerNotice(null);
@@ -517,6 +524,7 @@ export function RealmMap({
       try {
         setSelectedLocation(null);
         setSelectedMapContent(normalizeGroupedMapContent(group));
+        setSelectedEventPin(null);
         setActiveMarkerId(group.groupKey);
         setSheetOpen(true);
         setMarkerNotice(null);
@@ -532,6 +540,50 @@ export function RealmMap({
       }
     },
     [editMode, showMarkerNotice],
+  );
+
+  const openEventDetail = useCallback((pin: MapEventPin, fromSheet: boolean) => {
+    setSelectedEventPin(pin);
+    if (!fromSheet) setSheetOpen(false);
+  }, []);
+
+  const closeEventDetail = useCallback(() => {
+    setSelectedEventPin(null);
+  }, []);
+
+  const handleTapSupplementary = useCallback(
+    (group: GroupedMapLocation) => {
+      const single = singleLiveEventForMarkerTap(group);
+      if (single) {
+        if (editMode) return;
+        const resolved = resolveSupplementaryTap({ group, source: "openSupplementaryEvent" });
+        if (!resolved.ok) {
+          showMarkerNotice(resolved.message);
+          return;
+        }
+        if (!markerTapGateRef.current.tryOpen(resolved.id)) return;
+        try {
+          setSelectedLocation(null);
+          setSelectedMapContent(normalizeGroupedMapContent(group));
+          setActiveMarkerId(group.groupKey);
+          setSheetOpen(false);
+          setSelectedEventPin(single);
+          setMarkerNotice(null);
+        } catch (exception) {
+          logFailedMarkerClick({
+            markerType: inferMarkerKindFromGroup(group),
+            markerId: group.groupKey,
+            source: "openSupplementaryEvent",
+            lookupResult: "error",
+            exception,
+          });
+          showMarkerNotice(getMarkerUnavailableMessage());
+        }
+        return;
+      }
+      openSupplementaryPin(group);
+    },
+    [editMode, openSupplementaryPin, showMarkerNotice],
   );
 
   const handlePlaceSelected = useCallback(
@@ -623,6 +675,7 @@ export function RealmMap({
 
   const closeSheet = useCallback(() => {
     setSheetOpen(false);
+    setSelectedEventPin(null);
     setSearchPin(null);
     setFlyToForce(false);
     if (!isRouteSheetOpen) {
@@ -640,8 +693,12 @@ export function RealmMap({
   }, []);
 
   const handleMapBackgroundClick = useCallback(() => {
+    if (selectedEventPin) {
+      closeEventDetail();
+      return;
+    }
     if (sheetOpen) closeSheet();
-  }, [closeSheet, sheetOpen]);
+  }, [closeEventDetail, closeSheet, selectedEventPin, sheetOpen]);
 
   useEffect(() => {
     if (!isActive && sheetOpen) closeSheet();
@@ -1309,7 +1366,7 @@ export function RealmMap({
             editorSelectedId={editorSelectedId}
             onTapLandmark={handleTapLandmark}
             onTapSupplementary={(group) => {
-              openSupplementaryPin(group);
+              handleTapSupplementary(group);
               syncRecommendationForMarker(group.groupKey);
             }}
             onSelectEditorMarker={setEditorSelectedId}
@@ -1449,7 +1506,7 @@ export function RealmMap({
                             key={group.groupKey}
                             group={group}
                             active={activeMarkerId === group.groupKey}
-                            onTap={() => openSupplementaryPin(group)}
+                            onTap={() => handleTapSupplementary(group)}
                           />
                         ))
                       : urinvolvedEditPins.map((pin) => (
@@ -1642,7 +1699,8 @@ export function RealmMap({
         <RealmLocationSheet
           location={selectedLocation}
           mapContent={selectedMapContent}
-          open={sheetOpen}
+          open={sheetOpen && !selectedEventPin}
+          onOpenEvent={(event) => openEventDetail(event, true)}
           memoryStats={selectedLocation ? memoryStatsByLocation[selectedLocation.id] ?? null : null}
           mapContentLoaded={mapGroupsLoaded}
           currentUserId={userId}
@@ -1663,6 +1721,12 @@ export function RealmMap({
           onClearDirections={clearDirections}
           onOpenInRealmMap={openRouteOnMap}
         />
+        {selectedEventPin ? (
+          <EventDetailScreen
+            item={mapEventPinToFeedEvent(selectedEventPin)}
+            onBack={closeEventDetail}
+          />
+        ) : null}
       </RealmMarkerErrorBoundary>
 
       {markerNotice ? (

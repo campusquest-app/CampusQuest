@@ -29,9 +29,11 @@ export function pickFeaturedEvent(events: MapEventPin[], now: Date): MapEventPin
 export function LocationUpcomingHighlight({
   event,
   now,
+  onOpen,
 }: {
   event: MapEventPin;
   now: Date;
+  onOpen?: (event: MapEventPin) => void;
 }) {
   const state = getEventCountdownState(event.startsAt, event.endsAt, now, isEventCancelled(event));
   const eyebrow =
@@ -62,6 +64,14 @@ export function LocationUpcomingHighlight({
       ) : null}
     </>
   );
+
+  if (onOpen) {
+    return (
+      <button type="button" onClick={() => onOpen(event)} className="cq-loc-highlight touch-manipulation">
+        {body}
+      </button>
+    );
+  }
 
   if (event.eventUrl) {
     return (

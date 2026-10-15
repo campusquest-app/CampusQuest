@@ -23,7 +23,37 @@ type EventTimeFields = {
   /** Camel-case aliases used by MapEventPin and normalized DB rows. */
   startsAt?: string | null;
   endsAt?: string | null;
+  title?: string | null;
+  cancelled?: boolean;
 };
+
+const CANCELLED_PATTERN = /\bcancell?ed\b/i;
+
+/** True when the feed marked the event cancelled or the title says so. Rows are never deleted. */
+export function isMapEventCancelled(event: { title?: string | null; cancelled?: boolean }): boolean {
+  if (event.cancelled) return true;
+  return CANCELLED_PATTERN.test(event.title ?? "");
+}
+
+/**
+ * Live or still-upcoming (not ended, not cancelled). Default map pins, counts,
+ * and "upcoming" lists use this — cancelled events stay in history views only.
+ */
+export function isLiveOrUpcomingMapEvent(event: EventTimeFields, now: Date = new Date()): boolean {
+  if (isMapEventCancelled(event)) return false;
+  const startRaw = event.start_time ?? event.startsAt ?? null;
+  const endRaw = event.end_time ?? event.endsAt ?? null;
+  const endMs = resolveEventEndMs(startRaw, endRaw);
+  if (endMs == null) return false;
+  return now.getTime() <= endMs;
+}
+
+export function filterLiveOrUpcomingMapEvents<T extends EventTimeFields>(
+  events: T[],
+  now: Date = new Date(),
+): T[] {
+  return events.filter((event) => isLiveOrUpcomingMapEvent(event, now));
+}
 
 /**
  * Resolve the effective end instant (epoch ms) for LIVE + visibility.
@@ -65,9 +95,9 @@ export function isEventLiveNow(
 }
 
 /**
- * True while the event should appear on the map: it has not ended yet, or it
- * ended less than 24 hours ago. When end is omitted, uses {@link resolveEventEndMs}
- * so null ends cannot linger forever. Cancelled events follow the same rule.
+ * True while the event is still in the 24h retention window (including
+ * cancelled and recently ended). Default live/upcoming map markers use
+ * {@link isLiveOrUpcomingMapEvent} instead so cancelled events are not pins.
  */
 export function isEventVisibleOnMap(event: EventTimeFields, now: Date = new Date()): boolean {
   const startRaw = event.start_time ?? event.startsAt ?? null;

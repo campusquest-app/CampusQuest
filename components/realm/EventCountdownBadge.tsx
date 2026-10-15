@@ -5,7 +5,7 @@ import type { GroupCountdown } from "@/lib/realm/eventCountdown";
 
 /**
  * Floating game-style countdown badge above an event marker.
- * Urgency drives pulse speed/glow via CSS; cancelled shows a muted red badge.
+ * Urgency drives pulse speed/glow via CSS. Cancelled-only groups are omitted.
  */
 export const EventCountdownBadge = memo(function EventCountdownBadge({
   countdown,
@@ -13,7 +13,7 @@ export const EventCountdownBadge = memo(function EventCountdownBadge({
   countdown: GroupCountdown;
 }) {
   const { state, eventCount } = countdown;
-  if (state.kind === "ended") return null;
+  if (state.kind === "ended" || state.kind === "cancelled" || countdown.allCancelled) return null;
 
   const showCount = eventCount > 1;
   const debugMagic = process.env.NEXT_PUBLIC_DEBUG_MAP_MAGIC === "true";
@@ -21,11 +21,7 @@ export const EventCountdownBadge = memo(function EventCountdownBadge({
   return (
     <span
       className={`cq-event-countdown cq-event-countdown--${state.kind} cq-event-countdown--u${state.urgency}`}
-      aria-label={
-        state.kind === "cancelled"
-          ? "Event cancelled"
-          : `Event countdown: ${state.label}${showCount ? `, ${eventCount} events` : ""}`
-      }
+      aria-label={`Event countdown: ${state.label}${showCount ? `, ${eventCount} events` : ""}`}
     >
       {debugMagic ? <span className="cq-event-countdown-count">EVENT MAGIC ACTIVE</span> : null}
       {showCount ? <span className="cq-event-countdown-count">{eventCount} Events</span> : null}

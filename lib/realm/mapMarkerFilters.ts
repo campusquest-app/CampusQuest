@@ -1,6 +1,7 @@
 import type { GroupedMapLocation, MapEventPin } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
 import { getGroupCountdown } from "@/lib/realm/eventCountdown";
+import { filterLiveOrUpcomingMapEvents } from "@/lib/realm/eventVisibility";
 
 /** Public map pills plus internal editor/legacy filters. */
 export type MapMarkerFilter = "for_you" | "live" | "events" | "places" | "all" | "quests" | "memories" | "qr";
@@ -44,8 +45,12 @@ export function landmarkMatchesFilter(
       return groupHasLiveEvent(landmark.mapContent?.events, now);
     case "quests":
       return (landmark.mapContent?.quests.length ?? 0) > 0;
-    case "events":
-      return landmark.upcomingEvents > 0 || (landmark.mapContent?.events.length ?? 0) > 0;
+    case "events": {
+      const liveCount = landmark.mapContent
+        ? filterLiveOrUpcomingMapEvents(landmark.mapContent.events, now).length
+        : landmark.upcomingEvents;
+      return liveCount > 0;
+    }
     case "memories":
       return landmark.activeMomentCount > 0;
     case "qr":
@@ -71,7 +76,7 @@ export function groupMatchesFilter(
     case "quests":
       return group.quests.length > 0;
     case "events":
-      return group.events.length > 0;
+      return filterLiveOrUpcomingMapEvents(group.events, now).length > 0;
     case "memories":
       return false;
     case "qr":

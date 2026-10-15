@@ -6423,6 +6423,7 @@ html[data-cq-media-pinching] {
   .cq-quad-create-fab,
   .cq-drawer-profile-card,
   .cq-drawer-item-enter,
+  .cq-drawer-stagger,
   .cq-side-drawer,
   .cq-splash-xp-energy,
   .cq-splash-xp-wave,
@@ -6433,6 +6434,10 @@ html[data-cq-media-pinching] {
   }
   .cq-side-drawer {
     transition: none !important;
+  }
+  .cq-drawer-item,
+  .cq-drawer-item:active {
+    transform: none !important;
   }
   .welcome-splash-orbit {
     opacity: 0.55;
@@ -7181,19 +7186,32 @@ html[data-cq-media-pinching] {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Bottom utility area: anchored above the home indicator, lifted off the nav. */
 .cq-drawer-footer {
   position: relative;
   z-index: 2;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
   background: #0a1628;
+  box-shadow: 0 -14px 24px -18px rgba(0, 0, 0, 0.7);
 }
 
-.cq-drawer-version {
-  margin: 0;
-  font-size: 0.5625rem;
+.cq-drawer-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  margin: 0.625rem 0 0;
+  font-size: 0.6875rem;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.16);
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.3);
+  user-select: none;
+}
+
+.cq-logo--mark {
+  width: 0.875rem;
+  height: 0.875rem;
+  opacity: 0.7;
 }
 
 .cq-drawer-body {
@@ -7203,35 +7221,52 @@ html[data-cq-media-pinching] {
 }
 
 .cq-drawer-section {
-  padding-top: 1.25rem;
+  padding-top: 1.125rem;
 }
 
-.cq-drawer-section--first {
-  padding-top: 0.75rem;
+.cq-drawer-section:first-child {
+  padding-top: 0.875rem;
 }
 
 .cq-drawer-section-label {
-  margin: 0 0 0.25rem;
-  padding: 0 0.5rem;
+  margin: 0 0 0.375rem;
+  padding: 0 0.75rem;
   font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.38);
   user-select: none;
 }
 
+/* iOS inset-grouped list */
 .cq-drawer-section-list {
   margin: 0;
   padding: 0;
   list-style: none;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+/* Hairline separator inset to the label column (row padding + icon tile + gap). */
+.cq-drawer-section-list > li + li > .cq-drawer-item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 3.25rem;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+  pointer-events: none;
 }
 
 .cq-drawer-item-label {
   font-size: 0.9375rem;
   font-weight: 500;
   line-height: 1.25;
-  color: rgba(255, 255, 255, 0.88);
+  color: rgba(255, 255, 255, 0.9);
   transition: color 140ms ease;
 }
 
@@ -7242,36 +7277,75 @@ html[data-cq-media-pinching] {
 
 .cq-drawer-item-icon {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.55);
-  transition: color 140ms ease;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  background: rgba(104, 171, 232, 0.12);
+  color: rgba(147, 220, 255, 0.85);
+  transition: color 140ms ease, background-color 140ms ease;
 }
 
 .cq-drawer-item-icon--active {
-  color: #93dcff;
+  background: rgba(104, 171, 232, 0.26);
+  color: #bfe9ff;
+}
+
+.cq-drawer-item-chevron {
+  color: rgba(255, 255, 255, 0.22);
+  transition: color 140ms ease;
 }
 
 .cq-drawer-item {
   position: relative;
-  transition: background-color 140ms ease;
+  min-height: 3rem;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 140ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .cq-drawer-item:active {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.07);
+  transform: scale(0.985);
+  transition-duration: 60ms;
+}
+
+.cq-drawer-item:focus-visible {
+  outline: 2px solid #68abe8;
+  outline-offset: -2px;
 }
 
 .cq-drawer-item--active {
-  background: rgba(56, 189, 248, 0.12);
-  box-shadow: inset 2px 0 0 #68abe8;
+  background: rgba(56, 189, 248, 0.1);
 }
 
-.cq-drawer-item:hover:not(.cq-drawer-item--active) {
-  background: rgba(255, 255, 255, 0.04);
+@media (hover: hover) {
+  .cq-drawer-item:hover:not(.cq-drawer-item--active) {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .cq-drawer-item:hover .cq-drawer-item-chevron {
+    color: rgba(255, 255, 255, 0.45);
+  }
 }
 
-.cq-drawer-item:hover .cq-drawer-item-icon:not(.cq-drawer-item-icon--active) {
-  color: rgba(147, 220, 255, 0.88);
+@keyframes cq-drawer-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(-10px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.cq-drawer-menu--enter .cq-drawer-stagger {
+  animation: cq-drawer-rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(60ms + var(--cq-stagger, 0) * 40ms);
 }
 
 .cq-drawer-item-badge {
@@ -13390,6 +13464,16 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   overflow: visible;
 }
 
+/*
+ * Google wraps each MapControl in an absolutely positioned slot that sizes to the
+ * control's margin box. The clearance margin above stretches the RIGHT_TOP slot
+ * over the header bell, so the slot must stay click-through; only the stack is hit.
+ */
+.cq-realm-map-canvas .gmnoprint:has(.cq-realm-map-controls),
+.cq-realm-map-canvas div:has(> .cq-realm-map-controls) {
+  pointer-events: none;
+}
+
 .cq-realm-map-controls-stack {
   display: flex;
   flex-direction: column;
@@ -13589,7 +13673,8 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0.2rem 0.85rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+  /* Bottom padding clears the raised center dock button that overhangs the sheet edge. */
+  padding: 0.2rem 0.85rem calc(2.35rem + env(safe-area-inset-bottom, 0px));
   -webkit-overflow-scrolling: touch;
 }
 
@@ -15648,6 +15733,28 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 .cq-pass__card.is-lapsed {
   border-color: rgba(255, 255, 255, 0.12);
   filter: saturate(0.4);
+}
+
+.cq-pass__card.is-demo {
+  border: 2px dashed rgba(255, 196, 92, 0.75);
+}
+
+.cq-pass__demo-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  width: 160%;
+  padding: 0.35rem 0;
+  transform: translate(-50%, -50%) rotate(-24deg);
+  background: rgba(255, 196, 92, 0.18);
+  color: rgba(255, 214, 140, 0.92);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .cq-pass__glow {
@@ -18858,6 +18965,94 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 
 .cq-inbox-notif-row:active {
   background: rgba(255, 255, 255, 0.05);
+}
+
+.cq-notif-filter {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.cq-notif-filter--light {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.cq-notif-filter__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 36px;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  transition: background-color 160ms ease, color 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cq-notif-filter--light .cq-notif-filter__option {
+  color: rgb(71, 85, 105);
+}
+
+.cq-notif-filter__option--active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.cq-notif-filter--light .cq-notif-filter__option--active {
+  background: #ffffff;
+  color: rgb(15, 23, 42);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+.cq-notif-filter__count {
+  min-width: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: #0095f6;
+  color: #ffffff;
+  font-size: 0.6875rem;
+  line-height: 1.25rem;
+  text-align: center;
+}
+
+.cq-notif-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cq-notif-icon--message { background: #0095f6; }
+.cq-notif-icon--social { background: #7c3aed; }
+.cq-notif-icon--event { background: #ea580c; }
+.cq-notif-icon--announcement { background: #db2777; }
+.cq-notif-icon--organization { background: #0d9488; }
+.cq-notif-icon--safety { background: #475569; }
+.cq-notif-icon--verification { background: #16a34a; }
+.cq-notif-icon--marketplace { background: #ca8a04; }
+.cq-notif-icon--quad { background: #4f46e5; }
+
+.cq-notif-unread-dot {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: #0095f6;
+  box-shadow: 0 0 0 2px #000000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-notif-filter__option {
+    transition: none;
+  }
 }
 
 .cq-inbox-new-chat {
@@ -25807,15 +26002,24 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-loc-highlight {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 0.7rem;
   border-radius: 1rem;
   border: 1px solid rgba(104, 171, 232, 0.28);
   background: linear-gradient(180deg, rgba(18, 36, 64, 0.95), rgba(10, 18, 34, 0.96));
   padding: 0.8rem 0.85rem;
+  text-align: left;
   text-decoration: none;
   color: inherit;
   box-shadow: 0 0 18px rgba(104, 171, 232, 0.08);
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.cq-loc-highlight {
+  cursor: pointer;
+  appearance: none;
+  font: inherit;
 }
 
 .cq-loc-highlight-icon {
@@ -25987,14 +26191,24 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
 
 .cq-loc-activity-card {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 0.7rem;
   border-radius: 1rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(14, 20, 34, 0.96);
   padding: 0.65rem 0.7rem;
+  text-align: left;
   text-decoration: none;
   color: inherit;
+  min-height: 4.5rem;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.cq-loc-activity-card {
+  cursor: pointer;
+  appearance: none;
+  font: inherit;
 }
 
 .cq-loc-activity-card--cancelled {
@@ -26062,6 +26276,27 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   border-color: rgba(74, 222, 128, 0.4);
   background: rgba(74, 222, 128, 0.1);
   color: #b8f5c8;
+}
+
+.cq-loc-activity-pill--red {
+  border-color: rgba(255, 120, 120, 0.45);
+  background: rgba(255, 90, 90, 0.14);
+  color: #ffb4b4;
+}
+
+.cq-loc-activity-pill--muted {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(200, 214, 228, 0.78);
+}
+
+.cq-loc-subsection-title {
+  margin: 0.15rem 0 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(186, 205, 224, 0.62);
 }
 
 .cq-loc-activity-title {

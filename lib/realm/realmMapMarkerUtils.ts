@@ -1,4 +1,5 @@
-import type { GroupedMapLocation, MapQuestPin } from "@/lib/mapLocationGroups";
+import type { GroupedMapLocation, MapEventPin, MapQuestPin } from "@/lib/mapLocationGroups";
+import { filterLiveOrUpcomingMapEvents } from "@/lib/realm/eventVisibility";
 import { URI_MAP_CENTER } from "@/lib/realm/googleMapPose";
 
 export type RealmMarkerVariant = "default" | "quest" | "legendary" | "event" | "qr" | "memories";
@@ -7,25 +8,31 @@ export function hasLegendaryQuest(quests: MapQuestPin[]): boolean {
   return quests.some((q) => q.difficulty === "legendary");
 }
 
-export function resolveLandmarkMarkerVariant(input: {
-  activeQuests: number;
-  upcomingEvents: number;
-  activeMomentCount: number;
-  mapContent: Pick<GroupedMapLocation, "quests" | "qrCodes" | "events"> | null;
-}): RealmMarkerVariant {
+export function resolveLandmarkMarkerVariant(
+  input: {
+    activeQuests: number;
+    upcomingEvents: number;
+    activeMomentCount: number;
+    mapContent: Pick<GroupedMapLocation, "quests" | "qrCodes" | "events"> | null;
+  },
+  now: Date = new Date(),
+): RealmMarkerVariant {
   const quests = input.mapContent?.quests ?? [];
   if (hasLegendaryQuest(quests)) return "legendary";
   if (input.activeQuests > 0 || quests.length > 0) return "quest";
-  if (input.upcomingEvents > 0 || (input.mapContent?.events.length ?? 0) > 0) return "event";
+  const liveEventCount = input.mapContent
+    ? filterLiveOrUpcomingMapEvents((input.mapContent.events ?? []) as MapEventPin[], now).length
+    : input.upcomingEvents;
+  if (liveEventCount > 0) return "event";
   if ((input.mapContent?.qrCodes.length ?? 0) > 0) return "qr";
   if (input.activeMomentCount > 0) return "memories";
   return "default";
 }
 
-export function resolveGroupMarkerVariant(group: GroupedMapLocation): RealmMarkerVariant {
+export function resolveGroupMarkerVariant(group: GroupedMapLocation, now: Date = new Date()): RealmMarkerVariant {
   if (hasLegendaryQuest(group.quests)) return "legendary";
   if (group.quests.length > 0) return "quest";
-  if (group.events.length > 0) return "event";
+  if (filterLiveOrUpcomingMapEvents(group.events, now).length > 0) return "event";
   if (group.qrCodes.length > 0) return "qr";
   return "default";
 }

@@ -5,7 +5,8 @@ import type { MapEventPin } from "@/lib/mapLocationGroups";
 import { getEventCountdownState, isEventCancelled } from "@/lib/realm/eventCountdown";
 import { formatCampusEventRange } from "@/lib/realm/formatCampusEventWhen";
 
-function categoryForEvent(event: MapEventPin, stateKind: string): { label: string; tone: string } {
+function categoryForEvent(event: MapEventPin, stateKind: string, cancelled: boolean): { label: string; tone: string } {
+  if (cancelled) return { label: "CANCELLED", tone: "red" };
   const raw = event.category?.trim().toLowerCase() ?? "";
   if (raw.includes("tabl") || raw.includes("club")) {
     return { label: "CLUB TABLING", tone: "gold" };
@@ -14,6 +15,7 @@ function categoryForEvent(event: MapEventPin, stateKind: string): { label: strin
     return { label: "DEAL", tone: "green" };
   }
   if (stateKind === "live") return { label: "LIVE", tone: "blue" };
+  if (stateKind === "ended") return { label: "ENDED", tone: "muted" };
   if (raw) return { label: raw.slice(0, 24).toUpperCase(), tone: "blue" };
   return { label: "EVENT", tone: "blue" };
 }
@@ -22,14 +24,16 @@ export function LocationActivityCard({
   event,
   now,
   locationName,
+  onOpen,
 }: {
   event: MapEventPin;
   now: Date;
   locationName?: string | null;
+  onOpen?: (event: MapEventPin) => void;
 }) {
   const cancelled = isEventCancelled(event);
   const state = getEventCountdownState(event.startsAt, event.endsAt, now, cancelled);
-  const category = categoryForEvent(event, state.kind);
+  const category = categoryForEvent(event, state.kind, cancelled);
   const place = event.locationText?.trim() || locationName || null;
 
   const inner = (
@@ -64,11 +68,23 @@ export function LocationActivityCard({
         {cancelled ? <span className="cq-loc-activity-warn">Cancelled</span> : null}
       </span>
 
-      {event.eventUrl ? (
+      {onOpen ? (
         <ChevronRight className="cq-loc-activity-chevron h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden />
       ) : null}
     </>
   );
+
+  if (onOpen) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen(event)}
+        className={`cq-loc-activity-card touch-manipulation${cancelled ? " cq-loc-activity-card--cancelled" : ""}`}
+      >
+        {inner}
+      </button>
+    );
+  }
 
   if (event.eventUrl) {
     return (

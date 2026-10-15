@@ -81,10 +81,10 @@ describe("RealmMapMarker magical pin", () => {
     expect(html).toContain("Next: 12m");
   });
 
-  it("renders cancelled styling without rings or shake urgency", () => {
+  it("does not render a standalone CANCELLED badge on map markers", () => {
     const html = render({
       variant: "event",
-      label: "Weldin Hall",
+      label: "Memorial Union",
       color: "coral",
       countdown: {
         state: { kind: "cancelled", label: "CANCELLED", urgency: 0 },
@@ -93,10 +93,10 @@ describe("RealmMapMarker magical pin", () => {
         allCancelled: true,
       } satisfies GroupCountdown,
     });
-    expect(html).toContain("CANCELLED");
-    expect(html).toContain("cq-realm-marker--cancelled");
+    expect(html).not.toContain("CANCELLED");
+    expect(html).not.toContain("cq-event-countdown");
+    expect(html).not.toContain("cq-realm-marker--cancelled");
     expect(html).not.toContain("cq-event-magic-ring");
-    expect(html).not.toContain("cq-realm-marker--urgency");
   });
 
   it("renders no countdown magic when there is no countdown", () => {

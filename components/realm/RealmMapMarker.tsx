@@ -97,7 +97,11 @@ export const RealmMapMarker = memo(function RealmMapMarker({
     effectiveCountdown = DEBUG_MAGIC_COUNTDOWN;
   }
   const showCountdown =
-    !editMode && effectiveCountdown != null && effectiveCountdown.state.kind !== "ended";
+    !editMode &&
+    effectiveCountdown != null &&
+    effectiveCountdown.state.kind !== "ended" &&
+    effectiveCountdown.state.kind !== "cancelled" &&
+    !effectiveCountdown.allCancelled;
   const countdownUrgency = showCountdown ? effectiveCountdown!.state.urgency : 0;
   const countdownCancelled = showCountdown && Boolean(effectiveCountdown?.allCancelled);
   const startingSoon =

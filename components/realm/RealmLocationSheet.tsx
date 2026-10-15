@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { RealmLocation } from "@/lib/realm/locations";
-import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
+import type { GroupedMapLocation, MapEventPin } from "@/lib/mapLocationGroups";
 import { emptyMapLocationContent } from "@/lib/mapLocationGroups";
 import { LocationMemoriesSection } from "@/components/memories/LocationMemoriesSection";
 import { CampusMemoryArchivePanel } from "@/components/memories/CampusMemoryArchivePanel";
@@ -16,12 +16,7 @@ import { SWIPE_TRANSITION_MS } from "@/lib/client/mobileGestures";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { RealmDirectionsPanel } from "@/components/realm/RealmDirectionsPanel";
 import type { RealmDirectionsDestination, RealmDirectionsStatus, RealmTravelMode } from "@/lib/realm/realmDirectionsTypes";
-import {
-  getEventCountdownState,
-  isEventCancelled,
-  sortEventsForSheet,
-} from "@/lib/realm/eventCountdown";
-import { filterVisibleMapEvents } from "@/lib/realm/eventVisibility";
+import { partitionMapEventsForSheet } from "@/lib/realm/eventCountdown";
 import { useNow } from "@/lib/client/useNow";
 import {
   buildLocationMetaPills,
@@ -60,6 +55,7 @@ export function RealmLocationSheet({
   onRequestDriving,
   onClearDirections,
   onOpenInRealmMap,
+  onOpenEvent,
 }: {
   location: RealmLocation | null;
   mapContent?: GroupedMapLocation | null;
@@ -85,6 +81,7 @@ export function RealmLocationSheet({
   onRequestDriving?: () => void;
   onClearDirections?: () => void;
   onOpenInRealmMap?: () => void;
+  onOpenEvent?: (event: MapEventPin) => void;
 }) {
   const [mounted, setMounted] = useState(false);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
@@ -144,11 +141,13 @@ export function RealmLocationSheet({
   if (!location && !mapContent) return null;
 
   const rawContent = mapContent ?? emptyMapLocationContent();
+  const rawEvents = Array.isArray(rawContent.events) ? rawContent.events : [];
+  const { upcoming: upcomingEvents, history: historyEvents } = partitionMapEventsForSheet(rawEvents, now);
   const content = {
     ...rawContent,
     quests: Array.isArray(rawContent.quests) ? rawContent.quests : [],
     qrCodes: Array.isArray(rawContent.qrCodes) ? rawContent.qrCodes : [],
-    events: filterVisibleMapEvents(Array.isArray(rawContent.events) ? rawContent.events : []),
+    events: [...upcomingEvents, ...historyEvents],
   };
   const displayName = location?.name ?? mapContent?.locationName ?? "Campus location";
   const displayAddress = mapContent?.locationAddress ?? null;
@@ -160,13 +159,12 @@ export function RealmLocationSheet({
       : null)
   ) as CampusLocationId | null;
   const momentCount = memoryStats?.activeCount ?? location?.activeMomentCount ?? 0;
-  const sortedEvents = sortEventsForSheet(content.events, now).filter((event) => {
-    if (isEventCancelled(event)) return false;
-    return getEventCountdownState(event.startsAt, event.endsAt, now, false).kind !== "ended";
-  });
-  const featuredEvent = pickFeaturedEvent(sortedEvents, now);
+  const featuredEvent = pickFeaturedEvent(upcomingEvents, now);
   const heroFallbackImage =
-    featuredEvent?.imageUrl ?? sortedEvents.find((event) => event.imageUrl)?.imageUrl ?? null;
+    featuredEvent?.imageUrl ??
+    upcomingEvents.find((event) => event.imageUrl)?.imageUrl ??
+    historyEvents.find((event) => event.imageUrl)?.imageUrl ??
+    null;
   const heroDescription = resolveLocationDetailDescription({
     location,
     displayName,
@@ -174,12 +172,13 @@ export function RealmLocationSheet({
   });
   const pills = buildLocationMetaPills({
     location,
-    eventCount: sortedEvents.length,
+    eventCount: upcomingEvents.length,
     memoryCount: momentCount,
   });
   // Always mount when this location can show activity; visibility (incl. empty)
   // is owned by LocationActivitySection so we never remount on load flips.
-  const hasActivitySection = sortedEvents.length > 0 || Boolean(questLocationId);
+  const hasActivitySection =
+    upcomingEvents.length > 0 || historyEvents.length > 0 || Boolean(questLocationId);
 
   return createPortal(
     <>
@@ -222,7 +221,9 @@ export function RealmLocationSheet({
             />
 
             <div className="cq-loc-content">
-              {featuredEvent ? <LocationUpcomingHighlight event={featuredEvent} now={now} /> : null}
+              {featuredEvent ? (
+                <LocationUpcomingHighlight event={featuredEvent} now={now} onOpen={onOpenEvent} />
+              ) : null}
 
               <LocationPrimaryActions
                 directionsEnabled={directionsEnabled}
@@ -252,7 +253,8 @@ export function RealmLocationSheet({
 
               {hasActivitySection ? (
                 <LocationActivitySection
-                  events={sortedEvents}
+                  events={upcomingEvents}
+                  historyEvents={historyEvents}
                   now={now}
                   locationName={displayName}
                   locationId={questLocationId}
@@ -260,8 +262,11 @@ export function RealmLocationSheet({
                   questReloadToken={questReloadToken}
                   eventsLoaded={mapContentLoaded}
                   showAll={showAllEvents}
+                  onOpenEvent={onOpenEvent}
                   onSeeAll={
-                    sortedEvents.length > 4 ? () => setShowAllEvents(true) : undefined
+                    upcomingEvents.length > 4 || historyEvents.length > 3
+                      ? () => setShowAllEvents(true)
+                      : undefined
                   }
                 />
               ) : null}

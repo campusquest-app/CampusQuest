@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   EVENT_MAP_RETENTION_MS,
   effectiveEventEndIso,
+  filterLiveOrUpcomingMapEvents,
   filterVisibleMapEvents,
   isEventVisibleOnMap,
+  isLiveOrUpcomingMapEvent,
 } from "@/lib/realm/eventVisibility";
 
 const NOW = new Date("2026-07-13T18:00:00.000Z");
@@ -92,6 +94,48 @@ describe("effectiveEventEndIso", () => {
   it("returns null when neither time is usable", () => {
     expect(effectiveEventEndIso(null, null)).toBeNull();
     expect(effectiveEventEndIso("garbage", null)).toBeNull();
+  });
+});
+
+describe("isLiveOrUpcomingMapEvent", () => {
+  it("excludes cancelled events from default live/upcoming pins", () => {
+    expect(
+      isLiveOrUpcomingMapEvent(
+        { title: "Karaoke Night", cancelled: true, startsAt: hoursFromNowIso(2), endsAt: hoursFromNowIso(4) },
+        NOW,
+      ),
+    ).toBe(false);
+    expect(
+      isLiveOrUpcomingMapEvent(
+        { title: "Karaoke Night (Cancelled)", startsAt: hoursFromNowIso(2), endsAt: hoursFromNowIso(4) },
+        NOW,
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a live event and drops an ended one", () => {
+    expect(
+      isLiveOrUpcomingMapEvent(
+        { title: "Open Mic", startsAt: hoursAgoIso(1), endsAt: hoursFromNowIso(1) },
+        NOW,
+      ),
+    ).toBe(true);
+    expect(
+      isLiveOrUpcomingMapEvent(
+        { title: "Lunch", startsAt: hoursAgoIso(5), endsAt: hoursAgoIso(3) },
+        NOW,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("filterLiveOrUpcomingMapEvents", () => {
+  it("does not count cancelled rows as upcoming map events", () => {
+    const events = [
+      { id: "live", title: "Live", startsAt: hoursAgoIso(1), endsAt: hoursFromNowIso(1) },
+      { id: "cancelled", title: "Gone", cancelled: true, startsAt: hoursFromNowIso(2), endsAt: hoursFromNowIso(4) },
+    ];
+    expect(filterLiveOrUpcomingMapEvents(events, NOW).map((e) => e.id)).toEqual(["live"]);
   });
 });
 

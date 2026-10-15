@@ -1,6 +1,6 @@
 import type { CampusLocationKey } from "@/lib/campusLocations";
 import { isCampusLocationId } from "@/lib/locations/registry";
-import { filterVisibleMapEvents } from "@/lib/realm/eventVisibility";
+import { filterLiveOrUpcomingMapEvents } from "@/lib/realm/eventVisibility";
 import type { RealmLocationId } from "@/lib/realm/locations";
 import { countUniqueLocationQuests } from "@/lib/realm/locationQuestDedupe";
 
@@ -115,9 +115,8 @@ export function mapLocationActivityCount(
   locationId?: string | null,
   now: Date = new Date(),
 ): number {
-  // Events only count while inside their visibility window (until 24h after
-  // they end) — expired events must not inflate pin activity counts.
-  return mapLocationQuestCount(group, locationId) + filterVisibleMapEvents(group.events, now).length;
+  // Live/upcoming events only — cancelled and ended rows stay in history views.
+  return mapLocationQuestCount(group, locationId) + filterLiveOrUpcomingMapEvents(group.events, now).length;
 }
 
 /** Append `extra` groups' pins onto matching `base` groups (by groupKey); new groups are appended. */

@@ -6,16 +6,20 @@ import {
   isOnCampusDay,
   parseEventInstant,
 } from "@/lib/realm/campusTime";
-import { filterVisibleMapEvents, isEventLiveNow, resolveEventEndMs } from "@/lib/realm/eventVisibility";
+import {
+  filterLiveOrUpcomingMapEvents,
+  filterVisibleMapEvents,
+  isEventLiveNow,
+  isLiveOrUpcomingMapEvent,
+  isMapEventCancelled,
+  resolveEventEndMs,
+} from "@/lib/realm/eventVisibility";
 
 export { CAMPUS_TIME_ZONE, formatCampusTime, getCampusDayWindow, isOnCampusDay, isEventLiveNow, resolveEventEndMs };
 
-const CANCELLED_PATTERN = /\bcancell?ed\b/i;
-
 /** Detect cancellation from title/status text (e.g. "Karaoke Night (Cancelled)"). */
 export function isEventCancelled(event: { title: string; cancelled?: boolean }): boolean {
-  if (event.cancelled) return true;
-  return CANCELLED_PATTERN.test(event.title);
+  return isMapEventCancelled(event);
 }
 
 export type EventCountdownKind =
@@ -94,32 +98,19 @@ export type GroupCountdown = {
 };
 
 /**
- * Countdown for a grouped location marker: the most urgent non-cancelled
+ * Countdown for a grouped location marker: the most urgent live/upcoming
  * event wins; "Next:" prefix when several events share the location.
- * Returns null when the group has no displayable (non-ended) events.
- * Events past their 24h post-end visibility window are excluded entirely
- * (they no longer count toward stacked-event indicators).
+ * Cancelled events are omitted from default map markers and counts.
+ * Returns null when the group has no live or upcoming events.
  */
 export function getGroupCountdown(events: MapEventPin[], now: Date): GroupCountdown | null {
-  const visible = filterVisibleMapEvents(events, now);
-  if (visible.length === 0) return null;
-
-  const scored = visible.map((event) => {
-    const cancelled = isEventCancelled(event);
-    return {
+  const runnable = filterLiveOrUpcomingMapEvents(events, now)
+    .map((event) => ({
       event,
-      cancelled,
-      state: getEventCountdownState(event.startsAt, event.endsAt, now, cancelled),
-    };
-  });
-
-  const active = scored.filter((entry) => entry.state.kind !== "ended");
-  if (active.length === 0) return null;
-
-  const runnable = active
-    .filter((entry) => !entry.cancelled)
+      state: getEventCountdownState(event.startsAt, event.endsAt, now, false),
+    }))
+    .filter((entry) => entry.state.kind !== "ended" && entry.state.kind !== "cancelled")
     .sort((a, b) => {
-      // Live first, then soonest start.
       const aLive = a.state.kind === "live" ? 0 : 1;
       const bLive = b.state.kind === "live" ? 0 : 1;
       if (aLive !== bLive) return aLive - bLive;
@@ -129,18 +120,11 @@ export function getGroupCountdown(events: MapEventPin[], now: Date): GroupCountd
         (Number.isFinite(bStart) ? bStart : Number.POSITIVE_INFINITY);
     });
 
-  if (runnable.length === 0) {
-    return {
-      state: { kind: "cancelled", label: "CANCELLED", urgency: 0 },
-      featuredEventId: null,
-      eventCount: active.length,
-      allCancelled: true,
-    };
-  }
+  if (runnable.length === 0) return null;
 
   const featured = runnable[0];
   let state = featured.state;
-  if (active.length > 1 && state.kind !== "live") {
+  if (runnable.length > 1 && state.kind !== "live") {
     const startMs = Date.parse(featured.event.startsAt);
     const minutes = Number.isFinite(startMs)
       ? Math.ceil((startMs - now.getTime()) / 60_000)
@@ -157,8 +141,26 @@ export function getGroupCountdown(events: MapEventPin[], now: Date): GroupCountd
   return {
     state,
     featuredEventId: featured.event.id,
-    eventCount: active.length,
+    eventCount: runnable.length,
     allCancelled: false,
+  };
+}
+
+/** Upcoming (live/soon) vs cancelled/past for location sheets. Does not drop records. */
+export function partitionMapEventsForSheet(
+  events: MapEventPin[],
+  now: Date,
+): { upcoming: MapEventPin[]; history: MapEventPin[] } {
+  const visible = filterVisibleMapEvents(events, now);
+  const upcoming: MapEventPin[] = [];
+  const history: MapEventPin[] = [];
+  for (const event of visible) {
+    if (isLiveOrUpcomingMapEvent(event, now)) upcoming.push(event);
+    else history.push(event);
+  }
+  return {
+    upcoming: sortEventsForSheet(upcoming, now),
+    history: sortEventsForSheet(history, now),
   };
 }
 

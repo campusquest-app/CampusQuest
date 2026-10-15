@@ -7,6 +7,7 @@ import {
   getGroupCountdown,
   isEventCancelled,
   isOnCampusDay,
+  partitionMapEventsForSheet,
   sortEventsForSheet,
 } from "@/lib/realm/eventCountdown";
 
@@ -147,7 +148,7 @@ describe("getGroupCountdown", () => {
     const group = getGroupCountdown(events, now);
     expect(group?.featuredEventId).toBe("a");
     expect(group?.state.label).toBe("Next: 12m");
-    expect(group?.eventCount).toBe(3);
+    expect(group?.eventCount).toBe(2);
     expect(group?.allCancelled).toBe(false);
   });
 
@@ -170,14 +171,12 @@ describe("getGroupCountdown", () => {
     expect(group?.state.label).toBe("LIVE NOW");
   });
 
-  it("all-cancelled group shows CANCELLED", () => {
+  it("omits cancelled-only groups from default map markers", () => {
     const events = [
       pin({ id: "a", title: "A (Cancelled)" }),
       pin({ id: "b", title: "B", cancelled: true }),
     ];
-    const group = getGroupCountdown(events, now);
-    expect(group?.state.kind).toBe("cancelled");
-    expect(group?.allCancelled).toBe(true);
+    expect(getGroupCountdown(events, now)).toBeNull();
   });
 
   it("returns null when every event has ended", () => {
@@ -185,6 +184,21 @@ describe("getGroupCountdown", () => {
       pin({ id: "a", startsAt: "2026-07-09T15:00:00.000Z", endsAt: "2026-07-09T16:00:00.000Z" }),
     ];
     expect(getGroupCountdown(events, now)).toBeNull();
+  });
+});
+
+describe("partitionMapEventsForSheet", () => {
+  it("keeps cancelled events in history with identity, not as upcoming", () => {
+    const now = new Date("2026-07-09T22:00:00.000Z");
+    const events = [
+      pin({ id: "cancelled", title: "Karaoke Night", cancelled: true, startsAt: "2026-07-09T22:30:00.000Z" }),
+      pin({ id: "soon", title: "Open Mic", startsAt: "2026-07-09T22:15:00.000Z" }),
+      pin({ id: "ended", title: "Lunch", startsAt: "2026-07-09T15:00:00.000Z", endsAt: "2026-07-09T16:00:00.000Z" }),
+    ];
+    const { upcoming, history } = partitionMapEventsForSheet(events, now);
+    expect(upcoming.map((e) => e.id)).toEqual(["soon"]);
+    expect(history.map((e) => e.id)).toEqual(["ended", "cancelled"]);
+    expect(history.find((e) => e.id === "cancelled")?.title).toBe("Karaoke Night");
   });
 });
 

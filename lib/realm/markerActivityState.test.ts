@@ -42,18 +42,57 @@ describe("markerActivityState", () => {
   });
 
   it("derives landmark counts from map content", () => {
-    const counts = landmarkActivityCounts({
-      activeQuests: 0,
-      upcomingEvents: 1,
-      activeMomentCount: 2,
-      mapContent: { quests: [{ id: "q1" }], events: [], qrCodes: [] },
-    });
+    const now = new Date("2026-07-09T22:00:00.000Z");
+    const counts = landmarkActivityCounts(
+      {
+        activeQuests: 0,
+        upcomingEvents: 1,
+        activeMomentCount: 2,
+        mapContent: {
+          quests: [{ id: "q1" }],
+          events: [
+            {
+              title: "Open Mic",
+              startsAt: "2026-07-09T22:30:00.000Z",
+              endsAt: "2026-07-09T23:30:00.000Z",
+            },
+          ],
+          qrCodes: [],
+        },
+      },
+      now,
+    );
     expect(counts).toEqual({
       activeQuestCount: 1,
       activeEventCount: 1,
       activeMemoryCount: 2,
       activeQrCount: 0,
     });
+  });
+
+  it("does not treat cancelled events as active map activity", () => {
+    const now = new Date("2026-07-09T22:00:00.000Z");
+    const counts = landmarkActivityCounts(
+      {
+        activeQuests: 0,
+        upcomingEvents: 1,
+        activeMomentCount: 0,
+        mapContent: {
+          quests: [],
+          events: [
+            {
+              title: "Karaoke Night",
+              cancelled: true,
+              startsAt: "2026-07-09T22:30:00.000Z",
+              endsAt: "2026-07-09T23:30:00.000Z",
+            },
+          ],
+          qrCodes: [],
+        },
+      },
+      now,
+    );
+    expect(counts.activeEventCount).toBe(0);
   });
 
   it("derives group counts", () => {

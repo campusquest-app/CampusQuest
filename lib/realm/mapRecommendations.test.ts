@@ -314,4 +314,31 @@ describe("For You map recommendations", () => {
     expect(landmarkMatchesFilter(upcomingOnly, "places", NOW)).toBe(true);
     expect(groupMatchesFilter(upcomingOnly.mapContent, "places", NOW)).toBe(false);
   });
+
+  it("excludes cancelled events from the Events and Live Now filters", () => {
+    const cancelledOnly = {
+      id: "memorial-union",
+      major: true,
+      upcomingEvents: 1,
+      activeMomentCount: 0,
+      mapContent: group({
+        groupKey: "memorial-union",
+        locationName: "Memorial Union",
+        events: [
+          {
+            id: "karaoke",
+            title: "Karaoke Night",
+            cancelled: true,
+            startsAt: "2026-08-25T22:00:00.000Z",
+            endsAt: "2026-08-25T23:00:00.000Z",
+            organizationName: null,
+            eventUrl: null,
+          },
+        ],
+      }),
+    };
+    expect(landmarkMatchesFilter(cancelledOnly, "events", NOW)).toBe(false);
+    expect(landmarkMatchesFilter(cancelledOnly, "live", NOW)).toBe(false);
+    expect(landmarkMatchesFilter(cancelledOnly, "places", NOW)).toBe(true);
+  });
 });

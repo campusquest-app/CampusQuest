@@ -21,6 +21,7 @@ function initialQuestState(locationId: CampusLocationId | null): LocationQuestSe
 
 export function LocationActivitySection({
   events,
+  historyEvents = [],
   now,
   locationName,
   locationId,
@@ -28,10 +29,12 @@ export function LocationActivitySection({
   questReloadToken,
   onQuestStateChange,
   onSeeAll,
+  onOpenEvent,
   showAll = false,
   eventsLoaded = true,
 }: {
   events: MapEventPin[];
+  historyEvents?: MapEventPin[];
   now: Date;
   locationName: string;
   locationId: CampusLocationId | null;
@@ -39,6 +42,7 @@ export function LocationActivitySection({
   questReloadToken: number;
   onQuestStateChange?: (next: LocationQuestSectionState) => void;
   onSeeAll?: () => void;
+  onOpenEvent?: (event: MapEventPin) => void;
   showAll?: boolean;
   eventsLoaded?: boolean;
 }) {
@@ -65,16 +69,19 @@ export function LocationActivitySection({
     [onQuestStateChange],
   );
 
-  const previewEvents = showAll ? events : events.slice(0, 4);
+  const previewUpcoming = showAll ? events : events.slice(0, 4);
+  const previewHistory = showAll ? historyEvents : historyEvents.slice(0, 3);
+  const eventCount = events.length + historyEvents.length;
   const mapHasQuestPins =
     (mapContent.quests?.length ?? 0) + (mapContent.qrCodes?.length ?? 0) > 0;
   const visibility = shouldShowLocationActivitySection({
-    eventCount: previewEvents.length,
+    eventCount,
     questCount: questState.count,
     eventsLoaded,
     questsLoaded: questState.loaded,
     mapHasQuestPins,
   });
+  const showSeeAll = Boolean(onSeeAll) && !showAll && (events.length > 4 || historyEvents.length > 3);
 
   // Keep LocationQuestSection mounted in one stable tree position so loading
   // state never remount-loops when the section hides after an empty result.
@@ -92,7 +99,7 @@ export function LocationActivitySection({
           <h3 id="cq-loc-happening-title" className="cq-loc-section-title">
             What&apos;s Happening
           </h3>
-          {onSeeAll && !showAll && events.length > 4 ? (
+          {showSeeAll ? (
             <button type="button" className="cq-loc-section-link" onClick={onSeeAll}>
               See all
             </button>
@@ -112,14 +119,37 @@ export function LocationActivitySection({
         />
       ) : null}
 
-      {visibility.showSection && previewEvents.length > 0 ? (
+      {visibility.showSection && previewUpcoming.length > 0 ? (
         <ul className="cq-loc-activity-list">
-          {previewEvents.map((event) => (
+          {previewUpcoming.map((event) => (
             <li key={event.id}>
-              <LocationActivityCard event={event} now={now} locationName={locationName} />
+              <LocationActivityCard
+                event={event}
+                now={now}
+                locationName={locationName}
+                onOpen={onOpenEvent}
+              />
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {visibility.showSection && previewHistory.length > 0 ? (
+        <>
+          <h4 className="cq-loc-subsection-title">Past & cancelled</h4>
+          <ul className="cq-loc-activity-list">
+            {previewHistory.map((event) => (
+              <li key={event.id}>
+                <LocationActivityCard
+                  event={event}
+                  now={now}
+                  locationName={locationName}
+                  onOpen={onOpenEvent}
+                />
+              </li>
+            ))}
+          </ul>
+        </>
       ) : null}
     </section>
   );
