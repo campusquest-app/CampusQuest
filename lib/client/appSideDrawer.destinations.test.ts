@@ -15,7 +15,8 @@ describe("hamburger drawer destinations", () => {
   const dashboardSrc = readFileSync(join(process.cwd(), "components/Dashboard.tsx"), "utf8");
   const profileCardSrc = readFileSync(join(process.cwd(), "components/DrawerPlayerProfileCard.tsx"), "utf8");
   const discover = sliceBetween(drawerSrc, "const DISCOVER_NAV", "const ACCOUNT_NAV");
-  const account = sliceBetween(drawerSrc, "const ACCOUNT_NAV", "function getDrawerMenuSections");
+  const account = sliceBetween(drawerSrc, "const ACCOUNT_NAV", "const UTILITY_NAV");
+  const utility = sliceBetween(drawerSrc, "const UTILITY_NAV", "function getDrawerMenuSections");
 
   it("organizes Discover and Your Account without duplicating bottom nav", () => {
     expect(discover).toContain('id: "friends"');
@@ -28,8 +29,9 @@ describe("hamburger drawer destinations", () => {
     expect(account).toContain('label: "Settings"');
     expect(account).toContain('id: "inbox"');
     expect(account).toContain('label: "Notifications"');
-    expect(account).toContain('id: "help"');
-    expect(account).toContain('label: "Help & Support"');
+    expect(account).not.toContain('id: "help"');
+    expect(utility).toContain('id: "help"');
+    expect(utility).toContain('label: "Help & Support"');
     expect(drawerSrc).toContain('title: "Discover"');
     expect(drawerSrc).toContain('title: "Your Account"');
     expect(drawerSrc).toContain("Administration");
@@ -91,6 +93,17 @@ describe("hamburger drawer destinations", () => {
     expect(profileCardSrc).toContain("<AvatarDisplay");
     expect(drawerSrc).toContain('onOpenProfile={() => handleItem("profile")}');
     expect(drawerSrc).not.toContain("placeholder");
+  });
+
+  it("anchors Help & Support with branding and version in the bottom utility area", () => {
+    const footer = sliceBetween(drawerSrc, 'className="cq-drawer-footer', "</div>");
+    expect(footer).toContain("utilityItems.map");
+    expect(footer).toContain("handleItem(item.id)");
+    expect(footer).toContain("Version {APP_VERSION}");
+    expect(footer).toContain("env(safe-area-inset-bottom");
+    const nav = sliceBetween(drawerSrc, '<nav className="cq-drawer-nav', "</nav>");
+    expect(nav).not.toContain("utilityItems");
+    expect(nav).toContain("overflow-y-auto");
   });
 
   it("supports swipe, backdrop, Escape, scroll lock, and 44px targets", () => {

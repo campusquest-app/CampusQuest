@@ -1,12 +1,13 @@
 import { CAMPUSQUEST_LOGO_ALT, CAMPUSQUEST_LOGO_SRC } from "@/lib/branding";
 
-export type CampusQuestLogoVariant = "header" | "auth" | "splash" | "drawer";
+export type CampusQuestLogoVariant = "header" | "auth" | "splash" | "drawer" | "mark";
 
 const VARIANT_CLASS: Record<CampusQuestLogoVariant, string> = {
   header: "cq-logo cq-logo--header",
   auth: "cq-logo cq-logo--auth",
   splash: "welcome-splash-word cq-logo cq-logo--splash",
   drawer: "cq-logo cq-logo--drawer",
+  mark: "cq-logo cq-logo--mark",
 };
 
 export function CampusQuestLogo({

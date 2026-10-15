@@ -32,6 +32,8 @@ import { DemographicsSettingsPanel } from "@/components/DemographicsSettingsPane
 import { DRAWER_SNAP_MS } from "@/lib/client/drawerGeometry";
 import { setIsDrawerOpen } from "@/lib/client/appDrawerStore";
 import { allowStudentSurface } from "@/lib/featureFlags";
+import { pulseHaptic } from "@/lib/client/hapticsPreference";
+import { APP_VERSION } from "@/lib/appVersion";
 
 export type AppDrawerDestination =
   | "friends"
@@ -92,7 +94,7 @@ type MenuSection = {
   items: MenuItem[];
 };
 
-const ICON = "h-5 w-5 shrink-0 stroke-[1.75]";
+const ICON = "h-[18px] w-[18px] shrink-0 stroke-[1.85]";
 
 const DISCOVER_NAV: MenuItem[] = [
   { id: "friends", label: "Friends", icon: <Users className={ICON} aria-hidden /> },
@@ -103,8 +105,13 @@ const DISCOVER_NAV: MenuItem[] = [
 const ACCOUNT_NAV: MenuItem[] = [
   { id: "settings", label: "Settings", icon: <Settings className={ICON} aria-hidden /> },
   { id: "inbox", label: "Notifications", icon: <Bell className={ICON} aria-hidden /> },
+];
+
+const UTILITY_NAV: MenuItem[] = [
   { id: "help", label: "Help & Support", icon: <HelpCircle className={ICON} aria-hidden /> },
 ];
+
+const ADMIN_ICON = <Shield className={ICON} aria-hidden />;
 
 function getDrawerMenuSections(): MenuSection[] {
   return [
@@ -220,8 +227,27 @@ export function AppSideDrawer({
   const [mounted, setMounted] = useState(false);
   const [closing, setClosing] = useState(false);
   const [entered, setEntered] = useState(false);
+  const [animateEntrance, setAnimateEntrance] = useState(false);
   const drawerRef = useRef<HTMLElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  // Swipe-opened drawers already show their content while dragging; replaying
+  // the staggered entrance after release would flicker.
+  const openedByDragRef = useRef(false);
+
+  useEffect(() => {
+    if (isDraggingDrawer) openedByDragRef.current = true;
+  }, [isDraggingDrawer]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    if (openedByDragRef.current) {
+      openedByDragRef.current = false;
+      return undefined;
+    }
+    setAnimateEntrance(true);
+    const timer = window.setTimeout(() => setAnimateEntrance(false), 700);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   useEffect(() => {
     if (open || isDraggingDrawer) {
@@ -235,6 +261,7 @@ export function AppSideDrawer({
       setMounted(false);
       setClosing(false);
       setPanel("menu");
+      openedByDragRef.current = false;
     }, DRAWER_CLOSE_MS);
     return () => window.clearTimeout(timer);
   }, [open, isDraggingDrawer, mounted]);
@@ -321,6 +348,7 @@ export function AppSideDrawer({
 
   const handleItem = (id: MenuItemId) => {
     if (!allowStudentSurface(id)) return;
+    pulseHaptic(8);
     if (id === "settings") {
       setPanel("settings");
       return;
@@ -335,6 +363,9 @@ export function AppSideDrawer({
 
   const ctx: DrawerActiveContext = activeContext ?? { tab: "" };
   const menuSections = getDrawerMenuSections();
+  const utilityItems = UTILITY_NAV.filter((item) => allowStudentSurface(item.id));
+  let staggerIndex = 0;
+  const stagger = () => ({ "--cq-stagger": staggerIndex++ }) as React.CSSProperties;
 
   return createPortal(
     <>
@@ -376,8 +407,8 @@ export function AppSideDrawer({
       >
         <div className="cq-drawer-body flex min-h-0 flex-1 flex-col">
           {panel === "menu" ? (
-            <>
-              <div className="cq-drawer-profile-sticky shrink-0">
+            <div className={`flex min-h-0 flex-1 flex-col ${animateEntrance ? "cq-drawer-menu--enter" : ""}`}>
+              <div className="cq-drawer-profile-sticky cq-drawer-stagger shrink-0" style={stagger()}>
                 {character ? (
                   <DrawerPlayerProfileCard
                     character={character}
@@ -392,8 +423,8 @@ export function AppSideDrawer({
                 )}
               </div>
 
-              <nav className="cq-drawer-nav flex-1 overflow-y-auto overscroll-y-contain px-3 pb-4" aria-label="Main">
-                {menuSections.map((section, sectionIndex) => (
+              <nav className="cq-drawer-nav min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 pb-5" aria-label="Main">
+                {menuSections.map((section) => (
                   <DrawerSection
                     key={section.id}
                     title={section.title}
@@ -402,24 +433,23 @@ export function AppSideDrawer({
                     badgeId="inbox"
                     unread={unreadNotificationCount}
                     activeContext={ctx}
-                    isFirst={sectionIndex === 0}
+                    style={stagger()}
                   />
                 ))}
                 {showAdminNav ? (
-                  <section className="cq-drawer-section">
+                  <section className="cq-drawer-section cq-drawer-stagger" style={stagger()}>
                     <h2 className="cq-drawer-section-label">Administration</h2>
                     <ul className="cq-drawer-section-list">
                       <li>
                         <Link
                           href="/internal/admin"
-                          onClick={onClose}
-                          className="cq-drawer-item group flex w-full min-h-[44px] items-center gap-3 rounded-lg px-2 py-2.5 text-left touch-manipulation"
+                          onClick={() => {
+                            pulseHaptic(8);
+                            onClose();
+                          }}
+                          className={DRAWER_ROW_CLASS}
                         >
-                          <span className="cq-drawer-item-icon">
-                            <Shield className={ICON} aria-hidden />
-                          </span>
-                          <span className="cq-drawer-item-label flex-1">Admin Tools</span>
-                          <ChevronRight className="h-4 w-4 shrink-0 text-white/25 transition group-hover:text-white/45" aria-hidden />
+                          <DrawerRowContent icon={ADMIN_ICON} label="Admin Tools" />
                         </Link>
                       </li>
                     </ul>
@@ -428,12 +458,28 @@ export function AppSideDrawer({
               </nav>
 
               <div
-                className="cq-drawer-footer shrink-0 px-4 py-2"
-                style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+                className="cq-drawer-footer cq-drawer-stagger shrink-0 px-4 pt-2"
+                style={{ ...stagger(), paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}
               >
-                <p className="cq-drawer-version text-center">CampusQuest</p>
+                {utilityItems.length > 0 ? (
+                  <ul className="cq-drawer-section-list" aria-label="Support">
+                    {utilityItems.map((item) => (
+                      <li key={item.id}>
+                        <button type="button" onClick={() => handleItem(item.id)} className={DRAWER_ROW_CLASS}>
+                          <DrawerRowContent icon={item.icon} label={item.label} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className="cq-drawer-brand">
+                  <CampusQuestLogo variant="mark" />
+                  <span>CampusQuest</span>
+                  <span aria-hidden>·</span>
+                  <span>Version {APP_VERSION}</span>
+                </p>
               </div>
-            </>
+            </div>
           ) : panel === "settings" ? (
             <AppSettingsPanel
               onBack={() => setPanel("menu")}
@@ -504,6 +550,36 @@ export function AppSideDrawer({
   );
 }
 
+const DRAWER_ROW_CLASS =
+  "cq-drawer-item group flex w-full min-h-[44px] items-center gap-3 px-3 text-left touch-manipulation";
+
+function DrawerRowContent({
+  icon,
+  label,
+  active = false,
+  badge = 0,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  badge?: number;
+}) {
+  return (
+    <>
+      <span className={`cq-drawer-item-icon ${active ? "cq-drawer-item-icon--active" : ""}`}>{icon}</span>
+      <span className={`cq-drawer-item-label flex-1 truncate ${active ? "cq-drawer-item-label--active" : ""}`}>
+        {label}
+      </span>
+      {badge > 0 ? (
+        <span className="cq-drawer-item-badge" aria-label={`${badge} unread`}>
+          {Math.min(99, badge)}
+        </span>
+      ) : null}
+      <ChevronRight className="cq-drawer-item-chevron h-4 w-4 shrink-0" aria-hidden />
+    </>
+  );
+}
+
 function DrawerSection({
   title,
   items,
@@ -511,7 +587,7 @@ function DrawerSection({
   badgeId,
   unread = 0,
   activeContext,
-  isFirst = false,
+  style,
 }: {
   title: string;
   items: MenuItem[];
@@ -519,34 +595,28 @@ function DrawerSection({
   badgeId?: string;
   unread?: number;
   activeContext: DrawerActiveContext;
-  isFirst?: boolean;
+  style?: React.CSSProperties;
 }) {
   return (
-    <section className={`cq-drawer-section ${isFirst ? "cq-drawer-section--first" : ""}`}>
+    <section className="cq-drawer-section cq-drawer-stagger" style={style}>
       <h2 className="cq-drawer-section-label">{title}</h2>
       <ul className="cq-drawer-section-list">
         {items.map((item) => {
           const active = isMenuItemActive(item.id, activeContext);
-          const opensPanel = item.id === "settings" || item.id === "help";
           return (
             <li key={item.id}>
               <button
                 type="button"
                 onClick={() => onSelect(item.id)}
-                className={`cq-drawer-item group flex w-full min-h-[44px] items-center gap-3 rounded-lg px-2 py-2.5 text-left touch-manipulation ${
-                  active ? "cq-drawer-item--active" : ""
-                }`}
+                className={`${DRAWER_ROW_CLASS} ${active ? "cq-drawer-item--active" : ""}`}
                 aria-current={active ? "page" : undefined}
               >
-                <span className={`cq-drawer-item-icon ${active ? "cq-drawer-item-icon--active" : ""}`}>{item.icon}</span>
-                <span className={`cq-drawer-item-label flex-1 ${active ? "cq-drawer-item-label--active" : ""}`}>
-                  {item.label}
-                </span>
-                {badgeId === item.id && unread > 0 ? (
-                  <span className="cq-drawer-item-badge">{Math.min(99, unread)}</span>
-                ) : opensPanel ? (
-                  <ChevronRight className="h-4 w-4 shrink-0 text-white/25 transition group-hover:text-white/45" aria-hidden />
-                ) : null}
+                <DrawerRowContent
+                  icon={item.icon}
+                  label={item.label}
+                  active={active}
+                  badge={badgeId === item.id ? unread : 0}
+                />
               </button>
             </li>
           );

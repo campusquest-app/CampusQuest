@@ -8,6 +8,7 @@
 
 import { getAccessToken } from "@/lib/client/apiSession";
 import { postAuthed } from "@/lib/client/dashboardApi";
+import { APP_VERSION } from "@/lib/appVersion";
 
 type CapPluginListenerHandle = { remove: () => void | Promise<void> };
 
@@ -114,7 +115,7 @@ async function registerTokenWithBackend(token: string) {
   await postAuthed("/api/me/push-devices", {
     platform,
     deviceToken: token,
-    appVersion: "1.0",
+    appVersion: APP_VERSION,
     environment,
   });
   try {
