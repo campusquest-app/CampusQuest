@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const requireAuthUser = vi.fn();
-const createAdminClient = vi.fn(() => {
-  throw new Error("service-role client must not run for review-demo-only paths");
-});
+const { requireAuthUser, createAdminClient } = vi.hoisted(() => ({
+  requireAuthUser: vi.fn(),
+  createAdminClient: vi.fn(() => {
+    throw new Error("service-role client must not run for review-demo-only paths");
+  }),
+}));
 
 vi.mock("@/lib/server/supabase", () => ({
-  requireAuthUser: (...args: unknown[]) => requireAuthUser(...args),
-  createAdminClient: (...args: unknown[]) => createAdminClient(...args),
+  requireAuthUser,
+  createAdminClient,
 }));
 
 import { GET as getPartners } from "@/app/api/partners/route";
