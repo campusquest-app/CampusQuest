@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchAuthed } from "@/lib/client/dashboardApi";
-import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
+import { mergeMapLocationGroups, type GroupedMapLocation } from "@/lib/mapLocationGroups";
 import { dedupeLogicalMapEvents } from "@/lib/realm/dedupeLogicalEvents";
 import { filterVisibleMapEvents } from "@/lib/realm/eventVisibility";
 import { markRealmMapStep } from "@/lib/realm/realmMapLifecycle";
@@ -27,13 +27,32 @@ export function useGroupedMapLocations(options?: { active?: boolean }) {
   const [groups, setGroups] = useState<GroupedMapLocation[]>([]);
   const [loaded, setLoaded] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  // App Review demo pins: the server reports eligibility once; non-reviewers stop asking.
+  const reviewDemoEligibleRef = useRef<boolean | null>(null);
+
+  const fetchReviewDemoGroups = useCallback(async (signal?: AbortSignal): Promise<GroupedMapLocation[]> => {
+    if (reviewDemoEligibleRef.current === false) return [];
+    try {
+      const data = await fetchAuthed<{ eligible?: boolean; groups?: GroupedMapLocation[] }>(
+        "/api/quests/map-pins/review-demo",
+        { signal },
+      );
+      reviewDemoEligibleRef.current = data.eligible === true;
+      return data.groups ?? [];
+    } catch {
+      return [];
+    }
+  }, []);
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     markRealmMapStep("data-fetch-start", { source: "map-pins" });
     try {
-      const data = await fetchAuthed<{ groups: GroupedMapLocation[] }>("/api/quests/map-pins", { signal });
+      const [data, demoGroups] = await Promise.all([
+        fetchAuthed<{ groups: GroupedMapLocation[] }>("/api/quests/map-pins", { signal }),
+        fetchReviewDemoGroups(signal),
+      ]);
       if (signal?.aborted) return;
-      setGroups(withVisibleEvents(data.groups ?? []));
+      setGroups(withVisibleEvents(mergeMapLocationGroups(data.groups ?? [], demoGroups)));
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
       setGroups([]);
@@ -43,7 +62,7 @@ export function useGroupedMapLocations(options?: { active?: boolean }) {
         markRealmMapStep("data-fetch-end", { source: "map-pins" });
       }
     }
-  }, []);
+  }, [fetchReviewDemoGroups]);
 
   useEffect(() => {
     if (!active) {

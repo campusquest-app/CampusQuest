@@ -3,11 +3,12 @@ import {
   type LeaderboardEligibilityProfile,
 } from "@/lib/leaderboardEligibility";
 import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
+import { isMissingReviewDemoColumnError } from "@/lib/server/reviewDemo";
 import { createAdminClient } from "@/lib/server/supabase";
 
 type ClientLike = Pick<ReturnType<typeof createAdminClient>, "from">;
 
-type EligibilityRow = LeaderboardEligibilityProfile & { id: string };
+type EligibilityRow = LeaderboardEligibilityProfile & { id: string; is_review_demo?: boolean | null };
 
 /**
  * IDs of profiles that must never appear on any leaderboard/ranking:
@@ -26,15 +27,25 @@ export async function listLeaderboardIneligibleUserIds(
   if (userIds && userIds.length === 0) return new Set();
   try {
     const supabase = client ?? createAdminClient();
-    let query = supabase.from("profiles").select("id, role, is_hidden, is_test_user");
-    query = userIds
-      ? query.in("id", [...userIds])
-      : query.or("role.neq.student,is_hidden.eq.true,is_test_user.eq.true");
-    const { data, error } = await query;
+    const load = (includeDemoFlag: boolean) => {
+      let query = supabase
+        .from("profiles")
+        .select(includeDemoFlag ? "id, role, is_hidden, is_test_user, is_review_demo" : "id, role, is_hidden, is_test_user");
+      query = userIds
+        ? query.in("id", [...userIds])
+        : query.or(
+            includeDemoFlag
+              ? "role.neq.student,is_hidden.eq.true,is_test_user.eq.true,is_review_demo.eq.true"
+              : "role.neq.student,is_hidden.eq.true,is_test_user.eq.true",
+          );
+      return query;
+    };
+    let { data, error } = await load(true);
+    if (isMissingReviewDemoColumnError(error)) ({ data, error } = await load(false));
     if (error || !data) throw error ?? new Error("empty eligibility result");
     return new Set(
-      (data as EligibilityRow[])
-        .filter((row) => !isLeaderboardEligible(row))
+      (data as unknown as EligibilityRow[])
+        .filter((row) => row.is_review_demo === true || !isLeaderboardEligible(row))
         .map((row) => row.id),
     );
   } catch {

@@ -10,12 +10,16 @@ import {
   PERMANENT_QA_SIGNUP_EMAIL,
 } from "@/lib/internalAccount";
 import { isProtectedAccountEmail } from "@/lib/server/protectedAccounts";
+import { isMissingReviewDemoColumnError, viewerCanSeeReviewDemo } from "@/lib/server/reviewDemo";
 import { isOnboardingQaEmail, logOnboardingQa } from "@/lib/onboardingQa";
 import {
+  APP_REVIEW_ACCOUNT_EMAIL,
   buildAppReviewProfilePatch,
   isAppReviewAccountEmail,
   isDesignatedAppReviewAccount,
 } from "@/lib/appReviewAccount";
+import { seedReviewDemoContent } from "@/lib/reviewDemoSeed";
+import { getPilotSchoolConfig } from "@/lib/server/pilotMode";
 
 export {
   isInternalAccount,
@@ -47,27 +51,61 @@ export function isTestUserProfile(
   return profile?.is_test_user === true;
 }
 
-type ClientLike = Pick<ReturnType<typeof createAdminClient>, "from">;
+type ClientLike = Pick<ReturnType<typeof createAdminClient>, "from"> &
+  Partial<Pick<ReturnType<typeof createAdminClient>, "rpc">>;
+
+const HIDDEN_PROFILE_FILTER = "is_hidden.eq.true,is_test_user.eq.true,role.eq.qa";
 
 /**
  * IDs of profiles that must never appear on public surfaces:
- * is_hidden = true OR is_test_user = true OR role = 'qa'.
+ * is_hidden = true OR is_test_user = true OR role = 'qa', plus App Review demo
+ * profiles (is_review_demo) unless the client's own session may view them.
  * Used to exclude them from leaderboards, search, analytics, and other public
  * surfaces. Tolerates a pre-migration schema by falling back to is_hidden only.
  */
 export async function listHiddenUserIds(client?: ClientLike): Promise<Set<string>> {
   try {
     const supabase = client ?? createAdminClient();
-    let { data, error } = await supabase
-      .from("profiles")
-      .select("id")
-      .or("is_hidden.eq.true,is_test_user.eq.true,role.eq.qa");
+    const [showDemo, initial] = await Promise.all([
+      viewerCanSeeReviewDemo(client as Parameters<typeof viewerCanSeeReviewDemo>[0]),
+      supabase
+        .from("profiles")
+        .select("id, is_hidden, is_test_user, role, is_review_demo")
+        .or(`${HIDDEN_PROFILE_FILTER},is_review_demo.eq.true`),
+    ]);
+    type HiddenRow = {
+      id: string;
+      is_hidden?: boolean | null;
+      is_test_user?: boolean | null;
+      role?: string | null;
+      is_review_demo?: boolean | null;
+    };
+    let rows: HiddenRow[] | null = (initial.data as HiddenRow[] | null) ?? null;
+    let error = initial.error;
+    if (error && isMissingReviewDemoColumnError(error)) {
+      const retry = await supabase.from("profiles").select("id").or(HIDDEN_PROFILE_FILTER);
+      rows = (retry.data as HiddenRow[] | null) ?? null;
+      error = retry.error;
+    }
     if (error) {
       // Pre-migration schema: retry on the oldest flag only.
-      ({ data, error } = await supabase.from("profiles").select("id").eq("is_hidden", true));
+      const retry = await supabase.from("profiles").select("id").eq("is_hidden", true);
+      rows = (retry.data as HiddenRow[] | null) ?? null;
+      error = retry.error;
     }
-    if (error || !data) return new Set();
-    return new Set(data.map((row) => row.id as string));
+    if (error || !rows) return new Set();
+    return new Set(
+      rows
+        .filter(
+          (row) =>
+            !showDemo ||
+            row.is_review_demo !== true ||
+            row.is_hidden === true ||
+            row.is_test_user === true ||
+            row.role === "qa",
+        )
+        .map((row) => row.id),
+    );
   } catch {
     // Hidden-user filtering must never break the surface that uses it.
     return new Set();
@@ -83,12 +121,15 @@ export async function listHiddenUserIds(client?: ClientLike): Promise<Set<string
  */
 export async function listAnalyticsExcludedUserIds(client?: ClientLike): Promise<Set<string>> {
   const supabase = client ?? createAdminClient();
-  const { data, error } = await supabase
+  const analyticsFilter =
+    "is_hidden.eq.true,is_test_user.eq.true,is_internal_tester.eq.true,role.eq.qa,role.eq.beta_internal";
+  let { data, error } = await supabase
     .from("profiles")
     .select("id")
-    .or(
-      "is_hidden.eq.true,is_test_user.eq.true,is_internal_tester.eq.true,role.eq.qa,role.eq.beta_internal",
-    );
+    .or(`${analyticsFilter},is_review_demo.eq.true`);
+  if (isMissingReviewDemoColumnError(error)) {
+    ({ data, error } = await supabase.from("profiles").select("id").or(analyticsFilter));
+  }
   if (error) {
     // Older DBs without is_internal_tester: fall back to the public-surface exclusion set,
     // but still fail closed if that also errors.
@@ -120,11 +161,16 @@ function logQa(stage: string, detail: Record<string, unknown>): void {
 /**
  * Onboarding-related profile columns restored to their brand-new-user values.
  * Auth credentials, id, username, display_name, and the QA flags are preserved.
+ *
+ * student_status / institution_id / onboarding_version must be cleared. Leaving
+ * a stale faculty_staff (or other) status skips About You on the next login and
+ * presents the reviewer as faculty instead of a student.
  */
 const PROFILE_ONBOARDING_RESET = {
   onboarding_completed: false,
   onboarding_completed_at: null,
   onboarding_character_completed: false,
+  onboarding_version: null,
   avatar_custom_json: null,
   avatar_url: null,
   character_class_id: null,
@@ -148,12 +194,23 @@ const PROFILE_ONBOARDING_RESET = {
   requested_school_at: null,
   realm_intro_completed_at: null,
   class_year: null,
+  student_status: null,
+  institution_id: null,
   bio: "",
   // Role-selection test state: cleared so the QA account sees the "I am a..."
   // screen again. The protected role = 'qa' itself is never touched.
   qa_selected_role: null,
   campus_email_verified_at: null,
 } as const;
+
+/** Patch applied to a flagged QA profile. Campus verification is kept for App Review. */
+export function buildQaOnboardingResetPatch(options: { preserveCampusVerification: boolean }): Record<string, unknown> {
+  const patch: Record<string, unknown> = { ...PROFILE_ONBOARDING_RESET };
+  if (options.preserveCampusVerification) {
+    delete patch.campus_email_verified_at;
+  }
+  return patch;
+}
 
 /** Columns that may not exist on older schemas — retried without on 42703. */
 const OPTIONAL_RESET_COLUMNS = [
@@ -174,6 +231,9 @@ const OPTIONAL_RESET_COLUMNS = [
   "requested_school_at",
   "realm_intro_completed_at",
   "class_year",
+  "student_status",
+  "institution_id",
+  "onboarding_version",
   "qa_selected_role",
   "campus_email_verified_at",
 ] as const;
@@ -189,10 +249,7 @@ async function updateProfileResetTolerant(
   userId: string,
   options: { preserveCampusVerification: boolean },
 ): Promise<void> {
-  const patch: Record<string, unknown> = { ...PROFILE_ONBOARDING_RESET };
-  if (options.preserveCampusVerification) {
-    delete patch.campus_email_verified_at;
-  }
+  const patch = buildQaOnboardingResetPatch(options);
   // Try the full patch first; drop optional columns one by one if the schema lacks them.
   for (let attempt = 0; attempt <= OPTIONAL_RESET_COLUMNS.length; attempt += 1) {
     const { error } = await admin
@@ -398,12 +455,13 @@ export async function ensureQaTestAccount(): Promise<EnsureQaAccountResult> {
 }
 
 /**
- * Login hook: when a QA test user signs in, wipe onboarding state so the app
- * routes them through the full sign-up / onboarding screens again.
+ * Login hook: other QA test accounts still wipe onboarding so signup screens
+ * can be re-tested. The designated App Review account does not: completed
+ * onboarding, connections, messages, and notifications must survive sign-in.
  *
- * Triggers only for:
+ * Triggers a wipe only for:
  * - profiles.is_test_user = true, OR
- * - an exact known QA email (so flags can be applied if signup lagged)
+ * - an exact known QA email that is not the App Review account
  *
  * Does NOT reset ordinary internal testers (is_internal_tester / beta_internal)
  * — campus bypass for those roles stays separate from onboarding wipe.
@@ -421,6 +479,17 @@ export async function resetQaOnboardingOnLoginIfTestUser(profile: {
     });
     return false;
   }
+  if (isAppReviewAccountEmail(profile.email)) {
+    if (!isTestUserProfile(profile)) {
+      const admin = createAdminClient();
+      await admin
+        .from("profiles")
+        .update({ ...QA_ACCOUNT_PROFILE_FLAGS })
+        .eq("id", profile.id);
+    }
+    await ensureReviewDemoAfterLogin(profile.id);
+    return false;
+  }
   const isKnownQa = isKnownQaAccountEmail(profile.email);
   if (!isKnownQa && !isTestUserProfile(profile)) {
     return false;
@@ -435,4 +504,26 @@ export async function resetQaOnboardingOnLoginIfTestUser(profile: {
   }
   await resetQaOnboardingState(profile.id);
   return true;
+}
+
+/**
+ * Gap-fill isolated App Review demo catalog + missing social fixtures.
+ * Additive: never wipes reviewer onboarding or completed interactions.
+ * Never blocks sign-in. Disable with REVIEW_DEMO_SEED_DISABLED=true.
+ */
+async function ensureReviewDemoAfterLogin(userId: string): Promise<void> {
+  if (process.env.REVIEW_DEMO_SEED_DISABLED === "true") return;
+  try {
+    const pilot = getPilotSchoolConfig();
+    await seedReviewDemoContent({
+      admin: createAdminClient(),
+      reviewerUserId: userId,
+      expectedReviewerEmail: APP_REVIEW_ACCOUNT_EMAIL,
+      school: pilot.schoolDomain ? { name: pilot.schoolName, domain: pilot.schoolDomain } : undefined,
+    });
+  } catch (error) {
+    console.warn("[cq:review-demo] seed skipped", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 }

@@ -18,6 +18,7 @@ import { ApiError } from "@/lib/server/http";
 import { isAdminQuestCurrentlyActive, isAdminQuestsSchemaError } from "@/lib/server/adminQuests";
 import type { AdminQuestRow } from "@/lib/adminQuestTypes";
 import { isExpiredAt, mapPercentForCoordinates } from "@/lib/server/campusMapPins";
+import { excludeReviewDemo, runExcludingReviewDemo } from "@/lib/server/reviewDemo";
 import { createAdminClient } from "@/lib/server/supabase";
 import { resolveCampusLocationFromEventFields } from "@/lib/server/urinvolved/locationAliases";
 import {
@@ -333,12 +334,15 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
       )
       .eq("is_active", true)
       .not("location_key", "is", null),
-    admin
-      .from("campus_events")
-      .select("id, title, starts_at, ends_at, location_name, is_cancelled, host_organization_id, student_organizations(name)")
-      // Include live and recently-ended events (visible until 24h after end),
-      // and cancelled events (shown as cancelled until the same cutoff).
-      .gte("starts_at", new Date(now.getTime() - 72 * 60 * 60 * 1000).toISOString()),
+    runExcludingReviewDemo((applyDemoFilter) => {
+      const query = admin
+        .from("campus_events")
+        .select(CAMPUS_EVENT_MAP_COLUMNS)
+        // Include live and recently-ended events (visible until 24h after end),
+        // and cancelled events (shown as cancelled until the same cutoff).
+        .gte("starts_at", campusEventMapWindowStart(now));
+      return applyDemoFilter ? excludeReviewDemo(query) : query;
+    }),
   ]);
 
   if (questsResult.error && !isAdminQuestsSchemaError(questsResult.error)) {
@@ -409,28 +413,7 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
   }
 
   if (!eventsResult.error) {
-    for (const row of eventsResult.data ?? []) {
-      const startsAt = String(row.starts_at);
-      const endsAt = (row.ends_at as string | null) ?? null;
-      // Shared lifecycle rule: visible until 24h after the (effective) end.
-      if (!isEventVisibleOnMap({ end_time: effectiveEventEndIso(startsAt, endsAt) }, now)) continue;
-      const locationName = String(row.location_name ?? "");
-      const locationKey = inferCampusKeyFromEventLocation(locationName);
-      const meta = eventGroupMeta(locationKey, locationName);
-      if (!meta) continue;
-
-      const bucket = getOrCreateBucket(buckets, meta);
-      const org = row.student_organizations as { name?: string } | null;
-      bucket.events.push({
-        id: String(row.id),
-        title: String(row.title),
-        startsAt,
-        endsAt,
-        organizationName: org?.name ?? null,
-        eventUrl: null,
-        cancelled: Boolean(row.is_cancelled),
-      });
-    }
+    addCampusEventRows(buckets, (eventsResult.data ?? []) as CampusEventMapRow[], now);
   }
 
   // Today's URInvolved events, grouped onto the matching realm locations.
@@ -464,6 +447,74 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
     bucket.events.push(item.pin);
   }
 
+  return bucketsToGroups(buckets);
+}
+
+/**
+ * Map groups for App Review demo events only. Reads through the viewer's own
+ * client so RLS returns rows only to QA test accounts; never cached or shared.
+ */
+export async function listReviewDemoMapLocations(
+  userClient: Pick<ReturnType<typeof createAdminClient>, "from">,
+): Promise<GroupedMapLocation[]> {
+  const now = new Date();
+  const { data, error } = await userClient
+    .from("campus_events")
+    .select(CAMPUS_EVENT_MAP_COLUMNS)
+    .eq("is_review_demo", true)
+    .eq("is_removed_by_moderation", false)
+    .gte("starts_at", campusEventMapWindowStart(now));
+  if (error || !data) return [];
+  const buckets = new Map<string, GroupBucket>();
+  addCampusEventRows(buckets, data as unknown as CampusEventMapRow[], now);
+  return bucketsToGroups(buckets);
+}
+
+const CAMPUS_EVENT_MAP_COLUMNS =
+  "id, title, starts_at, ends_at, location_name, is_cancelled, host_organization_id, student_organizations(name)";
+
+type CampusEventMapRow = {
+  id: string;
+  title: string;
+  starts_at: string;
+  ends_at: string | null;
+  location_name: string | null;
+  is_cancelled: boolean | null;
+  student_organizations: { name?: string } | { name?: string }[] | null;
+};
+
+function campusEventMapWindowStart(now: Date): string {
+  return new Date(now.getTime() - 72 * 60 * 60 * 1000).toISOString();
+}
+
+function addCampusEventRows(buckets: Map<string, GroupBucket>, rows: CampusEventMapRow[], now: Date): void {
+  for (const row of rows) {
+    const startsAt = String(row.starts_at);
+    const endsAt = row.ends_at ?? null;
+    // Shared lifecycle rule: visible until 24h after the (effective) end.
+    if (!isEventVisibleOnMap({ end_time: effectiveEventEndIso(startsAt, endsAt) }, now)) continue;
+    const locationName = String(row.location_name ?? "");
+    const locationKey = inferCampusKeyFromEventLocation(locationName);
+    const meta = eventGroupMeta(locationKey, locationName);
+    if (!meta) continue;
+
+    const bucket = getOrCreateBucket(buckets, meta);
+    const org = Array.isArray(row.student_organizations)
+      ? row.student_organizations[0] ?? null
+      : row.student_organizations;
+    bucket.events.push({
+      id: String(row.id),
+      title: String(row.title),
+      startsAt,
+      endsAt,
+      organizationName: org?.name ?? null,
+      eventUrl: null,
+      cancelled: Boolean(row.is_cancelled),
+    });
+  }
+}
+
+function bucketsToGroups(buckets: Map<string, GroupBucket>): GroupedMapLocation[] {
   return Array.from(buckets.values())
     .filter((bucket) => bucket.qrCodes.length + bucket.quests.length + bucket.events.length > 0)
     .map((bucket) => ({

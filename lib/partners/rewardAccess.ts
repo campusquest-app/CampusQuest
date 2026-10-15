@@ -106,6 +106,8 @@ export type StudentRewardPass = {
   expiresAt: string;
   /** Server clock at issue time so the countdown is not driven by a wrong device clock. */
   serverNow: string;
+  /** App Review demo pass: watermarked, not valid for redemption, never logged. */
+  demo?: boolean;
 };
 
 export type RewardPassResponse = { pass: StudentRewardPass };
@@ -167,6 +169,25 @@ export const REWARD_ISSUE_COPY: Record<RewardAccessIssue, { title: string; body:
   },
   error: { title: "Something went wrong", body: "We couldn\u2019t load this reward. Try again in a moment." },
 };
+
+const BACKEND_DIAGNOSTIC = /backend request failed|\/api\/|returned \d{3}/i;
+
+/**
+ * Student-facing pass copy. Drops localhost "Backend request failed: /api/..."
+ * prefixes so reviewers never see routes, status codes, or stack fragments.
+ * Specific server sentences (e.g. switch to personal profile) are kept.
+ */
+export function sanitizeRewardPassIssueMessage(
+  issue: RewardAccessIssue,
+  message: string | null | undefined,
+): string {
+  const fallback = REWARD_ISSUE_COPY[issue].body;
+  const trimmed = (message ?? "").trim();
+  if (!trimmed) return fallback;
+  const stripped = trimmed.replace(/^Backend request failed:[^.]*\.\s*/i, "").trim();
+  if (!stripped || BACKEND_DIAGNOSTIC.test(stripped) || stripped.length > 180) return fallback;
+  return stripped;
+}
 
 /** Seconds left on the pass, measured on the server clock. 0 means the pass must not be shown as valid. */
 export function rewardPassSecondsLeft(pass: StudentRewardPass, clockOffsetMs: number, deviceNowMs: number): number {

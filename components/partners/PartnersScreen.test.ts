@@ -434,6 +434,20 @@ describe("RewardPassView", () => {
     expect(html).toContain("Switch to your personal student profile");
   });
 
+  it("does not show backend paths or HTTP diagnostics on an ineligible pass", () => {
+    const html = renderPass({
+      status: "issue",
+      issue: "ineligible",
+      message:
+        "Backend request failed: /api/partners/daisys-chicken-ice-cream/reward-pass returned 403 Forbidden. Student rewards are only for verified URI student accounts.",
+    });
+    expect(html).toContain("Not eligible");
+    expect(html).toContain("Student rewards are only for verified URI student accounts.");
+    expect(html).not.toContain("/api/partners");
+    expect(html).not.toContain("403");
+    expect(html).not.toContain("Backend request failed");
+  });
+
   it("shows a verifying state while loading", () => {
     expect(renderPass({ status: "loading" })).toContain("Verifying your student status");
   });

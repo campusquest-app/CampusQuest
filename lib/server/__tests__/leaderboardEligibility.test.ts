@@ -57,6 +57,15 @@ describe("listLeaderboardIneligibleUserIds", () => {
     expect(ids.has("test-student")).toBe(true);
   });
 
+  it("flags App Review demo profiles even though they look like students", async () => {
+    const demo = { id: "demo-1", role: "student", is_hidden: false, is_test_user: false, is_review_demo: true };
+    const ids = await listLeaderboardIneligibleUserIds(fakeClient({ flagged: [...profiles, demo] }), [
+      "student-1",
+      "demo-1",
+    ]);
+    expect(ids).toEqual(new Set(["demo-1"]));
+  });
+
   it("returns an empty set for an empty cohort without querying", async () => {
     const ids = await listLeaderboardIneligibleUserIds(fakeClient({ flagged: profiles }), []);
     expect(ids.size).toBe(0);

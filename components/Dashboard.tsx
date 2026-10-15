@@ -2323,8 +2323,11 @@ export function Dashboard() {
                 fetchAuthed<{
                   exists: boolean;
                   preferences: {
+                    schoolName?: string;
                     interests?: string[];
                     communities?: string[];
+                    discoveryFocus?: string[];
+                    major?: string | null;
                     institutionId?: string | null;
                     completedAt?: string | null;
                   } | null;
@@ -2332,6 +2335,20 @@ export function Dashboard() {
               ]);
               setGatePrefillProfile(updatedProfile);
               const prefs = prefsPayload.preferences;
+              if (prefs) {
+                setOnboardingPreferences({
+                  schoolName: prefs.schoolName ?? onboardingPreferences?.schoolName ?? "",
+                  interests: prefs.interests ?? [],
+                  communities: prefs.communities ?? [],
+                  discoveryFocus: prefs.discoveryFocus ?? onboardingPreferences?.discoveryFocus ?? [],
+                  major: prefs.major ?? null,
+                  academicArea: onboardingPreferences?.academicArea ?? updatedProfile.academic_area ?? null,
+                  institutionId: prefs.institutionId ?? updatedProfile.institution_id ?? null,
+                  studentStatus: updatedProfile.student_status ?? null,
+                  classYear: updatedProfile.class_year ?? null,
+                  campusEmailVerifiedAt: updatedProfile.campus_email_verified_at ?? null,
+                });
+              }
               const nextRoute = resolveProfileRoute(updatedProfile, {
                 preferences: {
                   exists: prefsPayload.exists,
@@ -2370,21 +2387,62 @@ export function Dashboard() {
           variant={roleGateProfile && isProfileSetupComplete(roleGateProfile) ? "existing_user" : "new_user"}
           onComplete={(updatedProfile) => {
             setRoleGateProfile(null);
-            const nextRoute = resolveProfileRoute(updatedProfile, {
-              preferences: {
+            void (async () => {
+              let preferences = {
                 exists: Boolean(onboardingPreferences),
                 interests: onboardingPreferences?.interests ?? [],
-                communities: [],
-                institutionId: updatedProfile.institution_id ?? null,
-                completedAt: null,
-              },
-              forceDemographicsQaReplay: false,
-              forceCharacterQaReplay: false,
-            });
-            if (nextRoute === "character_gate") {
-              setGatePrefillProfile(updatedProfile);
-            }
-            setProfileRoute(nextRoute);
+                communities: onboardingPreferences?.communities ?? [],
+                institutionId: onboardingPreferences?.institutionId ?? updatedProfile.institution_id ?? null,
+                completedAt: null as string | null,
+              };
+              try {
+                const prefsPayload = await fetchAuthed<{
+                  exists: boolean;
+                  preferences: {
+                    schoolName?: string;
+                    interests?: string[];
+                    communities?: string[];
+                    discoveryFocus?: string[];
+                    major?: string | null;
+                    institutionId?: string | null;
+                    completedAt?: string | null;
+                  } | null;
+                }>("/api/me/onboarding-preferences");
+                const prefs = prefsPayload.preferences;
+                preferences = {
+                  exists: prefsPayload.exists,
+                  interests: prefs?.interests ?? [],
+                  communities: prefs?.communities ?? [],
+                  institutionId: prefs?.institutionId ?? updatedProfile.institution_id ?? null,
+                  completedAt: prefs?.completedAt ?? null,
+                };
+                if (prefs) {
+                  setOnboardingPreferences({
+                    schoolName: prefs.schoolName ?? "",
+                    interests: prefs.interests ?? [],
+                    communities: prefs.communities ?? [],
+                    discoveryFocus: prefs.discoveryFocus ?? [],
+                    major: prefs.major ?? null,
+                    academicArea: updatedProfile.academic_area ?? null,
+                    institutionId: prefs.institutionId ?? updatedProfile.institution_id ?? null,
+                    studentStatus: updatedProfile.student_status ?? null,
+                    classYear: updatedProfile.class_year ?? null,
+                    campusEmailVerifiedAt: updatedProfile.campus_email_verified_at ?? null,
+                  });
+                }
+              } catch {
+                /* Keep the in-memory snapshot if the refetch fails. */
+              }
+              const nextRoute = resolveProfileRoute(updatedProfile, {
+                preferences,
+                forceDemographicsQaReplay: false,
+                forceCharacterQaReplay: false,
+              });
+              if (nextRoute === "character_gate") {
+                setGatePrefillProfile(updatedProfile);
+              }
+              setProfileRoute(nextRoute);
+            })();
           }}
         />
         {launchSplashOverlay}

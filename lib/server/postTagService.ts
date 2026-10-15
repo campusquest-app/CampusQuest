@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/server/http";
+import { REVIEW_DEMO_COLUMN, runExcludingReviewDemo, userCanSeeReviewDemo } from "@/lib/server/reviewDemo";
 import { createAdminClient } from "@/lib/server/supabase";
 import { createNotification } from "@/lib/server/notifications";
 import { getAcceptedFriendUserIds } from "@/lib/server/friendProfileAccess";
@@ -19,28 +20,23 @@ import {
 
 type Admin = ReturnType<typeof createAdminClient>;
 
-async function entityExists(admin: Admin, entityType: TagEntityType, entityId: string): Promise<boolean> {
-  if (entityType === "user") {
-    const { data } = await admin.from("profiles").select("id").eq("id", entityId).maybeSingle();
-    return Boolean(data?.id);
-  }
-  if (entityType === "organization") {
-    const { data } = await admin
-      .from("student_organizations")
-      .select("id")
-      .eq("id", entityId)
-      .eq("is_approved", true)
-      .maybeSingle();
-    return Boolean(data?.id);
-  }
-  if (entityType === "event") {
-    const { data } = await admin
-      .from("campus_events")
-      .select("id")
-      .eq("id", entityId)
-      .eq("is_cancelled", false)
-      .maybeSingle();
-    return Boolean(data?.id);
+async function entityExists(
+  admin: Admin,
+  entityType: TagEntityType,
+  entityId: string,
+  allowReviewDemo: boolean,
+): Promise<boolean> {
+  if (entityType === "user" || entityType === "organization" || entityType === "event") {
+    const table =
+      entityType === "user" ? "profiles" : entityType === "organization" ? "student_organizations" : "campus_events";
+    const { data } = await runExcludingReviewDemo((applyDemoFilter) => {
+      let query = admin.from(table).select("id").eq("id", entityId);
+      if (entityType === "organization") query = query.eq("is_approved", true);
+      if (entityType === "event") query = query.eq("is_cancelled", false);
+      if (applyDemoFilter && !allowReviewDemo) query = query.eq(REVIEW_DEMO_COLUMN, false);
+      return query.maybeSingle();
+    });
+    return Boolean((data as { id?: string } | null)?.id);
   }
   const { data } = await admin
     .from("external_events")
@@ -147,6 +143,10 @@ export async function persistPostTagsAndMentions(input: PersistTagsInput): Promi
     .eq("post_id", input.postId)
     .is("removed_at", null);
   const alreadyTagged = new Set((existingRows ?? []).map((row) => existingKey(row as never)));
+  const allowReviewDemo =
+    composerTags.length + photoTags.length + mentions.length > 0
+      ? await userCanSeeReviewDemo(admin, input.authorId)
+      : false;
 
   const tagRows: PendingTagInsert[] = [];
 
@@ -158,7 +158,7 @@ export async function persistPostTagsAndMentions(input: PersistTagsInput): Promi
       tag_source: "composer",
     });
     if (alreadyTagged.has(key)) continue;
-    if (!(await entityExists(admin, tag.entityType, tag.entityId))) {
+    if (!(await entityExists(admin, tag.entityType, tag.entityId, allowReviewDemo))) {
       throw new ApiError(400, "One of the tagged entities is unavailable.", "TAG_ENTITY_INVALID");
     }
     let status: TagStatus = "approved";
@@ -195,7 +195,7 @@ export async function persistPostTagsAndMentions(input: PersistTagsInput): Promi
       media_key: tag.mediaKey || "primary",
     });
     if (alreadyTagged.has(key)) continue;
-    if (!(await entityExists(admin, tag.entityType, tag.entityId))) continue;
+    if (!(await entityExists(admin, tag.entityType, tag.entityId, allowReviewDemo))) continue;
     let status: TagStatus = "approved";
     if (tag.entityType === "user") {
       const resolved = await resolveUserTagStatus({
@@ -225,7 +225,7 @@ export async function persistPostTagsAndMentions(input: PersistTagsInput): Promi
   const mentionRows: Record<string, unknown>[] = [];
   for (const m of mentions) {
     if (!isTagEntityType(m.entityType)) continue;
-    if (!(await entityExists(admin, m.entityType, m.entityId))) continue;
+    if (!(await entityExists(admin, m.entityType, m.entityId, allowReviewDemo))) continue;
     if (m.entityType === "user") {
       const resolved = await resolveUserTagStatus({
         admin,

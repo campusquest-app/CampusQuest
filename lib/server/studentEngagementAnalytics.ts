@@ -17,6 +17,7 @@ import {
   normalizeInterestIds,
 } from "@/lib/onboarding/taxonomy";
 import { listAnalyticsExcludedUserIds } from "@/lib/server/qaTestAccount";
+import { excludeReviewDemo, runExcludingReviewDemo } from "@/lib/server/reviewDemo";
 import { createAdminClient } from "@/lib/server/supabase";
 import {
   buildVerifiedAttendance,
@@ -227,11 +228,12 @@ export async function getStudentEngagementAnalytics(range: EngagementDateRange) 
       .gte("scanned_at", startIso)
       .lte("scanned_at", endIso)
       .limit(50_000),
-    admin
-      .from("campus_events")
-      .select("id, title, starts_at")
-      .order("starts_at", { ascending: false })
-      .limit(200),
+    runExcludingReviewDemo((applyDemoFilter) => {
+      const query = admin.from("campus_events").select("id, title, starts_at");
+      return (applyDemoFilter ? excludeReviewDemo(query) : query)
+        .order("starts_at", { ascending: false })
+        .limit(200);
+    }),
   ]);
 
   if (postsErr) throw new ApiError(400, postsErr.message, "ENGAGEMENT_POSTS_FAILED");

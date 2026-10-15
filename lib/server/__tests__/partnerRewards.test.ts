@@ -4,7 +4,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { definePartner, PARTNER_DIRECTORY } from "@/lib/partners/partnerDirectory";
 import { REWARD_ERROR_CODES, REWARD_PASS_TTL_SECONDS } from "@/lib/partners/rewardAccess";
 import { ApiError } from "@/lib/server/http";
-import { generatePassId, issueStudentRewardPass, passDisplayName } from "@/lib/server/partnerRewards";
+import { REVIEW_DEMO_PARTNER } from "@/lib/partners/reviewDemoPartner";
+import {
+  generatePassId,
+  issueReviewDemoRewardPass,
+  issueStudentRewardPass,
+  passDisplayName,
+} from "@/lib/server/partnerRewards";
 
 type Result = { data: unknown; error: { code?: string; message?: string } | null };
 
@@ -180,6 +186,38 @@ describe("issueStudentRewardPass", () => {
     );
     added.push("test-inactive");
     await expectApiError((await issue({}, { partnerId: "test-inactive" })).run, 404, REWARD_ERROR_CODES.partnerNotFound);
+  });
+});
+
+describe("App Review demo partner", () => {
+  it("is not a real directory partner, so the merchant flow never resolves it", async () => {
+    expect(PARTNER_DIRECTORY.some((partner) => partner.id === REVIEW_DEMO_PARTNER.id)).toBe(false);
+    await expectApiError(
+      (await issue({ profiles: verifiedProfile }, { partnerId: REVIEW_DEMO_PARTNER.id })).run,
+      404,
+      REWARD_ERROR_CODES.partnerNotFound,
+    );
+  });
+
+  it("issues a watermarked demo pass with no student identity", () => {
+    const pass = issueReviewDemoRewardPass({ now: NOW });
+    expect(pass.demo).toBe(true);
+    expect(pass.partnerId).toBe(REVIEW_DEMO_PARTNER.id);
+    expect(pass.verifiedLabel).toMatch(/not valid for redemption/i);
+    expect(pass.studentName).toBeNull();
+    expect(pass.passId.startsWith("DEMO-")).toBe(true);
+    expect(REVIEW_DEMO_PARTNER.name).toContain("(Demo)");
+    expect(REVIEW_DEMO_PARTNER.rewardTerms).toMatch(/not valid for redemption/i);
+  });
+
+  it("gates the demo pass and demo listing on the review demo viewer check, without logging", () => {
+    const route = readFileSync(join(process.cwd(), "app/api/partners/[partnerId]/reward-pass/route.ts"), "utf8");
+    expect(route).toMatch(/isReviewDemoPartnerId\(partnerId\)\) \{\s*if \(!\(await viewerCanSeeReviewDemo\(userClient\)\)\)/);
+    const issuer = readFileSync(join(process.cwd(), "lib/server/partnerRewards.ts"), "utf8");
+    const demoIssuer = issuer.slice(issuer.indexOf("export function issueReviewDemoRewardPass"), issuer.indexOf("export async function issueStudentRewardPass"));
+    expect(demoIssuer).not.toMatch(/recordPartnerEngagement|\.from\(/);
+    const list = readFileSync(join(process.cwd(), "app/api/partners/route.ts"), "utf8");
+    expect(list).toMatch(/if \(await viewerCanSeeReviewDemo\(userClient\)\) partners\.push\(REVIEW_DEMO_PARTNER\)/);
   });
 });
 

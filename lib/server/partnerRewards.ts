@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { findPartnerById } from "@/lib/partners/partnerDirectory";
 import { partnerRewardOfferState } from "@/lib/partners/partnerStatus";
+import { REVIEW_DEMO_PARTNER } from "@/lib/partners/reviewDemoPartner";
 import {
   evaluateStudentRewardEligibility,
   REWARD_ERROR_CODES,
@@ -38,6 +39,33 @@ function verifiedLabel(): string {
 
 function lookupFailed(): ApiError {
   return new ApiError(500, "We couldn\u2019t verify your student status right now.", "REWARD_VERIFICATION_FAILED");
+}
+
+/**
+ * App Review demo pass for {@link REVIEW_DEMO_PARTNER}. Callers must first confirm the
+ * session may view review demo content. Writes nothing: no engagement events and no
+ * merchant liability.
+ */
+export function issueReviewDemoRewardPass(args: { now?: Date; passId?: string } = {}): StudentRewardPass {
+  const now = args.now ?? new Date();
+  const partner = REVIEW_DEMO_PARTNER;
+  return {
+    passId: args.passId ?? `DEMO-${generatePassId().slice(0, 3)}`,
+    partnerId: partner.id,
+    partnerName: partner.name,
+    partnerLogoUrl: partner.logoUrl,
+    discountValue: partner.discountValue,
+    offerTitle: partner.offerTitle,
+    offerDescription: partner.offerDescription,
+    rewardTerms: partner.rewardTerms,
+    redemptionInstructions: partner.redemptionInstructions,
+    verifiedLabel: "Demo pass \u2014 not valid for redemption",
+    studentName: null,
+    issuedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + REWARD_PASS_TTL_SECONDS * 1000).toISOString(),
+    serverNow: now.toISOString(),
+    demo: true,
+  };
 }
 
 /**

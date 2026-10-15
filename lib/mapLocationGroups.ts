@@ -120,6 +120,30 @@ export function mapLocationActivityCount(
   return mapLocationQuestCount(group, locationId) + filterVisibleMapEvents(group.events, now).length;
 }
 
+/** Append `extra` groups' pins onto matching `base` groups (by groupKey); new groups are appended. */
+export function mergeMapLocationGroups(
+  base: GroupedMapLocation[],
+  extra: GroupedMapLocation[],
+): GroupedMapLocation[] {
+  if (extra.length === 0) return base;
+  const merged = new Map(base.map((group) => [group.groupKey, group]));
+  for (const group of extra) {
+    const existing = merged.get(group.groupKey);
+    merged.set(
+      group.groupKey,
+      existing
+        ? {
+            ...existing,
+            qrCodes: [...existing.qrCodes, ...group.qrCodes],
+            quests: [...existing.quests, ...group.quests],
+            events: [...existing.events, ...group.events],
+          }
+        : group,
+    );
+  }
+  return Array.from(merged.values());
+}
+
 export function mapLocationQuestCount(
   group: Pick<GroupedMapLocation, "qrCodes" | "quests">,
   locationId?: string | null,

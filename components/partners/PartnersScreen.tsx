@@ -215,7 +215,7 @@ export function PartnersScreenView({
 
   const favoritesEnabled = favorites.status === "ready";
   const favoriteFor = (partner: Partner): PartnerFavoriteProps | undefined =>
-    favorites.status === "unavailable"
+    favorites.status === "unavailable" || partner.isReviewDemo
       ? undefined
       : {
           saved: favorites.isSaved(partner.id),

@@ -1,5 +1,11 @@
 import { createAdminClient } from "@/lib/server/supabase";
 import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
+import {
+  REVIEW_DEMO_COLUMN,
+  listReviewDemoProfileIds,
+  runExcludingReviewDemo,
+  userCanSeeReviewDemo,
+} from "@/lib/server/reviewDemo";
 import { TAG_SEARCH_LIMIT, type TagEntityType } from "@/lib/postTags";
 import { normalizeMentionSlug } from "@/lib/mentionSlug";
 
@@ -51,21 +57,27 @@ export async function searchTaggableEntities(args: {
   const filter = args.filter ?? "all";
   const admin = createAdminClient();
   const safe = q.replace(/[%_,]/g, "");
-  const [blockedSet, hidden] = await Promise.all([
+  const [blockedSet, hidden, showDemo] = await Promise.all([
     loadBlockedIds(admin, args.viewerId),
     listHiddenUserIds(admin),
+    userCanSeeReviewDemo(admin, args.viewerId),
   ]);
+  const demoProfileIds = showDemo ? await listReviewDemoProfileIds(admin) : new Set<string>();
 
   const hits: TagSearchHit[] = [];
 
   if (filter === "all" || filter === "people") {
-    const { data } = await admin
-      .from("profiles")
-      .select("id, username, display_name, avatar_url, role")
-      .or(`username.ilike.%${safe}%,display_name.ilike.%${safe}%`)
-      .limit(limit * 2);
+    const { data } = await runExcludingReviewDemo((applyDemoFilter) => {
+      let query = admin
+        .from("profiles")
+        .select("id, username, display_name, avatar_url, role")
+        .or(`username.ilike.%${safe}%,display_name.ilike.%${safe}%`);
+      if (applyDemoFilter && !showDemo) query = query.eq(REVIEW_DEMO_COLUMN, false);
+      return query.limit(limit * 2);
+    });
     for (const row of data ?? []) {
-      if (blockedSet.has(row.id) || hidden.has(row.id)) continue;
+      if (blockedSet.has(row.id)) continue;
+      if (hidden.has(row.id) && !demoProfileIds.has(row.id)) continue;
       if (row.role === "qa") continue;
       const username = (row.username ?? "").trim();
       if (!username) continue;
@@ -82,12 +94,15 @@ export async function searchTaggableEntities(args: {
   }
 
   if (filter === "all" || filter === "organizations") {
-    const { data } = await admin
-      .from("student_organizations")
-      .select("id, name, category, logo_url, mention_slug, is_approved")
-      .or(`name.ilike.%${safe}%,mention_slug.ilike.%${safe}%`)
-      .eq("is_approved", true)
-      .limit(limit * 2);
+    const { data } = await runExcludingReviewDemo((applyDemoFilter) => {
+      let query = admin
+        .from("student_organizations")
+        .select("id, name, category, logo_url, mention_slug, is_approved")
+        .or(`name.ilike.%${safe}%,mention_slug.ilike.%${safe}%`)
+        .eq("is_approved", true);
+      if (applyDemoFilter && !showDemo) query = query.eq(REVIEW_DEMO_COLUMN, false);
+      return query.limit(limit * 2);
+    });
     for (const row of data ?? []) {
       const slug = (row.mention_slug ?? normalizeMentionSlug(row.name ?? "")).toLowerCase();
       if (!slug) continue;
@@ -106,14 +121,16 @@ export async function searchTaggableEntities(args: {
   if (filter === "all" || filter === "events") {
     const nowIso = new Date().toISOString();
     const [{ data: campusEvents }, { data: externalEvents }] = await Promise.all([
-      admin
-        .from("campus_events")
-        .select("id, title, starts_at, location_name, mention_slug, is_cancelled")
-        .or(`title.ilike.%${safe}%,mention_slug.ilike.%${safe}%`)
-        .eq("is_cancelled", false)
-        .gte("ends_at", nowIso)
-        .order("starts_at", { ascending: true })
-        .limit(limit),
+      runExcludingReviewDemo((applyDemoFilter) => {
+        let query = admin
+          .from("campus_events")
+          .select("id, title, starts_at, location_name, mention_slug, is_cancelled")
+          .or(`title.ilike.%${safe}%,mention_slug.ilike.%${safe}%`)
+          .eq("is_cancelled", false)
+          .gte("ends_at", nowIso);
+        if (applyDemoFilter && !showDemo) query = query.eq(REVIEW_DEMO_COLUMN, false);
+        return query.order("starts_at", { ascending: true }).limit(limit);
+      }),
       admin
         .from("external_events")
         .select(

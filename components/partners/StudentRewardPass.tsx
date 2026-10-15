@@ -21,6 +21,7 @@ import { useRewardPass, type RewardPassState } from "@/lib/client/useRewardPass"
 import {
   REWARD_ISSUE_COPY,
   REWARD_PASS_TTL_SECONDS,
+  sanitizeRewardPassIssueMessage,
   type RewardAccessIssue,
   type StudentRewardPass as Pass,
 } from "@/lib/partners/rewardAccess";
@@ -111,8 +112,17 @@ function PassCard({
   const progress = Math.max(0, Math.min(1, secondsLeft / REWARD_PASS_TTL_SECONDS));
   return (
     <>
-      <section className={`cq-pass__card${valid ? " is-valid" : " is-lapsed"}`} aria-label="Student reward pass">
+      <section
+        className={`cq-pass__card${valid ? " is-valid" : " is-lapsed"}${pass.demo ? " is-demo" : ""}`}
+        aria-label={pass.demo ? "Demo reward pass, not valid for redemption" : "Student reward pass"}
+        data-cq-pass-demo={pass.demo ? "true" : undefined}
+      >
         <span className="cq-pass__glow" aria-hidden />
+        {pass.demo ? (
+          <span className="cq-pass__demo-watermark" aria-hidden>
+            DEMO {"\u00b7"} NOT VALID FOR REDEMPTION
+          </span>
+        ) : null}
         <div className="cq-pass__biz">
           <PassLogo pass={pass} partner={partner} />
           <span className="cq-pass__biz-name">{pass.partnerName}</span>
@@ -161,7 +171,11 @@ function PassCard({
         )}
       </section>
 
-      {valid ? <p className="cq-pass__checkout">Show this screen at checkout</p> : null}
+      {valid ? (
+        <p className="cq-pass__checkout">
+          {pass.demo ? "Demo pass for App Review \u2014 no business will honor it" : "Show this screen at checkout"}
+        </p>
+      ) : null}
       {valid && pass.redemptionInstructions ? <p className="cq-pass__note">{pass.redemptionInstructions}</p> : null}
       {pass.rewardTerms ? <p className="cq-pass__terms">{pass.rewardTerms}</p> : null}
       <p className="cq-pass__disclaimer">
@@ -192,7 +206,7 @@ function IssueView({
         <Icon className="h-7 w-7" strokeWidth={2.1} />
       </span>
       <h3 className="cq-pass__issue-title">{copy.title}</h3>
-      <p className="cq-pass__issue-text">{message || copy.body}</p>
+      <p className="cq-pass__issue-text">{sanitizeRewardPassIssueMessage(issue, message)}</p>
       <div className="cq-pass__issue-actions">
         {canRetry ? (
           <button type="button" className="cq-perk-btn cq-perk-btn--primary cq-tap-press touch-manipulation" onClick={onRetry}>

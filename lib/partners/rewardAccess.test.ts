@@ -5,6 +5,7 @@ import {
   REWARD_ISSUE_COPY,
   rewardIssueFromError,
   rewardPassSecondsLeft,
+  sanitizeRewardPassIssueMessage,
   type StudentRewardEligibilityInput,
   type StudentRewardPass,
 } from "@/lib/partners/rewardAccess";
@@ -95,6 +96,29 @@ describe("rewardIssueFromError", () => {
       expect(copy.title.length).toBeGreaterThan(0);
       expect(`${copy.title} ${copy.body}`).not.toMatch(/redeemed|purchase confirmed|cryptographic/i);
     }
+  });
+});
+
+describe("sanitizeRewardPassIssueMessage", () => {
+  it("drops localhost backend diagnostics and keeps the user-facing sentence", () => {
+    expect(
+      sanitizeRewardPassIssueMessage(
+        "ineligible",
+        "Backend request failed: /api/partners/daisys-chicken-ice-cream/reward-pass returned 403 Forbidden. Student rewards are only for verified URI student accounts.",
+      ),
+    ).toBe("Student rewards are only for verified URI student accounts.");
+  });
+
+  it("falls back to canned copy when the message is only a diagnostic", () => {
+    expect(
+      sanitizeRewardPassIssueMessage("error", "Backend request failed: /api/partners/x/reward-pass returned 500 Internal Server Error."),
+    ).toBe(REWARD_ISSUE_COPY.error.body);
+  });
+
+  it("keeps a specific, clean server denial", () => {
+    expect(
+      sanitizeRewardPassIssueMessage("ineligible", "Switch to your personal student profile to use student rewards."),
+    ).toBe("Switch to your personal student profile to use student rewards.");
   });
 });
 

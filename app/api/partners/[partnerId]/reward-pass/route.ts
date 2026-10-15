@@ -1,8 +1,10 @@
 import { ApiError, fail, ok } from "@/lib/server/http";
-import { issueStudentRewardPass } from "@/lib/server/partnerRewards";
+import { issueReviewDemoRewardPass, issueStudentRewardPass } from "@/lib/server/partnerRewards";
+import { viewerCanSeeReviewDemo } from "@/lib/server/reviewDemo";
 import { enforceRateLimit } from "@/lib/server/security";
 import { createAdminClient, requireAuthUser } from "@/lib/server/supabase";
-import type { RewardPassResponse } from "@/lib/partners/rewardAccess";
+import { isReviewDemoPartnerId } from "@/lib/partners/reviewDemoPartner";
+import { REWARD_ERROR_CODES, type RewardPassResponse } from "@/lib/partners/rewardAccess";
 
 const PARTNER_ID = /^[a-z0-9-]{1,80}$/;
 
@@ -21,7 +23,7 @@ async function readRefreshFlag(request: Request): Promise<boolean> {
  */
 export async function POST(request: Request, context: { params: Promise<{ partnerId: string }> }) {
   try {
-    const { user } = await requireAuthUser(request);
+    const { user, userClient } = await requireAuthUser(request);
     const { partnerId } = await context.params;
     if (!PARTNER_ID.test(partnerId)) throw new ApiError(400, "Invalid partner.", "INVALID_PARTNER_ID");
     enforceRateLimit({
@@ -31,13 +33,21 @@ export async function POST(request: Request, context: { params: Promise<{ partne
       windowMs: 60_000,
       message: "Too many reward requests. Wait a moment and try again.",
     });
-    const refresh = await readRefreshFlag(request);
-    const pass = await issueStudentRewardPass({
-      admin: createAdminClient(),
-      user: { id: user.id, email: user.email ?? null },
-      partnerId,
-      refresh,
-    });
+    let pass;
+    if (isReviewDemoPartnerId(partnerId)) {
+      if (!(await viewerCanSeeReviewDemo(userClient))) {
+        throw new ApiError(404, "This business isn\u2019t a CampusQuest partner.", REWARD_ERROR_CODES.partnerNotFound);
+      }
+      pass = issueReviewDemoRewardPass();
+    } else {
+      const refresh = await readRefreshFlag(request);
+      pass = await issueStudentRewardPass({
+        admin: createAdminClient(),
+        user: { id: user.id, email: user.email ?? null },
+        partnerId,
+        refresh,
+      });
+    }
     const response = ok<RewardPassResponse>({ pass });
     response.headers.set("Cache-Control", "no-store");
     return response;

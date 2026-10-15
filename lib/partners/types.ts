@@ -115,6 +115,8 @@ export type Partner = {
   directionsUrl: string | null;
   instagramUrl: string | null;
   isActive: boolean;
+  /** Fictional App Review partner: never a real business, passes are watermarked and never logged. */
+  isReviewDemo?: boolean;
 };
 
 export type PartnersResponse = { partners: Partner[] };
