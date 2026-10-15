@@ -22,6 +22,7 @@ export function mapEventPinToFeedEvent(pin: MapEventPin): FeedEvent {
         startsAt: pin.startsAt,
         endsAt: pin.endsAt,
         organizationName: pin.organizationName,
+        organizationId: pin.organizationId ?? null,
         imageUrl: pin.imageUrl ?? null,
         eventUrl: pin.eventUrl,
         ticketUrl: pin.ticketUrl ?? null,
@@ -49,7 +50,7 @@ export function mapEventPinToFeedEvent(pin: MapEventPin): FeedEvent {
       endsAt: pin.endsAt,
       isPaid: false,
       hostOrganization: pin.organizationName
-        ? { id: "", name: pin.organizationName, logo_url: null }
+        ? { id: pin.organizationId?.trim() || "", name: pin.organizationName, logo_url: null }
         : null,
       rsvpCount: 0,
       myRsvpStatus: null,
@@ -70,4 +71,34 @@ export function singleLiveEventForMarkerTap(
   if (group.quests.length > 0 || group.qrCodes.length > 0) return null;
   const live = filterLiveOrUpcomingMapEvents(group.events, now);
   return live.length === 1 ? live[0] : null;
+}
+
+export type GroupedMarkerTap =
+  | { kind: "event-detail"; pin: MapEventPin; markerId: string }
+  | { kind: "location-sheet"; markerId: string; realmLocationId: string | null };
+
+/**
+ * Demo campus events attach to landmarks (sheet). A standalone supplementary
+ * pin with exactly one live event opens Event Detail, including org-hosted demos.
+ */
+export function resolveGroupedMarkerTap(
+  group: GroupedMapLocation,
+  now: Date = new Date(),
+): GroupedMarkerTap {
+  if (group.attachToLandmark && group.realmLocationId) {
+    return {
+      kind: "location-sheet",
+      markerId: group.realmLocationId,
+      realmLocationId: group.realmLocationId,
+    };
+  }
+  const single = singleLiveEventForMarkerTap(group, now);
+  if (single) {
+    return { kind: "event-detail", pin: single, markerId: group.groupKey };
+  }
+  return {
+    kind: "location-sheet",
+    markerId: group.groupKey,
+    realmLocationId: group.realmLocationId,
+  };
 }

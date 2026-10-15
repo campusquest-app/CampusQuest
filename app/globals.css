@@ -13431,7 +13431,12 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   --cq-realm-map-controls-clearance: calc(
     var(--cq-realm-top-chrome-offset, 10px) + 0.2rem + 2.75rem + 0.45rem + 2.125rem + 0.55rem
   );
-  margin: var(--cq-realm-map-controls-clearance) max(0.4rem, env(safe-area-inset-right, 0px)) 0 0;
+  /* Transform, not top margin: Google sizes the RIGHT_TOP slot to the margin box.
+     A clearance margin stretched that slot over the map and, on iOS WKWebView,
+     pointer-events:none on the wrapper swallowed marker taps. */
+  margin: 0 max(0.4rem, env(safe-area-inset-right, 0px)) 0 0;
+  transform: translateY(var(--cq-realm-map-controls-clearance));
+  transform-origin: top right;
   pointer-events: none;
   position: relative;
   z-index: 8;
@@ -13465,12 +13470,14 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 /*
- * Google wraps each MapControl in an absolutely positioned slot that sizes to the
- * control's margin box. The clearance margin above stretches the RIGHT_TOP slot
- * over the header bell, so the slot must stay click-through; only the stack is hit.
+ * Keep Google's control slot sized to the stack (not a full-map overlay).
+ * pointer-events none here is a fallback; markers live in overlayMouseTarget
+ * and must remain tappable on iOS WKWebView.
  */
 .cq-realm-map-canvas .gmnoprint:has(.cq-realm-map-controls),
 .cq-realm-map-canvas div:has(> .cq-realm-map-controls) {
+  width: auto !important;
+  height: auto !important;
   pointer-events: none;
 }
 

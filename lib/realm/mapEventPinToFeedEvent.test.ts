@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { GroupedMapLocation, MapEventPin } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount } from "@/lib/mapLocationGroups";
-import { mapEventPinToFeedEvent, singleLiveEventForMarkerTap } from "@/lib/realm/mapEventPinToFeedEvent";
+import {
+  mapEventPinToFeedEvent,
+  resolveGroupedMarkerTap,
+  singleLiveEventForMarkerTap,
+} from "@/lib/realm/mapEventPinToFeedEvent";
 
 const NOW = new Date("2026-07-09T22:00:00.000Z");
 
@@ -71,6 +75,22 @@ describe("mapEventPinToFeedEvent", () => {
     expect(item.event.title).toBe("Club Fair");
     expect(item.event.isCancelled).toBe(true);
   });
+
+  it("passes organization id through so Hosted by can open org detail", () => {
+    const item = mapEventPinToFeedEvent(
+      pin({
+        organizationName: "[Demo] URI Hiking Club",
+        organizationId: "d3e00000-0000-4000-8000-00000000a001",
+      }),
+    );
+    expect(item.kind).toBe("campus");
+    if (item.kind !== "campus") return;
+    expect(item.event.hostOrganization).toEqual({
+      id: "d3e00000-0000-4000-8000-00000000a001",
+      name: "[Demo] URI Hiking Club",
+      logo_url: null,
+    });
+  });
 });
 
 describe("singleLiveEventForMarkerTap", () => {
@@ -118,6 +138,23 @@ describe("singleLiveEventForMarkerTap", () => {
         NOW,
       ),
     ).toBeNull();
+  });
+
+  it("routes landmark-attached demo groups to the location sheet tap id", () => {
+    const tap = resolveGroupedMarkerTap(
+      group({
+        groupKey: "the-quad",
+        realmLocationId: "the-quad",
+        attachToLandmark: true,
+        events: [pin({ id: "demo-hike", title: "[Demo] Sunset Hike Kickoff" })],
+      }),
+      NOW,
+    );
+    expect(tap).toEqual({
+      kind: "location-sheet",
+      markerId: "the-quad",
+      realmLocationId: "the-quad",
+    });
   });
 });
 

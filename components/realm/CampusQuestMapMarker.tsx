@@ -45,7 +45,9 @@ export function CampusQuestMapMarker({
     div.style.position = "absolute";
     div.style.transform = "translate(-50%, -100%)";
     div.style.cursor = "pointer";
-    div.style.touchAction = "none";
+    // manipulation (not none): iOS WKWebView often never synthesizes click on OverlayView
+    // when touch-action is none. Drag still calls preventDefault on pointerdown.
+    div.style.touchAction = "manipulation";
     div.style.overflow = "visible";
     div.setAttribute("data-map-marker", "true");
     div.setAttribute("data-no-drawer-swipe", "true");
@@ -78,6 +80,13 @@ export function CampusQuestMapMarker({
     setContainer(div);
 
     const drag = { active: false, pointerId: -1, moved: false, latLng: null as google.maps.LatLng | null };
+    let lastTapAt = 0;
+    const fireTap = () => {
+      const now = Date.now();
+      if (now - lastTapAt < 400) return;
+      lastTapAt = now;
+      onClickRef.current?.();
+    };
 
     const containerLatLng = (clientX: number, clientY: number): google.maps.LatLng | null => {
       const projection = overlay.getProjection();
@@ -129,8 +138,17 @@ export function CampusQuestMapMarker({
         onDragEndRef.current?.(latLng.lat(), latLng.lng());
       } else {
         // A press without movement counts as a tap (select in edit mode).
-        onClickRef.current?.();
+        fireTap();
       }
+    };
+
+    const onPointerUpTap = (e: PointerEvent) => {
+      if (draggableRef.current) {
+        endDrag(e);
+        return;
+      }
+      e.stopPropagation();
+      fireTap();
     };
 
     const onClickDom = (e: MouseEvent) => {
@@ -138,19 +156,19 @@ export function CampusQuestMapMarker({
       // (admin tap-to-place must not fire when tapping a pin).
       e.stopPropagation();
       if (draggableRef.current) return; // handled by endDrag tap path
-      onClickRef.current?.();
+      fireTap();
     };
 
     div.addEventListener("pointerdown", onPointerDown);
     div.addEventListener("pointermove", onPointerMove);
-    div.addEventListener("pointerup", endDrag);
+    div.addEventListener("pointerup", onPointerUpTap);
     div.addEventListener("pointercancel", endDrag);
     div.addEventListener("click", onClickDom);
 
     return () => {
       div.removeEventListener("pointerdown", onPointerDown);
       div.removeEventListener("pointermove", onPointerMove);
-      div.removeEventListener("pointerup", endDrag);
+      div.removeEventListener("pointerup", onPointerUpTap);
       div.removeEventListener("pointercancel", endDrag);
       div.removeEventListener("click", onClickDom);
       overlay.setMap(null);

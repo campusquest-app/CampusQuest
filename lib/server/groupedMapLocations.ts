@@ -480,6 +480,7 @@ type CampusEventMapRow = {
   ends_at: string | null;
   location_name: string | null;
   is_cancelled: boolean | null;
+  host_organization_id: string | null;
   student_organizations: { name?: string } | { name?: string }[] | null;
 };
 
@@ -508,8 +509,10 @@ function addCampusEventRows(buckets: Map<string, GroupBucket>, rows: CampusEvent
       startsAt,
       endsAt,
       organizationName: org?.name ?? null,
+      organizationId: row.host_organization_id ? String(row.host_organization_id) : null,
       eventUrl: null,
       cancelled: Boolean(row.is_cancelled),
+      locationText: locationName || null,
     });
   }
 }

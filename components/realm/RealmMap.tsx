@@ -48,7 +48,7 @@ import { saveUrinvolvedPlacement } from "@/lib/client/urinvolvedMapPlacementsCli
 import type { GroupedMapLocation, MapEventPin } from "@/lib/mapLocationGroups";
 import { mapLocationActivityCount, mapLocationQuestCount } from "@/lib/mapLocationGroups";
 import { filterLiveOrUpcomingMapEvents } from "@/lib/realm/eventVisibility";
-import { mapEventPinToFeedEvent, singleLiveEventForMarkerTap } from "@/lib/realm/mapEventPinToFeedEvent";
+import { mapEventPinToFeedEvent, resolveGroupedMarkerTap } from "@/lib/realm/mapEventPinToFeedEvent";
 import { EventDetailScreen } from "@/components/events/EventDetailScreen";
 import { buildUrinvolvedEditPinsFromGroups, type UrinvolvedEditPin } from "@/lib/realm/urinvolvedEditPins";
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
@@ -553,8 +553,8 @@ export function RealmMap({
 
   const handleTapSupplementary = useCallback(
     (group: GroupedMapLocation) => {
-      const single = singleLiveEventForMarkerTap(group);
-      if (single) {
+      const action = resolveGroupedMarkerTap(group);
+      if (action.kind === "event-detail") {
         if (editMode) return;
         const resolved = resolveSupplementaryTap({ group, source: "openSupplementaryEvent" });
         if (!resolved.ok) {
@@ -567,7 +567,7 @@ export function RealmMap({
           setSelectedMapContent(normalizeGroupedMapContent(group));
           setActiveMarkerId(group.groupKey);
           setSheetOpen(false);
-          setSelectedEventPin(single);
+          setSelectedEventPin(action.pin);
           setMarkerNotice(null);
         } catch (exception) {
           logFailedMarkerClick({
@@ -1725,6 +1725,7 @@ export function RealmMap({
           <EventDetailScreen
             item={mapEventPinToFeedEvent(selectedEventPin)}
             onBack={closeEventDetail}
+            onOpenOrganization={onOpenOrganization}
           />
         ) : null}
       </RealmMarkerErrorBoundary>

@@ -50,10 +50,16 @@ describe("Realm map control placement", () => {
     expect(css).toMatch(/\.cq-realm-float-btn--campus[\s\S]*?rgba\(103, 232, 249/);
   });
 
-  it("keeps the Google control slot click-through so it cannot cover the header bell", () => {
+  it("offsets controls with transform so the Google slot does not cover marker taps", () => {
     expect(css).toMatch(
-      /\.cq-realm-map-canvas div:has\(> \.cq-realm-map-controls\)\s*\{\s*pointer-events:\s*none;/,
+      /\.cq-realm-map-controls\s*\{[^}]*transform:\s*translateY\(var\(--cq-realm-map-controls-clearance\)\)/,
+    );
+    expect(css).not.toMatch(
+      /\.cq-realm-map-controls\s*\{[^}]*margin:\s*var\(--cq-realm-map-controls-clearance\)/,
     );
     expect(css).toMatch(/\.cq-realm-map-controls-stack\s*\{[^}]*pointer-events:\s*auto;/);
+    expect(css).toMatch(
+      /\.cq-realm-map-canvas div:has\(> \.cq-realm-map-controls\)\s*\{[^}]*width:\s*auto\s*!important/,
+    );
   });
 });

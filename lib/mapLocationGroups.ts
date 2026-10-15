@@ -34,6 +34,8 @@ export type MapEventPin = {
   startsAt: string;
   endsAt: string | null;
   organizationName: string | null;
+  /** Campus org id when the event is hosted by an organization. */
+  organizationId?: string | null;
   eventUrl: string | null;
   /** Imported provider key (`urinvolved`, `athletics`, …). Null for native campus events. */
   source?: string | null;
