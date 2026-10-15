@@ -234,9 +234,20 @@ function directKeyFor(a: string, b: string): string {
 }
 
 function randomPassword(): string {
-  const bytes = new Uint8Array(32);
+  const lower = "abcdefghijklmnopqrstuvwxyz";
+  const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const digits = "0123456789";
+  const special = "!@#$%^&*()-_=+[]{}";
+  const all = lower + upper + digits + special;
+  const pick = (alphabet: string) => alphabet[globalThis.crypto.getRandomValues(new Uint32Array(1))[0] % alphabet.length];
+  const bytes = new Uint8Array(28);
   globalThis.crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const chars = [pick(lower), pick(upper), pick(digits), pick(special), ...Array.from(bytes, (byte) => all[byte % all.length])];
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = globalThis.crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join("");
 }
 
 function must<T>(result: { data: T; error: { message?: string } | null }, step: string): T {
