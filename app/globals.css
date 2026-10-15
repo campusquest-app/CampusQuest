@@ -22574,6 +22574,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   position: relative;
   z-index: 10;
   min-width: 44px;
+  min-height: 44px;
   overflow: visible;
   will-change: transform, opacity;
   transform: translate3d(0, 0, 0);
@@ -22581,6 +22582,8 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   -webkit-backface-visibility: hidden;
   transition: transform 0.2s ease;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  pointer-events: auto;
 }
 
 .realm-marker::after,
@@ -22593,6 +22596,9 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   width: 44px;
   height: 44px;
   transform: translateX(-50%);
+  /* iOS WKWebView skips hit-testing empty transparent pseudo-elements. */
+  pointer-events: auto;
+  background: rgba(0, 0, 0, 0.001);
 }
 
 .marker-stack,

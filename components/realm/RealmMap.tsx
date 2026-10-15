@@ -322,9 +322,19 @@ export function RealmMap({
         });
         setSelectedUrinvolvedEventId(externalEventId);
         setEditorSelectedId(null);
+        setSaveMessageTone("success");
+        setSaveMessage("Event position saved.");
         await reloadMapGroups();
+        window.setTimeout(() => setSaveMessage(null), 4000);
       } catch (error) {
         console.error("[cq:urinvolved-edit] drag save failed", error);
+        setSaveMessageTone("error");
+        setSaveMessage(
+          error instanceof Error
+            ? `Could not save event position: ${error.message}`
+            : "Could not save event position.",
+        );
+        window.setTimeout(() => setSaveMessage(null), 5000);
       }
     },
     [reloadMapGroups],
@@ -429,6 +439,9 @@ export function RealmMap({
     return () => document.documentElement.removeAttribute("data-realm-map-edit");
   }, [editMode]);
 
+  const positionsFetchGenRef = useRef(0);
+  const lastLocalSaveAtRef = useRef(0);
+
   const applyResolvedPositions = useCallback((overrides: MarkerPositionMap) => {
     setDraftPositions(resolveMarkerPositions(overrides));
   }, []);
@@ -437,6 +450,7 @@ export function RealmMap({
     if (!isActive) return undefined;
     let cancelled = false;
     const controller = new AbortController();
+    const fetchGen = ++positionsFetchGenRef.current;
 
     const cached = loadServerMarkerPositionsCache();
     if (cached) {
@@ -447,6 +461,9 @@ export function RealmMap({
       try {
         const remote = await fetchRealmMarkerPositions({ signal: controller.signal });
         if (cancelled || controller.signal.aborted) return;
+        // Ignore stale responses that finish after a newer save or newer fetch.
+        if (fetchGen !== positionsFetchGenRef.current) return;
+        if (lastLocalSaveAtRef.current > 0 && Date.now() - lastLocalSaveAtRef.current < 2_500) return;
         saveServerMarkerPositionsCache(remote.positions, {
           updatedAt: remote.updatedAt,
           updatedBy: remote.updatedBy,
@@ -468,8 +485,13 @@ export function RealmMap({
 
   const getSavedPositions = useCallback((): MarkerPositionMap => {
     const cached = loadServerMarkerPositionsCache();
-    if (cached?.positions) return resolveMarkerPositions(cached.positions);
-    return resolveMarkerPositions(loadMarkerPositionOverrides());
+    const local = loadMarkerPositionOverrides();
+    // Prefer the more complete of server cache vs local overrides so a failed
+    // server write that still updated localStorage is not discarded on exit.
+    if (cached?.positions && Object.keys(cached.positions).length > 0) {
+      return resolveMarkerPositions({ ...local, ...cached.positions });
+    }
+    return resolveMarkerPositions(local);
   }, []);
 
   const showMarkerNotice = useCallback((message: string) => {
@@ -805,6 +827,44 @@ export function RealmMap({
     setDraftPositions(getSavedPositions());
   }, [isAdmin, getSavedPositions]);
 
+  const handleSave = useCallback(async () => {
+    if (!isAdmin || savePending) return;
+    const positions = { ...draftPositions };
+    setSavePending(true);
+    setSaveMessage(null);
+    try {
+      const saved = await saveRealmMarkerPositionsToServer(positions);
+      lastLocalSaveAtRef.current = Date.now();
+      positionsFetchGenRef.current += 1;
+      saveServerMarkerPositionsCache(saved.positions, {
+        updatedAt: saved.updatedAt,
+        updatedBy: saved.updatedBy,
+      });
+      // Keep the just-saved coords authoritative in React state (do not fall back
+      // to catalog geo that would visually revert the pin on exit/edit).
+      const resolved = resolveMarkerPositions(saved.positions);
+      setDraftPositions(resolved);
+      setSaveMessageTone("success");
+      setSaveMessage("Saved — marker positions updated for all students.");
+      if (process.env.NODE_ENV === "development") {
+        console.info("[Realm Marker Editor] saved to server:", saved.positions);
+      }
+    } catch (e) {
+      // Do not claim success — local cache is a draft fallback only.
+      lastLocalSaveAtRef.current = Date.now();
+      saveMarkerPositionOverrides(positions);
+      setSaveMessageTone("error");
+      setSaveMessage(
+        e instanceof Error
+          ? `Could not save positions: ${e.message}`
+          : "Could not save positions — server unreachable.",
+      );
+    } finally {
+      setSavePending(false);
+      window.setTimeout(() => setSaveMessage(null), 5000);
+    }
+  }, [draftPositions, isAdmin, savePending]);
+
   const handleExitEdit = useCallback(() => {
     setEditMode(false);
     setEditorSelectedId(null);
@@ -813,44 +873,22 @@ export function RealmMap({
     setSaveMessage(null);
     setSaveMessageTone("success");
     setPlacement(resetMarkerPlacement());
+    // After a successful save, draft already matches server cache. Reloading
+    // from cache (not catalog defaults) prevents visual revert on exit.
     setDraftPositions(getSavedPositions());
   }, [getSavedPositions]);
 
-  const handleSave = useCallback(async () => {
-    if (!isAdmin || savePending) return;
-    const positions = { ...draftPositions };
-    setSavePending(true);
-    setSaveMessage(null);
-    try {
-      const saved = await saveRealmMarkerPositionsToServer(positions);
-      saveServerMarkerPositionsCache(saved.positions, {
-        updatedAt: saved.updatedAt,
-        updatedBy: saved.updatedBy,
-      });
-      setDraftPositions(resolveMarkerPositions(saved.positions));
-      setSaveMessageTone("success");
-      setSaveMessage("Saved — marker positions updated for all students.");
-      if (process.env.NODE_ENV === "development") {
-        console.info("[Realm Marker Editor] saved to server:", saved.positions);
-      }
-    } catch (e) {
-      saveMarkerPositionOverrides(positions);
-      setSaveMessageTone("error");
-      setSaveMessage(
-        e instanceof Error
-          ? `Saved locally only — server save failed: ${e.message}`
-          : "Saved locally only — could not reach server.",
-      );
-    } finally {
-      setSavePending(false);
-      window.setTimeout(() => setSaveMessage(null), 5000);
-    }
-  }, [draftPositions, isAdmin, savePending]);
-
   const updateMarkerPosition = useCallback((id: RealmLocationId, x: number, y: number) => {
+    const geo = realmMapPercentToGeo(x, y);
     setDraftPositions((prev) => ({
       ...prev,
-      [id]: { ...prev[id], x: round2(x), y: round2(y) },
+      [id]: {
+        ...prev[id],
+        x: round2(x),
+        y: round2(y),
+        lat: round6(geo.latitude),
+        lng: round6(geo.longitude),
+      },
     }));
   }, []);
 
@@ -868,19 +906,31 @@ export function RealmMap({
     }));
   }, []);
 
-  /** Landmark geo positions — admin overrides first, then canonical campus coordinates. */
+  /** Landmark geo positions — saved overrides first, then catalog, then percent-derived. */
   const geoPositions = useMemo(() => {
     const out: Record<string, { lat: number; lng: number }> = {};
     for (const location of catalogRealmLocations) {
       const draft = draftPositions[location.id];
       const catalogRow = catalogRows.find((row) => row.slug === location.id);
-      out[location.id] =
-        draft && typeof draft.lat === "number" && typeof draft.lng === "number"
-          ? { lat: draft.lat, lng: draft.lng }
-          : {
-              lat: catalogRow?.latitude ?? REALM_LOCATION_GEO[location.id as keyof typeof REALM_LOCATION_GEO]?.latitude ?? 41.4871,
-              lng: catalogRow?.longitude ?? REALM_LOCATION_GEO[location.id as keyof typeof REALM_LOCATION_GEO]?.longitude ?? -71.5305,
-            };
+      if (draft && typeof draft.lat === "number" && typeof draft.lng === "number") {
+        out[location.id] = { lat: draft.lat, lng: draft.lng };
+        continue;
+      }
+      const catalogLat =
+        catalogRow?.latitude ?? REALM_LOCATION_GEO[location.id as keyof typeof REALM_LOCATION_GEO]?.latitude;
+      const catalogLng =
+        catalogRow?.longitude ?? REALM_LOCATION_GEO[location.id as keyof typeof REALM_LOCATION_GEO]?.longitude;
+      if (typeof catalogLat === "number" && typeof catalogLng === "number") {
+        out[location.id] = { lat: catalogLat, lng: catalogLng };
+        continue;
+      }
+      // Percent-only override (legacy fantasy-map edit) → approximate lat/lng.
+      if (draft && typeof draft.x === "number" && typeof draft.y === "number") {
+        const geo = realmMapPercentToGeo(draft.x, draft.y);
+        out[location.id] = { lat: geo.latitude, lng: geo.longitude };
+        continue;
+      }
+      out[location.id] = { lat: 41.4871, lng: -71.5305 };
     }
     return out;
   }, [catalogRealmLocations, catalogRows, draftPositions]);

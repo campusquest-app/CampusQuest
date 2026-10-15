@@ -19,4 +19,22 @@ describe("shouldFireMapMarkerTap", () => {
       ),
     ).toBe(false);
   });
+
+  it("rejects long presses that exceed the tap window", () => {
+    expect(
+      shouldFireMapMarkerTap(
+        { x: 10, y: 10, t: 1000 },
+        { x: 10, y: 10, now: 2000 },
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts small finger jitter within the tap threshold", () => {
+    expect(
+      shouldFireMapMarkerTap(
+        { x: 100, y: 200, t: 500 },
+        { x: 108, y: 205, now: 720 },
+      ),
+    ).toBe(true);
+  });
 });
