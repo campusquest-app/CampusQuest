@@ -1,7 +1,27 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
+import {
+  BadgeCheck,
+  Bell,
+  CalendarDays,
+  Megaphone,
+  MessageCircle,
+  ShieldCheck,
+  Sparkles,
+  Tag,
+  UserPlus,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { fetchAuthed, patchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import {
+  buildNotificationDisplayItems,
+  formatNotificationTime,
+  notificationIconKind,
+  type NotificationFilter,
+  type NotificationIconKind,
+} from "@/lib/client/notificationCenterModel";
 import {
   avatarFromConnectionProfile,
   respondToConnectionRequest,
@@ -53,6 +73,19 @@ function notificationHasDestination(notification: NotificationItem): boolean {
   return Boolean(notification.actorId);
 }
 
+const NOTIFICATION_ICONS: Record<NotificationIconKind, LucideIcon> = {
+  message: MessageCircle,
+  social: UserPlus,
+  event: CalendarDays,
+  announcement: Megaphone,
+  organization: Users,
+  safety: ShieldCheck,
+  verification: BadgeCheck,
+  marketplace: Tag,
+  quad: Sparkles,
+  general: Bell,
+};
+
 export function NotificationsCenter({
   onUnreadCountChange,
   personalization: _personalization,
@@ -79,8 +112,22 @@ export function NotificationsCenter({
   const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
   const [respondingTagKey, setRespondingTagKey] = useState<string | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
+  const [filter, setFilter] = useState<NotificationFilter>("all");
+  const [serverUnreadCount, setServerUnreadCount] = useState(0);
+  const serverUnreadRef = useRef(0);
 
-  const unreadCount = notifications.filter((notification) => !notification.readAt).length;
+  const unreadCount = Math.max(
+    serverUnreadCount,
+    notifications.filter((notification) => !notification.readAt).length,
+  );
+
+  /** The badge mirrors the server total (the list only holds the newest 80 rows). */
+  function reportUnread(next: number) {
+    const safe = Math.max(0, next);
+    serverUnreadRef.current = safe;
+    setServerUnreadCount(safe);
+    onUnreadCountChange?.(safe);
+  }
 
   async function loadNotifications(options?: { silent?: boolean }) {
     if (!options?.silent) {
@@ -90,7 +137,8 @@ export function NotificationsCenter({
     try {
       const data = await fetchAuthed<{ notifications: NotificationItem[]; unreadCount: number }>("/api/notifications?limit=80");
       setNotifications(data.notifications ?? []);
-      onUnreadCountChange?.(data.unreadCount ?? 0);
+      reportUnread(Number(data.unreadCount ?? 0));
+      if (options?.silent) setError(null);
     } catch (loadError) {
       if (!options?.silent) {
         setError(loadError instanceof Error ? loadError.message : "Could not load notifications.");
@@ -126,30 +174,35 @@ export function NotificationsCenter({
     return () => window.clearTimeout(tid);
   }, [actionToast]);
 
-  const sortedNotifications = useMemo(() => {
-    return [...notifications].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-  }, [notifications]);
+  const displayItems = useMemo(
+    () => buildNotificationDisplayItems(notifications, filter),
+    [notifications, filter],
+  );
 
-  async function markRead(notificationId: string) {
-    try {
-      await postAuthed(`/api/notifications/${notificationId}/read`, {});
-      setNotifications((prev) => {
-        const next = prev.map((notification) =>
-          notification.id === notificationId ? { ...notification, readAt: new Date().toISOString() } : notification,
-        );
-        onUnreadCountChange?.(next.filter((n) => !n.readAt).length);
-        return next;
-      });
-    } catch (markError) {
-      setError(markError instanceof Error ? markError.message : "Could not mark notification as read.");
+  async function markRead(notificationIds: string | string[]) {
+    const ids = Array.from(new Set(Array.isArray(notificationIds) ? notificationIds : [notificationIds]));
+    if (ids.length === 0) return;
+    const results = await Promise.allSettled(
+      ids.map((id) => postAuthed(`/api/notifications/${id}/read`, {})),
+    );
+    const readIds = new Set(ids.filter((_, index) => results[index].status === "fulfilled"));
+    if (readIds.size > 0) {
+      const readAt = new Date().toISOString();
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          readIds.has(notification.id) && !notification.readAt ? { ...notification, readAt } : notification,
+        ),
+      );
+      reportUnread(serverUnreadRef.current - readIds.size);
+      emitSocialSync({ source: "notifications" });
+    }
+    if (readIds.size < ids.length) {
+      setActionToast("Could not mark as read. Try again.");
     }
   }
 
   async function toggleFavorite(notificationId: string, next: boolean) {
     setTogglingId(notificationId);
-    setError(null);
     try {
       const updated = await postAuthed<
         Omit<NotificationItem, "relatedEntityType" | "relatedEntityId"> & {
@@ -172,7 +225,7 @@ export function NotificationsCenter({
         ),
       );
     } catch (favoriteError) {
-      setError(favoriteError instanceof Error ? favoriteError.message : "Could not update favorite.");
+      setActionToast(favoriteError instanceof Error ? favoriteError.message : "Could not update favorite.");
     } finally {
       setTogglingId(null);
     }
@@ -180,20 +233,20 @@ export function NotificationsCenter({
 
   async function markAllRead() {
     setMarkingAll(true);
-    setError(null);
     try {
       await postAuthed("/api/notifications/read-all", {});
-      setNotifications((prev) => {
-        const next = prev.map((notification) =>
+      const readAt = new Date().toISOString();
+      setNotifications((prev) =>
+        prev.map((notification) =>
           notification.type === "friend_request"
             ? notification
-            : { ...notification, readAt: notification.readAt ?? new Date().toISOString() },
-        );
-        onUnreadCountChange?.(next.filter((n) => !n.readAt).length);
-        return next;
-      });
+            : { ...notification, readAt: notification.readAt ?? readAt },
+        ),
+      );
+      emitSocialSync({ source: "notifications" });
+      await loadNotifications({ silent: true });
     } catch (markAllError) {
-      setError(markAllError instanceof Error ? markAllError.message : "Could not mark all as read.");
+      setActionToast(markAllError instanceof Error ? markAllError.message : "Could not mark all as read.");
     } finally {
       setMarkingAll(false);
     }
@@ -205,26 +258,22 @@ export function NotificationsCenter({
   ) {
     const requestId = notification.friendRequestId ?? notification.relatedEntityId;
     if (!requestId) {
-      setError("This follow request is no longer available.");
+      setActionToast("This follow request is no longer available.");
       return;
     }
     setRespondingRequestId(requestId);
-    setError(null);
     try {
       await respondToConnectionRequest(requestId, action);
       const username = notification.actorUsername ?? "this student";
       setActionToast(
         action === "accept" ? `You are now following ${username}` : "Follow request declined",
       );
-      setNotifications((prev) => {
-        const next = prev.filter((n) => n.id !== notification.id);
-        onUnreadCountChange?.(next.filter((n) => !n.readAt).length);
-        return next;
-      });
+      setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
+      if (!notification.readAt) reportUnread(serverUnreadRef.current - 1);
       emitSocialSync({ source: "notifications" });
     } catch (respondError) {
-      setError(respondError instanceof Error ? respondError.message : "Could not respond to follow request.");
-      await loadNotifications();
+      setActionToast(respondError instanceof Error ? respondError.message : "Could not respond to follow request.");
+      await loadNotifications({ silent: true });
     } finally {
       setRespondingRequestId(null);
     }
@@ -236,12 +285,11 @@ export function NotificationsCenter({
   ) {
     const postId = notification.relatedEntityId;
     if (!postId) {
-      setError("This tag request is no longer available.");
+      setActionToast("This tag request is no longer available.");
       return;
     }
     const key = `${notification.id}:${action}`;
     setRespondingTagKey(key);
-    setError(null);
     try {
       // Resolve the pending tag for this post + viewer, then approve/reject.
       const pending = await fetchAuthed<{ tags: { tagId: string; postId: string }[] }>("/api/me/pending-tags");
@@ -253,15 +301,11 @@ export function NotificationsCenter({
       }
       await patchAuthed(`/api/me/pending-tags/${match.tagId}`, { action });
       setActionToast(action === "approve" ? "Tag approved" : "Tag rejected");
-      await markRead(notification.id);
-      setNotifications((prev) => {
-        const next = prev.filter((n) => n.id !== notification.id);
-        onUnreadCountChange?.(next.filter((n) => !n.readAt).length);
-        return next;
-      });
+      if (!notification.readAt) await markRead(notification.id);
+      setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
       emitSocialSync({ source: "inbox" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update tag.");
+      setActionToast(err instanceof Error ? err.message : "Could not update tag.");
     } finally {
       setRespondingTagKey(null);
     }
@@ -269,23 +313,44 @@ export function NotificationsCenter({
 
   const isInbox = embedded && theme === "inbox";
 
+  const filterControl = (
+    <div
+      role="group"
+      aria-label="Filter notifications"
+      className={`cq-notif-filter ${isInbox ? "" : "cq-notif-filter--light"}`}
+    >
+      {(["all", "unread"] as const).map((value) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={filter === value}
+          onClick={() => setFilter(value)}
+          className={`cq-notif-filter__option ${filter === value ? "cq-notif-filter__option--active" : ""}`}
+        >
+          {value === "all" ? "All" : "Unread"}
+          {value === "unread" && unreadCount > 0 ? (
+            <span className="cq-notif-filter__count">{unreadCount > 99 ? "99+" : unreadCount}</span>
+          ) : null}
+        </button>
+      ))}
+    </div>
+  );
+
   const headerRow = isInbox ? (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
-      <p className="text-xs text-white/45">{unreadCount === 0 ? "All caught up" : `${unreadCount} unread`}</p>
+      {filterControl}
       <button
         type="button"
         disabled={markingAll || unreadCount === 0}
         onClick={() => void markAllRead()}
-        className="text-xs font-semibold text-[#0095f6] disabled:opacity-40"
+        className="min-h-[44px] px-1 text-xs font-semibold text-[#0095f6] disabled:opacity-40"
       >
         {markingAll ? "Marking…" : "Mark all read"}
       </button>
     </div>
   ) : embedded ? (
     <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-cq-border">
-      <p className="text-xs text-cq-muted">
-        {unreadCount === 0 ? "All caught up" : `${unreadCount} unread`}
-      </p>
+      {filterControl}
       <button
         type="button"
         disabled={markingAll || unreadCount === 0}
@@ -296,11 +361,12 @@ export function NotificationsCenter({
       </button>
     </div>
   ) : (
-    <div className="card p-4 flex items-center justify-between gap-3">
+    <div className="card p-4 flex flex-wrap items-center justify-between gap-3">
       <div>
         <h3 className="font-display font-semibold text-cq-foreground">Notifications</h3>
         <p className="text-xs text-cq-muted mt-1">{unreadCount} unread</p>
       </div>
+      {filterControl}
       <button
         type="button"
         disabled={markingAll || unreadCount === 0}
@@ -375,9 +441,21 @@ export function NotificationsCenter({
           className={embedded ? "mx-4 my-4" : "my-4"}
         />
       ) : null}
+      {!loading && !error && notifications.length > 0 && displayItems.length === 0 ? (
+        <ScreenDataState
+          variant="empty"
+          message="No unread notifications."
+          detail="Everything here has been read."
+          compact
+          className={embedded ? "mx-4 my-4" : "my-4"}
+        />
+      ) : null}
 
       <div className={listWrapClass} {...(isInbox ? { "data-cq-scroll-root": true } : {})}>
-        {sortedNotifications.map((notification) => {
+        {displayItems.map((item) => {
+          const notification = item.notification;
+          const isUnread = item.unreadIds.length > 0;
+          const isGroupedConversation = item.messageCount > 1;
           const isFriendRequest = notification.type === "friend_request";
           const isTagApproval = notification.type === "quad_post_tag_approval";
           const isActorSocial =
@@ -406,18 +484,23 @@ export function NotificationsCenter({
             Boolean(notification.relatedEntityId);
           const canOpenDestination = Boolean(onOpenDestination) && notificationHasDestination(notification);
           const canOpen = canOpenPost || canOpenDestination;
+          const showActorAvatar =
+            isActorSocial || (Boolean(notification.actorId) && Boolean(notification.actorUsername));
+          const TypeIcon = NOTIFICATION_ICONS[notificationIconKind(notification.type)];
 
           return (
             <article
-              key={notification.id}
-              className={`${itemClass(Boolean(notification.readAt))}${canOpen ? " cursor-pointer" : ""}`}
+              key={item.key}
+              data-cq-notification-type={notification.type}
+              className={`${itemClass(!isUnread)}${canOpen ? " cursor-pointer" : ""}`}
               role={canOpen ? "button" : undefined}
               tabIndex={canOpen ? 0 : undefined}
+              aria-label={canOpen ? `${isUnread ? "Unread: " : ""}${notification.title}` : undefined}
               onClick={
                 canOpen
                   ? () => {
                       void (async () => {
-                        if (!notification.readAt) await markRead(notification.id);
+                        if (isUnread) await markRead(item.unreadIds);
                         if (canOpenPost) {
                           onOpenQuadPost?.(notification.relatedEntityId!, {
                             revealPhotoTags:
@@ -448,11 +531,21 @@ export function NotificationsCenter({
               }
             >
               <div className="flex items-start gap-3">
-                {isActorSocial ? (
-                  <div className={`shrink-0 overflow-hidden rounded-full bg-[#262626] ${isInbox ? "h-11 w-11" : "cq-avatar-slot w-10 h-10 border border-cq-border"}`}>
-                    <AvatarDisplay avatar={actorAvatar} fitParent size={isInbox ? 44 : 40} />
-                  </div>
-                ) : null}
+                <div className="relative shrink-0">
+                  {showActorAvatar ? (
+                    <div className={`overflow-hidden rounded-full bg-[#262626] ${isInbox ? "h-11 w-11" : "cq-avatar-slot w-10 h-10 border border-cq-border"}`}>
+                      <AvatarDisplay avatar={actorAvatar} fitParent size={isInbox ? 44 : 40} />
+                    </div>
+                  ) : (
+                    <div
+                      className={`cq-notif-icon cq-notif-icon--${notificationIconKind(notification.type)} ${isInbox ? "h-11 w-11" : "h-10 w-10"}`}
+                      aria-hidden
+                    >
+                      <TypeIcon size={20} strokeWidth={2} />
+                    </div>
+                  )}
+                  {isUnread ? <span className="cq-notif-unread-dot" aria-hidden /> : null}
+                </div>
                 <div className="flex-1 min-w-0 space-y-1.5">
                   <div className="flex items-start justify-between gap-2">
                     <p className={`min-w-0 flex-1 text-sm font-semibold ${isInbox ? "text-white" : "text-cq-foreground"}`}>
@@ -483,14 +576,14 @@ export function NotificationsCenter({
                       >
                         ★
                       </button>
-                      {!notification.readAt && !isFriendRequest ? (
+                      {isUnread && !isFriendRequest ? (
                         <button
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            void markRead(notification.id);
+                            void markRead(item.unreadIds);
                           }}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold ${
+                          className={`min-h-[36px] px-2.5 py-1 rounded-md text-[11px] font-semibold ${
                             isInbox
                               ? "text-[#0095f6]"
                               : "border border-cq-border text-slate-700 hover:bg-slate-100"
@@ -575,7 +668,13 @@ export function NotificationsCenter({
                     </div>
                   ) : null}
                   <p className={`text-[11px] ${isInbox ? "text-white/35" : "text-cq-muted"}`}>
-                    {new Date(notification.createdAt).toLocaleString()}
+                    <time
+                      dateTime={notification.createdAt}
+                      title={new Date(notification.createdAt).toLocaleString()}
+                    >
+                      {formatNotificationTime(notification.createdAt)}
+                    </time>
+                    {isGroupedConversation ? ` · ${item.messageCount} messages` : null}
                   </p>
                 </div>
               </div>
