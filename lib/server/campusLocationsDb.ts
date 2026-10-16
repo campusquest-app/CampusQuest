@@ -213,6 +213,7 @@ export async function updateCampusLocation(args: {
     markerEmoji: string;
     shortLabel: string;
     isActive: boolean;
+    manuallyAdjusted: boolean;
   }>;
   onlyIfCoordinatesMissing?: boolean;
 }): Promise<CampusLocationRecord> {
@@ -236,6 +237,7 @@ export async function updateCampusLocation(args: {
   if (p.markerEmoji != null) patch.marker_emoji = p.markerEmoji;
   if (p.shortLabel != null) patch.short_label = p.shortLabel;
   if (p.isActive != null) patch.is_active = p.isActive;
+  if (p.manuallyAdjusted != null) patch.manually_adjusted = p.manuallyAdjusted;
 
   const { data, error } = await admin
     .from("campus_locations")

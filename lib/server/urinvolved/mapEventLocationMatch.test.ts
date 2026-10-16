@@ -42,10 +42,14 @@ describe("mapEventToRealmLocation", () => {
     expect(realmId(mapEventToRealmLocation({ locationName: "URI Library" }, CATALOG))).toBe("library");
   });
 
-  it("matches mackal field house to rec center", () => {
-    expect(realmId(mapEventToRealmLocation({ locationName: "Mackal Field House" }, CATALOG))).toBe(
-      "rec-center",
-    );
+  it("matches mackal field house to its own canonical coordinates", () => {
+    const match = mapEventToRealmLocation({ locationName: "Mackal Field House" }, CATALOG);
+    expect(match?.kind).toBe("coords");
+    if (match?.kind === "coords") {
+      expect(match.locationName).toBe("Mackal Field House");
+      expect(match.latitude).toBeCloseTo(41.4856, 3);
+      expect(match.longitude).toBeCloseTo(-71.5291, 3);
+    }
   });
 
   it("matches official Athletics venue strings onto campus aliases", () => {

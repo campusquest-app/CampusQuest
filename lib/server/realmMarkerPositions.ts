@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { MarkerPositionMap } from "@/lib/realm/markerPositionsStore";
+import { clearCampusLocationCatalogCache } from "@/lib/locations/campusLocationCatalog";
+import { realmMapPercentToGeo } from "@/lib/realm/geoToMapPercent";
+import type { MarkerPosition, MarkerPositionMap } from "@/lib/realm/markerPositionsStore";
 import { ApiError } from "@/lib/server/http";
 import { createAdminClient } from "@/lib/server/supabase";
 
@@ -106,12 +108,84 @@ export async function saveRealmMarkerPositions(args: {
     throw new ApiError(400, error.message, "REALM_MARKER_POSITIONS_SAVE_FAILED");
   }
 
+  try {
+    await persistCampusLocationGeoFromMarkerPositions(sanitized);
+  } catch (err) {
+    console.warn("[cq:realm-markers] campus_locations geo persist threw", err);
+  }
+
   const row = data as RealmConfigRow;
   return {
     positions: sanitizePositions(row.config_value ?? {}),
     updatedAt: row.updated_at,
     updatedBy: row.updated_by ?? args.updatedBy,
   };
+}
+
+/** Map-percent / geo payload that Edit Map must persist onto campus_locations. */
+export function campusLocationGeoFromMarkerPosition(pos: MarkerPosition): {
+  latitude: number;
+  longitude: number;
+  mapX: number;
+  mapY: number;
+} {
+  const geo =
+    typeof pos.lat === "number" && typeof pos.lng === "number"
+      ? { latitude: pos.lat, longitude: pos.lng }
+      : realmMapPercentToGeo(pos.x, pos.y);
+  return {
+    latitude: geo.latitude,
+    longitude: geo.longitude,
+    mapX: pos.x,
+    mapY: pos.y,
+  };
+}
+
+/**
+ * Write Edit Map coordinates onto campus_locations so event resolution and
+ * future syncs use the admin-corrected place, not stale seed/import coords.
+ */
+export async function persistCampusLocationGeoFromMarkerPositions(
+  positions: MarkerPositionMap,
+): Promise<{ updated: string[]; skipped: string[] }> {
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+  const updated: string[] = [];
+  const skipped: string[] = [];
+
+  for (const [slug, pos] of Object.entries(positions)) {
+    const geo = campusLocationGeoFromMarkerPosition(pos);
+    const { data, error } = await admin
+      .from("campus_locations")
+      .update({
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        map_x: geo.mapX,
+        map_y: geo.mapY,
+        manually_adjusted: true,
+        updated_at: now,
+      })
+      .eq("slug", slug)
+      .select("slug")
+      .maybeSingle();
+
+    if (error || !data) {
+      skipped.push(slug);
+      if (error) {
+        console.warn("[cq:realm-markers] campus_locations geo persist failed", {
+          slug,
+          message: error.message,
+        });
+      }
+      continue;
+    }
+    updated.push(slug);
+  }
+
+  if (updated.length > 0) {
+    clearCampusLocationCatalogCache();
+  }
+  return { updated, skipped };
 }
 
 /** Dev/diagnostic: verify table readable and admin upsert round-trip. */

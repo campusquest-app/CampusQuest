@@ -44,6 +44,13 @@ describe("canonical URI venue registry", () => {
     expect(resolveUriCanonicalVenue("Kingston, RI, Thomas M. Ryan Center")?.venue.id).toBe("ryan-center");
     expect(resolveUriCanonicalVenue("Boss Ice Arena")?.venue.id).toBe("boss-ice-arena");
     expect(resolveUriCanonicalVenue("Keaney Gymnasium")?.venue.id).toBe("keaney-gymnasium");
+    expect(resolveUriCanonicalVenue("Keeney Gym")?.venue.id).toBe("keaney-gymnasium");
+    expect(resolveUriCanonicalVenue("Keeney Gymnasium")?.venue.id).toBe("keaney-gymnasium");
+    expect(resolveUriCanonicalVenue("Keaney Gym")?.venue.id).toBe("keaney-gymnasium");
+    expect(resolveUriCanonicalVenue("URI Keaney Gym: 85 Keaney Road, Kingston RI 02881")?.venue.id).toBe(
+      "keaney-gymnasium",
+    );
+    expect(resolveUriCanonicalVenue("Keeney Gymnasium, Kingston, RI")?.venue.id).toBe("keaney-gymnasium");
     expect(resolveUriCanonicalVenue("Memorial Union Room 318")?.venue.id).toBe("memorial-union");
     expect(resolveUriCanonicalVenue("Robert L. Carothers Library")?.venue.id).toBe("carothers-library");
   });
@@ -118,7 +125,9 @@ describe("event location resolution priority", () => {
 
   it("reports the canonical venue as the highest-confidence match reason", () => {
     const result = matchEventLocationWithMeta({ venueName: "URI Soccer Complex" }, CATALOG);
-    expect(result?.meta.matchReason).toBe("canonical_venue");
+    expect(result?.meta.matchReason === "canonical_exact" || result?.meta.matchReason === "canonical_alias").toBe(
+      true,
+    );
     expect(result?.meta.confidence).toBeGreaterThan(0.95);
     expect(result?.meta.needsReview).toBe(false);
   });

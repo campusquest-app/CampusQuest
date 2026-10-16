@@ -11,6 +11,10 @@ import {
 } from "@/lib/server/urinvolved/eventLocationResolver";
 import { createAdminClient } from "@/lib/server/supabase";
 import { effectiveEventEndIso, isEventVisibleOnMap } from "@/lib/realm/eventVisibility";
+import {
+  isCanonicalMatchReason,
+  sourceCoordinatesConflictWithCanonical,
+} from "@/lib/server/urinvolved/coordinateSanity";
 
 export type ExternalEventMapMatchStatus =
   | "pending"
@@ -255,39 +259,59 @@ export function resolveExternalEventPlacement(args: {
     };
   }
 
-  // Stored placement with real coords / realm pin — always prefer it (including needs_review).
-  // Previously needs_review/unmatched short-circuited to renderOnMap:false even when coords existed.
-  if (override) {
-    const stored = overrideToMatch(override, args.catalog);
-    if (stored) {
-      const needsReview =
-        override.matchStatus === "needs_review" || (override.matchConfidence ?? 0) < 0.9;
-      return {
-        match: stored,
-        meta: {
-          rawLocation,
-          normalizedLocation: override.normalizedLocationText ?? normalizeEventLocationText(rawLocation),
-          confidence: override.matchConfidence ?? 0.8,
-          matchReason: override.matchReason ?? override.matchStatus,
-          needsReview,
-          matchedText: stored.matchedText,
-        },
-        override,
-        renderOnMap: true,
-        appliedOverride: true,
-        resolutionDebug: override.resolutionDebug,
-      };
-    }
-
-    // Unresolved / pending / stale row with no coords: fall through and re-resolve.
-  }
-
   const registry = args.registry ?? [];
   const auto = resolveEventLocationFromRegistrySync({
     fields: args.fields,
     registry,
     catalog: args.catalog,
   });
+
+  // Stored auto-match coords are reused only when they do not conflict with a
+  // confident canonical campus place. Stale imports (e.g. Keeney near Browning)
+  // must not keep winning after the resolver learns the building.
+  if (override) {
+    const stored = overrideToMatch(override, args.catalog);
+    if (stored) {
+      const canonicalCoords =
+        auto.match?.kind === "coords"
+          ? { latitude: auto.match.latitude, longitude: auto.match.longitude }
+          : null;
+      const storedCoords =
+        stored.kind === "coords" ? { latitude: stored.latitude, longitude: stored.longitude } : null;
+      const canonicalWins =
+        isCanonicalMatchReason(auto.meta?.matchReason) &&
+        Boolean(auto.match) &&
+        (stored.kind === "realm"
+          ? auto.match?.kind === "coords" ||
+            (auto.match?.kind === "realm" && auto.match.realmLocationId !== stored.realmLocationId)
+          : Boolean(canonicalCoords) &&
+            Boolean(storedCoords) &&
+            sourceCoordinatesConflictWithCanonical({
+              source: storedCoords,
+              canonical: canonicalCoords!,
+            }));
+
+      if (!canonicalWins) {
+        const needsReview =
+          override.matchStatus === "needs_review" || (override.matchConfidence ?? 0) < 0.9;
+        return {
+          match: stored,
+          meta: {
+            rawLocation,
+            normalizedLocation: override.normalizedLocationText ?? normalizeEventLocationText(rawLocation),
+            confidence: override.matchConfidence ?? 0.8,
+            matchReason: override.matchReason ?? override.matchStatus,
+            needsReview,
+            matchedText: stored.matchedText,
+          },
+          override,
+          renderOnMap: true,
+          appliedOverride: true,
+          resolutionDebug: override.resolutionDebug,
+        };
+      }
+    }
+  }
 
   return {
     match: auto.match,

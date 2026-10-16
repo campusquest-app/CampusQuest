@@ -177,6 +177,7 @@ describe("America/New_York conversion + today visibility + 24h grace", () => {
 });
 
 const upsertCalls: Array<Record<string, unknown>> = [];
+const eventUpdateCalls: Array<Record<string, unknown>> = [];
 let storedOverride: Record<string, unknown> | null = null;
 let eventRow: Record<string, unknown>;
 
@@ -206,9 +207,12 @@ vi.mock("@/lib/server/supabase", () => ({
               maybeSingle: async () => ({ data: eventRow, error: null }),
             }),
           }),
-          update: () => ({
-            eq: async () => ({ data: null, error: null }),
-          }),
+          update: (row: Record<string, unknown>) => {
+            eventUpdateCalls.push(row);
+            return {
+              eq: async () => ({ data: null, error: null }),
+            };
+          },
         };
       }
       if (table === "campus_locations") {
@@ -297,6 +301,7 @@ vi.mock("next/cache", () => ({
 describe("resolveAndUpsertEventMapPlacement pipeline", () => {
   beforeEach(() => {
     upsertCalls.length = 0;
+    eventUpdateCalls.length = 0;
     storedOverride = null;
     eventRow = {
       id: "evt-1",
@@ -380,5 +385,23 @@ describe("resolveAndUpsertEventMapPlacement pipeline", () => {
     expect(restored.renderOnMap).toBe(true);
     expect(storedOverride).not.toBeNull();
     expect(typeof reconcileEventMapPlacements).toBe("function");
+  });
+
+  it("places Keeney Gym at canonical Keaney coords and does not write them onto external_events", async () => {
+    eventRow = {
+      ...eventRow,
+      title: "Intramural Night",
+      venue_name: "Keeney Gymnasium",
+      latitude: 41.4862,
+      longitude: -71.5284,
+    };
+    const { resolveAndUpsertEventMapPlacement } = await import(
+      "@/lib/server/urinvolved/resolveAndUpsertEventMapPlacement"
+    );
+    const result = await resolveAndUpsertEventMapPlacement("evt-1", { revalidate: false });
+    expect(result.renderOnMap).toBe(true);
+    expect(result.latitude).toBeCloseTo(41.4853, 3);
+    expect(result.longitude).toBeCloseTo(-71.5319, 3);
+    expect(eventUpdateCalls.some((row) => "latitude" in row || "longitude" in row)).toBe(false);
   });
 });

@@ -11,6 +11,9 @@ describe("normalizeCampusLocationName", () => {
     expect(normalizeCampusLocationName("Memorial Union Room 318")).toBe("memorial union");
     expect(normalizeCampusLocationName("Kingston, R.I., URI Soccer Complex")).toBe("soccer complex");
     expect(normalizeCampusLocationName("Kingston, RI, Thomas M. Ryan Center")).toBe("thomas m ryan center");
+    expect(normalizeCampusLocationName("Keeney Gymnasium")).toBe("keaney gym");
+    expect(normalizeCampusLocationName("The Keaney Gym")).toBe("keaney gym");
+    expect(normalizeCampusLocationName("Mackal Fieldhouse")).toBe("mackal field house");
   });
 });
 

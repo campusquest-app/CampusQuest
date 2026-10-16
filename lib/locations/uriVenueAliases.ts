@@ -1,6 +1,8 @@
 import type { RealmLocationId } from "@/lib/realm/locations";
+import { tryGetCampusLocation } from "@/lib/locations/campusLocationCatalog";
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 import { normalizeCampusLocationName } from "@/lib/server/urinvolved/normalizeCampusLocationName";
+import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
 
 /**
  * Authoritative URI venue registry.
@@ -98,7 +100,16 @@ const CANONICAL_VENUES: UriCanonicalVenue[] = [
     latitude: 41.4853,
     longitude: -71.5319,
     onKingstonCampus: true,
-    aliases: ["Keaney Gymnasium", "Keaney Gym", "Keaney", "Frank Keaney Gymnasium"],
+    aliases: [
+      "Keaney Gymnasium",
+      "Keaney Gym",
+      "Keaney",
+      "Frank Keaney Gymnasium",
+      "Frank W. Keaney Gymnasium",
+      "Keeney Gymnasium",
+      "Keeney Gym",
+      "Keeney",
+    ],
   },
   {
     // No trusted coordinates yet — canonicalized so geocoding gets clean context.
@@ -168,11 +179,68 @@ const CANONICAL_VENUES: UriCanonicalVenue[] = [
       "Rec Center",
       "Recreation Center",
       "URI Recreation Center",
+      "URI Rec Center",
       "Campus Recreation Center",
+      "Tootell Athletic Center",
+    ],
+  },
+  {
+    id: "mackal-field-house",
+    name: "Mackal Field House",
+    realmLocationId: null,
+    latitude: 41.4856,
+    longitude: -71.5291,
+    onKingstonCampus: true,
+    aliases: [
       "Mackal Field House",
       "Mackal Fieldhouse",
-      "Tootell Athletic Center",
+      "Mackal Gym",
+      "Mackal",
+      "Mackal Arena",
+    ],
+  },
+  {
+    id: "fascitelli-fitness",
+    name: "Fascitelli Fitness & Wellness Center",
+    realmLocationId: null,
+    latitude: 41.48515,
+    longitude: -71.52855,
+    onKingstonCampus: true,
+    aliases: [
+      "Fascitelli Fitness & Wellness Center",
       "Anna Fascitelli Fitness and Wellness Center",
+      "Anna Fascitelli Fitness & Wellness Center",
+      "Fascitelli Fitness Center",
+      "Fascitelli Fitness",
+      "Fascitelli Wellness Center",
+    ],
+  },
+  {
+    id: "butterfield-dining",
+    name: "Butterfield Dining Hall",
+    realmLocationId: "butterfield-dining",
+    onKingstonCampus: true,
+    aliases: [
+      "Butterfield Dining Hall",
+      "Butterfield Dining",
+      "Butterfield Hall",
+      "URI Butterfield",
+      "Butterfield",
+    ],
+  },
+  {
+    id: "mainfare-dining",
+    name: "Mainfare Dining Hall",
+    realmLocationId: "mainfare-dining",
+    onKingstonCampus: true,
+    aliases: [
+      "Mainfare Dining Hall",
+      "Mainfare Dining",
+      "Mainfare",
+      "Hope Commons",
+      "Hope Commons Mainfare",
+      "Hope Dining Hall",
+      "URI Mainfare",
     ],
   },
 ];
@@ -203,7 +271,7 @@ export function normalizeVenueText(value: string | null | undefined): string {
 /** Split feed location strings into the segments that may name a venue. */
 function venueSegments(value: string): string[] {
   return value
-    .split(/[,|/–—]|\s-\s|\bat\b/i)
+    .split(/[,:|/–—]|\s-\s|\bat\b/i)
     .map((part) => part.trim())
     .filter(Boolean);
 }
@@ -268,6 +336,12 @@ export function resolveUriCanonicalVenueFromFields(fields: {
 export function canonicalVenueCoordinates(
   venue: UriCanonicalVenue,
 ): { latitude: number; longitude: number } | null {
+  // Admin-adjusted campus_locations win over hardcoded venue defaults.
+  const catalogSlug = venue.realmLocationId ?? venue.id;
+  const catalog = tryGetCampusLocation(catalogSlug);
+  if (hasValidCoordinates(catalog)) {
+    return { latitude: catalog.latitude, longitude: catalog.longitude };
+  }
   if (typeof venue.latitude === "number" && typeof venue.longitude === "number") {
     return { latitude: venue.latitude, longitude: venue.longitude };
   }

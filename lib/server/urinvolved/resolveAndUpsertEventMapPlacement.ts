@@ -23,6 +23,10 @@ import {
 import { normalizeEventLocationText } from "@/lib/server/urinvolved/eventLocationMatcher";
 import { extractBuildingName, normalizeCampusLocationName } from "@/lib/server/urinvolved/normalizeCampusLocationName";
 import { effectiveEventEndIso, isEventVisibleOnMap } from "@/lib/realm/eventVisibility";
+import {
+  chooseResolvedCoordinates,
+  isCanonicalMatchReason,
+} from "@/lib/server/urinvolved/coordinateSanity";
 
 export type PlacementPipelineResult = {
   externalEventId: string;
@@ -293,12 +297,12 @@ export async function resolveAndUpsertEventMapPlacement(
     return failure;
   }
 
-  // Prefer event-row source coordinates when already campus-valid.
   const sourceLat = typeof event.latitude === "number" ? event.latitude : null;
   const sourceLng = typeof event.longitude === "number" ? event.longitude : null;
-  if (sourceLat != null && sourceLng != null && coordsAreUsable(sourceLat, sourceLng)) {
-    // Keep going through matcher so building label / registry still update, but coords stay trusted.
-  }
+  const sourceCoords =
+    sourceLat != null && sourceLng != null && coordsAreUsable(sourceLat, sourceLng)
+      ? { latitude: sourceLat, longitude: sourceLng }
+      : null;
 
   const catalog = options?.catalog ?? (await catalogFromDb());
   const existing = (await loadOverridesForEventIds([eventId])).get(eventId) ?? null;
@@ -317,21 +321,33 @@ export async function resolveAndUpsertEventMapPlacement(
     occurrenceStart,
   });
 
-  let latitude = override?.customLat ?? sourceLat;
-  let longitude = override?.customLng ?? sourceLng;
   let matchedBuilding = override?.customLabel ?? null;
+  let canonicalCoords =
+    override?.customLat != null && override?.customLng != null
+      ? { latitude: override.customLat, longitude: override.customLng }
+      : null;
 
-  if (override?.realmLocationId && (latitude == null || longitude == null)) {
+  if (override?.realmLocationId && !canonicalCoords) {
     const { data: loc } = await admin
       .from("campus_locations")
       .select("latitude, longitude, name")
       .eq("slug", override.realmLocationId)
       .maybeSingle();
     if (loc?.latitude != null && loc?.longitude != null) {
-      latitude = Number(loc.latitude);
-      longitude = Number(loc.longitude);
+      canonicalCoords = { latitude: Number(loc.latitude), longitude: Number(loc.longitude) };
       matchedBuilding = matchedBuilding ?? (typeof loc.name === "string" ? loc.name : null);
     }
+  }
+
+  const chosen = chooseResolvedCoordinates({
+    canonical: canonicalCoords,
+    source: sourceCoords,
+    canonicalMatchMethod: override?.matchReason === "canonical_exact" ? "exact" : "alias",
+  });
+  const latitude = chosen?.latitude ?? null;
+  const longitude = chosen?.longitude ?? null;
+  if (chosen?.mismatchMeters != null && isCanonicalMatchReason(override?.matchReason ?? chosen.source)) {
+    // already logged inside chooseResolvedCoordinates
   }
 
   if (latitude != null && longitude != null && !coordsAreUsable(latitude, longitude)) {
@@ -368,43 +384,35 @@ export async function resolveAndUpsertEventMapPlacement(
     return failure;
   }
 
-  if (latitude != null && longitude != null) {
-    await admin
-      .from("external_events")
+  if (latitude != null && longitude != null && override) {
+    // Keep source lat/lng on external_events as imported values. Resolved
+    // placement lives on the override so the next sync cannot overwrite
+    // canonical / admin coordinates by rewriting the event row.
+    const attachToLandmark = Boolean(override.realmLocationId);
+    const persistCanonicalCoords =
+      !attachToLandmark && (canonicalCoords != null || isCanonicalMatchReason(override.matchReason));
+    const { data: refreshed } = await admin
+      .from("external_event_map_overrides")
       .update({
-        latitude,
-        longitude,
+        occurrence_start: occurrenceStart,
+        source,
+        custom_lat: attachToLandmark ? null : persistCanonicalCoords ? latitude : (override.customLat ?? latitude),
+        custom_lng: attachToLandmark ? null : persistCanonicalCoords ? longitude : (override.customLng ?? longitude),
+        custom_label: override.customLabel ?? matchedBuilding ?? parentBuilding,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", eventId);
-
-    if (override) {
-      // Landmark attachments must not mirror coords into custom_lat/lng — that
-      // creates a duplicate purple pin beside the blue campus location marker.
-      const attachToLandmark = Boolean(override.realmLocationId);
-      const { data: refreshed } = await admin
-        .from("external_event_map_overrides")
-        .update({
-          occurrence_start: occurrenceStart,
-          source,
-          custom_lat: attachToLandmark ? null : (override.customLat ?? latitude),
-          custom_lng: attachToLandmark ? null : (override.customLng ?? longitude),
-          custom_label: override.customLabel ?? matchedBuilding ?? parentBuilding,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("external_event_id", eventId)
-        .select("*")
-        .single();
-      if (refreshed) {
-        override = {
-          ...override,
-          source,
-          occurrenceStart,
-          customLat: attachToLandmark ? null : (override.customLat ?? latitude),
-          customLng: attachToLandmark ? null : (override.customLng ?? longitude),
-          customLabel: override.customLabel ?? matchedBuilding ?? parentBuilding,
-        };
-      }
+      .eq("external_event_id", eventId)
+      .select("*")
+      .single();
+    if (refreshed) {
+      override = {
+        ...override,
+        source,
+        occurrenceStart,
+        customLat: attachToLandmark ? null : persistCanonicalCoords ? latitude : (override.customLat ?? latitude),
+        customLng: attachToLandmark ? null : persistCanonicalCoords ? longitude : (override.customLng ?? longitude),
+        customLabel: override.customLabel ?? matchedBuilding ?? parentBuilding,
+      };
     }
   } else if (override) {
     await admin

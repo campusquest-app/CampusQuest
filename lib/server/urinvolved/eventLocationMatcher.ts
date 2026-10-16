@@ -80,6 +80,10 @@ export function matchCanonicalUriVenue(
   if (!hit) return null;
 
   const { venue } = hit;
+  const reason =
+    normalizeEventLocationText(hit.matchedAlias) === normalizeEventLocationText(venue.name)
+      ? "canonical_exact"
+      : "canonical_alias";
   if (venue.realmLocationId) {
     const catalogEntry = catalog.find((entry) => entry.slug === venue.realmLocationId);
     if (catalogEntry) {
@@ -91,7 +95,7 @@ export function matchCanonicalUriVenue(
           matchedText: hit.matchedAlias,
         },
         confidence: 0.99,
-        reason: "canonical_venue",
+        reason,
       };
     }
   }
@@ -108,7 +112,7 @@ export function matchCanonicalUriVenue(
       matchedText: hit.matchedAlias,
     },
     confidence: 0.99,
-    reason: "canonical_venue",
+    reason,
   };
 }
 

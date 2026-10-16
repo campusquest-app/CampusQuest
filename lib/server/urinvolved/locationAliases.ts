@@ -2,6 +2,7 @@ import type { RealmLocationId } from "@/lib/realm/locations";
 import { isCampusLocationId, tryGetCampusLocation } from "@/lib/locations/campusLocationCatalog";
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 import { hasValidCoordinates } from "@/lib/server/urinvolved/validCoordinates";
+import { normalizeCampusLocationName } from "@/lib/server/urinvolved/normalizeCampusLocationName";
 import {
   canonicalVenueCoordinates,
   resolveUriCanonicalVenue,
@@ -71,7 +72,15 @@ const ALIAS_ENTRIES: AliasEntry[] = [
     coordinates: { latitude: 41.4865, longitude: -71.5298 },
   },
   {
-    aliases: ["keaney gymnasium", "keaney gym", "keaney"],
+    aliases: [
+      "keaney gymnasium",
+      "keaney gym",
+      "keaney",
+      "frank keaney gymnasium",
+      "keeney gymnasium",
+      "keeney gym",
+      "keeney",
+    ],
     coordinates: { latitude: 41.4853, longitude: -71.5319 },
   },
   {
@@ -83,9 +92,8 @@ const ALIAS_ENTRIES: AliasEntry[] = [
     coordinates: { latitude: 41.4838, longitude: -71.5348 },
   },
   {
-    aliases: ["mackal", "mackal field house", "mackal gym", "mackal fieldhouse"],
+    aliases: ["mackal", "mackal field house", "mackal gym", "mackal fieldhouse", "mackal arena"],
     coordinates: { latitude: 41.4856, longitude: -71.5291 },
-    realmLocationId: "rec-center",
   },
   {
     aliases: ["quad", "quadrangle", "uri quad", "uri quadrangle", "the quad"],
@@ -103,11 +111,7 @@ const ALIAS_ENTRIES: AliasEntry[] = [
       "uri recreation center",
       "uri rec center",
       "campus recreation center",
-      "anna fascitelli fitness and wellness center",
-      "fascitelli fitness center",
       "tootell athletic center",
-      "tootell aquatic center",
-      "tootell",
     ],
     addressAliases: [
       "18 butterfield rd kingston ri 02881",
@@ -115,6 +119,20 @@ const ALIAS_ENTRIES: AliasEntry[] = [
       "18 butterfield road",
     ],
     realmLocationId: "rec-center",
+  },
+  {
+    aliases: [
+      "anna fascitelli fitness and wellness center",
+      "fascitelli fitness and wellness center",
+      "fascitelli fitness center",
+      "fascitelli fitness",
+      "fascitelli wellness center",
+    ],
+    coordinates: { latitude: 41.48515, longitude: -71.52855 },
+  },
+  {
+    aliases: ["tootell aquatic center", "tootell aquatic", "tootell"],
+    coordinates: { latitude: 41.485, longitude: -71.5292 },
   },
   {
     aliases: [
@@ -239,14 +257,15 @@ function addressAliasMatches(normalized: string, alias: string): boolean {
 }
 
 function findAliasEntry(value: string): AliasEntry | null {
-  const normalizedName = normalizeLocationName(value);
+  const normalizedName = normalizeCampusLocationName(value) || normalizeLocationName(value);
   const normalizedAddress = normalizeAddressForMatching(value);
 
   // Prefer exact name matches so short labels like "dining hall" do not bind to
   // longer aliases such as "butterfield dining hall".
   for (const entry of ALIAS_ENTRIES) {
     for (const alias of entry.aliases) {
-      if (normalizedName === alias) return entry;
+      const normalizedAlias = normalizeCampusLocationName(alias) || alias;
+      if (normalizedName === normalizedAlias) return entry;
     }
   }
 
@@ -260,11 +279,12 @@ function findAliasEntry(value: string): AliasEntry | null {
   let best: { entry: AliasEntry; score: number } | null = null;
   for (const entry of ALIAS_ENTRIES) {
     for (const alias of entry.aliases) {
-      if (!normalizedName || !alias) continue;
-      if (normalizedName.includes(alias)) {
-        const score = 1000 + alias.length;
+      const normalizedAlias = normalizeCampusLocationName(alias) || alias;
+      if (!normalizedName || !normalizedAlias) continue;
+      if (normalizedName.includes(normalizedAlias)) {
+        const score = 1000 + normalizedAlias.length;
         if (!best || score > best.score) best = { entry, score };
-      } else if (alias.includes(normalizedName) && normalizedName.length >= 5) {
+      } else if (normalizedAlias.includes(normalizedName) && normalizedName.length >= 5) {
         const score = normalizedName.length;
         if (!best || score > best.score) best = { entry, score };
       }

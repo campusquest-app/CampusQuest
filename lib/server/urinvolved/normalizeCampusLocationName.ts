@@ -10,6 +10,11 @@ export function normalizeCampusLocationName(value = ""): string {
     .replace(/\bkingston\b/g, "")
     .replace(/\br\s*i\b/g, "")
     .replace(/\bri\b/g, "")
+    .replace(/^the\s+/, "")
+    // Known URI misspelling: feeds often write "Keeney" for Frank Keaney Gymnasium.
+    .replace(/\bkeeney\b/g, "keaney")
+    .replace(/\bgymnasium\b/g, "gym")
+    .replace(/\bfield\s*house\b/g, "field house")
     .replace(/\s+/g, " ")
     .trim();
 }
