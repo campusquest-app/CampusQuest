@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
+import { forwardRef, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ForwardedRef, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Calendar, Handshake, Home, Map } from "lucide-react";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
@@ -14,13 +14,44 @@ import {
   readScrollY,
   resolveBottomNavScrollRoot,
 } from "@/lib/client/bottomNavAutoHide";
-import { dockCradlePath, DOCK_CRADLE_FILL, DOCK_CRADLE_RISE_PX } from "@/lib/client/dockCradlePath";
+import {
+  dockCradlePath,
+  dockCradleTopPath,
+  DOCK_CRADLE_BUTTON_PX,
+  DOCK_CRADLE_DIP_PX,
+  DOCK_CRADLE_FILL,
+  DOCK_CRADLE_FILL_TOP,
+  DOCK_CRADLE_STROKE,
+} from "@/lib/client/dockCradlePath";
 
 const DEFAULT_CRADLE = {
   w: 390,
-  h: 76 + DOCK_CRADLE_RISE_PX,
-  d: dockCradlePath({ width: 390, height: 76 + DOCK_CRADLE_RISE_PX }),
+  h: 76,
+  d: dockCradlePath({ width: 390, height: 76 }),
+  top: dockCradleTopPath({ width: 390 }),
 };
+
+function readCssLengthPx(el: HTMLElement, prop: string, fallback: number): number {
+  const raw = getComputedStyle(el).getPropertyValue(prop).trim();
+  if (!raw) return fallback;
+  if (raw.endsWith("px")) {
+    const px = Number.parseFloat(raw);
+    return Number.isFinite(px) && px > 0 ? px : fallback;
+  }
+  const probe = document.createElement("div");
+  probe.style.cssText = `position:absolute;visibility:hidden;pointer-events:none;height:${raw};width:0;`;
+  el.appendChild(probe);
+  const px = probe.getBoundingClientRect().height;
+  probe.remove();
+  return Number.isFinite(px) && px > 0 ? px : fallback;
+}
+
+function readDockCradleMetrics(el: HTMLElement): { buttonPx: number; dipPx: number } {
+  return {
+    buttonPx: readCssLengthPx(el, "--cq-dock-map-size", DOCK_CRADLE_BUTTON_PX),
+    dipPx: readCssLengthPx(el, "--cq-dock-cradle-dip", DOCK_CRADLE_DIP_PX),
+  };
+}
 
 export type { AppBottomNavTab } from "@/lib/client/appBottomNavTabs";
 export { APP_BOTTOM_NAV_TABS } from "@/lib/client/appBottomNavTabs";
@@ -90,6 +121,7 @@ export function AppBottomNav({
 }) {
   const navRef = useRef<HTMLElement | null>(null);
   const [cradle, setCradle] = useState(DEFAULT_CRADLE);
+  const dockFillId = useId().replace(/:/g, "");
   const liveAvatar = useLiveUserAvatar(userAvatar);
   const characterName = useLiveCharacterName();
   const reduceMotion = useReducedMotion();
@@ -112,10 +144,13 @@ export function AppBottomNav({
         document.documentElement.style.setProperty(BOTTOM_NAV_CSS_VAR, `${layoutH}px`);
       }
       const w = Math.max(1, Math.round(box.width));
-      const h = Math.max(1, Math.round(box.height)) + DOCK_CRADLE_RISE_PX;
+      const h = Math.max(1, Math.round(box.height));
+      const { buttonPx, dipPx } = readDockCradleMetrics(el);
+      const d = dockCradlePath({ width: w, height: h, buttonRadius: buttonPx / 2, dip: dipPx });
+      const top = dockCradleTopPath({ width: w, buttonRadius: buttonPx / 2, dip: dipPx });
       setCradle((current) => {
-        if (current.w === w && current.h === h) return current;
-        return { w, h, d: dockCradlePath({ width: w, height: h }) };
+        if (current.w === w && current.h === h && current.d === d && current.top === top) return current;
+        return { w, h, d, top };
       });
     };
 
@@ -232,7 +267,23 @@ export function AppBottomNav({
         preserveAspectRatio="none"
         aria-hidden
       >
-        <path d={cradle.d} fill={DOCK_CRADLE_FILL} />
+        <defs>
+          <linearGradient id={`cq-dock-fill-${dockFillId}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={DOCK_CRADLE_FILL_TOP} />
+            <stop offset="100%" stopColor={DOCK_CRADLE_FILL} />
+          </linearGradient>
+        </defs>
+        <path d={cradle.d} fill={`url(#cq-dock-fill-${dockFillId})`} />
+        <path
+          className="cq-dock-nav__shape-stroke"
+          d={cradle.top}
+          fill="none"
+          stroke={DOCK_CRADLE_STROKE}
+          strokeWidth={1.25}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
       </svg>
       <div className="cq-dock-nav__rail">
         <DockItem
@@ -251,7 +302,7 @@ export function AppBottomNav({
           icon={<Handshake className="cq-dock-nav__glyph" strokeWidth={2.25} />}
         />
 
-        <div className="cq-dock-nav__map-slot">
+        <div className={`cq-dock-nav__map-slot${mapActive ? " cq-dock-nav__map-slot--active" : ""}`}>
           <button
             type="button"
             onClick={() => guardNav(() => onSelectTab("realm"))}
@@ -261,13 +312,13 @@ export function AppBottomNav({
               mapActive ? " cq-dock-nav__map-btn--active" : ""
             }`}
           >
-            <span className="cq-dock-nav__map-ring cq-pulse-glow" aria-hidden />
-            <span className="cq-dock-nav__map-ring cq-dock-nav__map-ring--outer cq-pulse-glow" aria-hidden />
-            <Map className="relative z-[1] h-[26px] w-[26px]" strokeWidth={2.25} />
-            {showDockLabels ? (
-              <span className="cq-dock-nav__hint cq-dock-nav__hint--map">{APP_BOTTOM_NAV_HINT_LABELS.realm}</span>
-            ) : null}
+            <Map className="cq-dock-nav__map-glyph" strokeWidth={2.25} />
           </button>
+          <span className="cq-dock-nav__label">Map</span>
+          <span className="cq-dock-nav__dot" aria-hidden />
+          {showDockLabels ? (
+            <span className="sr-only">{APP_BOTTOM_NAV_HINT_LABELS.realm}</span>
+          ) : null}
         </div>
 
         <DockItem

@@ -1,10 +1,17 @@
 "use client";
 
 import { CQ_BOTTOM_NAV_CLEARANCE } from "@/components/AppBottomNav";
-import { dockCradlePath, DOCK_CRADLE_FILL, DOCK_CRADLE_RISE_PX } from "@/lib/client/dockCradlePath";
+import {
+  dockCradlePath,
+  dockCradleTopPath,
+  DOCK_CRADLE_FILL,
+  DOCK_CRADLE_FILL_TOP,
+  DOCK_CRADLE_STROKE,
+} from "@/lib/client/dockCradlePath";
 
-const SKELETON_CRADLE_H = 76 + DOCK_CRADLE_RISE_PX;
+const SKELETON_CRADLE_H = 76;
 const SKELETON_CRADLE = dockCradlePath({ width: 390, height: SKELETON_CRADLE_H });
+const SKELETON_CRADLE_TOP = dockCradleTopPath({ width: 390 });
 
 /**
  * Shown while session token exists but profile+stats hydration is still in flight.
@@ -29,7 +36,23 @@ export function DashboardBootstrapShellSkeleton() {
       <div className="cq-dock-nav" aria-hidden>
         <div className="cq-dock-nav__slide">
         <svg className="cq-dock-nav__shape" viewBox={`0 0 390 ${SKELETON_CRADLE_H}`} preserveAspectRatio="none" aria-hidden>
-          <path d={SKELETON_CRADLE} fill={DOCK_CRADLE_FILL} />
+          <defs>
+            <linearGradient id="cq-dock-fill-skeleton" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={DOCK_CRADLE_FILL_TOP} />
+              <stop offset="100%" stopColor={DOCK_CRADLE_FILL} />
+            </linearGradient>
+          </defs>
+          <path d={SKELETON_CRADLE} fill="url(#cq-dock-fill-skeleton)" />
+          <path
+            className="cq-dock-nav__shape-stroke"
+            d={SKELETON_CRADLE_TOP}
+            fill="none"
+            stroke={DOCK_CRADLE_STROKE}
+            strokeWidth={1.25}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
         </svg>
         <div className="cq-dock-nav__rail">
           <div className="flex w-full items-center justify-between gap-1 px-1">

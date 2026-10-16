@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   dockCradleMetrics,
   dockCradlePath,
-  dockCradleRadius,
-  DOCK_CRADLE_BUTTON_PX,
-  DOCK_CRADLE_GAP_PX,
+  dockCradleTopPath,
+  dockCradleHalfChord,
+  DOCK_CRADLE_DIP_PX,
   DOCK_CRADLE_RISE_PX,
 } from "@/lib/client/dockCradlePath";
 
@@ -20,36 +20,50 @@ function arcRadii(path: string): string[] {
 }
 
 describe("dockCradlePath", () => {
-  it("draws one closed silhouette that spans the full bar", () => {
-    const path = dockCradlePath({ width: 390, height: 106 });
-    expect(path.startsWith(`M0,${DOCK_CRADLE_RISE_PX.toFixed(2)}`)).toBe(true);
+  it("draws one closed silhouette that spans the full bar with a flat top start", () => {
+    const path = dockCradlePath({ width: 390, height: 76 });
+    expect(path.startsWith("M0,0")).toBe(true);
     expect(path.endsWith(" Z")).toBe(true);
     expect(path).toContain("H390.00");
-    expect(path).toContain("V106.00");
+    expect(path).toContain("V76.00");
     expect(path).toContain("H0 Z");
+    // No upward dome padding in the layout box.
+    expect(DOCK_CRADLE_RISE_PX).toBe(0);
   });
 
-  it("raises a circular dome above the bar at iPhone widths", () => {
+  it("dips a shallow circular cradle below the flat top at iPhone widths", () => {
     const metrics = dockCradleMetrics();
-    const expected = dockCradleRadius().toFixed(2);
-    expect(metrics.radius).toBeCloseTo(DOCK_CRADLE_BUTTON_PX / 2 + DOCK_CRADLE_GAP_PX, 5);
-    expect(metrics.centerDrop).toBeGreaterThan(0);
-    expect(metrics.rise).toBe(DOCK_CRADLE_RISE_PX);
-    for (const width of [375, 390, 430]) {
-      const path = dockCradlePath({ width, height: 106 });
+    expect(metrics.dip).toBe(DOCK_CRADLE_DIP_PX);
+    expect(metrics.halfChord).toBeCloseTo(dockCradleHalfChord(), 5);
+    expect(metrics.centerDrop).toBeLessThan(0);
+    expect(metrics.dip).toBeLessThan(metrics.radius);
+    // Shallow well — not a deep semicircle cutout.
+    expect(metrics.dip).toBeLessThanOrEqual(metrics.halfChord);
+    const expected = metrics.radius.toFixed(2);
+    for (const width of [320, 375, 390, 430]) {
+      const path = dockCradlePath({ width, height: 76 });
       expect(arcRadii(path)).toEqual([`${expected},${expected}`]);
-      expect(path).toContain(" 0 0 1 ");
-      expect(path).not.toContain(" 0 0 0 ");
+      // Counterclockwise minor arc from left→right bows downward into the bar.
+      expect(path).toMatch(/A[\d.]+,[\d.]+ 0 0 0 /);
+      expect(path).not.toMatch(/A[\d.]+,[\d.]+ 0 0 1 /);
+      expect(path).not.toMatch(/A[\d.]+,[\d.]+ 0 1 /);
     }
   });
 
   it("centers the cradle and stays symmetrical", () => {
-    const path = dockCradlePath({ width: 390, height: 106, centerX: 195 });
-    const rise = DOCK_CRADLE_RISE_PX.toFixed(2);
+    const path = dockCradlePath({ width: 390, height: 76, centerX: 195 });
     const left = Number(path.match(/H([\d.]+)\sA/)?.[1]);
-    const right = Number(path.match(new RegExp(`A[\\d.,\\s]+ ([\\d.]+),${rise} H390`))?.[1]);
+    const right = Number(path.match(/A[\d.,\s]+ ([\d.]+),0 H390/)?.[1]);
     expect(left).toBeGreaterThan(0);
     expect(right).toBeGreaterThan(left);
     expect(Math.abs(195 - left - (right - 195))).toBeLessThan(0.05);
+  });
+
+  it("exposes a matching open top path for the cyan stroke", () => {
+    const top = dockCradleTopPath({ width: 390 });
+    expect(top.startsWith("M0,0")).toBe(true);
+    expect(top.endsWith("H390.00")).toBe(true);
+    expect(top).not.toContain("Z");
+    expect(dockCradlePath({ width: 390, height: 76 }).startsWith(top)).toBe(true);
   });
 });
