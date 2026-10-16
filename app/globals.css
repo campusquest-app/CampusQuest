@@ -66,8 +66,10 @@
   --cq-topnav-h: 0px;
   --cq-quad-header-h: 2.35rem;
   --cq-bottom-nav-h: 5.2rem;
-  --cq-dock-cradle-rise: 30px;
-  --cq-dock-cradle-gap: 7px;
+  --cq-dock-cradle-rise: 0px;
+  --cq-dock-cradle-dip: 18px;
+  --cq-dock-cradle-gap: 6px;
+  --cq-dock-map-size: 3.75rem;
   --cq-dock-bottom-offset: 0px;
   --cq-dock-scale: 1;
   --cq-dock-opacity: 1;
@@ -7419,21 +7421,10 @@ html[data-cq-media-pinching] {
   /* pulse handled by .cq-pulse-glow rings — transform/opacity, not box-shadow */
 }
 
-.cq-dock-nav__map-ring {
-  position: absolute;
-  inset: -3px;
-  border-radius: 999px;
-  border: 1.5px solid rgba(125, 211, 252, 0.5);
-  pointer-events: none;
-  animation: cqPulseGlow 2.4s ease-in-out infinite;
-  will-change: transform, opacity;
-}
-
+/* Legacy map rings removed — glow is a soft box-shadow on the active Map button. */
+.cq-dock-nav__map-ring,
 .cq-dock-nav__map-ring--outer {
-  inset: -7px;
-  border-width: 1px;
-  border-color: rgba(125, 211, 252, 0.28);
-  animation-delay: 0.35s;
+  display: none;
 }
 .cq-feed-post .quad-feed-media-img {
   border-radius: 0;
@@ -7602,16 +7593,17 @@ html[data-cq-quad-hidden="true"] .cq-quad-header-shell {
 
 .cq-dock-nav__shape {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  top: calc(-1 * var(--cq-dock-cradle-rise, 30px));
+  inset: 0;
   z-index: 0;
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   pointer-events: none;
   overflow: visible;
+}
+
+.cq-dock-nav__shape-stroke {
+  pointer-events: none;
 }
 
 .cq-dock-nav--autohidden {
@@ -7635,13 +7627,14 @@ html[data-cq-quad-hidden="true"] .cq-quad-header-shell {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(44px, 1fr) minmax(44px, 1fr) 4.35rem minmax(44px, 1fr) minmax(44px, 1fr);
-  align-items: start;
+  grid-template-columns: minmax(44px, 1fr) minmax(44px, 1fr) minmax(4.5rem, 1fr) minmax(44px, 1fr) minmax(44px, 1fr);
+  align-items: end;
   justify-items: center;
   gap: 0;
   box-sizing: border-box;
-  --cq-dock-pad-top: 0.85rem;
-  padding: var(--cq-dock-pad-top) 0.4rem calc(0.7rem + env(safe-area-inset-bottom, 0px));
+  /* Enough top pad for the shallow cradle + Map orb sitting inside the bar. */
+  --cq-dock-pad-top: 0.55rem;
+  padding: var(--cq-dock-pad-top) 0.35rem calc(0.45rem + env(safe-area-inset-bottom, 0px));
   border-radius: 0;
   background: transparent;
   border: none;
@@ -7688,14 +7681,14 @@ html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: flex-end;
   gap: 3px;
   width: 100%;
   min-width: 44px;
   min-height: 44px;
   padding-top: 2px;
   border-radius: 0.85rem;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(210, 220, 230, 0.78);
   transition:
     color 220ms cubic-bezier(0.22, 1, 0.36, 1),
     transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -7733,11 +7726,12 @@ html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__item {
   letter-spacing: 0;
   text-align: center;
   white-space: nowrap;
-  color: rgba(255, 255, 255, 0.48);
+  color: rgba(176, 186, 198, 0.78);
   pointer-events: none;
 }
 
-.cq-dock-nav__item--active .cq-dock-nav__label {
+.cq-dock-nav__item--active .cq-dock-nav__label,
+.cq-dock-nav__map-slot--active .cq-dock-nav__label {
   color: #6ec8ff;
 }
 
@@ -7749,7 +7743,8 @@ html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__item {
   pointer-events: none;
 }
 
-.cq-dock-nav__item--active .cq-dock-nav__dot {
+.cq-dock-nav__item--active .cq-dock-nav__dot,
+.cq-dock-nav__map-slot--active .cq-dock-nav__dot {
   background: #6ec8ff;
 }
 
@@ -7849,11 +7844,14 @@ html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__item {
   position: relative;
   z-index: 2;
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
   width: 100%;
   min-width: 44px;
   min-height: 44px;
+  padding-top: 2px;
   overflow: visible;
   pointer-events: none;
 }
@@ -7868,47 +7866,59 @@ html[data-cq-map-exploring][data-cq-realm-immersive] .cq-dock-nav__item {
   display: flex;
   align-items: center;
   justify-content: center;
-  --cq-dock-map-size: 3.65rem;
-  margin-top: calc(
-    var(--cq-dock-cradle-gap, 7px) - var(--cq-dock-cradle-rise, 30px) - var(--cq-dock-pad-top, 0.85rem)
-  );
-  height: var(--cq-dock-map-size);
-  width: var(--cq-dock-map-size);
+  /*
+   * Nest the orb in the cradle: top sits near the flat edge / shallow dip,
+   * so most of the circle stays inside the navy bar (not a floating FAB).
+   */
+  margin-top: calc(var(--cq-dock-cradle-dip, 18px) - (var(--cq-dock-map-size, 3.75rem) * 0.42));
+  height: var(--cq-dock-map-size, 3.75rem);
+  width: var(--cq-dock-map-size, 3.75rem);
   min-height: 2.75rem;
   min-width: 2.75rem;
+  flex-shrink: 0;
   border-radius: 999px;
-  border: 1px solid rgba(186, 230, 253, 0.55);
-  background: linear-gradient(180deg, rgba(56, 189, 248, 0.98) 0%, rgba(14, 116, 178, 0.94) 55%, rgba(30, 106, 154, 1) 100%);
+  border: 1.5px solid rgba(125, 211, 252, 0.85);
+  background: linear-gradient(180deg, #3b9eff 0%, #1d6fd4 48%, #1557b0 100%);
   color: #fff;
-  /* Signature glow stays on even when Map is not the active tab. */
-  box-shadow:
-    0 0 30px -2px rgba(56, 189, 248, 0.92),
-    0 0 16px rgba(56, 189, 248, 0.48),
-    0 10px 24px -10px rgba(0, 0, 0, 0.62);
+  box-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.55);
   transition:
     transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
     border-color 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.cq-dock-nav__map-glyph {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+
 .cq-dock-nav__map-btn--active {
-  border-color: rgba(224, 242, 254, 0.95);
+  border-color: rgba(165, 230, 255, 0.95);
   box-shadow:
-    0 0 44px -2px rgba(56, 189, 248, 1),
-    0 0 20px 0 rgba(125, 211, 252, 0.75),
-    0 12px 26px -10px rgba(0, 0, 0, 0.65);
-}
-
-.cq-dock-nav__map-btn--active .cq-dock-nav__map-ring {
-  border-color: rgba(186, 230, 253, 0.78);
-}
-
-.cq-dock-nav__map-btn--active .cq-dock-nav__map-ring--outer {
-  border-color: rgba(125, 211, 252, 0.5);
+    0 0 18px -2px rgba(56, 189, 248, 0.65),
+    0 0 8px rgba(56, 189, 248, 0.35),
+    0 4px 14px -6px rgba(0, 0, 0, 0.55);
 }
 
 .cq-dock-nav__map-btn:active {
   transform: scale(0.97);
+}
+
+@media (max-width: 360px) {
+  :root {
+    --cq-dock-map-size: 3.5rem;
+    --cq-dock-cradle-dip: 16px;
+  }
+}
+
+@media (min-width: 430px) {
+  :root {
+    --cq-dock-map-size: 4rem;
+    --cq-dock-cradle-dip: 20px;
+  }
 }
 
 .cq-bottom-nav-inner {
