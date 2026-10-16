@@ -509,7 +509,7 @@ function RealmMapMarkers({
   }, [countdownByGroup, landmarks, supplementaryPins, visibleLandmarks, visibleGroups, filter, editMode]);
 
   const trackedDestination = trackedPathDestination;
-  const pathOrigin = userPos ?? URI_MAP_CENTER;
+  const pathOrigin = userPos;
 
   const handleLandmarkTap = useCallback(
     (id: RealmLocationId) => {
@@ -696,7 +696,7 @@ function RealmMapMarkers({
         enabled={
           !directionsActive &&
           !editMode &&
-          Boolean(trackedPathDestination && trackedDestination)
+          Boolean(pathOrigin && trackedPathDestination && trackedDestination)
         }
       />
     </>
@@ -992,6 +992,7 @@ export function GoogleRealmMap({
     geoPositions,
     supplementaryPins,
     userPos,
+    userLocation: geolocation.validLocation,
     knownRouteDurationSeconds: null,
   });
 

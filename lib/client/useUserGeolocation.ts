@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  validUserLocationFromFix,
+  validUserLocationFromGeolocation,
+  type ValidUserLocation,
+} from "@/lib/realm/validUserLocation";
 
 export type UserGeolocationFix = {
   lat: number;
@@ -29,12 +34,14 @@ export function useUserGeolocation(options?: UseUserGeolocationOptions) {
 
   const applyPosition = useCallback(
     (position: GeolocationPosition) => {
+      const valid = validUserLocationFromGeolocation(position);
+      if (!valid) return;
       const next: UserGeolocationFix = {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        accuracy: position.coords.accuracy ?? null,
+        lat: valid.lat,
+        lng: valid.lng,
+        accuracy: valid.accuracyMeters,
         heading: position.coords.heading ?? null,
-        timestamp: position.timestamp,
+        timestamp: valid.timestamp,
       };
       setFix(next);
       if (followMode) {
@@ -110,26 +117,36 @@ export function useUserGeolocation(options?: UseUserGeolocationOptions) {
 
   useEffect(() => () => stopWatch(), [stopWatch]);
 
+  const validLocation: ValidUserLocation | null = validUserLocationFromFix(fix);
+
   return {
     fix,
-    userPos: fix ? { lat: fix.lat, lng: fix.lng } : null,
+    userPos: validLocation ? { lat: validLocation.lat, lng: validLocation.lng } : null,
+    validLocation,
     locating,
     followMode,
     locateOnce,
     startFollow,
     stopFollow,
     toggleFollow,
-    setFix: (pos: { lat: number; lng: number } | null) => {
+    setFix: (pos: { lat: number; lng: number; accuracy?: number | null; timestamp?: number } | null) => {
       if (!pos) {
         setFix(null);
         return;
       }
-      setFix((prev) => ({
+      const valid = validUserLocationFromFix({
         lat: pos.lat,
         lng: pos.lng,
-        accuracy: prev?.accuracy ?? null,
+        accuracy: pos.accuracy,
+        timestamp: pos.timestamp,
+      });
+      if (!valid) return;
+      setFix((prev) => ({
+        lat: valid.lat,
+        lng: valid.lng,
+        accuracy: valid.accuracyMeters,
         heading: prev?.heading ?? null,
-        timestamp: Date.now(),
+        timestamp: valid.timestamp,
       }));
     },
   };

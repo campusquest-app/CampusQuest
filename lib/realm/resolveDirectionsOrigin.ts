@@ -1,4 +1,5 @@
 import type { RealmDirectionsOrigin } from "@/lib/realm/realmDirectionsTypes";
+import { validUserLocationFromGeolocation } from "@/lib/realm/validUserLocation";
 
 /**
  * Live GPS fix for the route origin. Never returns cached or fallback
@@ -40,9 +41,11 @@ export async function resolveLiveUserLocation(signal?: AbortSignal): Promise<{ l
       );
     });
 
+    const valid = validUserLocationFromGeolocation(position);
+    if (!valid) return null;
     return {
-      lat: position.coords.latitude,
-      lng: position.coords.longitude,
+      lat: valid.lat,
+      lng: valid.lng,
     };
   } catch {
     return null;

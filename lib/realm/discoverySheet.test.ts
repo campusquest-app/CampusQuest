@@ -20,6 +20,13 @@ import {
 } from "@/lib/realm/discoverySheet";
 import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
 
+function deviceOnCampus(
+  lat = 41.4862,
+  lng = -71.5309,
+): { lat: number; lng: number; accuracy: number; timestamp: number } {
+  return { lat, lng, accuracy: 25, timestamp: Date.now() };
+}
+
 describe("discovery sheet snaps", () => {
   it("keeps the default overlay under ~half the usable height so the map stays visible", () => {
     const viewport = 844;
@@ -72,11 +79,12 @@ describe("walking estimates", () => {
   it("only reports walk time from a precise on-campus GPS fix", () => {
     const library = { lat: 41.4865, lng: -71.5301 };
     expect(isCampusWalkOrigin({ lat: 41.4862, lng: -71.5309 })).toBe(true);
-    expect(walkingMinutesBetween({ lat: 41.4862, lng: -71.5309 }, library)).toBeGreaterThan(0);
+    expect(walkingMinutesBetween(deviceOnCampus(), library)).toBeGreaterThan(0);
+    expect(walkingMinutesBetween({ lat: 41.4862, lng: -71.5309 }, library)).toBeNull();
     expect(walkingMinutesBetween(null, library)).toBeNull();
-    expect(walkingMinutesBetween({ lat: 41.7, lng: -71.4 }, library)).toBeNull();
-    expect(walkingMinutesBetween({ lat: -71.5309, lng: 41.4862 }, library)).toBeNull();
-    expect(walkingMinutesBetween({ lat: 41.4862, lng: -71.5309, accuracy: 5000 }, library)).toBeNull();
+    expect(walkingMinutesBetween({ lat: 41.7, lng: -71.4, accuracy: 25, timestamp: Date.now() }, library)).toBeNull();
+    expect(walkingMinutesBetween({ lat: -71.5309, lng: 41.4862, accuracy: 25, timestamp: Date.now() }, library)).toBeNull();
+    expect(walkingMinutesBetween({ lat: 41.4862, lng: -71.5309, accuracy: 5000, timestamp: Date.now() }, library)).toBeNull();
   });
 
   it("rejects a ~5km GPS fix that used to sit inside the wide Kingston bbox", () => {
@@ -92,7 +100,7 @@ describe("walking estimates", () => {
   it("rejects campus-scale walks that are still longer than a short campus hop", () => {
     const library = { lat: 41.4865, lng: -71.5301 };
     const farOnCampusEdge = { lat: 41.4821, lng: -71.5358 };
-    const minutes = walkingMinutesBetween(farOnCampusEdge, library);
+    const minutes = walkingMinutesBetween({ ...farOnCampusEdge, accuracy: 25, timestamp: Date.now() }, library);
     expect(minutes == null || minutes <= 18).toBe(true);
     expect(
       walkingMinutesBetween({ lat: 41.4862, lng: -71.5309 }, { lat: 41.5005, lng: -71.5309 }),
@@ -103,7 +111,8 @@ describe("walking estimates", () => {
     expect(campusWalkTimeStatus(null, true)).toBe("locating");
     expect(campusWalkTimeStatus(null, false)).toBe("unavailable");
     expect(campusWalkTimeStatus({ lat: 41.5312, lng: -71.5309 }, false)).toBe("unavailable");
-    expect(campusWalkTimeStatus({ lat: 41.4862, lng: -71.5309 }, false)).toBe("ready");
+    expect(campusWalkTimeStatus({ lat: 41.4862, lng: -71.5309 }, false)).toBe("unavailable");
+    expect(campusWalkTimeStatus(deviceOnCampus(), false)).toBe("ready");
     expect(walkTimeLabel(null, "locating")).toBe("Locating…");
     expect(walkTimeLabel(null, "unavailable")).toBe("Walk time unavailable");
     expect(walkTimeLabel(3, "unavailable")).toBe("3 min walk");
@@ -132,7 +141,7 @@ describe("nearby place cards", () => {
         campusRsvp: false,
       },
     ];
-    const cards = buildNearbyPlaceCards(items, { lat: 41.4862, lng: -71.5309 }, 4);
+    const cards = buildNearbyPlaceCards(items, deviceOnCampus(), 4);
     expect(cards).toHaveLength(1);
     expect(cards[0]?.categoryLabel).toBe("Study • Resources");
     expect(cards[0]?.walkMinutes).toBeGreaterThan(0);
@@ -146,7 +155,7 @@ describe("nearby place cards", () => {
         { id: "library", name: "Library", category: "study", major: true, lat: 41.4865, lng: -71.5301 },
         { id: "engineering-hall", name: "Engineering Hall", category: "academics", major: true, lat: 41.4869, lng: -71.5294 },
       ],
-      { lat: 41.4862, lng: -71.5309 },
+      deviceOnCampus(),
       4,
     );
     expect(cards).toHaveLength(2);
@@ -158,7 +167,7 @@ describe("nearby place cards", () => {
   it("uses campus photography instead of cartoon location icons", () => {
     const cards = buildNearbyPlaceCardsFromLandmarks(
       [{ id: "the-quad", name: "The Quad", category: "campus", major: true, lat: 41.4871, lng: -71.5305 }],
-      { lat: 41.4862, lng: -71.5309 },
+      deviceOnCampus(),
       1,
     );
     expect(cards[0]?.imageUrl).toBe("/images/places/uri/uri-quad.jpg");

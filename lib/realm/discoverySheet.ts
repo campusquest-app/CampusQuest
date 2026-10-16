@@ -2,6 +2,7 @@ import type { GroupedMapLocation, MapEventPin } from "@/lib/mapLocationGroups";
 import { CAMPUS_TIME_ZONE, formatCampusTime, isOnCampusDay } from "@/lib/realm/campusTime";
 import { isEventCancelled } from "@/lib/realm/eventCountdown";
 import { distanceMeters } from "@/lib/realm/realmFirstOpen";
+import { isValidUserLocation, validUserLocationFromFix } from "@/lib/realm/validUserLocation";
 import type { MapRecommendationItem } from "@/lib/realm/mapRecommendations";
 import {
   placeCardImage,
@@ -61,6 +62,7 @@ export type WalkOrigin = {
   lat: number;
   lng: number;
   accuracy?: number | null;
+  timestamp?: number;
 };
 
 const WALK_METERS_PER_MINUTE = 80;
@@ -176,9 +178,19 @@ export function walkingMinutesBetween(
   from: WalkOrigin | null,
   to: { lat: number; lng: number },
 ): number | null {
-  if (!isCampusWalkOrigin(from)) return null;
+  const device = validUserLocationFromFix(
+    from
+      ? {
+          lat: from.lat,
+          lng: from.lng,
+          accuracy: from.accuracy,
+          timestamp: from.timestamp,
+        }
+      : null,
+  );
+  if (!isValidUserLocation(device) || !isCampusWalkOrigin(device)) return null;
   if (!Number.isFinite(to.lat) || !Number.isFinite(to.lng)) return null;
-  const meters = distanceMeters(from, to);
+  const meters = distanceMeters(device, to);
   if (meters > MAX_CAMPUS_WALK_METERS) return null;
   const minutes = walkingMinutesFromMeters(meters);
   if (minutes > MAX_CAMPUS_WALK_MINUTES) return null;
@@ -189,8 +201,13 @@ export function campusWalkTimeStatus(
   origin: WalkOrigin | null | undefined,
   locating: boolean,
 ): WalkTimeStatus {
-  if (isCampusWalkOrigin(origin)) return "ready";
-  if (locating && !origin) return "locating";
+  const device = validUserLocationFromFix(
+    origin
+      ? { lat: origin.lat, lng: origin.lng, accuracy: origin.accuracy, timestamp: origin.timestamp }
+      : null,
+  );
+  if (isValidUserLocation(device) && isCampusWalkOrigin(device)) return "ready";
+  if (locating && !device) return "locating";
   return "unavailable";
 }
 

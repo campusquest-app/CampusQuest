@@ -7,8 +7,10 @@ import type { GroupedMapLocation, MapEventPin, MapQuestPin, MapQrPin } from "@/l
 import { getLogicalEventKey, isLogicalEventCancelled } from "@/lib/realm/dedupeLogicalEvents";
 import { isEventCancelled, getEventCountdownState } from "@/lib/realm/eventCountdown";
 import { effectiveEventEndIso, isEventVisibleOnMap } from "@/lib/realm/eventVisibility";
+import { isCampusWalkOrigin } from "@/lib/realm/discoverySheet";
 import { distanceMeters } from "@/lib/realm/realmFirstOpen";
 import type { RealmLocationId } from "@/lib/realm/locations";
+import { isValidUserLocation, type ValidUserLocation } from "@/lib/realm/validUserLocation";
 
 /** Default “around you” radius — 1 mile. */
 export const DISCOVERY_NEARBY_RADIUS_M = 1609.34;
@@ -73,6 +75,24 @@ export function formatWalkingAwayLabel(distanceM: number, knownDurationSeconds?:
   if (minutes < 1) return "Less than 1 min away";
   const rounded = Math.max(1, Math.round(minutes));
   return `${rounded} min away`;
+}
+
+/**
+ * Walking-away copy only when the origin is a validated current device fix
+ * that is actually on campus. Map center / campus fallback must never reach here.
+ */
+export function walkingAwayLabelForUser(
+  user: ValidUserLocation | null | undefined,
+  destination: { lat: number; lng: number },
+  knownDurationSeconds?: number | null,
+): string | null {
+  if (!isValidUserLocation(user)) return null;
+  if (!isCampusWalkOrigin(user)) return null;
+  if (!isValidDiscoveryCoordinate(destination.lat, destination.lng)) return null;
+  const distanceM = distanceMeters(user, destination);
+  if (!Number.isFinite(distanceM) || distanceM < 0) return null;
+  if (distanceM > DISCOVERY_NEARBY_RADIUS_M) return null;
+  return formatWalkingAwayLabel(distanceM, knownDurationSeconds);
 }
 
 export function formatOpportunitiesBannerCopy(count: number): string {

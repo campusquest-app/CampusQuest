@@ -10,13 +10,14 @@ import {
   collectDiscoveryOpportunities,
   countNearbyOpportunities,
   formatOpportunitiesBannerCopy,
-  formatWalkingAwayLabel,
   refreshSpotlightLabel,
   selectLiveEventSpotlight,
   selectNearestOpportunity,
+  walkingAwayLabelForUser,
   type DiscoveryLandmarkLike,
   type DiscoveryOpportunity,
 } from "@/lib/realm/realmMapDiscovery";
+import { isValidUserLocation, type ValidUserLocation } from "@/lib/realm/validUserLocation";
 
 export type DiscoveryHighlight = {
   markerId: string;
@@ -49,7 +50,8 @@ export function useRealmMapDiscovery(args: {
   landmarks: DiscoveryLandmarkLike[];
   geoPositions: Record<string, { lat: number; lng: number }>;
   supplementaryPins: GroupedMapLocation[];
-  userPos: { lat: number; lng: number } | null;
+  userLocation?: ValidUserLocation | null;
+  userPos?: { lat: number; lng: number } | null;
   knownRouteDurationSeconds?: number | null;
 }): RealmMapDiscoveryState {
   const [cameraReady, setCameraReady] = useState(false);
@@ -126,20 +128,29 @@ export function useRealmMapDiscovery(args: {
     if (sessionRanRef.current) return undefined;
     sessionRanRef.current = true;
 
-    const originNow = args.userPos ?? origin;
-    const nearestHit = selectNearestOpportunity(opportunities, originNow);
-    const nearbyCount = countNearbyOpportunities(opportunities, originNow, DISCOVERY_NEARBY_RADIUS_M);
-    const live = selectLiveEventSpotlight(opportunities, originNow, new Date());
+    const walkOrigin = isValidUserLocation(args.userLocation) ? args.userLocation : null;
+    const nearestHit = walkOrigin ? selectNearestOpportunity(opportunities, walkOrigin) : null;
+    const nearbyCount = walkOrigin
+      ? countNearbyOpportunities(opportunities, walkOrigin, DISCOVERY_NEARBY_RADIUS_M)
+      : 0;
+    const live = selectLiveEventSpotlight(opportunities, walkOrigin ?? origin, new Date());
 
-    if (nearestHit && mountedRef.current) {
-      setNearest({
-        markerId: nearestHit.opportunity.markerId,
-        label: formatWalkingAwayLabel(nearestHit.distanceM, args.knownRouteDurationSeconds),
-        mode: "nearest",
-      });
+    if (nearestHit && walkOrigin && mountedRef.current) {
+      const label = walkingAwayLabelForUser(
+        walkOrigin,
+        { lat: nearestHit.opportunity.lat, lng: nearestHit.opportunity.lng },
+        args.knownRouteDurationSeconds,
+      );
+      if (label) {
+        setNearest({
+          markerId: nearestHit.opportunity.markerId,
+          label,
+          mode: "nearest",
+        });
+      }
     }
 
-    const copy = formatOpportunitiesBannerCopy(nearbyCount);
+    const copy = walkOrigin ? formatOpportunitiesBannerCopy(nearbyCount) : null;
     setBannerCopy(copy);
     // Banner after a short beat so markers can paint first.
     pushTimer(
@@ -205,6 +216,7 @@ export function useRealmMapDiscovery(args: {
     args.enabled,
     args.markersReady,
     args.userPos,
+    args.userLocation,
     args.knownRouteDurationSeconds,
     cameraReady,
     origin,

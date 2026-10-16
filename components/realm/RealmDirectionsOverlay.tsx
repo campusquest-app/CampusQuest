@@ -276,9 +276,9 @@ export function RealmDirectionsOverlay({
           lng: result.destination.lng,
         });
 
-        if (!userLocationRef.current && result.origin) {
-          onUserLocationRef.current?.({ lat: result.origin.lat, lng: result.origin.lng });
-        }
+        // Never treat a route origin as the device location unless it already
+        // came from a live GPS fix. Campus / destination coords must not become
+        // the blue-dot origin used for proximity labels.
 
         applyPath(result.path, result.origin, result.destination);
         markRealmMapStep("overlay-creation", {
