@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { ArrowRight } from "lucide-react";
 import { DEFAULT_POLICY_VERSION, LEGAL_DOC_LINKS } from "@/lib/legal/policy";
 import { fetchMeSchoolVerification, SchoolVerificationHttpError } from "@/lib/client/dashboardApi";
 import { canAccessCampusFromSnapshot } from "@/lib/client/campusAccess";
@@ -50,7 +51,6 @@ import { AuthDesktopBrand, AuthDesktopFooter, AuthDesktopLanding } from "@/compo
 import { syncOnboardingQaReplayFromAccessToken } from "@/lib/client/onboardingQaSession";
 import { isAllowedSignupEmail, SCHOOL_EMAIL_REQUIRED_MESSAGE } from "@/lib/signupEmailPolicy";
 import { CAMPUSQUEST_LOGO_SRC } from "@/lib/branding";
-import { BRAND_KNIGHT } from "@/lib/onboarding/taxonomy";
 import { clearAuthSignupDraft, readAuthSignupDraft, writeAuthSignupDraft } from "@/lib/client/authSignupDraft";
 import {
   SIGNUP_SESSION_RETRY_DELAYS_MS,
@@ -789,46 +789,48 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     return (
       <>
         <div className="cq-auth-landing-mobile">
-          <div className="cq-onboard-shell cq-onboard-shell--dark">
-            <div className="cq-onboard-inner">
-              <div className="cq-onboard-hero text-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={CAMPUSQUEST_LOGO_SRC}
-                  alt="CampusQuest"
-                  className="cq-onboard-logo"
-                  width={88}
-                  height={88}
-                  decoding="async"
-                />
-                <div className="cq-onboard-knight" aria-hidden>
+          <div className="cq-onboard-shell cq-onboard-shell--dark cq-welcome-shell">
+            <div className="cq-onboard-inner cq-welcome-inner">
+              <div className="cq-welcome-hero">
+                <div className="cq-welcome-crest-wrap">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={BRAND_KNIGHT.thumbsUp}
-                    alt=""
-                    className="cq-onboard-knight-img"
-                    width={220}
-                    height={220}
+                    src={CAMPUSQUEST_LOGO_SRC}
+                    alt="CampusQuest"
+                    className="cq-welcome-crest"
+                    width={160}
+                    height={160}
                     decoding="async"
+                    fetchPriority="high"
                   />
                 </div>
-                <h1 className="cq-onboard-title-dark">
-                  Welcome to <span className="cq-onboard-title-accent">CampusQuest</span>
+                <h1 className="cq-welcome-headline">
+                  <span className="cq-welcome-headline__line">Your campus.</span>
+                  <span className="cq-welcome-headline__line cq-welcome-headline__line--accent">
+                    Your community.
+                  </span>
+                  <span className="cq-welcome-headline__line">Your adventure.</span>
                 </h1>
-                <p className="cq-onboard-sub-dark">
-                  Your campus. Your community.
-                  <br />
-                  Your quest.
+                <p className="cq-welcome-sub">
+                  Discover what&apos;s happening, find your people, and experience more of campus life.
                 </p>
-                <button type="button" className="cq-onboard-btn-gold" onClick={() => switchMode("signup")}>
-                  Join CampusQuest
-                </button>
-                <p className="cq-onboard-footer-link">
-                  Already have an account?{" "}
-                  <button type="button" className="cq-onboard-text-link" onClick={() => switchMode("signin")}>
-                    Sign in
+                <div className="cq-welcome-actions">
+                  <button
+                    type="button"
+                    className="cq-welcome-btn cq-welcome-btn--primary"
+                    onClick={() => switchMode("signup")}
+                  >
+                    Get Started
+                    <ArrowRight className="cq-welcome-btn__icon" aria-hidden strokeWidth={2.25} />
                   </button>
-                </p>
+                  <button
+                    type="button"
+                    className="cq-welcome-btn cq-welcome-btn--outline"
+                    onClick={() => switchMode("signin")}
+                  >
+                    Sign In
+                  </button>
+                </div>
               </div>
             </div>
           </div>

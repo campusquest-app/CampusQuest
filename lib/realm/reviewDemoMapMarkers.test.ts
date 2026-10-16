@@ -6,14 +6,12 @@ import { mapEventPinToFeedEvent, resolveGroupedMarkerTap } from "@/lib/realm/map
 import { REVIEW_DEMO_EVENTS, REVIEW_DEMO_IDS } from "@/lib/reviewDemoSeed";
 import { listReviewDemoMapLocations } from "@/lib/server/groupedMapLocations";
 
-const NOW_MS = Date.parse("2026-10-14T22:00:00.000Z");
-
-async function demoGroups() {
+async function demoGroups(nowMs = Date.now()) {
   const rows = REVIEW_DEMO_EVENTS.map((event, index) => ({
     id: REVIEW_DEMO_IDS.events[index],
     title: event.title,
-    starts_at: new Date(NOW_MS + event.startOffsetMs).toISOString(),
-    ends_at: new Date(NOW_MS + event.startOffsetMs + event.durationMs).toISOString(),
+    starts_at: new Date(nowMs + event.startOffsetMs).toISOString(),
+    ends_at: new Date(nowMs + event.startOffsetMs + event.durationMs).toISOString(),
     location_name: event.locationName,
     is_cancelled: false,
     host_organization_id: event.host.kind === "org" ? event.host.orgId : null,
@@ -32,14 +30,15 @@ async function demoGroups() {
 
 describe("review demo map marker interactions", () => {
   it("attaches every demo event to a tappable landmark with coordinates", async () => {
-    const groups = await demoGroups();
+    const nowMs = Date.now();
+    const groups = await demoGroups(nowMs);
     expect(groups.length).toBeGreaterThan(0);
     for (const group of groups) {
       expect(group.attachToLandmark).toBe(true);
       expect(group.realmLocationId).toBeTruthy();
       expect(group.lat).toEqual(expect.any(Number));
       expect(group.lng).toEqual(expect.any(Number));
-      expect(resolveGroupedMarkerTap(group, new Date(NOW_MS))).toEqual({
+      expect(resolveGroupedMarkerTap(group, new Date(nowMs))).toEqual({
         kind: "location-sheet",
         markerId: group.realmLocationId,
         realmLocationId: group.realmLocationId,
@@ -64,7 +63,8 @@ describe("review demo map marker interactions", () => {
   });
 
   it("merges demo events onto the same landmark tap target students already use", async () => {
-    const demo = await demoGroups();
+    const nowMs = Date.now();
+    const demo = await demoGroups(nowMs);
     const quad = demo.find((group) => group.realmLocationId === "the-quad");
     expect(quad).toBeTruthy();
     const base = [
@@ -78,10 +78,11 @@ describe("review demo map marker interactions", () => {
     const merged = mergeMapLocationGroups(base, demo);
     const mergedQuad = merged.find((group) => group.groupKey === quad!.groupKey);
     expect(mergedQuad?.events.some((event) => event.title.includes("[Demo]"))).toBe(true);
-    expect(resolveGroupedMarkerTap(mergedQuad!, new Date(NOW_MS)).kind).toBe("location-sheet");
+    expect(resolveGroupedMarkerTap(mergedQuad!, new Date(nowMs)).kind).toBe("location-sheet");
   });
 
   it("opens event detail for a standalone single-event demo pin", () => {
+    const nowMs = Date.now();
     const tap = resolveGroupedMarkerTap(
       {
         groupKey: "demo-standalone",
@@ -100,8 +101,8 @@ describe("review demo map marker interactions", () => {
           {
             id: REVIEW_DEMO_IDS.events[0],
             title: "[Demo] Coffee & Code Meetup",
-            startsAt: new Date(NOW_MS - 30 * 60 * 1000).toISOString(),
-            endsAt: new Date(NOW_MS + 90 * 60 * 1000).toISOString(),
+            startsAt: new Date(nowMs - 30 * 60 * 1000).toISOString(),
+            endsAt: new Date(nowMs + 90 * 60 * 1000).toISOString(),
             organizationName: null,
             organizationId: null,
             eventUrl: null,
@@ -109,7 +110,7 @@ describe("review demo map marker interactions", () => {
           },
         ],
       },
-      new Date(NOW_MS),
+      new Date(nowMs),
     );
     expect(tap.kind).toBe("event-detail");
     if (tap.kind !== "event-detail") return;
