@@ -12,6 +12,10 @@ describe("profile privacy architecture", () => {
     join(process.cwd(), "supabase/migrations/20261015150000_profile_private_fields.sql"),
     "utf8",
   );
+  const revokeMigration = readFileSync(
+    join(process.cwd(), "supabase/migrations/20261016010000_profile_private_column_revoke.sql"),
+    "utf8",
+  );
 
   it("does not select friends-only columns from profiles in viewer/friend loaders", () => {
     expect(viewSrc).toContain("PROFILES_PUBLIC_SELECT");
@@ -59,5 +63,8 @@ describe("profile privacy architecture", () => {
     expect(migration).toContain("cq_are_accepted_connections");
     expect(migration).toContain("auth.uid() = user_id");
     expect(migration).toContain("profile_private select owner or connected");
+    expect(revokeMigration).toContain("revoke select on table public.profiles from anon, authenticated, public");
+    expect(revokeMigration).toContain("grant select (bio, major, class_year, academic_area, requested_school_name, student_status)");
+    expect(revokeMigration).not.toMatch(/grant select \([^)]*\bbio\b[^)]*\) on table public.profiles to anon/);
   });
 });
