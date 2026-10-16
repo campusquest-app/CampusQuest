@@ -461,11 +461,14 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
 /**
  * Map groups for App Review demo events only. Reads through the viewer's own
  * client so RLS returns rows only to QA test accounts; never cached or shared.
+ *
+ * `now` is injectable so unit tests can freeze the visibility clock against
+ * fixture startOffsetMs values without drifting as wall time advances.
  */
 export async function listReviewDemoMapLocations(
   userClient: Pick<ReturnType<typeof createAdminClient>, "from">,
+  now: Date = new Date(),
 ): Promise<GroupedMapLocation[]> {
-  const now = new Date();
   const { data, error } = await userClient
     .from("campus_events")
     .select(CAMPUS_EVENT_MAP_COLUMNS)

@@ -150,7 +150,7 @@ describe("review demo fixtures", () => {
       eq: () => query,
       gte: () => Promise.resolve({ data: rows, error: null }),
     };
-    const groups = await listReviewDemoMapLocations({ from: () => query } as never);
+    const groups = await listReviewDemoMapLocations({ from: () => query } as never, new Date(now));
     const placed = groups.flatMap((group) => group.events.map((event) => event.id));
     expect(placed.sort()).toEqual([...REVIEW_DEMO_IDS.events].sort());
   });
