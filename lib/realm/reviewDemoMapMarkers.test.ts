@@ -27,7 +27,8 @@ async function demoGroups() {
     eq: () => query,
     gte: () => Promise.resolve({ data: rows, error: null }),
   };
-  return listReviewDemoMapLocations({ from: () => query } as never);
+  // Freeze visibility to the same clock the fixture offsets were authored against.
+  return listReviewDemoMapLocations({ from: () => query } as never, new Date(NOW_MS));
 }
 
 describe("review demo map marker interactions", () => {
