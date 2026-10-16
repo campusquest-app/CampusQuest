@@ -7,6 +7,8 @@ const nextConfig = {
   async redirects() {
     return [
       { source: "/dashboard", destination: "/", permanent: false },
+      { source: "/privacy", destination: "/legal/privacy", permanent: true },
+      { source: "/terms", destination: "/legal/terms", permanent: true },
     ];
   },
   async headers() {

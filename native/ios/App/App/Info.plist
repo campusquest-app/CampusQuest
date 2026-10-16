@@ -33,7 +33,7 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>CampusQuest can save a photo or video to your photo library when you choose Save from the share sheet.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>CampusQuest uses your location while you use the app to show where you are on The Realm campus map, give directions, and place campus events.</string>
+	<string>CampusQuest uses your location while the app is open to show your position on The Realm map and provide directions to campus locations and events.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIBackgroundModes</key>

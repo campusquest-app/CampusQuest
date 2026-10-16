@@ -9,6 +9,11 @@ import {
   fetchViewerReactionsForPosts,
 } from "@/lib/server/quadReactions";
 import { QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
+import {
+  applyProfilePrivateFields,
+  fetchProfilePrivateFields,
+  PROFILES_PUBLIC_SELECT,
+} from "@/lib/server/profilePrivate";
 import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { createAdminClient } from "@/lib/server/supabase";
 import { xpToLevel } from "@/lib/level";
@@ -135,9 +140,7 @@ export async function getUserProfileForViewer(args: {
   const [profileResult, statsResult] = await Promise.all([
     userClient
       .from("profiles")
-      .select(
-        "id, username, display_name, avatar_url, avatar_custom_json, bio, character_class_id, starter_weapon, scholar_guild_id, streak_days, game_state_json",
-      )
+      .select(PROFILES_PUBLIC_SELECT)
       .eq("id", targetUserId)
       .maybeSingle(),
     userClient.from("user_stats").select("level, total_xp").eq("user_id", targetUserId).maybeSingle(),
@@ -212,7 +215,7 @@ export async function getUserProfileForViewer(args: {
       scholar_guild_id: profile.scholar_guild_id,
       game_state_json: gs,
     }),
-    bio: canViewPrivateContent ? profile.bio?.trim() || null : null,
+    bio: null as string | null,
     classId: profile.character_class_id ?? null,
     starterWeapon: profile.starter_weapon ?? null,
     streakDays: Math.max(0, Number(profile.streak_days ?? 0)),
@@ -220,24 +223,21 @@ export async function getUserProfileForViewer(args: {
   };
 
   let posts: QuadPostApiRow[] = [];
-  let profileRow: typeof profile | null = null;
+  let profileRow: Record<string, unknown> | null = null;
   let statsRow: typeof statsResult.data | null = null;
 
   if (canViewPrivateContent) {
-    const [authorPosts, fullProfile, fullStats] = await Promise.all([
+    const [authorPosts, fullProfile, fullStats, privateFields] = await Promise.all([
       listAuthorQuadPosts({ userClient, viewerId, authorId: targetUserId, limit: postsLimit }),
-      userClient
-        .from("profiles")
-        .select(
-          "id, username, display_name, avatar_url, avatar_custom_json, bio, major, class_year, streak_days, last_activity_date, character_class_id, starter_weapon, scholar_guild_id, game_state_json",
-        )
-        .eq("id", targetUserId)
-        .maybeSingle(),
+      userClient.from("profiles").select(PROFILES_PUBLIC_SELECT).eq("id", targetUserId).maybeSingle(),
       userClient.from("user_stats").select("*").eq("user_id", targetUserId).maybeSingle(),
+      fetchProfilePrivateFields({ userClient, userId: targetUserId }),
     ]);
     posts = authorPosts;
-    profileRow = fullProfile.data ?? profile;
+    const publicRow = (fullProfile.data ?? profile) as Record<string, unknown>;
+    profileRow = applyProfilePrivateFields(publicRow, privateFields);
     statsRow = fullStats.data ?? statsResult.data;
+    user.bio = typeof profileRow.bio === "string" ? profileRow.bio.trim() || null : null;
   }
 
   return {

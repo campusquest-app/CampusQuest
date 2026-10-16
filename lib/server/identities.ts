@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/server/http";
+import { fetchProfilePrivateFields } from "@/lib/server/profilePrivate";
 import { createAdminClient } from "@/lib/server/supabase";
 import {
   canSwitchToIdentity,
@@ -69,19 +70,20 @@ export async function listCampusIdentities(args: {
   const { userClient, userId } = args;
   const { data: profile, error: profileError } = await userClient
     .from("profiles")
-    .select("id, display_name, username, avatar_url, bio, created_at")
+    .select("id, display_name, username, avatar_url, created_at")
     .eq("id", userId)
     .maybeSingle();
   if (profileError || !profile) {
     throw new ApiError(404, "Profile not found.", "PROFILE_NOT_FOUND");
   }
+  const privateFields = await fetchProfilePrivateFields({ userClient, userId });
   const personal: CampusIdentity = {
     id: userId,
     type: "personal",
     displayName: (profile.display_name as string | null)?.trim() || "Student",
     username: ((profile.username as string | null) ?? "student").trim().toLowerCase(),
     avatarUrl: (profile.avatar_url as string | null) ?? null,
-    bio: (profile.bio as string | null) ?? "",
+    bio: privateFields?.bio ?? "",
     verified: false,
     verificationLabel: null,
     managerRole: "self",

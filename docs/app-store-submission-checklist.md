@@ -55,7 +55,7 @@ Capture these screens with the demo account (no personal data, no empty states):
 6. Profile.
 7. Settings → Safety (shows Report/Block/Delete account surfaces).
 
-Do not capture: admin console, any screen mentioning XP/quests/QR/guilds, the data-consent "Beta Service" section, placeholder avatars, or debug map labels ("DEBUG MAGIC" only appears when `NEXT_PUBLIC_DEBUG_MAP_MAGIC=true`).
+Do not capture: admin console, any screen mentioning XP/quests/QR/guilds, placeholder avatars, or debug map labels ("DEBUG MAGIC" only appears when `NEXT_PUBLIC_DEBUG_MAP_MAGIC=true`).
 
 ## 7. Build commands (local; signing step requires Apple assets)
 

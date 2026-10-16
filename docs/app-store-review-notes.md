@@ -1,44 +1,47 @@
 # App Review Notes — CampusQuest (iOS)
 
 Ready to paste into App Store Connect → App Review Information → Notes.
-Fill the two placeholders before pasting. Never commit the real password.
+Fill the password placeholder before pasting. Never commit the real password.
 
 ---
 
-CampusQuest is a campus community app for University of Rhode Island students: a campus feed ("The Quad"), student organizations and events, a campus map ("The Realm"), direct messages, and student profiles. The iOS app is a native shell that loads our production web experience over HTTPS from https://campusquestapp.com; all features below work without a university email when you use the demo account.
+CampusQuest is a campus community app for University of Rhode Island students. The 1.0 experience includes a campus feed (The Quad), organizations and events, a campus map (The Realm), direct messages, student profiles, Campus Memories, and Student Perks. The iOS app is a native Capacitor shell that loads https://campusquestapp.com over HTTPS.
 
-DEMO ACCOUNT (campus-verified reviewer account)
+DEMO ACCOUNT
 Email: qa_signup@campusquestapp.com
 Password: <<REVIEWER_PASSWORD — set in App Store Connect only>>
 
-This account's university email is already verified, so you do not need access to its mailbox and will not be asked for a 6-digit verification code. On the "Your campus" onboarding step it shows "URI email verified" — just tap Continue. It is a normal student account (no admin rights). Its onboarding is reset automatically each time it signs in so you always see the first-run flow; the email verification is kept. If sign-in ever fails, email support@campusquestapp.com and we will reset it within a few hours.
+This is a dedicated App Review account. Campus email is already verified in the profile, so you do not need mailbox access and will not be asked for a 6-digit verification code. On the campus onboarding step it shows that URI email is verified — tap Continue. The account has no admin privileges. Completed onboarding, friends, and messages persist across sign-in.
 
-WHAT TO TEST (suggested order, ~10 minutes)
-1. Sign in with the demo account. Accept the Terms / Privacy / Community Guidelines consent screen, then complete the short onboarding (the campus step is already verified) to reach the app.
-2. The Quad (Home tab): scroll the campus feed, open a post, tap the ••• menu → Report. Reports go to our moderation queue.
-3. Create a post: tap the compose button, add text and (optionally) a photo from your library. Delete it afterwards from the post's ••• menu if you like.
-4. Comments: open any post, add a comment, then use the comment's menu → Report.
-5. Block: open another user's profile → ••• → Block. Blocked users disappear from your feed and cannot message you. Manage blocks under Settings → Safety → Blocked users.
-6. Organizations & Events (Events tab): browse organizations, open an event, RSVP, and use Report on an event or organization.
-7. The Realm (Map tab): grant location when prompted to see your position; deny it and the map still works.
-8. Messages tab: start a direct message with any student, send text, send a photo (Photos permission), hold the microphone button to send a voice note (Microphone permission). Use Report from the conversation menu.
-9. Profile tab: edit display name / bio / avatar.
-10. Settings (gear icon): Help & Support (contact link), Privacy & Support, Safety → Blocked users, and Account → Delete account (type DELETE to confirm). Please do NOT delete the demo account; a second throwaway account can be created with any email if you want to test deletion end to end — deletion removes the auth user immediately and the account can no longer sign in.
+Some feed, map, and Student Perks items are labeled [Demo] or (Demo). Those are isolated fictional fixtures for this review account so you can exercise report, block, RSVP, messaging, and Perks without affecting real students. They are not unfinished product placeholders.
+
+WHAT TO TEST (suggested order)
+1. Sign in with the demo account. Accept Terms, Privacy Policy, and Community Guidelines if prompted, then finish the short onboarding if it appears.
+2. The Quad (Home): scroll the feed, open a post, use ••• → Report.
+3. Create a post with text and an optional photo. You may delete it from the post menu afterward.
+4. Open comments, add a comment, and use Report on a comment.
+5. Open a profile → ••• → Block. Blocked users cannot send new messages. Existing history stays visible. Manage blocks in Settings → Safety → Blocked users.
+6. Events: browse organizations and events, RSVP, and use Report.
+7. The Realm (Map): grant location to see your position and request directions, or deny it — the map still works. Event and business pins use public place coordinates, not your GPS.
+8. Messages: open the seeded conversation, send text, optionally send a photo or hold to record a voice note. Use Report from the conversation menu.
+9. Student Perks: open the demo café listing. Any demo pass is marked not valid for redemption.
+10. Profile: edit display name, bio, or photo.
+11. Settings: Help & Support, Privacy & Support, Safety → Blocked users, Account → Delete account (type DELETE). Please do not delete this demo account. To test deletion end-to-end, create a throwaway account with any email.
 
 PERMISSIONS
-- Camera / Photos: attaching photos and videos to posts, memories, messages and profile.
-- Microphone: recording videos for posts and voice notes in direct messages.
-- Location (While Using): showing your position and directions on the campus map and placing campus events. We never request background location.
-- Notifications: optional message / event alerts.
+- Camera / Photos: posts, campus memories, messages, and profile media. Requested when you attach media, not at first launch.
+- Microphone: video for posts/memories and optional voice notes. Requested when you record.
+- Location While Using: your position on The Realm and walking/driving directions. Not used to place campus events. No background location.
+- Notifications: optional. Requested only if you enable Push notifications in Settings.
 
-NOTES FOR THE REVIEWER
-- Some gamification features (XP, quests, QR check-ins, guilds, leaderboards) that appear in older marketing material are intentionally disabled server-side for this release and are not visible in the app.
-- Content moderation: every post, comment, profile, message, event and organization has a Report action; blocked users are enforced on the server and in the database. Our team reviews reports in an internal moderation console.
-- Account deletion is self-serve in Settings and also available by email (see Support page in the app).
+NOTES
+- XP, quests, QR scanning, guilds, and leaderboards from older material are intentionally disabled and are not part of this 1.0 submission.
+- Report and block are enforced on the server. Our team reviews reports in an internal moderation console.
+- Account deletion is self-serve in Settings → Delete account. It removes the login, profile, and user-owned media we control. Provider backups and limited safety/audit records may remain.
 - Privacy Policy: https://campusquestapp.com/legal/privacy
-- Terms of Service: https://campusquestapp.com/legal/terms
+- Terms: https://campusquestapp.com/legal/terms
 - Community Guidelines: https://campusquestapp.com/legal/community-guidelines
-- Support: https://campusquestapp.com/support (email support@campusquestapp.com)
+- Support: https://campusquestapp.com/support (support@campusquestapp.com)
 
 Thank you for reviewing CampusQuest.
 
@@ -46,6 +49,7 @@ Thank you for reviewing CampusQuest.
 
 ## Internal notes (do not paste)
 
-- Demo account provisioning: `QA_TEST_ACCOUNT_EMAIL`/`QA_TEST_ACCOUNT_PASSWORD` + `node scripts/ensure-qa-account.mjs` (see `docs/store-reviewer-account.md`). Reset at any time via `POST /api/internal/admin/qa-account/reset` as an admin.
-- Campus verification is pre-provisioned, not bypassed: `ensure-qa-account.mjs` sets `profiles.campus_email_verified_at` (the column a 6-digit code sets) for the exact email in `lib/appReviewAccount.ts` only, and refuses any other email. The login-time onboarding reset preserves that timestamp only for this email with `role = 'qa'` + `is_test_user`. Role stays `qa`, never admin. Because `.env.local` may set a different `QA_TEST_ACCOUNT_EMAIL`, run it as `QA_TEST_ACCOUNT_EMAIL=qa_signup@campusquestapp.com node scripts/ensure-qa-account.mjs`.
-- `docs/app-review-notes.md` is the previous draft; this file supersedes it (that draft still lists the QR-scanner test step, which is disabled for launch).
+- Provision: `QA_TEST_ACCOUNT_EMAIL=qa_signup@campusquestapp.com QA_TEST_ACCOUNT_PASSWORD='…' node scripts/ensure-qa-account.mjs`
+- Exact email only (`lib/appReviewAccount.ts`). Role stays `qa`. Campus verification is pre-set on `campus_email_verified_at`, not skipped at request time.
+- Login gap-fills isolated demo fixtures; it does not wipe reviewer onboarding.
+- If the reviewer deletes the account, re-run the provision script, then sign in once or `node scripts/seed-review-demo.mjs --confirm`.

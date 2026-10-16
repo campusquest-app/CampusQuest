@@ -1,13 +1,12 @@
 import { ApiError } from "@/lib/server/http";
-import { deleteRelatedUserData } from "@/lib/server/adminUserDeletion";
+import { executeAccountDeletion } from "@/lib/server/accountDeletion";
 import { createAdminClient } from "@/lib/server/supabase";
 import { isAdminEmail } from "@/lib/server/adminEmails";
 import { fetchProfileRole } from "@/lib/server/permissions";
 
 /**
  * Self-serve account deletion for App Store / Play compliance.
- * Deletes Auth first so a failed cleanup cannot leave a usable session with wiped profile data.
- * Related rows are then cleaned best-effort with the service role.
+ * Collects storage paths, deletes Auth first, then media and leftover rows.
  */
 export async function deleteOwnAccount(args: {
   userId: string;
@@ -20,7 +19,6 @@ export async function deleteOwnAccount(args: {
 
   const admin = createAdminClient();
 
-  // Protect platform admin accounts from accidental self-wipe via client API.
   const role = await fetchProfileRole(admin, userId, { email: userEmail });
   if (role === "admin" || role === "super_admin" || (userEmail && isAdminEmail(userEmail))) {
     throw new ApiError(
@@ -35,27 +33,5 @@ export async function deleteOwnAccount(args: {
     throw new ApiError(404, "Account not found.", "ACCOUNT_DELETE_NOT_FOUND");
   }
 
-  // Invalidate the account before wiping relational data. If this fails, nothing was deleted.
-  const { error: deleteAuthError } = await admin.auth.admin.deleteUser(userId);
-  if (deleteAuthError) {
-    throw new ApiError(
-      400,
-      "Could not finish deleting your account. Please try again or contact support.",
-      "ACCOUNT_DELETE_AUTH_FAILED",
-    );
-  }
-
-  let removedCounts: Record<string, number> = {};
-  try {
-    removedCounts = await deleteRelatedUserData(admin, userId);
-    await admin.from("profiles").delete().eq("id", userId);
-    await admin.from("user_stats").delete().eq("user_id", userId);
-  } catch (cleanupError) {
-    console.error("[cq:account-delete] post-auth cleanup failed", {
-      userId,
-      message: cleanupError instanceof Error ? cleanupError.message : "unknown",
-    });
-  }
-
-  return { userId, removedCounts };
+  return executeAccountDeletion({ admin, userId });
 }

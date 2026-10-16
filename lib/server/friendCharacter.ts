@@ -1,4 +1,9 @@
 import { ApiError } from "@/lib/server/http";
+import {
+  applyProfilePrivateFields,
+  fetchProfilePrivateFields,
+  PROFILES_PUBLIC_SELECT,
+} from "@/lib/server/profilePrivate";
 import { createAdminClient } from "@/lib/server/supabase";
 import { assertCanViewFriendProfile } from "@/lib/server/friendProfileAccess";
 
@@ -12,15 +17,10 @@ export async function getFriendCharacterSnapshot(args: {
   const { userClient, viewerId, targetUserId } = args;
   await assertCanViewFriendProfile({ userClient, viewerId, targetUserId });
 
-  const [profileResult, statsResult] = await Promise.all([
-    userClient
-      .from("profiles")
-      .select(
-        "id, username, display_name, avatar_url, avatar_custom_json, bio, major, class_year, streak_days, last_activity_date, character_class_id, starter_weapon, scholar_guild_id, game_state_json",
-      )
-      .eq("id", targetUserId)
-      .maybeSingle(),
+  const [profileResult, statsResult, privateFields] = await Promise.all([
+    userClient.from("profiles").select(PROFILES_PUBLIC_SELECT).eq("id", targetUserId).maybeSingle(),
     userClient.from("user_stats").select("*").eq("user_id", targetUserId).maybeSingle(),
+    fetchProfilePrivateFields({ userClient, userId: targetUserId }),
   ]);
 
   if (profileResult.error) {
@@ -37,7 +37,7 @@ export async function getFriendCharacterSnapshot(args: {
   }
 
   return {
-    profile: profileResult.data,
+    profile: applyProfilePrivateFields(profileResult.data as Record<string, unknown>, privateFields),
     stats: statsResult.data,
   };
 }

@@ -14,9 +14,15 @@ Native push is implemented for the Capacitor shell (`/native`) and wired into th
 ### 2. Xcode
 1. Open `native/ios/App/App.xcodeproj`.
 2. Target **App** → **Signing & Capabilities**.
-3. Click **+ Capability** → **Push Notifications**.
+3. Click **+ Capability** → **Push Notifications** (required in the Apple Developer portal; the repo already has `App.entitlements` / `AppRelease.entitlements` with `aps-environment`).
 4. Click **+ Capability** → **Background Modes** → check **Remote notifications** (Info.plist already lists `remote-notification`).
 5. Use an Apple Development Team that matches the App ID.
+
+Repo entitlements:
+- Debug: `native/ios/App/App/App.entitlements` → `aps-environment = development`
+- Release/archive: `native/ios/App/App/AppRelease.entitlements` → `aps-environment = production`
+
+Enabling the capability in the Developer portal is still a manual step. Do not treat the repo files as a substitute for that portal checkbox.
 
 ### 3. Vercel / server environment
 Set (Production + Preview as needed):

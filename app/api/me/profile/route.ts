@@ -35,6 +35,7 @@ import {
   omitUnavailableDiscoveryColumns,
   stripDiscoveryColumns,
 } from "@/lib/server/profileDiscoveryColumns";
+import { fetchOwnerProfileRecord } from "@/lib/server/profilePrivate";
 
 function normalizeDisplayName(value: string) {
   return value.trim();
@@ -55,13 +56,9 @@ export async function GET(request: Request) {
       email: auth.user.email,
     });
 
-    const { data, error } = await auth.userClient
-      .from("profiles")
-      .select("*")
-      .eq("id", auth.user.id)
-      .single();
+    const data = await fetchOwnerProfileRecord({ userId: auth.user.id });
 
-    if (error || !data) {
+    if (!data) {
       try {
         const ready = await ensurePlayerSetup({
           userId: auth.user.id,
@@ -130,14 +127,10 @@ export async function PATCH(request: Request) {
     const usernameInput = identitySuppressedForSync ? undefined : input.username;
     const classYearInput = input.classYear ?? input.year;
 
-    const { data: existing, error: loadError } = await auth.userClient
-      .from("profiles")
-      .select("*")
-      .eq("id", auth.user.id)
-      .single();
+    const existing = await fetchOwnerProfileRecord({ userId: auth.user.id });
 
-    if (loadError || !existing) {
-      throw new ApiError(404, loadError?.message ?? "Profile not found.", "PROFILE_NOT_FOUND");
+    if (!existing) {
+      throw new ApiError(404, "Profile not found.", "PROFILE_NOT_FOUND");
     }
 
     const weeklyEventsColumnPresent = Object.prototype.hasOwnProperty.call(

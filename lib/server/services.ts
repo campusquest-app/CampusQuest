@@ -261,12 +261,16 @@ export async function createUserProfile(userClient: SupabaseClientLike, user: Us
     class_year: input.classYear ?? null,
   };
 
-  const { data: profile, error: profileError } = await userClient
-    .from("profiles")
-    .insert(profilePayload)
-    .select("*")
-    .single();
+  const { error: profileError } = await userClient.from("profiles").insert(profilePayload);
   if (profileError) throw new ApiError(400, profileError.message, "PROFILE_CREATE_FAILED");
+  const { data: profile, error: reloadError } = await createAdminClient()
+    .from("profiles")
+    .select("*")
+    .eq("id", user.id)
+    .single();
+  if (reloadError || !profile) {
+    throw new ApiError(400, reloadError?.message ?? "Profile not found after create.", "PROFILE_CREATE_FAILED");
+  }
 
   const { error: statsError } = await getTrustedStatsWriteClient().from("user_stats").insert({
     user_id: user.id,
@@ -290,7 +294,7 @@ export async function updateProfile(userClient: SupabaseClientLike, userId: stri
   campus?: string;
   classYear?: number;
 }) {
-  const { data, error } = await userClient
+  const { error } = await userClient
     .from("profiles")
     .update({
       display_name: input.displayName,
@@ -299,10 +303,16 @@ export async function updateProfile(userClient: SupabaseClientLike, userId: stri
       campus: input.campus,
       class_year: input.classYear,
     })
-    .eq("id", userId)
-    .select("*")
-    .single();
+    .eq("id", userId);
   if (error) throw new ApiError(400, error.message, "PROFILE_UPDATE_FAILED");
+  const { data, error: reloadError } = await createAdminClient()
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .single();
+  if (reloadError || !data) {
+    throw new ApiError(400, reloadError?.message ?? "Profile not found after update.", "PROFILE_UPDATE_FAILED");
+  }
   return data;
 }
 

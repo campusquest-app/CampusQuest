@@ -2,7 +2,7 @@ const sections = [
   {
     title: "1. Eligibility",
     body: [
-      "You must be at least 13 years old to use CampusQuest.",
+      "You must be at least 13 years old to use CampusQuest. Eligibility is a contractual requirement. We do not collect date of birth or technically verify age during standard signup.",
       "By using CampusQuest, you confirm the information you provide is accurate, you will comply with applicable laws, and you are responsible for your account activity.",
     ],
   },

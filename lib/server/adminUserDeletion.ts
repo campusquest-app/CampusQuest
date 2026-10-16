@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/server/http";
+import { executeAccountDeletion } from "@/lib/server/accountDeletion";
 import { logAdminAuditAction } from "@/lib/server/audit";
 import { isAdminEmail } from "@/lib/server/adminEmails";
 import { assertAdminCanDeleteTargetUser } from "@/lib/server/protectedAccounts";
@@ -31,6 +32,8 @@ export const USER_DATA_DELETION_STEPS: DeletionStep[] = [
   { table: "push_devices", columns: ["user_id"], description: "push devices" },
   { table: "user_push_settings", columns: ["user_id"], description: "push settings" },
   { table: "quad_posts", columns: ["user_id"], description: "quad posts" },
+  { table: "quad_post_media", columns: ["uploader_id"], description: "quad post media" },
+  { table: "profile_private", columns: ["user_id"], description: "private profile fields" },
   { table: "quad_comment_likes", columns: ["user_id"], description: "quad comment likes" },
   { table: "quad_post_comments", columns: ["user_id"], description: "quad comments" },
   { table: "quad_post_reactions", columns: ["user_id"], description: "quad reactions" },
@@ -197,7 +200,19 @@ export async function deleteAdminTargetUser(args: {
     adminEmail,
   });
 
-  const removedCounts = await deleteRelatedUserData(admin, targetUserId);
+  let result: Awaited<ReturnType<typeof executeAccountDeletion>>;
+  try {
+    result = await executeAccountDeletion({ admin, userId: targetUserId });
+  } catch (error) {
+    const blockers = await findDeletionBlockers(admin, targetUserId);
+    logDeleteError("auth_delete_failed", {
+      targetUserId,
+      targetEmail,
+      message: error instanceof Error ? error.message : "unknown",
+      blockers,
+    });
+    throw error;
+  }
 
   await logAdminAuditAction({
     actionType: "user_deleted",
@@ -206,31 +221,18 @@ export async function deleteAdminTargetUser(args: {
     adminEmail,
     metadata: {
       targetEmail,
-      removedCounts,
+      removedCounts: result.removedCounts,
+      storageRemoved: result.storageRemoved,
+      storageFailed: result.storageFailed,
     },
   });
 
-  const { error: deleteAuthError } = await admin.auth.admin.deleteUser(targetUserId);
-  if (deleteAuthError) {
-    const blockers = await findDeletionBlockers(admin, targetUserId);
-    logDeleteError("auth_delete_failed", {
-      targetUserId,
-      targetEmail,
-      message: deleteAuthError.message,
-      code: deleteAuthError.code ?? null,
-      blockers,
-      removedCounts,
-    });
+  logDeletePhase("complete", {
+    targetUserId,
+    targetEmail,
+    removedCounts: result.removedCounts,
+    storageRemoved: result.storageRemoved,
+  });
 
-    const blockerSummary = blockers.length > 0 ? blockers.join(", ") : "unknown foreign-key reference";
-    throw new ApiError(
-      400,
-      `Failed to delete user: still blocked by ${blockerSummary}. Database reported: ${deleteAuthError.message}`,
-      "USER_DELETE_AUTH_FAILED",
-    );
-  }
-
-  logDeletePhase("complete", { targetUserId, targetEmail, removedCounts });
-
-  return { targetUserId, removedCounts };
+  return { targetUserId, removedCounts: result.removedCounts };
 }

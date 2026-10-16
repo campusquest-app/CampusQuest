@@ -7,6 +7,8 @@ const adminFrom = vi.fn();
 const deleteUser = vi.fn();
 const getUserById = vi.fn();
 const deleteRelatedUserData = vi.fn();
+const collectUserStorageObjects = vi.fn();
+const removeUserStorageObjects = vi.fn();
 const logAdminAuditAction = vi.fn();
 const fetchProfileRole = vi.fn();
 
@@ -18,6 +20,10 @@ vi.mock("@/lib/server/supabase", () => ({
 }));
 vi.mock("@/lib/server/adminUserDeletion", () => ({
   deleteRelatedUserData: (...args: unknown[]) => deleteRelatedUserData(...args),
+}));
+vi.mock("@/lib/server/userStorageCleanup", () => ({
+  collectUserStorageObjects: (...args: unknown[]) => collectUserStorageObjects(...args),
+  removeUserStorageObjects: (...args: unknown[]) => removeUserStorageObjects(...args),
 }));
 vi.mock("@/lib/server/audit", () => ({
   logAdminAuditAction: (...args: unknown[]) => logAdminAuditAction(...args),
@@ -47,6 +53,8 @@ describe("self-serve account deletion", () => {
     getUserById.mockResolvedValue({ data: { user: { id: "student-1" } }, error: null });
     deleteUser.mockResolvedValue({ error: null });
     deleteRelatedUserData.mockResolvedValue({ "quad_posts.user_id": 2 });
+    collectUserStorageObjects.mockResolvedValue([{ bucket: "quad-post-images", path: "student-1/a.jpg" }]);
+    removeUserStorageObjects.mockResolvedValue({ removed: 1, failed: 0 });
     adminFrom.mockImplementation(() => table({ data: null, error: null }));
   });
 
@@ -59,12 +67,20 @@ describe("self-serve account deletion", () => {
     expect(deleteRelatedUserData).not.toHaveBeenCalled();
   });
 
-  it("deletes the auth user before any relational cleanup", async () => {
+  it("collects storage, deletes auth, then removes objects and leftover rows", async () => {
     fetchProfileRole.mockResolvedValue("student");
     const order: string[] = [];
+    collectUserStorageObjects.mockImplementation(async () => {
+      order.push("collect");
+      return [{ bucket: "quad-post-images", path: "student-1/a.jpg" }];
+    });
     deleteUser.mockImplementation(async () => {
       order.push("auth");
       return { error: null };
+    });
+    removeUserStorageObjects.mockImplementation(async () => {
+      order.push("storage");
+      return { removed: 1, failed: 0 };
     });
     deleteRelatedUserData.mockImplementation(async () => {
       order.push("data");
@@ -72,7 +88,7 @@ describe("self-serve account deletion", () => {
     });
     const result = await deleteOwnAccount({ userId: "student-1", userEmail: "s@uri.edu" });
     expect(result.userId).toBe("student-1");
-    expect(order).toEqual(["auth", "data"]);
+    expect(order).toEqual(["collect", "auth", "storage", "data"]);
     expect(deleteUser).toHaveBeenCalledWith("student-1");
     expect(adminFrom).toHaveBeenCalledWith("profiles");
     expect(adminFrom).toHaveBeenCalledWith("user_stats");
@@ -84,6 +100,9 @@ describe("self-serve account deletion", () => {
     await expect(deleteOwnAccount({ userId: "student-1", userEmail: "s@uri.edu" })).rejects.toMatchObject({
       code: "ACCOUNT_DELETE_AUTH_FAILED",
     });
+    expect(collectUserStorageObjects).toHaveBeenCalledWith(expect.anything(), "student-1");
+    expect(deleteUser).toHaveBeenCalled();
+    expect(removeUserStorageObjects).not.toHaveBeenCalled();
     expect(deleteRelatedUserData).not.toHaveBeenCalled();
   });
 

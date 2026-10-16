@@ -6,7 +6,7 @@ import { mapEventPinToFeedEvent, resolveGroupedMarkerTap } from "@/lib/realm/map
 import { REVIEW_DEMO_EVENTS, REVIEW_DEMO_IDS } from "@/lib/reviewDemoSeed";
 import { listReviewDemoMapLocations } from "@/lib/server/groupedMapLocations";
 
-const NOW_MS = Date.parse("2026-10-14T22:00:00.000Z");
+const NOW_MS = Date.now();
 
 async function demoGroups() {
   const rows = REVIEW_DEMO_EVENTS.map((event, index) => ({

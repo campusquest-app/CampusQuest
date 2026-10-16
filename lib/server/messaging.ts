@@ -1199,6 +1199,10 @@ export type ConversationReadSyncResult = {
   readAt: string;
 };
 
+/**
+ * Existing history stays readable after a block. Blocking is enforced on send
+ * and conversation-create, not on read, so evidence is not silently destroyed.
+ */
 export async function listConversationMessages(args: {
   userClient: SupabaseClientLike;
   userId: string;
@@ -1536,6 +1540,8 @@ export async function sendConversationMessage(args: {
     throw new ApiError(400, "Recipient not found for conversation.", "MESSAGE_RECIPIENT_NOT_FOUND");
   }
 
+  // Server-side: a block stops new DMs in both directions. UI restrictions
+  // are not sufficient — this runs on every POST /api/social/conversations/:id/messages.
   if (convoType === "direct") {
     await assertNotBlocked(userClient, userId, recipientIds[0]!);
   } else {

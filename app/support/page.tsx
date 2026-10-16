@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 const PERMISSIONS = [
   {
     name: "Location",
-    why: "Shows nearby campus places, Realm map discovery, and location-based memories when you choose to share them.",
+    why: "Shows your position on The Realm campus map and provides directions when you allow it. Campus memories attach to campus places, not your GPS location.",
   },
   {
     name: "Camera",

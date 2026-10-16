@@ -60,6 +60,19 @@ describe("legal consent status", () => {
     expect(status.currentPolicyVersion).toBe("2026-08-11.1");
   });
 
+  it("requires a new acceptance when only a historical policy version exists", async () => {
+    const status = await getLegalConsentStatus({
+      userClient: createConsentClient({
+        policyVersion: "2026-10-15.1",
+        latest: { policy_version: "2026-08-11.1" },
+      }),
+      userId: "user-1",
+    });
+    expect(status.currentPolicyVersion).toBe("2026-10-15.1");
+    expect(status.agreementComplete).toBe(false);
+    expect(status.requiredReacceptance).toBe(true);
+  });
+
   it("lets existing acceptances through without data consent", () => {
     const status = mapConsentRowToStatus({
       currentPolicyVersion: "2026-08-11.1",

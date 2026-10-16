@@ -1,8 +1,7 @@
 # Apple App Privacy questionnaire — draft answers
 
-Draft only, based on **current CampusQuest code behavior** (web + Capacitor iOS shell).
-Do not invent Tracking or analytics that are not implemented.
-Update this file if product behavior changes before submission.
+Canonical submission answers live in [`docs/app-store-privacy.md`](./app-store-privacy.md) (October 15, 2026).
+This file is a short index. Do not invent Tracking or analytics that are not implemented.
 
 ## Data collection overview
 
@@ -13,8 +12,8 @@ Update this file if product behavior changes before submission.
 | Other User Content | Yes | Yes | No | Posts, comments, messages, reports, org content |
 | Photos or Videos | Yes | Yes | No | User uploads for posts/memories/profile/DMs |
 | Audio Data | Yes | Yes | No | Optional DM voice notes when mic permitted |
-| Precise Location | Yes (optional) | Yes | No | When-in-use only: Realm map / nearby / directions |
-| Coarse Location | Possible via IP / approx | Yes | No | Server/network context; not advertising |
+| Precise Location | Yes (optional) | Yes | No | When-in-use only: Realm map / directions. Not stored as GPS history. |
+| Coarse Location | No — do not declare | — | — | IP/UA belong under Other Diagnostic Data |
 | Device ID | Push token (optional) | Yes | No | APNs token in `push_devices` when user enables push |
 | Product Interaction | Limited first-party | Yes | No | In-app notifications, RSVPs, quests/XP; admin operational metrics only |
 | Crash Data | No third-party SDK | — | No | Console / server logs only today |

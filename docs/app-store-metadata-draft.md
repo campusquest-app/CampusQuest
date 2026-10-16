@@ -94,10 +94,10 @@ Contact: your name, phone, email (**fill**).
 
 ## Items for human / legal review (no code change made)
 
-1. Resolved: Privacy Policy §7/§10 and Terms §Questions now use the verified support address `support@campusquestapp.com` (see checklist §4).
-2. Privacy Policy §1 mentions "QR scanning" and "nearby quests/check-ins" as uses of camera/location; these features are hidden for launch. Suggested wording: drop "QR scanning" and "nearby quests/check-ins" (keep "campus map, directions, placing campus events").
+1. Resolved: Privacy Policy §7/§10 and Terms §Questions use `support@campusquestapp.com`.
+2. Resolved in the October 15, 2026 policy: QR scanning, nearby quests/check-ins, and “place campus events” via user GPS were removed from user-facing copy.
 3. Privacy Policy §4 "limited client-side game or onboarding state" — still accurate (equipped cosmetics key in `game_state_json`), keep.
-4. Data & Personalization Consent page has a "Beta Service" section — decide whether the product is still described as beta at App Store launch.
-5. `docs/apple-app-privacy-answers.md` lists "quests/XP" under Product Interaction; superseded by the table above.
-6. Privacy Policy §7 account-deletion retention language is accurate to the implementation (auth deleted first, relational rows removed, media may persist in provider backups; orphaned public media objects are not purged synchronously — the `cleanup-quad-media` cron handles Quad media). Confirm this matches your intended retention promise.
-7. Permission rationale copy on the Support page was updated (camera: no QR mention; notifications: "event reminders" instead of "quest reminders") — technical accuracy only, review if you consider the Support page policy text.
+4. Resolved: Data Consent no longer labels CampusQuest a “Beta Service” and no longer claims third-party AI recommendations.
+5. Canonical App Store Connect answers: `docs/app-store-privacy.md`.
+6. Account deletion now collects and removes user-owned storage objects before leftover relational cleanup. Provider backups and security/audit rows may remain — do not promise instant purge of immutable backups.
+7. Support page location copy describes The Realm / directions and memories attached to campus places, not GPS tracking.

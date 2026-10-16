@@ -6,6 +6,7 @@ import {
 import { recommendationProfileFromDiscovery } from "@/lib/recommendations/discoveryProfile";
 import { inferAffinitiesFromSignals, type RecommendationBehaviorSignal } from "@/lib/recommendations/profile";
 import type { UserRecommendationProfile } from "@/lib/recommendations/types";
+import { fetchProfilePrivateFields } from "@/lib/server/profilePrivate";
 import { createAdminClient } from "@/lib/server/supabase";
 import type { User } from "@supabase/supabase-js";
 
@@ -179,18 +180,19 @@ export async function loadUserRecommendationProfile(args: {
 
   let profileResult = await args.userClient
     .from("profiles")
-    .select("institution_id, student_status, class_year, major, academic_area, campus_email_verified_at")
+    .select("institution_id, campus_email_verified_at")
     .eq("id", userId)
     .maybeSingle();
-  if (profileResult.error && /academic_area|campus_email_verified_at/i.test(profileResult.error.message ?? "")) {
+  if (profileResult.error && /campus_email_verified_at/i.test(profileResult.error.message ?? "")) {
     profileResult = await args.userClient
       .from("profiles")
-      .select("institution_id, student_status, class_year, major")
+      .select("institution_id")
       .eq("id", userId)
       .maybeSingle();
   }
 
-  const [prefsResult, rsvpSignals, orgBundle, checkInSignals] = await Promise.all([
+  const [privateFields, prefsResult, rsvpSignals, orgBundle, checkInSignals] = await Promise.all([
+    fetchProfilePrivateFields({ userClient: args.userClient, userId }),
     args.userClient
       .from("user_onboarding_preferences")
       .select("interests, communities, institution_id, school_name, major")
@@ -212,10 +214,10 @@ export async function loadUserRecommendationProfile(args: {
     {
       institutionId: (profile.institution_id as string | null) ?? (prefs.institution_id as string | null) ?? null,
       schoolName: (prefs.school_name as string | null) ?? null,
-      studentStatus: (profile.student_status as string | null) ?? null,
-      classYear: typeof profile.class_year === "number" ? profile.class_year : null,
-      major: (profile.major as string | null) || (prefs.major as string | null) || null,
-      academicArea: (profile.academic_area as string | null) ?? null,
+      studentStatus: privateFields?.student_status ?? null,
+      classYear: typeof privateFields?.class_year === "number" ? privateFields.class_year : null,
+      major: privateFields?.major || (prefs.major as string | null) || null,
+      academicArea: privateFields?.academic_area ?? null,
       interests: asStringArray(prefs.interests),
       communities: asStringArray(prefs.communities),
       campusEmailVerifiedAt: (profile.campus_email_verified_at as string | null) ?? null,
