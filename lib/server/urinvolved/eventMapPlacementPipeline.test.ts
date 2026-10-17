@@ -75,7 +75,8 @@ describe("resolveExternalEventPlacement map rendering", () => {
     expect(resolved.renderOnMap).toBe(true);
     expect(resolved.match?.kind).toBe("coords");
     if (resolved.match?.kind === "coords") {
-      expect(resolved.match.locationName).toBe("Weldin Hall");
+      // Public label stays the venue text. Admin custom labels do not rename it.
+      expect(resolved.match.locationName).toBe("Weldin Hall First Floor Lounge");
     }
   });
 
