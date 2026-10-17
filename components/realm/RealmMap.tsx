@@ -845,10 +845,15 @@ export function RealmMap({
       const eventDraftEntries = Object.entries(eventEditDrafts);
       if (eventDraftEntries.length > 0) {
         for (const [externalEventId, draft] of eventDraftEntries) {
+          const pin = buildUrinvolvedEditPinsFromGroups(mapGroups).find(
+            (entry) => entry.externalEventId === externalEventId,
+          );
+          const venueLabel = pin?.sourceVenue?.trim() || pin?.locationName?.trim() || null;
           await saveUrinvolvedPlacement({
             externalEventId,
             customLat: draft.lat,
             customLng: draft.lng,
+            customLabel: venueLabel && !/^custom location$/i.test(venueLabel) ? venueLabel : null,
             realmLocationId: null,
             matchStatus: "manually_adjusted",
           });
@@ -879,7 +884,7 @@ export function RealmMap({
       setSavePending(false);
       window.setTimeout(() => setSaveMessage(null), 5000);
     }
-  }, [draftPositions, eventEditDrafts, isAdmin, reloadMapGroups, savePending]);
+  }, [draftPositions, eventEditDrafts, isAdmin, mapGroups, reloadMapGroups, savePending]);
 
   const handleExitEdit = useCallback(() => {
     setEditMode(false);
@@ -1880,9 +1885,6 @@ function SupplementaryLocationPin({
         <span className="realm-pin-emoji">📍</span>
       </span>
       <span className="realm-pin-label">{group.locationName}</span>
-      {group.events.some((event) => event.locationManuallyAdjusted) ? (
-        <span className="cq-realm-marker-adjusted cq-realm-marker-adjusted--canvas">Adjusted</span>
-      ) : null}
     </button>
   );
 }

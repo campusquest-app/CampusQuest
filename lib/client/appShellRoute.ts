@@ -62,7 +62,7 @@ function skipsStudentVerificationGates(profile: ProfileRouteInput): boolean {
  * 2) display name (when required)
  * 3) demographics (when required, including QA replay)
  * 4) character setup
- * 5) role gate (existing users missing role)
+ * 5) role gate (legacy users missing both role and studentStatus)
  * 6) app
  *
  * Explicitly unverified users cannot route around the verification gate,

@@ -112,7 +112,8 @@ function StarterAvatarGrid({
 /**
  * Character / avatar onboarding.
  * Username is collected only at signup; display name is collected in DisplayNameGate
- * before demographics. Role selection is handled by RoleSelectionGate.
+ * before demographics. Campus role is collected on About You (`studentStatus`);
+ * RoleSelectionGate is only for legacy profiles missing that answer.
  */
 export function CharacterGate({
   prefillProfile,

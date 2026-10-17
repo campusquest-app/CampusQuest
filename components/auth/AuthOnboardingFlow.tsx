@@ -723,7 +723,18 @@ export function AuthOnboardingFlow({
                         type="button"
                         aria-pressed={selected}
                         className={`cq-onboard-choice cq-onboard-choice--row ${selected ? "cq-onboard-choice--selected" : ""}`}
-                        onClick={() => setStudentStatus(opt.id)}
+                        onClick={() => {
+                          setStudentStatus(opt.id);
+                          void persistProfilePatch({
+                            studentStatus: opt.id,
+                            classYear:
+                              shouldAskGraduationYear(opt.id)
+                                ? graduateOther
+                                  ? null
+                                  : graduationYear
+                                : null,
+                          });
+                        }}
                       >
                         <span>{opt.label}</span>
                         {selected ? <Check className="h-5 w-5 shrink-0" aria-hidden /> : null}

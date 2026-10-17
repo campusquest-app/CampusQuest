@@ -663,7 +663,7 @@ function RealmMapMarkers({
               hideLabel={zoomTier === "far" && activityState === "idle" && !isSelected}
               revealIndex={markersReveal ? visibleLandmarks.length + index : undefined}
               countdown={countdownByGroup[group.groupKey] ?? null}
-              locationAdjusted={group.events.some((event) => event.locationManuallyAdjusted)}
+              locationAdjusted={editMode && group.events.some((event) => event.locationManuallyAdjusted)}
               discoveryMode={discovery.mode}
               discoveryLabel={discovery.label}
             />

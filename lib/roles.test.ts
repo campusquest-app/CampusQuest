@@ -91,5 +91,22 @@ describe("roles", () => {
         false,
       );
     });
+
+    it("treats a persisted About You studentStatus as the role choice", () => {
+      expect(hasValidRoleSelection({ role: null, student_status: "current_student" })).toBe(true);
+      expect(hasValidRoleSelection({ role: null, student_status: "incoming_student" })).toBe(true);
+      expect(hasValidRoleSelection({ role: null, student_status: "graduate_student" })).toBe(true);
+      expect(hasValidRoleSelection({ role: null, student_status: "faculty_staff" })).toBe(true);
+      expect(hasValidRoleSelection({ role: "", student_status: "current_or_incoming" })).toBe(true);
+      expect(hasValidRoleSelection({ role: null, student_status: null })).toBe(false);
+      expect(
+        hasValidRoleSelection({
+          role: "qa",
+          is_test_user: true,
+          qa_selected_role: null,
+          student_status: "current_student",
+        }),
+      ).toBe(true);
+    });
   });
 });

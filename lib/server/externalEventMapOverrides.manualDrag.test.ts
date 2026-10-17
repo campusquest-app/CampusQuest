@@ -62,6 +62,73 @@ describe("manual drag placement persistence", () => {
     if (resolved.match?.kind === "coords") {
       expect(resolved.match.latitude).toBeCloseTo(41.4831, 4);
       expect(resolved.match.longitude).toBeCloseTo(-71.5342, 4);
+      expect(resolved.match.locationName).toBe("Memorial Union");
+      expect(resolved.match.locationName).not.toMatch(/custom location/i);
+    }
+  });
+
+  it("labels a dragged soccer event with the canonical venue, not Custom location", () => {
+    const resolved = resolveExternalEventPlacement({
+      fields: { venueName: "URI Soccer Complex", locationName: "URI Soccer Complex" },
+      catalog: CATALOG,
+      registry: REGISTRY,
+      override: {
+        ...BASE,
+        id: "o-soccer",
+        externalEventId: "soccer-1",
+        realmLocationId: null,
+        customLat: 41.4838,
+        customLng: -71.5348,
+        customLabel: "Custom location",
+        matchStatus: "manually_adjusted",
+        matchConfidence: 1,
+        matchReason: "manual_drag",
+        rawLocationText: "URI Soccer Complex",
+        normalizedLocationText: "uri soccer complex",
+      },
+    });
+    expect(resolved.match?.kind).toBe("coords");
+    if (resolved.match?.kind === "coords") {
+      expect(resolved.match.locationName).toBe("URI Soccer Complex");
+      expect(resolved.match.latitude).toBeCloseTo(41.4838, 4);
+    }
+  });
+
+  it("does not give a similarly titled event the other event's override", () => {
+    const shared = {
+      fields: { venueName: "Keeney Gymnasium" },
+      catalog: CATALOG,
+      registry: REGISTRY,
+    };
+    const moved = resolveExternalEventPlacement({
+      ...shared,
+      override: {
+        ...BASE,
+        id: "o-a",
+        externalEventId: "event-a",
+        realmLocationId: null,
+        customLat: 41.4901,
+        customLng: -71.5201,
+        customLabel: "Custom location",
+        matchStatus: "manually_adjusted",
+        matchConfidence: 1,
+        matchReason: "manual_drag",
+        rawLocationText: "Keeney Gymnasium",
+        normalizedLocationText: "keeney gymnasium",
+      },
+    });
+    const other = resolveExternalEventPlacement({
+      ...shared,
+      override: null,
+    });
+    expect(moved.match?.kind).toBe("coords");
+    if (moved.match?.kind === "coords") {
+      expect(moved.match.locationName).toBe("Keaney Gym");
+      expect(moved.match.latitude).toBeCloseTo(41.4901, 4);
+    }
+    expect(other.appliedOverride).toBe(false);
+    if (other.match?.kind === "coords") {
+      expect(other.match.latitude).not.toBeCloseTo(41.4901, 3);
     }
   });
 

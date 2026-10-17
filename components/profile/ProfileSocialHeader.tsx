@@ -5,7 +5,7 @@ import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { getEquippedTitleLabel } from "@/lib/achievementEngine";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import { formatStreakBadge } from "@/lib/streakMessaging";
-import { BadgeCheck, ChevronDown } from "lucide-react";
+import { BadgeCheck, ChevronDown, Pencil } from "lucide-react";
 import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 export function ProfileSocialHeader({
@@ -15,6 +15,7 @@ export function ProfileSocialHeader({
   onEditBio,
   onOpenMenu,
   onSwitchIdentity,
+  onEditAvatar,
   identityVerified = false,
   identitySubtitle,
   schoolAffiliation,
@@ -28,6 +29,8 @@ export function ProfileSocialHeader({
   onEditBio?: () => void;
   onOpenMenu?: () => void;
   onSwitchIdentity?: () => void;
+  /** Own profile only. Opens the shared Avatar Lab. */
+  onEditAvatar?: () => void;
   identityVerified?: boolean;
   identitySubtitle?: string | null;
   showLevel?: boolean;
@@ -36,37 +39,57 @@ export function ProfileSocialHeader({
   const title = showProgression ? getEquippedTitleLabel(character) || getClassTitle(character.classId) : "";
   const realm = showProgression ? getClassRealm(character.classId) : "";
 
+  const avatarInteractive = Boolean(onEditAvatar || onSwitchIdentity);
+  const avatarLabel = onEditAvatar ? "Edit avatar" : onSwitchIdentity ? "Switch profile" : undefined;
+  const avatarClass = `relative flex-shrink-0 ${!onEditAvatar && onSwitchIdentity ? "cq-profile-switch-hit" : ""}`;
+  const avatarBody = (
+    <>
+      <div className="character-avatar-frame cq-profile-avatar-shell cq-profile-avatar-shell--header flex shrink-0 items-center justify-center rounded-full">
+        <div className="cq-profile-avatar-inner cq-profile-avatar-inner--header">
+          <AvatarDisplay
+            avatar={character.avatar}
+            fitParent
+            size={66}
+            className="rounded-full"
+            classId={character.classId}
+            starterWeapon={character.starterWeapon}
+          />
+        </div>
+      </div>
+      {onEditAvatar ? (
+        <span
+          className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney text-white shadow-md"
+          aria-hidden
+        >
+          <Pencil className="h-3 w-3" strokeWidth={2.4} />
+        </span>
+      ) : null}
+      {showProgression ? (
+        <span
+          className="cq-profile-level-pip absolute -bottom-0.5 -left-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney px-1 text-[10px] font-bold leading-none text-white"
+          aria-label={`Level ${character.level}`}
+        >
+          {character.level}
+        </span>
+      ) : null}
+    </>
+  );
+
   return (
     <header className="cq-profile-header cq-profile-fade-in">
       <div className="cq-profile-header-row">
-        <button
-          type="button"
-          className={`relative flex-shrink-0 ${onSwitchIdentity ? "cq-profile-switch-hit" : ""}`}
-          onClick={onSwitchIdentity}
-          disabled={!onSwitchIdentity}
-          aria-label={onSwitchIdentity ? "Switch profile" : undefined}
-        >
-          <div className="character-avatar-frame cq-profile-avatar-shell cq-profile-avatar-shell--header flex shrink-0 items-center justify-center rounded-full">
-            <div className="cq-profile-avatar-inner cq-profile-avatar-inner--header">
-              <AvatarDisplay
-                avatar={character.avatar}
-                fitParent
-                size={66}
-                className="rounded-full"
-                classId={character.classId}
-                starterWeapon={character.starterWeapon}
-              />
-            </div>
-          </div>
-          {showProgression ? (
-            <span
-              className="cq-profile-level-pip absolute -bottom-0.5 -left-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full border-2 border-uri-navy bg-uri-keaney px-1 text-[10px] font-bold leading-none text-white"
-              aria-label={`Level ${character.level}`}
-            >
-              {character.level}
-            </span>
-          ) : null}
-        </button>
+        {avatarInteractive ? (
+          <button
+            type="button"
+            className={avatarClass}
+            onClick={onEditAvatar ?? onSwitchIdentity}
+            aria-label={avatarLabel}
+          >
+            {avatarBody}
+          </button>
+        ) : (
+          <div className={avatarClass}>{avatarBody}</div>
+        )}
 
         <div className="cq-profile-identity min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">

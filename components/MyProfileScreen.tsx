@@ -26,6 +26,7 @@ import { registerLogoutPrepare } from "@/lib/client/logoutPrepare";
 import { buildLocalCharacterFromServer, type MeProfileRow, type MeStatsRow } from "@/lib/client/profileCharacter";
 import { scheduleNonCriticalWork } from "@/lib/client/deferNonCriticalWork";
 import { AvatarDisplay } from "./AvatarDisplay";
+import { AvatarLabDialog } from "@/components/profile/AvatarLabDialog";
 import { ProfileSocialPage } from "./profile/ProfileSocialPage";
 import type { ProfileTab } from "./profile/ProfileTabNav";
 import {
@@ -106,6 +107,7 @@ export function MyProfileScreen({
   const [logoutSaveError, setLogoutSaveError] = useState<string | null>(null);
   const [showEditBio, setShowEditBio] = useState(false);
   const [showEditIdentity, setShowEditIdentity] = useState(false);
+  const [showAvatarLab, setShowAvatarLab] = useState(false);
   const [identityNameDraft, setIdentityNameDraft] = useState(character.name);
   const [identityUsernameDraft, setIdentityUsernameDraft] = useState(character.username);
   const [identityError, setIdentityError] = useState<string | null>(null);
@@ -524,6 +526,9 @@ export function MyProfileScreen({
               }
             : undefined
         }
+        onEditAvatar={
+          !currentIdentity || currentIdentity.type === "personal" ? () => setShowAvatarLab(true) : undefined
+        }
         onLogout={
           onLogout
             ? () => {
@@ -654,6 +659,20 @@ export function MyProfileScreen({
             <h2 id="edit-identity-title" className="font-display font-semibold text-lg text-cq-foreground mb-1">
               Edit name & username
             </h2>
+            <button
+              type="button"
+              onClick={() => setShowAvatarLab(true)}
+              className="mb-4 flex w-full items-center gap-3 rounded-xl border border-cq-border bg-cq-elevated px-3 py-2.5 text-left"
+            >
+              <AvatarDisplay avatar={displayCharacter.avatar} size={40} className="rounded-full" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-cq-foreground">Edit Avatar</span>
+                <span className="block text-[11px] text-cq-muted">Customize your CampusQuest look</span>
+              </span>
+              <span className="text-cq-muted" aria-hidden>
+                ›
+              </span>
+            </button>
             <p className="text-xs text-cq-muted mb-3">
               {isPlatformAdminUser
                 ? "Admin: updates this profile using the same rules as student signup."
@@ -903,6 +922,12 @@ export function MyProfileScreen({
         </>,
         document.body
       )}
+      <AvatarLabDialog
+        character={displayCharacter}
+        open={showAvatarLab}
+        onClose={() => setShowAvatarLab(false)}
+        onSaved={() => onRefresh?.()}
+      />
     </PullToRefresh>
   );
 }

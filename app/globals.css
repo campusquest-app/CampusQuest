@@ -2062,10 +2062,16 @@
 
 /* —— Share post sheet (Instagram-style native share) —— */
 /* Hide the floating dock nav while the share sheet is open so it never overlaps. */
-html[data-cq-share-sheet-open] .cq-dock-nav {
+html[data-cq-share-sheet-open] .cq-dock-nav,
+html[data-cq-avatar-lab-open] .cq-dock-nav {
   opacity: 0;
   pointer-events: none;
   transition: opacity 160ms ease;
+}
+
+html[data-cq-avatar-lab-open],
+html[data-cq-avatar-lab-open] body {
+  overflow: hidden;
 }
 
 /* Disable bottom nav while the hamburger drawer is open or animating closed. */
@@ -14424,7 +14430,8 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 .cq-tab-shell--events {
-  padding-bottom: var(--cq-feed-bottom-clearance, calc(var(--cq-bottom-nav-h, 4.75rem) + 0.875rem));
+  padding-bottom: calc(var(--cq-bottom-nav-h, 5.2rem) + env(safe-area-inset-bottom, 0px) + 1rem);
+  scroll-padding-bottom: calc(var(--cq-bottom-nav-h, 5.2rem) + env(safe-area-inset-bottom, 0px) + 1rem);
 }
 
 /* Student Perks (CampusQuest Partners) */
@@ -16697,11 +16704,13 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 
 .cq-happening-soon-scroller {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.875rem;
   padding: 0 1rem;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
+  scroll-padding-inline: 1rem;
+  -webkit-overflow-scrolling: touch;
   touch-action: pan-x pan-y;
   scrollbar-width: none;
 }
@@ -16711,14 +16720,16 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 .cq-happening-soon-slide {
-  flex: 0 0 calc(100% - 2.25rem);
-  max-width: 26rem;
+  flex: 0 0 auto;
+  width: 82vw;
+  max-width: 22.5rem;
   scroll-snap-align: start;
 }
 
 .cq-happening-card {
   display: flex;
   flex-direction: column;
+  max-height: min(31.25rem, 62dvh);
   overflow: hidden;
   border-radius: 1.35rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -16727,7 +16738,9 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 
 .cq-happening-card-media {
   position: relative;
-  min-height: 14.5rem;
+  flex: 0 0 auto;
+  height: clamp(13.125rem, 30vh, 15.625rem);
+  overflow: hidden;
 }
 
 .cq-happening-card-image,
@@ -16737,12 +16750,13 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
 }
 
 .cq-happening-card-scrim {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(4, 16, 36, 0.05) 20%, rgba(4, 16, 36, 0.92) 100%);
+  background: linear-gradient(180deg, rgba(4, 16, 36, 0.05) 28%, rgba(4, 16, 36, 0.94) 100%);
 }
 
 .cq-happening-card-chip {
@@ -16789,36 +16803,63 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 .cq-happening-card-copy {
   position: relative;
   z-index: 1;
-  padding: 6.75rem 0.9rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.7rem 1rem 0.15rem;
 }
 
 .cq-happening-card-title {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
   margin: 0;
+  padding: 2.25rem 1rem 0.7rem;
   color: #fff;
-  font-size: 1.28rem;
+  font-size: 1.2rem;
   line-height: 1.15;
   font-weight: 800;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
 .cq-happening-card-sport {
-  margin: 0.28rem 0 0.45rem;
+  margin: 0;
   color: #f0a15a;
   font-size: 0.86rem;
   font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cq-happening-card-meta {
-  margin: 0.18rem 0 0;
+  margin: 0;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
+  min-width: 0;
   color: rgba(255, 255, 255, 0.82);
   font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.cq-happening-card-meta span,
+.cq-happening-card-meta time {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cq-happening-card-source {
-  display: inline-block;
-  margin-top: 0.3rem;
+  display: block;
   font-size: 0.65rem;
   letter-spacing: 0.04em;
   color: rgba(255, 255, 255, 0.42);
@@ -16828,7 +16869,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.5rem;
-  padding: 0.7rem 0.75rem 0.8rem;
+  padding: 0.75rem 0.875rem 0.875rem;
 }
 
 .cq-happening-card-actions:has(> :only-child) {
@@ -16836,7 +16877,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 .cq-happening-card-action {
-  min-height: 42px;
+  min-height: 3.125rem;
   border-radius: 0.85rem;
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: #fff;
@@ -16852,8 +16893,8 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 .cq-happening-soon-dots {
   display: flex;
   justify-content: center;
-  gap: 0.4rem;
-  padding: 0.65rem 0 0.1rem;
+  gap: 0.35rem;
+  padding: 0.4rem 0 0;
 }
 
 .cq-happening-soon-dot {
@@ -17285,15 +17326,27 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   50% { opacity: 1; }
 }
 
-@media (min-width: 640px) {
+@media (min-width: 481px) and (max-width: 1023px) {
   .cq-happening-soon-slide {
-    flex-basis: 22rem;
+    width: 48vw;
+    max-width: 26.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .cq-happening-soon-slide {
+    width: 23.75rem;
+    max-width: 26.25rem;
+  }
+
+  .cq-happening-card-media {
+    height: 16.5rem;
   }
 }
 
 @media (max-height: 500px) and (orientation: landscape) {
   .cq-happening-card-media {
-    min-height: 12rem;
+    height: 12rem;
   }
 }
 
@@ -29574,7 +29627,149 @@ button.cq-loc-activity-card {
   flex: 0 0 0.55rem;
 }
 
-/* Desktop logged-out landing. Mobile welcome stays the single-column shell. */
+/* Canonical signed-out entry. Same screen on web, Safari, and Capacitor. */
+.cq-entry {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100svh;
+  padding:
+    max(1.25rem, env(safe-area-inset-top, 0px))
+    1.35rem
+    max(1.35rem, calc(env(safe-area-inset-bottom, 0px) + 0.85rem));
+  overflow-x: hidden;
+  overflow-y: auto;
+  background:
+    radial-gradient(120% 70% at 50% 18%, rgba(40, 92, 150, 0.28), transparent 58%),
+    #06101c;
+  color: #fff;
+}
+
+.cq-entry__glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 0 8%, transparent 0 7.5rem, rgba(90, 150, 210, 0.16) 7.55rem 7.65rem, transparent 7.8rem),
+    radial-gradient(circle at 100% 92%, transparent 0 8rem, rgba(90, 150, 210, 0.14) 8.05rem 8.16rem, transparent 8.4rem);
+}
+
+.cq-entry__panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: min(100%, 24rem);
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.cq-entry__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 1.35rem;
+}
+
+.cq-entry__crest {
+  width: min(9.25rem, 36vw);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 0 18px rgba(88, 164, 232, 0.45));
+}
+
+.cq-entry__wordmark {
+  margin: 0.85rem 0 0;
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(1.65rem, 7vw, 2rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.cq-entry__wordmark-campus {
+  color: #e2b34a;
+}
+
+.cq-entry__wordmark-quest {
+  color: #5eb0f0;
+}
+
+.cq-entry__headline {
+  margin: 0;
+  max-width: 18rem;
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(1.85rem, 7.4vw, 2.35rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
+  color: #fff;
+}
+
+.cq-entry__headline-accent {
+  color: #3d9cf5;
+}
+
+.cq-entry__support {
+  margin: 0.9rem 0 0;
+  max-width: 19rem;
+  color: rgba(226, 234, 244, 0.78);
+  font-size: 0.98rem;
+  line-height: 1.45;
+}
+
+.cq-entry__actions {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+}
+
+.cq-entry__cta,
+.cq-entry__signin {
+  width: 100%;
+  min-height: 3.35rem;
+  border-radius: 999px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.cq-entry__cta {
+  border: 0;
+  color: #fff;
+  background: linear-gradient(180deg, #3aa0f5 0%, #1d74e8 100%);
+  box-shadow: 0 10px 24px rgba(29, 116, 232, 0.28);
+}
+
+.cq-entry__signin {
+  color: #7eb6ff;
+  background: transparent;
+  border: 1.5px solid rgba(94, 168, 240, 0.85);
+}
+
+.cq-entry__cta:focus-visible,
+.cq-entry__signin:focus-visible {
+  outline: 2px solid #8ebfff;
+  outline-offset: 3px;
+}
+
+@media (min-width: 768px) {
+  .cq-entry__panel {
+    width: min(100%, 26rem);
+  }
+
+  .cq-entry__actions {
+    width: min(100%, 22rem);
+  }
+
+  .cq-entry__crest {
+    width: 9.5rem;
+  }
+}
 .cq-auth-desktop-brand,
 .cq-auth-desktop-footer,
 .cq-auth-desktop-frame--landing {

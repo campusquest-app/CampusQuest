@@ -38,9 +38,9 @@ type AccountTypeResponse = {
 };
 
 /**
- * Required account-type screen.
- * - New users (onboarding incomplete): "I am a..." — step before profile setup.
- * - Existing users with no valid role: one-time "Tell us about yourself".
+ * Legacy account-type screen for profiles missing both `role` and `studentStatus`.
+ * About You is the canonical collector. This gate must not appear after the
+ * user already answered Student / Faculty / Staff during onboarding.
  */
 export function RoleSelectionGate({
   variant,

@@ -4,6 +4,8 @@
  * lib/server/permissions.ts and builds on these definitions.
  */
 
+import { selectableRoleFromStudentStatus } from "@/lib/onboarding/studentStatusRole";
+
 export type UserRole = "student" | "faculty_staff" | "admin" | "super_admin" | "qa" | "beta_internal";
 
 export const USER_ROLES: readonly UserRole[] = [
@@ -92,21 +94,26 @@ export function roleLabel(role: string | null | undefined): string {
 }
 
 /**
- * True when the profile has a valid, explicitly chosen account type.
- * - admin / super_admin count as chosen (admins never see the prompt).
- * - QA/test accounts use qa_selected_role so they can re-test the screen;
- *   their protected role stays 'qa'.
- * - NULL, empty, or unknown legacy values require the one-time selection.
+ * True when the profile already has a campus role and must not be asked again.
+ * - admin / super_admin / beta_internal never see the prompt.
+ * - QA/test accounts use qa_selected_role when present; otherwise a persisted
+ *   studentStatus from About You counts so they are not asked twice.
+ * - Normal users: an explicit role OR a known studentStatus (canonical About You
+ *   answer) satisfies the gate. RoleSelectionGate is only for legacy rows
+ *   missing both.
  */
 export function hasValidRoleSelection(profile: {
   role?: string | null;
   is_test_user?: boolean | null;
   qa_selected_role?: string | null;
+  student_status?: string | null;
 }): boolean {
   const role = profile.role ?? null;
   if (role === "admin" || role === "super_admin" || role === "beta_internal") return true;
   if (profile.is_test_user === true || role === "qa") {
-    return isSelectableRole(profile.qa_selected_role);
+    if (isSelectableRole(profile.qa_selected_role)) return true;
+    return selectableRoleFromStudentStatus(profile.student_status) != null;
   }
-  return isSelectableRole(role);
+  if (isSelectableRole(role)) return true;
+  return selectableRoleFromStudentStatus(profile.student_status) != null;
 }

@@ -9,6 +9,7 @@ import {
   resolveEventLocationFromRegistrySync,
   type EventLocationResolutionDebug,
 } from "@/lib/server/urinvolved/eventLocationResolver";
+import { resolveUriCanonicalVenueFromFields } from "@/lib/locations/uriVenueAliases";
 import { createAdminClient } from "@/lib/server/supabase";
 import { effectiveEventEndIso, isEventVisibleOnMap } from "@/lib/realm/eventVisibility";
 import {
@@ -112,28 +113,75 @@ export async function loadOverridesForEventIds(
   return map;
 }
 
+const ADMIN_LOCATION_LABELS = new Set([
+  "custom location",
+  "manual override",
+  "adjusted",
+  "override coordinates",
+]);
+
+/** Student-facing place name. Manual coordinates never rename the venue. */
+export function publicEventLocationLabel(args: {
+  fields?: {
+    venueName?: string | null;
+    locationName?: string | null;
+    address?: string | null;
+  };
+  customLabel?: string | null;
+  rawLocationText?: string | null;
+  catalogName?: string | null;
+}): string {
+  const canonical = args.fields ? resolveUriCanonicalVenueFromFields(args.fields) : null;
+  if (canonical?.venue.name) return canonical.venue.name;
+  for (const value of [
+    args.fields?.venueName,
+    args.fields?.locationName,
+    args.fields?.address,
+    args.rawLocationText,
+    args.customLabel,
+    args.catalogName,
+  ]) {
+    const trimmed = value?.trim() ?? "";
+    if (trimmed && !ADMIN_LOCATION_LABELS.has(trimmed.toLowerCase())) return trimmed;
+  }
+  return "Campus location";
+}
+
 function overrideToMatch(
   override: ExternalEventMapOverrideRow,
   catalog: CatalogLocationLike[],
+  fields?: {
+    venueName?: string | null;
+    locationName?: string | null;
+    address?: string | null;
+  },
 ): EventLocationMatch | null {
+  const catalogName = override.realmLocationId
+    ? catalog.find((c) => c.slug === override.realmLocationId)?.name
+    : null;
+  const locationName = publicEventLocationLabel({
+    fields,
+    customLabel: override.customLabel,
+    rawLocationText: override.rawLocationText,
+    catalogName,
+  });
   // Canonical campus location wins over custom lat/lng so building events never
   // spawn a second pin beside the landmark (even after an admin drag).
   if (override.realmLocationId) {
-    const entry = catalog.find((c) => c.slug === override.realmLocationId);
     return {
       kind: "realm",
       realmLocationId: override.realmLocationId,
-      locationName: override.customLabel ?? entry?.name ?? override.realmLocationId.replace(/-/g, " "),
-      matchedText: override.rawLocationText ?? override.customLabel ?? override.realmLocationId,
+      locationName,
+      matchedText: override.rawLocationText ?? locationName,
     };
   }
   if (override.customLat != null && override.customLng != null) {
     return {
       kind: "coords",
-      locationName: override.customLabel ?? "Custom location",
+      locationName,
       latitude: override.customLat,
       longitude: override.customLng,
-      matchedText: override.rawLocationText ?? override.customLabel ?? "Custom location",
+      matchedText: override.rawLocationText ?? locationName,
     };
   }
   return null;
@@ -200,7 +248,7 @@ export function resolveExternalEventPlacement(args: {
         override.matchStatus === "manually_adjusted");
 
     if (isManualDrag && override.customLat != null && override.customLng != null) {
-      const match = overrideToMatch(override, args.catalog);
+      const match = overrideToMatch(override, args.catalog, args.fields);
       return {
         match,
         meta: match
@@ -239,7 +287,7 @@ export function resolveExternalEventPlacement(args: {
       };
     }
 
-    const match = overrideToMatch(override, args.catalog);
+    const match = overrideToMatch(override, args.catalog, args.fields);
     return {
       match,
       meta: match
@@ -270,7 +318,7 @@ export function resolveExternalEventPlacement(args: {
   // confident canonical campus place. Stale imports (e.g. Keeney near Browning)
   // must not keep winning after the resolver learns the building.
   if (override) {
-    const stored = overrideToMatch(override, args.catalog);
+    const stored = overrideToMatch(override, args.catalog, args.fields);
     if (stored) {
       const canonicalCoords =
         auto.match?.kind === "coords"

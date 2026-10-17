@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
+import { useState } from "react";
 import { Trophy } from "lucide-react";
 import type { Character } from "@/lib/types";
 import { STAT_KEYS, STAT_LABELS, MAX_STAT } from "@/lib/types";
@@ -10,13 +9,11 @@ import { StatIcon } from "@/components/stats/StatIcon";
 import { CharacterStatBar } from "@/components/stats/CharacterStatBar";
 import { ScaledProgressBar } from "@/components/ui/ScaledProgressBar";
 import { xpProgressInLevel } from "@/lib/level";
-import { updateCharacter, prestigeStat } from "@/lib/store";
-import { registerLogoutPrepare } from "@/lib/client/logoutPrepare";
-import { parseDiceBearAvatar, getDefaultDiceBearAvatar, serializeDiceBearAvatar } from "@/lib/dicebearAvatar";
+import { prestigeStat } from "@/lib/store";
 import { getClassTitle, getClassRealm } from "@/lib/characterClasses";
 import { getGuildById } from "@/lib/guildStore";
 import { AvatarDisplay } from "./AvatarDisplay";
-import { AvatarBuilder } from "./AvatarBuilder";
+import { AvatarLabDialog } from "./profile/AvatarLabDialog";
 import { AchievementShowcaseModal } from "./achievements/AchievementShowcaseModal";
 import { EquipmentStrip } from "./EquipmentStrip";
 import { getEquippedTitleLabel } from "@/lib/achievementEngine";
@@ -34,37 +31,14 @@ export function CharacterCard({
   onOpenLeaderboard?: () => void;
 }) {
   const [editingAvatar, setEditingAvatar] = useState(false);
-  const [editingAvatarValue, setEditingAvatarValue] = useState(character.avatar);
   const [showAchievementShowcase, setShowAchievementShowcase] = useState(false);
   const equippedTitle = getEquippedTitleLabel(character);
   const { current, needed } = xpProgressInLevel(character.totalXP);
   const xpPct = Math.min(100, (current / needed) * 100);
   const statBarFills = getCharacterStatBarFills(character.stats);
 
-  useEffect(() => {
-    return registerLogoutPrepare(() => {
-      if (!editingAvatar) return;
-      updateCharacter({ avatar: editingAvatarValue });
-    });
-  }, [editingAvatar, editingAvatarValue]);
-
   function openEditModal() {
-    const existing = parseDiceBearAvatar(character.avatar);
-    setEditingAvatarValue(
-      existing
-        ? character.avatar
-        : serializeDiceBearAvatar({
-            ...getDefaultDiceBearAvatar(),
-            seed: character.username.trim() || "campusquest-hero",
-          }),
-    );
     setEditingAvatar(true);
-  }
-
-  function handleAvatarSave() {
-    updateCharacter({ avatar: editingAvatarValue });
-    setEditingAvatar(false);
-    onRefresh?.();
   }
 
   return (
@@ -104,87 +78,12 @@ export function CharacterCard({
                 ✏️
               </button>
             ) : null}
-            {editingAvatar && typeof document !== "undefined" && createPortal(
-              <div
-                className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center sm:p-4"
-                onClick={(e) => e.target === e.currentTarget && setEditingAvatar(false)}
-                role="dialog"
-                aria-modal="true"
-                aria-label="Avatar Lab"
-              >
-                <div className="absolute inset-0 bg-black/85" aria-hidden onClick={() => setEditingAvatar(false)} />
-                <div className="relative z-10 flex max-h-[min(92dvh,100%)] w-full max-w-xl flex-col rounded-t-3xl border border-uri-keaney/30 bg-uri-navy shadow-xl shadow-black/50 sm:max-h-[88vh] sm:rounded-2xl lg:max-w-3xl">
-                  <div className="shrink-0 border-b border-white/10 px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
-                    <h2 className="font-display text-lg font-bold text-white sm:text-xl">Avatar Lab</h2>
-                    <p className="mt-1 text-sm text-white/60">
-                      Customize presets, colors, hair, face, and more — then save your look.
-                    </p>
-                  </div>
-                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
-                    <div className="sticky top-0 z-10 shrink-0 border-b border-white/10 bg-uri-navy px-4 py-4 sm:px-5 lg:static lg:w-56 lg:border-b-0 lg:border-r lg:py-5">
-                      <div className="flex flex-col items-center text-center">
-                        <div className="rounded-2xl border border-white/15 bg-white/5 p-3 shadow-inner">
-                          <AvatarDisplay avatar={editingAvatarValue} size={120} />
-                        </div>
-                        <p className="mt-3 text-xs text-white/55">Preview your avatar before saving.</p>
-                      </div>
-                    </div>
-                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
-                      <AvatarBuilder
-                        value={editingAvatarValue}
-                        onChange={setEditingAvatarValue}
-                        compact
-                        hidePreview
-                        showClassPresets
-                        selectedClassId={
-                          character.classId === "gym" ||
-                          character.classId === "knight" ||
-                          character.classId === "mage" ||
-                          character.classId === "bard" ||
-                          character.classId === "rogue"
-                            ? character.classId
-                            : null
-                        }
-                        selectedWeapon={character.starterWeapon ?? null}
-                        onWeaponChange={(weaponId) => {
-                          updateCharacter({ starterWeapon: weaponId ?? undefined });
-                        }}
-                        onClassChange={(classId) => {
-                          if (classId) updateCharacter({ classId });
-                        }}
-                        preview={{
-                          displayName: character.name,
-                          username: character.username,
-                          level: character.level,
-                          totalXp: character.totalXP,
-                          classLabel:
-                            [getClassTitle(character.classId), getClassRealm(character.classId)]
-                              .filter(Boolean)
-                              .join(" · ") || "Adventurer",
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 gap-2 border-t border-white/10 bg-uri-navy/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:px-5">
-                    <button
-                      type="button"
-                      onClick={() => setEditingAvatar(false)}
-                      className="flex-1 rounded-xl border border-white/15 py-3 text-sm font-medium text-white/75 hover:bg-white/10 hover:text-white"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleAvatarSave}
-                      className="flex-1 rounded-xl bg-uri-keaney py-3 text-sm font-semibold text-uri-navy hover:bg-uri-keaney/90"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              </div>,
-              document.body
-            )}
+            <AvatarLabDialog
+              character={character}
+              open={editingAvatar}
+              onClose={() => setEditingAvatar(false)}
+              onSaved={onRefresh}
+            />
           </div>
 
           <div className="min-w-0 flex-1 pt-1">

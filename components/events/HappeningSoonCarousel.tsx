@@ -97,23 +97,23 @@ function HappeningSoonCard({
             <Bookmark className="h-4 w-4" strokeWidth={2.2} fill={interested ? "currentColor" : "none"} />
           </button>
         ) : null}
-        <div className="cq-happening-card-copy">
-          <h3 className="cq-happening-card-title">{title}</h3>
-          {sport ? <p className="cq-happening-card-sport">{sport}</p> : null}
+        <h3 className="cq-happening-card-title">{title}</h3>
+      </div>
+      <div className="cq-happening-card-copy">
+        {sport ? <p className="cq-happening-card-sport">{sport}</p> : null}
+        <p className="cq-happening-card-meta">
+          <Clock className="h-3.5 w-3.5" aria-hidden />
+          <time dateTime={whenIso}>{when}</time>
+        </p>
+        {venue ? (
           <p className="cq-happening-card-meta">
-            <Clock className="h-3.5 w-3.5" aria-hidden />
-            <time dateTime={whenIso}>{when}</time>
+            <MapPin className="h-3.5 w-3.5" aria-hidden />
+            <span>{venue}</span>
           </p>
-          {venue ? (
-            <p className="cq-happening-card-meta">
-              <MapPin className="h-3.5 w-3.5" aria-hidden />
-              <span>{venue}</span>
-            </p>
-          ) : null}
-          {sourceLabel && sourceLabel !== category ? (
-            <span className="cq-happening-card-source">{sourceLabel}</span>
-          ) : null}
-        </div>
+        ) : null}
+        {sourceLabel && sourceLabel !== category ? (
+          <span className="cq-happening-card-source">{sourceLabel}</span>
+        ) : null}
       </div>
       <div className="cq-happening-card-actions">
         {showOnRealm ? (

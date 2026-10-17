@@ -87,6 +87,21 @@ describe("appShellRoute", () => {
     expect(resolveProfileRoute({ onboarding_completed: true, role: null })).toBe("role_gate");
     expect(resolveProfileRoute({ onboarding_completed: true, role: "" })).toBe("role_gate");
     expect(resolveProfileRoute({ onboarding_completed: true, role: "banana" })).toBe("role_gate");
+    // About You already answered — do not ask Student / Faculty again.
+    expect(
+      resolveProfileRoute({
+        onboarding_completed: true,
+        role: null,
+        student_status: "current_student",
+      }),
+    ).toBe("app");
+    expect(
+      resolveProfileRoute({
+        onboarding_completed: true,
+        role: null,
+        student_status: "faculty_staff",
+      }),
+    ).toBe("app");
   });
 
   it("never shows the role gate or student verification to admins or internal testers", () => {

@@ -43,6 +43,7 @@ export function ProfileSocialPage({
   followingLoading,
   onEditBio,
   onEditIdentity,
+  onEditAvatar,
   onLogout,
   onFriendsPress,
   onBack,
@@ -86,6 +87,7 @@ export function ProfileSocialPage({
   followingLoading?: boolean;
   onEditBio?: () => void;
   onEditIdentity?: () => void;
+  onEditAvatar?: () => void;
   onLogout?: () => void;
   onFriendsPress?: () => void;
   onBack?: () => void;
@@ -220,6 +222,7 @@ export function ProfileSocialPage({
         onEditBio={isOwner ? onEditBio : undefined}
         onOpenMenu={isOwner && (onEditIdentity || onEditBio || onLogout) ? () => setMenuOpen(true) : undefined}
         onSwitchIdentity={isOwner ? onSwitchIdentity : undefined}
+        onEditAvatar={isOwner ? onEditAvatar : undefined}
         identityVerified={identityVerified}
         identitySubtitle={identitySubtitle}
         schoolAffiliation={schoolAffiliation}

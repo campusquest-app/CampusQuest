@@ -6,6 +6,7 @@
  * automated substitute that fails if the production interest/status deadlock returns.
  */
 import { describe, expect, it } from "vitest";
+import { resolveProfileRoute } from "@/lib/client/appShellRoute";
 import { isDemographicsComplete } from "@/lib/onboarding/demographicOnboardingPolicy";
 import { resolveDemographicResumeStep } from "@/lib/onboarding/flow";
 import {
@@ -15,7 +16,9 @@ import {
   stepAfterCampusVerification,
   toggleInterestId,
 } from "@/lib/onboarding/personalizeStep";
+import { isFreshStudentStatusQuestion } from "@/lib/onboarding/studentStatusRole";
 import type { InterestId } from "@/lib/onboarding/taxonomy";
+import { hasValidRoleSelection } from "@/lib/roles";
 
 describe("new student registration smoke (state machine)", () => {
   it("walks email-first signup through interests without the 4-selected deadlock", () => {
@@ -88,6 +91,18 @@ describe("new student registration smoke (state machine)", () => {
         preferences: { exists: true, interests, institutionId: "uri" },
       }),
     ).toBe("ready");
+
+    // Status was collected on About You — the leftover role gate must not fire.
+    expect(isFreshStudentStatusQuestion({ step: "about_you", studentStatus })).toBe(false);
+    expect(hasValidRoleSelection({ role: null, student_status: studentStatus })).toBe(true);
+    expect(
+      resolveProfileRoute({
+        onboarding_completed: true,
+        role: null,
+        student_status: studentStatus,
+        campus_email_verified_at: "2026-10-17T00:00:00.000Z",
+      }),
+    ).toBe("app");
   });
 
   it("double-toggle does not duplicate interest IDs", () => {

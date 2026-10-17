@@ -1,3 +1,4 @@
+import { selectableRoleFromStudentStatus } from "@/lib/onboarding/studentStatusRole";
 import { isSelectableRole, type SelectableRole } from "@/lib/roles";
 
 export type AccountTypeProfile = {
@@ -43,4 +44,32 @@ export function resolveAccountTypeUpdate(
     effectiveRole: qaAccount ? "qa" : requested,
     qaAccount,
   };
+}
+
+/**
+ * Derive the profiles.role (or qa_selected_role) write from canonical
+ * studentStatus. About You is the collector; this is not a second question.
+ * Returns null when status is unknown or the account type is locked.
+ */
+export function rolePatchFromStudentStatus(
+  profile: AccountTypeProfile,
+  studentStatus?: string | null,
+): Extract<AccountTypeDecision, { kind: "update" }> | null {
+  const derived = selectableRoleFromStudentStatus(studentStatus);
+  if (!derived) return null;
+  const decision = resolveAccountTypeUpdate(profile, derived);
+  if (decision.kind !== "update") return null;
+  return decision;
+}
+
+/** Missing/legacy role only — never overwrite an explicit Settings choice. */
+export function shouldHealRoleFromStudentStatus(profile: AccountTypeProfile & {
+  qa_selected_role?: string | null;
+}): boolean {
+  const role = profile.role ?? null;
+  if (role === "admin" || role === "super_admin" || role === "beta_internal") return false;
+  if (profile.is_test_user === true || role === "qa") {
+    return !isSelectableRole(profile.qa_selected_role);
+  }
+  return !isSelectableRole(role);
 }

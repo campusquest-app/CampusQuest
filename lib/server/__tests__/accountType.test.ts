@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveAccountTypeUpdate } from "../accountType";
+import { resolveAccountTypeUpdate, rolePatchFromStudentStatus, shouldHealRoleFromStudentStatus } from "../accountType";
 
 describe("resolveAccountTypeUpdate", () => {
   it("lets normal users pick student or faculty_staff", () => {
@@ -55,5 +55,35 @@ describe("resolveAccountTypeUpdate", () => {
       effectiveRole: "student",
       qaAccount: false,
     });
+  });
+});
+
+describe("rolePatchFromStudentStatus", () => {
+  it("maps student statuses to student and faculty_staff to faculty_staff", () => {
+    expect(rolePatchFromStudentStatus({ role: null }, "current_student")?.patch).toEqual({ role: "student" });
+    expect(rolePatchFromStudentStatus({ role: null }, "incoming_student")?.patch).toEqual({ role: "student" });
+    expect(rolePatchFromStudentStatus({ role: null }, "graduate_student")?.patch).toEqual({ role: "student" });
+    expect(rolePatchFromStudentStatus({ role: null }, "faculty_staff")?.patch).toEqual({
+      role: "faculty_staff",
+    });
+    expect(rolePatchFromStudentStatus({ role: null }, "not_student")?.patch).toEqual({
+      role: "faculty_staff",
+    });
+    expect(rolePatchFromStudentStatus({ role: null }, null)).toBeNull();
+  });
+
+  it("stores QA derived roles in qa_selected_role", () => {
+    expect(rolePatchFromStudentStatus({ role: "qa" }, "faculty_staff")?.patch).toEqual({
+      qa_selected_role: "faculty_staff",
+    });
+  });
+
+  it("never heals over an explicit Settings role", () => {
+    expect(shouldHealRoleFromStudentStatus({ role: "student" })).toBe(false);
+    expect(shouldHealRoleFromStudentStatus({ role: "faculty_staff" })).toBe(false);
+    expect(shouldHealRoleFromStudentStatus({ role: null })).toBe(true);
+    expect(shouldHealRoleFromStudentStatus({ role: "qa", qa_selected_role: "student" })).toBe(false);
+    expect(shouldHealRoleFromStudentStatus({ role: "qa", qa_selected_role: null })).toBe(true);
+    expect(shouldHealRoleFromStudentStatus({ role: "admin" })).toBe(false);
   });
 });

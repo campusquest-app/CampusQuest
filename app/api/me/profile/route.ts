@@ -36,6 +36,7 @@ import {
   stripDiscoveryColumns,
 } from "@/lib/server/profileDiscoveryColumns";
 import { fetchOwnerProfileRecord } from "@/lib/server/profilePrivate";
+import { rolePatchFromStudentStatus, shouldHealRoleFromStudentStatus } from "@/lib/server/accountType";
 
 function normalizeDisplayName(value: string) {
   return value.trim();
@@ -96,6 +97,28 @@ export async function GET(request: Request) {
           userId: auth.user.id,
           message: healError instanceof Error ? healError.message : String(healError),
         });
+      }
+    }
+
+    // About You already collected studentStatus — persist the derived role so
+    // RoleSelectionGate never asks the same Student / Faculty question again.
+    if (shouldHealRoleFromStudentStatus(profileRow)) {
+      const derived = rolePatchFromStudentStatus(profileRow, profileRow.student_status as string | null);
+      if (derived) {
+        try {
+          const { data: healed } = await createAdminClient()
+            .from("profiles")
+            .update(derived.patch)
+            .eq("id", auth.user.id)
+            .select("*")
+            .single();
+          if (healed) profileRow = healed as unknown as Record<string, unknown>;
+        } catch (healError) {
+          console.warn("[cq][role] studentStatus role self-heal failed", {
+            userId: auth.user.id,
+            message: healError instanceof Error ? healError.message : String(healError),
+          });
+        }
       }
     }
 
@@ -237,7 +260,11 @@ export async function PATCH(request: Request) {
       }
     }
     if (classYearInput !== undefined) patch.class_year = classYearInput;
-    if (input.studentStatus !== undefined) patch.student_status = input.studentStatus;
+    if (input.studentStatus !== undefined) {
+      patch.student_status = input.studentStatus;
+      const derived = rolePatchFromStudentStatus(existing, input.studentStatus);
+      if (derived) Object.assign(patch, derived.patch);
+    }
     if (input.institutionId !== undefined) patch.institution_id = input.institutionId;
     if (input.onboardingVersion !== undefined) patch.onboarding_version = input.onboardingVersion;
     if (input.characterClassId !== undefined) patch.character_class_id = input.characterClassId;
