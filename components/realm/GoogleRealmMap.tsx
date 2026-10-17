@@ -41,6 +41,7 @@ import {
 } from "@/lib/realm/googleMapPose";
 import { vibrateMapMarkerTap } from "@/lib/realm/mapMarkerHaptic";
 import { markUserCameraInteraction } from "@/lib/realm/mapCameraGuard";
+import { createMapClickSuppressor } from "@/lib/client/mapMarkerTap";
 import { useUserGeolocation } from "@/lib/client/useUserGeolocation";
 import type { MapSearchResult } from "@/lib/realm/mapAutocomplete";
 import {
@@ -271,6 +272,7 @@ function RealmMapMarkers({
   onTapSupplementary,
   onSelectEditorMarker,
   onMarkerGeoChange,
+  onMarkerTapIntent,
   urinvolvedEditPins = [],
   selectedUrinvolvedEventId = null,
   onSelectUrinvolvedEvent,
@@ -297,6 +299,8 @@ function RealmMapMarkers({
   onTapSupplementary: (group: GroupedMapLocation) => void;
   onSelectEditorMarker: (id: RealmLocationId) => void;
   onMarkerGeoChange: (id: RealmLocationId, lat: number, lng: number) => void;
+  /** Suppress the trailing Maps API background click that follows OverlayView taps. */
+  onMarkerTapIntent?: () => void;
   urinvolvedEditPins?: UrinvolvedEditPin[];
   selectedUrinvolvedEventId?: string | null;
   onSelectUrinvolvedEvent?: (externalEventId: string) => void;
@@ -573,6 +577,7 @@ function RealmMapMarkers({
             position={pos}
             zIndex={zIndex}
             draggable={editMode}
+            onTapIntent={onMarkerTapIntent}
             onClick={() => {
               if (editMode) {
                 onSelectEditorMarker(landmark.id);
@@ -643,6 +648,7 @@ function RealmMapMarkers({
             key={group.groupKey}
             position={{ lat: groupLat, lng: groupLng }}
             zIndex={zIndex}
+            onTapIntent={onMarkerTapIntent}
             onClick={() => handleGroupTap(group)}
           >
             <RealmMapMarker
@@ -674,6 +680,7 @@ function RealmMapMarkers({
                 position={{ lat: pin.lat, lng: pin.lng }}
                 zIndex={selected ? 4000 : 3200}
                 draggable
+                onTapIntent={onMarkerTapIntent}
                 onClick={() => onSelectUrinvolvedEvent?.(pin.externalEventId)}
                 onDragEnd={(lat, lng) => onUrinvolvedEventDragEnd?.(pin.externalEventId, lat, lng)}
               >
@@ -1089,10 +1096,22 @@ export function GoogleRealmMap({
             : "Exploring campus landmarks — check back for live quests and events.";
 
   const suppressMapClickRef = useRef(false);
+  const mapClickSuppressorRef = useRef(createMapClickSuppressor());
+
+  const suppressMapClickFromMarkerTap = useCallback(() => {
+    mapClickSuppressorRef.current.suppress();
+    suppressMapClickRef.current = true;
+    window.setTimeout(() => {
+      if (!mapClickSuppressorRef.current.isSuppressed()) {
+        suppressMapClickRef.current = false;
+      }
+    }, 500);
+  }, []);
 
   const handleMapClick = useCallback(
     (event: { detail?: { latLng?: { lat: number; lng: number } | null } | null }) => {
-      if (suppressMapClickRef.current) return;
+      // Drag suppress OR marker-tap suppress (Maps API click after OverlayView tap).
+      if (suppressMapClickRef.current || mapClickSuppressorRef.current.isSuppressed()) return;
       setControlsExpanded(false);
       const latLng = latLngFromMapClick(event);
       if (editMode && placingNewLocation) {
@@ -1293,6 +1312,7 @@ export function GoogleRealmMap({
             }}
             onSelectEditorMarker={onSelectEditorMarker}
             onMarkerGeoChange={onMarkerGeoChange}
+            onMarkerTapIntent={suppressMapClickFromMarkerTap}
             urinvolvedEditPins={urinvolvedEditPins}
             selectedUrinvolvedEventId={selectedUrinvolvedEventId}
             onSelectUrinvolvedEvent={onSelectUrinvolvedEvent}

@@ -1,7 +1,10 @@
 import { useCallback, useRef } from "react";
 
 const TAP_MAX_MS = 700;
-const TAP_MAX_PX = 14;
+/** Finger jitter on phones often exceeds 14px without being a pan. */
+const TAP_MAX_PX = 18;
+/** How long to ignore Google Maps background clicks after a marker tap. */
+export const MAP_MARKER_CLICK_SUPPRESS_MS = 450;
 
 type TapState = {
   x: number;
@@ -18,6 +21,26 @@ export function shouldFireMapMarkerTap(
   const dt = now - start.t;
   const dist = Math.hypot(end.x - start.x, end.y - start.y);
   return dt <= TAP_MAX_MS && dist <= TAP_MAX_PX;
+}
+
+/**
+ * Suppresses map-background clicks that Google Maps still emits after a
+ * marker OverlayView tap (DOM stopPropagation does not cancel Maps API clicks).
+ */
+export function createMapClickSuppressor(durationMs = MAP_MARKER_CLICK_SUPPRESS_MS) {
+  let until = 0;
+  return {
+    suppress(now = Date.now()) {
+      until = Math.max(until, now + durationMs);
+    },
+    isSuppressed(now = Date.now()) {
+      return now < until;
+    },
+    /** Test helper */
+    reset() {
+      until = 0;
+    },
+  };
 }
 
 export function useMapMarkerTap(onTap: () => void, disabled = false) {

@@ -506,6 +506,12 @@ export function RealmMap({
     };
   }, []);
 
+  /** Ignore trailing Maps API background clicks that follow a marker OverlayView tap. */
+  const ignoreBackgroundCloseUntilRef = useRef(0);
+  const armBackgroundCloseGuard = useCallback(() => {
+    ignoreBackgroundCloseUntilRef.current = Date.now() + 450;
+  }, []);
+
   const openLocation = useCallback(
     (location: HydratedRealmLocation) => {
       if (editMode) return;
@@ -514,6 +520,7 @@ export function RealmMap({
         if (isCampusLocationCatalogStale()) {
           void reloadCatalog();
         }
+        armBackgroundCloseGuard();
         setSelectedLocation(location);
         setSelectedMapContent(normalizeGroupedMapContent(location.mapContent));
         setSelectedEventPin(null);
@@ -531,7 +538,7 @@ export function RealmMap({
         showMarkerNotice(getMarkerUnavailableMessage());
       }
     },
-    [editMode, reloadCatalog, showMarkerNotice],
+    [armBackgroundCloseGuard, editMode, reloadCatalog, showMarkerNotice],
   );
 
   const openSupplementaryPin = useCallback(
@@ -544,6 +551,7 @@ export function RealmMap({
       }
       if (!markerTapGateRef.current.tryOpen(resolved.id)) return;
       try {
+        armBackgroundCloseGuard();
         setSelectedLocation(null);
         setSelectedMapContent(normalizeGroupedMapContent(group));
         setSelectedEventPin(null);
@@ -561,13 +569,14 @@ export function RealmMap({
         showMarkerNotice(getMarkerUnavailableMessage());
       }
     },
-    [editMode, showMarkerNotice],
+    [armBackgroundCloseGuard, editMode, showMarkerNotice],
   );
 
   const openEventDetail = useCallback((pin: MapEventPin, fromSheet: boolean) => {
+    armBackgroundCloseGuard();
     setSelectedEventPin(pin);
     if (!fromSheet) setSheetOpen(false);
-  }, []);
+  }, [armBackgroundCloseGuard]);
 
   const closeEventDetail = useCallback(() => {
     setSelectedEventPin(null);
@@ -585,6 +594,7 @@ export function RealmMap({
         }
         if (!markerTapGateRef.current.tryOpen(resolved.id)) return;
         try {
+          armBackgroundCloseGuard();
           setSelectedLocation(null);
           setSelectedMapContent(normalizeGroupedMapContent(group));
           setActiveMarkerId(group.groupKey);
@@ -605,7 +615,7 @@ export function RealmMap({
       }
       openSupplementaryPin(group);
     },
-    [editMode, openSupplementaryPin, showMarkerNotice],
+    [armBackgroundCloseGuard, editMode, openSupplementaryPin, showMarkerNotice],
   );
 
   const handlePlaceSelected = useCallback(
@@ -715,6 +725,9 @@ export function RealmMap({
   }, []);
 
   const handleMapBackgroundClick = useCallback(() => {
+    // Marker OverlayView taps often also emit a Maps API click on mobile.
+    // Never treat that trailing click as an intentional background dismiss.
+    if (Date.now() < ignoreBackgroundCloseUntilRef.current) return;
     if (selectedEventPin) {
       closeEventDetail();
       return;

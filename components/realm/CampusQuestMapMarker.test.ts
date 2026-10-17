@@ -18,6 +18,11 @@ describe("CampusQuestMapMarker iOS hit-testing", () => {
     expect(src).toContain('div.addEventListener("click", onClickDom)');
   });
 
+  it("signals tap intent before onClick so map background-close can be suppressed", () => {
+    expect(src).toContain("onTapIntent");
+    expect(src).toContain("onTapIntentRef.current?.()");
+  });
+
   it("uses a 44px touch target and rejects pan-like pointer travel", () => {
     expect(src).toContain('div.style.minWidth = "44px"');
     expect(src).toContain('div.style.minHeight = "44px"');

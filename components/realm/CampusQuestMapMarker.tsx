@@ -21,6 +21,8 @@ export function CampusQuestMapMarker({
   zIndex = 0,
   draggable = false,
   onClick,
+  /** Called immediately before a confirmed tap so callers can suppress map background clicks. */
+  onTapIntent,
   onDragEnd,
   children,
 }: {
@@ -28,6 +30,7 @@ export function CampusQuestMapMarker({
   zIndex?: number;
   draggable?: boolean;
   onClick?: () => void;
+  onTapIntent?: () => void;
   onDragEnd?: (lat: number, lng: number) => void;
   children: ReactNode;
 }) {
@@ -41,6 +44,8 @@ export function CampusQuestMapMarker({
   draggableRef.current = draggable;
   const onClickRef = useRef(onClick);
   onClickRef.current = onClick;
+  const onTapIntentRef = useRef(onTapIntent);
+  onTapIntentRef.current = onTapIntent;
   const onDragEndRef = useRef(onDragEnd);
   onDragEndRef.current = onDragEnd;
 
@@ -98,6 +103,9 @@ export function CampusQuestMapMarker({
       const now = Date.now();
       if (now - lastTapAt < 400) return;
       lastTapAt = now;
+      // Maps API still emits a map click after OverlayView taps on many mobile
+      // WebViews — give the parent a chance to suppress background-close.
+      onTapIntentRef.current?.();
       onClickRef.current?.();
     };
 
@@ -173,8 +181,13 @@ export function CampusQuestMapMarker({
     const onClickDom = (e: MouseEvent) => {
       // Keep marker taps from also triggering the map's click handler
       // (admin tap-to-place must not fire when tapping a pin).
+      // Note: Google Maps API clicks are separate — suppressed via onTapIntent.
       e.stopPropagation();
+      e.preventDefault();
       if (draggableRef.current) return; // handled by endDrag tap path
+      // Prefer pointerup path; only honor click when it still looks like a tap
+      // (rejects pans that synthesize a late click on some Android WebViews).
+      if (tap.t > 0 && !shouldFireMapMarkerTap(tap, { x: e.clientX, y: e.clientY })) return;
       fireTap();
     };
 
