@@ -689,7 +689,7 @@ function RealmMapMarkers({
                   label={pin.title}
                   editMode
                   editorSelected={selected}
-                  locationAdjusted={pin.locationManuallyAdjusted}
+                  locationAdjusted={pin.locationManuallyAdjusted || Boolean(pin.unsaved)}
                   revealIndex={markersReveal ? visibleLandmarks.length + visibleGroups.length + index : undefined}
                 />
               </CampusQuestMapMarker>

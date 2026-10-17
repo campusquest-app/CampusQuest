@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { MarkerPlacementPoint } from "@/lib/realm/mapPlacement";
 import { RealmMapDebugContent } from "./RealmMapDebugPanel";
 import { RealmUrinvolvedPlacementPanel } from "./RealmUrinvolvedPlacementPanel";
+import type { UrinvolvedEditPin } from "@/lib/realm/urinvolvedEditPins";
 import type { RealmMapLayerReport } from "./useRealmMapDiagnostics";
 
 export type RealmMarkerEditorDebug = {
@@ -38,6 +39,7 @@ export function RealmMarkerEditorPanel({
   onSelectUrinvolvedEventId,
   onUrinvolvedPlacementsChanged,
   selectedLandmarkRealmId = null,
+  selectedEventEdit = null,
 }: {
   debug: RealmMarkerEditorDebug;
   report: RealmMapLayerReport | null;
@@ -60,6 +62,7 @@ export function RealmMarkerEditorPanel({
   onSelectUrinvolvedEventId?: (id: string | null) => void;
   onUrinvolvedPlacementsChanged?: () => void;
   selectedLandmarkRealmId?: string | null;
+  selectedEventEdit?: UrinvolvedEditPin | null;
 }) {
   const [debugExpanded, setDebugExpanded] = useState(false);
 
@@ -197,6 +200,21 @@ export function RealmMarkerEditorPanel({
             </button>
           )}
         </div>
+
+        {selectedEventEdit ? (
+          <div className="mb-3 rounded-lg border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-[11px] leading-relaxed text-cyan-50">
+            <p className="font-semibold text-white">{selectedEventEdit.title}</p>
+            <p>Source venue: {selectedEventEdit.sourceVenue || "—"}</p>
+            <p>Resolved location: {selectedEventEdit.locationName}</p>
+            <p>
+              Coordinates: {selectedEventEdit.lat.toFixed(5)}, {selectedEventEdit.lng.toFixed(5)}
+              {selectedEventEdit.unsaved ? " (unsaved)" : ""}
+            </p>
+            <p>Source: {selectedEventEdit.source || "—"}</p>
+            <p>Event ID: {selectedEventEdit.externalEventId}</p>
+            {selectedEventEdit.realmLocationId ? <p>Canonical location: {selectedEventEdit.realmLocationId}</p> : null}
+          </div>
+        ) : null}
 
         <RealmUrinvolvedPlacementPanel
           active

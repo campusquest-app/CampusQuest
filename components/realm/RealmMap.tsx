@@ -50,7 +50,7 @@ import { mapLocationActivityCount, mapLocationQuestCount } from "@/lib/mapLocati
 import { filterLiveOrUpcomingMapEvents } from "@/lib/realm/eventVisibility";
 import { mapEventPinToFeedEvent, resolveGroupedMarkerTap } from "@/lib/realm/mapEventPinToFeedEvent";
 import { EventDetailScreen } from "@/components/events/EventDetailScreen";
-import { buildUrinvolvedEditPinsFromGroups, type UrinvolvedEditPin } from "@/lib/realm/urinvolvedEditPins";
+import { applyEventEditDrafts, buildUrinvolvedEditPinsFromGroups, logEventEditPinDiagnostics, type EventEditDraft, type UrinvolvedEditPin } from "@/lib/realm/urinvolvedEditPins";
 import type { SharePostTarget } from "@/lib/client/dmMessagesClient";
 import { REALM_LOCATION_GEO } from "@/lib/realm/locationGeo";
 import { geoToRealmMapPercent, realmMapPercentToGeo } from "@/lib/realm/geoToMapPercent";
@@ -262,6 +262,7 @@ export function RealmMap({
   const [saveMessageTone, setSaveMessageTone] = useState<"success" | "error">("success");
   const mapPannedRef = useRef(false);
   const [selectedUrinvolvedEventId, setSelectedUrinvolvedEventId] = useState<string | null>(null);
+  const [eventEditDrafts, setEventEditDrafts] = useState<Record<string, EventEditDraft>>({});
   const [directionsRequest, setDirectionsRequest] = useState<RealmDirectionsRequest | null>(null);
   const [directionsStatus, setDirectionsStatus] = useState<RealmDirectionsStatus>({ status: "idle" });
   const [activeRouteDestination, setActiveRouteDestination] = useState<RealmDirectionsDestination | null>(null);
@@ -305,40 +306,23 @@ export function RealmMap({
     [mapGroups],
   );
 
-  const urinvolvedEditPins = useMemo(
-    () => (editMode && isAdmin ? buildUrinvolvedEditPinsFromGroups(mapGroups) : []),
-    [editMode, isAdmin, mapGroups],
-  );
+  const urinvolvedEditPins = useMemo(() => {
+    if (!editMode || !isAdmin) return [];
+    return applyEventEditDrafts(buildUrinvolvedEditPinsFromGroups(mapGroups), eventEditDrafts);
+  }, [editMode, isAdmin, mapGroups, eventEditDrafts]);
 
-  const handleUrinvolvedEventDragEnd = useCallback(
-    async (externalEventId: string, lat: number, lng: number) => {
-      try {
-        await saveUrinvolvedPlacement({
-          externalEventId,
-          customLat: round6(lat),
-          customLng: round6(lng),
-          realmLocationId: null,
-          matchStatus: "manually_adjusted",
-        });
-        setSelectedUrinvolvedEventId(externalEventId);
-        setEditorSelectedId(null);
-        setSaveMessageTone("success");
-        setSaveMessage("Event position saved.");
-        await reloadMapGroups();
-        window.setTimeout(() => setSaveMessage(null), 4000);
-      } catch (error) {
-        console.error("[cq:urinvolved-edit] drag save failed", error);
-        setSaveMessageTone("error");
-        setSaveMessage(
-          error instanceof Error
-            ? `Could not save event position: ${error.message}`
-            : "Could not save event position.",
-        );
-        window.setTimeout(() => setSaveMessage(null), 5000);
-      }
-    },
-    [reloadMapGroups],
-  );
+  useEffect(() => {
+    if (!editMode || !isAdmin) return;
+    logEventEditPinDiagnostics(buildUrinvolvedEditPinsFromGroups(mapGroups));
+  }, [editMode, isAdmin, mapGroups]);
+
+  const handleUrinvolvedEventDragEnd = useCallback((externalEventId: string, lat: number, lng: number) => {
+    setEventEditDrafts((prev) => ({ ...prev, [externalEventId]: { lat: round6(lat), lng: round6(lng) } }));
+    setSelectedUrinvolvedEventId(externalEventId);
+    setEditorSelectedId(null);
+    setSaveMessageTone("success");
+    setSaveMessage("Event moved — Save Positions to keep it.");
+  }, []);
 
   const locations = useMemo((): HydratedRealmLocation[] => {
     const base = applyMarkerPositionsToLocations(catalogRealmLocations, draftPositions);
@@ -838,6 +822,7 @@ export function RealmMap({
     setSaveMessageTone("success");
     setPlacement(resetMarkerPlacement());
     setDraftPositions(getSavedPositions());
+    setEventEditDrafts({});
   }, [isAdmin, getSavedPositions]);
 
   const handleSave = useCallback(async () => {
@@ -857,8 +842,26 @@ export function RealmMap({
       // to catalog geo that would visually revert the pin on exit/edit).
       const resolved = resolveMarkerPositions(saved.positions);
       setDraftPositions(resolved);
+      const eventDraftEntries = Object.entries(eventEditDrafts);
+      if (eventDraftEntries.length > 0) {
+        for (const [externalEventId, draft] of eventDraftEntries) {
+          await saveUrinvolvedPlacement({
+            externalEventId,
+            customLat: draft.lat,
+            customLng: draft.lng,
+            realmLocationId: null,
+            matchStatus: "manually_adjusted",
+          });
+        }
+        setEventEditDrafts({});
+        await reloadMapGroups();
+      }
       setSaveMessageTone("success");
-      setSaveMessage("Saved — marker positions updated for all students.");
+      setSaveMessage(
+        eventDraftEntries.length > 0
+          ? "Saved — landmark and event positions updated."
+          : "Saved — marker positions updated for all students.",
+      );
       if (process.env.NODE_ENV === "development") {
         console.info("[Realm Marker Editor] saved to server:", saved.positions);
       }
@@ -876,7 +879,7 @@ export function RealmMap({
       setSavePending(false);
       window.setTimeout(() => setSaveMessage(null), 5000);
     }
-  }, [draftPositions, isAdmin, savePending]);
+  }, [draftPositions, eventEditDrafts, isAdmin, reloadMapGroups, savePending]);
 
   const handleExitEdit = useCallback(() => {
     setEditMode(false);
@@ -886,6 +889,7 @@ export function RealmMap({
     setSaveMessage(null);
     setSaveMessageTone("success");
     setPlacement(resetMarkerPlacement());
+    setEventEditDrafts({});
     // After a successful save, draft already matches server cache. Reloading
     // from cache (not catalog defaults) prevents visual revert on exit.
     setDraftPositions(getSavedPositions());
@@ -1634,6 +1638,9 @@ export function RealmMap({
           onSelectUrinvolvedEventId={setSelectedUrinvolvedEventId}
           onUrinvolvedPlacementsChanged={() => void reloadMapGroups()}
           selectedLandmarkRealmId={editorSelectedId}
+          selectedEventEdit={
+            urinvolvedEditPins.find((pin) => pin.externalEventId === selectedUrinvolvedEventId) ?? null
+          }
         />
 
         {editMode && placement.placing ? (
