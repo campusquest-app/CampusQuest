@@ -502,6 +502,14 @@ export function TheQuad({
     [campusListings, feedTab, notes],
   );
 
+  /** First post in the stream gets priority media decode (LCP on mobile Safari). */
+  const priorityPostId = useMemo(() => {
+    for (const item of streamItems) {
+      if (item.kind === "post") return item.note.id;
+    }
+    return null;
+  }, [streamItems]);
+
   const syncNotesFromFeed = useCallback(() => {
     if (feedTab === "friends" || isCommunityFeedTab(feedTab) || isLocalBusinessesFeedTab(feedTab)) {
       setNotes((prev) =>
@@ -812,6 +820,7 @@ export function TheQuad({
                   currentUser={quadCurrentUser}
                   onViewEvent={onViewEvent}
                   onViewOnMap={onViewOnMap}
+                  priorityMedia={item.note.id === priorityPostId}
                 />
                 </div>
                 ),

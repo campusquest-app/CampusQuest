@@ -3410,6 +3410,8 @@ html[data-cq-bottom-nav-hidden] {
   box-shadow: none;
   background: rgba(0, 0, 0, 0.22);
   overflow: hidden;
+  --cq-feed-media-max-h: min(60vh, 520px);
+  --cq-media-ar: 4 / 5;
 }
 
 .quad-feed-media-wrap:has([data-cq-pinching="true"]),
@@ -3425,6 +3427,12 @@ html[data-cq-bottom-nav-hidden] {
   overscroll-behavior-x: none;
   /* Feed media height budget: cap tall portrait panels so actions stay visible. */
   --cq-feed-media-max-h: min(60vh, 520px);
+  --cq-media-ar: 4 / 5;
+  width: 100%;
+  max-width: 100%;
+  max-height: var(--cq-feed-media-max-h);
+  aspect-ratio: var(--cq-media-ar);
+  background: #000;
 }
 
 .cq-quad-media-carousel[data-cq-pinch-lock="true"],
@@ -3436,23 +3444,34 @@ html[data-cq-bottom-nav-hidden] {
 
 .cq-quad-media-track {
   width: 100%;
+  height: 100%;
   touch-action: inherit;
 }
 
 .cq-quad-media-slide {
   flex: 0 0 100%;
   width: 100%;
+  height: 100%;
   max-width: 100%;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #000;
+  /* Slides fill the carousel frame — do not introduce a second aspect box. */
+  aspect-ratio: auto;
+  max-height: none;
 }
 
 .cq-quad-media-slide:has([data-cq-pinching="true"]) {
   overflow: visible;
   z-index: 45;
+}
+
+.cq-quad-media-slide-placeholder {
+  width: 100%;
+  height: 100%;
+  background: #000;
 }
 
 .cq-quad-feed-media,
@@ -3461,8 +3480,9 @@ html[data-cq-bottom-nav-hidden] {
 .cq-quad-feed-media-frame video {
   display: block;
   width: 100%;
+  height: 100%;
   max-width: 100%;
-  max-height: var(--cq-feed-media-max-h, min(60vh, 520px));
+  max-height: 100%;
   margin: 0 auto;
   object-fit: contain;
   object-position: center;
@@ -3470,8 +3490,90 @@ html[data-cq-bottom-nav-hidden] {
 }
 
 .cq-quad-feed-media-frame {
+  position: relative;
   width: 100%;
-  max-height: var(--cq-feed-media-max-h, min(60vh, 520px));
+  height: 100%;
+  max-height: 100%;
+  background: #000;
+}
+
+.cq-quad-video-poster {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  pointer-events: none;
+  background: #000;
+}
+
+.cq-quad-feed-media-frame .cq-quad-video-el {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+.cq-quad-media-status {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.cq-quad-media-status--error {
+  pointer-events: auto;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.cq-quad-media-status__text {
+  margin: 0;
+  padding: 0 1rem;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.cq-quad-media-status__retry {
+  pointer-events: auto;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0.45rem 0.95rem;
+  min-height: 40px;
+}
+
+.cq-quad-media-spinner {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-top-color: #fff;
+  animation: cq-quad-media-spin 0.7s linear infinite;
+}
+
+@keyframes cq-quad-media-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-quad-media-spinner {
+    animation: none;
+    border-top-color: rgba(255, 255, 255, 0.7);
+  }
 }
 
 .cq-quad-media-counter {
@@ -3552,6 +3654,14 @@ html[data-cq-bottom-nav-hidden] {
   user-select: none;
 }
 
+.cq-quad-media-slide > .cq-temporary-pinch,
+.cq-quad-media-slide > .cq-zoomable-image,
+.cq-quad-media-slide .cq-temporary-pinch-layer,
+.cq-quad-media-slide .cq-quad-feed-media-frame {
+  width: 100%;
+  height: 100%;
+}
+
 .cq-temporary-pinch--active,
 .cq-temporary-pinch[data-cq-pinching="true"],
 .cq-zoomable-image[data-cq-pinching="true"] {
@@ -3607,8 +3717,9 @@ html[data-cq-media-pinching] {
 .quad-feed-media-img {
   display: block;
   width: 100%;
+  height: 100%;
   max-width: 100%;
-  max-height: min(60vh, 520px);
+  max-height: 100%;
   margin: 0;
   padding: 0;
   border: none;
@@ -3624,7 +3735,21 @@ html[data-cq-media-pinching] {
 .cq-quad-video-el {
   display: block;
   width: 100%;
-  max-height: min(70vh, 720px);
+  height: 100%;
+  max-height: 100%;
+  background: #000;
+  object-fit: contain;
+  object-position: center;
+}
+
+/* Single-media (non-carousel) feed frames share the same reserved box. */
+.quad-feed-media-wrap > .cq-zoomable-image,
+.quad-feed-media-wrap > .cq-quad-feed-media-frame,
+.quad-feed-media-wrap > .cq-temporary-pinch {
+  width: 100%;
+  max-width: 100%;
+  max-height: var(--cq-feed-media-max-h, min(60vh, 520px));
+  aspect-ratio: var(--cq-media-ar, 4 / 5);
   background: #000;
 }
 
@@ -3775,7 +3900,7 @@ html[data-cq-media-pinching] {
 .cq-quad-feed-media-frame .cq-quad-video-el,
 .quad-feed-media-wrap .cq-quad-video-el,
 .cq-feed-post .cq-quad-video-el {
-  max-height: var(--cq-feed-media-max-h, min(60vh, 520px));
+  max-height: 100%;
 }
 
 /* Comment threads expand naturally — page scroll only (no nested scroll in feed cards) */

@@ -140,6 +140,7 @@ export async function uploadQuadVideoBuffer(args: {
 
   const { error: uploadError } = await admin.storage.from(QUAD_MEDIA_BUCKET).upload(storagePath, args.buffer, {
     contentType: mime,
+    cacheControl: "31536000",
     upsert: false,
   });
   if (uploadError) {
@@ -191,6 +192,7 @@ export async function uploadQuadPosterBuffer(args: {
   const thumbnailPath = `${args.userId}/quad-media/${args.mediaId}/poster.${ext}`;
   const { error } = await admin.storage.from(QUAD_MEDIA_BUCKET).upload(thumbnailPath, args.buffer, {
     contentType: mime,
+    cacheControl: "31536000",
     upsert: true,
   });
   if (error) throw new ApiError(502, videoProcessErrorMessage(), "POSTER_UPLOAD_FAILED");

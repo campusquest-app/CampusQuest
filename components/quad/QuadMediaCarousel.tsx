@@ -15,6 +15,9 @@ import { ZoomableImage } from "@/components/quad/ZoomableImage";
 import { TemporaryPinchSurface } from "@/components/quad/TemporaryPinchSurface";
 import { formatVideoDuration } from "@/lib/quadMedia";
 import { useMediaGestureLock } from "@/lib/client/useMediaGestureLock";
+import { feedMediaFrameStyle } from "@/lib/client/quadFeedMediaLayout";
+import { useNearViewport } from "@/lib/client/useNearViewport";
+import { buildQuadFeedImageSources } from "@/lib/client/quadFeedImageUrl";
 
 const AXIS_LOCK_PX = 10;
 const COMMIT_RATIO = 0.22;
@@ -46,6 +49,8 @@ export function QuadMediaCarousel({
   tags = [],
   isFeed = true,
   initialIndex = 0,
+  /** Prioritize decode of the active slide (first feed post). */
+  priority = false,
   onIndexChange,
 }: {
   postId: string;
@@ -53,6 +58,7 @@ export function QuadMediaCarousel({
   tags?: FieldNoteTag[];
   isFeed?: boolean;
   initialIndex?: number;
+  priority?: boolean;
   onIndexChange?: (index: number) => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -86,6 +92,10 @@ export function QuadMediaCarousel({
     width: 1,
   });
   const zoomedRef = useRef(false);
+  const nearViewport = useNearViewport(rootRef, {
+    rootMargin: "240px 0px",
+    initialNear: priority,
+  });
   const reduceMotion =
     typeof window !== "undefined" &&
     window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
@@ -366,6 +376,12 @@ export function QuadMediaCarousel({
     [index, visibleMedia.length],
   );
 
+  const activeItem = visibleMedia[index];
+  const carouselFrameStyle = useMemo(
+    () => feedMediaFrameStyle(activeItem?.width, activeItem?.height),
+    [activeItem?.width, activeItem?.height],
+  );
+
   if (visibleMedia.length === 0) return null;
 
   const multi = visibleMedia.length > 1;
@@ -378,12 +394,13 @@ export function QuadMediaCarousel({
       data-cq-horizontal-scroll="true"
       data-cq-gesture-block="swipe-tab"
       data-cq-media-carousel="true"
-      style={{ touchAction: pinchActive || slideScale > 1.01 ? "none" : "pan-y" }}
+      data-cq-media-near={nearViewport ? "true" : "false"}
+      style={{ touchAction: pinchActive || slideScale > 1.01 ? "none" : "pan-y", ...carouselFrameStyle }}
       data-cq-pinch-lock={pinchActive ? "true" : "false"}
       onPointerDown={onPointerDown}
     >
       <div
-        className="cq-quad-media-track flex w-full"
+        className="cq-quad-media-track flex w-full h-full"
         style={{
           transform: `translate3d(calc(${-index * 100}% + ${dragX}px), 0, 0)`,
           transition:
@@ -399,6 +416,8 @@ export function QuadMediaCarousel({
         {visibleMedia.map((item, i) => {
           const active = i === index;
           const nearby = Math.abs(i - index) <= 1;
+          // Only active ±1 slides attach network sources; `priority` only affects decode hints.
+          const shouldLoadMedia = nearViewport && (nearby || active);
           const slideTags = tags.filter(
             (t) =>
               t.tagSource === "photo" &&
@@ -410,7 +429,6 @@ export function QuadMediaCarousel({
                   item.durationSeconds ? `, ${formatVideoDuration(item.durationSeconds)}` : ""
                 }`
               : `Photo ${i + 1} of ${visibleMedia.length}`;
-
           return (
             <div
               key={item.id}
@@ -419,10 +437,11 @@ export function QuadMediaCarousel({
               aria-hidden={!active}
             >
               {item.mediaType === "video" ? (
-                nearby ? (
+                nearby && shouldLoadMedia ? (
                   <TemporaryPinchSurface
                     interactive={active}
                     lockGestures={false}
+                    className="h-full w-full"
                     onActiveChange={(activePinch) => {
                       if (active) onMediaPinchActive(activePinch);
                     }}
@@ -435,39 +454,47 @@ export function QuadMediaCarousel({
                       src={item.url}
                       poster={item.thumbnailUrl}
                       durationSeconds={item.durationSeconds}
+                      width={item.width}
+                      height={item.height}
                       autoplayWhenVisible={isFeed && active}
+                      allowLoad={shouldLoadMedia && (active || nearby)}
                       hasAudio={item.hasAudio}
                       className="cq-quad-feed-media-frame"
-                      onError={() => markFailed(item.id)}
+                      onError={() => {
+                        /* Keep slide — player shows retry; only drop if no poster and fatal. */
+                        if (!item.thumbnailUrl) markFailed(item.id);
+                      }}
                     />
                   </TemporaryPinchSurface>
                 ) : item.thumbnailUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={item.thumbnailUrl}
+                    src={
+                      shouldLoadMedia
+                        ? buildQuadFeedImageSources(item.thumbnailUrl).src
+                        : undefined
+                    }
                     alt=""
                     className={FEED_MEDIA_IMG_CLASS}
+                    loading="lazy"
+                    decoding="async"
                     onError={() => markFailed(item.id)}
                   />
                 ) : (
-                  <QuadVideoPlayer
-                    playerId={`${postId}:${item.id}:lazy`}
-                    src={item.url}
-                    poster={item.thumbnailUrl}
-                    durationSeconds={item.durationSeconds}
-                    autoplayWhenVisible={false}
-                    hasAudio={item.hasAudio}
-                    className="cq-quad-feed-media-frame"
-                    onError={() => markFailed(item.id)}
-                  />
+                  <div className="cq-quad-media-slide-placeholder" aria-hidden />
                 )
               ) : (
                 <ZoomableImage
                   src={item.url}
                   alt=""
+                  width={item.width}
+                  height={item.height}
                   interactive={active}
                   lockGestures={false}
                   enableDoubleTapZoom={false}
+                  priority={priority && active}
+                  loadSrc={shouldLoadMedia}
+                  fillParent
                   imgClassName={FEED_MEDIA_IMG_CLASS}
                   onClick={() => {
                     if (active) setTagsVisible((v) => !v);
@@ -478,7 +505,6 @@ export function QuadMediaCarousel({
                   onZoomChange={(s) => {
                     if (active) setSlideScale(s);
                   }}
-                  onError={() => markFailed(item.id)}
                 />
               )}
               {slideTags.length > 0 && tagsVisible && active ? (
