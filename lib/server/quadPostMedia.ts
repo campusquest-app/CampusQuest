@@ -199,6 +199,7 @@ export async function uploadQuadImageBuffer(args: {
 
   const { error: uploadError } = await admin.storage.from(QUAD_MEDIA_BUCKET).upload(storagePath, args.buffer, {
     contentType: mime,
+    cacheControl: "31536000",
     upsert: false,
   });
   if (uploadError) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { canSeekVideo, formatVideoDuration, seekRatioFromClientX, seekTimeByDelta, seekTimeForRatio } from "@/lib/quadVideo";
 import {
@@ -10,10 +10,16 @@ import {
 } from "@/lib/client/quadFeedMuteStore";
 import { setVideoElementMuted, shouldShowVideoMuteControl, unmuteVideoElement } from "@/lib/client/quadVideoPlayback";
 import { sniffVideoHasAudioFromUrl } from "@/lib/videoContainerAudio";
+import { feedMediaFrameStyle } from "@/lib/client/quadFeedMediaLayout";
+import { acquireVideoLoadSlot, releaseVideoLoadSlot } from "@/lib/client/quadVideoLoadGate";
+import { primeMediaCache } from "@/lib/client/quadMediaCache";
+import { buildQuadFeedImageSources } from "@/lib/client/quadFeedImageUrl";
 
 let activePlayerId: string | null = null;
 const playerRegistry = new Map<string, HTMLVideoElement>();
 const activeListeners = new Set<() => void>();
+
+const VIDEO_LOAD_TIMEOUT_MS = 20_000;
 
 function claimPlayback(id: string) {
   activePlayerId = id;
@@ -29,14 +35,22 @@ function claimPlayback(id: string) {
   for (const listener of Array.from(activeListeners)) listener();
 }
 
+type LoadPhase = "idle" | "loading" | "ready" | "error" | "timeout";
+
 export function QuadVideoPlayer({
   playerId,
   src,
   poster,
   durationSeconds,
+  width = null,
+  height = null,
   autoplayWhenVisible = true,
   showMuteControl = true,
   hasAudio,
+  /** When false, do not attach the video src (poster / placeholder only). */
+  allowLoad = true,
+  /** When true, fill a parent that already reserved aspect-ratio (carousel). */
+  fillParent = true,
   className = "",
   onError,
 }: {
@@ -44,6 +58,8 @@ export function QuadVideoPlayer({
   src: string;
   poster?: string | null;
   durationSeconds?: number | null;
+  width?: number | null;
+  height?: number | null;
   autoplayWhenVisible?: boolean;
   /** When false, hide speaker control (caller already knows this video is silent). */
   showMuteControl?: boolean;
@@ -52,6 +68,8 @@ export function QuadVideoPlayer({
    * silent because the browser could not see the audio track at metadata time.
    */
   hasAudio?: boolean | null;
+  allowLoad?: boolean;
+  fillParent?: boolean;
   className?: string;
   onError?: () => void;
 }) {
@@ -63,6 +81,7 @@ export function QuadVideoPlayer({
   const wasPlayingRef = useRef(false);
   const intendedTimeRef = useRef<number | null>(null);
   const correctingRef = useRef(false);
+  const loadAbortRef = useRef<AbortController | null>(null);
   const [playing, setPlaying] = useState(false);
   const [soundOn, setSoundOn] = useState(false);
   const [confirmedSilent, setConfirmedSilent] = useState(false);
@@ -71,7 +90,29 @@ export function QuadVideoPlayer({
   const [scrubTime, setScrubTime] = useState(0);
   const [scrubbing, setScrubbing] = useState(false);
   const [canSeek, setCanSeek] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [phase, setPhase] = useState<LoadPhase>("idle");
+  const [attachedSrc, setAttachedSrc] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [inViewForPlayback, setInViewForPlayback] = useState(false);
+  const frameStyle = useMemo(
+    () => feedMediaFrameStyle(width, height, { fillParent }),
+    [width, height, fillParent],
+  );
+  const posterSources = useMemo(
+    () => (poster ? buildQuadFeedImageSources(poster, { displayWidthPx: 390 }) : null),
+    [poster],
+  );
+  const [posterFallback, setPosterFallback] = useState(false);
+  const posterHref =
+    posterSources == null
+      ? undefined
+      : posterFallback || !posterSources.usesVariant
+        ? posterSources.fallbackSrc
+        : posterSources.src;
+
+  useEffect(() => {
+    if (posterHref) primeMediaCache(posterHref);
+  }, [posterHref]);
 
   useEffect(() => subscribeQuadFeedMute(() => {
     const el = videoRef.current;
@@ -110,25 +151,75 @@ export function QuadVideoPlayer({
     };
   }, [playerId]);
 
+  // Attach src only when allowed + load slot available. Detach when far to stop downloads.
   useEffect(() => {
-    if (!showMuteControl || hasAudio === true) {
+    loadAbortRef.current?.abort();
+    const ac = new AbortController();
+    loadAbortRef.current = ac;
+
+    if (!allowLoad || !src) {
+      releaseVideoLoadSlot(playerId);
+      setAttachedSrc(null);
+      setPhase(poster ? "ready" : "idle");
+      const el = videoRef.current;
+      if (el) {
+        try {
+          el.pause();
+          el.removeAttribute("src");
+          el.load();
+        } catch {
+          /* ignore */
+        }
+      }
+      return () => {
+        ac.abort();
+        releaseVideoLoadSlot(playerId);
+      };
+    }
+
+    setPhase((current) => (current === "ready" ? current : "loading"));
+    let cancelled = false;
+    void (async () => {
+      const granted = await acquireVideoLoadSlot(playerId, ac.signal);
+      if (cancelled || ac.signal.aborted || !granted) return;
+      setAttachedSrc(src);
+      setPhase("loading");
+    })();
+
+    const timeoutId = window.setTimeout(() => {
+      setPhase((current) => {
+        if (current === "ready") return current;
+        return "timeout";
+      });
+    }, VIDEO_LOAD_TIMEOUT_MS);
+
+    return () => {
+      cancelled = true;
+      ac.abort();
+      window.clearTimeout(timeoutId);
+      releaseVideoLoadSlot(playerId);
+    };
+  }, [allowLoad, src, playerId, attempt, poster]);
+
+  useEffect(() => {
+    if (!showMuteControl || hasAudio === true || !attachedSrc) {
       setConfirmedSilent(false);
       return;
     }
     setConfirmedSilent(false);
     let cancelled = false;
-    void sniffVideoHasAudioFromUrl(src).then((result) => {
+    void sniffVideoHasAudioFromUrl(attachedSrc).then((result) => {
       if (!cancelled) setConfirmedSilent(!shouldShowVideoMuteControl(result));
     });
     return () => {
       cancelled = true;
     };
-  }, [hasAudio, showMuteControl, src]);
+  }, [hasAudio, showMuteControl, attachedSrc]);
 
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    if (!autoplayWhenVisible) {
+    if (!autoplayWhenVisible || !attachedSrc) {
       el.pause();
       setVideoElementMuted(el, true);
       setSoundOn(false);
@@ -142,6 +233,7 @@ export function QuadVideoPlayer({
         const entry = entries[0];
         if (!entry) return;
         if (entry.intersectionRatio >= 0.6) {
+          setInViewForPlayback(true);
           claimPlayback(playerId);
           if (!getQuadFeedUnmuted()) {
             setVideoElementMuted(el, true);
@@ -159,6 +251,7 @@ export function QuadVideoPlayer({
             void el.play().catch(() => undefined);
           });
         } else {
+          setInViewForPlayback(false);
           el.pause();
           setVideoElementMuted(el, true);
           setSoundOn(false);
@@ -168,7 +261,7 @@ export function QuadVideoPlayer({
     );
     observer.observe(root);
     return () => observer.disconnect();
-  }, [autoplayWhenVisible, playerId, src]);
+  }, [autoplayWhenVisible, playerId, attachedSrc]);
 
   useEffect(() => {
     const onVis = () => {
@@ -290,7 +383,10 @@ export function QuadVideoPlayer({
     e.preventDefault();
     e.stopPropagation();
     const el = videoRef.current;
-    if (!el) return;
+    if (!el || !attachedSrc) {
+      setAttempt((n) => n + 1);
+      return;
+    }
     if (el.paused) {
       claimPlayback(playerId);
       if (getQuadFeedUnmuted()) {
@@ -366,26 +462,55 @@ export function QuadVideoPlayer({
     }
   }
 
+  function retryLoad() {
+    setPhase("loading");
+    setAttempt((n) => n + 1);
+  }
+
   const muteVisible = showMuteControl && !confirmedSilent;
   const shownTime = scrubbing ? scrubTime : progress * duration;
+  const showSpinner = phase === "loading" && !posterHref;
+  const showStatusError = phase === "error" || phase === "timeout";
 
   return (
     <div
       ref={rootRef}
-      className={`relative w-full bg-black ${className}`}
+      className={`relative w-full bg-black cq-quad-feed-media-frame ${className}`}
+      style={frameStyle}
       tabIndex={0}
       onKeyDown={onKeyDown}
       onKeyUp={onSeekKeyUp}
       data-cq-media-control="true"
       data-cq-gesture-block="swipe-tab"
       data-no-drawer-swipe="true"
+      data-cq-video-phase={phase}
+      data-cq-video-inview={inViewForPlayback ? "true" : "false"}
     >
+      {posterHref ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={posterHref}
+          alt=""
+          className="cq-quad-video-poster"
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          onError={() => {
+            if (!posterFallback && posterSources?.usesVariant) {
+              setPosterFallback(true);
+              return;
+            }
+          }}
+          aria-hidden
+        />
+      ) : null}
+
       <video
         ref={videoRef}
-        src={src}
-        poster={poster || undefined}
+        src={attachedSrc ?? undefined}
+        poster={posterHref || undefined}
         playsInline
-        preload="metadata"
+        preload={attachedSrc ? "metadata" : "none"}
         muted={!soundOn}
         controls={false}
         disablePictureInPicture
@@ -394,6 +519,7 @@ export function QuadVideoPlayer({
         onPlay={() => {
           claimPlayback(playerId);
           setPlaying(true);
+          setPhase("ready");
         }}
         onPause={() => {
           if (scrubbingRef.current) return;
@@ -401,18 +527,25 @@ export function QuadVideoPlayer({
         }}
         onWaiting={() => {
           if (scrubbingRef.current) return;
-          setLoading(true);
+          // Keep poster visible; avoid indefinite overlay when we already painted.
+          if (!posterHref) setPhase((current) => (current === "ready" ? "loading" : current));
         }}
-        onPlaying={() => setLoading(false)}
-        onLoadedData={() => setLoading(false)}
+        onPlaying={() => setPhase("ready")}
+        onLoadedData={() => setPhase("ready")}
+        onLoadedMetadata={(event) => {
+          syncMedia(event.currentTarget);
+          setPhase((current) => (current === "timeout" || current === "error" ? current : "ready"));
+        }}
         onError={() => {
-          setLoading(false);
+          setPhase("error");
           onError?.();
         }}
-        onLoadedMetadata={(event) => syncMedia(event.currentTarget)}
         onDurationChange={(event) => syncMedia(event.currentTarget)}
         onProgress={(event) => syncMedia(event.currentTarget)}
-        onCanPlay={(event) => syncMedia(event.currentTarget)}
+        onCanPlay={(event) => {
+          syncMedia(event.currentTarget);
+          setPhase("ready");
+        }}
         onSeeked={() => {
           const el = videoRef.current;
           const intended = intendedTimeRef.current;
@@ -434,7 +567,7 @@ export function QuadVideoPlayer({
           correctingRef.current = false;
           intendedTimeRef.current = null;
           holdProgressRef.current = false;
-          if (el.readyState >= 2) setLoading(false);
+          if (el.readyState >= 2) setPhase("ready");
           if (Number.isFinite(el.duration) && el.duration > 0) publishProgress(el.currentTime, el.duration);
         }}
         onTimeUpdate={() => {
@@ -453,9 +586,29 @@ export function QuadVideoPlayer({
         aria-label={playing ? "Pause video" : "Play video"}
       />
 
-      {loading ? (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+      {showSpinner ? (
+        <div className="cq-quad-media-status" aria-hidden>
+          <span className="cq-quad-media-spinner" />
+        </div>
+      ) : null}
+
+      {showStatusError ? (
+        <div className="cq-quad-media-status cq-quad-media-status--error" role="status">
+          <p className="cq-quad-media-status__text">
+            {phase === "timeout" ? "Video is taking too long" : "Couldn’t play video"}
+          </p>
+          <button
+            type="button"
+            className="cq-quad-media-status__retry"
+            data-cq-media-control="true"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              retryLoad();
+            }}
+          >
+            Retry
+          </button>
         </div>
       ) : null}
 

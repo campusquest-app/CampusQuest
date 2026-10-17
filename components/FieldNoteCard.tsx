@@ -268,6 +268,8 @@ type FieldNoteCardProps = {
   canModeratePosts?: boolean;
   onViewEvent?: (eventId: string) => void;
   onViewOnMap?: (locationId: string) => void;
+  /** Eager-load first visible feed post media (LCP). */
+  priorityMedia?: boolean;
 };
 
 function userHasReacted(note: FieldNote, userId: string): boolean {
@@ -286,6 +288,7 @@ function fieldNoteCardPropsAreEqual(prev: FieldNoteCardProps, next: FieldNoteCar
   if (prev.canModeratePosts !== next.canModeratePosts) return false;
   if (prev.currentUserId !== next.currentUserId) return false;
   if (prev.highlightStat !== next.highlightStat) return false;
+  if (prev.priorityMedia !== next.priorityMedia) return false;
   if ((prev.comments?.length ?? 0) !== (next.comments?.length ?? 0)) return false;
 
   const pn = prev.note;
@@ -338,6 +341,7 @@ function FieldNoteCardInner({
   canModeratePosts = false,
   onViewEvent,
   onViewOnMap,
+  priorityMedia = false,
 }: FieldNoteCardProps) {
   const [commentsSheetOpen, setCommentsSheetOpen] = useState(false);
   const [likersSheetOpen, setLikersSheetOpen] = useState(false);
@@ -818,6 +822,9 @@ function FieldNoteCardInner({
     <span className="text-[11px] text-white/48">@{note.authorUsername}</span>
   );
 
+  const mediaW = usableCarousel?.[0]?.width ?? note.mediaWidth ?? null;
+  const mediaH = usableCarousel?.[0]?.height ?? note.mediaHeight ?? null;
+
   const proofBlock =
     usableCarousel && usableCarousel.length > 0 ? (
       <QuadMediaCarousel
@@ -825,6 +832,7 @@ function FieldNoteCardInner({
         media={usableCarousel}
         tags={note.tags}
         isFeed={isFeed}
+        priority={priorityMedia}
       />
     ) : proofImgUrl &&
     (isVideo ? (
@@ -833,8 +841,11 @@ function FieldNoteCardInner({
         src={proofImgUrl}
         poster={note.posterUrl}
         durationSeconds={note.mediaDurationSeconds}
+        width={mediaW}
+        height={mediaH}
         hasAudio={note.mediaHasAudio}
         autoplayWhenVisible={isFeed}
+        fillParent={false}
       />
     ) : isImgUrl ? (
       isFeed ? (
@@ -849,6 +860,9 @@ function FieldNoteCardInner({
           <ZoomableImage
             src={proofImgUrl}
             alt=""
+            width={mediaW}
+            height={mediaH}
+            priority={priorityMedia}
             enableDoubleTapZoom={false}
             imgClassName="quad-feed-media-img w-full max-w-full rounded-none"
             onClick={() => {

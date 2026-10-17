@@ -4,6 +4,25 @@ const nextConfig = {
     // Baked at build time; logged on app load so stale PWA caches are obvious.
     NEXT_PUBLIC_BUILD_TIMESTAMP: new Date().toISOString(),
   },
+  images: {
+    // Quad feed may route public Supabase objects through `/_next/image` for
+    // mobile-sized variants when Storage image transforms are unavailable.
+    formats: ["image/avif", "image/webp"],
+    deviceSizes: [360, 640, 750, 828, 1080, 1200],
+    imageSizes: [64, 128, 256, 384],
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "*.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+      {
+        protocol: "https",
+        hostname: "*.supabase.co",
+        pathname: "/storage/v1/render/image/public/**",
+      },
+    ],
+  },
   async redirects() {
     return [
       { source: "/dashboard", destination: "/", permanent: false },
