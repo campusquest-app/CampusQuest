@@ -1,12 +1,12 @@
 "use client";
 
 import { Heart } from "lucide-react";
+import { EventArtwork } from "@/components/events/EventArtwork";
 import { eventSourceChipLabel } from "@/lib/eventSources/catalog";
 import {
   eventCardCategoryChip,
   eventCardDisplayTitle,
   eventCardFallbackAccent,
-  eventCardImageUrl,
   eventCardSportSubtitle,
   eventCardVenueLabel,
   eventShowOnRealmEligible,
@@ -48,7 +48,6 @@ export function EventDiscoveryCard({
   const category = eventCardCategoryChip(item);
   const sport = eventCardSportSubtitle(item);
   const venue = eventCardVenueLabel(item);
-  const imageUrl = eventCardImageUrl(item);
   const interested =
     feedEventCanRsvp(item) &&
     ((item.kind === "campus" && isInterestedRsvp(item.event.myRsvpStatus)) ||
@@ -66,26 +65,13 @@ export function EventDiscoveryCard({
 
   return (
     <article className="cq-event-card cq-event-card--row">
-      <div
-        className={
-          imageUrl && athletics
-            ? "cq-event-card-thumb-wrap cq-event-card-thumb-wrap--photo"
-            : `cq-event-card-thumb-wrap cq-event-fallback cq-event-fallback--${accent}`
-        }
-      >
-        {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={imageUrl}
-            alt={`${title} event image`}
-            className="cq-event-card-thumb"
-            loading="lazy"
-          />
-        ) : (
-          <div className="cq-event-card-thumb cq-event-card-thumb--empty" aria-hidden>
-            <span>{title.slice(0, 1).toUpperCase()}</span>
-          </div>
-        )}
+      <div className="cq-event-card-thumb-wrap cq-event-card-thumb-wrap--photo">
+        <EventArtwork
+          imageUrl={item.kind === "external" ? item.event.imageUrl : null}
+          bannerUrl={item.kind === "external" ? item.event.bannerUrl : null}
+          alt={`${title} event image`}
+          className="cq-event-card-thumb"
+        />
       </div>
       <div className="cq-event-card-body">
         <p className={`cq-event-card-chip cq-event-card-chip--${accent}`}>{category}</p>

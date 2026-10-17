@@ -25,6 +25,8 @@ import {
   shouldCollapseEventDescription,
 } from "@/lib/client/eventDetailContent";
 import { eventCardRecommendationReason, eventHasMappedLocation, eventShareText } from "@/lib/client/eventDiscovery";
+import { EventArtwork } from "@/components/events/EventArtwork";
+import { resolveEventArtwork, usableEventImageUrl } from "@/lib/client/eventArtwork";
 import { eventCardDisplayTitle } from "@/lib/client/eventCardPresentation";
 import { eventSourceActionLabel, eventSourceLabel } from "@/lib/eventSources/catalog";
 import { campusEventHostLabel, type FeedEvent } from "@/lib/client/eventFeedTypes";
@@ -190,7 +192,18 @@ function EventDetailBody({
   const whenIso = eventDateTimeIso(event.startsAt);
   const hostName = item.kind === "campus" ? campusEventHostLabel(item.event) : item.event.organizationName;
   const hostOrgId = item.kind === "campus" ? item.event.hostOrganization?.id ?? null : null;
-  const imageUrl = item.kind === "external" ? item.event.imageUrl : null;
+  const rawImage = item.kind === "external" ? item.event.imageUrl : null;
+  const rawBanner = item.kind === "external" ? item.event.bannerUrl : null;
+  const artworkKey = `${rawImage ?? ""}\n${rawBanner ?? ""}`;
+  const [artworkBroken, setArtworkBroken] = useState(false);
+  const [seenArtworkKey, setSeenArtworkKey] = useState(artworkKey);
+  if (seenArtworkKey !== artworkKey) {
+    setSeenArtworkKey(artworkKey);
+    setArtworkBroken(false);
+  }
+  const initialArtwork = resolveEventArtwork({ imageUrl: rawImage, bannerUrl: rawBanner });
+  const showFlyer = initialArtwork.kind !== "fallback" && !artworkBroken;
+  const imageUrl = showFlyer ? usableEventImageUrl(rawImage) ?? usableEventImageUrl(rawBanner) : null;
   const sourceUrl = item.kind === "external" ? item.event.eventUrl : null;
   const locationLabel =
     item.kind === "campus"
@@ -265,19 +278,27 @@ function EventDetailBody({
 
   return (
     <>
-      {imageUrl ? (
+      {showFlyer ? (
         <button
           type="button"
           className="cq-event-detail-hero"
           onClick={() => setImageOpen(true)}
           aria-label={`View full flyer for ${event.title}`}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageUrl} alt={`${event.title} flyer`} className="cq-event-detail-hero-img" />
+          <EventArtwork
+            imageUrl={rawImage}
+            bannerUrl={rawBanner}
+            alt={`${event.title} flyer`}
+            className="cq-event-detail-hero-img"
+            onFallback={() => {
+              setArtworkBroken(true);
+              setImageOpen(false);
+            }}
+          />
         </button>
       ) : (
-        <div className="cq-event-detail-hero cq-event-detail-hero--fallback" aria-hidden>
-          <Calendar className="h-10 w-10 text-white/35" strokeWidth={1.5} />
+        <div className="cq-event-detail-hero" aria-hidden>
+          <EventArtwork imageUrl={null} alt="" className="cq-event-detail-hero-img" />
         </div>
       )}
 

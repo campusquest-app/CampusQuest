@@ -1,3 +1,4 @@
+import { resolveEventArtwork } from "@/lib/client/eventArtwork";
 import { canonicalEventCategory, eventMatchesCanonicalCategory } from "@/lib/eventSources/categories";
 import type { CanonicalEventCategory } from "@/lib/eventSources/types";
 import { eventHasMappedLocation } from "@/lib/client/eventDiscovery";
@@ -182,14 +183,15 @@ export function eventCardFallbackAccent(item: FeedEvent): string {
   return "clubs";
 }
 
-/** Local URI Athletics mark used when a game has no event photo. */
-export const URI_ATHLETICS_CARD_IMAGE = "/brand/uri-athletics-ram.webp";
-
-export function eventCardImageUrl(item: FeedEvent): string | null {
-  const custom = item.kind === "external" ? item.event.imageUrl?.trim() : "";
-  if (custom) return custom;
-  if (feedEventIsAthletics(item)) return URI_ATHLETICS_CARD_IMAGE;
-  return null;
+/** Resolved artwork URL: event photo, then provider banner, then the Rams logo. */
+export function eventCardImageUrl(item: FeedEvent): string {
+  if (item.kind !== "external") {
+    return resolveEventArtwork({}).src;
+  }
+  return resolveEventArtwork({
+    imageUrl: item.event.imageUrl,
+    bannerUrl: item.event.bannerUrl,
+  }).src;
 }
 
 export function eventSearchHaystack(item: FeedEvent): {

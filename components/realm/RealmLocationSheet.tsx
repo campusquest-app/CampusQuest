@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useRef, useState } from "react";
+import { createPortal, flushSync } from "react-dom";
+import { X } from "lucide-react";
 import type { RealmLocation } from "@/lib/realm/locations";
 import type { GroupedMapLocation, MapEventPin } from "@/lib/mapLocationGroups";
 import { emptyMapLocationContent } from "@/lib/mapLocationGroups";
@@ -10,11 +11,7 @@ import { CampusMemoryArchivePanel } from "@/components/memories/CampusMemoryArch
 import type { CampusMemoryGroup, CampusMemoryLocationStats } from "@/lib/types";
 import type { CampusLocationId } from "@/lib/locations/registry";
 import { useRegisterMobileDetailLayer } from "@/components/mobile/MobileGestureLayerProvider";
-import { useSwipeBack } from "@/lib/client/useSwipeBack";
-import { useSwipeDownDismiss } from "@/lib/client/useSwipeDownDismiss";
-import { SWIPE_TRANSITION_MS } from "@/lib/client/mobileGestures";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { RealmDirectionsPanel } from "@/components/realm/RealmDirectionsPanel";
 import type { RealmDirectionsDestination, RealmDirectionsStatus, RealmTravelMode } from "@/lib/realm/realmDirectionsTypes";
 import { partitionMapEventsForSheet } from "@/lib/realm/eventCountdown";
 import { useNow } from "@/lib/client/useNow";
@@ -31,6 +28,13 @@ import {
 } from "@/components/realm/locationDetail";
 import { LocationDiningMenuSection } from "@/components/realm/locationDetail/LocationDiningMenuSection";
 import { isDiningMapLocation } from "@/lib/dining/uriDiningLocations";
+import {
+  locationSheetDragIntent,
+  locationSheetDragOffset,
+  locationSheetRestingOffset,
+  nextLocationSheetSnap,
+  type LocationSheetSnap,
+} from "@/lib/realm/locationSheetSnap";
 
 export function RealmLocationSheet({
   location,
@@ -47,14 +51,6 @@ export function RealmLocationSheet({
   questReloadToken = 0,
   onRefreshAll,
   onPullRefreshAll,
-  directionsEnabled = false,
-  directionsDestination = null,
-  directionsStatus = { status: "idle" },
-  activeTravelMode = null,
-  onRequestWalking,
-  onRequestDriving,
-  onClearDirections,
-  onOpenInRealmMap,
   onOpenEvent,
 }: {
   location: RealmLocation | null;
@@ -87,7 +83,11 @@ export function RealmLocationSheet({
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [archiveAvailable, setArchiveAvailable] = useState(false);
   const [showAllEvents, setShowAllEvents] = useState(false);
+  const [snap, setSnap] = useState<LocationSheetSnap>("peek");
   const panelRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const snapRef = useRef<LocationSheetSnap>("peek");
   const now = useNow(30_000);
 
   useRegisterMobileDetailLayer(open);
@@ -102,6 +102,9 @@ export function RealmLocationSheet({
     setArchiveExpanded(false);
     setArchiveAvailable(false);
     setShowAllEvents(false);
+    snapRef.current = "peek";
+    setSnap("peek");
+    if (panelRef.current) panelRef.current.style.transform = "";
   }, [locationRefreshKey, location?.id, mapContent?.realmLocationId]);
 
   useEffect(() => {
@@ -114,28 +117,169 @@ export function RealmLocationSheet({
 
   useEffect(() => {
     if (!open) return undefined;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTimer = window.setTimeout(() => closeRef.current?.focus(), 40);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (snapRef.current === "expanded") {
+        snapRef.current = "peek";
+        setSnap("peek");
+        return;
+      }
+      onClose();
     };
-  }, [open]);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener("keydown", onKey);
+      previouslyFocused?.focus();
+    };
+  }, [open, onClose]);
 
-  const gesturesEnabled = open && mounted;
-  const swipeBack = useSwipeBack({ onBack: onClose, enabled: gesturesEnabled, containerRef: panelRef });
-  const swipeDown = useSwipeDownDismiss({ onDismiss: onClose, enabled: gesturesEnabled, containerRef: panelRef });
-  const draggingGesture = swipeBack.dragging || swipeDown.dragging;
-  const offsetX = swipeBack.dragX > 0 ? swipeBack.dragX : 0;
-  const offsetY = swipeDown.dragY > 0 ? swipeDown.dragY : 0;
-  const panelStyle: CSSProperties = {
-    transform: offsetX > 0 || offsetY > 0 ? `translate3d(${offsetX}px, ${offsetY}px, 0)` : undefined,
-    transition: draggingGesture
-      ? "none"
-      : offsetX > 0 || offsetY > 0
-        ? `transform ${SWIPE_TRANSITION_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`
-        : undefined,
-  };
-  const backdropOpacity = 1 - 0.5 * swipeDown.progress;
+  useEffect(() => {
+    if (!open) return undefined;
+    const sheet = panelRef.current;
+    const scroller = scrollRef.current;
+    if (!sheet) return undefined;
+
+    let drag: {
+      pointerId: number;
+      startY: number;
+      lastY: number;
+      startX: number;
+      onHandle: boolean;
+      active: boolean;
+      resting: number;
+      height: number;
+    } | null = null;
+    let frame = 0;
+    let pendingY = 0;
+
+    const paint = () => {
+      frame = 0;
+      sheet.style.transform = `translate3d(0, ${pendingY}px, 0)`;
+    };
+
+    const schedule = (y: number) => {
+      pendingY = y;
+      if (frame) return;
+      frame = window.requestAnimationFrame(paint);
+    };
+
+    const releaseDragChrome = () => {
+      sheet.classList.remove("cq-loc-sheet--dragging");
+      document.documentElement.removeAttribute("data-realm-sheet-dragging");
+    };
+
+    const onDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const interactive = Boolean(
+        target.closest("button, a, input, textarea, select, label, [data-cq-horizontal-scroll]"),
+      );
+      const onHandle = Boolean(target.closest("[data-cq-sheet-handle]"));
+      const intent = locationSheetDragIntent({
+        interactive,
+        onHandle,
+        scrollTop: scroller?.scrollTop ?? 0,
+        dx: 0,
+        dy: 0,
+        canScroll: false,
+      });
+      if (intent === "ignore") return;
+      const height = sheet.getBoundingClientRect().height;
+      drag = {
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        lastY: event.clientY,
+        startX: event.clientX,
+        onHandle,
+        active: false,
+        resting: locationSheetRestingOffset(height, snapRef.current),
+        height,
+      };
+      if (onHandle) sheet.setPointerCapture(event.pointerId);
+    };
+
+    const onMove = (event: PointerEvent) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      drag.lastY = event.clientY;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (!drag.active) {
+        const canScroll = Boolean(scroller && scroller.scrollHeight > scroller.clientHeight + 1);
+        const intent = locationSheetDragIntent({
+          interactive: false,
+          onHandle: drag.onHandle,
+          scrollTop: scroller?.scrollTop ?? 0,
+          dx,
+          dy,
+          canScroll,
+        });
+        if (intent === "wait") return;
+        if (intent === "cancel" || intent === "ignore") {
+          if (sheet.hasPointerCapture(event.pointerId)) sheet.releasePointerCapture(event.pointerId);
+          drag = null;
+          return;
+        }
+        drag.active = true;
+        sheet.classList.add("cq-loc-sheet--dragging");
+        document.documentElement.setAttribute("data-realm-sheet-dragging", "true");
+        if (!sheet.hasPointerCapture(event.pointerId)) sheet.setPointerCapture(event.pointerId);
+      }
+      if (event.cancelable) event.preventDefault();
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduced) return;
+      schedule(locationSheetDragOffset(drag.resting, dy, drag.height));
+    };
+
+    const onUp = (event: PointerEvent) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const finished = drag;
+      drag = null;
+      if (sheet.hasPointerCapture(event.pointerId)) sheet.releasePointerCapture(event.pointerId);
+      releaseDragChrome();
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+        sheet.style.transform = `translate3d(0, ${pendingY}px, 0)`;
+      }
+      if (!finished.active) {
+        sheet.style.transform = "";
+        return;
+      }
+      const next = nextLocationSheetSnap(snapRef.current, finished.lastY - finished.startY);
+      if (next === "closed") {
+        onClose();
+        return;
+      }
+      flushSync(() => {
+        snapRef.current = next;
+        setSnap(next);
+      });
+      window.requestAnimationFrame(() => {
+        sheet.style.transform = "";
+      });
+    };
+
+    sheet.addEventListener("pointerdown", onDown);
+    sheet.addEventListener("pointermove", onMove, { passive: false });
+    sheet.addEventListener("pointerup", onUp);
+    sheet.addEventListener("pointercancel", onUp);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      sheet.removeEventListener("pointerdown", onDown);
+      sheet.removeEventListener("pointermove", onMove);
+      sheet.removeEventListener("pointerup", onUp);
+      sheet.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      if (frame) window.cancelAnimationFrame(frame);
+      releaseDragChrome();
+    };
+  }, [open, onClose]);
 
   if (!mounted || !open || typeof document === "undefined") return null;
   if (!location && !mapContent) return null;
@@ -181,31 +325,35 @@ export function RealmLocationSheet({
     upcomingEvents.length > 0 || historyEvents.length > 0 || Boolean(questLocationId);
 
   return createPortal(
-    <>
-      <button
-        type="button"
-        aria-label="Close location details"
-        className="realm-sheet-backdrop fixed inset-0 bg-black/60 backdrop-blur-[3px]"
-        style={{ opacity: backdropOpacity }}
-        onClick={onClose}
-      />
-      <div
-        ref={panelRef}
-        data-cq-swipe-back-root=""
-        className="cq-swipe-back-surface cq-realm-archive-panel cq-realm-archive-screen cq-realm-archive-sheet cq-loc-sheet mx-auto max-w-lg animate-realm-sheet-up"
-        style={panelStyle}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="realm-sheet-title"
-      >
-        <div className="cq-realm-archive-atmosphere" aria-hidden />
+    <div
+      ref={panelRef}
+      data-cq-location-sheet={snap}
+      data-cq-gesture-block="all"
+      className={`cq-realm-archive-panel cq-realm-archive-screen cq-loc-sheet cq-loc-sheet--dock${
+        snap === "expanded" ? " cq-loc-sheet--expanded" : ""
+      }`}
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="realm-sheet-title"
+    >
         <div className="cq-realm-archive-screen-panel">
-          <div className="cq-realm-sheet-grabber-wrap" aria-hidden>
-            <div className="cq-realm-sheet-grabber" />
+          <div className="cq-loc-sheet-handle" data-cq-sheet-handle>
+            <div className="cq-realm-sheet-grabber" aria-hidden />
+            <button
+              ref={closeRef}
+              type="button"
+              className="cq-loc-sheet-close touch-manipulation"
+              onClick={onClose}
+              aria-label="Close location details"
+            >
+              <X className="h-4 w-4" strokeWidth={2.4} />
+            </button>
           </div>
 
+          <div ref={scrollRef} className="cq-loc-scroll" data-cq-scroll-root>
           <PullToRefresh
-            className="cq-realm-archive-body cq-realm-archive-body--scroll cq-loc-scroll min-h-0 flex-1"
+            disabled
+            className="cq-realm-archive-body min-h-0 flex-1"
             onRefresh={async () => {
               onRefreshMemories?.();
               await (onPullRefreshAll ?? onRefreshAll)?.();
@@ -218,6 +366,7 @@ export function RealmLocationSheet({
               pills={pills}
               fallbackImageUrl={heroFallbackImage}
               onBack={onClose}
+              showBack={false}
             />
 
             <div className="cq-loc-content">
@@ -226,29 +375,13 @@ export function RealmLocationSheet({
               ) : null}
 
               <LocationPrimaryActions
-                directionsEnabled={directionsEnabled}
-                directionsDestination={directionsDestination}
-                directionsStatus={directionsStatus}
-                onRequestWalking={() => onRequestWalking?.()}
                 onAddMemory={
                   locationId && onAddMemory ? () => onAddMemory(locationId) : undefined
                 }
               />
 
-              <RealmDirectionsPanel
-                destination={directionsDestination}
-                directionsEnabled={directionsEnabled}
-                directionsStatus={directionsStatus}
-                activeTravelMode={activeTravelMode}
-                hidePrimaryWalk
-                onRequestWalking={() => onRequestWalking?.()}
-                onRequestDriving={() => onRequestDriving?.()}
-                onClearDirections={() => onClearDirections?.()}
-                onOpenInRealmMap={() => onOpenInRealmMap?.()}
-              />
-
               {locationId && isDiningMapLocation(locationId) ? (
-                <LocationDiningMenuSection campusQuestLocationId={locationId} />
+                <LocationDiningMenuSection key={locationId} campusQuestLocationId={locationId} />
               ) : null}
 
               {hasActivitySection ? (
@@ -324,9 +457,9 @@ export function RealmLocationSheet({
               ) : null}
             </div>
           </PullToRefresh>
+          </div>
         </div>
-      </div>
-    </>,
+    </div>,
     document.body,
   );
 }

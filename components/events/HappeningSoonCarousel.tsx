@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bookmark, Clock, MapPin } from "lucide-react";
 import { eventSourceChipLabel } from "@/lib/eventSources/catalog";
+import { EventArtwork } from "@/components/events/EventArtwork";
 import {
   eventCardCategoryChip,
   eventCardDisplayTitle,
   eventCardFallbackAccent,
-  eventCardImageUrl,
   eventCardPrimaryActionLabel,
   eventCardSportSubtitle,
   eventCardVenueLabel,
@@ -21,20 +21,6 @@ import { useLiveNow } from "@/lib/client/useLiveNow";
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
 import { isInterestedRsvp } from "@/lib/client/eventInterested";
 import type { RankedFeedEvent } from "@/lib/client/happeningSoon";
-
-function EventImageFallback({
-  accent,
-  title,
-}: {
-  accent: string;
-  title: string;
-}) {
-  return (
-    <div className={`cq-event-fallback cq-event-fallback--${accent}`} aria-hidden>
-      <span className="cq-event-fallback-mark">{title.slice(0, 1).toUpperCase()}</span>
-    </div>
-  );
-}
 
 function HappeningSoonCard({
   item,
@@ -58,7 +44,6 @@ function HappeningSoonCard({
   const when = formatEventCardWhen(event.startsAt);
   const whenIso = eventDateTimeIso(event.startsAt);
   const category = eventCardCategoryChip(item);
-  const imageUrl = eventCardImageUrl(item);
   const now = useLiveNow();
   const showOnRealm = Boolean(onViewOnMap) && eventShowOnRealmEligible(item) && isEventLive(item, now);
   const interested =
@@ -72,17 +57,13 @@ function HappeningSoonCard({
   return (
     <article className="cq-happening-card">
       <div className="cq-happening-card-media">
-        {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={imageUrl}
-            alt={`${title} event image`}
-            className="cq-happening-card-image"
-            loading={eager ? "eager" : "lazy"}
-          />
-        ) : (
-          <EventImageFallback accent={accent} title={title} />
-        )}
+        <EventArtwork
+          imageUrl={item.kind === "external" ? item.event.imageUrl : null}
+          bannerUrl={item.kind === "external" ? item.event.bannerUrl : null}
+          alt={`${title} event image`}
+          className="cq-happening-card-image"
+          loading={eager ? "eager" : "lazy"}
+        />
         <div className="cq-happening-card-scrim" />
         <span className={`cq-happening-card-chip cq-happening-card-chip--${accent}`}>{category}</span>
         {onToggleInterested ? (

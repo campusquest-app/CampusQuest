@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronLeft, MapPin } from "lucide-react";
+import { useState } from "react";
+import { MapPin, X } from "lucide-react";
 import type { RealmLocation } from "@/lib/realm/locations";
 import { getRealmLocationHeroImage } from "@/lib/realm/locationHeroImages";
 import { placeCardImageObjectPosition } from "@/lib/realm/placeImages";
@@ -13,6 +14,7 @@ export function LocationHero({
   pills,
   fallbackImageUrl,
   onBack,
+  showBack = true,
 }: {
   location: RealmLocation | null;
   displayName: string;
@@ -20,20 +22,25 @@ export function LocationHero({
   pills: LocationMetaPill[];
   fallbackImageUrl?: string | null;
   onBack: () => void;
+  showBack?: boolean;
 }) {
   const heroImage = (location ? getRealmLocationHeroImage(location.id) : null) ?? fallbackImageUrl ?? null;
   const heroObjectPosition = location ? placeCardImageObjectPosition(location.id) : "center 35%";
+  const imageKey = `${location?.id ?? "event"}:${heroImage ?? ""}`;
+  const [failedKey, setFailedKey] = useState<string | null>(null);
+  const showImage = Boolean(heroImage) && failedKey !== imageKey;
 
   return (
     <header className="cq-loc-hero cq-realm-hero-enter">
       <div className="cq-loc-hero-media" aria-hidden>
-        {heroImage ? (
+        {showImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={heroImage}
+            src={heroImage ?? undefined}
             alt=""
             className="cq-loc-hero-image"
             style={{ objectPosition: heroObjectPosition }}
+            onError={() => setFailedKey(imageKey)}
           />
         ) : (
           <div className="cq-loc-hero-fallback">
@@ -43,17 +50,19 @@ export function LocationHero({
         <div className="cq-loc-hero-gradient" />
       </div>
 
-      <div className="cq-loc-hero-top">
-        <button
-          type="button"
-          onClick={onBack}
-          className="cq-loc-hero-back touch-manipulation"
-          aria-label="Back to map"
-        >
-          <ChevronLeft className="h-4 w-4 shrink-0" strokeWidth={2.4} />
-          Back
-        </button>
-      </div>
+      {showBack ? (
+        <div className="cq-loc-hero-top">
+          <button
+            type="button"
+            onClick={onBack}
+            className="cq-loc-hero-back touch-manipulation"
+            aria-label="Close location details"
+          >
+            <X className="h-4 w-4 shrink-0" strokeWidth={2.4} />
+            Close
+          </button>
+        </div>
+      ) : null}
 
       <div className="cq-loc-hero-content">
         <p className="cq-loc-hero-badge">

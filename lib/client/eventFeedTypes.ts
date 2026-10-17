@@ -33,6 +33,8 @@ export type ExternalFeedEventItem = {
   organizationName: string | null;
   organizationId?: string | null;
   imageUrl: string | null;
+  /** Provider or banner art used only when imageUrl is missing. */
+  bannerUrl?: string | null;
   eventUrl: string | null;
   ticketUrl?: string | null;
   broadcastUrl?: string | null;

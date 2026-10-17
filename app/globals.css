@@ -17136,6 +17136,43 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   color: rgba(255, 255, 255, 0.35);
 }
 
+.cq-event-artwork {
+  display: block;
+  overflow: hidden;
+  background: #071428;
+}
+
+.cq-event-artwork__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.cq-event-artwork--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #071428;
+}
+
+.cq-event-artwork--fallback > .cq-event-artwork__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
+.cq-event-detail-hero .cq-event-artwork,
+.cq-happening-card-media .cq-event-artwork,
+.cq-event-card-thumb-wrap--photo .cq-event-artwork,
+.cq-rhody-highlights__thumb .cq-event-artwork,
+.cq-loc-activity-thumb .cq-event-artwork {
+  width: 100%;
+  height: 100%;
+}
+
 .cq-events-header-actions {
   display: flex;
   flex-direction: column;
@@ -25951,6 +25988,165 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   background: #05070d;
 }
 
+.cq-loc-sheet.cq-loc-sheet--dock.cq-realm-archive-screen {
+  inset: auto 0 calc(var(--cq-bottom-nav-h, 5.2rem) + env(safe-area-inset-bottom, 0px)) 0;
+  top: auto;
+  z-index: 520;
+  width: min(100%, 32rem);
+  height: calc(
+    (100svh - var(--cq-bottom-nav-h, 5.2rem) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) *
+      0.88
+  );
+  max-height: calc(100svh - env(safe-area-inset-top, 0px) - var(--cq-bottom-nav-h, 5.2rem) - 0.35rem);
+  margin-inline: auto;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+  border-radius: 1.35rem 1.35rem 0 0;
+  border: 1px solid rgba(104, 184, 232, 0.32);
+  background: #07111f;
+  box-shadow:
+    0 -18px 48px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(240, 215, 140, 0.16);
+  transform: translate3d(0, 51.1364%, 0);
+  transition: transform 340ms cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+}
+
+.cq-loc-sheet--dock.cq-loc-sheet--expanded {
+  transform: translate3d(0, 0, 0);
+}
+
+.cq-loc-sheet--dock.cq-loc-sheet--dragging {
+  transition: none;
+}
+
+.cq-loc-sheet-handle {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  touch-action: none;
+  cursor: grab;
+}
+
+.cq-loc-sheet-close {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.7rem;
+  display: inline-flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(104, 184, 232, 0.35);
+  background: rgba(7, 17, 31, 0.72);
+  color: #fff;
+}
+
+.cq-loc-sheet--dock .cq-loc-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding: 0;
+  scroll-padding-bottom: 1rem;
+}
+
+.cq-loc-sheet--dock .cq-loc-hero {
+  display: grid;
+  grid-template-columns: 5.25rem minmax(0, 1fr);
+  column-gap: 0.75rem;
+  align-items: start;
+  min-height: 0;
+  height: auto;
+  overflow: visible;
+  padding: 0 0.95rem 0.15rem;
+}
+
+.cq-loc-sheet--dock .cq-loc-hero-media {
+  position: relative;
+  inset: auto;
+  width: 5.25rem;
+  height: 5.25rem;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(104, 184, 232, 0.28);
+}
+
+.cq-loc-sheet--dock .cq-loc-hero-content {
+  position: relative;
+  inset: auto;
+  bottom: auto;
+  left: auto;
+  right: auto;
+  max-width: none;
+  padding: 0.05rem 0 0;
+}
+
+.cq-loc-sheet--dock .cq-loc-hero-title {
+  margin-top: 0.2rem;
+  font-size: 1.2rem;
+}
+
+.cq-loc-sheet--dock .cq-loc-hero-desc {
+  max-width: none;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.cq-loc-sheet--dock .cq-loc-hero-pills {
+  margin-top: 0.45rem;
+}
+
+.cq-loc-sheet--dock .cq-loc-content {
+  gap: 0.85rem;
+  padding-top: 0.35rem;
+  padding-bottom: 1.15rem;
+}
+
+.cq-loc-sheet--dock .cq-loc-actions {
+  margin-top: 0;
+}
+
+.cq-loc-sheet--dock .cq-loc-hero-image,
+.cq-loc-sheet--dock .cq-loc-hero-fallback {
+  width: 100%;
+  height: 100%;
+}
+
+.cq-loc-sheet--dock .cq-loc-hero-fallback {
+  font-size: 1.65rem;
+}
+
+@media (max-width: 380px) {
+  .cq-loc-sheet--dock .cq-loc-hero {
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+  }
+
+  .cq-loc-sheet--dock .cq-loc-hero-media {
+    width: 4.5rem;
+    height: 4.5rem;
+  }
+
+  .cq-loc-sheet--dock .cq-loc-hero-title {
+    font-size: 1.05rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-loc-sheet--dock {
+    transition: none;
+  }
+}
+
 .cq-loc-hero {
   position: relative;
   z-index: 40;
@@ -26671,8 +26867,11 @@ button.cq-loc-activity-card {
   display: flex;
   gap: 0.4rem;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  padding-bottom: 0.15rem;
 }
 
 .cq-dining-hall-toggle::-webkit-scrollbar,

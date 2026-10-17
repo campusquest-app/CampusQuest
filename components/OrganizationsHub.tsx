@@ -25,6 +25,7 @@ import {
   orgBrowseFilterLabel,
   type OrgBrowseFilterId,
 } from "@/lib/organizationBrowseFilters";
+import { EventArtwork } from "@/components/events/EventArtwork";
 import { TaggedEntityPostsSection } from "@/components/quad/TaggedEntityPostsSection";
 import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
 import {
@@ -1057,14 +1058,11 @@ export function OrganizationsHub({
                 >
                   ← Back to events
                 </button>
-                {activeExternalEvent.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={activeExternalEvent.imageUrl}
-                    alt=""
-                    className="w-full max-h-48 rounded-lg border border-white/10 object-cover"
-                  />
-                ) : null}
+                <EventArtwork
+                  imageUrl={activeExternalEvent.imageUrl}
+                  alt=""
+                  className="h-48 w-full overflow-hidden rounded-lg border border-white/10"
+                />
                 {(() => {
                   const { date, time } = formatExternalEventDateTime(activeExternalEvent.startsAt);
                   return (
@@ -1145,14 +1143,11 @@ export function OrganizationsHub({
                                 location={event.location}
                                 className="mt-1"
                               />
-                              {event.imageUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={event.imageUrl}
-                                  alt=""
-                                  className="mt-2 max-h-28 w-full rounded-md border border-white/10 object-cover"
-                                />
-                              ) : null}
+                              <EventArtwork
+                                imageUrl={event.imageUrl}
+                                alt=""
+                                className="mt-2 h-28 w-full overflow-hidden rounded-md border border-white/10"
+                              />
                               {event.description ? (
                                 <p className="mt-1.5 line-clamp-2 text-xs text-white/55">{event.description}</p>
                               ) : null}

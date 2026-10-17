@@ -327,7 +327,7 @@ export function collectAthleticsHighlights(
         opponent,
         timeLabel: eventTimeShort(event.startsAt, now),
         durationLabel: null,
-        imageUrl: event.imageUrl?.trim() || athleticsFallbackImage(sport, rows.length),
+        imageUrl: event.imageUrl?.trim() || null,
         imageFallbackUrl: null,
         broadcastUrl: event.broadcastUrl ?? null,
         youtubeVideoId: null,
@@ -464,14 +464,6 @@ function isAthleticsEvent(event: MapEventPin): boolean {
 function athleticsDisplayTitle(title: string, opponent: string | null): string {
   if (opponent) return `URI vs. ${opponent}`;
   return title.trim() || "Rhody Athletics";
-}
-
-function athleticsFallbackImage(sport: string, index: number): string {
-  const s = sport.toLowerCase();
-  if (s.includes("basket")) return "/quad-feed/womens-basketball.jpg";
-  if (s.includes("soccer") || s.includes("track") || s.includes("cross")) return "/quad-feed/running.jpg";
-  if (s.includes("football") || s.includes("run")) return "/quad-feed/ram-run.png";
-  return ATHLETICS_FALLBACK_IMAGES[index % ATHLETICS_FALLBACK_IMAGES.length] ?? "/quad-feed/gym.jpg";
 }
 
 function eventTimeShort(startsAt: string, now: Date): string | null {

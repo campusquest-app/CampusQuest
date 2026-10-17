@@ -1,6 +1,7 @@
 "use client";
 
 import { CalendarDays, ChevronRight, MapPin } from "lucide-react";
+import { EventArtwork } from "@/components/events/EventArtwork";
 import type { MapEventPin } from "@/lib/mapLocationGroups";
 import { getEventCountdownState, isEventCancelled } from "@/lib/realm/eventCountdown";
 import { formatCampusEventRange } from "@/lib/realm/formatCampusEventWhen";
@@ -39,12 +40,7 @@ export function LocationActivityCard({
   const inner = (
     <>
       <span className="cq-loc-activity-thumb" aria-hidden>
-        {event.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={event.imageUrl} alt="" loading="lazy" />
-        ) : (
-          <span className="cq-loc-activity-thumb-fallback">{event.title.slice(0, 1).toUpperCase()}</span>
-        )}
+        <EventArtwork imageUrl={event.imageUrl} alt="" className="h-full w-full" />
       </span>
 
       <span className="cq-loc-activity-body">

@@ -79,14 +79,14 @@ describe("event card presentation", () => {
     expect(eventSourceChipLabel("fine_arts")).toBe("Fine Arts");
     expect(feedEventIsAthletics(athleticsEvent())).toBe(true);
     expect(eventCardCategoryChip(athleticsEvent())).toBe("Athletics");
-    expect(eventCardImageUrl(athleticsEvent())).toBe("/brand/uri-athletics-ram.webp");
+    expect(eventCardImageUrl(athleticsEvent())).toBe("/brand/uri-rams-ri.png");
     expect(eventCardImageUrl(athleticsEvent({ imageUrl: "https://cdn.example/game.jpg" }))).toBe(
       "https://cdn.example/game.jpg",
     );
-    expect(eventCardImageUrl(athleticsEvent({ imageUrl: "   " }))).toBe("/brand/uri-athletics-ram.webp");
+    expect(eventCardImageUrl(athleticsEvent({ imageUrl: "   " }))).toBe("/brand/uri-rams-ri.png");
   });
 
-  it("keeps the generic image fallback for non-athletics events", () => {
+  it("keeps the Rams logo for non-athletics events without a photo", () => {
     const arts = athleticsEvent({
       id: "arts-1",
       source: "fine_arts",
@@ -99,7 +99,7 @@ describe("event card presentation", () => {
       location: "Fine Arts Center",
       imageUrl: null,
     });
-    expect(eventCardImageUrl(arts)).toBeNull();
+    expect(eventCardImageUrl(arts)).toBe("/brand/uri-rams-ri.png");
   });
 
   it("filters the Arts rail onto Fine Arts events", () => {

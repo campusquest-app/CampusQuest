@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { EventArtwork } from "@/components/events/EventArtwork";
 import { eventSourceLabel } from "@/lib/eventSources/catalog";
 import type { MapEventPin } from "@/lib/mapLocationGroups";
 import {
@@ -61,16 +62,7 @@ export const EventPinCard = memo(function EventPinCard({
 
   return (
     <article className={rootClass}>
-      {event.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={event.imageUrl}
-          alt=""
-          loading="lazy"
-          className="cq-event-pin-card-image"
-          aria-hidden
-        />
-      ) : null}
+      <EventArtwork imageUrl={event.imageUrl} alt="" className="cq-event-pin-card-image" />
       <div className="cq-event-pin-card-body">
         <div className="cq-event-pin-card-toprow">
           <span className={`cq-event-pin-badge cq-event-pin-badge--${state.kind}`}>

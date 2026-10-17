@@ -1,6 +1,7 @@
 "use client";
 
 import { Play } from "lucide-react";
+import { EventArtwork } from "@/components/events/EventArtwork";
 import type { AthleticsHighlight } from "@/lib/realm/discoverySheet";
 import { openExternalUrl } from "@/lib/client/capacitorNative";
 
@@ -57,22 +58,11 @@ export function RhodyHighlights({
               }}
             >
               <span className="cq-rhody-highlights__thumb">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={item.imageUrl ?? "/quad-feed/gym.jpg"}
+                <EventArtwork
+                  imageUrl={item.imageUrl}
+                  bannerUrl={item.imageFallbackUrl}
                   alt=""
-                  loading="lazy"
-                  onError={(event) => {
-                    const img = event.currentTarget;
-                    const fallback = item.imageFallbackUrl?.trim();
-                    if (fallback && img.src !== fallback) {
-                      img.src = fallback;
-                      return;
-                    }
-                    if (!img.src.endsWith("/quad-feed/gym.jpg")) {
-                      img.src = "/quad-feed/gym.jpg";
-                    }
-                  }}
+                  className="h-full w-full"
                 />
                 <span className="cq-rhody-highlights__play" aria-hidden>
                   <Play className="h-3.5 w-3.5" fill="currentColor" strokeWidth={0} />
