@@ -1390,11 +1390,11 @@ export function GoogleRealmMap({
             </MapControl>
           ) : null}
 
-          {geolocation.fix ? (
+          {geolocation.userPos ? (
             <RealmUserLocationMarker
-              position={{ lat: geolocation.fix.lat, lng: geolocation.fix.lng }}
-              accuracyMeters={geolocation.fix.accuracy}
-              heading={geolocation.fix.heading}
+              position={geolocation.userPos}
+              accuracyMeters={geolocation.fix?.accuracy}
+              heading={geolocation.fix?.heading}
               showLabel={!discovery.labelsHidden}
             />
           ) : null}

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SupportPageBackNav } from "@/components/SupportPageBackNav";
 import { LEGAL_DOC_LINKS } from "@/lib/legal/policy";
 
 export const metadata: Metadata = {
@@ -32,7 +33,8 @@ const PERMISSIONS = [
 
 export default function SupportPage() {
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10 text-white sm:px-6">
+    <main className="cq-support-page mx-auto max-w-2xl px-4 pb-10 text-white sm:px-6">
+      <SupportPageBackNav />
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/70">CampusQuest</p>
       <h1 className="mt-2 font-display text-3xl font-bold tracking-tight">Support & safety</h1>
       <p className="mt-3 text-sm leading-relaxed text-white/65">

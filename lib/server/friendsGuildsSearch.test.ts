@@ -12,6 +12,13 @@ describe("friendsGuildsSearch", () => {
             }),
           };
         }
+        if (table === "blocked_users") {
+          return {
+            select: () => ({
+              or: async () => ({ data: [], error: null }),
+            }),
+          };
+        }
         if (table === "profiles") {
           return {
             select: () => ({

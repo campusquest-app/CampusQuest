@@ -38,7 +38,7 @@ Declare only the rows below. Do **not** select Coarse Location or Other Usage Da
 | **Other Diagnostic Data** | Yes | Yes | No | App Functionality | IP address, user agent, and server/operational logs on Vercel/Supabase. |
 | **Other Usage Data** | No | — | — | — | Do not select merely because Product Interaction exists. |
 | **Advertising Data** | No | — | — | — | |
-| **Purchases** | No | — | — | — | No IAP / payments in 1.0. |
+| **Purchases** | No | — | — | — | No IAP / payments / CampusQuest Basic. For You is free for every signed-in user. |
 | **Crash Data** | No third-party crash SDK | — | — | — | Console / server logs only. |
 
 ## Third-party partners (processors, not tracking)

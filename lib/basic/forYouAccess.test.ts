@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { basicEntitlement, unknownBasicEntitlement, type BasicAccessRow } from "@/lib/basic/entitlement";
-import { forYouRecommendationGate, forYouSurface, shouldPersonalizeForYouEvents } from "@/lib/basic/forYouAccess";
+import { forYouSurface, shouldPersonalizeForYouEvents } from "@/lib/basic/forYouAccess";
 import { loadOwnBasicEntitlement } from "@/lib/server/basicEntitlement";
 
 const NOW = new Date("2026-10-05T12:00:00.000Z");
@@ -34,8 +34,8 @@ function client(result: { data: BasicAccessRow | null; error: { message: string 
   };
 }
 
-describe("basicEntitlement", () => {
-  it("treats an in-window row as active CampusQuest Basic", () => {
+describe("basicEntitlement leftover table helper", () => {
+  it("still parses an in-window row without granting product access", () => {
     const entitlement = basicEntitlement(row({ early_access: true }), NOW);
     expect(entitlement).toMatchObject({ active: true, earlyAccess: true, known: true });
   });
@@ -61,7 +61,7 @@ describe("basicEntitlement", () => {
   });
 });
 
-describe("loadOwnBasicEntitlement", () => {
+describe("loadOwnBasicEntitlement leftover helper", () => {
   it("reads only the signed-in user's cq_basic_access row", async () => {
     const supabase = client({ data: row(), error: null });
     const entitlement = await loadOwnBasicEntitlement(supabase, "user-1", NOW);
@@ -77,34 +77,19 @@ describe("loadOwnBasicEntitlement", () => {
   });
 });
 
-describe("For You entitlement gate", () => {
-  it("allows personalized recommendations only while Basic is active", () => {
-    expect(forYouRecommendationGate(basicEntitlement(row(), NOW)).status).toBe("allowed");
-    expect(forYouRecommendationGate(basicEntitlement(null, NOW)).status).toBe("upgrade_required");
-    expect(forYouRecommendationGate(basicEntitlement(row({ ends_at: "2026-10-04T00:00:00.000Z" }), NOW)).status).toBe(
-      "upgrade_required",
-    );
-    expect(forYouRecommendationGate(unknownBasicEntitlement()).status).toBe("unknown");
+describe("For You is free for every signed-in user", () => {
+  it("personalizes For You from the existing recommendation path without an entitlement", () => {
+    expect(shouldPersonalizeForYouEvents({ timeframe: "for_you", searching: false })).toBe(true);
+    expect(shouldPersonalizeForYouEvents({ timeframe: "today", searching: false })).toBe(false);
+    expect(shouldPersonalizeForYouEvents({ timeframe: "this_weekend", searching: false })).toBe(false);
+    expect(shouldPersonalizeForYouEvents({ timeframe: "all", searching: false })).toBe(false);
+    expect(shouldPersonalizeForYouEvents({ timeframe: "for_you", searching: true })).toBe(false);
   });
 
-  it("does not rank For You before entitlement is known or when it is inactive", () => {
-    expect(shouldPersonalizeForYouEvents({ timeframe: "for_you", searching: false, access: "loading" })).toBe(false);
-    expect(shouldPersonalizeForYouEvents({ timeframe: "for_you", searching: false, access: "unknown" })).toBe(false);
-    expect(shouldPersonalizeForYouEvents({ timeframe: "for_you", searching: false, access: "inactive" })).toBe(false);
-    expect(shouldPersonalizeForYouEvents({ timeframe: "for_you", searching: false, access: "active" })).toBe(true);
-    expect(shouldPersonalizeForYouEvents({ timeframe: "today", searching: false, access: "active" })).toBe(false);
-    expect(shouldPersonalizeForYouEvents({ timeframe: "all", searching: false, access: "inactive" })).toBe(false);
-    expect(shouldPersonalizeForYouEvents({ timeframe: "for_you", searching: true, access: "active" })).toBe(false);
-  });
-
-  it("shows a neutral check, then the upgrade, and leaves the rest of Events alone", () => {
-    expect(forYouSurface({ timeframe: "for_you", searching: false, access: "loading" })).toBe("checking");
-    expect(forYouSurface({ timeframe: "for_you", searching: false, access: "unknown" })).toBe("unavailable");
-    expect(forYouSurface({ timeframe: "for_you", searching: false, access: "inactive" })).toBe("upgrade");
-    expect(forYouSurface({ timeframe: "for_you", searching: false, access: "active" })).toBe("browse");
-    expect(forYouSurface({ timeframe: "today", searching: false, access: "inactive" })).toBe("browse");
-    expect(forYouSurface({ timeframe: "this_weekend", searching: false, access: "loading" })).toBe("browse");
-    expect(forYouSurface({ timeframe: "all", searching: false, access: "inactive" })).toBe("browse");
-    expect(forYouSurface({ timeframe: "for_you", searching: true, access: "inactive" })).toBe("browse");
+  it("never opens an upgrade, checking, or locked For You surface", () => {
+    expect(forYouSurface({ timeframe: "for_you", searching: false })).toBe("browse");
+    expect(forYouSurface({ timeframe: "for_you", searching: true })).toBe("browse");
+    expect(forYouSurface({ timeframe: "today", searching: false })).toBe("browse");
+    expect(forYouSurface({ timeframe: "this_weekend", searching: false })).toBe("browse");
   });
 });

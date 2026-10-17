@@ -7,7 +7,6 @@ import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { EventDetailScreen } from "@/components/events/EventDetailScreen";
 import { EventDiscoveryCard } from "@/components/events/EventDiscoveryCard";
 import { EventsFilterSheet } from "@/components/events/EventsFilterSheet";
-import { ForYouUpgrade } from "@/components/events/ForYouUpgrade";
 import { HappeningSoonCarousel } from "@/components/events/HappeningSoonCarousel";
 import { ScreenBackHeader } from "@/components/ui/BackButton";
 import { ScreenDataState } from "@/components/ui/ScreenDataState";
@@ -36,9 +35,8 @@ import {
   type FeedEvent,
 } from "@/lib/client/eventFeedTypes";
 import { applyCampusRsvpStatus, nextInterestedRsvpStatus } from "@/lib/client/eventInterested";
-import { forYouSurface, shouldPersonalizeForYouEvents } from "@/lib/basic/forYouAccess";
+import { shouldPersonalizeForYouEvents } from "@/lib/basic/forYouAccess";
 import { partitionDiscoverySections } from "@/lib/client/happeningSoon";
-import { useForYouAccess } from "@/lib/client/useForYouAccess";
 import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
 import {
   campusEventToRecommendationEntity,
@@ -104,7 +102,6 @@ export function EventsFeed({
   const loadGenerationRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
   const recProfile = useRecommendationProfile(personalization);
-  const forYouAccess = useForYouAccess();
 
   async function loadEvents() {
     loadAbortRef.current?.abort();
@@ -264,24 +261,9 @@ export function EventsFeed({
     const personalizeForYou = shouldPersonalizeForYouEvents({
       timeframe: filters.timeframe,
       searching: Boolean(searchQuery) || savedOnly,
-      access: forYouAccess.status,
     });
 
     if (searchQuery) {
-      if (forYouAccess.status !== "active") {
-        return filtered
-          .map((item) => ({
-            item,
-            recommendation: null as RecommendationScore | null,
-            searchScore: searchScoreFor(item),
-          }))
-          .sort((a, b) => {
-            if (b.searchScore !== a.searchScore) return b.searchScore - a.searchScore;
-            const aTime = a.item.event.startsAt ? new Date(a.item.event.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
-            const bTime = b.item.event.startsAt ? new Date(b.item.event.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
-            return aTime - bTime;
-          });
-      }
       const ranked = rankRecommendationEntities({
         items: filtered,
         toEntity: (entry) =>
@@ -327,7 +309,7 @@ export function EventsFeed({
       diversity: true,
       exploreEvery: 4,
     }).map((row) => ({ item: row.item, recommendation: row.recommendation }));
-  }, [allFeedEvents, filters, forYouAccess.status, recProfile, savedOnly]);
+  }, [allFeedEvents, filters, recProfile, savedOnly]);
 
   const discoverySections = useMemo(
     () =>
@@ -464,11 +446,6 @@ export function EventsFeed({
     setFilters(initialFilters);
   }
 
-  function browseAllEvents() {
-    setSavedOnly(false);
-    setFilters((prev) => ({ ...prev, timeframe: "all", when: [] }));
-  }
-
   function openFilters() {
     setDraftFilters({
       ...filters,
@@ -525,20 +502,7 @@ export function EventsFeed({
         : activeDetail;
 
   const searching = Boolean(filters.search.trim()) || savedOnly;
-  const hasNarrowingFilter =
-    filters.categories.length > 0 ||
-    Boolean(filters.sport.trim()) ||
-    Boolean(filters.location.trim()) ||
-    Boolean(filters.organizationKey.trim()) ||
-    filters.isPaid !== "all" ||
-    filters.foodOnly;
-  const forYouView = forYouSurface({
-    timeframe: filters.timeframe,
-    searching,
-    access: forYouAccess.status,
-  });
-  const eventSurface = forYouView === "upgrade" && hasNarrowingFilter ? "browse" : forYouView;
-  const showForYouSection = forYouAccess.status === "active" && filters.timeframe === "for_you" && !searching;
+  const showForYouSection = filters.timeframe === "for_you" && !searching;
 
   function renderFeedCard(row: (typeof prioritizedEvents)[number]) {
     const item = row.item;
@@ -676,28 +640,14 @@ export function EventsFeed({
           {syncBanner.text}
         </div>
       ) : null}
-      {loading || eventSurface === "checking" ? (
-        <div
-          className="cq-events-skeletons"
-          aria-busy="true"
-          aria-label={eventSurface === "checking" && !loading ? "Checking CampusQuest Basic" : "Loading events"}
-        >
+      {loading ? (
+        <div className="cq-events-skeletons" aria-busy="true" aria-label="Loading events">
           <div className="cq-events-skeleton cq-events-skeleton--hero" />
           <div className="cq-events-skeleton cq-events-skeleton--row" />
           <div className="cq-events-skeleton cq-events-skeleton--row" />
         </div>
       ) : null}
-      {!loading && eventSurface === "unavailable" ? (
-        <div className="cq-events-plan-status" role="status">
-          <p className="cq-events-plan-status__title">Couldn&apos;t check CampusQuest Basic</p>
-          <p className="cq-events-plan-status__detail">For You stays hidden until your plan can be confirmed.</p>
-          <button type="button" className="cq-events-zero__cta cq-tap-press" onClick={forYouAccess.reload}>
-            Try again
-          </button>
-        </div>
-      ) : null}
-      {!loading && eventSurface === "upgrade" ? <ForYouUpgrade onBrowseAll={browseAllEvents} /> : null}
-      {!loading && eventSurface === "browse" && prioritizedEvents.length === 0 ? (
+      {!loading && prioritizedEvents.length === 0 ? (
         <div className="cq-events-zero" role="status">
           <span className="cq-events-zero__icon" aria-hidden>
             <CalendarSearch className="h-6 w-6" strokeWidth={1.75} />
@@ -716,7 +666,7 @@ export function EventsFeed({
         </div>
       ) : null}
 
-      {!loading && eventSurface === "browse" && !searching ? (
+      {!loading && !searching ? (
         <HappeningSoonCarousel
           rows={discoverySections.happeningSoon}
           rsvpingId={rsvping}
@@ -726,7 +676,7 @@ export function EventsFeed({
         />
       ) : null}
 
-      {!loading && eventSurface === "browse" && showForYouSection && prioritizedEvents.length > 0 ? (
+      {!loading && showForYouSection && prioritizedEvents.length > 0 ? (
         <section className="cq-events-foryou" aria-labelledby="cq-events-foryou-title">
           <div className="cq-events-section-head">
             <div>
@@ -756,7 +706,7 @@ export function EventsFeed({
         </section>
       ) : null}
 
-      {!loading && eventSurface === "browse" && discoverySections.more.length > 0 ? (
+      {!loading && discoverySections.more.length > 0 ? (
         <section className="cq-events-more" aria-labelledby="cq-events-more-title">
           <h2 id="cq-events-more-title" className="cq-events-section-title">
             {searching ? (savedOnly ? "Saved" : "Search results") : showForYouSection ? "More events" : "Upcoming"}

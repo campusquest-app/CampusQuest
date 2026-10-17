@@ -82,7 +82,7 @@ Tracking: **No**. No ad SDKs, no cross-app tracking (`privacy page §4`, `Privac
 | Device ID | No (APNs token stored as push device, not an advertising/device identifier) | — | — | `push_devices` (**confirm** answer) |
 | Contacts, Health, Financial, Browsing history, Search history | No | — | — | — |
 | Coarse location | No | — | — | — |
-| Purchases | No | — | — | no payments |
+| Purchases | No | — | — | no payments; For You is free for every signed-in user |
 
 Third parties that process data: Supabase (auth/db/storage), Google Maps (maps/geocoding), Apple APNs (push), Vercel (hosting). Matches Privacy Policy §3.
 

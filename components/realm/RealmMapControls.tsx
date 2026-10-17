@@ -300,17 +300,17 @@ export function RealmMapControls({
               <button
                 type="button"
                 onClick={camera.rotateLeft}
-                className="cq-realm-float-btn cq-realm-float-btn--compact flex h-9 w-9 items-center justify-center touch-manipulation"
+                className="cq-realm-float-btn cq-realm-float-btn--compact flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center touch-manipulation"
                 aria-label="Rotate map left 15 degrees"
                 title="Rotate left 15°"
                 tabIndex={expanded ? 0 : -1}
               >
-                <RotateCcw className="h-4 w-4" strokeWidth={2.2} />
+                <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden />
               </button>
               <button
                 type="button"
                 onClick={camera.resetHeading}
-                className={`cq-realm-float-btn cq-realm-float-btn--compact cq-realm-float-btn--compass flex h-9 w-9 items-center justify-center touch-manipulation${
+                className={`cq-realm-float-btn cq-realm-float-btn--compact cq-realm-float-btn--compass flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center touch-manipulation${
                   camera.showCompass ? "" : " opacity-50"
                 }`}
                 aria-label="Reset map heading to north"
@@ -320,17 +320,17 @@ export function RealmMapControls({
                   transform: `rotate(${-camera.heading}deg)`,
                 }}
               >
-                <Compass className="h-4 w-4" strokeWidth={2.2} />
+                <Compass className="h-4 w-4" strokeWidth={2.2} aria-hidden />
               </button>
               <button
                 type="button"
                 onClick={camera.rotateRight}
-                className="cq-realm-float-btn cq-realm-float-btn--compact flex h-9 w-9 items-center justify-center touch-manipulation"
+                className="cq-realm-float-btn cq-realm-float-btn--compact flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center touch-manipulation"
                 aria-label="Rotate map right 15 degrees"
                 title="Rotate right 15°"
                 tabIndex={expanded ? 0 : -1}
               >
-                <RotateCw className="h-4 w-4" strokeWidth={2.2} />
+                <RotateCw className="h-4 w-4" strokeWidth={2.2} aria-hidden />
               </button>
             </div>
 

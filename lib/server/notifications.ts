@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/server/http";
+import { listMutualBlockedUserIds } from "@/lib/server/blockedUsers";
 import { logNotificationError, logNotificationInfo } from "@/lib/server/notificationDebug";
 import { enqueuePushForNotification } from "@/lib/server/pushDelivery";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -381,19 +382,43 @@ async function fetchNotificationsForUser(args: {
   return (data ?? []) as unknown as NotificationRow[];
 }
 
-async function countUnreadNotifications(userClient: SupabaseClientLike, userId: string) {
-  let { count, error } = await userClient
-    .from("notifications")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .is("read_at", null);
+async function countUnreadNotifications(
+  userClient: SupabaseClientLike,
+  userId: string,
+  blockedIds: Set<string> = new Set(),
+) {
+  const applyBlockFilter = <T extends { or: (filter: string) => T }>(query: T): T => {
+    if (blockedIds.size === 0) return query;
+    const excluded = Array.from(blockedIds).join(",");
+    // Keep system/no-actor notifications; hide actors in a mutual block.
+    return query.or(`actor_id.is.null,actor_id.not.in.(${excluded})`);
+  };
+
+  let { count, error } = await applyBlockFilter(
+    userClient
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("read_at", null),
+  );
 
   if (isMissingColumnError(error, "read_at")) {
+    ({ count, error } = await applyBlockFilter(
+      userClient
+        .from("notifications")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("is_read", false),
+    ));
+  }
+
+  // Older schemas without actor_id: fall back to unfiltered count.
+  if (isMissingColumnError(error, "actor_id")) {
     ({ count, error } = await userClient
       .from("notifications")
       .select("*", { count: "exact", head: true })
       .eq("user_id", userId)
-      .eq("is_read", false));
+      .is("read_at", null));
   }
 
   if (error) throw new ApiError(400, error.message, "NOTIFICATIONS_COUNT_FAILED");
@@ -410,16 +435,22 @@ export async function listMyNotifications(args: {
   const safeLimit = Math.max(1, Math.min(100, limit));
   const safeOffset = Math.max(0, offset);
 
-  const rows = await fetchNotificationsForUser({ userClient, userId, safeLimit, safeOffset });
-  const unreadCount = await countUnreadNotifications(userClient, userId);
+  const [rows, blockedIds] = await Promise.all([
+    fetchNotificationsForUser({ userClient, userId, safeLimit, safeOffset }),
+    listMutualBlockedUserIds(userClient, userId),
+  ]);
+  // Suppress notifications from users in a mutual block relationship. Do not
+  // delete historical rows — they remain in the database for moderation.
+  const visibleRows = rows.filter((row) => !row.actor_id || !blockedIds.has(row.actor_id));
+  const unreadCount = await countUnreadNotifications(userClient, userId, blockedIds);
 
   const actorIds = Array.from(
-    new Set(rows.map((row) => row.actor_id).filter((id): id is string => Boolean(id))),
+    new Set(visibleRows.map((row) => row.actor_id).filter((id): id is string => Boolean(id))),
   );
   const actorMap = await fetchActorProfiles(userClient, actorIds);
 
   return {
-    notifications: rows.map((row) => mapNotificationRow(row, actorMap)),
+    notifications: visibleRows.map((row) => mapNotificationRow(row, actorMap)),
     unreadCount,
   };
 }

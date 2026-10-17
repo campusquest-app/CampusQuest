@@ -481,7 +481,7 @@ export function FirstTimeJourney({
             )}
             {introStep === 1 && (
               <div className="mt-3">
-                <h2 className="font-display text-2xl font-bold text-white">Level Up Your College Experience</h2>
+                <h2 className="font-display text-2xl font-bold text-white">Your campus, connected</h2>
                 <p className="mt-2 text-sm text-white/75">
                   {FEATURE_FLAGS.bossBattles
                     ? "Log quests, defeat bosses, climb leaderboards, and lock in your daily streak momentum."

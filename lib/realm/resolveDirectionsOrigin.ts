@@ -1,10 +1,11 @@
+import { trustedCampusUserLocation } from "@/lib/realm/discoverySheet";
 import type { RealmDirectionsOrigin } from "@/lib/realm/realmDirectionsTypes";
 import { validUserLocationFromGeolocation } from "@/lib/realm/validUserLocation";
 
 /**
  * Live GPS fix for the route origin. Never returns cached or fallback
- * coordinates — routes must start from the user's real position (the blue
- * marker), so callers surface an error when this returns null.
+ * coordinates — routes must start from the user's trusted on-campus position
+ * (the blue marker), so callers surface an error when this returns null.
  */
 export async function resolveLiveUserLocation(signal?: AbortSignal): Promise<{ lat: number; lng: number } | null> {
   if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -41,7 +42,7 @@ export async function resolveLiveUserLocation(signal?: AbortSignal): Promise<{ l
       );
     });
 
-    const valid = validUserLocationFromGeolocation(position);
+    const valid = trustedCampusUserLocation(validUserLocationFromGeolocation(position));
     if (!valid) return null;
     return {
       lat: valid.lat,

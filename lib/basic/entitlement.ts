@@ -1,7 +1,7 @@
 /**
- * CampusQuest Basic is the row in public.cq_basic_access.
- * joincampusquest.com and campusquestapp.com both read this table for the
- * signed-in user. Signup metadata, profile role, and the free plan are not inputs.
+ * Leftover helper for the unused public.cq_basic_access table.
+ * CampusQuest 1.0 does not sell Basic, subscriptions, or any paid digital
+ * feature. Do not use this module to gate For You or any user-facing surface.
  */
 
 export type BasicAccessRow = {
@@ -28,9 +28,6 @@ export const INACTIVE_BASIC_ENTITLEMENT: BasicEntitlement = {
   endsAt: null,
   known: true,
 };
-
-/** Checkout lives on the marketing site. Access is still the shared cq_basic_access row. */
-export const CAMPUSQUEST_BASIC_BILLING_URL = "https://www.joincampusquest.com/billing";
 
 export function basicEntitlement(row: BasicAccessRow | null, now: Date): BasicEntitlement {
   if (!row) return INACTIVE_BASIC_ENTITLEMENT;

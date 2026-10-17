@@ -1,5 +1,6 @@
 import { getCampusLocations } from "@/lib/server/campusLocationsDb";
 import { getCampusLocationPreset, isCampusLocationKey, isValidCampusCoordinate, resolveCampusLocation } from "@/lib/campusLocations";
+import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { getCampusLocation } from "@/lib/locations/registry";
 import { resolveRealmLocationIdFromFields } from "@/lib/locations/resolveRealmLocationId";
 import {
@@ -325,22 +326,33 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
   }).catch(() => []);
   const buildingRegistryPromise = loadCampusBuildingRegistry().catch(() => []);
 
+  // When progression/QR scanning is disabled for 1.0, never load or return
+  // quest/QR payloads (including raw qrCode / scanPath secrets).
+  const includeProgressionPins = FEATURE_FLAGS.progression;
+
+  const emptyQuestResult = { data: [] as Record<string, unknown>[], error: null };
+  const emptyQrResult = { data: [] as Record<string, unknown>[], error: null };
+
   const [questsResult, qrResult, eventsResult] = await Promise.all([
-    admin
-      .from("admin_quests")
-      .select(
-        "id, name, description, xp_reward, difficulty, completion_method, requires_qr, qr_code_id, location_id, location_key, location_name, location_address, location_lat, location_lng, map_pin_x, map_pin_y, icon, starts_at, ends_at, visibility_status, deleted_at",
-      )
-      .eq("visibility_status", "active")
-      .is("deleted_at", null)
-      .or("location_key.not.is.null,location_id.not.is.null"),
-    admin
-      .from("qr_codes")
-      .select(
-        "id, code, title, description, xp_reward, is_active, starts_at, expires_at, admin_quest_id, location_key, location_name, location_address, location_lat, location_lng",
-      )
-      .eq("is_active", true)
-      .not("location_key", "is", null),
+    includeProgressionPins
+      ? admin
+          .from("admin_quests")
+          .select(
+            "id, name, description, xp_reward, difficulty, completion_method, requires_qr, qr_code_id, location_id, location_key, location_name, location_address, location_lat, location_lng, map_pin_x, map_pin_y, icon, starts_at, ends_at, visibility_status, deleted_at",
+          )
+          .eq("visibility_status", "active")
+          .is("deleted_at", null)
+          .or("location_key.not.is.null,location_id.not.is.null")
+      : Promise.resolve(emptyQuestResult),
+    includeProgressionPins
+      ? admin
+          .from("qr_codes")
+          .select(
+            "id, code, title, description, xp_reward, is_active, starts_at, expires_at, admin_quest_id, location_key, location_name, location_address, location_lat, location_lng",
+          )
+          .eq("is_active", true)
+          .not("location_key", "is", null)
+      : Promise.resolve(emptyQrResult),
     runExcludingReviewDemo((applyDemoFilter) => {
       const query = admin
         .from("campus_events")
@@ -359,64 +371,66 @@ export async function listGroupedMapLocations(): Promise<GroupedMapLocation[]> {
     throw new ApiError(400, qrResult.error.message, "QR_CODE_MAP_PINS_FAILED");
   }
 
-  for (const row of questsResult.data ?? []) {
-    const quest = row as AdminQuestRow;
-    if (!isAdminQuestCurrentlyActive(quest, now)) continue;
-    if (isExpiredAt(quest.ends_at, now)) continue;
+  if (includeProgressionPins) {
+    for (const row of questsResult.data ?? []) {
+      const quest = row as AdminQuestRow;
+      if (!isAdminQuestCurrentlyActive(quest, now)) continue;
+      if (isExpiredAt(quest.ends_at, now)) continue;
 
-    const meta = resolveGroupMeta({
-      locationId: (row.location_id as string | null) ?? null,
-      locationKey: (row.location_key as string | null) ?? null,
-      locationName: (row.location_name as string | null) ?? null,
-      locationAddress: (row.location_address as string | null) ?? null,
-      locationLat: row.location_lat as number | null,
-      locationLng: row.location_lng as number | null,
-      mapPinX: row.map_pin_x as number | null,
-      mapPinY: row.map_pin_y as number | null,
-    });
-    if (!meta) continue;
+      const meta = resolveGroupMeta({
+        locationId: (row.location_id as string | null) ?? null,
+        locationKey: (row.location_key as string | null) ?? null,
+        locationName: (row.location_name as string | null) ?? null,
+        locationAddress: (row.location_address as string | null) ?? null,
+        locationLat: row.location_lat as number | null,
+        locationLng: row.location_lng as number | null,
+        mapPinX: row.map_pin_x as number | null,
+        mapPinY: row.map_pin_y as number | null,
+      });
+      if (!meta) continue;
 
-    const bucket = getOrCreateBucket(buckets, meta);
-    bucket.quests.push({
-      id: row.id as string,
-      name: row.name as string,
-      description: (row.description as string) ?? "",
-      xpReward: row.xp_reward as number,
-      difficulty: (row.difficulty as string | null) ?? null,
-      completionMethod: (row.completion_method as string | null) ?? null,
-      requiresQr: Boolean(row.requires_qr),
-      expiresAt: (row.ends_at as string | null) ?? null,
-      icon: (row.icon as string | null) ?? "🎯",
-      qrCodeId: (row.qr_code_id as string | null) ?? null,
-    });
-  }
+      const bucket = getOrCreateBucket(buckets, meta);
+      bucket.quests.push({
+        id: row.id as string,
+        name: row.name as string,
+        description: (row.description as string) ?? "",
+        xpReward: row.xp_reward as number,
+        difficulty: (row.difficulty as string | null) ?? null,
+        completionMethod: (row.completion_method as string | null) ?? null,
+        requiresQr: Boolean(row.requires_qr),
+        expiresAt: (row.ends_at as string | null) ?? null,
+        icon: (row.icon as string | null) ?? "🎯",
+        qrCodeId: (row.qr_code_id as string | null) ?? null,
+      });
+    }
 
-  for (const row of qrResult.data ?? []) {
-    if (isExpiredAt((row.expires_at as string | null) ?? null, now)) continue;
-    const startsAt = (row.starts_at as string | null) ?? null;
-    if (startsAt && new Date(startsAt) > now) continue;
+    for (const row of qrResult.data ?? []) {
+      if (isExpiredAt((row.expires_at as string | null) ?? null, now)) continue;
+      const startsAt = (row.starts_at as string | null) ?? null;
+      if (startsAt && new Date(startsAt) > now) continue;
 
-    const meta = resolveGroupMeta({
-      locationKey: (row.location_key as string | null) ?? null,
-      locationName: (row.location_name as string | null) ?? null,
-      locationAddress: (row.location_address as string | null) ?? null,
-      locationLat: row.location_lat as number | null,
-      locationLng: row.location_lng as number | null,
-    });
-    if (!meta) continue;
+      const meta = resolveGroupMeta({
+        locationKey: (row.location_key as string | null) ?? null,
+        locationName: (row.location_name as string | null) ?? null,
+        locationAddress: (row.location_address as string | null) ?? null,
+        locationLat: row.location_lat as number | null,
+        locationLng: row.location_lng as number | null,
+      });
+      if (!meta) continue;
 
-    const code = String(row.code);
-    const bucket = getOrCreateBucket(buckets, meta);
-    bucket.qrCodes.push({
-      id: String(row.id),
-      name: String(row.title),
-      description: (row.description as string | null) ?? "",
-      xpReward: Number(row.xp_reward ?? 0),
-      expiresAt: (row.expires_at as string | null) ?? null,
-      scanPath: `/scan?code=${encodeURIComponent(code)}`,
-      qrCode: code,
-      adminQuestId: (row.admin_quest_id as string | null) ?? null,
-    });
+      const code = String(row.code);
+      const bucket = getOrCreateBucket(buckets, meta);
+      bucket.qrCodes.push({
+        id: String(row.id),
+        name: String(row.title),
+        description: (row.description as string | null) ?? "",
+        xpReward: Number(row.xp_reward ?? 0),
+        expiresAt: (row.expires_at as string | null) ?? null,
+        scanPath: `/scan?code=${encodeURIComponent(code)}`,
+        qrCode: code,
+        adminQuestId: (row.admin_quest_id as string | null) ?? null,
+      });
+    }
   }
 
   if (!eventsResult.error) {

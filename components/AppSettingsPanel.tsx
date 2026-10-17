@@ -106,7 +106,7 @@ const SETTINGS_SECTIONS: { title: string; rows: SettingsRow[] }[] = [
       {
         id: "sound",
         label: "Sound & Haptics",
-        description: "Game music and feedback sounds",
+        description: "App sounds and feedback",
         icon: Volume2,
       },
     ],

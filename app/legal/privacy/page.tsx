@@ -7,7 +7,7 @@ const sections = [
       "Device & technical information: IP address, device/browser type, approximate login and session activity, and app version. When you use the iOS app and enable push notifications, we store an Apple Push Notification device token associated with your account. We do not collect advertising identifiers such as IDFA.",
       "Media permissions: if you grant access, CampusQuest may use your camera, microphone, and photo library so you can capture or upload photos and videos for Quad posts, campus memories, profile media, and optional voice notes in direct messages.",
       "Location information: if you grant permission, we use your precise location only while the app is in use to show your position on The Realm campus map and to request walking or driving directions from Google Maps. We do not request background location, do not store a history of your GPS coordinates, and the map works if you decline. Campus event and business pins use public place coordinates, not your device location.",
-      "We do not currently process payments inside CampusQuest. If payment features are added later, this policy will be updated before those features launch.",
+      "There are currently no paid subscriptions or paid digital features in CampusQuest. We do not process payments in the app. If payment features are added later, this policy will be updated before those features launch.",
     ],
   },
   {

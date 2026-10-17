@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/server/http";
+import { listMutualBlockedUserIds } from "@/lib/server/blockedUsers";
 import { calculateLevelProgression } from "@/lib/server/gameplay";
 import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -196,10 +197,14 @@ export async function searchPeopleProfiles(args: {
   }
 
   // QA/test accounts (is_hidden = true) never appear in user search.
-  const hiddenIds = await listHiddenUserIds(args.userClient);
+  // Blocked relationships are excluded in both directions.
+  const [hiddenIds, blockedIds] = await Promise.all([
+    listHiddenUserIds(args.userClient),
+    listMutualBlockedUserIds(args.userClient, args.userId),
+  ]);
 
   const candidates = Array.from(profileMap.values())
-    .filter((row) => !hiddenIds.has(row.id))
+    .filter((row) => !hiddenIds.has(row.id) && !blockedIds.has(row.id))
     .map((row) => ({
       userId: row.id,
       username: row.username,

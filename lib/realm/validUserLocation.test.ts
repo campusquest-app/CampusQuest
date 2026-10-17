@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { trustedCampusUserLocation } from "@/lib/realm/discoverySheet";
 import {
   USER_LOCATION_MAX_ACCURACY_METERS,
   USER_LOCATION_MAX_AGE_MS,
@@ -47,6 +48,36 @@ describe("isValidUserLocation", () => {
     expect(
       isValidUserLocation(device({ accuracyMeters: USER_LOCATION_MAX_ACCURACY_METERS + 1 })),
     ).toBe(false);
+  });
+});
+
+describe("trustedCampusUserLocation", () => {
+  it("accepts a valid on-campus device fix", () => {
+    const loc = device();
+    expect(trustedCampusUserLocation(loc)).toEqual(loc);
+  });
+
+  it("rejects a stale fix", () => {
+    expect(
+      trustedCampusUserLocation(
+        device({ timestamp: Date.now() - USER_LOCATION_MAX_AGE_MS - 1_000 }),
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects an off-campus fix", () => {
+    expect(trustedCampusUserLocation(device({ lat: 41.824, lng: -71.4128 }))).toBeNull();
+  });
+
+  it("rejects when there is no permission / no fix", () => {
+    expect(trustedCampusUserLocation(null)).toBeNull();
+    expect(validUserLocationFromFix(null)).toBeNull();
+  });
+
+  it("rejects coarse / denied-quality fixes", () => {
+    expect(
+      trustedCampusUserLocation(device({ accuracyMeters: USER_LOCATION_MAX_ACCURACY_METERS + 1 })),
+    ).toBeNull();
   });
 });
 

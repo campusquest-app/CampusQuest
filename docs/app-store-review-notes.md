@@ -5,7 +5,9 @@ Fill the password placeholder before pasting. Never commit the real password.
 
 ---
 
-CampusQuest is a campus community app for University of Rhode Island students. The 1.0 experience includes a campus feed (The Quad), organizations and events, a campus map (The Realm), direct messages, student profiles, Campus Memories, and Student Perks. The iOS app is a native Capacitor shell that loads https://campusquestapp.com over HTTPS.
+CampusQuest is a campus community app for University of Rhode Island students. The 1.0 experience includes a campus feed (The Quad), organizations and events, a campus map (The Realm), personalized For You event recommendations, direct messages, student profiles, Campus Memories, and Student Perks.
+
+The iOS app is a Capacitor shell that loads https://campusquestapp.com over HTTPS. It is more than a generic website wrapper: it uses native location for The Realm map, optional push notification registration, native share and haptics, keyboard handling, a branded splash/status bar, and camera/photo/microphone access for student-generated content. External websites open outside the in-app WebView.
 
 DEMO ACCOUNT
 Email: qa_signup@campusquestapp.com
@@ -36,6 +38,7 @@ PERMISSIONS
 
 NOTES
 - XP, quests, QR scanning, guilds, and leaderboards from older material are intentionally disabled and are not part of this 1.0 submission.
+- There are no paid subscriptions or paid digital features. Events → For You is free for every signed-in account.
 - Report and block are enforced on the server. Our team reviews reports in an internal moderation console.
 - Account deletion is self-serve in Settings → Delete account. It removes the login, profile, and user-owned media we control. Provider backups and limited safety/audit records may remain.
 - Privacy Policy: https://campusquestapp.com/legal/privacy

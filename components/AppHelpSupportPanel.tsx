@@ -7,17 +7,12 @@ import {
   HelpCircle,
   Mail,
   MessageCircleWarning,
-  QrCode,
   Search,
   Shield,
   Sparkles,
-  Swords,
-  Trophy,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { textMatchesPostSearch } from "@/lib/postTerminology";
-import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import { DrawerSubPanelShell } from "./DrawerSubPanelShell";
 
 type HelpArticle = {
@@ -29,65 +24,18 @@ type HelpArticle = {
   keywords: string[];
 };
 
+/** Help copy for the live 1.0 product (gamification surfaces are disabled). */
 const HELP_ARTICLES: HelpArticle[] = [
   {
     id: "how-campusquest",
     title: "How CampusQuest Works",
     icon: Sparkles,
-    summary: "Your campus life, leveled up.",
-    keywords: ["campus", "quad", "feed", "social", "start", "post", "posts", "field note", "field notes"],
+    summary: "Your campus, connected.",
+    keywords: ["campus", "quad", "feed", "social", "start", "post", "posts", "map", "events", "perks"],
     body: [
-      "CampusQuest turns everyday campus moments into progression. Post on The Quad, complete quests, scan QR codes, and grow your character.",
-      "Your Profile tab tracks XP, stats, streaks, and gear. The bottom nav keeps Home, Messages, Map, Events, and Profile one tap away. Open Leaderboard from Profile or Progress.",
-      "Explore friends, guilds, events, and boss battles from the menu to find more ways to earn XP.",
-    ],
-  },
-  {
-    id: "how-xp",
-    title: "How XP Works",
-    icon: Zap,
-    summary: "Earn XP from real campus activity.",
-    keywords: ["xp", "level", "stats", "progress", "points"],
-    body: [
-      "You earn XP by logging activities, finishing quests, engaging on The Quad, and scanning official campus QR codes.",
-      "XP fills your level bar. Leveling up makes your Ram stronger and unlocks more of the world.",
-      "Different actions boost different stats — workouts raise Strength, study raises Knowledge, social posts raise Social, and more.",
-    ],
-  },
-  {
-    id: "how-qr",
-    title: "How QR Scanning Works",
-    icon: QrCode,
-    summary: "Scan official codes for rewards.",
-    keywords: ["qr", "scan", "camera", "code", "gym"],
-    body: [
-      "Open CQ Scanner from Quest Board or other in-app scan entry points. Point your camera at an official CampusQuest QR code on campus.",
-      "Valid scans grant XP and may log a linked activity automatically. Each code has rules — some can only be scanned once per day.",
-      "If the camera is blocked, enable permissions in Settings → QR Scanner Permissions or your device settings.",
-    ],
-  },
-  {
-    id: "boss-battles",
-    title: "Boss Battles Guide",
-    icon: Swords,
-    summary: "Team up to defeat campus bosses.",
-    keywords: ["boss", "battle", "fight", "loot", "hp"],
-    body: [
-      "Boss Battles are cooperative challenges. Log relevant activities to deal damage and help your campus take down the boss.",
-      "When a boss falls, eligible players can earn loot, XP, and bragging rights on the leaderboard.",
-      "Check the Boss Battle tab for active threats, your contribution, and time remaining.",
-    ],
-  },
-  {
-    id: "guilds",
-    title: "Guilds Guide",
-    icon: Shield,
-    summary: "Join a guild for shared goals.",
-    keywords: ["guild", "team", "group", "bonus", "race"],
-    body: [
-      "Guilds let Rams team up for bonus XP, races, and shared progression.",
-      "Find guilds from the Guilds item in the side menu. Your guild tag appears on your profile when you join.",
-      "Assist posts on The Quad and guild activities can earn extra rewards for your whole team.",
+      "CampusQuest is your home for posts, campus events, the map, organizations, and Student Perks.",
+      "The bottom nav keeps Home, Perks, Map, Events, and Profile one tap away.",
+      "Open the menu for friends, notifications, and account settings.",
     ],
   },
   {
@@ -95,11 +43,12 @@ const HELP_ARTICLES: HelpArticle[] = [
     title: "FAQ",
     icon: HelpCircle,
     summary: "Quick answers to common questions.",
-    keywords: ["faq", "question", "help", "account", "reset"],
+    keywords: ["faq", "question", "help", "account", "reset", "block", "report"],
     body: [
-      "Why didn’t my scan work? The code may be expired, already used today, or outside scan hours. Try again in good lighting.",
-      "How do I change my name or avatar? Open Settings → Profile & Character or edit from your Profile tab.",
+      "How do I change my name or avatar? Edit them from your Profile tab.",
       "Is CampusQuest only for one school? Access may be campus-specific. Verify your school email when prompted.",
+      "Where are student deals? Open Perks from the bottom navigation.",
+      "How do I report or block someone? Use ••• on a post, comment, profile, or conversation, or open Settings → Safety.",
     ],
   },
 ];
@@ -139,74 +88,20 @@ export function AppHelpSupportPanel({ onBack }: { onBack: () => void }) {
   const [query, setQuery] = useState("");
   const [activeArticleId, setActiveArticleId] = useState<string | null>(null);
 
-  const visibleArticles = useMemo(() => {
-    return HELP_ARTICLES.filter((article) => {
-      if (!FEATURE_FLAGS.progression && ["how-xp", "how-qr", "boss-battles", "guilds"].includes(article.id)) {
-        return false;
-      }
-      if (article.id === "boss-battles" && !FEATURE_FLAGS.bossBattles) return false;
-      return true;
-    }).map((article) => {
-      if (!FEATURE_FLAGS.progression && article.id === "how-campusquest") {
-        return {
-          ...article,
-          summary: "Your campus, connected.",
-          body: [
-            "CampusQuest is your home for posts, campus events, the map, organizations, and Community Quests.",
-            "The bottom nav keeps Home, Perks, Map, Events, and Profile one tap away.",
-            "Open the menu for friends, notifications, and account settings.",
-          ],
-        };
-      }
-      if (!FEATURE_FLAGS.progression && article.id === "faq") {
-        return {
-          ...article,
-          body: [
-            "How do I change my name or avatar? Edit them from your Profile tab.",
-            "Is CampusQuest only for one school? Access may be campus-specific. Verify your school email when prompted.",
-            "Where are student deals? Open Community Quests from the bottom navigation.",
-          ],
-        };
-      }
-      if (FEATURE_FLAGS.bossBattles) return article;
-      if (article.id === "how-campusquest") {
-        return {
-          ...article,
-          body: article.body.map((line) =>
-            line.includes("boss battles")
-              ? "Explore friends, guilds, and events from the menu to find more ways to earn XP."
-              : line,
-          ),
-        };
-      }
-      if (article.id === "how-xp" && !FEATURE_FLAGS.manualLog) {
-        return {
-          ...article,
-          body: article.body.map((line) =>
-            line.includes("logging activities")
-              ? "You earn XP by finishing quests, engaging on The Quad, and scanning official campus QR codes."
-              : line,
-          ),
-        };
-      }
-      return article;
-    });
-  }, []);
-
   const filtered = useMemo(() => {
     const q = query.trim();
-    if (!q) return visibleArticles;
-    return visibleArticles.filter(
+    if (!q) return HELP_ARTICLES;
+    return HELP_ARTICLES.filter(
       (a) =>
         textMatchesPostSearch(a.title, q) ||
         textMatchesPostSearch(a.summary, q) ||
         a.keywords.some((k) => textMatchesPostSearch(k, q) || k.includes(q.toLowerCase())) ||
         a.body.some((paragraph) => textMatchesPostSearch(paragraph, q)),
     );
-  }, [query, visibleArticles]);
+  }, [query]);
 
   const activeArticle = activeArticleId
-    ? visibleArticles.find((a) => a.id === activeArticleId) ?? null
+    ? HELP_ARTICLES.find((a) => a.id === activeArticleId) ?? null
     : null;
 
   if (activeArticle) {
@@ -306,8 +201,7 @@ export function AppHelpSupportPanel({ onBack }: { onBack: () => void }) {
           </ul>
         </section>
 
-        <p className="flex items-center justify-center gap-1.5 px-2 pt-1 text-[11px] text-white/30">
-          <Trophy className="h-3.5 w-3.5" />
+        <p className="px-2 pt-1 text-center text-[11px] text-white/30">
           Need more help? Contact support anytime.
         </p>
       </div>

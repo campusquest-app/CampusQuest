@@ -174,6 +174,17 @@ export function isCampusWalkOrigin(origin: WalkOrigin | null | undefined): origi
   );
 }
 
+/**
+ * Trusted blue-dot / route-origin location: ValidUserLocation plus the same
+ * on/near-campus walk-origin bounds used by proximity labels.
+ */
+export function trustedCampusUserLocation(
+  value: ReturnType<typeof validUserLocationFromFix>,
+): NonNullable<ReturnType<typeof validUserLocationFromFix>> | null {
+  if (!isValidUserLocation(value) || !isCampusWalkOrigin(value)) return null;
+  return value;
+}
+
 export function walkingMinutesBetween(
   from: WalkOrigin | null,
   to: { lat: number; lng: number },

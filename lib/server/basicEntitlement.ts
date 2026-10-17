@@ -11,8 +11,8 @@ type BasicAccessQuery = {
 };
 
 /**
- * Reads the signed-in user's cq_basic_access row with their own Supabase client.
- * RLS allows select of auth.uid() only. This does not use the service role.
+ * Reads the unused cq_basic_access row if callers still need it.
+ * For You and other 1.0 surfaces must not consult this.
  */
 export async function loadOwnBasicEntitlement(
   userClient: BasicAccessQuery,

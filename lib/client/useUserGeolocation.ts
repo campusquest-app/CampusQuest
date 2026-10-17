@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { trustedCampusUserLocation } from "@/lib/realm/discoverySheet";
 import {
   validUserLocationFromFix,
   validUserLocationFromGeolocation,
@@ -34,8 +35,12 @@ export function useUserGeolocation(options?: UseUserGeolocationOptions) {
 
   const applyPosition = useCallback(
     (position: GeolocationPosition) => {
-      const valid = validUserLocationFromGeolocation(position);
-      if (!valid) return;
+      const valid = trustedCampusUserLocation(validUserLocationFromGeolocation(position));
+      if (!valid) {
+        // Stale, inaccurate, or off-campus — clear any prior trusted blue-dot.
+        setFix(null);
+        return;
+      }
       const next: UserGeolocationFix = {
         lat: valid.lat,
         lng: valid.lng,
@@ -117,10 +122,20 @@ export function useUserGeolocation(options?: UseUserGeolocationOptions) {
 
   useEffect(() => () => stopWatch(), [stopWatch]);
 
-  const validLocation: ValidUserLocation | null = validUserLocationFromFix(fix);
+  const validLocation: ValidUserLocation | null = trustedCampusUserLocation(
+    validUserLocationFromFix(fix),
+  );
 
   return {
-    fix,
+    fix: validLocation
+      ? {
+          lat: validLocation.lat,
+          lng: validLocation.lng,
+          accuracy: validLocation.accuracyMeters,
+          heading: fix?.heading ?? null,
+          timestamp: validLocation.timestamp,
+        }
+      : null,
     userPos: validLocation ? { lat: validLocation.lat, lng: validLocation.lng } : null,
     validLocation,
     locating,
@@ -134,13 +149,18 @@ export function useUserGeolocation(options?: UseUserGeolocationOptions) {
         setFix(null);
         return;
       }
-      const valid = validUserLocationFromFix({
-        lat: pos.lat,
-        lng: pos.lng,
-        accuracy: pos.accuracy,
-        timestamp: pos.timestamp,
-      });
-      if (!valid) return;
+      const valid = trustedCampusUserLocation(
+        validUserLocationFromFix({
+          lat: pos.lat,
+          lng: pos.lng,
+          accuracy: pos.accuracy,
+          timestamp: pos.timestamp,
+        }),
+      );
+      if (!valid) {
+        setFix(null);
+        return;
+      }
       setFix((prev) => ({
         lat: valid.lat,
         lng: valid.lng,
