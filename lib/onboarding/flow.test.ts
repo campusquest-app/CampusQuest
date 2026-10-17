@@ -8,6 +8,7 @@ import {
   previousDemographicStep,
   resolveDemographicResumeStep,
 } from "@/lib/onboarding/flow";
+import { stepAfterCampusVerification } from "@/lib/onboarding/personalizeStep";
 
 describe("demographic onboarding order", () => {
   it("uses four required screens after the logged-out welcome", () => {
@@ -188,13 +189,51 @@ describe("demographic onboarding resume", () => {
     ).toBe("campus");
   });
 
-  it("opens the final screen when an email-only remainder is already verified", () => {
+  it("after URI verify, incomplete demographics resume at About You (not Ready)", () => {
     expect(
       resolveDemographicResumeStep({
         profile: { campus_email_verified_at: "2026-08-25T00:00:00.000Z" },
+        preferences: { exists: false, interests: [] },
+        startAtEmailVerification: true,
+      }),
+    ).toBe("about_you");
+  });
+
+  it("email-only remainder with complete demographics opens Ready once verified", () => {
+    expect(
+      resolveDemographicResumeStep({
+        profile: {
+          student_status: "current_student",
+          institution_id: "uri",
+          campus_email_verified_at: "2026-08-25T00:00:00.000Z",
+        },
+        preferences: {
+          exists: true,
+          interests: ["athletics", "music", "tech"],
+          institutionId: "uri",
+        },
         startAtEmailVerification: true,
       }),
     ).toBe("ready");
+  });
+
+  it("email-first new signup stays on campus until verified, then does not skip About You", () => {
+    expect(
+      resolveDemographicResumeStep({
+        profile: { campus_email_verified_at: null },
+        preferences: { exists: false, interests: [] },
+        startAtEmailVerification: true,
+      }),
+    ).toBe("campus");
+
+    expect(
+      stepAfterCampusVerification({
+        demographicsAlreadyComplete: false,
+        studentStatus: null,
+        graduationYear: null,
+        interests: ["athletics", "music", "gaming", "fitness"],
+      }),
+    ).toBe("about_you");
   });
 
   it("ignores a stale verification draft when earlier required fields are missing", () => {

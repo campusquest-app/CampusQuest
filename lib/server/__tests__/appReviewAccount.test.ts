@@ -85,7 +85,10 @@ describe("App Review account campus verification", () => {
     });
     expect(patch.campus_email_verified_at).toBe(VERIFIED_AT);
     expect(isCampusEmailVerificationRequired(patch)).toBe(false);
-    expect(resolveDemographicResumeStep({ profile: patch, startAtEmailVerification: true })).toBe("ready");
+    // Verified reviewer without demographic fields resumes About You (not a silent Ready skip).
+    expect(resolveDemographicResumeStep({ profile: patch, startAtEmailVerification: true })).toBe(
+      "about_you",
+    );
   });
 
   it("provisioning is idempotent and keeps the existing verification timestamp", () => {

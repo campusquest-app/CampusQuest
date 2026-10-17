@@ -27741,11 +27741,12 @@ button.cq-loc-activity-card {
   position: relative;
   z-index: 3;
   flex: 0 0 auto;
-  padding: 0.4rem 0 0.35rem;
+  padding: 0.4rem 0 max(0.55rem, env(safe-area-inset-bottom, 0px));
   background: rgba(247, 251, 255, 0.78);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   border-top: 1px solid rgba(15, 55, 100, 0.06);
+  pointer-events: auto;
 }
 
 .cq-onboard-sticky-footer .cq-onboard-btn-primary {

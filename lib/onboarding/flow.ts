@@ -170,8 +170,12 @@ export function resolveDemographicResumeStep(input: {
     return draftStep && draftStep !== "welcome" ? draftStep : "about_you";
   }
 
-  if (input.startAtEmailVerification) {
-    return isCampusEmailVerified(input.profile ?? {}) ? "ready" : "campus";
+  // Email-first entry: stay on campus until verified, then fall through to the
+  // normal field checks so About You / Personalize are not skipped for new users.
+  // (Previously jumped straight to "ready" after verify, which left studentStatus
+  // unset and blocked Personalize with a false "pick interests" error.)
+  if (input.startAtEmailVerification && !isCampusEmailVerified(input.profile ?? {})) {
+    return "campus";
   }
 
   const studentStatus = input.draft?.studentStatus ?? input.profile?.student_status ?? null;

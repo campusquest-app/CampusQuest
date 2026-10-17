@@ -25,7 +25,6 @@ import {
   COMMUNITY_OPTIONS,
   INSTITUTIONS,
   INTEREST_OPTIONS,
-  MIN_INTERESTS,
   ONBOARDING_VERSION,
   STUDENT_STATUS_OPTIONS,
   isKnownStudentStatus,
@@ -51,7 +50,20 @@ import {
   sanitizeDraftStudentStatus,
   writeOnboardingDraft,
 } from "@/lib/onboarding/draftStorage";
-import type { DemographicPreferencesSnapshot, DemographicProfileSnapshot } from "@/lib/onboarding/demographicOnboardingPolicy";
+import {
+  isDemographicsComplete,
+  type DemographicPreferencesSnapshot,
+  type DemographicProfileSnapshot,
+} from "@/lib/onboarding/demographicOnboardingPolicy";
+import {
+  isAboutYouReady,
+  isInterestMinimumMet,
+  personalizeContinueBlockReason,
+  personalizeContinueErrorMessage,
+  personalizeInterestCounterLabel,
+  stepAfterCampusVerification,
+  toggleInterestId,
+} from "@/lib/onboarding/personalizeStep";
 import {
   OnboardingAmbient,
   type OnboardingAmbientDensity,
@@ -213,13 +225,20 @@ export function AuthOnboardingFlow({
   // This flow only mounts after a session exists. The public welcome screen
   // stays on AuthScreen for logged-out users.
   const includeWelcome = false;
+  /** True only when demographics are already saved and URI email is the sole remainder. */
+  const demographicsAlreadyComplete = isDemographicsComplete({
+    profile: initialProfile ?? {},
+    preferences: initialPreferences,
+  });
+  const emailOnlyRemainder = Boolean(startAtEmailVerification && demographicsAlreadyComplete);
   const flowArgs = {
     studentStatus,
     includeWelcome,
     includeSuccess: true,
-    emailOnly: startAtEmailVerification,
+    emailOnly: emailOnlyRemainder,
   };
   const progress = demographicProgress({ current: step, studentStatus, includeWelcome: false, emailOnly: false });
+  const interestsReady = isInterestMinimumMet(interests);
 
   useEffect(() => {
     writeOnboardingDraft(
@@ -329,7 +348,9 @@ export function AuthOnboardingFlow({
     academicArea?: AcademicAreaId | null;
     requestedSchoolName?: string;
   }) {
-    if (forceFullReplay || startAtEmailVerification) return;
+    // Skip only for QA replay or email-only remainder (demographics already saved).
+    // Email-first new signups must still persist About You / campus patches.
+    if (forceFullReplay || emailOnlyRemainder) return;
     try {
       await patchAuthed("/api/me/profile", {
         ...patch,
@@ -462,12 +483,13 @@ export function AuthOnboardingFlow({
   }
 
   function toggleInterest(id: InterestId) {
-    setInterests((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= 15) return prev;
-      setSparkInterestId(id);
-      return [...prev, id];
-    });
+    const next = toggleInterestId(interests, id);
+    if (next.length > interests.length) setSparkInterestId(id);
+    setInterests(next);
+    // Clear sticky validation once count/status agree with Continue rules.
+    if (personalizeContinueBlockReason({ studentStatus, interests: next }) === null) {
+      setError(null);
+    }
   }
 
   function toggleCommunity(id: CommunityId) {
@@ -502,9 +524,7 @@ export function AuthOnboardingFlow({
     showAllInterests || interests.some((id) => INTEREST_OPTIONS.findIndex((opt) => opt.id === id) >= FEATURED_INTEREST_COUNT)
       ? INTEREST_OPTIONS
       : INTEREST_OPTIONS.slice(0, FEATURED_INTEREST_COUNT);
-  const aboutYouReady =
-    Boolean(studentStatus) &&
-    (!shouldAskGraduationYear(studentStatus) || graduateOther || graduationYear != null);
+  const aboutYouReady = isAboutYouReady({ studentStatus, graduationYear, graduateOther });
   const showQaVerification = process.env.NODE_ENV !== "production" && isQaAccount;
 
   async function continueFromAboutYou() {
@@ -520,7 +540,8 @@ export function AuthOnboardingFlow({
       major: major ?? "",
       academicArea,
     });
-    go("campus");
+    // Email-first new signups already verified on campus — go to interests next.
+    go(campusVerified ? "personalize" : "campus");
   }
 
   async function continueFromCampus() {
@@ -530,20 +551,35 @@ export function AuthOnboardingFlow({
     }
     setError(null);
     void persistProfilePatch({ institutionId: "uri" });
-    go("personalize");
+    go(
+      stepAfterCampusVerification({
+        demographicsAlreadyComplete: emailOnlyRemainder,
+        studentStatus,
+        graduationYear,
+        graduateOther,
+        interests,
+      }),
+    );
   }
 
   async function continueFromPersonalize() {
     if (submitLock.current || submitting) return;
-    if (!studentStatus || interests.length < MIN_INTERESTS) {
-      setError("Pick at least 3 interests to continue.");
+    const block = personalizeContinueBlockReason({ studentStatus, interests });
+    if (block === "missing_status") {
+      setError(personalizeContinueErrorMessage(block));
+      go("about_you");
+      return;
+    }
+    if (block === "needs_interests") {
+      setError(personalizeContinueErrorMessage(block));
       return;
     }
     submitLock.current = true;
     setSubmitting(true);
     setError(null);
     try {
-      if (!forceFullReplay && !startAtEmailVerification) {
+      // Always persist interests unless this is a QA replay or email-only remainder.
+      if (!forceFullReplay && !emailOnlyRemainder) {
         await saveDemographics();
       }
       trackOnboardingEvent({
@@ -554,7 +590,12 @@ export function AuthOnboardingFlow({
       });
       go("ready");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save. Your progress is kept — try again.");
+      console.error("[cq:onboarding] personalize save failed", err);
+      setError(
+        err instanceof Error && err.message && !/schema|migration|sql|postgres|rls/i.test(err.message)
+          ? err.message
+          : "Unable to save. Your progress is kept — try again.",
+      );
     } finally {
       setSubmitting(false);
       window.setTimeout(() => {
@@ -593,16 +634,25 @@ export function AuthOnboardingFlow({
       go("campus");
       return;
     }
-    if (!startAtEmailVerification && (!studentStatus || interests.length < MIN_INTERESTS)) {
-      setError("Please complete your onboarding selections.");
-      return;
+    if (!emailOnlyRemainder) {
+      const block = personalizeContinueBlockReason({ studentStatus, interests });
+      if (block) {
+        setError(
+          block === "missing_status"
+            ? "Please complete your onboarding selections."
+            : personalizeContinueErrorMessage(block),
+        );
+        if (block === "missing_status") go("about_you");
+        else go("personalize");
+        return;
+      }
     }
 
     submitLock.current = true;
     setSubmitting(true);
     setError(null);
     try {
-      if (!startAtEmailVerification && !forceFullReplay) {
+      if (!forceFullReplay && !emailOnlyRemainder) {
         await saveDemographics();
       }
       if (!customizeAvatar && !forceFullReplay) {
@@ -615,7 +665,12 @@ export function AuthOnboardingFlow({
       clearOnboardingDraft(userId);
       await onComplete();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save. Your progress is kept — try again.");
+      console.error("[cq:onboarding] finish save failed", err);
+      setError(
+        err instanceof Error && err.message && !/schema|migration|sql|postgres|rls/i.test(err.message)
+          ? err.message
+          : "Unable to save. Your progress is kept — try again.",
+      );
     } finally {
       setSubmitting(false);
       window.setTimeout(() => {
@@ -624,9 +679,18 @@ export function AuthOnboardingFlow({
     }
   }
 
+  // If Personalize mounts without a status (email-first race), send user to About You.
+  useEffect(() => {
+    if (step !== "personalize") return;
+    if (emailOnlyRemainder) return;
+    if (isKnownStudentStatus(studentStatus)) return;
+    setError(personalizeContinueErrorMessage("missing_status"));
+    setStep("about_you");
+  }, [step, studentStatus, emailOnlyRemainder]);
+
   const ambient = ambientForStep(step);
   const showBack =
-    step !== "welcome" && step !== "about_you" && !(startAtEmailVerification && step === "campus");
+    step !== "welcome" && step !== "about_you" && !(emailOnlyRemainder && step === "campus");
 
   return (
     <div className="cq-onboard-shell cq-onboard-shell--light">
@@ -871,10 +935,8 @@ export function AuthOnboardingFlow({
                   Choose a few things you care about. We’ll use them to personalize your feed, events, and recommendations.
                 </p>
                 <h3 className="cq-onboard-section-label">Interests</h3>
-                <p className="cq-onboard-counter" aria-live="polite">
-                  {interests.length < MIN_INTERESTS
-                    ? `${interests.length} of ${MIN_INTERESTS} selected`
-                    : `${interests.length} selected`}
+                <p className="cq-onboard-counter" aria-live="polite" data-testid="onboarding-interest-count">
+                  {personalizeInterestCounterLabel(interests)}
                 </p>
                 <div className="cq-onboard-chip-grid" role="group" aria-label="Interests">
                   {visibleInterests.map((opt) => {
@@ -936,12 +998,18 @@ export function AuthOnboardingFlow({
               <button
                 type="button"
                 className="cq-onboard-btn-primary cq-onboard-btn-primary--glow disabled:opacity-40"
-                disabled={interests.length < MIN_INTERESTS || submitting}
+                disabled={!interestsReady || submitting}
+                aria-disabled={!interestsReady || submitting}
+                data-testid="onboarding-personalize-continue"
                 onClick={() => void continueFromPersonalize()}
               >
                 {submitting ? "Saving…" : "Continue"}
               </button>
-              {error ? <p className="cq-onboard-error mt-3">{error}</p> : null}
+              {error ? (
+                <p className="cq-onboard-error mt-3" role="alert" data-testid="onboarding-personalize-error">
+                  {error}
+                </p>
+              ) : null}
             </div>
           </div>
         ) : null}
