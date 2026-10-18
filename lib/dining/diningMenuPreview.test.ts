@@ -7,22 +7,19 @@ function sampleMenu(overrides?: Partial<DiningMenuResponse>): DiningMenuResponse
     location: {
       id: "mainfare",
       name: "Mainfare Dining Hall",
-      externalUnitOid: 15,
-      campusQuestLocationIds: ["mainfare-dining"],
     },
     date: "2026-10-18",
     fetchedAt: "2026-10-18T12:00:00.000Z",
+    lastUpdated: "2026-10-18T12:00:00.000Z",
     disclaimer: "test",
     mealPeriods: [
       {
         id: "lunch",
         name: "Lunch",
-        externalMealOid: 4,
         stations: [
           {
             id: "grill",
             name: "Grill",
-            externalUnitOid: 1,
             items: [
               { id: "a", name: "Burger", hasNutritionDetail: false },
               { id: "b", name: "Fries", hasNutritionDetail: false },
@@ -31,7 +28,6 @@ function sampleMenu(overrides?: Partial<DiningMenuResponse>): DiningMenuResponse
           {
             id: "salad",
             name: "Salad",
-            externalUnitOid: 2,
             items: [{ id: "c", name: "Garden Salad", hasNutritionDetail: false }],
           },
         ],
@@ -39,12 +35,10 @@ function sampleMenu(overrides?: Partial<DiningMenuResponse>): DiningMenuResponse
       {
         id: "dinner",
         name: "Dinner",
-        externalMealOid: 5,
         stations: [
           {
             id: "pasta",
             name: "Pasta",
-            externalUnitOid: 3,
             items: [{ id: "d", name: "Penne", hasNutritionDetail: false }],
           },
         ],
@@ -64,8 +58,7 @@ describe("buildDiningMenuPreview", () => {
             {
               id: "lunch",
               name: "Lunch",
-              externalMealOid: 4,
-              stations: [{ id: "x", name: "X", externalUnitOid: 1, items: [] }],
+              stations: [{ id: "x", name: "X", items: [] }],
             },
           ],
         }),
