@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  eventCardAttendeeCount,
   eventCardCategoryChip,
   eventCardDisplayTitle,
   eventCardFallbackAccent,
@@ -57,6 +58,12 @@ describe("event card presentation", () => {
     expect(eventCardPrimaryActionLabel(home)).toBe("View Game");
     expect(eventCardSportSubtitle(athleticsEvent({ sport: null }))).toBeNull();
     expect(eventCardVenueLabel(athleticsEvent({ venueName: null, location: "Location TBA" }))).toBeNull();
+  });
+
+  it("shows attendee counts only from real RSVP data", () => {
+    expect(eventCardAttendeeCount(athleticsEvent({ rsvpCount: undefined }))).toBeNull();
+    expect(eventCardAttendeeCount(athleticsEvent({ rsvpCount: 0 }))).toBeNull();
+    expect(eventCardAttendeeCount(athleticsEvent({ rsvpCount: 12 }))).toBe(12);
   });
 
   it("uses at for away Athletics titles", () => {
