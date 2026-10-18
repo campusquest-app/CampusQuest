@@ -20,13 +20,13 @@ import {
   resolveLocationDetailDescription,
 } from "@/lib/realm/locationDetailCopy";
 import {
+  DiningHallLocationCard,
   LocationActivitySection,
   LocationHero,
   LocationPrimaryActions,
   LocationUpcomingHighlight,
   pickFeaturedEvent,
 } from "@/components/realm/locationDetail";
-import { LocationDiningMenuSection } from "@/components/realm/locationDetail/LocationDiningMenuSection";
 import { isDiningMapLocation } from "@/lib/dining/uriDiningLocations";
 import {
   locationSheetDragIntent,
@@ -83,6 +83,7 @@ export function RealmLocationSheet({
   const [archiveExpanded, setArchiveExpanded] = useState(false);
   const [archiveAvailable, setArchiveAvailable] = useState(false);
   const [showAllEvents, setShowAllEvents] = useState(false);
+  const [diningFullMenu, setDiningFullMenu] = useState(false);
   const [snap, setSnap] = useState<LocationSheetSnap>("peek");
   const panelRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -102,10 +103,15 @@ export function RealmLocationSheet({
     setArchiveExpanded(false);
     setArchiveAvailable(false);
     setShowAllEvents(false);
+    setDiningFullMenu(false);
     snapRef.current = "peek";
     setSnap("peek");
     if (panelRef.current) panelRef.current.style.transform = "";
   }, [locationRefreshKey, location?.id, mapContent?.realmLocationId]);
+
+  useEffect(() => {
+    if (snap === "peek") setDiningFullMenu(false);
+  }, [snap]);
 
   useEffect(() => {
     if (!open) return;
@@ -323,15 +329,24 @@ export function RealmLocationSheet({
   // is owned by LocationActivitySection so we never remount on load flips.
   const hasActivitySection =
     upcomingEvents.length > 0 || historyEvents.length > 0 || Boolean(questLocationId);
+  const isDiningHall = Boolean(locationId && isDiningMapLocation(locationId));
+  const showBelowFold = !isDiningHall || snap === "expanded";
+
+  const openDiningFullMenu = () => {
+    setDiningFullMenu(true);
+    snapRef.current = "expanded";
+    setSnap("expanded");
+  };
 
   return createPortal(
     <div
       ref={panelRef}
       data-cq-location-sheet={snap}
+      data-cq-dining-sheet={isDiningHall ? "1" : undefined}
       data-cq-gesture-block="all"
       className={`cq-realm-archive-panel cq-realm-archive-screen cq-loc-sheet cq-loc-sheet--dock${
         snap === "expanded" ? " cq-loc-sheet--expanded" : ""
-      }`}
+      }${isDiningHall ? " cq-loc-sheet--dining" : ""}`}
       role="dialog"
       aria-modal="false"
       aria-labelledby="realm-sheet-title"
@@ -359,103 +374,195 @@ export function RealmLocationSheet({
               await (onPullRefreshAll ?? onRefreshAll)?.();
             }}
           >
-            <LocationHero
-              location={location}
-              displayName={displayName}
-              description={heroDescription}
-              pills={pills}
-              fallbackImageUrl={heroFallbackImage}
-              onBack={onClose}
-              showBack={false}
-            />
-
-            <div className="cq-loc-content">
-              {featuredEvent ? (
-                <LocationUpcomingHighlight event={featuredEvent} now={now} onOpen={onOpenEvent} />
-              ) : null}
-
-              <LocationPrimaryActions
-                onAddMemory={
-                  locationId && onAddMemory ? () => onAddMemory(locationId) : undefined
-                }
-              />
-
-              {locationId && isDiningMapLocation(locationId) ? (
-                <LocationDiningMenuSection key={locationId} campusQuestLocationId={locationId} />
-              ) : null}
-
-              {hasActivitySection ? (
-                <LocationActivitySection
-                  events={upcomingEvents}
-                  historyEvents={historyEvents}
-                  now={now}
-                  locationName={displayName}
-                  locationId={questLocationId}
-                  mapContent={content}
-                  questReloadToken={questReloadToken}
-                  eventsLoaded={mapContentLoaded}
-                  showAll={showAllEvents}
-                  onOpenEvent={onOpenEvent}
-                  onSeeAll={
-                    upcomingEvents.length > 4 || historyEvents.length > 3
-                      ? () => setShowAllEvents(true)
-                      : undefined
-                  }
+            {isDiningHall && locationId ? (
+              <div className="cq-loc-content cq-loc-content--dining">
+                <DiningHallLocationCard
+                  key={locationId}
+                  location={location}
+                  campusQuestLocationId={locationId}
+                  displayName={displayName}
+                  showFullMenu={diningFullMenu}
+                  onViewFullMenu={openDiningFullMenu}
+                  onAddMemory={onAddMemory ? () => onAddMemory(locationId) : undefined}
                 />
-              ) : null}
 
-              {locationId && onAddMemory && onOpenMemoryViewer && onOpenMemoryGallery ? (
-                <LocationMemoriesSection
-                  locationId={locationId}
-                  locationName={displayName}
-                  onAddMemory={onAddMemory}
-                  onOpenViewer={onOpenMemoryViewer}
-                  onOpenGallery={onOpenMemoryGallery}
-                />
-              ) : null}
+                {showBelowFold && featuredEvent ? (
+                  <LocationUpcomingHighlight event={featuredEvent} now={now} onOpen={onOpenEvent} />
+                ) : null}
 
-              {locationId ? (
-                <>
-                  {archiveAvailable ? (
-                    <section className="cq-realm-past-memories">
-                      <button
-                        type="button"
-                        className="cq-realm-past-memories-toggle"
-                        onClick={() => setArchiveExpanded((value) => !value)}
-                        aria-expanded={archiveExpanded}
-                      >
-                        {archiveExpanded ? "Hide past memories" : "View past memories"}
-                      </button>
-                    </section>
-                  ) : null}
-                  <CampusMemoryArchivePanel
-                    userId={currentUserId ?? undefined}
-                    priorityLocationId={locationId}
-                    locationOnly
-                    collapsed={!archiveExpanded}
-                    onAvailabilityChange={setArchiveAvailable}
-                    onOpenMemory={(memory) => {
-                      if (!onOpenMemoryViewer) return;
-                      onOpenMemoryViewer(
-                        {
-                          locationId: memory.locationId,
-                          locationKey: memory.locationKey,
-                          locationName: memory.locationName,
-                          count: 1,
-                          latestCreatedAt: memory.createdAt,
-                          latestPreview: memory.mediaUrl,
-                          latestMediaType: memory.mediaType,
-                          latestAuthorAvatar: memory.authorAvatar,
-                          hasRecent: false,
-                        },
-                        memory.id,
-                        true,
-                      );
-                    }}
+                {showBelowFold && hasActivitySection ? (
+                  <LocationActivitySection
+                    events={upcomingEvents}
+                    historyEvents={historyEvents}
+                    now={now}
+                    locationName={displayName}
+                    locationId={questLocationId}
+                    mapContent={content}
+                    questReloadToken={questReloadToken}
+                    eventsLoaded={mapContentLoaded}
+                    showAll={showAllEvents}
+                    onOpenEvent={onOpenEvent}
+                    onSeeAll={
+                      upcomingEvents.length > 4 || historyEvents.length > 3
+                        ? () => setShowAllEvents(true)
+                        : undefined
+                    }
                   />
-                </>
-              ) : null}
-            </div>
+                ) : null}
+
+                {showBelowFold &&
+                locationId &&
+                onAddMemory &&
+                onOpenMemoryViewer &&
+                onOpenMemoryGallery ? (
+                  <LocationMemoriesSection
+                    locationId={locationId}
+                    locationName={displayName}
+                    onAddMemory={onAddMemory}
+                    onOpenViewer={onOpenMemoryViewer}
+                    onOpenGallery={onOpenMemoryGallery}
+                  />
+                ) : null}
+
+                {showBelowFold && locationId ? (
+                  <>
+                    {archiveAvailable ? (
+                      <section className="cq-realm-past-memories">
+                        <button
+                          type="button"
+                          className="cq-realm-past-memories-toggle"
+                          onClick={() => setArchiveExpanded((value) => !value)}
+                          aria-expanded={archiveExpanded}
+                        >
+                          {archiveExpanded ? "Hide past memories" : "View past memories"}
+                        </button>
+                      </section>
+                    ) : null}
+                    <CampusMemoryArchivePanel
+                      userId={currentUserId ?? undefined}
+                      priorityLocationId={locationId}
+                      locationOnly
+                      collapsed={!archiveExpanded}
+                      onAvailabilityChange={setArchiveAvailable}
+                      onOpenMemory={(memory) => {
+                        if (!onOpenMemoryViewer) return;
+                        onOpenMemoryViewer(
+                          {
+                            locationId: memory.locationId,
+                            locationKey: memory.locationKey,
+                            locationName: memory.locationName,
+                            count: 1,
+                            latestCreatedAt: memory.createdAt,
+                            latestPreview: memory.mediaUrl,
+                            latestMediaType: memory.mediaType,
+                            latestAuthorAvatar: memory.authorAvatar,
+                            hasRecent: false,
+                          },
+                          memory.id,
+                          true,
+                        );
+                      }}
+                    />
+                  </>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <LocationHero
+                  location={location}
+                  displayName={displayName}
+                  description={heroDescription}
+                  pills={pills}
+                  fallbackImageUrl={heroFallbackImage}
+                  onBack={onClose}
+                  showBack={false}
+                />
+
+                <div className="cq-loc-content">
+                  {featuredEvent ? (
+                    <LocationUpcomingHighlight event={featuredEvent} now={now} onOpen={onOpenEvent} />
+                  ) : null}
+
+                  <LocationPrimaryActions
+                    onAddMemory={
+                      locationId && onAddMemory ? () => onAddMemory(locationId) : undefined
+                    }
+                  />
+
+                  {hasActivitySection ? (
+                    <LocationActivitySection
+                      events={upcomingEvents}
+                      historyEvents={historyEvents}
+                      now={now}
+                      locationName={displayName}
+                      locationId={questLocationId}
+                      mapContent={content}
+                      questReloadToken={questReloadToken}
+                      eventsLoaded={mapContentLoaded}
+                      showAll={showAllEvents}
+                      onOpenEvent={onOpenEvent}
+                      onSeeAll={
+                        upcomingEvents.length > 4 || historyEvents.length > 3
+                          ? () => setShowAllEvents(true)
+                          : undefined
+                      }
+                    />
+                  ) : null}
+
+                  {locationId && onAddMemory && onOpenMemoryViewer && onOpenMemoryGallery ? (
+                    <LocationMemoriesSection
+                      locationId={locationId}
+                      locationName={displayName}
+                      onAddMemory={onAddMemory}
+                      onOpenViewer={onOpenMemoryViewer}
+                      onOpenGallery={onOpenMemoryGallery}
+                    />
+                  ) : null}
+
+                  {locationId ? (
+                    <>
+                      {archiveAvailable ? (
+                        <section className="cq-realm-past-memories">
+                          <button
+                            type="button"
+                            className="cq-realm-past-memories-toggle"
+                            onClick={() => setArchiveExpanded((value) => !value)}
+                            aria-expanded={archiveExpanded}
+                          >
+                            {archiveExpanded ? "Hide past memories" : "View past memories"}
+                          </button>
+                        </section>
+                      ) : null}
+                      <CampusMemoryArchivePanel
+                        userId={currentUserId ?? undefined}
+                        priorityLocationId={locationId}
+                        locationOnly
+                        collapsed={!archiveExpanded}
+                        onAvailabilityChange={setArchiveAvailable}
+                        onOpenMemory={(memory) => {
+                          if (!onOpenMemoryViewer) return;
+                          onOpenMemoryViewer(
+                            {
+                              locationId: memory.locationId,
+                              locationKey: memory.locationKey,
+                              locationName: memory.locationName,
+                              count: 1,
+                              latestCreatedAt: memory.createdAt,
+                              latestPreview: memory.mediaUrl,
+                              latestMediaType: memory.mediaType,
+                              latestAuthorAvatar: memory.authorAvatar,
+                              hasRecent: false,
+                            },
+                            memory.id,
+                            true,
+                          );
+                        }}
+                      />
+                    </>
+                  ) : null}
+                </div>
+              </>
+            )}
           </PullToRefresh>
           </div>
         </div>

@@ -1,7 +1,7 @@
 export type LocationSheetSnap = "peek" | "expanded";
 
 /** Initial sheet height as a fraction of the space above the bottom nav. */
-export const LOCATION_SHEET_PEEK_RATIO = 0.43;
+export const LOCATION_SHEET_PEEK_RATIO = 0.52;
 /** Expanded sheet height as a fraction of that same space. */
 export const LOCATION_SHEET_EXPANDED_RATIO = 0.88;
 

@@ -14,14 +14,14 @@ import {
 } from "@/lib/realm/locationSheetSnap";
 
 describe("location sheet snaps", () => {
-  it("opens near 43% and expands near 88% of the space above the nav", () => {
+  it("opens near 52% and expands near 88% of the space above the nav", () => {
     const available = locationSheetAvailableHeight(844, 83, 47);
     expect(available).toBe(844 - 83 - 47);
     const peek = locationSheetHeightPx(available, "peek");
     const expanded = locationSheetHeightPx(available, "expanded");
     expect(peek / available).toBeCloseTo(LOCATION_SHEET_PEEK_RATIO, 2);
     expect(expanded / available).toBeCloseTo(LOCATION_SHEET_EXPANDED_RATIO, 2);
-    expect(peek).toBeGreaterThan(250);
+    expect(peek).toBeGreaterThan(300);
     expect(expanded).toBeGreaterThan(peek);
     expect(expanded).toBeLessThan(available);
   });
@@ -29,8 +29,8 @@ describe("location sheet snaps", () => {
   it("fits a compact peek on a small phone", () => {
     const available = locationSheetAvailableHeight(667, 83, 20);
     const peek = locationSheetHeightPx(available, "peek");
-    expect(peek).toBeGreaterThanOrEqual(220);
-    expect(peek).toBeLessThan(available * 0.5);
+    expect(peek).toBeGreaterThanOrEqual(250);
+    expect(peek).toBeLessThanOrEqual(available * 0.55);
   });
 
   it("expands upward, collapses, then dismisses", () => {
@@ -153,6 +153,25 @@ describe("location sheet source contract", () => {
     expect(sheet).toContain("onAddMemory");
     expect(sheet).not.toContain("RealmDirectionsPanel");
     expect(sheet).not.toContain("document.body.style.overflow");
+  });
+
+  it("uses one shared dining card for Mainfare and Butterfield", () => {
+    expect(sheet).toContain("DiningHallLocationCard");
+    expect(sheet).toContain("cq-loc-sheet--dining");
+    expect(sheet).toContain("isDiningHall");
+    expect(sheet).toContain("diningFullMenu");
+    expect(sheet).toContain("openDiningFullMenu");
+    expect(sheet).not.toContain("Walk Here");
+    const diningCard = readFileSync(
+      "components/realm/locationDetail/DiningHallLocationCard.tsx",
+      "utf8",
+    );
+    expect(diningCard).toContain("View Full Menu");
+    expect(diningCard).toContain("Add Memory");
+    expect(diningCard).toContain("buildDiningMenuPreview");
+    expect(diningCard).toContain("resolveDiningLocationId");
+    expect(diningCard).not.toContain('"butterfield" as');
+    expect(diningCard).not.toContain("?? \"butterfield\"");
   });
 
   it("removes Walk Here from the location sheet", () => {
