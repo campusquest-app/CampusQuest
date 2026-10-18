@@ -15191,7 +15191,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   background: rgba(255, 255, 255, 0.035);
 }
 
-.cq-event-card:has(.cq-event-card-thumb):not(.cq-event-card--row) {
+.cq-event-card:has(.cq-event-card-thumb):not(.cq-event-card--row):not(.cq-event-card--grid) {
   grid-template-columns: 5.5rem minmax(0, 1fr);
 }
 
@@ -17841,13 +17841,197 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   }
 }
 
+/* Compact two-column discovery grid (phones); expands on tablet/desktop. */
 .cq-events-feed {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-  padding: 0 1rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  padding: 0 0.85rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
+.cq-event-card--grid {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(104, 171, 232, 0.18);
+  background: #0a1628;
+}
+
+.cq-event-card-hit {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cq-event-card-hit:focus-visible {
+  outline: 2px solid rgba(104, 171, 232, 0.75);
+  outline-offset: 2px;
+}
+
+.cq-event-card-media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #071428;
+}
+
+.cq-event-card-media .cq-event-card-thumb,
+.cq-event-card-media .cq-event-artwork {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cq-event-card-media .cq-event-artwork__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.cq-event-card-media .cq-event-artwork--fallback {
+  background: linear-gradient(160deg, #102038, #071428);
+}
+
+.cq-event-card-media .cq-event-artwork--fallback > .cq-event-artwork__img {
+  object-fit: contain;
+  padding: 18%;
+}
+
+.cq-event-card-badge {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  z-index: 1;
+  max-width: calc(100% - 2.4rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.18rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(7, 17, 31, 0.82);
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.cq-event-card-badge--live {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(127, 29, 29, 0.88);
+  color: #fecaca;
+}
+
+.cq-event-card-badge--today {
+  border-color: rgba(104, 171, 232, 0.45);
+  color: #bfdbfe;
+}
+
+.cq-event-card-badge--tomorrow {
+  border-color: rgba(240, 215, 140, 0.4);
+  color: #f0d78c;
+}
+
+.cq-event-card-spark {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  z-index: 1;
+  display: inline-flex;
+  width: 1.45rem;
+  height: 1.45rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(104, 171, 232, 0.35);
+  background: rgba(7, 17, 31, 0.78);
+  color: #9fd2ff;
+}
+
+.cq-event-card--grid .cq-event-card-body {
+  gap: 0.18rem;
+  padding: 0.45rem 0.5rem 0.55rem;
+}
+
+.cq-event-card--grid:has(.cq-event-card-heart) .cq-event-card-body {
+  padding-right: 2.15rem;
+  padding-bottom: 0.7rem;
+}
+
+.cq-event-card--grid .cq-event-card-title {
+  font-size: 0.78rem;
+  line-height: 1.25;
+  -webkit-line-clamp: 2;
+}
+
+.cq-event-card--grid .cq-event-card-when,
+.cq-event-card--grid .cq-event-card-location,
+.cq-event-card--grid .cq-event-card-attendees {
+  font-size: 0.66rem;
+  line-height: 1.25;
+}
+
+.cq-event-card--grid .cq-event-card-location {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cq-event-card-attendees {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  margin: 0;
+  color: rgba(186, 213, 247, 0.78);
+}
+
+.cq-event-card-attendees-icon {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: 0 0 auto;
+}
+
+.cq-event-card--grid .cq-event-card-heart {
+  position: absolute;
+  right: 0.05rem;
+  bottom: 0.05rem;
+  z-index: 2;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.62);
+  background: transparent;
+}
+
+.cq-event-card--grid .cq-event-card-heart--on {
+  color: #f0a0c4;
+}
+
+/* Legacy row helper kept for non-feed surfaces that still reference it. */
 .cq-event-card--row {
   display: grid;
   grid-template-columns: minmax(5.6rem, 32%) minmax(0, 1fr);
@@ -17886,77 +18070,43 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   background: #071428;
 }
 
-/* Mobile For You / discovery cards: landscape image on top, text below. */
-@media (max-width: 639px) {
+@media (max-width: 379px) {
   .cq-events-feed {
-    gap: 0.55rem;
-  }
-
-  .cq-event-card--row {
-    grid-template-columns: minmax(0, 1fr);
     gap: 0.5rem;
-    padding: 0.55rem;
+    padding: 0 0.7rem;
   }
 
-  .cq-event-card--row .cq-event-card-thumb-wrap {
-    width: 100%;
-    height: clamp(130px, 36vw, 150px);
-    min-height: 130px;
-    max-height: 150px;
-    overflow: hidden;
-    border-radius: 0.9rem;
+  .cq-event-card--grid .cq-event-card-title {
+    font-size: 0.72rem;
   }
 
-  .cq-event-card--row .cq-event-card-thumb-wrap:has(img) {
-    padding: 0;
+  .cq-event-card-badge {
+    font-size: 0.54rem;
+    padding: 0.14rem 0.34rem;
+  }
+}
+
+@media (min-width: 720px) {
+  .cq-events-feed {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.85rem;
+    padding: 0 1rem;
   }
 
-  .cq-event-card--row .cq-event-card-thumb {
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    object-fit: cover;
-    object-position: center;
-    border-radius: 0.9rem;
+  .cq-event-card--grid .cq-event-card-title {
+    font-size: 0.88rem;
   }
 
-  .cq-event-card--row .cq-event-card-body {
-    gap: 0.12rem;
+  .cq-event-card--grid .cq-event-card-when,
+  .cq-event-card--grid .cq-event-card-location,
+  .cq-event-card--grid .cq-event-card-attendees {
+    font-size: 0.72rem;
   }
+}
 
-  .cq-event-card--row .cq-event-card-title {
-    font-size: 1rem;
-    line-height: 1.3;
-    -webkit-line-clamp: 2;
-  }
-
-  .cq-event-card--row .cq-event-card-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    margin-top: 0.28rem;
-  }
-
-  .cq-event-card--row .cq-event-card-action {
-    flex: 1 1 calc(50% - 0.2rem);
-    min-width: min(100%, 9.25rem);
-    text-align: center;
-    min-height: 44px;
-    padding: 0.28rem 0.5rem;
-    font-size: 0.7rem;
-  }
-
-  .cq-event-card--row .cq-event-card-action--rsvp {
-    flex: 1 1 100%;
-  }
-
-  .cq-event-card--row .cq-event-card-footer {
-    margin-top: 0.22rem;
-  }
-
-  .cq-event-card--row .cq-event-card-reason {
-    font-size: 0.65rem;
-    line-height: 1.25;
+@media (min-width: 1100px) {
+  .cq-events-feed {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -18259,24 +18409,31 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 .cq-events-skeletons {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 0 1rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  padding: 0 0.85rem;
 }
 
 .cq-events-skeleton {
-  border-radius: 1.1rem;
+  border-radius: 0.95rem;
   background: rgba(255, 255, 255, 0.08);
   animation: cq-events-pulse 1.2s ease-in-out infinite;
 }
 
-.cq-events-skeleton--hero {
-  height: 14.75rem;
+.cq-events-skeleton--hero,
+.cq-events-skeleton--row {
+  aspect-ratio: 3 / 4;
+  height: auto;
+  min-height: 10.5rem;
 }
 
-.cq-events-skeleton--row {
-  height: 7.2rem;
+@media (min-width: 720px) {
+  .cq-events-skeletons {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.85rem;
+    padding: 0 1rem;
+  }
 }
 
 .cq-events-sync-warning {

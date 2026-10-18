@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatEventCardWhen, formatEventDateTimeRange } from "@/lib/client/eventDateTime";
+import {
+  eventCardStatusBadge,
+  formatEventCardWhen,
+  formatEventDateTimeRange,
+} from "@/lib/client/eventDateTime";
 
 describe("formatEventDateTimeRange", () => {
   const now = new Date("2026-09-08T16:00:00.000Z"); // Tue Sep 8, 12:00 PM EDT
@@ -31,5 +35,35 @@ describe("formatEventDateTimeRange", () => {
   it("returns Date TBA for missing or invalid starts", () => {
     expect(formatEventDateTimeRange(null, null, now)).toBe("Date TBA");
     expect(formatEventDateTimeRange("not-a-date", null, now)).toBe("Date TBA");
+  });
+});
+
+describe("eventCardStatusBadge", () => {
+  const now = new Date("2026-09-08T16:00:00.000Z"); // Tue Sep 8, 12:00 PM EDT
+
+  it("marks live events as Happening Now", () => {
+    expect(
+      eventCardStatusBadge("2026-09-08T14:00:00.000Z", "2026-09-08T18:00:00.000Z", now),
+    ).toEqual({ label: "Happening Now", tone: "live" });
+  });
+
+  it("labels today and tomorrow without inventing times", () => {
+    expect(eventCardStatusBadge("2026-09-08T20:00:00.000Z", null, now)).toEqual({
+      label: "Today",
+      tone: "today",
+    });
+    expect(eventCardStatusBadge("2026-09-09T20:00:00.000Z", null, now)).toEqual({
+      label: "Tomorrow",
+      tone: "tomorrow",
+    });
+  });
+
+  it("uses weekday or month-day for later events", () => {
+    expect(eventCardStatusBadge("2026-09-12T17:00:00.000Z", null, now)?.label).toBe("Saturday");
+    expect(eventCardStatusBadge("2026-09-15T16:00:00.000Z", null, now)?.label).toBe("Sep 15");
+  });
+
+  it("returns null for missing starts", () => {
+    expect(eventCardStatusBadge(null, null, now)).toBeNull();
   });
 });

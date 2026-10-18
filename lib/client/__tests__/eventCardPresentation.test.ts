@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  eventCardAttendeeCount,
   eventCardCategoryChip,
   eventCardDisplayTitle,
   eventCardFallbackAccent,
@@ -57,6 +58,12 @@ describe("event card presentation", () => {
     expect(eventCardPrimaryActionLabel(home)).toBe("View Game");
     expect(eventCardSportSubtitle(athleticsEvent({ sport: null }))).toBeNull();
     expect(eventCardVenueLabel(athleticsEvent({ venueName: null, location: "Location TBA" }))).toBeNull();
+  });
+
+  it("shows attendee counts only from real RSVP data", () => {
+    expect(eventCardAttendeeCount(athleticsEvent({ rsvpCount: undefined }))).toBeNull();
+    expect(eventCardAttendeeCount(athleticsEvent({ rsvpCount: 0 }))).toBeNull();
+    expect(eventCardAttendeeCount(athleticsEvent({ rsvpCount: 12 }))).toBe(12);
   });
 
   it("uses at for away Athletics titles", () => {
@@ -217,10 +224,14 @@ describe("isEventLive", () => {
     );
   });
 
-  it("gates Show on Realm cards on the shared live helper", () => {
+  it("uses compact grid cards and keeps Happening Soon live checks", () => {
     const discovery = readFileSync("components/events/EventDiscoveryCard.tsx", "utf8");
     const happening = readFileSync("components/events/HappeningSoonCarousel.tsx", "utf8");
-    expect(discovery).toContain("isEventLive(item, now)");
+    const css = readFileSync("app/globals.css", "utf8");
+    expect(discovery).toContain("cq-event-card--grid");
+    expect(discovery).toContain("eventCardStatusBadge");
+    expect(discovery).toContain("cq-event-card-hit");
+    expect(css).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
     expect(happening).toContain("isEventLive(item, now)");
     expect(happening).toContain("isEventLive(row.item, now)");
   });

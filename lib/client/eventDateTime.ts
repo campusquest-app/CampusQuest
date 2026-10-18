@@ -1,3 +1,4 @@
+import { isEventLiveNow } from "@/lib/realm/eventVisibility";
 import { CAMPUS_TIME_ZONE, formatCampusTime, getCampusDayWindow, isOnCampusDay } from "@/lib/realm/eventCountdown";
 
 function campusWeekday(instant: Date): string {
@@ -11,6 +12,14 @@ function campusShortDate(instant: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: CAMPUS_TIME_ZONE,
     weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(instant);
+}
+
+function campusMonthDay(instant: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: CAMPUS_TIME_ZONE,
     month: "short",
     day: "numeric",
   }).format(instant);
@@ -88,6 +97,39 @@ export function formatEventCardWhen(startsAt: string | null | undefined): string
   const start = parseInstant(startsAt);
   if (!start) return "Date TBA";
   return `${campusShortDate(start)} • ${formatCampusTime(start)}`;
+}
+
+export type EventCardStatusBadge = {
+  label: string;
+  tone: "live" | "today" | "tomorrow" | "upcoming";
+};
+
+/**
+ * Small image overlay for discovery cards.
+ * Uses campus timezone + real start/end instants (never invented times).
+ */
+export function eventCardStatusBadge(
+  startsAt: string | null | undefined,
+  endsAt: string | null | undefined,
+  now: Date = new Date(),
+): EventCardStatusBadge | null {
+  const start = parseInstant(startsAt);
+  if (!start) return null;
+  if (isEventLiveNow(startsAt, endsAt, now)) {
+    return { label: "Happening Now", tone: "live" };
+  }
+  if (isOnCampusDay(start, now)) {
+    return { label: "Today", tone: "today" };
+  }
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  if (isOnCampusDay(start, tomorrow)) {
+    return { label: "Tomorrow", tone: "tomorrow" };
+  }
+  const days = daysUntilCampusDay(start, now);
+  if (days >= 2 && days <= 6) {
+    return { label: campusWeekday(start), tone: "upcoming" };
+  }
+  return { label: campusMonthDay(start), tone: "upcoming" };
 }
 
 export function eventDateTimeIso(startsAt: string | null | undefined): string | undefined {

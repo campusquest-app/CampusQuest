@@ -1,21 +1,20 @@
 "use client";
 
-import { Heart, Sparkles } from "lucide-react";
+import { Heart, Sparkles, Users } from "lucide-react";
 import { EventArtwork } from "@/components/events/EventArtwork";
-import { eventSourceChipLabel } from "@/lib/eventSources/catalog";
 import {
-  eventCardCategoryChip,
+  eventCardAttendeeCount,
   eventCardDisplayTitle,
-  eventCardFallbackAccent,
-  eventCardSportSubtitle,
+  eventCardPrimaryActionLabel,
   eventCardVenueLabel,
-  eventShowOnRealmEligible,
   feedEventCanRsvp,
-  feedEventIsAthletics,
-  feedEventSourceKey,
-  isEventLive,
 } from "@/lib/client/eventCardPresentation";
-import { formatEventCardWhen, formatEventDateTimeRange, eventDateTimeIso } from "@/lib/client/eventDateTime";
+import {
+  eventCardStatusBadge,
+  eventDateTimeIso,
+  formatEventCardWhen,
+  formatEventDateTimeRange,
+} from "@/lib/client/eventDateTime";
 import { useLiveNow } from "@/lib/client/useLiveNow";
 import { eventInterestMatchLabel } from "@/lib/client/eventDiscovery";
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
@@ -26,16 +25,18 @@ export function EventDiscoveryCard({
   item,
   recommendation,
   interestedPending = false,
+  imagePriority = false,
   onView,
   onToggleInterested,
-  onViewOnMap,
-  onRsvpGoing,
 }: {
   item: FeedEvent;
   recommendation: RecommendationScore | null;
   interestedPending?: boolean;
+  /** Eager-load artwork for above-the-fold cards. */
+  imagePriority?: boolean;
   onView: () => void;
   onToggleInterested?: () => void;
+  /** Kept for call-site compatibility; map/RSVP live on the detail screen. */
   onViewOnMap?: () => void;
   onRsvpGoing?: () => void;
 }) {
@@ -44,95 +45,79 @@ export function EventDiscoveryCard({
   const when = formatEventCardWhen(event.startsAt);
   const whenRange = formatEventDateTimeRange(event.startsAt, event.endsAt);
   const whenIso = eventDateTimeIso(event.startsAt);
-  const reason = eventInterestMatchLabel(recommendation);
-  const category = eventCardCategoryChip(item);
-  const sport = eventCardSportSubtitle(item);
   const venue = eventCardVenueLabel(item);
+  const interestMatch = eventInterestMatchLabel(recommendation);
+  const attendees = eventCardAttendeeCount(item);
+  const openLabel = eventCardPrimaryActionLabel(item);
   const interested =
     feedEventCanRsvp(item) &&
     ((item.kind === "campus" && isInterestedRsvp(item.event.myRsvpStatus)) ||
       (item.kind === "external" && isInterestedRsvp(item.event.myRsvpStatus ?? null)));
-  const going =
-    (item.kind === "campus" && item.event.myRsvpStatus === "going") ||
-    (item.kind === "external" && item.event.myRsvpStatus === "going");
-  const source = feedEventSourceKey(item);
-  const sourceLabel = eventSourceChipLabel(source);
-  const accent = eventCardFallbackAccent(item);
   const now = useLiveNow();
-  const showOnRealm = Boolean(onViewOnMap) && eventShowOnRealmEligible(item) && isEventLive(item, now);
-  const athletics = feedEventIsAthletics(item);
-  const canRsvp = feedEventCanRsvp(item);
+  const status = eventCardStatusBadge(event.startsAt, event.endsAt, now);
 
   return (
-    <article className="cq-event-card cq-event-card--row">
-      <div className="cq-event-card-thumb-wrap cq-event-card-thumb-wrap--photo">
-        <EventArtwork
-          imageUrl={item.kind === "external" ? item.event.imageUrl : null}
-          bannerUrl={item.kind === "external" ? item.event.bannerUrl : null}
-          alt={`${title} event image`}
-          className="cq-event-card-thumb"
-        />
-      </div>
-      <div className="cq-event-card-body">
-        <p className={`cq-event-card-chip cq-event-card-chip--${accent}`}>{category}</p>
-        <h4 className="cq-event-card-title">{title}</h4>
-        {sport ? <p className="cq-event-card-sport">{sport}</p> : null}
-        <p className="cq-event-card-when">
-          <time dateTime={whenIso}>{when}</time>
-        </p>
-        <span className="sr-only">{whenRange}</span>
-        {venue ? <p className="cq-event-card-location">{venue}</p> : null}
-        {sourceLabel && sourceLabel !== category ? (
-          <span className="cq-event-card-source">{sourceLabel}</span>
-        ) : null}
-        <div className="cq-event-card-actions">
-          {showOnRealm ? (
-            <button type="button" onClick={onViewOnMap} className="cq-event-card-action">
-              Show on Realm
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={onView}
-            className="cq-event-card-action cq-event-card-action--view"
-            aria-label={`${athletics ? "View Game" : "View Event"} ${title}`}
-          >
-            {athletics ? "View Game" : "View Event"}
-          </button>
-          {canRsvp && onRsvpGoing && !athletics ? (
-            <button
-              type="button"
-              onClick={onRsvpGoing}
-              aria-pressed={going}
-              className={`cq-event-card-action cq-event-card-action--rsvp cq-event-card-action--rsvp-${accent} ${going ? "cq-event-card-action--on" : ""}`}
+    <article className="cq-event-card cq-event-card--grid" data-cq-event-card="grid">
+      <button
+        type="button"
+        className="cq-event-card-hit touch-manipulation"
+        onClick={onView}
+        aria-label={`${openLabel}: ${title}`}
+      >
+        <div className="cq-event-card-media">
+          <EventArtwork
+            imageUrl={item.kind === "external" ? item.event.imageUrl : null}
+            bannerUrl={item.kind === "external" ? item.event.bannerUrl : null}
+            alt=""
+            className="cq-event-card-thumb"
+            loading={imagePriority ? "eager" : "lazy"}
+          />
+          {status ? (
+            <span
+              className={`cq-event-card-badge cq-event-card-badge--${status.tone}`}
+              data-cq-event-status={status.tone}
             >
-              {going ? "Going" : "RSVP"}
-            </button>
+              {status.label}
+            </span>
+          ) : null}
+          {interestMatch ? (
+            <span className="cq-event-card-spark" title={interestMatch} aria-label={interestMatch}>
+              <Sparkles className="h-3 w-3" strokeWidth={2.4} aria-hidden />
+            </span>
           ) : null}
         </div>
-        <div className="cq-event-card-footer">
-          {reason ? (
-            <p className="cq-event-card-reason">
-              <Sparkles className="cq-event-card-reason-mark" aria-hidden />
-              {reason}
+
+        <div className="cq-event-card-body">
+          <h4 className="cq-event-card-title">{title}</h4>
+          <p className="cq-event-card-when">
+            <time dateTime={whenIso}>{when}</time>
+          </p>
+          <span className="sr-only">{whenRange}</span>
+          {venue ? <p className="cq-event-card-location">{venue}</p> : null}
+          {attendees != null ? (
+            <p className="cq-event-card-attendees">
+              <Users className="cq-event-card-attendees-icon" strokeWidth={2.2} aria-hidden />
+              <span>{attendees} going</span>
             </p>
-          ) : (
-            <span />
-          )}
-          {onToggleInterested ? (
-            <button
-              type="button"
-              disabled={interestedPending}
-              onClick={onToggleInterested}
-              aria-pressed={interested}
-              aria-label={interested ? `${title}, Interested, selected` : `Mark ${title} as Interested`}
-              className={`cq-event-card-heart ${interested ? "cq-event-card-heart--on" : ""}`}
-            >
-              <Heart className="h-4 w-4" strokeWidth={2.2} fill={interested ? "currentColor" : "none"} />
-            </button>
           ) : null}
         </div>
-      </div>
+      </button>
+
+      {onToggleInterested ? (
+        <button
+          type="button"
+          disabled={interestedPending}
+          onClick={(clickEvent) => {
+            clickEvent.stopPropagation();
+            onToggleInterested();
+          }}
+          aria-pressed={interested}
+          aria-label={interested ? `${title}, Interested, selected` : `Mark ${title} as Interested`}
+          className={`cq-event-card-heart touch-manipulation ${interested ? "cq-event-card-heart--on" : ""}`}
+        >
+          <Heart className="h-4 w-4" strokeWidth={2.2} fill={interested ? "currentColor" : "none"} />
+        </button>
+      ) : null}
     </article>
   );
 }
