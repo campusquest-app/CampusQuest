@@ -33,7 +33,7 @@ import {
 } from "@/lib/dining/diningServiceStatus";
 import { LocationDiningMenuSection } from "./LocationDiningMenuSection";
 
-const PREVIEW_ITEM_LIMIT = 4;
+const PREVIEW_ITEM_LIMIT = 3;
 
 /**
  * Shared compact map card for Mainfare and Butterfield.
@@ -65,15 +65,21 @@ export function DiningHallLocationCard({
   const [failedKey, setFailedKey] = useState<string | null>(null);
   const showImage = Boolean(heroImage) && failedKey !== imageKey;
 
-  const [menu, setMenu] = useState<DiningMenuResponse | null>(() =>
-    hallId ? getDiningMenuSessionCache(hallId, today) : null,
-  );
-  const [loaded, setLoaded] = useState(() =>
-    Boolean(hallId && getDiningMenuSessionCache(hallId, today)),
-  );
-  const [initialLoading, setInitialLoading] = useState(
-    () => Boolean(hallId) && !getDiningMenuSessionCache(hallId!, today),
-  );
+  const [menu, setMenu] = useState<DiningMenuResponse | null>(() => {
+    if (!hallId) return null;
+    const cached = getDiningMenuSessionCache(hallId, today);
+    return cached && cached.location.id === hallId ? cached : null;
+  });
+  const [loaded, setLoaded] = useState(() => {
+    if (!hallId) return false;
+    const cached = getDiningMenuSessionCache(hallId, today);
+    return Boolean(cached && cached.location.id === hallId);
+  });
+  const [initialLoading, setInitialLoading] = useState(() => {
+    if (!hallId) return false;
+    const cached = getDiningMenuSessionCache(hallId, today);
+    return !(cached && cached.location.id === hallId);
+  });
   const [slowLoading, setSlowLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -100,7 +106,9 @@ export function DiningHallLocationCard({
       return;
     }
 
-    const cached = getDiningMenuSessionCache(hallId, today);
+    const cachedRaw = getDiningMenuSessionCache(hallId, today);
+    const cached =
+      cachedRaw && cachedRaw.location.id === hallId ? cachedRaw : null;
     if (cached) {
       setMenu(cached);
       setLoaded(true);

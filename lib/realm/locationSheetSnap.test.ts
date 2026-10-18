@@ -33,6 +33,22 @@ describe("location sheet snaps", () => {
     expect(peek).toBeLessThanOrEqual(available * 0.55);
   });
 
+  it("keeps dining peek clear of the bottom nav on iPhone sizes", () => {
+    // iPhone SE / small and iPhone 14-class viewports
+    for (const [vh, nav, safeTop] of [
+      [667, 83, 20],
+      [844, 83, 47],
+      [932, 83, 59],
+    ] as const) {
+      const available = locationSheetAvailableHeight(vh, nav, safeTop);
+      const peek = locationSheetHeightPx(available, "peek");
+      const expanded = locationSheetHeightPx(available, "expanded");
+      expect(peek + nav).toBeLessThanOrEqual(vh - safeTop);
+      expect(expanded + nav).toBeLessThanOrEqual(vh - safeTop + 1);
+      expect(peek).toBeGreaterThan(280);
+    }
+  });
+
   it("expands upward, collapses, then dismisses", () => {
     expect(nextLocationSheetSnap("peek", -60)).toBe("expanded");
     expect(nextLocationSheetSnap("expanded", 70)).toBe("peek");

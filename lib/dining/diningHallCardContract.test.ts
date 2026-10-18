@@ -33,8 +33,12 @@ describe("unified dining hall map cards", () => {
     expect(menuSection).toContain("Never fall back to another dining hall");
     expect(menuSection).toContain("hall-mismatch");
     expect(menuSection).toContain('data-cq-dining-hall={hallId}');
+    expect(menuSection).toContain("cached.location.id === resolvedHall");
     expect(card).toContain("data.location.id !== activeHall");
     expect(card).toContain('data-cq-dining-hall={hallId ?? "unresolved"}');
+    expect(card).toContain("cached.location.id === hallId");
+    const sessionCache = readFileSync("lib/dining/diningMenuSessionCache.ts", "utf8");
+    expect(sessionCache).toContain("hall-mismatch-skip-cache");
   });
 
   it("keeps Mainfare and Butterfield preview copy parallel but distinct", () => {

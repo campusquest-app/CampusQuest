@@ -68,15 +68,21 @@ export function LocationDiningMenuSection({
   const [today] = useState(() => uriTodayIso());
   const dayOptions = useMemo(() => upcomingIsoDates(today, 5), [today]);
   const [date, setDate] = useState(today);
-  const [menu, setMenu] = useState<DiningMenuResponse | null>(() =>
-    resolvedHall ? getDiningMenuSessionCache(resolvedHall, today) : null,
-  );
-  const [loaded, setLoaded] = useState(() =>
-    Boolean(resolvedHall && getDiningMenuSessionCache(resolvedHall, today)),
-  );
-  const [initialLoading, setInitialLoading] = useState(
-    () => Boolean(resolvedHall) && !getDiningMenuSessionCache(resolvedHall!, today),
-  );
+  const [menu, setMenu] = useState<DiningMenuResponse | null>(() => {
+    if (!resolvedHall) return null;
+    const cached = getDiningMenuSessionCache(resolvedHall, today);
+    return cached && cached.location.id === resolvedHall ? cached : null;
+  });
+  const [loaded, setLoaded] = useState(() => {
+    if (!resolvedHall) return false;
+    const cached = getDiningMenuSessionCache(resolvedHall, today);
+    return Boolean(cached && cached.location.id === resolvedHall);
+  });
+  const [initialLoading, setInitialLoading] = useState(() => {
+    if (!resolvedHall) return false;
+    const cached = getDiningMenuSessionCache(resolvedHall, today);
+    return !(cached && cached.location.id === resolvedHall);
+  });
   const [slowLoading, setSlowLoading] = useState(false);
   const [softRefreshing, setSoftRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -139,8 +145,11 @@ export function LocationDiningMenuSection({
       const background =
         Boolean(opts?.background) || (sessionCached != null && loadedKeyRef.current === key);
 
-      if (sessionCached && !opts?.background) {
-        setMenu(sessionCached);
+      const sessionCachedForHall =
+        sessionCached && sessionCached.location.id === hallId ? sessionCached : null;
+
+      if (sessionCachedForHall && !opts?.background) {
+        setMenu(sessionCachedForHall);
         setLoaded(true);
         setInitialLoading(false);
         setSlowLoading(false);
@@ -153,7 +162,7 @@ export function LocationDiningMenuSection({
           date,
           key,
         });
-      } else if (!background && !sessionCached) {
+      } else if (!background && !sessionCachedForHall) {
         // Only blank the UI when we have nothing to show for this target.
         setInitialLoading(true);
         setLoaded(false);

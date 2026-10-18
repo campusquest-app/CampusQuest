@@ -99,6 +99,16 @@ export async function fetchDiningMenuSession(args: {
       const data = await fetchAuthed<DiningMenuResponse>(path, {
         signal: timeoutController.signal,
       });
+      // Never cache another hall's menu under this request key.
+      if (data.location?.id && data.location.id !== args.locationId) {
+        logClient({
+          phase: "hall-mismatch-skip-cache",
+          key,
+          requested: args.locationId,
+          responseHall: data.location.id,
+        });
+        return data;
+      }
       setDiningMenuSessionCache(args.locationId, args.isoDate, data);
       const durationMs = Math.round(
         (typeof performance !== "undefined" ? performance.now() : Date.now()) - started,
