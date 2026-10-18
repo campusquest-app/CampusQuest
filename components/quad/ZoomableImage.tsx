@@ -35,6 +35,10 @@ export type ZoomableImageProps = {
   onPinchActiveChange?: (active: boolean) => void;
   onError?: (event: React.SyntheticEvent<HTMLImageElement>) => void;
   onLoad?: (event: React.SyntheticEvent<HTMLImageElement>) => void;
+  /** Optional override; defaults from `priority` when omitted. */
+  loading?: "eager" | "lazy";
+  /** Optional override; defaults from `priority` when omitted. */
+  fetchPriority?: "high" | "low" | "auto";
 };
 
 type LoadPhase = "idle" | "loading" | "ready" | "error";
@@ -62,6 +66,8 @@ export function ZoomableImage({
   onPinchActiveChange,
   onError,
   onLoad,
+  loading,
+  fetchPriority,
 }: ZoomableImageProps) {
   const frameStyle = useMemo(
     () => feedMediaFrameStyle(width, height, { fillParent }),
@@ -127,9 +133,9 @@ export function ZoomableImage({
         width={typeof width === "number" && width > 0 ? Math.round(width) : undefined}
         height={typeof height === "number" && height > 0 ? Math.round(height) : undefined}
         draggable={false}
-        loading={priority ? "eager" : "lazy"}
+        loading={loading ?? (priority ? "eager" : "lazy")}
         decoding={priority ? "sync" : "async"}
-        fetchPriority={priority ? "high" : "auto"}
+        fetchPriority={fetchPriority ?? (priority ? "high" : "auto")}
         className={`cq-zoomable-image-img cq-quad-feed-media ${imgClassName}`.trim()}
         style={{
           // Keep last frame visible under a failed/pending swap when possible.
