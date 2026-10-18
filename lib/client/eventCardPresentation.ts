@@ -147,6 +147,14 @@ export function eventCardPrimaryActionLabel(item: FeedEvent): string {
   return feedEventIsAthletics(item) ? "View Game" : "View Event";
 }
 
+/** Real RSVP headcount only — never invent attendees. */
+export function eventCardAttendeeCount(item: FeedEvent): number | null {
+  const count =
+    item.kind === "campus" ? item.event.rsvpCount : item.event.rsvpCount ?? null;
+  if (count == null || !Number.isFinite(count) || count < 1) return null;
+  return Math.floor(count);
+}
+
 export function eventShowOnRealmEligible(item: FeedEvent): boolean {
   if (item.kind === "campus") {
     return eventHasMappedLocation({ location: item.event.location });

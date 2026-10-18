@@ -217,10 +217,14 @@ describe("isEventLive", () => {
     );
   });
 
-  it("gates Show on Realm cards on the shared live helper", () => {
+  it("uses compact grid cards and keeps Happening Soon live checks", () => {
     const discovery = readFileSync("components/events/EventDiscoveryCard.tsx", "utf8");
     const happening = readFileSync("components/events/HappeningSoonCarousel.tsx", "utf8");
-    expect(discovery).toContain("isEventLive(item, now)");
+    const css = readFileSync("app/globals.css", "utf8");
+    expect(discovery).toContain("cq-event-card--grid");
+    expect(discovery).toContain("eventCardStatusBadge");
+    expect(discovery).toContain("cq-event-card-hit");
+    expect(css).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
     expect(happening).toContain("isEventLive(item, now)");
     expect(happening).toContain("isEventLive(row.item, now)");
   });

@@ -512,7 +512,7 @@ export function EventsFeed({
   const searching = Boolean(filters.search.trim()) || savedOnly;
   const showForYouSection = filters.timeframe === "for_you" && !searching;
 
-  function renderFeedCard(row: (typeof prioritizedEvents)[number]) {
+  function renderFeedCard(row: (typeof prioritizedEvents)[number], index = 0) {
     const item = row.item;
     return (
       <EventDiscoveryCard
@@ -520,6 +520,7 @@ export function EventsFeed({
         item={item}
         recommendation={row.recommendation}
         interestedPending={rsvping === item.event.id}
+        imagePriority={index < 4}
         onView={() => setActiveDetail(item)}
         onViewOnMap={onViewOnMap ? () => onViewOnMap(item.event.id) : undefined}
         onRsvpGoing={
@@ -671,6 +672,7 @@ export function EventsFeed({
           <div className="cq-events-skeleton cq-events-skeleton--hero" />
           <div className="cq-events-skeleton cq-events-skeleton--row" />
           <div className="cq-events-skeleton cq-events-skeleton--row" />
+          <div className="cq-events-skeleton cq-events-skeleton--row" />
         </div>
       ) : null}
       {!loading && prioritizedEvents.length === 0 ? (
@@ -730,7 +732,9 @@ export function EventsFeed({
               <p className="cq-events-empty-detail">{EVENTS_FOR_YOU_EMPTY_DETAIL}</p>
             </div>
           ) : (
-            <div className="cq-events-feed">{discoverySections.forYou.map(renderFeedCard)}</div>
+            <div className="cq-events-feed">
+              {discoverySections.forYou.map((row, index) => renderFeedCard(row, index))}
+            </div>
           )}
         </section>
       ) : null}
@@ -740,7 +744,9 @@ export function EventsFeed({
           <h2 id="cq-events-more-title" className="cq-events-section-title">
             {searching ? (savedOnly ? "Saved" : "Search results") : showForYouSection ? "More events" : "Upcoming"}
           </h2>
-          <div className="cq-events-feed">{discoverySections.more.map(renderFeedCard)}</div>
+          <div className="cq-events-feed">
+            {discoverySections.more.map((row, index) => renderFeedCard(row, index))}
+          </div>
         </section>
       ) : null}
 
