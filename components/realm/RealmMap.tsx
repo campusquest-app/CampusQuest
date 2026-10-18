@@ -78,8 +78,8 @@ import {
   rankMapRecommendations,
   recommendationScoreBySearchId,
   recommendedMarkerIds,
-  type MapRecommendationItem,
 } from "@/lib/realm/mapRecommendations";
+import { rankHighlightEventRecommendations } from "@/lib/realm/highlightEventRecommendations";
 import {
   consumeRealmMapFocus,
   peekRealmMapFocus,
@@ -990,6 +990,18 @@ export function RealmMap({
     });
   }, [recommendationLandmarks, supplementaryPins, recProfile]);
 
+  const highlightRecommendations = useMemo(
+    () =>
+      rankHighlightEventRecommendations({
+        landmarks: recommendationLandmarks,
+        groups: supplementaryPins,
+        profile: recProfile,
+        now: new Date(),
+        limit: 4,
+      }),
+    [recommendationLandmarks, supplementaryPins, recProfile],
+  );
+
   const forYouMarkerIds = useMemo(() => recommendedMarkerIds(mapRecommendations), [mapRecommendations]);
   const searchRecScores = useMemo(() => recommendationScoreBySearchId(mapRecommendations), [mapRecommendations]);
   const recCounts = useMemo(() => mapRecommendationCounts(mapRecommendations), [mapRecommendations]);
@@ -1014,25 +1026,6 @@ export function RealmMap({
     },
     [mapRecommendations],
   );
-
-  const focusRecommendation = useCallback((item: MapRecommendationItem, openSheet: boolean) => {
-    setSelectedRecommendationId(item.id);
-    setActiveMarkerId(item.markerId);
-    setRailFocus({ lat: item.lat, lng: item.lng });
-    setFlyToForce(true);
-    setMarkerFilter("for_you");
-    if (!openSheet) return;
-
-    const location = locations.find((row) => row.id === item.markerId);
-    if (location) {
-      openLocation(location);
-      return;
-    }
-    const group = supplementaryPins.find((row) => row.groupKey === item.markerId);
-    if (group) {
-      openSupplementaryPin(group);
-    }
-  }, [locations, supplementaryPins, openLocation, openSupplementaryPin]);
 
   const handleTapLandmark = useCallback(
     (id: RealmLocationId) => {
@@ -1727,12 +1720,12 @@ export function RealmMap({
         {highlightsOpen ? (
           <RealmOverlaySheet title="Rhody Highlights" onClose={() => setHighlightsOpen(false)}>
             <RealmHighlightsSheet
-              items={mapRecommendations}
+              recommendations={highlightRecommendations.items}
+              recommendationMode={highlightRecommendations.mode}
               groups={discoveryGroups}
               loading={!mapGroupsLoaded}
-              onOpenRecommendation={(item) => {
-                setHighlightsOpen(false);
-                focusRecommendation(item, true);
+              onOpenEvent={(event) => {
+                openEventDetail(event, true);
               }}
               onViewAthletics={onViewAthletics}
               onFindMyCampus={onFindMyCampus}

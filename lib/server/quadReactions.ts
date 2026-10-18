@@ -1,13 +1,24 @@
 import { ApiError } from "@/lib/server/http";
-import { addXpInternal } from "@/lib/server/services";
 import {
   notifyQuadPostLiked,
   removeQuadPostLikeNotification,
 } from "@/lib/server/quadPostNotifications";
 import { createAdminClient } from "@/lib/server/supabase";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
-import { QUAD_SPARK_XP_AMOUNT } from "@/lib/quadSparkXp";
-import { progressionRewardsEnabled } from "@/lib/featureFlags";
+import { DAILY_EMBER_LIMIT, EMBER_REACTION_TYPE, campusDayWindowForEmbers } from "@/lib/embers";
+import type { EmberAllowance } from "@/lib/embers";
+import {
+  assertEmberGiverEligible,
+  assertEmberNotBlocked,
+  countUserEmbersInWindow,
+  discloseEmberCounts,
+  emberDailyLimitError,
+  emberInsertExceededLimit,
+  emberSelfError,
+  getViewerEmberAllowance,
+  notifyEmberGiven,
+  retractEmberNotification,
+} from "@/lib/server/embers";
 
 export type QuadReactionType = "like" | "spark";
 
@@ -20,8 +31,10 @@ export type QuadPostLikeResult = {
 export type QuadReactionToggleResult = QuadPostLikeResult & {
   reactionType: QuadReactionType;
   active: boolean;
-  sparkCount: number;
+  /** Null unless the viewer authored the post. */
+  sparkCount: number | null;
   currentUserHasSparked: boolean;
+  emberAllowance?: EmberAllowance;
 };
 
 type SupabaseClientLike = ReturnType<typeof createAdminClient>;
@@ -44,7 +57,7 @@ export async function fetchViewerReactionsForPosts(
       .from("quad_post_reactions")
       .select("post_id")
       .eq("user_id", viewerId)
-      .eq("reaction_type", "spark")
+      .eq("reaction_type", EMBER_REACTION_TYPE)
       .in("post_id", postIds),
   ]);
 
@@ -94,11 +107,13 @@ export async function fetchViewerReactionsForPosts(
   return map;
 }
 
-export function enrichQuadPostsWithViewerReactions(
+export async function enrichQuadPostsWithViewerReactions(
   posts: QuadPostApiRow[],
   viewerReactions: Map<string, Set<QuadReactionType>>,
-): QuadPostApiRow[] {
-  return posts.map((post) => {
+  viewerId: string,
+): Promise<QuadPostApiRow[]> {
+  const disclosed = await discloseEmberCounts(posts, viewerId);
+  return disclosed.map((post) => {
     const reactions = viewerReactions.get(post.id);
     const viewer_reactions: QuadReactionType[] = [];
     const currentUserHasLiked = reactions?.has("like") ?? false;
@@ -106,6 +121,7 @@ export function enrichQuadPostsWithViewerReactions(
     if (reactions?.has("spark")) viewer_reactions.push("spark");
     return {
       ...post,
+      hype_count: post.user_id === viewerId ? Math.max(0, post.hype_count ?? 0) : 0,
       viewer_reactions,
       like_count: Math.max(0, post.nod_count ?? 0),
       current_user_has_liked: currentUserHasLiked,
@@ -116,10 +132,10 @@ export function enrichQuadPostsWithViewerReactions(
 async function loadPostForReaction(
   userClient: SupabaseClientLike,
   postId: string,
-): Promise<{ id: string; user_id: string; nod_count: number; hype_count: number }> {
+): Promise<{ id: string; user_id: string; nod_count: number }> {
   const { data, error } = await userClient
     .from("quad_posts")
-    .select("id, user_id, nod_count, hype_count")
+    .select("id, user_id, nod_count")
     .eq("id", postId)
     .maybeSingle();
 
@@ -130,6 +146,19 @@ async function loadPostForReaction(
     throw new ApiError(404, "Post not found.", "QUAD_POST_NOT_FOUND");
   }
   return data;
+}
+
+/** Author-only total. Other viewers receive null so the response cannot be counted. */
+async function emberTotalForViewer(viewerId: string, authorId: string, postId: string): Promise<number | null> {
+  if (viewerId !== authorId) return null;
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin.from("quad_posts").select("hype_count").eq("id", postId).maybeSingle();
+    if (error || !data) return 0;
+    return Math.max(0, Number(data.hype_count ?? 0) || 0);
+  } catch {
+    return 0;
+  }
 }
 
 async function loadUserReactionState(
@@ -144,7 +173,7 @@ async function loadUserReactionState(
       .select("id")
       .eq("post_id", postId)
       .eq("user_id", userId)
-      .eq("reaction_type", "spark")
+      .eq("reaction_type", EMBER_REACTION_TYPE)
       .maybeSingle(),
   ]);
 
@@ -300,20 +329,26 @@ async function removeLegacyQuadReaction(args: {
   }
 }
 
+/**
+ * Toggle an Ember (stored as reaction_type = spark).
+ * Never awards XP — Embers stay independent of paused progression.
+ */
 async function toggleSparkReaction(args: {
   userClient: SupabaseClientLike;
   userId: string;
   postId: string;
   postAuthorId: string;
+  now?: Date;
 }): Promise<void> {
   const { userClient, userId, postId, postAuthorId } = args;
+  const now = args.now ?? new Date();
 
   const { data: existing, error: existingError } = await userClient
     .from("quad_post_reactions")
     .select("id")
     .eq("post_id", postId)
     .eq("user_id", userId)
-    .eq("reaction_type", "spark")
+    .eq("reaction_type", EMBER_REACTION_TYPE)
     .maybeSingle();
 
   if (existingError) {
@@ -329,66 +364,77 @@ async function toggleSparkReaction(args: {
     if (deleteError) {
       throw new ApiError(400, deleteError.message ?? "Could not remove reaction.", "QUAD_REACTION_DELETE_FAILED");
     }
+    await retractEmberNotification({
+      postOwnerUserId: postAuthorId,
+      actorUserId: userId,
+      postId,
+    });
     return;
   }
 
-  const { error: insertError } = await userClient.from("quad_post_reactions").insert({
-    post_id: postId,
-    user_id: userId,
-    reaction_type: "spark",
-  });
+  if (userId === postAuthorId) {
+    throw emberSelfError();
+  }
+
+  const { unlimited } = await assertEmberGiverEligible({ userClient, userId });
+  await assertEmberNotBlocked({ userClient, viewerId: userId, authorId: postAuthorId });
+
+  const { start, end } = campusDayWindowForEmbers(now);
+  if (!unlimited) {
+    const usedToday = await countUserEmbersInWindow({ userClient, userId, start, end });
+    if (usedToday >= DAILY_EMBER_LIMIT) {
+      throw emberDailyLimitError();
+    }
+  }
+
+  const { data: inserted, error: insertError } = await userClient
+    .from("quad_post_reactions")
+    .insert({
+      post_id: postId,
+      user_id: userId,
+      reaction_type: EMBER_REACTION_TYPE,
+    })
+    .select("id")
+    .maybeSingle();
 
   if (insertError) {
     if (insertError.code === "23505") {
-      throw new ApiError(409, "Reaction already exists.", "QUAD_REACTION_DUPLICATE");
+      throw new ApiError(409, "You already gave this post an Ember.", "QUAD_REACTION_DUPLICATE");
+    }
+    if (insertError.message?.includes("ember_daily_limit")) {
+      throw emberDailyLimitError();
+    }
+    if (insertError.message?.includes("ember_self_not_allowed")) {
+      throw emberSelfError();
     }
     throw new ApiError(400, insertError.message ?? "Could not add reaction.", "QUAD_REACTION_INSERT_FAILED");
   }
 
-  await maybeAwardSparkXp({ postId, postAuthorId, sparkerUserId: userId });
+  if (!unlimited) {
+    const usedAfter = await countUserEmbersInWindow({ userClient, userId, start, end });
+    if (emberInsertExceededLimit(usedAfter, false) && inserted?.id) {
+      await userClient.from("quad_post_reactions").delete().eq("id", inserted.id).eq("user_id", userId);
+      throw emberDailyLimitError();
+    }
+  }
+
+  await notifyEmberGiven({
+    postOwnerUserId: postAuthorId,
+    actorUserId: userId,
+    postId,
+  });
 }
 
-async function maybeAwardSparkXp(args: {
+/**
+ * Historical Spark XP path — retained so prior grants stay documented.
+ * Embers must never call this, even if progression is later re-enabled.
+ */
+export async function maybeAwardSparkXp(_args: {
   postId: string;
   postAuthorId: string;
   sparkerUserId: string;
 }): Promise<void> {
-  const { postId, postAuthorId, sparkerUserId } = args;
-  if (!progressionRewardsEnabled()) return;
-  if (postAuthorId === sparkerUserId) return;
-
-  const admin = createAdminClient();
-
-  const { data: existingGrant, error: grantLookupError } = await admin
-    .from("quad_spark_xp_grants")
-    .select("post_id")
-    .eq("post_id", postId)
-    .eq("sparker_user_id", sparkerUserId)
-    .maybeSingle();
-
-  if (grantLookupError) {
-    throw new ApiError(400, grantLookupError.message, "SPARK_XP_LOOKUP_FAILED");
-  }
-  if (existingGrant) return;
-
-  const { error: grantInsertError } = await admin.from("quad_spark_xp_grants").insert({
-    post_id: postId,
-    sparker_user_id: sparkerUserId,
-  });
-
-  if (grantInsertError) {
-    if (grantInsertError.code === "23505") return;
-    throw new ApiError(400, grantInsertError.message, "SPARK_XP_GRANT_FAILED");
-  }
-
-  await addXpInternal({
-    userClient: admin,
-    userId: postAuthorId,
-    amount: QUAD_SPARK_XP_AMOUNT,
-    sourceType: "quad_spark",
-    sourceId: postId,
-    note: "Spark on your Quad post",
-  });
+  return;
 }
 
 export async function toggleQuadPostReaction(args: {
@@ -408,7 +454,7 @@ export async function toggleQuadPostReaction(args: {
       ...result,
       reactionType,
       active: result.currentUserHasLiked,
-      sparkCount: Math.max(0, post.hype_count ?? 0),
+      sparkCount: await emberTotalForViewer(userId, post.user_id, postId),
       currentUserHasSparked: state.sparked,
     };
   } else {
@@ -422,15 +468,17 @@ export async function toggleQuadPostReaction(args: {
 
   const refreshed = await loadPostForReaction(userClient, postId);
   const state = await loadUserReactionState(userClient, postId, userId);
+  const emberAllowance = await getViewerEmberAllowance({ userClient, userId });
 
   return {
     postId,
     reactionType,
     active: state.sparked,
     likeCount: Math.max(0, refreshed.nod_count ?? 0),
-    sparkCount: Math.max(0, refreshed.hype_count ?? 0),
+    sparkCount: await emberTotalForViewer(userId, refreshed.user_id, postId),
     currentUserHasLiked: state.liked,
     currentUserHasSparked: state.sparked,
+    emberAllowance,
   };
 }
 

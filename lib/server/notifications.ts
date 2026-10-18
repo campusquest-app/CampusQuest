@@ -26,6 +26,7 @@ export type CampusNotificationType =
   | "connection_accepted"
   | "friend_request"
   | "quad_post_like"
+  | "quad_post_ember"
   | "quad_post_comment"
   | "quad_post_tag"
   | "quad_post_mention"
@@ -135,7 +136,8 @@ function mapNotificationRow(
     { username: string; displayName: string; avatarUrl: string | null; avatarCustomJson: string | null }
   >,
 ) {
-  const actor = row.actor_id ? actorMap.get(row.actor_id) : undefined;
+  const anonymousEmber = row.type === "quad_post_ember";
+  const actor = !anonymousEmber && row.actor_id ? actorMap.get(row.actor_id) : undefined;
   const friendRequestId = row.friend_request_id ?? row.related_entity_id;
   return {
     id: row.id,
@@ -145,11 +147,11 @@ function mapNotificationRow(
     relatedEntityType: row.related_entity_type,
     relatedEntityId: row.related_entity_id,
     friendRequestId,
-    actorId: row.actor_id ?? null,
-    actorUsername: actor?.username ?? null,
-    actorDisplayName: actor?.displayName ?? null,
-    actorAvatarUrl: actor?.avatarUrl ?? null,
-    actorAvatarCustomJson: actor?.avatarCustomJson ?? null,
+    actorId: anonymousEmber ? null : row.actor_id ?? null,
+    actorUsername: anonymousEmber ? null : actor?.username ?? null,
+    actorDisplayName: anonymousEmber ? null : actor?.displayName ?? null,
+    actorAvatarUrl: anonymousEmber ? null : actor?.avatarUrl ?? null,
+    actorAvatarCustomJson: anonymousEmber ? null : actor?.avatarCustomJson ?? null,
     readAt: row.read_at,
     createdAt: row.created_at,
     isFavorited: Boolean(row.is_favorited),

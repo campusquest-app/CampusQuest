@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { QUAD_FEED_OPTIONS } from "@/lib/client/quadFeedOptions";
+import { quadFeedOptionsByGroup } from "@/lib/client/quadFeedOptions";
 import type { QuadFeedTab } from "@/components/TheQuad";
 
 /**
@@ -64,30 +64,35 @@ export function QuadFeedSelector({
                 : { type: "spring", stiffness: 460, damping: 28, mass: 0.7 }
             }
           >
-            {QUAD_FEED_OPTIONS.map((opt) => {
-              const selected = opt.tab === value;
-              return (
-                <button
-                  key={opt.tab}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={selected}
-                  className={`cq-feed-selector-item${selected ? " cq-feed-selector-item--active" : ""}`}
-                  onClick={() => {
-                    onSelect(opt.tab);
-                    onClose();
-                  }}
-                >
-                  <span className="cq-feed-selector-check" aria-hidden>
-                    {selected ? <Check className="h-[16px] w-[16px]" strokeWidth={3} /> : null}
-                  </span>
-                  <span className="cq-feed-selector-text">
-                    <span className="cq-feed-selector-label">{opt.label}</span>
-                    <span className="cq-feed-selector-hint">{opt.hint}</span>
-                  </span>
-                </button>
-              );
-            })}
+            {quadFeedOptionsByGroup().map((group) => (
+              <div key={group.id} className="cq-feed-selector-group" role="group" aria-label={group.label}>
+                <p className="cq-feed-selector-group-label">{group.label}</p>
+                {group.options.map((opt) => {
+                  const selected = opt.tab === value;
+                  return (
+                    <button
+                      key={opt.tab}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={selected}
+                      className={`cq-feed-selector-item${selected ? " cq-feed-selector-item--active" : ""}`}
+                      onClick={() => {
+                        onSelect(opt.tab);
+                        onClose();
+                      }}
+                    >
+                      <span className="cq-feed-selector-check" aria-hidden>
+                        {selected ? <Check className="h-[16px] w-[16px]" strokeWidth={3} /> : null}
+                      </span>
+                      <span className="cq-feed-selector-text">
+                        <span className="cq-feed-selector-label">{opt.label}</span>
+                        <span className="cq-feed-selector-hint">{opt.hint}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </motion.div>
         </div>
       ) : null}

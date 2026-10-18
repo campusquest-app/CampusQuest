@@ -77,7 +77,6 @@ export function fieldNoteToRecommendationEntity(note: FieldNote): Recommendation
     createdAtMs: note.createdAt,
     engagementCount:
       (note.nodCount ?? 0) +
-      (note.hypeCount ?? 0) * 2 +
       (note.verifyCount ?? 0) +
       (note.assistCount ?? 0) +
       (note.commentCount ?? 0),

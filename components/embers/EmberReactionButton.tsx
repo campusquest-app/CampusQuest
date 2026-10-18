@@ -1,0 +1,106 @@
+"use client";
+
+import { useRef, useState, type PointerEvent, type Ref } from "react";
+import { Flame } from "lucide-react";
+import { EMBER_COLOR_ACTIVE, EMBER_COLOR_IDLE, EMBER_COPY, ownerEmberCountCopy } from "@/lib/embers";
+import { emberActionLabel, remainingEmbersCopy } from "@/lib/client/emberAllowance";
+
+export function EmberReactionButton({
+  active,
+  count,
+  remaining,
+  isOwnPost,
+  unlimited = false,
+  compact,
+  pending,
+  pulse,
+  onToggle,
+  anchorRef,
+}: {
+  active: boolean;
+  count: number;
+  remaining: number | null;
+  isOwnPost: boolean;
+  unlimited?: boolean;
+  compact?: boolean;
+  pending?: boolean;
+  pulse?: boolean;
+  onToggle: () => void;
+  anchorRef?: Ref<HTMLSpanElement>;
+}) {
+  const [hintOpen, setHintOpen] = useState(false);
+  const holdTimer = useRef<number | null>(null);
+
+  const label = emberActionLabel({ active, count, remaining, isOwnPost, unlimited });
+  const ownerTotal = isOwnPost ? ownerEmberCountCopy(count) : null;
+  const title = isOwnPost
+    ? ownerTotal ?? EMBER_COPY.ownPost
+    : active
+      ? EMBER_COPY.removeTitle
+      : EMBER_COPY.giveTitle;
+  const color = active ? EMBER_COLOR_ACTIVE : EMBER_COLOR_IDLE;
+  const hint = isOwnPost
+    ? ownerTotal
+    : unlimited
+      ? EMBER_COPY.explainerBodyUnlimited
+      : remaining == null
+        ? EMBER_COPY.explainerBody
+        : remainingEmbersCopy(remaining);
+
+  function clearHold() {
+    if (holdTimer.current != null) {
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  }
+
+  function onPointerDown(event: PointerEvent<HTMLButtonElement>) {
+    if (event.pointerType === "touch") {
+      holdTimer.current = window.setTimeout(() => {
+        setHintOpen(true);
+      }, 420);
+    }
+  }
+
+  return (
+    <span ref={anchorRef} className="relative inline-flex items-center">
+      {ownerTotal ? <span className="cq-ember-owner-total">{ownerTotal}</span> : null}
+      <button
+        type="button"
+        onClick={() => {
+          if (hintOpen) {
+            setHintOpen(false);
+            return;
+          }
+          onToggle();
+        }}
+        onPointerDown={onPointerDown}
+        onPointerUp={clearHold}
+        onPointerCancel={clearHold}
+        onPointerLeave={clearHold}
+        title={title}
+        aria-label={label}
+        aria-pressed={active}
+        aria-busy={pending}
+        disabled={pending || isOwnPost}
+        className={`cq-feed-reaction cq-ember-reaction group inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-0.5 rounded-lg px-1.5 py-2 transition-colors duration-150 touch-manipulation disabled:cursor-not-allowed disabled:opacity-50 ${
+          compact ? "" : "min-w-[2.75rem] rounded-xl px-2 py-1.5"
+        } ${pulse ? "cq-ember-pulse" : ""}`}
+        style={{ color }}
+      >
+        <Flame
+          className="cq-ember-flame"
+          size={22}
+          strokeWidth={2}
+          color={color}
+          aria-hidden
+        />
+      </button>
+      {hintOpen && hint ? (
+        <span className="cq-ember-hint" role="status">
+          {hint}
+        </span>
+      ) : null}
+    </span>
+  );
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bookmark, Clock, MapPin } from "lucide-react";
+import { Bookmark, Clock, Clock3, MapPin } from "lucide-react";
 import { eventSourceChipLabel } from "@/lib/eventSources/catalog";
 import { EventArtwork } from "@/components/events/EventArtwork";
 import {
@@ -20,7 +20,7 @@ import { formatEventCardWhen, eventDateTimeIso } from "@/lib/client/eventDateTim
 import { useLiveNow } from "@/lib/client/useLiveNow";
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
 import { isInterestedRsvp } from "@/lib/client/eventInterested";
-import type { RankedFeedEvent } from "@/lib/client/happeningSoon";
+import { visibleCarouselIndex, type RankedFeedEvent } from "@/lib/client/happeningSoon";
 
 function HappeningSoonCard({
   item,
@@ -129,6 +129,8 @@ export function HappeningSoonCarousel({
   onToggleInterested?: (item: FeedEvent) => void;
 }) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef({ x: 0, y: 0, moved: false });
+  const frameRef = useRef(0);
   const [index, setIndex] = useState(0);
   const now = useLiveNow();
 
@@ -136,18 +138,26 @@ export function HappeningSoonCarousel({
     const root = scrollerRef.current;
     if (!root) return;
     const cards = Array.from(root.children) as HTMLElement[];
-    if (cards.length === 0) return;
-    const left = root.scrollLeft + root.clientWidth * 0.2;
-    let closest = 0;
-    let closestDist = Number.POSITIVE_INFINITY;
-    cards.forEach((card, cardIndex) => {
-      const dist = Math.abs(card.offsetLeft - left);
-      if (dist < closestDist) {
-        closest = cardIndex;
-        closestDist = dist;
-      }
+    const closest = visibleCarouselIndex(
+      root.scrollLeft,
+      root.clientWidth,
+      cards.map((card) => card.offsetLeft),
+    );
+    setIndex((current) => (current === closest ? current : closest));
+  }, []);
+
+  const onScrollerScroll = useCallback(() => {
+    if (frameRef.current) return;
+    frameRef.current = window.requestAnimationFrame(() => {
+      frameRef.current = 0;
+      syncIndex();
     });
-    setIndex(closest);
+  }, [syncIndex]);
+
+  useEffect(() => {
+    return () => {
+      if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
+    };
   }, []);
 
   const rowIds = rows.map((row) => row.item.event.id).join("|");
@@ -162,8 +172,9 @@ export function HappeningSoonCarousel({
     <section className="cq-happening-soon" aria-labelledby="cq-happening-soon-title">
       <div className="cq-events-section-head">
         <div>
-          <h2 id="cq-happening-soon-title" className="cq-events-section-title">
-            ⚡ Happening Soon
+          <h2 id="cq-happening-soon-title" className="cq-events-section-title cq-events-section-title--icon">
+            <Clock3 className="cq-events-section-icon" strokeWidth={2} aria-hidden />
+            Happening Soon
           </h2>
           <p className="cq-events-section-sub">Can’t-miss events coming up.</p>
         </div>
@@ -173,7 +184,21 @@ export function HappeningSoonCarousel({
         className="cq-happening-soon-scroller"
         data-cq-horizontal-scroll="true"
         data-cq-gesture-block="swipe-tab"
-        onScroll={syncIndex}
+        onScroll={onScrollerScroll}
+        onPointerDown={(event) => {
+          dragRef.current = { x: event.clientX, y: event.clientY, moved: false };
+        }}
+        onPointerMove={(event) => {
+          if (Math.hypot(event.clientX - dragRef.current.x, event.clientY - dragRef.current.y) > 8) {
+            dragRef.current.moved = true;
+          }
+        }}
+        onClickCapture={(event) => {
+          if (!dragRef.current.moved) return;
+          event.preventDefault();
+          event.stopPropagation();
+          dragRef.current.moved = false;
+        }}
       >
         {rows.map((row, rowIndex) => (
           <div key={`${row.item.kind}-${row.item.event.id}`} className="cq-happening-soon-slide">
@@ -209,7 +234,12 @@ export function HappeningSoonCarousel({
               onClick={() => {
                 const root = scrollerRef.current;
                 const card = root?.children[rowIndex] as HTMLElement | undefined;
-                card?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+                const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+                card?.scrollIntoView({
+                  behavior: reduceMotion ? "auto" : "smooth",
+                  inline: "start",
+                  block: "nearest",
+                });
               }}
             />
           ))}

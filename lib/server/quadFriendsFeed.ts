@@ -1,7 +1,7 @@
 import { ApiError } from "@/lib/server/http";
 import { createAdminClient } from "@/lib/server/supabase";
 import { getAcceptedFriendUserIds } from "@/lib/server/friendProfileAccess";
-import { QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
+import { QUAD_POSTS_LEGACY_PROFILE_SELECT, QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
 import { postBelongsInFeed } from "@/lib/quad/localBusinessFeed";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 
@@ -29,7 +29,7 @@ export async function listFriendsQuadPosts(args: {
   if (error && /feed_destination/i.test(`${error.message ?? ""} ${error.details ?? ""}`)) {
     const retry = await userClient
       .from("quad_posts")
-      .select(QUAD_POSTS_WITH_PROFILE_SELECT)
+      .select(QUAD_POSTS_LEGACY_PROFILE_SELECT)
       .in("user_id", friendIds)
       .in("visibility", ["public", "friends"])
       .order("created_at", { ascending: false })

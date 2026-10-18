@@ -1,3 +1,4 @@
+import { EMBER_COPY } from "@/lib/embers";
 import { logNotificationError, logNotificationInfo } from "@/lib/server/notificationDebug";
 import { createNotification } from "@/lib/server/notifications";
 import { createAdminClient } from "@/lib/server/supabase";
@@ -62,6 +63,86 @@ export async function removeQuadPostLikeNotification(args: {
 
   if (error) {
     logNotificationError("quad-post-like:remove-failed", {
+      postId: args.postId,
+      actorUserId: args.actorUserId,
+      postOwnerUserId: args.postOwnerUserId,
+      message: error.message,
+      code: error.code,
+    });
+  }
+}
+
+export async function notifyQuadPostEmbered(args: {
+  postOwnerUserId: string;
+  actorUserId: string;
+  postId: string;
+}) {
+  const { postOwnerUserId, actorUserId, postId } = args;
+  if (postOwnerUserId === actorUserId) return null;
+
+  const admin = createAdminClient();
+  const { data: existing } = await admin
+    .from("notifications")
+    .select("id")
+    .eq("user_id", postOwnerUserId)
+    .eq("type", "quad_post_ember")
+    .eq("actor_id", actorUserId)
+    .eq("related_entity_id", postId)
+    .maybeSingle();
+  if (existing?.id) {
+    logNotificationInfo("quad-post-ember:duplicate-skipped", {
+      postId,
+      actorUserId,
+      postOwnerUserId,
+      notificationId: existing.id,
+    });
+    return existing;
+  }
+
+  try {
+    const notification = await createNotification({
+      userId: postOwnerUserId,
+      type: "quad_post_ember",
+      title: EMBER_COPY.notificationTitle,
+      body: EMBER_COPY.notificationBody,
+      relatedEntityType: "quad_post",
+      relatedEntityId: postId,
+      actorId: actorUserId,
+    });
+    logNotificationInfo("quad-post-ember:created", {
+      postId,
+      actorUserId,
+      postOwnerUserId,
+      notificationId: notification.id,
+    });
+    return notification;
+  } catch (error) {
+    logNotificationError("quad-post-ember:create-failed", {
+      postId,
+      actorUserId,
+      postOwnerUserId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+export async function removeQuadPostEmberNotification(args: {
+  postOwnerUserId: string;
+  actorUserId: string;
+  postId: string;
+}) {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("notifications")
+    .delete()
+    .eq("user_id", args.postOwnerUserId)
+    .eq("type", "quad_post_ember")
+    .eq("actor_id", args.actorUserId)
+    .eq("related_entity_id", args.postId);
+
+  if (error) {
+    logNotificationError("quad-post-ember:remove-failed", {
       postId: args.postId,
       actorUserId: args.actorUserId,
       postOwnerUserId: args.postOwnerUserId,

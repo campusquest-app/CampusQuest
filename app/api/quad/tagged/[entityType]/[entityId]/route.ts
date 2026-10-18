@@ -3,6 +3,7 @@ import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
 import { uuidSchema } from "@/lib/server/validation";
 import { canViewerSeeTaggedPost, isTagEntityType } from "@/lib/postTags";
+import { discloseEmberCounts } from "@/lib/server/embers";
 import { QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
 import { enrichQuadPostsWithTagsAndMentions } from "@/lib/server/postTagService";
 import { getAcceptedFriendUserIds } from "@/lib/server/friendProfileAccess";
@@ -62,7 +63,8 @@ export async function GET(
       }),
     );
 
-    return ok({ posts: await enrichQuadPostsWithTagsAndMentions(visible) });
+    const disclosed = await discloseEmberCounts(visible, auth.user.id);
+    return ok({ posts: await enrichQuadPostsWithTagsAndMentions(disclosed) });
   } catch (error) {
     return fail(error);
   }

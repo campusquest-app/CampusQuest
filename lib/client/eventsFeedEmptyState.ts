@@ -3,6 +3,7 @@ import type { EventsFeedTimeframe } from "@/lib/client/eventsFeedFilters";
 export const EVENTS_STALE_NOTICE = "Some event information may be out of date.";
 export const EVENTS_FOR_YOU_EMPTY_TITLE = "We're still learning what you like.";
 export const EVENTS_FOR_YOU_EMPTY_DETAIL = "Explore events below or update your interests.";
+export const EVENTS_INTEREST_PROMPT = "Add interests in your profile to personalize this list.";
 
 const FILTER_DETAIL = "Try another category or clear your filters to see what else is happening on campus.";
 

@@ -37,7 +37,7 @@ describe("Happening Soon mobile carousel", () => {
 
   it("caps the hero and keeps the title on the image", () => {
     const media = rule(".cq-happening-card-media {");
-    expect(media).toContain("height: clamp(13.125rem, 30vh, 15.625rem)");
+    expect(media).toContain("height: clamp(10.25rem, 23vh, 12.2rem)");
     expect(media).not.toContain("min-height: 14.5rem");
     const image = rule(".cq-happening-card-image,");
     expect(image).toContain("object-fit: cover");
@@ -49,7 +49,7 @@ describe("Happening Soon mobile carousel", () => {
 
   it("keeps a full-width mobile CTA with side and bottom inset", () => {
     const actions = rule(".cq-happening-card-actions {");
-    expect(actions).toContain("padding: 0.75rem 0.875rem 0.875rem");
+    expect(actions).toContain("padding: 0.55rem 0.75rem 0.7rem");
     expect(rule(".cq-happening-card-action {")).toContain("min-height: 3.125rem");
     expect(rule(".cq-happening-card-actions:has(> :only-child) {")).toContain("grid-template-columns: 1fr");
   });
@@ -71,7 +71,7 @@ describe("Happening Soon mobile carousel", () => {
 
   it("hides dots for a single card and clears the bottom nav", () => {
     expect(carousel).toContain("rows.length > 1");
-    expect(rule(".cq-happening-soon-dots {")).toContain("padding: 0.4rem 0 0");
+    expect(rule(".cq-happening-soon-dots {")).toContain("padding: 0.75rem 0 0.85rem");
     const shell = rule(".cq-tab-shell--events {");
     expect(shell).toContain("var(--cq-bottom-nav-h, 5.2rem)");
     expect(shell).toContain("env(safe-area-inset-bottom, 0px)");

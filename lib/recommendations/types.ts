@@ -68,6 +68,8 @@ export type UserRecommendationProfile = {
   inferredAffinities: Record<string, number>;
   followedOrganizationIds: string[];
   followedOrganizationNames: string[];
+  /** Campus events the student already RSVP'd going or checked in to. */
+  attendedEventIds: string[];
   includeDebug: boolean;
 };
 

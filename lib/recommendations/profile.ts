@@ -27,6 +27,7 @@ export function emptyRecommendationProfile(
     inferredAffinities: { ...(overrides?.inferredAffinities ?? {}) },
     followedOrganizationIds: [...(overrides?.followedOrganizationIds ?? [])],
     followedOrganizationNames: [...(overrides?.followedOrganizationNames ?? [])],
+    attendedEventIds: [...(overrides?.attendedEventIds ?? [])],
     includeDebug: overrides?.includeDebug === true,
   };
 }
@@ -78,6 +79,7 @@ export function mergeRecommendationProfiles(
     inferredAffinities: overlay.inferredAffinities ?? base.inferredAffinities,
     followedOrganizationIds: overlay.followedOrganizationIds ?? base.followedOrganizationIds,
     followedOrganizationNames: overlay.followedOrganizationNames ?? base.followedOrganizationNames,
+    attendedEventIds: overlay.attendedEventIds ?? base.attendedEventIds,
     includeDebug: overlay.includeDebug ?? base.includeDebug,
   };
 }

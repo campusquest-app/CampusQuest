@@ -3,7 +3,7 @@ import { athleticsEventEligibleForCampusMap } from "@/lib/eventSources/athletics
 import type { EventsFeedTimeframe } from "@/lib/client/eventsFeedFilters";
 import type { RecommendationReason } from "@/lib/recommendations/types";
 
-export const EVENTS_SEARCH_PLACEHOLDER = "Search events, organizations, or locations";
+export const EVENTS_SEARCH_PLACEHOLDER = "Search events, clubs, or places";
 
 export type EventSyncBanner = {
   kind: "warning" | "fresh";
@@ -122,6 +122,15 @@ const CARD_REASON_CODES = new Set([
   "happening_now",
   "recommended",
 ]);
+
+/** Shown only when ranking actually matched a saved interest. */
+export function eventInterestMatchLabel(
+  recommendation: { matchedInterests?: string[]; reason?: RecommendationReason | null } | null | undefined,
+): string | null {
+  if (!recommendation?.matchedInterests?.length) return null;
+  if (recommendation.reason?.code !== "interest") return null;
+  return "Matches your interests";
+}
 
 export function eventCardRecommendationReason(reason: RecommendationReason | null | undefined): string | null {
   if (!reason?.label?.trim()) return null;

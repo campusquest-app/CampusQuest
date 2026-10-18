@@ -3043,7 +3043,6 @@ export function Dashboard() {
           renderPilotCampusGate(
             <EventsFeed
               personalization={onboardingPreferences}
-              showAdminSyncLink={moderationAdminNavVisible(pilotCampusState)}
               onViewOnMap={openEventOnMap}
               onOpenOrganization={openOrganizationFromEvents}
             />,

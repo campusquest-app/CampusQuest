@@ -114,22 +114,18 @@ export function TopNav({
                 aria-label="Choose feed"
               >
                 <h1 className="cq-brand-title cq-brand-lockup font-display">
-                  <span className="cq-brand-title-glow" aria-hidden />
                   <span className="cq-brand-title-text">CampusQuest</span>
-                  <span className="cq-brand-title-glimmer" aria-hidden />
                 </h1>
                 <ChevronDown
                   className="cq-brand-chevron"
-                  strokeWidth={2.6}
+                  strokeWidth={2.25}
                   data-open={feedMenuOpen ? "true" : undefined}
                   aria-hidden
                 />
               </button>
             ) : (
               <h1 className="cq-brand-title cq-brand-lockup font-display">
-                <span className="cq-brand-title-glow" aria-hidden />
                 <span className="cq-brand-title-text">CampusQuest</span>
-                <span className="cq-brand-title-glimmer" aria-hidden />
               </h1>
             )}
           </div>

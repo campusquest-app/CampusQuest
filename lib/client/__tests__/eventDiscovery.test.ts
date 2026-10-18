@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   countActiveEventFilters,
   eventCardRecommendationReason,
+  eventInterestMatchLabel,
   eventHasMappedLocation,
   eventsSyncBanner,
   scoreEventsSearch,
@@ -125,5 +126,27 @@ describe("event discovery helpers", () => {
     );
     expect(eventCardRecommendationReason({ code: "popular", label: "Popular on campus" })).toBe("Popular on campus");
     expect(eventCardRecommendationReason({ code: "interest", label: "   " })).toBeNull();
+  });
+
+  it("labels an interest match only when a saved interest matched", () => {
+    expect(eventInterestMatchLabel(null)).toBeNull();
+    expect(
+      eventInterestMatchLabel({
+        matchedInterests: ["music"],
+        reason: { code: "interest", label: "Because you're interested in Music" },
+      }),
+    ).toBe("Matches your interests");
+    expect(
+      eventInterestMatchLabel({
+        matchedInterests: [],
+        reason: { code: "popular", label: "Popular on campus" },
+      }),
+    ).toBeNull();
+    expect(
+      eventInterestMatchLabel({
+        matchedInterests: ["music"],
+        reason: { code: "popular", label: "Popular on campus" },
+      }),
+    ).toBeNull();
   });
 });

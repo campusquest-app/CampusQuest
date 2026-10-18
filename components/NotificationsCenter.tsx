@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import {
   BadgeCheck,
   Bell,
+  Flame,
   CalendarDays,
   Megaphone,
   MessageCircle,
@@ -458,6 +459,7 @@ export function NotificationsCenter({
           const isGroupedConversation = item.messageCount > 1;
           const isFriendRequest = notification.type === "friend_request";
           const isTagApproval = notification.type === "quad_post_tag_approval";
+          const isEmberNotice = notification.type === "quad_post_ember";
           const isActorSocial =
             isFriendRequest ||
             isTagApproval ||
@@ -473,6 +475,7 @@ export function NotificationsCenter({
 
           const isQuadPostNotif =
             notification.type === "quad_post_like" ||
+            notification.type === "quad_post_ember" ||
             notification.type === "quad_post_comment" ||
             notification.type === "quad_post_tag" ||
             notification.type === "quad_post_mention" ||
@@ -485,8 +488,9 @@ export function NotificationsCenter({
           const canOpenDestination = Boolean(onOpenDestination) && notificationHasDestination(notification);
           const canOpen = canOpenPost || canOpenDestination;
           const showActorAvatar =
-            isActorSocial || (Boolean(notification.actorId) && Boolean(notification.actorUsername));
-          const TypeIcon = NOTIFICATION_ICONS[notificationIconKind(notification.type)];
+            !isEmberNotice &&
+            (isActorSocial || (Boolean(notification.actorId) && Boolean(notification.actorUsername)));
+          const TypeIcon = isEmberNotice ? Flame : NOTIFICATION_ICONS[notificationIconKind(notification.type)];
 
           return (
             <article
@@ -541,7 +545,7 @@ export function NotificationsCenter({
                       className={`cq-notif-icon cq-notif-icon--${notificationIconKind(notification.type)} ${isInbox ? "h-11 w-11" : "h-10 w-10"}`}
                       aria-hidden
                     >
-                      <TypeIcon size={20} strokeWidth={2} />
+                      <TypeIcon size={20} strokeWidth={2} color={isEmberNotice ? "#A78BFA" : undefined} />
                     </div>
                   )}
                   {isUnread ? <span className="cq-notif-unread-dot" aria-hidden /> : null}

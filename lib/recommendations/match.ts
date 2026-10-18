@@ -99,19 +99,28 @@ const KEYWORD_RULES: KeywordRule[] = [
   { pattern: /\bgallery\b|\bexhibit\b|\bart show\b|\bfine arts\b/, interests: ["art"], communities: ["fine_arts"] },
   { pattern: /\besports\b|\bvideo game\b|\bgaming\b|\bsmash bros\b/, interests: ["gaming"] },
   { pattern: /\byoga\b|\bworkout\b|\bfitness\b|\bgym class\b|\brec center\b|\bwellness\b|\bmindfulness\b/, interests: ["fitness", "wellness"] },
-  { pattern: /\bhike\b|\boutdoors\b|\btrail\b|\bkayak\b|\bcamping\b/, interests: ["outdoors"] },
-  { pattern: /\bvolunteer\b|\bcommunity service\b|\bphilanthropy\b|\bhabitat for humanity\b/, interests: ["volunteering"] },
+  { pattern: /\bhike\b|\bhiking\b|\boutdoors?\b|\boutdoor recreation\b|\btrail\b|\bkayak\b|\bcamping\b|\benvironmental\b/, interests: ["outdoors"] },
+  { pattern: /\bvolunteer\b|\bcommunity service\b|\bphilanthropy\b|\bhabitat for humanity\b|\bfundraiser\b/, interests: ["volunteering"] },
   { pattern: /\bcomputer science\b|\bcoding\b|\bsoftware\b|\bai\b|\bmachine learning\b/, interests: ["tech"], communities: ["computer_science"] },
   { pattern: /\bengineering\b/, communities: ["engineering"], interests: ["academics"] },
   { pattern: /\bbusiness school\b|\bcollege of business\b|\bentrepreneur/, communities: ["business"], interests: ["career", "entrepreneurship"] },
-  { pattern: /\bcultural (night|festival|event)|international food|heritage month/, interests: ["culture"] },
+  {
+    pattern:
+      /\bcultural (night|festival|event|celebration)\b|\binternational food\b|\bheritage month\b|\blanguage exchange\b|\binternational student\b/,
+    interests: ["culture"],
+  },
   { pattern: /\bmixer\b|\bsocial hour\b|\bmeet and greet\b/, interests: ["social"] },
   { pattern: /\bleadership workshop\b|\bprofessional development\b|\blinkedin\b/, interests: ["professional_development", "career"] },
   { pattern: /\bgraduate student\b|\bgrad school\b|\bmasters\b|\bphd\b/, communities: ["graduate_students"] },
   { pattern: /\binternational student\b/, communities: ["international_students"] },
   { pattern: /\bfraternit|\bsororit|\bgreek life\b/, communities: ["greek_life"] },
   { pattern: /\bhealth sciences\b|\bnursing\b|\bpharmacy\b|\bkinesiology\b/, communities: ["health_sciences"] },
-  { pattern: /\blecture\b|\bseminar\b|\btutoring\b|\bstudy hall\b/, interests: ["academics"] },
+  {
+    pattern:
+      /\blecture\b|\bguest lecture\b|\bseminar\b|\btutoring\b|\bstudy hall\b|\bstudy (session|group|skills)\b|\bacademic workshop\b|\bresearch presentation\b/,
+    interests: ["academics"],
+  },
+  { pattern: /\bdance (workshop|performance|showcase)\b|\btheater production\b|\btheatre production\b/, interests: ["theater"] },
   { pattern: /\btournament\b|\bcompetition\b|\bcontest\b/, interests: ["competitions"] },
   { pattern: /\bfood truck\b|\btaste of\b|\bcooking\b|\bdining\b/, interests: ["food"] },
 ];

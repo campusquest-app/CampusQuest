@@ -39,6 +39,20 @@ describe("getCampusDayWindow (America/New_York)", () => {
     expect(end.toISOString()).toBe("2026-01-16T05:00:00.000Z");
   });
 
+  it("uses the next NY midnight so spring-forward days are 23 hours", () => {
+    const now = new Date("2026-03-08T16:00:00.000Z");
+    const { start, end } = getCampusDayWindow(now);
+    expect(start.toISOString()).toBe("2026-03-08T05:00:00.000Z");
+    expect(end.toISOString()).toBe("2026-03-09T04:00:00.000Z");
+  });
+
+  it("uses the next NY midnight so fall-back days are 25 hours", () => {
+    const now = new Date("2026-11-01T16:00:00.000Z");
+    const { start, end } = getCampusDayWindow(now);
+    expect(start.toISOString()).toBe("2026-11-01T04:00:00.000Z");
+    expect(end.toISOString()).toBe("2026-11-02T05:00:00.000Z");
+  });
+
   it("isOnCampusDay matches events on today's NY date only", () => {
     const now = new Date("2026-07-09T15:00:00.000Z"); // July 9, 11:00 EDT
     expect(isOnCampusDay(new Date("2026-07-09T22:30:00.000Z"), now)).toBe(true); // 6:30 PM EDT

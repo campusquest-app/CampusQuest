@@ -27,6 +27,7 @@ import {
 import { hydrateQuadPostCommentsSafe } from "@/lib/client/quadCommentsHydration";
 import { fetchQuadPostById } from "@/lib/client/quadPostsClient";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
+import { fetchEmberAllowance } from "@/lib/client/emberAllowance";
 import { submitQuadComment } from "@/lib/client/quadCommentActions";
 import { avatarPayloadForDisplay, getMomentCaption } from "@/lib/realm/momentDisplay";
 import type { RealmLocation, RealmMoment } from "@/lib/realm/locations";
@@ -78,6 +79,10 @@ export function RealmArchiveExperience({
   const dragXRef = useRef(0);
   const pointerIdRef = useRef<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    void fetchEmberAllowance().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     setIndex(0);

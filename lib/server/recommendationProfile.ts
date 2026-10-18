@@ -37,17 +37,23 @@ function uniqueStrings(values: Array<string | null | undefined>): string[] {
   return out;
 }
 
-async function loadOwnRsvpSignals(userClient: ClientLike, userId: string): Promise<RecommendationBehaviorSignal[]> {
+async function loadOwnRsvpSignals(
+  userClient: ClientLike,
+  userId: string,
+): Promise<{ signals: RecommendationBehaviorSignal[]; attendedEventIds: string[] }> {
   const { data, error } = await userClient
     .from("event_rsvps")
     .select("event_id, status")
     .eq("user_id", userId)
     .in("status", ["going", "interested"])
     .limit(40);
-  if (error || !Array.isArray(data) || data.length === 0) return [];
+  if (error || !Array.isArray(data) || data.length === 0) return { signals: [], attendedEventIds: [] };
   const rsvpRows = asRows(data);
   const eventIds = uniqueStrings(rsvpRows.map((row) => String(row.event_id ?? "")));
-  if (eventIds.length === 0) return [];
+  const attendedEventIds = uniqueStrings(
+    rsvpRows.filter((row) => row.status === "going").map((row) => String(row.event_id ?? "")),
+  );
+  if (eventIds.length === 0) return { signals: [], attendedEventIds };
   const { data: events } = await userClient
     .from("campus_events")
     .select("id, title, description, category, location_name")
@@ -73,7 +79,7 @@ async function loadOwnRsvpSignals(userClient: ClientLike, userId: string): Promi
       topicIds,
     });
   }
-  return signals;
+  return { signals, attendedEventIds };
 }
 
 async function loadOwnOrgSignals(userClient: ClientLike, userId: string): Promise<{
@@ -125,7 +131,10 @@ async function loadOwnOrgSignals(userClient: ClientLike, userId: string): Promis
   return { signals, followedOrganizationIds, followedOrganizationNames };
 }
 
-async function loadOwnCheckInSignals(userClient: ClientLike, userId: string): Promise<RecommendationBehaviorSignal[]> {
+async function loadOwnCheckInSignals(
+  userClient: ClientLike,
+  userId: string,
+): Promise<{ signals: RecommendationBehaviorSignal[]; attendedEventIds: string[] }> {
   const { data, error } = await userClient
     .from("qr_scans")
     .select("qr_code_id, status")
@@ -133,10 +142,10 @@ async function loadOwnCheckInSignals(userClient: ClientLike, userId: string): Pr
     .in("status", ["success", "admin_bypass"])
     .order("scanned_at", { ascending: false })
     .limit(25);
-  if (error || !Array.isArray(data) || data.length === 0) return [];
+  if (error || !Array.isArray(data) || data.length === 0) return { signals: [], attendedEventIds: [] };
   const scanRows = asRows(data);
   const qrIds = uniqueStrings(scanRows.map((row) => String(row.qr_code_id ?? "")));
-  if (qrIds.length === 0) return [];
+  if (qrIds.length === 0) return { signals: [], attendedEventIds: [] };
   const { data: codes } = await userClient
     .from("qr_codes")
     .select("id, title, event_id, type, qr_type")
@@ -150,7 +159,7 @@ async function loadOwnCheckInSignals(userClient: ClientLike, userId: string): Pr
       })
       .map((row) => String(row.event_id)),
   );
-  if (eventIds.length === 0) return [];
+  if (eventIds.length === 0) return { signals: [], attendedEventIds: eventIds };
   const { data: events } = await userClient
     .from("campus_events")
     .select("id, title, description, category")
@@ -169,7 +178,7 @@ async function loadOwnCheckInSignals(userClient: ClientLike, userId: string): Pr
     if (topicIds.length === 0) continue;
     signals.push({ kind: "check_in", topicIds });
   }
-  return signals;
+  return { signals, attendedEventIds: eventIds };
 }
 
 export async function loadUserRecommendationProfile(args: {
@@ -198,13 +207,19 @@ export async function loadUserRecommendationProfile(args: {
       .select("interests, communities, institution_id, school_name, major")
       .eq("user_id", userId)
       .maybeSingle(),
-    loadOwnRsvpSignals(args.userClient, userId).catch(() => [] as RecommendationBehaviorSignal[]),
+    loadOwnRsvpSignals(args.userClient, userId).catch(() => ({
+      signals: [] as RecommendationBehaviorSignal[],
+      attendedEventIds: [] as string[],
+    })),
     loadOwnOrgSignals(args.userClient, userId).catch(() => ({
       signals: [] as RecommendationBehaviorSignal[],
       followedOrganizationIds: [] as string[],
       followedOrganizationNames: [] as string[],
     })),
-    loadOwnCheckInSignals(args.userClient, userId).catch(() => [] as RecommendationBehaviorSignal[]),
+    loadOwnCheckInSignals(args.userClient, userId).catch(() => ({
+      signals: [] as RecommendationBehaviorSignal[],
+      attendedEventIds: [] as string[],
+    })),
   ]);
 
   const profile = (profileResult.data ?? {}) as Record<string, unknown>;
@@ -224,12 +239,13 @@ export async function loadUserRecommendationProfile(args: {
     },
     {
       inferredAffinities: inferAffinitiesFromSignals([
-        ...rsvpSignals,
+        ...rsvpSignals.signals,
         ...orgBundle.signals,
-        ...checkInSignals,
+        ...checkInSignals.signals,
       ]),
       followedOrganizationIds: orgBundle.followedOrganizationIds,
       followedOrganizationNames: orgBundle.followedOrganizationNames,
+      attendedEventIds: uniqueStrings([...rsvpSignals.attendedEventIds, ...checkInSignals.attendedEventIds]),
       includeDebug: false,
     },
   );

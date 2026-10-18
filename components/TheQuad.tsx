@@ -13,6 +13,7 @@ import {
   type QuadFeedType,
 } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
+import { fetchEmberAllowance } from "@/lib/client/emberAllowance";
 import { submitQuadComment } from "@/lib/client/quadCommentActions";
 import { fetchQuadHomePosts, fetchQuadFriendsPosts, fetchQuadCommunityPosts, fetchLocalBusinessPosts, fetchOrganizationPosts } from "@/lib/client/quadPostsClient";
 import { subscribeSocialSync } from "@/lib/client/socialSync";
@@ -79,12 +80,7 @@ function enrichNote(note: FieldNote): FieldNote {
 }
 
 function trendingScore(note: FieldNote): number {
-  return (
-    note.nodCount +
-    (note.hypeCount ?? note.vouchCount ?? 0) * 2 +
-    (note.verifyCount ?? 0) * 2 +
-    (note.assistCount ?? 0)
-  );
+  return note.nodCount + (note.verifyCount ?? 0) * 2 + (note.assistCount ?? 0);
 }
 
 export function TheQuad({
@@ -146,6 +142,9 @@ export function TheQuad({
   onMessageSeller?: (seller: MarketplaceSeller) => void;
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
+  const feedCacheRef = useRef(new Map<string, FieldNote[]>());
+  const scrollByFeedRef = useRef(new Map<string, number>());
+  const feedTabRef = useRef(feedTab);
   const [campusListings, setCampusListings] = useState<MarketplaceListing[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
@@ -182,6 +181,10 @@ export function TheQuad({
       document.documentElement.style.removeProperty("--cq-topnav-h");
       document.documentElement.style.removeProperty("--cq-quad-header-h");
     };
+  }, []);
+
+  useEffect(() => {
+    void fetchEmberAllowance().catch(() => undefined);
   }, []);
 
   const baseFeedType: QuadFeedType = feedTab === "friends" ? "friends" : "public";
@@ -239,8 +242,10 @@ export function TheQuad({
       return;
     }
     if (!silent) {
-      setFeedLoading(true);
       setFeedError(null);
+      if ((feedCacheRef.current.get(feedTab)?.length ?? 0) === 0) {
+        setFeedLoading(true);
+      }
     }
 
     try {
@@ -392,9 +397,28 @@ export function TheQuad({
   }, [refresh]);
 
   useEffect(() => {
-    setFeedLoading(true);
-    setNotes([]);
-  }, [feedTab]);
+    if (notes.length > 0 && feedTabRef.current === feedTab) {
+      feedCacheRef.current.set(feedTab, notes);
+    }
+  }, [notes, feedTab]);
+
+  useEffect(() => {
+    const previous = feedTabRef.current;
+    if (previous === feedTab) return;
+    if (notes.length > 0) feedCacheRef.current.set(previous, notes);
+    scrollByFeedRef.current.set(previous, window.scrollY);
+    feedTabRef.current = feedTab;
+    const y = scrollByFeedRef.current.get(feedTab) ?? 0;
+    const cached = feedCacheRef.current.get(feedTab);
+    if (cached && cached.length > 0) {
+      setNotes(cached);
+      setFeedLoading(false);
+    } else {
+      setFeedLoading(true);
+      setNotes([]);
+    }
+    window.requestAnimationFrame(() => window.scrollTo({ top: y, behavior: "auto" }));
+  }, [feedTab, notes]);
 
   useEffect(() => {
     if (!sessionReady || !hasClientAccessSession()) return undefined;
@@ -476,7 +500,7 @@ export function TheQuad({
     if (feedTab === "trending") {
       return {
         title: "No trending posts yet",
-        body: "Like, Spark, and verify posts to push campus moments to the top.",
+        body: "Like, Ember, and verify posts to push campus moments to the top.",
       };
     }
     if (isCommunityFeedTab(feedTab)) {

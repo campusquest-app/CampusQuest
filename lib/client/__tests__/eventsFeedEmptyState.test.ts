@@ -132,15 +132,16 @@ describe("EventsFeed student vs admin controls", () => {
     expect(feedSrc).toContain('syncBanner?.kind === "warning"');
   });
 
-  it("keeps Admin sync status out of the zero-results state and behind the admin flag", () => {
-    expect(feedSrc).toContain("showAdminSyncLink = false");
+  it("keeps Admin sync status off the student events screen", () => {
+    expect(feedSrc).not.toContain("showAdminSyncLink");
+    expect(feedSrc).not.toContain("Admin sync status");
     const zeroStart = feedSrc.indexOf('className="cq-events-zero"');
     const zeroEnd = feedSrc.indexOf("HappeningSoonCarousel", zeroStart);
     const zeroBlock = feedSrc.slice(zeroStart, zeroEnd);
     expect(zeroBlock).toContain("Clear filters");
-    expect(zeroBlock).not.toContain("Admin sync status");
-    expect(zeroBlock).not.toContain("showAdminSyncLink");
-    expect(feedSrc).toMatch(/\{showAdminSyncLink \? \([\s\S]*Admin sync status/);
+    const adminHome = readFileSync(join(process.cwd(), "components/admin/AdminDashboardHome.tsx"), "utf8");
+    expect(adminHome).toContain('label="Admin sync status"');
+    expect(adminHome).toContain('onNavigate("urinvolved")');
   });
 
   it("does not clear already-loaded URInvolved events on a failed refresh", () => {

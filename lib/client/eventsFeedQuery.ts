@@ -7,10 +7,10 @@ import {
 } from "@/lib/client/eventCardPresentation";
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
 import { feedEventLocationText } from "@/lib/client/eventFeedTypes";
-import { matchesEventsSearch } from "@/lib/client/eventsFeedFilters";
 import {
-  isUpcomingEvent,
+  eventIsCurrentOrUpcoming,
   matchesAnyEventsWhen,
+  matchesEventsSearch,
   type EventsFeedTimeframe,
   type EventsWhenFilter,
 } from "@/lib/client/eventsFeedFilters";
@@ -64,7 +64,19 @@ export function eventPassesListFilters(
   savedOnly = false,
   now: Date = new Date(),
 ): boolean {
-  if (!isUpcomingEvent(item.event.startsAt)) return false;
+  if (
+    !eventIsCurrentOrUpcoming(
+      {
+        startsAt: item.event.startsAt,
+        endsAt: item.event.endsAt,
+        isCancelled: item.event.isCancelled,
+        title: item.event.title,
+      },
+      now,
+    )
+  ) {
+    return false;
+  }
   if (!matchesAnyEventsWhen(item.event.startsAt, filters.when, now)) return false;
   if (savedOnly && !feedEventIsSaved(item)) return false;
   if (!matchesEventsSearch(eventSearchHaystack(item), filters.search)) {

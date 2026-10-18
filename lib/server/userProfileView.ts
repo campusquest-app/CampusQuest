@@ -112,7 +112,7 @@ async function listAuthorQuadPosts(args: {
   const posts = (data ?? []) as unknown as QuadPostApiRow[];
   const postIds = posts.map((post) => post.id);
   const viewerReactions = await fetchViewerReactionsForPosts(args.userClient, args.viewerId, postIds);
-  return enrichQuadPostsWithViewerReactions(posts, viewerReactions);
+  return await enrichQuadPostsWithViewerReactions(posts, viewerReactions, args.viewerId);
 }
 
 async function countMutualFriends(args: {

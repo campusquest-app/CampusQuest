@@ -591,12 +591,13 @@ export function optimisticToggleLike(note: FieldNote, userId: string): boolean {
 
 export function optimisticToggleSpark(note: FieldNote, userId: string): boolean {
   migrateNote(note);
+  const ownsPost = note.authorId === userId;
   if (note.hypeByUserIds.has(userId)) {
     note.hypeByUserIds.delete(userId);
-    note.hypeCount = Math.max(0, note.hypeCount - 1);
+    if (ownsPost) note.hypeCount = Math.max(0, note.hypeCount - 1);
   } else {
     note.hypeByUserIds.add(userId);
-    note.hypeCount += 1;
+    if (ownsPost) note.hypeCount += 1;
   }
   note.vouchByUserIds = note.hypeByUserIds;
   note.vouchCount = note.hypeCount;
@@ -608,15 +609,17 @@ export function applyServerReactionState(
   userId: string,
   state: {
     likeCount: number;
-    sparkCount: number;
+    sparkCount: number | null;
     currentUserHasLiked: boolean;
     currentUserHasSparked: boolean;
   },
 ): void {
   migrateNote(note);
   note.nodCount = state.likeCount;
-  note.hypeCount = state.sparkCount;
-  note.vouchCount = state.sparkCount;
+  if (state.sparkCount != null && note.authorId === userId) {
+    note.hypeCount = state.sparkCount;
+    note.vouchCount = state.sparkCount;
+  }
   if (state.currentUserHasLiked) note.nodByUserIds.add(userId);
   else note.nodByUserIds.delete(userId);
   if (state.currentUserHasSparked) note.hypeByUserIds.add(userId);
@@ -629,7 +632,7 @@ export function applyServerReactionStateToAllCopies(
   userId: string,
   state: {
     likeCount: number;
-    sparkCount: number;
+    sparkCount: number | null;
     currentUserHasLiked: boolean;
     currentUserHasSparked: boolean;
   },

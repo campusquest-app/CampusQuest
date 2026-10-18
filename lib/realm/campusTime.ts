@@ -8,7 +8,9 @@ export const CAMPUS_TIME_ZONE = "America/New_York";
  */
 export function getCampusDayWindow(now: Date = new Date()): { start: Date; end: Date } {
   const startMs = campusMidnightUtcMs(now);
-  return { start: new Date(startMs), end: new Date(startMs + 24 * 60 * 60 * 1000) };
+  // Next America/New_York midnight — not +24h — so DST 23h/25h days stay correct.
+  const endMs = campusMidnightUtcMs(new Date(startMs + 36 * 60 * 60 * 1000));
+  return { start: new Date(startMs), end: new Date(endMs) };
 }
 
 /** True when the instant falls on today's campus (NY) calendar day. */

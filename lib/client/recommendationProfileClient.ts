@@ -15,23 +15,33 @@ type CacheEntry = {
 const CACHE_TTL_MS = 120_000;
 let cache: CacheEntry | null = null;
 let inFlight: Promise<UserRecommendationProfile | null> | null = null;
+let generation = 0;
 
-export async function fetchRecommendationProfile(): Promise<UserRecommendationProfile | null> {
-  if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.profile;
-  if (inFlight) return inFlight;
-  inFlight = (async () => {
+export async function fetchRecommendationProfile(options?: {
+  force?: boolean;
+}): Promise<UserRecommendationProfile | null> {
+  if (options?.force) {
+    cache = null;
+    generation += 1;
+  }
+  if (!options?.force && cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.profile;
+  if (!options?.force && inFlight) return inFlight;
+  const requestGeneration = generation;
+  const flight: { current: Promise<UserRecommendationProfile | null> | null } = { current: null };
+  flight.current = (async () => {
     try {
       const data = await fetchAuthed<{ profile: UserRecommendationProfile }>("/api/me/recommendation-profile");
       const profile = data.profile;
-      if (profile) cache = { at: Date.now(), profile };
+      if (profile && requestGeneration === generation) cache = { at: Date.now(), profile };
       return profile ?? null;
     } catch {
-      return cache?.profile ?? null;
+      return requestGeneration === generation ? (cache?.profile ?? null) : null;
     } finally {
-      inFlight = null;
+      if (inFlight === flight.current) inFlight = null;
     }
   })();
-  return inFlight;
+  inFlight = flight.current;
+  return flight.current;
 }
 
 export function seedRecommendationProfile(
@@ -51,4 +61,5 @@ export function combineRecommendationProfile(
 
 export function clearRecommendationProfileCache() {
   cache = null;
+  generation += 1;
 }

@@ -9,14 +9,63 @@ import { assertImageBytesMatchDeclaredMime } from "@/lib/server/sniffImageMime";
  */
 export const QUAD_POST_PROFILE_EMBED = "profiles!quad_posts_user_id_fkey";
 
-export const QUAD_POSTS_WITH_PROFILE_SELECT = `
-  *,
-  ${QUAD_POST_PROFILE_EMBED} (
+/**
+ * Feed reads omit hype_count. Ember totals are attached for the author only.
+ * The legacy select remains for databases that predate newer columns.
+ */
+export const QUAD_POST_READER_COLUMNS = `
+  id,
+  user_id,
+  body,
+  proof_url,
+  media_type,
+  poster_url,
+  media_duration_seconds,
+  media_has_audio,
+  media_width,
+  media_height,
+  media_mime_type,
+  media_file_size_bytes,
+  media_processing_status,
+  media_storage_path,
+  visibility,
+  feed_destination,
+  ram_marks,
+  related_activity_id,
+  related_quest_slug,
+  author_streak_days,
+  location_id,
+  location_name,
+  posted_as_type,
+  posted_as_id,
+  nod_count,
+  verify_count,
+  assist_count,
+  comments_count,
+  media_count,
+  cover_media_id,
+  is_review_demo,
+  created_at,
+  updated_at
+`;
+
+const QUAD_POST_PROFILE_FIELDS = `
+  (
     display_name,
     username,
     avatar_custom_json,
     avatar_url
   )
+`;
+
+export const QUAD_POSTS_WITH_PROFILE_SELECT = `
+  ${QUAD_POST_READER_COLUMNS},
+  ${QUAD_POST_PROFILE_EMBED} ${QUAD_POST_PROFILE_FIELDS}
+`;
+
+export const QUAD_POSTS_LEGACY_PROFILE_SELECT = `
+  *,
+  ${QUAD_POST_PROFILE_EMBED} ${QUAD_POST_PROFILE_FIELDS}
 `;
 
 const DATA_IMAGE_RE = /^data:(image\/(?:jpeg|jpg|png|webp|gif));base64,(.+)$/i;

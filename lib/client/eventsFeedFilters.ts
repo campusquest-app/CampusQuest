@@ -17,6 +17,27 @@ export function isUpcomingEvent(startsAt: string | null, graceMs = EVENTS_PAST_G
   return new Date(startsAt).getTime() >= Date.now() - graceMs;
 }
 
+export function eventIsCancelled(input: { isCancelled?: boolean | null; title?: string | null }): boolean {
+  if (input.isCancelled) return true;
+  return /\bcancell?ed\b/i.test(input.title ?? "");
+}
+
+/** Still on the calendar: not cancelled, and either still running or not past the start grace. */
+export function eventIsCurrentOrUpcoming(
+  input: { startsAt: string | null; endsAt?: string | null; isCancelled?: boolean | null; title?: string | null },
+  now: Date = new Date(),
+): boolean {
+  if (eventIsCancelled(input)) return false;
+  if (input.endsAt) {
+    const end = new Date(input.endsAt).getTime();
+    if (Number.isFinite(end)) return end >= now.getTime();
+  }
+  if (!input.startsAt) return true;
+  const start = new Date(input.startsAt).getTime();
+  if (!Number.isFinite(start)) return false;
+  return start >= now.getTime() - EVENTS_PAST_GRACE_MS;
+}
+
 function campusWeekdayIndex(now: Date): number {
   const name = new Intl.DateTimeFormat("en-US", {
     timeZone: CAMPUS_TIME_ZONE,

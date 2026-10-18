@@ -73,7 +73,7 @@ export async function PATCH(
     });
 
     const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, [postId]);
-    const enriched = enrichQuadPostsWithViewerReactions([post], viewerReactions);
+    const enriched = await enrichQuadPostsWithViewerReactions([post], viewerReactions, auth.user.id);
 
     return ok({ post: enriched[0] ?? post });
   } catch (error) {

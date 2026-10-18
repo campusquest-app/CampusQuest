@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart } from "lucide-react";
+import { Heart, Sparkles } from "lucide-react";
 import { EventArtwork } from "@/components/events/EventArtwork";
 import { eventSourceChipLabel } from "@/lib/eventSources/catalog";
 import {
@@ -17,7 +17,7 @@ import {
 } from "@/lib/client/eventCardPresentation";
 import { formatEventCardWhen, formatEventDateTimeRange, eventDateTimeIso } from "@/lib/client/eventDateTime";
 import { useLiveNow } from "@/lib/client/useLiveNow";
-import { eventCardRecommendationReason } from "@/lib/client/eventDiscovery";
+import { eventInterestMatchLabel } from "@/lib/client/eventDiscovery";
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
 import { isInterestedRsvp } from "@/lib/client/eventInterested";
 import type { RecommendationScore } from "@/lib/recommendations/types";
@@ -44,7 +44,7 @@ export function EventDiscoveryCard({
   const when = formatEventCardWhen(event.startsAt);
   const whenRange = formatEventDateTimeRange(event.startsAt, event.endsAt);
   const whenIso = eventDateTimeIso(event.startsAt);
-  const reason = eventCardRecommendationReason(recommendation?.reason);
+  const reason = eventInterestMatchLabel(recommendation);
   const category = eventCardCategoryChip(item);
   const sport = eventCardSportSubtitle(item);
   const venue = eventCardVenueLabel(item);
@@ -113,9 +113,7 @@ export function EventDiscoveryCard({
         <div className="cq-event-card-footer">
           {reason ? (
             <p className="cq-event-card-reason">
-              <span className="cq-event-card-reason-mark" aria-hidden>
-                ☆
-              </span>
+              <Sparkles className="cq-event-card-reason-mark" aria-hidden />
               {reason}
             </p>
           ) : (

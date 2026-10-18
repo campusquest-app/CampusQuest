@@ -10,6 +10,7 @@ import {
   assistFieldNote,
 } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
+import { fetchEmberAllowance } from "@/lib/client/emberAllowance";
 import { submitQuadComment } from "@/lib/client/quadCommentActions";
 import {
   fetchUserProfileView,
@@ -84,6 +85,10 @@ export function UserProfileScreen({
     initialPostCount,
     initialFriendsCount,
   ]);
+
+  useEffect(() => {
+    void fetchEmberAllowance().catch(() => undefined);
+  }, []);
 
   const reloadProfile = useCallback(async () => {
     if (onProfileReload) {

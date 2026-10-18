@@ -15,6 +15,7 @@ import { shouldCreateRealmMoment } from "@/lib/realm/realmMomentEligibility";
 import {
   logQuadPostError,
   normalizeQuadPostProofUrl,
+  QUAD_POSTS_LEGACY_PROFILE_SELECT,
   QUAD_POSTS_WITH_PROFILE_SELECT,
 } from "@/lib/server/quadPosts";
 import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
@@ -110,7 +111,7 @@ export async function GET(request: Request) {
         return ok({ posts: [] as QuadPostApiRow[] });
       }
       const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, [post.id]);
-      const enriched = enrichQuadPostsWithViewerReactions([post], viewerReactions);
+      const enriched = await enrichQuadPostsWithViewerReactions([post], viewerReactions, auth.user.id);
       return ok({
         posts: await finalizeFeedPosts(enriched, {
           userClient: auth.userClient,
@@ -147,7 +148,7 @@ export async function GET(request: Request) {
       );
       const postIds = posts.map((p) => p.id);
       const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
-      const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
+      const enriched = await enrichQuadPostsWithViewerReactions(posts, viewerReactions, auth.user.id);
       return ok({
         posts: await finalizeFeedPosts(enriched, {
           userClient: auth.userClient,
@@ -165,7 +166,7 @@ export async function GET(request: Request) {
       });
       const postIds = posts.map((p) => p.id);
       const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
-      const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
+      const enriched = await enrichQuadPostsWithViewerReactions(posts, viewerReactions, auth.user.id);
       return ok({
         posts: await finalizeFeedPosts(enriched, {
           userClient: auth.userClient,
@@ -194,7 +195,7 @@ export async function GET(request: Request) {
       });
       const postIds = posts.map((p) => p.id);
       const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
-      const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
+      const enriched = await enrichQuadPostsWithViewerReactions(posts, viewerReactions, auth.user.id);
       return ok({
         posts: await finalizeFeedPosts(enriched, {
           userClient: auth.userClient,
@@ -247,7 +248,7 @@ export async function GET(request: Request) {
     let listed = data;
     let listError = error;
     if (listError && missingFeedDestinationColumn(listError)) {
-      let fallback = auth.userClient.from("quad_posts").select(QUAD_POSTS_WITH_PROFILE_SELECT);
+      let fallback = auth.userClient.from("quad_posts").select(QUAD_POSTS_LEGACY_PROFILE_SELECT);
       if (authorIdParam) fallback = fallback.eq("user_id", authorIdParam);
       else if (feedParam === "public" || !feedParam) fallback = fallback.eq("visibility", "public");
       const retry = await fallback.order("created_at", { ascending: false }).limit(limit);
@@ -256,7 +257,7 @@ export async function GET(request: Request) {
     }
 
     if (listError && /posted_as_/i.test(`${listError.message ?? ""} ${listError.details ?? ""}`)) {
-      let fallback = auth.userClient.from("quad_posts").select(QUAD_POSTS_WITH_PROFILE_SELECT);
+      let fallback = auth.userClient.from("quad_posts").select(QUAD_POSTS_LEGACY_PROFILE_SELECT);
       if (authorIdParam) fallback = fallback.eq("user_id", authorIdParam);
       else if (feedParam === "public" || !feedParam) fallback = fallback.eq("visibility", "public");
       const retry = await fallback.order("created_at", { ascending: false }).limit(limit);
@@ -277,7 +278,7 @@ export async function GET(request: Request) {
     });
     const postIds = posts.map((p) => p.id);
     const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
-    const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
+    const enriched = await enrichQuadPostsWithViewerReactions(posts, viewerReactions, auth.user.id);
 
     return ok({
       posts: await finalizeFeedPosts(enriched, {
@@ -535,7 +536,7 @@ export async function POST(request: Request) {
       logQuadPostError("tags", tagError, { userId: auth.user.id, postId: post.id });
     }
 
-    const enriched = enrichQuadPostsWithViewerReactions([post], new Map());
+    const enriched = await enrichQuadPostsWithViewerReactions([post], new Map(), auth.user.id);
     const [finalPost] = await finalizeFeedPosts(enriched, {
       userClient: auth.userClient,
       viewerId: auth.user.id,

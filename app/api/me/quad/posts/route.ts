@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     const posts = (data ?? []) as unknown as QuadPostApiRow[];
     const postIds = posts.map((p) => p.id);
     const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
-    const enriched = enrichQuadPostsWithViewerReactions(posts, viewerReactions);
+    const enriched = await enrichQuadPostsWithViewerReactions(posts, viewerReactions, auth.user.id);
     const withTags = await enrichQuadPostsWithTagsAndMentions(enriched);
     const withMedia = (await enrichPostsWithCarouselMedia(withTags)) as QuadPostApiRow[];
     const withLikers = await attachRecentLikersToPosts({

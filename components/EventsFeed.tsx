@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Calendar, CalendarSearch, Search, SlidersHorizontal, X } from "lucide-react";
+import { Calendar, CalendarSearch, Search, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { EventDetailScreen } from "@/components/events/EventDetailScreen";
 import { EventDiscoveryCard } from "@/components/events/EventDiscoveryCard";
@@ -20,6 +19,7 @@ import {
 import {
   EVENTS_FOR_YOU_EMPTY_DETAIL,
   EVENTS_FOR_YOU_EMPTY_TITLE,
+  EVENTS_INTEREST_PROMPT,
   EVENTS_STALE_NOTICE,
   eventsEmptyStateCopy,
 } from "@/lib/client/eventsFeedEmptyState";
@@ -36,7 +36,8 @@ import {
 } from "@/lib/client/eventFeedTypes";
 import { applyCampusRsvpStatus, nextInterestedRsvpStatus } from "@/lib/client/eventInterested";
 import { shouldPersonalizeForYouEvents } from "@/lib/basic/forYouAccess";
-import { partitionDiscoverySections } from "@/lib/client/happeningSoon";
+import { dedupeFeedEvents, partitionDiscoverySections } from "@/lib/client/happeningSoon";
+import { useDebouncedValue } from "@/lib/client/useDebouncedValue";
 import { useRecommendationProfile } from "@/lib/client/useRecommendationProfile";
 import {
   campusEventToRecommendationEntity,
@@ -68,7 +69,6 @@ const TIMEFRAME_OPTIONS: Array<{ value: "for_you" | "today" | "this_weekend"; la
 
 export function EventsFeed({
   personalization,
-  showAdminSyncLink = false,
   onBack,
   onViewOnMap,
   onOpenOrganization,
@@ -82,7 +82,6 @@ export function EventsFeed({
     studentStatus?: string | null;
     classYear?: number | null;
   } | null;
-  showAdminSyncLink?: boolean;
   onBack?: () => void;
   onViewOnMap?: (eventId: string, options?: { walk?: boolean }) => void;
   onOpenOrganization?: (organizationId: string) => void;
@@ -93,6 +92,8 @@ export function EventsFeed({
   const [error, setError] = useState<string | null>(null);
   const [syncBanner, setSyncBanner] = useState<ReturnType<typeof eventsSyncBanner>>(null);
   const [filters, setFilters] = useState<Filters>(initialFilters);
+  const [searchText, setSearchText] = useState("");
+  const debouncedSearch = useDebouncedValue(searchText, 250);
   const [draftFilters, setDraftFilters] = useState<Filters>(initialFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [savedOnly, setSavedOnly] = useState(false);
@@ -102,6 +103,11 @@ export function EventsFeed({
   const loadGenerationRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
   const recProfile = useRecommendationProfile(personalization);
+  const hasSavedInterests = recProfile.explicitInterests.length > 0;
+
+  useEffect(() => {
+    setFilters((prev) => (prev.search === debouncedSearch ? prev : { ...prev, search: debouncedSearch }));
+  }, [debouncedSearch]);
 
   async function loadEvents() {
     loadAbortRef.current?.abort();
@@ -242,7 +248,7 @@ export function EventsFeed({
   const allFeedEvents = useMemo<FeedEvent[]>(() => {
     const campus = events.map((event) => ({ kind: "campus" as const, event }));
     const external = externalEvents.map((event) => ({ kind: "external" as const, event }));
-    return [...campus, ...external];
+    return dedupeFeedEvents([...campus, ...external]);
   }, [events, externalEvents]);
   const draftMatchCount = useMemo(
     () =>
@@ -258,10 +264,11 @@ export function EventsFeed({
     const filtered = allFeedEvents.filter((item) => eventPassesListFilters(item, filters, savedOnly));
 
     const searchScoreFor = (item: FeedEvent) => scoreEventsSearch(eventSearchHaystack(item), searchQuery);
-    const personalizeForYou = shouldPersonalizeForYouEvents({
+    const forYouRequested = shouldPersonalizeForYouEvents({
       timeframe: filters.timeframe,
       searching: Boolean(searchQuery) || savedOnly,
     });
+    const personalizeForYou = forYouRequested && hasSavedInterests;
 
     if (searchQuery) {
       const ranked = rankRecommendationEntities({
@@ -307,9 +314,9 @@ export function EventsFeed({
       profile: recProfile,
       nowMs: recommendationTimeBucket(),
       diversity: true,
-      exploreEvery: 4,
+      exploreEvery: 0,
     }).map((row) => ({ item: row.item, recommendation: row.recommendation }));
-  }, [allFeedEvents, filters, recProfile, savedOnly]);
+  }, [allFeedEvents, filters, hasSavedInterests, recProfile, savedOnly]);
 
   const discoverySections = useMemo(
     () =>
@@ -443,6 +450,7 @@ export function EventsFeed({
 
   function clearEventFilters() {
     setSavedOnly(false);
+    setSearchText("");
     setFilters(initialFilters);
   }
 
@@ -544,11 +552,6 @@ export function EventsFeed({
             <p className="cq-events-subtitle">Find something to do on campus.</p>
           </div>
           <div className="cq-events-header-actions">
-            {showAdminSyncLink ? (
-              <Link href="/internal/admin" className="cq-events-admin-link">
-                Admin sync status
-              </Link>
-            ) : null}
             <button
               type="button"
               className={`cq-events-saved ${savedOnly ? "cq-events-saved--on" : ""}`}
@@ -568,12 +571,35 @@ export function EventsFeed({
       <div className="cq-events-search">
         <Search className="cq-events-search-icon" aria-hidden />
         <input
-          value={filters.search}
-          onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
+          value={searchText}
+          onChange={(event) => {
+            const value = event.target.value;
+            setSearchText(value);
+            if (!value.trim()) {
+              setFilters((prev) => (prev.search ? { ...prev, search: "" } : prev));
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+          }}
           placeholder={EVENTS_SEARCH_PLACEHOLDER}
           aria-label={EVENTS_SEARCH_PLACEHOLDER}
+          enterKeyHint="search"
           className="cq-events-search-input"
         />
+        {searchText ? (
+          <button
+            type="button"
+            className="cq-events-search-clear"
+            aria-label="Clear search"
+            onClick={() => {
+              setSearchText("");
+              setFilters((prev) => (prev.search ? { ...prev, search: "" } : prev));
+            }}
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        ) : null}
       </div>
 
       <div className="cq-events-time-pills" role="toolbar" aria-label="Event filters" data-cq-horizontal-scroll="true" data-cq-gesture-block="swipe-tab">
@@ -680,10 +706,13 @@ export function EventsFeed({
         <section className="cq-events-foryou" aria-labelledby="cq-events-foryou-title">
           <div className="cq-events-section-head">
             <div>
-              <h2 id="cq-events-foryou-title" className="cq-events-section-title">
-                ☆ For You
+              <h2 id="cq-events-foryou-title" className="cq-events-section-title cq-events-section-title--icon">
+                <Sparkles className="cq-events-section-icon" aria-hidden />
+                For You
               </h2>
-              <p className="cq-events-section-sub">Based on your interests</p>
+              <p className="cq-events-section-sub">
+                {hasSavedInterests ? "Based on your interests" : EVENTS_INTEREST_PROMPT}
+              </p>
             </div>
             {discoverySections.more.length > 0 || forYouExpanded ? (
               <button

@@ -6,6 +6,7 @@ import type { Character } from "@/lib/types";
 import type { FieldNote } from "@/lib/types";
 import { getFeedByAuthorId, mergeRemoteQuadPostsForMutations, verifyFieldNote, assistFieldNote } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
+import { fetchEmberAllowance } from "@/lib/client/emberAllowance";
 import { submitQuadComment } from "@/lib/client/quadCommentActions";
 import { fetchMyQuadPosts, fetchQuadPostsByAuthor } from "@/lib/client/quadPostsClient";
 import {
@@ -112,6 +113,10 @@ export function MyProfileScreen({
   const [identityUsernameDraft, setIdentityUsernameDraft] = useState(character.username);
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [identitySaving, setIdentitySaving] = useState(false);
+
+  useEffect(() => {
+    void fetchEmberAllowance().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (editIdentityRequest < 1) return;

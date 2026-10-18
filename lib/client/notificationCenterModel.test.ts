@@ -81,6 +81,7 @@ describe("notificationIconKind", () => {
     ["verification_request_approved", "verification"],
     ["marketplace_offer", "marketplace"],
     ["quad_post_like", "quad"],
+    ["quad_post_ember", "quad"],
     ["something_new", "general"],
   ])("maps %s to %s", (type, kind) => {
     expect(notificationIconKind(type)).toBe(kind);

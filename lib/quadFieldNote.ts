@@ -1,3 +1,4 @@
+import { disclosedEmberTotal } from "@/lib/embers";
 import { resolveProfileAvatar } from "./avatarSource";
 import type { QuadCarouselMediaDto } from "./quadMedia";
 import type { FieldNote, FieldNoteMention, FieldNoteTag, RamMark } from "./types";
@@ -97,6 +98,11 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
   const viewerReactions = row.viewer_reactions ?? [];
   const hasLiked = row.current_user_has_liked ?? viewerReactions.includes("like");
   const hasSparked = viewerReactions.includes("spark");
+  const emberTotal = disclosedEmberTotal({
+    viewerId,
+    authorId: row.user_id,
+    count: row.hype_count,
+  });
 
   return {
     id: row.id,
@@ -107,10 +113,10 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
     body: row.body,
     ramMarks,
     nodCount: Math.max(0, row.like_count ?? row.nod_count ?? 0),
-    vouchCount: Math.max(0, row.hype_count ?? 0),
+    vouchCount: emberTotal,
     nodByUserIds: new Set(viewerId && hasLiked ? [viewerId] : []),
     vouchByUserIds: new Set(viewerId && hasSparked ? [viewerId] : []),
-    hypeCount: Math.max(0, row.hype_count ?? 0),
+    hypeCount: emberTotal,
     verifyCount: Math.max(0, row.verify_count ?? 0),
     assistCount: Math.max(0, row.assist_count ?? 0),
     hypeByUserIds: new Set(viewerId && hasSparked ? [viewerId] : []),

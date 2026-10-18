@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import {
   Heart,
@@ -9,7 +9,6 @@ import {
   Share2,
   ShieldCheck,
   Swords,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import type { FieldNote, QuadComment, StatKey } from "@/lib/types";
@@ -39,6 +38,17 @@ import { filterRenderableCarouselMedia } from "@/lib/quadMedia";
 import { ZoomableImage } from "./quad/ZoomableImage";
 import type { CaptionMentionDraft, ComposerTagSelection } from "@/lib/postTags";
 import { looksLikeVideoUrl } from "@/lib/quadVideo";
+import { EmberReactionButton } from "@/components/embers/EmberReactionButton";
+import { EmberExplainerSheet } from "@/components/embers/EmberExplainerSheet";
+import { EmberCastOverlay } from "@/components/embers/EmberCastOverlay";
+import {
+  getEmberAllowance,
+  hasSeenEmberExplainer,
+  markEmberExplainerSeen,
+  subscribeEmberAllowance,
+} from "@/lib/client/emberAllowance";
+import { subscribeEmberCast } from "@/lib/client/emberCastEvents";
+import { EMBER_COPY, planEmberCast, planUnlimitedEmberCast, type EmberCastPlan } from "@/lib/embers";
 
 function ReactionButton({
   active,
@@ -160,13 +170,21 @@ function FeedCaption({
   onUsernameClick?: () => void;
 }) {
   const trimmed = body.trim();
+  const bodyRef = useRef<HTMLSpanElement | null>(null);
   const [expanded, setExpanded] = useState(false);
-  if (!trimmed && tags.length === 0 && !username) return null;
+  const [canExpand, setCanExpand] = useState(false);
 
-  const COLLAPSE_AT = 140;
-  const needsCollapse = trimmed.length > COLLAPSE_AT;
-  const visibleBody =
-    needsCollapse && !expanded ? `${trimmed.slice(0, COLLAPSE_AT).replace(/\s+\S*$/, "").trimEnd()}` : trimmed;
+  useLayoutEffect(() => {
+    setExpanded(false);
+  }, [trimmed]);
+
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el || expanded) return;
+    setCanExpand(el.scrollHeight > el.clientHeight + 1);
+  }, [trimmed, expanded, tags]);
+
+  if (!trimmed && tags.length === 0 && !username) return null;
 
   const usernameEl = username ? (
     onUsernameClick ? (
@@ -185,34 +203,37 @@ function FeedCaption({
   return (
     <p className="break-words text-[13px] leading-[1.4] text-white/90">
       {usernameEl}
-      {visibleBody ? (
-        <span className="whitespace-pre-wrap">
-          <CaptionWithMentions
-            body={needsCollapse && !expanded ? visibleBody : body}
-            mentions={needsCollapse && !expanded ? undefined : mentions}
-          />
+      {trimmed ? (
+        <span
+          ref={bodyRef}
+          className={expanded ? "whitespace-pre-wrap" : "cq-feed-caption-clamp"}
+        >
+          <CaptionWithMentions body={body} mentions={mentions} />
+          {tags.map((tag, index) => (
+            <span key={`${tag}-${index}`} className="font-medium text-uri-keaney/90">
+              {index === 0 ? " " : ""}#{tag}
+              {index < tags.length - 1 ? " " : ""}
+            </span>
+          ))}
         </span>
-      ) : null}
-      {needsCollapse && !expanded ? (
-        <>
-          {" "}
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            className="font-medium text-white/45 transition hover:text-white/60"
-          >
-            more
-          </button>
-        </>
-      ) : null}
-      {trimmed && tags.length > 0 ? " " : null}
-      {(expanded || !needsCollapse) &&
+      ) : (
         tags.map((tag, index) => (
           <span key={`${tag}-${index}`} className="font-medium text-uri-keaney/90">
             #{tag}
             {index < tags.length - 1 ? " " : ""}
           </span>
-        ))}
+        ))
+      )}
+      {canExpand ? (
+        <button
+          type="button"
+          className="cq-feed-caption-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {expanded ? "Less" : "More"}
+        </button>
+      ) : null}
     </p>
   );
 }
@@ -347,8 +368,13 @@ function FieldNoteCardInner({
   const [likersSheetOpen, setLikersSheetOpen] = useState(false);
   const [showImageNodPop, setShowImageNodPop] = useState(false);
   const [likePulse, setLikePulse] = useState(false);
-  const [zapPulse, setZapPulse] = useState(false);
-  const [sparkSent, setSparkSent] = useState(false);
+  const [emberPulse, setEmberPulse] = useState(false);
+  const [emberExplainerOpen, setEmberExplainerOpen] = useState(false);
+  const [emberCast, setEmberCast] = useState<EmberCastPlan | null>(null);
+  const pendingEmberActionRef = useRef(false);
+  const emberAnchorRef = useRef<HTMLSpanElement | null>(null);
+  const emberPulseTimerRef = useRef<number | null>(null);
+  const emberAllowance = useSyncExternalStore(subscribeEmberAllowance, getEmberAllowance, getEmberAllowance);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -660,16 +686,55 @@ function FieldNoteCardInner({
     }
   }
 
-  function handleHype() {
-    const adding = !hasHyped;
+  function fireEmber() {
     onHype(note.id);
-    if (adding) {
-      setZapPulse(true);
-      window.setTimeout(() => setZapPulse(false), 420);
-      if (note.isPersisted) {
-        setSparkSent(true);
-        window.setTimeout(() => setSparkSent(false), 1400);
+  }
+
+  const getEmberAnchorRect = useCallback(() => emberAnchorRef.current?.getBoundingClientRect() ?? null, []);
+  const clearEmberCast = useCallback(() => setEmberCast(null), []);
+
+  useEffect(() => {
+    return subscribeEmberCast((event) => {
+      if (event.noteId !== note.id) return;
+      const reduceMotion =
+        typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      setEmberCast(event.unlimited ? planUnlimitedEmberCast() : planEmberCast(event.remainingAfter));
+      if (!reduceMotion) {
+        setEmberPulse(true);
+        if (emberPulseTimerRef.current != null) window.clearTimeout(emberPulseTimerRef.current);
+        emberPulseTimerRef.current = window.setTimeout(() => {
+          setEmberPulse(false);
+          emberPulseTimerRef.current = null;
+        }, 220);
       }
+      void import("@/lib/client/capacitorNative").then(({ nativeImpact }) => {
+        void nativeImpact("light");
+      });
+    });
+  }, [note.id]);
+
+  useEffect(() => {
+    return () => {
+      if (emberPulseTimerRef.current != null) window.clearTimeout(emberPulseTimerRef.current);
+    };
+  }, []);
+
+  function handleHype() {
+    if (isOwner) return;
+    if (!hasSeenEmberExplainer()) {
+      pendingEmberActionRef.current = true;
+      setEmberExplainerOpen(true);
+      return;
+    }
+    fireEmber();
+  }
+
+  function acknowledgeEmberExplainer() {
+    markEmberExplainerSeen();
+    setEmberExplainerOpen(false);
+    if (pendingEmberActionRef.current) {
+      pendingEmberActionRef.current = false;
+      fireEmber();
     }
   }
 
@@ -749,7 +814,7 @@ function FieldNoteCardInner({
 
   const avatarFrameClass = `cq-avatar-slot flex-shrink-0 border ${
     isFeed
-      ? "h-8 w-8 border-white/15 bg-cq-elevated/8"
+      ? "h-[38px] w-[38px] border-white/15 bg-cq-elevated/8"
       : "h-11 w-11 bg-cq-elevated border-white/15"
   } ${
     highlightStat === "strength"
@@ -776,11 +841,11 @@ function FieldNoteCardInner({
       className={`${avatarFrameClass} touch-manipulation transition hover:opacity-90`}
       aria-label={`View ${note.authorName}'s profile`}
     >
-      <AvatarDisplay avatar={note.authorAvatar} fitParent size={isFeed ? 32 : 44} />
+      <AvatarDisplay avatar={note.authorAvatar} fitParent size={isFeed ? 38 : 44} />
     </button>
   ) : (
     <div className={avatarFrameClass}>
-      <AvatarDisplay avatar={note.authorAvatar} fitParent size={isFeed ? 32 : 44} />
+      <AvatarDisplay avatar={note.authorAvatar} fitParent size={isFeed ? 38 : 44} />
     </div>
   );
 
@@ -945,35 +1010,32 @@ function FieldNoteCardInner({
           hideCount
         />
         {!isFeed ? (
-          <ReactionButton
+          <EmberReactionButton
             active={hasHyped}
-            onClick={handleHype}
-            icon={Zap}
+            onToggle={handleHype}
             count={hypeCount}
-            label={hasHyped ? "Unspark" : "Spark"}
-            title={hasHyped ? "Remove spark" : "Spark this post"}
-            pulseClass={zapPulse ? "cq-reaction-zap-pulse" : undefined}
-            fillWhenActive
+            remaining={emberAllowance?.remaining ?? null}
+            isOwnPost={isOwner}
+            unlimited={emberAllowance?.unlimited === true}
+            pending={likePending}
+            pulse={emberPulse}
+            anchorRef={emberAnchorRef}
           />
-        ) : null}
-        {!isFeed && sparkSent ? (
-          <span className="ml-1 text-[10px] font-medium text-violet-300/85" aria-live="polite">
-            Spark sent
-          </span>
         ) : null}
       </div>
       {isFeed ? (
         <div className="flex items-center -mr-1.5">
-          <ReactionButton
+          <EmberReactionButton
             active={hasHyped}
-            onClick={handleHype}
-            icon={Zap}
+            onToggle={handleHype}
             count={hypeCount}
-            label={hasHyped ? "Unspark" : "Spark"}
-            title={hasHyped ? "Remove spark" : "Spark this post"}
-            pulseClass={zapPulse ? "cq-reaction-zap-pulse" : undefined}
-            fillWhenActive
+            remaining={emberAllowance?.remaining ?? null}
+            isOwnPost={isOwner}
+            unlimited={emberAllowance?.unlimited === true}
+            pending={likePending}
+            pulse={emberPulse}
             compact
+            anchorRef={emberAnchorRef}
           />
         </div>
       ) : (
@@ -1064,6 +1126,12 @@ function FieldNoteCardInner({
             <div className="min-w-0 flex-1 py-0.5">
               <div className="flex min-w-0 items-center gap-1.5">
                 {authorUsernamePrimary}
+                <time
+                  dateTime={new Date(note.createdAt).toISOString()}
+                  className="shrink-0 text-[11px] font-medium leading-none text-white/40"
+                >
+                  {formatTime(note.createdAt)}
+                </time>
                 {note.authorVerifiedBadge ? (
                   <span className="cq-identity-badge" aria-label="Verified">✓</span>
                 ) : null}
@@ -1121,13 +1189,6 @@ function FieldNoteCardInner({
           )}
 
           <div className="cq-feed-post-comments px-3">{feedCommentsSection}</div>
-
-          <time
-            dateTime={new Date(note.createdAt).toISOString()}
-            className="cq-feed-post-timestamp block px-3 pb-1 text-[11px] uppercase tracking-wide text-white/35"
-          >
-            {formatTime(note.createdAt)}
-          </time>
         </>
       ) : (
         <div className="flex gap-3">
@@ -1284,6 +1345,32 @@ function FieldNoteCardInner({
                 </div>
               </div>
             </div>,
+            document.body,
+          )
+        : null}
+
+      {emberExplainerOpen && typeof document !== "undefined"
+        ? createPortal(
+            <EmberExplainerSheet
+              open
+              body={emberAllowance?.unlimited ? EMBER_COPY.explainerBodyUnlimited : EMBER_COPY.explainerBody}
+              onAcknowledge={acknowledgeEmberExplainer}
+            />,
+            document.body,
+          )
+        : null}
+
+      {emberCast && typeof document !== "undefined"
+        ? createPortal(
+            <EmberCastOverlay
+              plan={emberCast}
+              reducedMotion={
+                typeof window !== "undefined" &&
+                window.matchMedia("(prefers-reduced-motion: reduce)").matches
+              }
+              getAnchorRect={getEmberAnchorRect}
+              onComplete={clearEmberCast}
+            />,
             document.body,
           )
         : null}

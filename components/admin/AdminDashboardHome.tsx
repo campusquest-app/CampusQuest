@@ -96,6 +96,7 @@ export function AdminDashboardHome({
         <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">Quick Actions</h3>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
           <AdminQuickAction label="Run Sync" tone="primary" onClick={() => onNavigate("urinvolved")} />
+          <AdminQuickAction label="Admin sync status" onClick={() => onNavigate("urinvolved")} />
           <AdminQuickAction label="Review Reports" onClick={() => onNavigate("moderation", "messages")} />
           <AdminQuickAction label="Approve Organizations" onClick={() => onNavigate("organizations", "requests")} />
           <AdminQuickAction label="Search User" onClick={() => onNavigate("moderation", "safety")} />

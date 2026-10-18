@@ -14,19 +14,29 @@ export function useRecommendationProfile(
   personalization?: StudentDiscoveryInput | null,
 ): UserRecommendationProfile {
   const seed = useMemo(() => seedRecommendationProfile(personalization), [personalization]);
+  const interestKey = [...(personalization?.interests ?? []), ...(personalization?.communities ?? [])].join("\u0001");
   const [loaded, setLoaded] = useState<UserRecommendationProfile | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void fetchRecommendationProfile().then((profile) => {
+    setLoaded(null);
+    void fetchRecommendationProfile({ force: true }).then((profile) => {
       if (!cancelled) setLoaded(profile);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [interestKey]);
 
-  return useMemo(() => combineRecommendationProfile(seed, loaded), [seed, loaded]);
+  return useMemo(() => {
+    const combined = combineRecommendationProfile(seed, loaded);
+    if (personalization == null) return combined;
+    return {
+      ...combined,
+      explicitInterests: seed.explicitInterests,
+      explicitCommunities: seed.explicitCommunities,
+    };
+  }, [loaded, personalization, seed]);
 }
 
 export function recommendationProfileFromSeed(

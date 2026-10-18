@@ -8,7 +8,7 @@ import {
 } from "@/lib/quadCommunityChannels";
 
 describe("quad spark XP", () => {
-  it("awards +20 XP per spark grant and passes the XP cap", () => {
+  it("retains the historical +20 spark XP cap without re-enabling grants", () => {
     expect(QUAD_SPARK_XP_AMOUNT).toBe(20);
     expect(() => assertSafeXpGrant("quad_spark", QUAD_SPARK_XP_AMOUNT)).not.toThrow();
   });

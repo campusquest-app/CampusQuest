@@ -1,12 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { GroupedMapLocation } from "@/lib/mapLocationGroups";
+import type { GroupedMapLocation, MapEventPin } from "@/lib/mapLocationGroups";
 import { buildRhodyHighlights, type AthleticsHighlight } from "@/lib/realm/discoverySheet";
-import { isActiveUpcomingMapRecommendation, type MapRecommendationItem } from "@/lib/realm/mapRecommendations";
+import type { HighlightEventRecommendation, HighlightRecommendationMode } from "@/lib/realm/highlightEventRecommendations";
 import { DiscoverForYou, DiscoverRecommendations } from "./DiscoverForYou";
 import { RhodyHighlights } from "./RhodyHighlights";
-import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
 function youtubeEmbedUrl(videoId: string, autoplay: boolean): string | null {
   if (!/^[\w-]{6,16}$/.test(videoId)) return null;
@@ -19,18 +18,20 @@ function youtubeEmbedUrl(videoId: string, autoplay: boolean): string | null {
 }
 
 export function RealmHighlightsSheet({
-  items,
+  recommendations,
+  recommendationMode,
   groups,
   loading,
-  onOpenRecommendation,
+  onOpenEvent,
   onViewAthletics,
   onFindMyCampus,
   onViewAllRecommendations,
 }: {
-  items: MapRecommendationItem[];
+  recommendations: HighlightEventRecommendation[];
+  recommendationMode: HighlightRecommendationMode;
   groups: GroupedMapLocation[];
   loading: boolean;
-  onOpenRecommendation: (item: MapRecommendationItem) => void;
+  onOpenEvent: (event: MapEventPin) => void;
   onViewAthletics?: () => void;
   onFindMyCampus?: () => void;
   onViewAllRecommendations?: () => void;
@@ -43,11 +44,7 @@ export function RealmHighlightsSheet({
   const reducedMotion =
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const embedUrl = playing?.youtubeVideoId ? youtubeEmbedUrl(playing.youtubeVideoId, !reducedMotion) : null;
-  const upcoming = items.filter((item) => {
-    if (!FEATURE_FLAGS.progression && item.kind === "quest") return false;
-    return isActiveUpcomingMapRecommendation(item);
-  });
-  const empty = !loading && highlights.length === 0 && upcoming.length === 0;
+  const empty = !loading && highlights.length === 0 && recommendationMode === "empty";
 
   return (
     <div className="cq-realm-highlights">
@@ -75,11 +72,14 @@ export function RealmHighlightsSheet({
           return true;
         }}
       />
-      <DiscoverRecommendations
-        items={upcoming}
-        onViewAll={onViewAllRecommendations}
-        onOpenItem={onOpenRecommendation}
-      />
+      {loading ? null : (
+        <DiscoverRecommendations
+          items={recommendations}
+          mode={recommendationMode}
+          onViewAll={onViewAllRecommendations}
+          onOpenItem={(item) => onOpenEvent(item.event)}
+        />
+      )}
     </div>
   );
 }

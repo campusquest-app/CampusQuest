@@ -25,6 +25,23 @@ export const QUAD_FEED_OPTIONS: QuadFeedOption[] = [
   { tab: "athletics", label: "Athletics", hint: "Sports, club sports, and Rams" },
 ];
 
+/** Visual groups for the dropdown. Every existing feed stays available. */
+export const QUAD_FEED_GROUPS: Array<{ id: string; label: string; tabs: QuadFeedTab[] }> = [
+  { id: "campus", label: "Campus", tabs: ["public", "trending", "friends"] },
+  { id: "communities", label: "Communities", tabs: ["student_organizations", "greek_life", "athletics"] },
+  { id: "around", label: "Around campus", tabs: ["market", "local_businesses"] },
+];
+
+export function quadFeedOptionsByGroup(): Array<{ id: string; label: string; options: QuadFeedOption[] }> {
+  return QUAD_FEED_GROUPS.map((group) => ({
+    id: group.id,
+    label: group.label,
+    options: group.tabs
+      .map((tab) => QUAD_FEED_OPTIONS.find((option) => option.tab === tab))
+      .filter((option): option is QuadFeedOption => Boolean(option)),
+  }));
+}
+
 export function isMarketFeedTab(tab: string | null | undefined): tab is typeof MARKET_FEED_TAB {
   return tab === MARKET_FEED_TAB;
 }

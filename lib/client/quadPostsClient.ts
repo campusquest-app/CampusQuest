@@ -8,6 +8,7 @@ import {
 } from "@/lib/quadFieldNote";
 import type { FieldNote } from "@/lib/types";
 import type { QuadPostXpReward } from "@/lib/quadPostXp";
+import type { EmberAllowance } from "@/lib/embers";
 import {
   ApiRequestError,
   fetchAuthed,
@@ -26,8 +27,9 @@ export type QuadPostLikeResult = {
 export type QuadReactionToggleResult = QuadPostLikeResult & {
   reactionType: QuadReactionType;
   active: boolean;
-  sparkCount: number;
+  sparkCount: number | null;
   currentUserHasSparked: boolean;
+  emberAllowance?: EmberAllowance;
 };
 
 export type RealmMomentCreatedMeta = {

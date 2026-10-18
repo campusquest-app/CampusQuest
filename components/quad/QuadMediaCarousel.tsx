@@ -491,6 +491,8 @@ export function QuadMediaCarousel({
                   height={item.height}
                   interactive={active}
                   lockGestures={false}
+                  loading={i === 0 ? "eager" : "lazy"}
+                  fetchPriority={active ? "high" : "low"}
                   enableDoubleTapZoom={false}
                   priority={priority && active}
                   loadSrc={shouldLoadMedia}

@@ -116,6 +116,7 @@ export function recommendationProfileFromDiscovery(
     inferredAffinities: extras?.inferredAffinities ?? {},
     followedOrganizationIds: extras?.followedOrganizationIds ?? [],
     followedOrganizationNames: extras?.followedOrganizationNames ?? [],
+    attendedEventIds: extras?.attendedEventIds ?? [],
     includeDebug: extras?.includeDebug === true,
   };
 }

@@ -9,7 +9,7 @@ import {
   isQuadCommunityChannel,
 } from "@/lib/quadCommunityChannels";
 import { postBelongsInFeed } from "@/lib/quad/localBusinessFeed";
-import { QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
+import { QUAD_POSTS_LEGACY_PROFILE_SELECT, QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
 import { listHiddenUserIds } from "@/lib/server/qaTestAccount";
 import { createAdminClient } from "@/lib/server/supabase";
 import { ApiError } from "@/lib/server/http";
@@ -154,7 +154,7 @@ export async function listCommunityQuadPosts(args: {
   if (error && /feed_destination/i.test(`${error.message ?? ""} ${error.details ?? ""}`)) {
     const retry = await userClient
       .from("quad_posts")
-      .select(QUAD_POSTS_WITH_PROFILE_SELECT)
+      .select(QUAD_POSTS_LEGACY_PROFILE_SELECT)
       .eq("visibility", "public")
       .order("created_at", { ascending: false })
       .limit(fetchLimit);

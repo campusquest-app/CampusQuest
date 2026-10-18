@@ -16,6 +16,7 @@ describe("push notification type policy", () => {
 
   it("does not push noisy like or self-RSVP types", () => {
     expect(PUSH_ENABLED_NOTIFICATION_TYPES.has("quad_post_like")).toBe(false);
+    expect(PUSH_ENABLED_NOTIFICATION_TYPES.has("quad_post_ember")).toBe(false);
     expect(PUSH_ENABLED_NOTIFICATION_TYPES.has("event_rsvp_reminder")).toBe(false);
   });
 
