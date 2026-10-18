@@ -247,7 +247,9 @@ export function LocationDiningMenuSection({
         }
         if (!mountedRef.current) return;
 
-        const fallback = sessionCached ?? getDiningMenuSessionCache(hallId, date);
+        const fallbackRaw = sessionCached ?? getDiningMenuSessionCache(hallId, date);
+        const fallback =
+          fallbackRaw && fallbackRaw.location.id === hallId ? fallbackRaw : null;
         if (isAbortError(err)) {
           if (fallback) {
             setMenu(fallback);
