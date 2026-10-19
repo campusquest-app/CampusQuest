@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Heart, Sparkles } from "lucide-react";
 import { EventArtwork } from "@/components/events/EventArtwork";
 import {
@@ -9,7 +10,8 @@ import {
   feedEventIsAthletics,
   isEventLive,
 } from "@/lib/client/eventCardPresentation";
-import { eventArtworkFallbackBrand } from "@/lib/client/eventArtwork";
+import { eventArtworkFallbackBrand, resolveEventArtwork } from "@/lib/client/eventArtwork";
+import { resolveEventArtworkFit, type EventArtworkFit } from "@/lib/client/eventArtworkFit";
 import {
   eventDateTimeIso,
   formatEventCardStatusBadge,
@@ -55,10 +57,25 @@ export function EventDiscoveryCard({
   const statusBadge = formatEventCardStatusBadge(event.startsAt, event.endsAt, now, { live });
   const athletics = feedEventIsAthletics(item);
   const viewLabel = athletics ? "View Game" : "View Event";
+  const source =
+    item.kind === "external" ? item.event.source : item.event.sourceType ?? item.event.source;
+  const sport = item.kind === "external" ? item.event.sport : null;
   const fallbackBrand = eventArtworkFallbackBrand({
     kind: item.kind,
-    source: item.kind === "external" ? item.event.source : item.event.sourceType ?? item.event.source,
-    sport: item.kind === "external" ? item.event.sport : null,
+    source,
+    sport,
+  });
+  const artworkKind = resolveEventArtwork({
+    imageUrl: item.kind === "external" ? item.event.imageUrl : null,
+    bannerUrl: item.kind === "external" ? item.event.bannerUrl : null,
+    fallbackBrand,
+  }).kind;
+  const [naturalAspect, setNaturalAspect] = useState<number | null>(null);
+  const fit: EventArtworkFit = resolveEventArtworkFit({
+    artworkKind,
+    source,
+    sport,
+    naturalAspect,
   });
 
   return (
@@ -67,6 +84,7 @@ export function EventDiscoveryCard({
       role="link"
       tabIndex={0}
       aria-label={`${viewLabel}: ${title}. ${whenRange}${venue ? `. ${venue}` : ""}`}
+      data-cq-event-fit={fit}
       onClick={onView}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -75,7 +93,7 @@ export function EventDiscoveryCard({
         }
       }}
     >
-      <div className="cq-event-card-media">
+      <div className="cq-event-card-media" data-cq-event-fit={fit}>
         <EventArtwork
           imageUrl={item.kind === "external" ? item.event.imageUrl : null}
           bannerUrl={item.kind === "external" ? item.event.bannerUrl : null}
@@ -83,8 +101,10 @@ export function EventDiscoveryCard({
           className="cq-event-card-thumb"
           loading={priority ? "eager" : "lazy"}
           fallbackBrand={fallbackBrand}
+          fit={fit}
+          showBlurFill={fit === "contain"}
+          onNaturalAspect={setNaturalAspect}
         />
-        <div className="cq-event-card-scrim" aria-hidden />
 
         {statusBadge ? (
           <span
@@ -117,11 +137,11 @@ export function EventDiscoveryCard({
             <Heart className="h-4 w-4" strokeWidth={2.2} fill={interested ? "currentColor" : "none"} />
           </button>
         ) : null}
+      </div>
 
-        <div className="cq-event-card-copy">
-          <h4 className="cq-event-card-title">{title}</h4>
-          {venue ? <p className="cq-event-card-location">{venue}</p> : null}
-        </div>
+      <div className="cq-event-card-copy">
+        <h4 className="cq-event-card-title">{title}</h4>
+        {venue ? <p className="cq-event-card-location">{venue}</p> : null}
       </div>
 
       <time className="sr-only" dateTime={whenIso}>
