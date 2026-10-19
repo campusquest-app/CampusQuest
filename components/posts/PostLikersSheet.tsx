@@ -140,7 +140,7 @@ export function PostLikersSheet({
       }}
     >
       <div
-        className={`cq-comments-sheet ${entered ? "cq-comments-sheet--open" : ""}`}
+        className={`cq-comments-sheet cq-list-sheet ${entered ? "cq-comments-sheet--open" : ""}`}
         style={sheetStyle}
         role="dialog"
         aria-modal="true"

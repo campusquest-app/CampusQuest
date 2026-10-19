@@ -264,7 +264,8 @@ export function TheQuad({
         setCampusListings([]);
         try {
           const remote = await fetchOrganizationPosts(character.id, 80);
-          const list = remote.map(enrichNote);
+          mergeRemoteQuadPostsCache(remote);
+          const list = remote.map((note) => enrichNote(getNoteForReaction(note.id) ?? note));
           setNotes(cloneFeedNotesForDisplay(list));
           setFeedError(null);
         } catch (err) {
@@ -284,7 +285,8 @@ export function TheQuad({
         setCampusListings([]);
         try {
           const remote = await fetchLocalBusinessPosts(character.id, 80);
-          const list = remote.map(enrichNote);
+          mergeRemoteQuadPostsCache(remote);
+          const list = remote.map((note) => enrichNote(getNoteForReaction(note.id) ?? note));
           setNotes(cloneFeedNotesForDisplay(list));
           setFeedError(null);
         } catch (err) {
@@ -304,7 +306,8 @@ export function TheQuad({
         setCampusListings([]);
         try {
           const remote = await fetchQuadFriendsPosts(character.id, 80);
-          const list = remote.map(enrichNote);
+          mergeRemoteQuadPostsCache(remote);
+          const list = remote.map((note) => enrichNote(getNoteForReaction(note.id) ?? note));
           setNotes(cloneFeedNotesForDisplay(list));
           setFeedError(null);
         } catch (err) {
@@ -325,7 +328,7 @@ export function TheQuad({
         try {
           const remote = await fetchQuadCommunityPosts(character.id, feedTab, 80);
           mergeRemoteQuadPostsCache(remote);
-          const list = remote.map(enrichNote);
+          const list = remote.map((note) => enrichNote(getNoteForReaction(note.id) ?? note));
           setNotes(cloneFeedNotesForDisplay(list));
           setFeedError(null);
         } catch (err) {

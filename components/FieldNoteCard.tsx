@@ -40,7 +40,6 @@ import type { CaptionMentionDraft, ComposerTagSelection } from "@/lib/postTags";
 import { looksLikeVideoUrl } from "@/lib/quadVideo";
 import { EmberReactionButton } from "@/components/embers/EmberReactionButton";
 import { EmberExplainerSheet } from "@/components/embers/EmberExplainerSheet";
-import { EmberCastOverlay } from "@/components/embers/EmberCastOverlay";
 import {
   getEmberAllowance,
   hasSeenEmberExplainer,
@@ -48,11 +47,14 @@ import {
   subscribeEmberAllowance,
 } from "@/lib/client/emberAllowance";
 import { subscribeEmberCast } from "@/lib/client/emberCastEvents";
-import { EMBER_COPY, planEmberCast, planUnlimitedEmberCast, type EmberCastPlan } from "@/lib/embers";
+import { shouldIgnoreLikersOpen } from "@/lib/client/emberTapGuard";
+import { EMBER_COPY } from "@/lib/embers";
 
 function ReactionButton({
   active,
   onClick,
+  onCountClick,
+  countClickLabel,
   icon: Icon,
   count,
   label,
@@ -66,6 +68,8 @@ function ReactionButton({
 }: {
   active?: boolean;
   onClick: () => void;
+  onCountClick?: () => void;
+  countClickLabel?: string;
   icon: LucideIcon;
   count?: number;
   label: string;
@@ -77,8 +81,30 @@ function ReactionButton({
   disabled?: boolean;
   pending?: boolean;
 }) {
+  const countNode =
+    !hideCount && count != null && count > 0 ? (
+      onCountClick ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onCountClick();
+          }}
+          className="min-h-[44px] min-w-[1.75rem] px-1 text-[12px] font-semibold tabular-nums leading-none text-white/65 touch-manipulation"
+          aria-label={countClickLabel ?? `${count} likes`}
+        >
+          {count}
+        </button>
+      ) : (
+        <span className="min-w-[0.65rem] text-[12px] font-semibold tabular-nums leading-none text-white/65">
+          {count}
+        </span>
+      )
+    ) : null;
+
   if (compact) {
-    return (
+    const iconButton = (
       <button
         type="button"
         onClick={onClick}
@@ -97,13 +123,18 @@ function ReactionButton({
           }`}
           strokeWidth={active ? 2.45 : 2}
         />
-        {!hideCount && count != null && count > 0 ? (
-          <span className="min-w-[0.65rem] text-[12px] font-semibold tabular-nums leading-none text-white/65">
-            {count}
-          </span>
-        ) : null}
+        {onCountClick ? null : countNode}
       </button>
     );
+    if (onCountClick) {
+      return (
+        <div className="cq-feed-like-pair">
+          {iconButton}
+          {countNode}
+        </div>
+      );
+    }
+    return iconButton;
   }
 
   return (
@@ -376,7 +407,6 @@ function FieldNoteCardInner({
   const [likePulse, setLikePulse] = useState(false);
   const [emberPulse, setEmberPulse] = useState(false);
   const [emberExplainerOpen, setEmberExplainerOpen] = useState(false);
-  const [emberCast, setEmberCast] = useState<EmberCastPlan | null>(null);
   const pendingEmberActionRef = useRef(false);
   const emberAnchorRef = useRef<HTMLSpanElement | null>(null);
   const emberPulseTimerRef = useRef<number | null>(null);
@@ -705,15 +735,11 @@ function FieldNoteCardInner({
     onHype(note.id);
   }
 
-  const getEmberAnchorRect = useCallback(() => emberAnchorRef.current?.getBoundingClientRect() ?? null, []);
-  const clearEmberCast = useCallback(() => setEmberCast(null), []);
-
   useEffect(() => {
     return subscribeEmberCast((event) => {
       if (event.noteId !== note.id) return;
       const reduceMotion =
         typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      setEmberCast(event.unlimited ? planUnlimitedEmberCast() : planEmberCast(event.remainingAfter));
       setActionToast(EMBER_COPY.emberSent);
       window.setTimeout(() => setActionToast(null), 2200);
       if (!reduceMotion) {
@@ -744,6 +770,11 @@ function FieldNoteCardInner({
       return;
     }
     fireEmber();
+  }
+
+  function openLikers() {
+    if (shouldIgnoreLikersOpen()) return;
+    setLikersSheetOpen(true);
   }
 
   function handleEmberBlocked(reason: "exhausted" | "own_post" | "already_given") {
@@ -1010,6 +1041,8 @@ function FieldNoteCardInner({
         <ReactionButton
           active={hasNodded}
           onClick={handleNod}
+          onCountClick={note.nodCount > 0 ? openLikers : undefined}
+          countClickLabel={`${note.nodCount} likes`}
           icon={Heart}
           count={note.nodCount}
           label={hasNodded ? "Unlike" : "Like"}
@@ -1044,6 +1077,7 @@ function FieldNoteCardInner({
             unlimited={emberAllowance?.unlimited === true}
             pending={emberPending}
             pulse={emberPulse}
+            noteId={note.id}
             anchorRef={emberAnchorRef}
           />
         ) : null}
@@ -1061,6 +1095,7 @@ function FieldNoteCardInner({
             pending={emberPending}
             pulse={emberPulse}
             compact
+            noteId={note.id}
             anchorRef={emberAnchorRef}
           />
         </div>
@@ -1195,7 +1230,7 @@ function FieldNoteCardInner({
               <LikedByRow
                 preview={note.likedByPreview ?? []}
                 likeCount={note.nodCount}
-                onOpenLikers={() => setLikersSheetOpen(true)}
+                onOpenLikers={openLikers}
               />
             </div>
           ) : null}
@@ -1386,20 +1421,6 @@ function FieldNoteCardInner({
           )
         : null}
 
-      {emberCast && typeof document !== "undefined"
-        ? createPortal(
-            <EmberCastOverlay
-              plan={emberCast}
-              reducedMotion={
-                typeof window !== "undefined" &&
-                window.matchMedia("(prefers-reduced-motion: reduce)").matches
-              }
-              getAnchorRect={getEmberAnchorRect}
-              onComplete={clearEmberCast}
-            />,
-            document.body,
-          )
-        : null}
     </article>
   );
 }

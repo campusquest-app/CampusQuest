@@ -51,14 +51,15 @@ describe("Ember tap reliability", () => {
     expect(emberBtn).toContain('data-cq-media-control="true"');
     expect(card).toContain("nativeImpact");
     expect(card).toContain('"light"');
-    expect(card).toContain("EmberCastOverlay");
+    expect(card).not.toContain("EmberCastOverlay");
     expect(card).toContain("prefers-reduced-motion");
   });
 
   it("surfaces replenish copy when Embers are exhausted", () => {
-    expect(embers).toContain('exhausted: "Your Embers will replenish tomorrow."');
+    expect(embers).toContain("You're out of Embers for today. They replenish tomorrow.");
     expect(embers).toContain('emberSent: "Ember given"');
     expect(embers).toContain('alreadyGiven: "You already gave this post an Ember"');
+    expect(embers).toContain("Couldn't send Ember. Try again.");
     expect(card).toContain("handleEmberBlocked");
     expect(card).toContain("EMBER_COPY.exhausted");
   });

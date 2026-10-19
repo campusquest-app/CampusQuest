@@ -1,6 +1,7 @@
 "use client";
 
 import { AvatarDisplay } from "@/components/AvatarDisplay";
+import { shouldIgnoreLikersOpen } from "@/lib/client/emberTapGuard";
 import type { QuadPostLikerPreview } from "@/lib/quadFieldNote";
 
 const AVATAR_SIZE = 26;
@@ -23,7 +24,10 @@ export function LikedByRow({ preview, likeCount, onOpenLikers }: LikedByRowProps
   return (
     <button
       type="button"
-      onClick={onOpenLikers}
+      onClick={() => {
+        if (shouldIgnoreLikersOpen()) return;
+        onOpenLikers();
+      }}
       className="cq-feed-liked-by touch-manipulation text-left"
       aria-label={
         likeCount === 1 && named

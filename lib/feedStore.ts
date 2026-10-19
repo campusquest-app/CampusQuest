@@ -30,7 +30,13 @@ export function mergeRemoteQuadPostsCache(posts: FieldNote[]): void {
     existing.hypeCount = serverPost.hypeCount;
     existing.vouchCount = serverPost.vouchCount;
     existing.nodByUserIds = new Set(serverPost.nodByUserIds);
-    existing.hypeByUserIds = new Set(serverPost.hypeByUserIds ?? serverPost.vouchByUserIds);
+    // Embers are give-only. Union local + server so a stale refresh cannot
+    // wipe a just-awarded spark before the next consistent read.
+    const serverEmbers = serverPost.hypeByUserIds ?? serverPost.vouchByUserIds;
+    const localEmbers = existing.hypeByUserIds ?? existing.vouchByUserIds;
+    const mergedEmbers = new Set(localEmbers);
+    serverEmbers.forEach((id) => mergedEmbers.add(id));
+    existing.hypeByUserIds = mergedEmbers;
     existing.vouchByUserIds = existing.hypeByUserIds;
     existing.isPersisted = serverPost.isPersisted ?? true;
     existing.commentCount = serverPost.commentCount;

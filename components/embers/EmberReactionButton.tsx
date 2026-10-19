@@ -4,6 +4,7 @@ import { useRef, useState, type PointerEvent, type Ref } from "react";
 import { Flame } from "lucide-react";
 import { EMBER_COLOR_ACTIVE, EMBER_COLOR_IDLE, EMBER_COPY, ownerEmberCountCopy } from "@/lib/embers";
 import { emberActionLabel, remainingEmbersCopy } from "@/lib/client/emberAllowance";
+import { markEmberInteraction } from "@/lib/client/emberTapGuard";
 
 export function EmberReactionButton({
   active,
@@ -14,6 +15,7 @@ export function EmberReactionButton({
   compact,
   pending,
   pulse,
+  noteId,
   onToggle,
   onBlocked,
   anchorRef,
@@ -26,6 +28,7 @@ export function EmberReactionButton({
   compact?: boolean;
   pending?: boolean;
   pulse?: boolean;
+  noteId?: string;
   onToggle: () => void;
   /** Called when the tap is valid UI feedback but no network toggle should run. */
   onBlocked?: (reason: "exhausted" | "own_post" | "already_given") => void;
@@ -61,6 +64,7 @@ export function EmberReactionButton({
   }
 
   function activate() {
+    markEmberInteraction();
     if (pending) return;
     if (isOwnPost) {
       onBlocked?.("own_post");
@@ -79,7 +83,9 @@ export function EmberReactionButton({
   }
 
   function onPointerDown(event: PointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
     event.stopPropagation();
+    markEmberInteraction();
     holdFiredRef.current = false;
     if (event.pointerType === "touch" || event.pointerType === "pen") {
       clearHold();
@@ -91,7 +97,9 @@ export function EmberReactionButton({
   }
 
   function onPointerUp(event: PointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
     event.stopPropagation();
+    markEmberInteraction();
     clearHold();
     if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
     if (holdFiredRef.current) {
@@ -115,6 +123,7 @@ export function EmberReactionButton({
       className="cq-ember-reaction-wrap relative inline-flex items-center"
       data-cq-media-control="true"
       data-no-drawer-swipe="true"
+      data-cq-ember-anchor={noteId}
     >
       {ownerTotal ? <span className="cq-ember-owner-total">{ownerTotal}</span> : null}
       <button

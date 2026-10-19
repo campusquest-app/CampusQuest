@@ -3715,16 +3715,23 @@ html[data-cq-bottom-nav-hidden] {
 }
 
 .cq-feed-liked-by {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   min-height: 28px;
   padding: 0.1rem 0 0.15rem;
   border: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
+}
+
+.cq-feed-like-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
 }
 
 .cq-feed-liked-by-avatars {
@@ -19829,6 +19836,23 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 
 .cq-comments-sheet--open {
   /* transform handled inline for drag + enter */
+}
+
+.cq-list-sheet {
+  height: auto;
+  min-height: 0;
+  max-height: min(72dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 48px));
+}
+
+.cq-list-sheet .cq-comments-sheet-list {
+  flex: 0 1 auto;
+  max-height: min(56dvh, 28rem);
+}
+
+.cq-list-sheet .cq-comments-sheet-empty-wrap {
+  flex: 0 0 auto;
+  min-height: 4.5rem;
+  padding: 16px;
 }
 
 .cq-comments-sheet-grab {

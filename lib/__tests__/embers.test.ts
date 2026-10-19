@@ -153,6 +153,8 @@ describe("Ember copy", () => {
   it("uses remaining / exhausted phrasing without ranking language", () => {
     expect(remainingEmbersCopy(2)).toBe("2 of 3 Embers left today");
     expect(remainingEmbersCopy(0)).toBe(EMBER_COPY.exhausted);
+    expect(EMBER_COPY.exhausted).toContain("You're out of Embers for today");
+    expect(EMBER_COPY.saveFailed).toBe("Couldn't send Ember. Try again.");
     expect(EMBER_COPY.explainerTitle).toBe("What are Embers?");
     expect(EMBER_COLOR_ACTIVE).toBe("#A78BFA");
   });

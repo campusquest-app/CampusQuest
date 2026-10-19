@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const card = readFileSync(join(process.cwd(), "components/FieldNoteCard.tsx"), "utf8");
+const host = readFileSync(join(process.cwd(), "components/embers/EmberCastHost.tsx"), "utf8");
 const emberBtn = readFileSync(join(process.cwd(), "components/embers/EmberReactionButton.tsx"), "utf8");
 const explainer = readFileSync(join(process.cwd(), "components/embers/EmberExplainerSheet.tsx"), "utf8");
 const overlay = readFileSync(join(process.cwd(), "components/embers/EmberCastOverlay.tsx"), "utf8");
@@ -58,7 +59,9 @@ describe("Ember UI and copy", () => {
     expect(css).toContain(".cq-ember-cast");
     expect(css).toContain("pointer-events: none");
     expect(css).toContain("cq-ember-cast-consume");
-    expect(card).toContain("EmberCastOverlay");
+    expect(host).toContain("EmberCastOverlay");
+    expect(host).toContain("subscribeEmberCast");
+    expect(card).not.toContain("EmberCastOverlay");
     expect(card).toContain("subscribeEmberCast");
     expect(actions).toContain("publishEmberCast");
     expect(actions).toContain("optimisticGiveSparkOnAllCopies");
@@ -71,7 +74,7 @@ describe("Ember UI and copy", () => {
     expect(emberBtn).toContain("ownerTotal ? <span className=\"cq-ember-owner-total\">");
     expect(emberBtn).not.toContain("tabular-nums");
     expect(emberBtn).toContain("unlimited");
-    expect(card).toContain("planUnlimitedEmberCast");
+    expect(host).toContain("planUnlimitedEmberCast");
     expect(actions).toContain("unlimited: true");
   });
 
