@@ -20,7 +20,8 @@ describe("Ember UI and copy", () => {
     expect(emberBtn).toContain("EMBER_COLOR_ACTIVE");
     expect(emberBtn).toContain("EMBER_COLOR_IDLE");
     expect(emberBtn).toContain("size={22}");
-    expect(emberBtn).toContain("strokeWidth={2}");
+    expect(emberBtn).toContain("strokeWidth={active ? 1.75 : 2}");
+    expect(emberBtn).toContain('fill={active ? "currentColor" : "none"}');
     expect(emberBtn).toContain("min-h-[44px]");
     expect(emberBtn).toContain("min-w-[44px]");
     expect(card).toContain("EmberReactionButton");
@@ -44,7 +45,9 @@ describe("Ember UI and copy", () => {
     expect(overlay).toContain("EMBER_COPY.emberSent");
     expect(overlay).toContain("plan.unlimited");
     expect(overlay).toContain("cq-ember-cast--unlimited");
-    expect(css).toContain("cq-ember-cast-trail");
+    expect(overlay).toContain("FLAME_SIZE = 34");
+    expect(overlay).toContain("addEventListener(\"scroll\"");
+    expect(css).toContain("z-index: 12040");
     expect(css).toContain(".cq-ember-owner-total");
     expect(overlay).not.toContain("🎉");
     expect(overlay).not.toContain("🔥");
@@ -58,7 +61,8 @@ describe("Ember UI and copy", () => {
     expect(card).toContain("EmberCastOverlay");
     expect(card).toContain("subscribeEmberCast");
     expect(actions).toContain("publishEmberCast");
-    expect(actions).toContain("result.active && !wasSparked");
+    expect(actions).toContain("optimisticGiveSparkOnAllCopies");
+    expect(actions).toContain("if (wasSparked)");
   });
 
   it("keeps public Ember totals private and hides zero counts", () => {

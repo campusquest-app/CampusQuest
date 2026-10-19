@@ -159,25 +159,26 @@ describe("Ember copy", () => {
 });
 
 describe("Ember cast animation plan", () => {
-  it("starts with 3 flames and leaves 2 after the first Ember", () => {
+  it("always shows 3 flames and leaves 2 after the first Ember", () => {
     const plan = planEmberCast(2);
     expect(plan.startingCount).toBe(3);
     expect(plan.remainingCount).toBe(2);
+    expect(plan.consumeIndex).toBe(1);
     expect(plan.remainingLabel).toBe("2 Embers remaining.");
     expect(plan.unlimited).toBe(false);
     expect(emberCastFlameSlots(3)).toHaveLength(3);
   });
 
-  it("starts with 2 flames and leaves 1 after the second Ember", () => {
+  it("still shows 3 flames after the second Ember with 1 remaining", () => {
     const plan = planEmberCast(1);
-    expect(plan.startingCount).toBe(2);
+    expect(plan.startingCount).toBe(3);
     expect(plan.remainingCount).toBe(1);
     expect(plan.remainingLabel).toBe("1 Ember remaining.");
   });
 
-  it("starts with 1 flame and shows all used after the third Ember", () => {
+  it("shows 3 flames and exhausted copy after the third Ember", () => {
     const plan = planEmberCast(0);
-    expect(plan.startingCount).toBe(1);
+    expect(plan.startingCount).toBe(3);
     expect(plan.remainingCount).toBe(0);
     expect(plan.exhausted).toBe(true);
     expect(plan.remainingLabel).toBe(EMBER_COPY.allUsedToday);
@@ -189,10 +190,10 @@ describe("Ember cast animation plan", () => {
     expect(planEmberCast(4).startingCount).toBe(3);
   });
 
-  it("gives admins one flame and no daily balance", () => {
+  it("gives admins three flames and no daily balance", () => {
     const plan = planUnlimitedEmberCast();
     expect(plan.unlimited).toBe(true);
-    expect(plan.startingCount).toBe(1);
+    expect(plan.startingCount).toBe(3);
     expect(plan.remainingLabel).toBe("");
     expect(plan.confirmationDetail).toBe("");
     expect(`${plan.remainingLabel} ${plan.confirmationDetail}`).not.toMatch(/remaining|of 3|unlimited|∞/i);
@@ -203,10 +204,10 @@ describe("Ember cast animation plan", () => {
       button: { left: 340, top: 620, width: 44, height: 44 },
       viewport: { width: 375, height: 667 },
     });
-    expect(se.left).toBeGreaterThanOrEqual(16 + 84);
-    expect(se.left).toBeLessThanOrEqual(375 - 16 - 84);
-    expect(se.top).toBeLessThanOrEqual(667 - 92);
-    expect(se.top).toBeGreaterThanOrEqual(16 + 176);
+    expect(se.left).toBeGreaterThanOrEqual(12 + 100);
+    expect(se.left).toBeLessThanOrEqual(375 - 12 - 100);
+    expect(se.top).toBeLessThanOrEqual(667 - 96);
+    expect(se.top).toBeGreaterThanOrEqual(12 + 210);
   });
 });
 

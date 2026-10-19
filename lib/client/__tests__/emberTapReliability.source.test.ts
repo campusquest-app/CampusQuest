@@ -8,6 +8,9 @@ const emberBtn = readFileSync(join(root, "components/embers/EmberReactionButton.
 const quad = readFileSync(join(root, "components/TheQuad.tsx"), "utf8");
 const css = readFileSync(join(root, "app/globals.css"), "utf8");
 const embers = readFileSync(join(root, "lib/embers.ts"), "utf8");
+const reactions = readFileSync(join(root, "lib/server/quadReactions.ts"), "utf8");
+const actions = readFileSync(join(root, "lib/client/quadReactionActions.ts"), "utf8");
+const feed = readFileSync(join(root, "lib/feedStore.ts"), "utf8");
 
 describe("Ember tap reliability", () => {
   it("re-renders when Ember membership changes even if the post was already liked", () => {
@@ -55,8 +58,18 @@ describe("Ember tap reliability", () => {
   it("surfaces replenish copy when Embers are exhausted", () => {
     expect(embers).toContain('exhausted: "Your Embers will replenish tomorrow."');
     expect(embers).toContain('emberSent: "Ember given"');
-    expect(embers).toContain('alreadyGiven: "Ember given"');
+    expect(embers).toContain('alreadyGiven: "You already gave this post an Ember"');
     expect(card).toContain("handleEmberBlocked");
     expect(card).toContain("EMBER_COPY.exhausted");
+  });
+
+  it("keeps Embers give-only so filled state cannot be toggled off", () => {
+    expect(reactions).toContain("Already awarded — keep the row");
+    expect(actions).toContain("optimisticGiveSparkOnAllCopies");
+    expect(feed).toContain("export function optimisticGiveSpark");
+    expect(quad).toContain("pendingEmbersRef.current = pending");
+    expect(emberBtn).toContain('fill={active ? "currentColor" : "none"}');
+    expect(css).toContain(".cq-ember-flame--active");
+    expect(css).toContain("fill: currentColor !important");
   });
 });

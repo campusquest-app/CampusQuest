@@ -604,6 +604,17 @@ export function optimisticToggleSpark(note: FieldNote, userId: string): boolean 
   return note.hypeByUserIds.has(userId);
 }
 
+/** Give-only optimistic Ember — never clears an existing award. */
+export function optimisticGiveSpark(note: FieldNote, userId: string): boolean {
+  migrateNote(note);
+  if (note.hypeByUserIds.has(userId)) return true;
+  note.hypeByUserIds.add(userId);
+  if (note.authorId === userId) note.hypeCount += 1;
+  note.vouchByUserIds = note.hypeByUserIds;
+  note.vouchCount = note.hypeCount;
+  return true;
+}
+
 export function applyServerReactionState(
   note: FieldNote,
   userId: string,
@@ -660,6 +671,14 @@ export function optimisticToggleSparkOnAllCopies(noteId: string, userId: string)
   let active = false;
   forEachNoteCopy(noteId, (note) => {
     active = optimisticToggleSpark(note, userId);
+  });
+  return active;
+}
+
+export function optimisticGiveSparkOnAllCopies(noteId: string, userId: string): boolean {
+  let active = false;
+  forEachNoteCopy(noteId, (note) => {
+    active = optimisticGiveSpark(note, userId);
   });
   return active;
 }

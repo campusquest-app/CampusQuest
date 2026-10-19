@@ -11,6 +11,8 @@ import {
 } from "@/lib/embers";
 import { EmberFlameMark } from "@/components/embers/EmberFlameMark";
 
+const FLAME_SIZE = 34;
+
 export function EmberCastOverlay({
   plan,
   reducedMotion,
@@ -22,6 +24,7 @@ export function EmberCastOverlay({
   getAnchorRect: () => DOMRect | null;
   onComplete: () => void;
 }) {
+  // Capture once — per-frame setState was restarting/janking the cast on iOS.
   const [anchor, setAnchor] = useState(() => readAnchor(getAnchorRect));
   const slots = useMemo(() => emberCastFlameSlots(plan.startingCount), [plan.startingCount]);
 
@@ -33,51 +36,30 @@ export function EmberCastOverlay({
 
   useEffect(() => {
     if (reducedMotion) return undefined;
-    let frame = 0;
-    const tick = () => {
-      setAnchor(readAnchor(getAnchorRect));
-      frame = window.requestAnimationFrame(tick);
+    const refresh = () => {
+      const next = readAnchor(getAnchorRect);
+      setAnchor((prev) => (prev.left === next.left && prev.top === next.top ? prev : next));
     };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
+    refresh();
+    window.addEventListener("resize", refresh);
+    window.addEventListener("scroll", refresh, true);
+    return () => {
+      window.removeEventListener("resize", refresh);
+      window.removeEventListener("scroll", refresh, true);
+    };
   }, [getAnchorRect, reducedMotion]);
-
-  if (plan.unlimited) {
-    return (
-      <div
-        className={`cq-ember-cast cq-ember-cast--unlimited ${reducedMotion ? "cq-ember-cast--reduced" : ""}`}
-        style={{ left: anchor.left, top: anchor.top }}
-        role="status"
-        aria-live="polite"
-      >
-        {reducedMotion ? null : (
-          <div className="cq-ember-cast__stage">
-            <span className="cq-ember-cast__flame cq-ember-cast__flame--trail">
-              <EmberFlameMark />
-              {[0, 1, 2, 3].map((particle) => (
-                <span key={particle} className={`cq-ember-cast__particle cq-ember-cast__particle--${particle}`} />
-              ))}
-            </span>
-          </div>
-        )}
-        <div className="cq-ember-cast__toast">
-          <strong>{EMBER_COPY.emberSent}</strong>
-        </div>
-      </div>
-    );
-  }
 
   if (reducedMotion) {
     return (
       <div
-        className="cq-ember-cast cq-ember-cast--reduced"
+        className={`cq-ember-cast cq-ember-cast--reduced ${plan.unlimited ? "cq-ember-cast--unlimited" : ""}`}
         style={{ left: anchor.left, top: anchor.top }}
         role="status"
         aria-live="polite"
       >
         <div className="cq-ember-cast__toast">
           <strong>{EMBER_COPY.emberSent}</strong>
-          <span>{plan.confirmationDetail}</span>
+          {plan.unlimited ? null : <span>{plan.confirmationDetail}</span>}
         </div>
       </div>
     );
@@ -85,7 +67,7 @@ export function EmberCastOverlay({
 
   return (
     <div
-      className="cq-ember-cast"
+      className={`cq-ember-cast ${plan.unlimited ? "cq-ember-cast--unlimited" : ""}`}
       style={{ left: anchor.left, top: anchor.top }}
       role="status"
       aria-live="polite"
@@ -104,23 +86,25 @@ export function EmberCastOverlay({
                 } as CSSProperties
               }
             >
-              <EmberFlameMark consume={consume} />
-              {consume
-                ? [0, 1, 2, 3].map((particle) => (
-                    <span
-                      key={particle}
-                      className={`cq-ember-cast__particle cq-ember-cast__particle--${particle}`}
-                    />
-                  ))
-                : null}
+              <EmberFlameMark size={FLAME_SIZE} consume={consume} />
+              {[0, 1, 2, 3].map((particle) => (
+                <span
+                  key={particle}
+                  className={`cq-ember-cast__particle cq-ember-cast__particle--${particle}${
+                    consume ? " cq-ember-cast__particle--bright" : ""
+                  }`}
+                />
+              ))}
             </span>
           );
         })}
       </div>
-      <p className="cq-ember-cast__label">{plan.remainingLabel}</p>
+      {plan.unlimited || !plan.remainingLabel ? null : (
+        <p className="cq-ember-cast__label">{plan.remainingLabel}</p>
+      )}
       <div className="cq-ember-cast__toast">
         <strong>{EMBER_COPY.emberSent}</strong>
-        <span>{plan.confirmationDetail}</span>
+        {plan.unlimited || !plan.confirmationDetail ? null : <span>{plan.confirmationDetail}</span>}
       </div>
     </div>
   );

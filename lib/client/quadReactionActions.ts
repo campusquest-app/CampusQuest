@@ -4,7 +4,7 @@ import {
   getNoteForReaction,
   applyServerReactionStateToAllCopies,
   optimisticToggleLikeOnAllCopies,
-  optimisticToggleSparkOnAllCopies,
+  optimisticGiveSparkOnAllCopies,
   restoreReactionStateToAllCopies,
   snapshotReactionStateForNote,
 } from "@/lib/feedStore";
@@ -143,17 +143,26 @@ export async function toggleQuadSpark(args: {
   }
 
   const wasSparked = snapshot.sparked;
+  if (wasSparked) {
+    // Already awarded — keep filled state; do not spend or animate again.
+    return { ok: true, given: false, allowance: snapshotEmberAllowance() ?? undefined };
+  }
+
   const allowanceSnapshot = snapshotEmberAllowance();
-  optimisticToggleSparkOnAllCopies(noteId, userId);
-  if (!wasSparked) applyOptimisticEmberGive();
+  optimisticGiveSparkOnAllCopies(noteId, userId);
+  applyOptimisticEmberGive();
   onOptimistic();
 
   try {
     const result = await toggleQuadPostReaction(noteId, "spark");
-    applyServerReactionStateToAllCopies(noteId, userId, result);
+    const sparked = Boolean(result.currentUserHasSparked ?? result.active);
+    applyServerReactionStateToAllCopies(noteId, userId, {
+      ...result,
+      currentUserHasSparked: sparked,
+    });
     if (result.emberAllowance) setEmberAllowance(result.emberAllowance);
     onOptimistic();
-    const given = Boolean(result.active && !wasSparked);
+    const given = sparked;
     if (given) {
       onSparkSent?.();
       const unlimited = Boolean(result.emberAllowance?.unlimited);

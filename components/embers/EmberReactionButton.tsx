@@ -159,9 +159,10 @@ export function EmberReactionButton({
         <Flame
           className={`cq-ember-flame${active ? " cq-ember-flame--active" : ""}`}
           size={22}
-          strokeWidth={2}
+          strokeWidth={active ? 1.75 : 2}
           color={color}
-          fill={active ? color : "none"}
+          fill={active ? "currentColor" : "none"}
+          absoluteStrokeWidth
           aria-hidden
         />
       </button>

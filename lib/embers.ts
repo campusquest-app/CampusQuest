@@ -33,7 +33,7 @@ export const EMBER_COPY = {
   explainerBody: "Embers are a special way to appreciate standout posts. You can give 3 each day.",
   explainerAck: "Got it",
   exhausted: "Your Embers will replenish tomorrow.",
-  alreadyGiven: "Ember given",
+  alreadyGiven: "You already gave this post an Ember",
   notEligible: "Embers are for verified students.",
   notVerified: "Verify your campus email to give Embers.",
   blocked: "You can't give this post an Ember.",
@@ -48,8 +48,8 @@ export const EMBER_COPY = {
   receivedOne: "1 Ember received",
 } as const;
 
-export const EMBER_CAST_DURATION_MS = 2400;
-export const EMBER_CAST_REDUCED_DURATION_MS = 1600;
+export const EMBER_CAST_DURATION_MS = 1800;
+export const EMBER_CAST_REDUCED_DURATION_MS = 1200;
 export const EMBER_COLOR_HIGHLIGHT = "#D8B4FE";
 export const EMBER_COLOR_DEEP = "#7C3AED";
 
@@ -166,11 +166,11 @@ export type EmberCastPlan = {
 /** Plan the consumption spell from the authoritative remaining count after a successful give. */
 export function planEmberCast(remainingAfter: number): EmberCastPlan {
   const remainingCount = Math.max(0, Math.min(DAILY_EMBER_LIMIT - 1, Math.floor(remainingAfter))) as 0 | 1 | 2;
-  const startingCount = (remainingCount + 1) as 1 | 2 | 3;
+  // Always show three daily Embers; one fades to represent the spend.
   return {
-    startingCount,
+    startingCount: 3,
     remainingCount,
-    consumeIndex: startingCount === 2 ? 1 : 0,
+    consumeIndex: 1,
     remainingLabel: emberCastRemainingLabel(remainingCount),
     confirmationDetail: remainingEmbersCopy(remainingCount),
     exhausted: remainingCount === 0,
@@ -178,12 +178,12 @@ export function planEmberCast(remainingAfter: number): EmberCastPlan {
   };
 }
 
-/** One flame, a short trail, and a confirmation. No balance, infinity mark, or admin badge. */
+/** Three-flame cast without daily balance copy. No infinity mark or admin badge. */
 export function planUnlimitedEmberCast(): EmberCastPlan {
   return {
-    startingCount: 1,
+    startingCount: 3,
     remainingCount: 0,
-    consumeIndex: 0,
+    consumeIndex: 1,
     remainingLabel: "",
     confirmationDetail: "",
     exhausted: false,
@@ -195,11 +195,11 @@ export type EmberFlameSlot = { x: number; y: number };
 
 export function emberCastFlameSlots(startingCount: 1 | 2 | 3): EmberFlameSlot[] {
   if (startingCount === 1) return [{ x: 0, y: 0 }];
-  if (startingCount === 2) return [{ x: -18, y: 2 }, { x: 18, y: 2 }];
+  if (startingCount === 2) return [{ x: -26, y: 4 }, { x: 26, y: 4 }];
   return [
-    { x: 0, y: -20 },
-    { x: -20, y: 12 },
-    { x: 20, y: 12 },
+    { x: 0, y: -30 },
+    { x: -32, y: 14 },
+    { x: 32, y: 14 },
   ];
 }
 
@@ -207,12 +207,13 @@ export function clampEmberCastAnchor(args: {
   button: { left: number; top: number; width: number; height: number };
   viewport: { width: number; height: number };
 }): { left: number; top: number } {
-  const overlayW = 168;
-  const overlayH = 176;
-  const navReserve = 92;
-  const edge = 16;
+  const overlayW = 200;
+  const overlayH = 210;
+  const navReserve = 96;
+  const edge = 12;
   let left = args.button.left + args.button.width / 2;
-  let top = args.button.top - 12;
+  // Sit just above the button so flames rise into the post body.
+  let top = args.button.top - 8;
   const minLeft = edge + overlayW / 2;
   const maxLeft = args.viewport.width - edge - overlayW / 2;
   const minTop = edge + overlayH;

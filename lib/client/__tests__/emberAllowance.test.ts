@@ -34,7 +34,7 @@ vi.mock("@/lib/feedStore", () => ({
     sparked: snapshot.sparked,
     likedByPreview: [],
   }),
-  optimisticToggleSparkOnAllCopies: vi.fn(),
+  optimisticGiveSparkOnAllCopies: vi.fn(),
   applyServerReactionStateToAllCopies: vi.fn(),
   restoreReactionStateToAllCopies,
 }));
@@ -95,7 +95,9 @@ describe("Ember allowance store and first-use", () => {
       "Give Ember. 2 of 3 Embers left today",
     );
     expect(emberActionLabel({ active: false, count: 4, remaining: 2, isOwnPost: false })).not.toContain("4");
-    expect(emberActionLabel({ active: true, count: 5, remaining: 1, isOwnPost: false })).toBe("Ember given");
+    expect(emberActionLabel({ active: true, count: 5, remaining: 1, isOwnPost: false })).toBe(
+      "You already gave this post an Ember",
+    );
     expect(emberActionLabel({ active: false, count: 3, remaining: null, isOwnPost: false, unlimited: true })).toBe(
       "Give Ember",
     );
@@ -154,11 +156,12 @@ describe("optimistic Ember rollback", () => {
     stop();
   });
 
-  it("publishes a dynamic cast after a successful give, but not after a remove", async () => {
+  it("publishes a cast after a successful give, and skips network when already awarded", async () => {
     const casts: Array<{ noteId: string; remainingAfter: number }> = [];
     const stop = subscribeEmberCast((event) => casts.push(event));
     toggleQuadPostReaction.mockResolvedValue({
       active: true,
+      currentUserHasSparked: true,
       emberAllowance: { used: 1, remaining: 2, limit: 3, resetsAt: "2026-07-10T04:00:00.000Z" },
     });
     snapshot.sparked = false;
@@ -173,17 +176,15 @@ describe("optimistic Ember rollback", () => {
     ]);
 
     casts.length = 0;
+    toggleQuadPostReaction.mockClear();
     snapshot.sparked = true;
-    toggleQuadPostReaction.mockResolvedValue({
-      active: false,
-      emberAllowance: { used: 0, remaining: 3, limit: 3, resetsAt: "2026-07-10T04:00:00.000Z" },
-    });
-    const removed = await toggleQuadSpark({
+    const already = await toggleQuadSpark({
       noteId: "11111111-1111-4111-8111-111111111111",
       userId: "user-1",
       onOptimistic: () => undefined,
     });
-    expect(removed).toMatchObject({ ok: true, given: false });
+    expect(already).toMatchObject({ ok: true, given: false });
+    expect(toggleQuadPostReaction).not.toHaveBeenCalled();
     expect(casts).toEqual([]);
     snapshot.sparked = false;
     stop();

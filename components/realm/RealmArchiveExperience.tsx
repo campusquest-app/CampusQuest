@@ -295,7 +295,8 @@ export function RealmArchiveExperience({
 
   function handleHype(noteId: string) {
     if (!viewer || pendingEmbers.has(noteId)) return;
-    setPendingEmbers((prev) => new Set(prev).add(noteId));
+    const pending = new Set(pendingEmbers).add(noteId);
+    setPendingEmbers(pending);
     void toggleQuadSpark({
       noteId,
       userId: viewer.id,

@@ -536,42 +536,17 @@ export function TheQuad({
   }, [streamItems]);
 
   const syncNotesFromFeed = useCallback(() => {
-    if (feedTab === "friends" || isCommunityFeedTab(feedTab) || isLocalBusinessesFeedTab(feedTab)) {
-      setNotes((prev) =>
-        cloneFeedNotesForDisplay(
-          prev.map((note) => {
-            const updated = getNoteForReaction(note.id);
-            return enrichNote(updated ?? note);
-          }),
-        ),
-      );
-      return;
-    }
-    const list = getFeed(character.id, baseFeedType).map(enrichNote);
-    if (feedTab === "trending") {
-      const trending = [...list].sort((a, b) => {
-        const diff = trendingScore(b) - trendingScore(a);
-        return diff !== 0 ? diff : b.createdAt - a.createdAt;
-      });
-      setNotes(cloneFeedNotesForDisplay(trending));
-      return;
-    }
-    if (feedTab === "public") {
-      // Keep recommendation order stable across likes/comments; re-rank only on refresh.
-      setNotes((prev) => {
-        const byId = new Map(list.map((note) => [note.id, note]));
-        const kept = prev
-          .map((note) => byId.get(note.id))
-          .filter((note): note is FieldNote => Boolean(note));
-        const seen: Record<string, true> = {};
-        for (const note of kept) seen[note.id] = true;
-        const newcomers = list.filter((note) => !seen[note.id]);
-        return cloneFeedNotesForDisplay([...kept, ...newcomers]);
-      });
-      return;
-    }
-    setNotes(cloneFeedNotesForDisplay(list));
-  }, [character.id, baseFeedType, feedTab]);
+    // Always pull reaction membership from the mutation cache so Ember awards
+    // are not lost to a stale list clone after optimistic updates.
+    setNotes((prev) =>
+      cloneFeedNotesForDisplay(
+        prev.map((note) => {
+          const updated = getNoteForReaction(note.id);
+          return enrichNote(updated ?? note);
+        }),
+      ),
+    );
+  }, []);
 
   const pendingLikesRef = useRef(pendingLikes);
   pendingLikesRef.current = pendingLikes;
@@ -604,18 +579,20 @@ export function TheQuad({
   const handleHype = useCallback(
     (noteId: string) => {
       if (pendingEmbersRef.current.has(noteId)) return;
-      setPendingEmbers((prev) => new Set(prev).add(noteId));
+      // Update the ref synchronously so rapid taps cannot double-fire before re-render.
+      const pending = new Set(pendingEmbersRef.current).add(noteId);
+      pendingEmbersRef.current = pending;
+      setPendingEmbers(pending);
       setReactionNotice(null);
       void toggleQuadSpark({
         noteId,
         userId: character.id,
         onOptimistic: syncNotesFromFeed,
       }).then((result) => {
-        setPendingEmbers((prev) => {
-          const next = new Set(prev);
-          next.delete(noteId);
-          return next;
-        });
+        const next = new Set(pendingEmbersRef.current);
+        next.delete(noteId);
+        pendingEmbersRef.current = next;
+        setPendingEmbers(next);
         if (!result.ok && result.message) {
           setReactionNotice(result.message);
         }

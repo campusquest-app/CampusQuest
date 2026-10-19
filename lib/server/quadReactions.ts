@@ -17,7 +17,6 @@ import {
   emberSelfError,
   getViewerEmberAllowance,
   notifyEmberGiven,
-  retractEmberNotification,
 } from "@/lib/server/embers";
 
 export type QuadReactionType = "like" | "spark";
@@ -330,7 +329,8 @@ async function removeLegacyQuadReaction(args: {
 }
 
 /**
- * Toggle an Ember (stored as reaction_type = spark).
+ * Give an Ember (stored as reaction_type = spark). Idempotent — a second
+ * call keeps the existing row. Embers are not removable via this path.
  * Never awards XP — Embers stay independent of paused progression.
  */
 async function toggleSparkReaction(args: {
@@ -355,20 +355,8 @@ async function toggleSparkReaction(args: {
     throw new ApiError(400, existingError.message ?? "Could not read reaction.", "QUAD_REACTION_READ_FAILED");
   }
 
+  // Already awarded — keep the row. Do not remove or re-spend.
   if (existing?.id) {
-    const { error: deleteError } = await userClient
-      .from("quad_post_reactions")
-      .delete()
-      .eq("id", existing.id)
-      .eq("user_id", userId);
-    if (deleteError) {
-      throw new ApiError(400, deleteError.message ?? "Could not remove reaction.", "QUAD_REACTION_DELETE_FAILED");
-    }
-    await retractEmberNotification({
-      postOwnerUserId: postAuthorId,
-      actorUserId: userId,
-      postId,
-    });
     return;
   }
 

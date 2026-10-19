@@ -167,6 +167,8 @@ describe("Ember notifications", () => {
     expect(reactions).toContain("emberTotalForViewer");
     expect(reactions).toContain("if (viewerId !== authorId) return null");
     expect(reactions).toContain("discloseEmberCounts");
+    expect(reactions).toContain("Already awarded — keep the row");
+    expect(reactions).toMatch(/if \(existing\?\.id\) \{\s*return;\s*\}/);
     const posts = readFileSync(join(process.cwd(), "lib/server/quadPosts.ts"), "utf8");
     expect(posts).not.toMatch(/^\s*hype_count,?$/m);
     expect(posts).toContain("Feed reads omit hype_count");

@@ -170,7 +170,8 @@ export function UserProfileScreen({
 
   function handleHype(noteId: string) {
     if (!canViewPrivateContent || pendingEmbers.has(noteId)) return;
-    setPendingEmbers((prev) => new Set(prev).add(noteId));
+    const pending = new Set(pendingEmbers).add(noteId);
+    setPendingEmbers(pending);
     setReactionNotice(null);
     void toggleQuadSpark({
       noteId,
