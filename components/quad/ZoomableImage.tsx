@@ -45,6 +45,10 @@ type LoadPhase = "idle" | "loading" | "ready" | "error";
 
 const IMAGE_LOAD_TIMEOUT_MS = 18_000;
 
+function imageElementIsUsable(img: HTMLImageElement | null): boolean {
+  return Boolean(img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0);
+}
+
 /**
  * Feed photo with Instagram-style temporary pinch-to-zoom.
  * Zoom exists only while two fingers are down; release always snaps back to 1x.
@@ -78,30 +82,87 @@ export function ZoomableImage({
     [src],
   );
   const [useFallback, setUseFallback] = useState(false);
-  const [phase, setPhase] = useState<LoadPhase>("idle");
+  const [phase, setPhase] = useState<LoadPhase>(loadSrc ? "loading" : "idle");
   const [attempt, setAttempt] = useState(0);
   /** Keep last successful paint URL so rerenders / src swaps do not blank the frame. */
   const [paintedSrc, setPaintedSrc] = useState<string | null>(null);
+  const paintedSrcRef = useRef<string | null>(null);
+  const paintedForLogicalSrcRef = useRef<string | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const timeoutRef = useRef<number | null>(null);
+  const loadGenerationRef = useRef(0);
 
   const activeSrc = useFallback || !sources.usesVariant ? sources.fallbackSrc : sources.src;
   const activeSrcSet = useFallback || !sources.usesVariant ? undefined : sources.srcSet;
+  const hasUsablePaint =
+    paintedSrc != null && paintedForLogicalSrcRef.current === src;
 
   useEffect(() => {
+    paintedSrcRef.current = paintedSrc;
+  }, [paintedSrc]);
+
+  // Logical media URL changed — drop prior frame and restart load bookkeeping.
+  useEffect(() => {
+    paintedForLogicalSrcRef.current = null;
+    paintedSrcRef.current = null;
+    setPaintedSrc(null);
     setUseFallback(false);
     setPhase(loadSrc ? "loading" : "idle");
-  }, [src, loadSrc, attempt]);
+    loadGenerationRef.current += 1;
+  }, [src]); // eslint-disable-line react-hooks/exhaustive-deps -- loadSrc handled below
+
+  // Gate / retry: never wipe a good frame for this src; only show spinner when empty.
+  useEffect(() => {
+    if (!loadSrc) {
+      setPhase((current) => (paintedSrcRef.current && paintedForLogicalSrcRef.current === src ? "ready" : "idle"));
+      return;
+    }
+    const gen = ++loadGenerationRef.current;
+    const img = imgRef.current;
+    if (imageElementIsUsable(img)) {
+      const painted = img!.currentSrc || activeSrc;
+      paintedForLogicalSrcRef.current = src;
+      paintedSrcRef.current = painted;
+      setPaintedSrc(painted);
+      setPhase("ready");
+      return;
+    }
+    if (paintedSrcRef.current && paintedForLogicalSrcRef.current === src) {
+      // Keep last good paint while a new attempt resolves (variant → fallback / retry).
+      setPhase("loading");
+      return;
+    }
+    setPhase("loading");
+    // Generation capture avoids stale timeout/error after unmount or src change.
+    void gen;
+  }, [loadSrc, attempt, src, activeSrc]);
 
   useEffect(() => {
     if (!loadSrc || !activeSrc) return;
     if (timeoutRef.current != null) window.clearTimeout(timeoutRef.current);
+    const gen = loadGenerationRef.current;
     timeoutRef.current = window.setTimeout(() => {
+      if (gen !== loadGenerationRef.current) return;
+      const img = imgRef.current;
+      if (imageElementIsUsable(img)) {
+        const painted = img!.currentSrc || activeSrc;
+        paintedForLogicalSrcRef.current = src;
+        paintedSrcRef.current = painted;
+        setPaintedSrc(painted);
+        setPhase("ready");
+        return;
+      }
+      // Failed preload / slow variant must not overlay a frame that already painted.
+      if (paintedSrcRef.current && paintedForLogicalSrcRef.current === src) {
+        setPhase("ready");
+        return;
+      }
       setPhase((current) => (current === "ready" ? current : "error"));
     }, IMAGE_LOAD_TIMEOUT_MS);
     return () => {
       if (timeoutRef.current != null) window.clearTimeout(timeoutRef.current);
     };
-  }, [loadSrc, activeSrc, attempt]);
+  }, [loadSrc, activeSrc, attempt, src]);
 
   useEffect(() => {
     if (phase === "ready" && paintedSrc) primeMediaCache(paintedSrc);
@@ -110,8 +171,11 @@ export function ZoomableImage({
   function retry() {
     setUseFallback(false);
     setAttempt((n) => n + 1);
-    setPhase("loading");
   }
+
+  const showSpinner = loadSrc && phase === "loading" && !hasUsablePaint;
+  // Only surface Retry when nothing usable is on screen for this post media.
+  const showError = loadSrc && phase === "error" && !hasUsablePaint;
 
   return (
     <TemporaryPinchSurface
@@ -125,6 +189,7 @@ export function ZoomableImage({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={imgRef}
         key={`${attempt}:${useFallback ? "fb" : "var"}:${src}`}
         src={loadSrc ? activeSrc : undefined}
         srcSet={loadSrc ? activeSrcSet : undefined}
@@ -139,17 +204,43 @@ export function ZoomableImage({
         className={`cq-zoomable-image-img cq-quad-feed-media ${imgClassName}`.trim()}
         style={{
           // Keep last frame visible under a failed/pending swap when possible.
-          opacity: phase === "error" && !paintedSrc ? 0 : 1,
+          opacity: showError ? 0 : 1,
         }}
         onLoad={(event) => {
+          const el = event.currentTarget;
+          if (!imageElementIsUsable(el)) return;
+          const painted = el.currentSrc || activeSrc;
+          paintedForLogicalSrcRef.current = src;
+          paintedSrcRef.current = painted;
+          setPaintedSrc(painted);
           setPhase("ready");
-          setPaintedSrc(event.currentTarget.currentSrc || activeSrc);
           onLoad?.(event);
         }}
         onError={(event) => {
+          // Optimized / srcSet candidate failed — try original once.
           if (!useFallback && sources.usesVariant && sources.fallbackSrc !== activeSrc) {
             setUseFallback(true);
-            setPhase("loading");
+            // Do not flip to error: keep any painted frame; spinner only if none.
+            setPhase((current) =>
+              paintedSrcRef.current && paintedForLogicalSrcRef.current === src
+                ? current === "error"
+                  ? "ready"
+                  : current
+                : "loading",
+            );
+            return;
+          }
+          // Genuine failure: only error when nothing usable is painted for this src.
+          if (paintedSrcRef.current && paintedForLogicalSrcRef.current === src) {
+            setPhase("ready");
+            return;
+          }
+          if (imageElementIsUsable(event.currentTarget)) {
+            const painted = event.currentTarget.currentSrc || activeSrc;
+            paintedForLogicalSrcRef.current = src;
+            paintedSrcRef.current = painted;
+            setPaintedSrc(painted);
+            setPhase("ready");
             return;
           }
           setPhase("error");
@@ -157,13 +248,13 @@ export function ZoomableImage({
         }}
       />
 
-      {loadSrc && phase === "loading" && !paintedSrc ? (
+      {showSpinner ? (
         <div className="cq-quad-media-status" aria-hidden>
           <span className="cq-quad-media-spinner" />
         </div>
       ) : null}
 
-      {loadSrc && phase === "error" ? (
+      {showError ? (
         <div className="cq-quad-media-status cq-quad-media-status--error" role="status">
           <p className="cq-quad-media-status__text">Couldn’t load photo</p>
           <button

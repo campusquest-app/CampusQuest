@@ -14,12 +14,20 @@ import { feedMediaFrameStyle } from "@/lib/client/quadFeedMediaLayout";
 import { acquireVideoLoadSlot, releaseVideoLoadSlot } from "@/lib/client/quadVideoLoadGate";
 import { primeMediaCache } from "@/lib/client/quadMediaCache";
 import { buildQuadFeedImageSources } from "@/lib/client/quadFeedImageUrl";
+import {
+  prefersReducedData,
+  QUAD_VIDEO_IO_ROOT_MARGIN,
+  QUAD_VIDEO_IO_THRESHOLDS,
+  registerFeedVideoAutoplay,
+  reportFeedVideoVisibility,
+} from "@/lib/client/quadFeedVideoAutoplay";
 
 let activePlayerId: string | null = null;
 const playerRegistry = new Map<string, HTMLVideoElement>();
 const activeListeners = new Set<() => void>();
 
 const VIDEO_LOAD_TIMEOUT_MS = 20_000;
+const PLAYBACK_FLASH_MS = 700;
 
 function claimPlayback(id: string) {
   activePlayerId = id;
@@ -36,6 +44,7 @@ function claimPlayback(id: string) {
 }
 
 type LoadPhase = "idle" | "loading" | "ready" | "error" | "timeout";
+type FlashKind = "play" | "pause" | null;
 
 export function QuadVideoPlayer({
   playerId,
@@ -82,6 +91,9 @@ export function QuadVideoPlayer({
   const intendedTimeRef = useRef<number | null>(null);
   const correctingRef = useRef(false);
   const loadAbortRef = useRef<AbortController | null>(null);
+  const userPausedRef = useRef(false);
+  const autoplayEligibleRef = useRef(false);
+  const flashTimerRef = useRef<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [soundOn, setSoundOn] = useState(false);
   const [confirmedSilent, setConfirmedSilent] = useState(false);
@@ -94,6 +106,7 @@ export function QuadVideoPlayer({
   const [attachedSrc, setAttachedSrc] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [inViewForPlayback, setInViewForPlayback] = useState(false);
+  const [flash, setFlash] = useState<FlashKind>(null);
   const frameStyle = useMemo(
     () => feedMediaFrameStyle(width, height, { fillParent }),
     [width, height, fillParent],
@@ -216,66 +229,115 @@ export function QuadVideoPlayer({
     };
   }, [hasAudio, showMuteControl, attachedSrc]);
 
-  useEffect(() => {
+  function flashPlayback(kind: FlashKind) {
+    if (flashTimerRef.current != null) window.clearTimeout(flashTimerRef.current);
+    setFlash(kind);
+    flashTimerRef.current = window.setTimeout(() => {
+      setFlash(null);
+      flashTimerRef.current = null;
+    }, PLAYBACK_FLASH_MS);
+  }
+
+  function tryAutoplay() {
     const el = videoRef.current;
-    if (!el) return;
-    if (!autoplayWhenVisible || !attachedSrc) {
-      el.pause();
+    if (!el || !attachedSrc || userPausedRef.current) return;
+    claimPlayback(playerId);
+    if (!getQuadFeedUnmuted()) {
       setVideoElementMuted(el, true);
       setSoundOn(false);
+      void el.play().catch(() => undefined);
       return;
     }
+    void unmuteVideoElement(el).then((ok) => {
+      if (ok) {
+        setSoundOn(true);
+        return;
+      }
+      setVideoElementMuted(el, true);
+      setSoundOn(false);
+      void el.play().catch(() => undefined);
+    });
+  }
+
+  function pauseForVisibility() {
+    const el = videoRef.current;
+    if (!el) return;
+    el.pause();
+    setVideoElementMuted(el, true);
+    setSoundOn(false);
+  }
+
+  // Visibility → single active muted autoplay with hysteresis (via coordinator).
+  useEffect(() => {
+    const el = videoRef.current;
     const root = rootRef.current;
-    if (!root) return;
+    if (!el || !root || !autoplayWhenVisible || !attachedSrc) {
+      if (el && (!autoplayWhenVisible || !attachedSrc)) {
+        el.pause();
+        setVideoElementMuted(el, true);
+        setSoundOn(false);
+      }
+      return;
+    }
+
+    const unregister = registerFeedVideoAutoplay(playerId, (shouldPlay) => {
+      autoplayEligibleRef.current = shouldPlay;
+      setInViewForPlayback(shouldPlay);
+      if (shouldPlay) {
+        tryAutoplay();
+      } else {
+        // Leaving the pause threshold clears manual pause so revisit can resume.
+        userPausedRef.current = false;
+        pauseForVisibility();
+      }
+    });
 
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
         if (!entry) return;
-        if (entry.intersectionRatio >= 0.6) {
-          setInViewForPlayback(true);
-          claimPlayback(playerId);
-          if (!getQuadFeedUnmuted()) {
-            setVideoElementMuted(el, true);
-            setSoundOn(false);
-            void el.play().catch(() => undefined);
-            return;
-          }
-          void unmuteVideoElement(el).then((ok) => {
-            if (ok) {
-              setSoundOn(true);
-              return;
-            }
-            setVideoElementMuted(el, true);
-            setSoundOn(false);
-            void el.play().catch(() => undefined);
-          });
-        } else {
-          setInViewForPlayback(false);
-          el.pause();
-          setVideoElementMuted(el, true);
-          setSoundOn(false);
-        }
+        reportFeedVideoVisibility(playerId, entry.intersectionRatio);
       },
-      { threshold: [0, 0.6, 1] },
+      {
+        root: null,
+        rootMargin: QUAD_VIDEO_IO_ROOT_MARGIN,
+        threshold: [...QUAD_VIDEO_IO_THRESHOLDS],
+      },
     );
     observer.observe(root);
-    return () => observer.disconnect();
+
+    return () => {
+      observer.disconnect();
+      unregister();
+    };
+    // tryAutoplay/pause read latest refs; intentional dep set is visibility wiring only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoplayWhenVisible, playerId, attachedSrc]);
 
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "hidden") videoRef.current?.pause();
+      if (document.visibilityState === "hidden") {
+        videoRef.current?.pause();
+      } else if (
+        document.visibilityState === "visible" &&
+        autoplayEligibleRef.current &&
+        !userPausedRef.current &&
+        autoplayWhenVisible
+      ) {
+        tryAutoplay();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoplayWhenVisible, playerId, attachedSrc]);
 
   useEffect(() => {
     return () => {
       if (document.documentElement.getAttribute("data-cq-media-gesture-lock") === "scrub") {
         document.documentElement.removeAttribute("data-cq-media-gesture-lock");
       }
+      if (flashTimerRef.current != null) window.clearTimeout(flashTimerRef.current);
     };
   }, []);
 
@@ -388,6 +450,8 @@ export function QuadVideoPlayer({
       return;
     }
     if (el.paused) {
+      userPausedRef.current = false;
+      flashPlayback("play");
       claimPlayback(playerId);
       if (getQuadFeedUnmuted()) {
         void unmuteVideoElement(el).then((ok) => setSoundOn(ok));
@@ -396,6 +460,8 @@ export function QuadVideoPlayer({
         void el.play().catch(() => undefined);
       }
     } else {
+      userPausedRef.current = true;
+      flashPlayback("pause");
       el.pause();
     }
   }
@@ -510,7 +576,8 @@ export function QuadVideoPlayer({
         src={attachedSrc ?? undefined}
         poster={posterHref || undefined}
         playsInline
-        preload={attachedSrc ? "metadata" : "none"}
+        autoPlay={Boolean(autoplayWhenVisible && inViewForPlayback)}
+        preload={attachedSrc ? (prefersReducedData() ? "none" : "metadata") : "none"}
         muted={!soundOn}
         controls={false}
         disablePictureInPicture
@@ -545,6 +612,13 @@ export function QuadVideoPlayer({
         onCanPlay={(event) => {
           syncMedia(event.currentTarget);
           setPhase("ready");
+          if (
+            autoplayWhenVisible &&
+            autoplayEligibleRef.current &&
+            !userPausedRef.current
+          ) {
+            tryAutoplay();
+          }
         }}
         onSeeked={() => {
           const el = videoRef.current;
@@ -612,17 +686,26 @@ export function QuadVideoPlayer({
         </div>
       ) : null}
 
+      {flash ? (
+        <div className="cq-quad-video-flash" aria-hidden data-cq-video-flash={flash}>
+          {flash === "play" ? <Play className="h-8 w-8" /> : <Pause className="h-8 w-8" />}
+        </div>
+      ) : null}
+
       <div className="cq-quad-video-controls">
-        <button
-          type="button"
-          data-cq-video-control="play"
-          onPointerDown={stopControlPointer}
-          onClick={togglePlay}
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white"
-          aria-label={playing ? "Pause video" : "Play video"}
-        >
-          {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-        </button>
+        {/* Permanent play control only when paused (not while actively playing). */}
+        {!playing ? (
+          <button
+            type="button"
+            data-cq-video-control="play"
+            onPointerDown={stopControlPointer}
+            onClick={togglePlay}
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white"
+            aria-label="Play video"
+          >
+            <Play className="h-5 w-5" />
+          </button>
+        ) : null}
 
         {muteVisible ? (
           <button

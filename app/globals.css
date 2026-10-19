@@ -3793,7 +3793,7 @@ html[data-cq-bottom-nav-hidden] {
   box-shadow: none;
   background: rgba(0, 0, 0, 0.22);
   overflow: hidden;
-  --cq-feed-media-max-h: min(60vh, 520px);
+  --cq-feed-media-max-h: min(58dvh, 56svh, 520px);
   --cq-media-ar: 4 / 5;
 }
 
@@ -3808,8 +3808,8 @@ html[data-cq-bottom-nav-hidden] {
   overflow: hidden;
   touch-action: pan-y;
   overscroll-behavior-x: none;
-  /* Feed media height budget: cap tall portrait panels so actions stay visible. */
-  --cq-feed-media-max-h: min(60vh, 520px);
+  /* Feed media height budget: ~55–60% viewport; portraits capped at 4:5. */
+  --cq-feed-media-max-h: min(58dvh, 56svh, 520px);
   --cq-media-ar: 4 / 5;
   width: 100%;
   max-width: 100%;
@@ -4213,7 +4213,7 @@ html[data-cq-media-pinching] {
   }
 }
 
-/* Play/pause + mute share one group anchored to the player root (position: relative),
+/* Mute (and play-when-paused) share one group anchored to the player root,
    kept clear of the 4px progress bar along the bottom edge. */
 .cq-quad-video-controls {
   position: absolute;
@@ -4230,6 +4230,53 @@ html[data-cq-media-pinching] {
 .cq-quad-video-controls > button {
   flex: none;
   pointer-events: auto;
+}
+
+/* Brief center flash on tap-to-pause / tap-to-resume — not a permanent overlay. */
+.cq-quad-video-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: #fff;
+}
+
+.cq-quad-video-flash > svg {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0.7rem;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+  animation: cq-quad-video-flash-in 700ms ease forwards;
+}
+
+@keyframes cq-quad-video-flash-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  18% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-quad-video-flash > svg {
+    animation: none;
+    opacity: 0.92;
+  }
 }
 
 .quad-feed-media-wrap button.cq-quad-video-sound,

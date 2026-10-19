@@ -150,6 +150,28 @@ describe("Ember notifications", () => {
     expect(createNotification).not.toHaveBeenCalled();
   });
 
+  it("keeps Ember notification copy anonymous and positive", () => {
+    expect(EMBER_COPY.notificationTitle).toBe("Your post received an Ember!");
+    expect(EMBER_COPY.notificationBody).toBe("Someone appreciated what you shared.");
+    expect(EMBER_COPY.notificationBody).not.toMatch(/most|rank|leaderboard|\d+\s+Embers/i);
+    const notifications = readFileSync(join(process.cwd(), "lib/server/notifications.ts"), "utf8");
+    expect(notifications).toContain('row.type === "quad_post_ember"');
+    expect(notifications).toContain("anonymousEmber ? null");
+    const center = readFileSync(join(process.cwd(), "components/NotificationsCenter.tsx"), "utf8");
+    expect(center).toContain("isEmberNotice");
+    expect(center).toContain("!isEmberNotice");
+  });
+
+  it("hides private totals from non-authors in the reaction API", () => {
+    const reactions = readFileSync(join(process.cwd(), "lib/server/quadReactions.ts"), "utf8");
+    expect(reactions).toContain("emberTotalForViewer");
+    expect(reactions).toContain("if (viewerId !== authorId) return null");
+    expect(reactions).toContain("discloseEmberCounts");
+    const posts = readFileSync(join(process.cwd(), "lib/server/quadPosts.ts"), "utf8");
+    expect(posts).not.toMatch(/^\s*hype_count,?$/m);
+    expect(posts).toContain("Feed reads omit hype_count");
+  });
+
   it("creates one in-app Ember notification", async () => {
     adminFrom.mockReturnValue({
       select: vi.fn().mockReturnValue({

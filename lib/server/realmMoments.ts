@@ -46,14 +46,12 @@ type RealmMomentDbRow = {
     visibility: string;
     created_at: string;
     nod_count: number;
-    hype_count: number;
   } | {
     body: string;
     proof_url: string | null;
     visibility: string;
     created_at: string;
     nod_count: number;
-    hype_count: number;
   }[] | null;
   profiles: {
     username: string;

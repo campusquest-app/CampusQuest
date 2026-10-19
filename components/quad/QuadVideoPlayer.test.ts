@@ -13,15 +13,27 @@ function cssRule(selector: string): string {
 }
 
 describe("QuadVideoPlayer controls layout", () => {
-  it("renders play/pause then mute inside one bottom-left control group", () => {
+  it("keeps mute in the bottom-left group and hides permanent play while playing", () => {
     const group = player.indexOf('className="cq-quad-video-controls"');
     const play = player.indexOf('data-cq-video-control="play"');
     const mute = player.indexOf('data-cq-video-control="mute"');
     expect(group).toBeGreaterThan(0);
     expect(play).toBeGreaterThan(group);
     expect(mute).toBeGreaterThan(play);
+    expect(player).toContain("{!playing ? (");
+    expect(player).toContain("cq-quad-video-flash");
     expect(player.match(/data-cq-video-control="play"/g)).toHaveLength(1);
     expect(player.match(/data-cq-video-control="mute"/g)).toHaveLength(1);
+  });
+
+  it("uses hysteresis autoplay coordinator with muted playsInline playback", () => {
+    expect(player).toContain("registerFeedVideoAutoplay");
+    expect(player).toContain("reportFeedVideoVisibility");
+    expect(player).toContain("QUAD_VIDEO_IO_ROOT_MARGIN");
+    expect(player).toContain("userPausedRef");
+    expect(player).toContain("playsInline");
+    expect(player).toContain("autoPlay=");
+    expect(player).toContain('preload={attachedSrc ? (prefersReducedData() ? "none" : "metadata") : "none"}');
   });
 
   it("seeks from the shared timeline with pointer and keyboard handlers", () => {

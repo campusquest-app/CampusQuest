@@ -20,14 +20,14 @@ describe("Quad feed media performance regressions", () => {
   });
 
   it("lazy-loads images and prioritizes the first visible post", () => {
-    expect(zoomable).toContain('loading={priority ? "eager" : "lazy"}');
+    expect(zoomable).toContain('loading={loading ?? (priority ? "eager" : "lazy")}');
     expect(zoomable).toContain("fetchPriority");
     expect(zoomable).toContain("buildQuadFeedImageSources");
     expect(zoomable).toContain("Retry");
   });
 
   it("loads video metadata only when near viewport and gates concurrent downloads", () => {
-    expect(player).toContain('preload={attachedSrc ? "metadata" : "none"}');
+    expect(player).toContain('preload={attachedSrc ? (prefersReducedData() ? "none" : "metadata") : "none"}');
     expect(player).toContain("acquireVideoLoadSlot");
     expect(player).toContain("allowLoad");
     expect(player).toContain("posterHref");
@@ -55,9 +55,12 @@ describe("Quad feed media performance regressions", () => {
       height: 1080,
       maxHeightPx: maxH,
     });
-    expect(portrait).toBe(maxH);
+    // Tall portraits clamp to 4:5 (~487.5 at 390px), not the full max-height budget.
+    expect(portrait).toBeCloseTo((390 * 5) / 4, 1);
+    expect(portrait).toBeLessThanOrEqual(maxH);
     expect(landscape).toBeLessThan(300);
     expect(feedMediaFrameStyle(1920, 1080).aspectRatio).toBe("1920 / 1080");
+    expect(feedMediaFrameStyle(1080, 1920).aspectRatio).toBe("4 / 5");
   });
 
   it("keeps original media URL as fallback when variants fail", () => {

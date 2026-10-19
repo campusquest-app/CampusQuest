@@ -21,19 +21,24 @@ describe("quad feed media layout", () => {
     expect(feedMediaFrameStyle(null, null).aspectRatio).toBe("4 / 5");
   });
 
-  it("reserves portrait aspect without collapsing to a strip", () => {
+  it("clamps tall portraits to 4/5 so feed frames stay balanced", () => {
     const style = feedMediaFrameStyle(1080, 1920);
-    expect(style.aspectRatio).toBe("1080 / 1920");
-    expect(style.maxHeight).toContain("60vh");
+    expect(style.aspectRatio).toBe("4 / 5");
+    expect(style.maxHeight).toMatch(/58dvh|56svh|520px/);
     const height = expectedFeedMediaHeightPx({
       containerWidth: 390,
       width: 1080,
       height: 1920,
       maxHeightPx: 506,
     });
-    expect(height).toBeGreaterThan(200);
+    // 390 * 5/4 = 487.5 under the max height budget
+    expect(height).toBeCloseTo((390 * 5) / 4, 1);
     expect(height).toBeLessThanOrEqual(506);
-    expect(height).toBeCloseTo(506, 0);
+  });
+
+  it("keeps square and mild portraits proportional", () => {
+    expect(feedMediaAspectRatioCss(1080, 1080)).toBe("1080 / 1080");
+    expect(feedMediaAspectRatioCss(1080, 1350)).toBe("1080 / 1350"); // exactly 4:5
   });
 
   it("reserves landscape aspect shorter than portrait", () => {
@@ -59,10 +64,10 @@ describe("quad feed media layout", () => {
     const style = feedMediaFrameStyle(1080, 1920, { fillParent: true });
     expect(style.aspectRatio).toBe("auto");
     expect(style.height).toBe("100%");
-    expect(style["--cq-media-ar"]).toBe("1080 / 1920");
+    expect(style["--cq-media-ar"]).toBe("4 / 5");
   });
 
-  it("fallback placeholder height is stable (not 0, not full 60vh for unknown)", () => {
+  it("fallback placeholder height is stable (not 0, not full viewport for unknown)", () => {
     const h = expectedFeedMediaHeightPx({
       containerWidth: 390,
       maxHeightPx: 506,

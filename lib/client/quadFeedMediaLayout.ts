@@ -4,11 +4,14 @@
  * or jump (CLS) once the image/video intrinsic size arrives.
  */
 
-/** Matches `.cq-quad-media-carousel` / feed CSS budget. */
-export const QUAD_FEED_MEDIA_MAX_HEIGHT_CSS = "min(60vh, 520px)";
+/** Matches `.cq-quad-media-carousel` / feed CSS budget (~55–60% viewport). */
+export const QUAD_FEED_MEDIA_MAX_HEIGHT_CSS = "min(58dvh, 56svh, 520px)";
 
 /** Used when dimensions are unknown — Instagram-like portrait frame, not full viewport. */
 export const QUAD_FEED_MEDIA_FALLBACK_ASPECT = "4 / 5";
+
+/** Tallest portrait frame allowed in the feed (width:height). */
+export const QUAD_FEED_MEDIA_MAX_PORTRAIT_AR = 4 / 5;
 
 export type QuadMediaDimensions = {
   width?: number | null;
@@ -30,13 +33,23 @@ export function hasUsableMediaDimensions(
   );
 }
 
-/** CSS `aspect-ratio` value from media pixels, or the feed fallback. */
+/**
+ * CSS `aspect-ratio` for the feed frame.
+ * Portrait media taller than 4:5 is clamped so tall uploads do not dominate the viewport;
+ * landscape and square keep their natural proportions.
+ */
 export function feedMediaAspectRatioCss(
   width?: number | null,
   height?: number | null,
 ): string {
   if (!hasUsableMediaDimensions(width, height)) return QUAD_FEED_MEDIA_FALLBACK_ASPECT;
-  return `${Math.round(width as number)} / ${Math.round(height as number)}`;
+  const w = width as number;
+  const h = height as number;
+  // height/width > 5/4 means taller than 4:5 → clamp the frame.
+  if (h / w > 1 / QUAD_FEED_MEDIA_MAX_PORTRAIT_AR) {
+    return QUAD_FEED_MEDIA_FALLBACK_ASPECT;
+  }
+  return `${Math.round(w)} / ${Math.round(h)}`;
 }
 
 /**
@@ -80,7 +93,7 @@ export function feedMediaFrameStyle(
 
 /**
  * Expected laid-out height (px) for measurements / tests at a given container width.
- * Mirrors CSS: min(width / aspect, maxHeightPx).
+ * Mirrors CSS: min(width / aspect, maxHeightPx) with 4:5 portrait clamp.
  */
 export function expectedFeedMediaHeightPx(args: {
   containerWidth: number;
@@ -90,13 +103,15 @@ export function expectedFeedMediaHeightPx(args: {
 }): number {
   const { containerWidth, maxHeightPx } = args;
   if (!(containerWidth > 0) || !(maxHeightPx > 0)) return 0;
-  const w = args.width;
-  const h = args.height;
-  if (!hasUsableMediaDimensions(w, h)) {
-    // 4/5 fallback
+  const arCss = feedMediaAspectRatioCss(args.width, args.height);
+  // Parse "W / H"
+  const parts = arCss.split("/").map((p) => Number(p.trim()));
+  const aw = parts[0];
+  const ah = parts[1];
+  if (!(aw! > 0) || !(ah! > 0)) {
     return Math.min(maxHeightPx, (containerWidth * 5) / 4);
   }
-  const natural = (containerWidth * (h as number)) / (w as number);
+  const natural = (containerWidth * ah!) / aw!;
   return Math.min(maxHeightPx, natural);
 }
 

@@ -33,6 +33,8 @@ describe("quad feed scroll media behavior", () => {
       height: 1920,
       maxHeightPx: 506,
     });
-    expect(reserved).toBe(506);
+    // Tall portraits reserve a 4:5 frame (~487.5px at 390 width), not the full max budget.
+    expect(reserved).toBeCloseTo((390 * 5) / 4, 1);
+    expect(reserved).toBeLessThanOrEqual(506);
   });
 });

@@ -61,6 +61,16 @@ describe("Ember UI and copy", () => {
     expect(actions).toContain("result.active && !wasSparked");
   });
 
+  it("keeps public Ember totals private and hides zero counts", () => {
+    expect(emberBtn).toContain("ownerEmberCountCopy");
+    expect(emberBtn).toContain("isOwnPost");
+    expect(emberBtn).toContain("ownerTotal ? <span className=\"cq-ember-owner-total\">");
+    expect(emberBtn).not.toContain("tabular-nums");
+    expect(emberBtn).toContain("unlimited");
+    expect(card).toContain("planUnlimitedEmberCast");
+    expect(actions).toContain("unlimited: true");
+  });
+
   it("reuses spark reaction storage instead of a second reaction system", () => {
     expect(reactions).toContain('EMBER_REACTION_TYPE');
     expect(reactions).toContain("quad_post_reactions");
