@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { EmberCastOverlay } from "@/components/embers/EmberCastOverlay";
-import { subscribeEmberCast, type EmberCastAnchor, type EmberCastEvent } from "@/lib/client/emberCastEvents";
+import {
+  subscribeEmberCast,
+  subscribeEmberCastDismiss,
+  type EmberCastAnchor,
+  type EmberCastEvent,
+} from "@/lib/client/emberCastEvents";
 import { planEmberCast, planUnlimitedEmberCast, type EmberCastPlan } from "@/lib/embers";
 
 type ActiveCast = {
@@ -22,7 +27,7 @@ export function EmberCastHost() {
   const keyRef = useRef(0);
 
   useEffect(() => {
-    return subscribeEmberCast((event: EmberCastEvent) => {
+    const stopCast = subscribeEmberCast((event: EmberCastEvent) => {
       keyRef.current += 1;
       setCast({
         key: keyRef.current,
@@ -31,6 +36,13 @@ export function EmberCastHost() {
         anchor: event.anchor ?? null,
       });
     });
+    const stopDismiss = subscribeEmberCastDismiss((noteId) => {
+      setCast((prev) => (prev?.noteId === noteId ? null : prev));
+    });
+    return () => {
+      stopCast();
+      stopDismiss();
+    };
   }, []);
 
   const getAnchorRect = useCallback(() => {

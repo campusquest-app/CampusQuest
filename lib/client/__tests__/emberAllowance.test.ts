@@ -46,8 +46,17 @@ vi.mock("@/lib/client/quadPostsClient", () => ({
   toggleQuadPostReaction: (...args: unknown[]) => toggleQuadPostReaction(...args),
 }));
 
+vi.mock("@/lib/client/appToast", () => ({
+  showAppToast: vi.fn(),
+}));
+
+vi.mock("@/lib/client/capacitorNative", () => ({
+  nativeImpact: vi.fn(async () => undefined),
+}));
+
 import { toggleQuadSpark } from "@/lib/client/quadReactionActions";
-import { subscribeEmberCast } from "@/lib/client/emberCastEvents";
+import { subscribeEmberCast, subscribeEmberCastDismiss } from "@/lib/client/emberCastEvents";
+import { showAppToast } from "@/lib/client/appToast";
 
 const memoryStorage = new Map<string, string>();
 
@@ -120,7 +129,7 @@ describe("optimistic Ember rollback", () => {
     });
   });
 
-  it("rolls back the post and allowance when the server rejects the Ember", async () => {
+  it("rolls back the post and does not deduct until the server confirms", async () => {
     toggleQuadPostReaction.mockRejectedValue(
       new ApiRequestError(EMBER_COPY.exhausted, 409, EMBER_ERROR_CODES.dailyLimit),
     );
@@ -139,30 +148,45 @@ describe("optimistic Ember rollback", () => {
     expect(restoreReactionStateToAllCopies).toHaveBeenCalled();
     expect(getEmberAllowance()?.used).toBe(1);
     expect(getEmberAllowance()?.remaining).toBe(2);
+    expect(showAppToast).not.toHaveBeenCalledWith(EMBER_COPY.emberSent, expect.anything());
   });
 
-  it("does not publish the consumption animation when the request fails", async () => {
+  it("starts the cast immediately, then dismisses it when the request fails", async () => {
     const casts: Array<{ noteId: string; remainingAfter: number }> = [];
-    const stop = subscribeEmberCast((event) => casts.push(event));
-    toggleQuadPostReaction.mockRejectedValue(
-      new ApiRequestError(EMBER_COPY.saveFailed, 400, "QUAD_REACTION_INSERT_FAILED"),
+    const dismissed: string[] = [];
+    const stopCast = subscribeEmberCast((event) => casts.push(event));
+    const stopDismiss = subscribeEmberCastDismiss((noteId) => dismissed.push(noteId));
+    let resolveReject!: (error: unknown) => void;
+    toggleQuadPostReaction.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          resolveReject = reject;
+        }),
     );
-    await toggleQuadSpark({
+    const pending = toggleQuadSpark({
       noteId: "11111111-1111-4111-8111-111111111111",
       userId: "user-1",
       onOptimistic: () => undefined,
     });
-    expect(casts).toEqual([]);
-    stop();
+    expect(casts).toEqual([
+      { noteId: "11111111-1111-4111-8111-111111111111", remainingAfter: 1 },
+    ]);
+    expect(getEmberAllowance()?.remaining).toBe(2);
+    resolveReject(new ApiRequestError(EMBER_COPY.saveFailed, 400, "QUAD_REACTION_INSERT_FAILED"));
+    await pending;
+    expect(dismissed).toEqual(["11111111-1111-4111-8111-111111111111"]);
+    stopCast();
+    stopDismiss();
   });
 
-  it("publishes a cast after a successful give, and skips network when already awarded", async () => {
+  it("publishes a cast on tap, confirms with one toast, and skips network when already awarded", async () => {
     const casts: Array<{ noteId: string; remainingAfter: number }> = [];
     const stop = subscribeEmberCast((event) => casts.push(event));
+    vi.mocked(showAppToast).mockClear();
     toggleQuadPostReaction.mockResolvedValue({
       active: true,
       currentUserHasSparked: true,
-      emberAllowance: { used: 1, remaining: 2, limit: 3, resetsAt: "2026-07-10T04:00:00.000Z" },
+      emberAllowance: { used: 2, remaining: 1, limit: 3, resetsAt: "2026-07-10T04:00:00.000Z" },
     });
     snapshot.sparked = false;
     const given = await toggleQuadSpark({
@@ -172,11 +196,17 @@ describe("optimistic Ember rollback", () => {
     });
     expect(given).toMatchObject({ ok: true, given: true });
     expect(casts).toEqual([
-      { noteId: "11111111-1111-4111-8111-111111111111", remainingAfter: 2 },
+      { noteId: "11111111-1111-4111-8111-111111111111", remainingAfter: 1 },
     ]);
+    expect(showAppToast).toHaveBeenCalledWith(EMBER_COPY.emberSent, {
+      tone: "success",
+      durationMs: 2200,
+    });
+    expect(getEmberAllowance()?.remaining).toBe(1);
 
     casts.length = 0;
     toggleQuadPostReaction.mockClear();
+    vi.mocked(showAppToast).mockClear();
     snapshot.sparked = true;
     const already = await toggleQuadSpark({
       noteId: "11111111-1111-4111-8111-111111111111",
@@ -186,6 +216,7 @@ describe("optimistic Ember rollback", () => {
     expect(already).toMatchObject({ ok: true, given: false });
     expect(toggleQuadPostReaction).not.toHaveBeenCalled();
     expect(casts).toEqual([]);
+    expect(showAppToast).not.toHaveBeenCalled();
     snapshot.sparked = false;
     stop();
   });
@@ -223,5 +254,34 @@ describe("optimistic Ember rollback", () => {
       { noteId: "11111111-1111-4111-8111-111111111111", remainingAfter: 0, unlimited: true },
     ]);
     stop();
+  });
+
+  it("ignores a second in-flight tap for the same post", async () => {
+    let resolveFirst!: (value: unknown) => void;
+    toggleQuadPostReaction.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    snapshot.sparked = false;
+    const first = toggleQuadSpark({
+      noteId: "11111111-1111-4111-8111-111111111111",
+      userId: "user-1",
+      onOptimistic: () => undefined,
+    });
+    const second = await toggleQuadSpark({
+      noteId: "11111111-1111-4111-8111-111111111111",
+      userId: "user-1",
+      onOptimistic: () => undefined,
+    });
+    expect(second).toMatchObject({ ok: true, given: false });
+    expect(toggleQuadPostReaction).toHaveBeenCalledTimes(1);
+    resolveFirst({
+      active: true,
+      currentUserHasSparked: true,
+      emberAllowance: { used: 2, remaining: 1, limit: 3, resetsAt: "2026-07-10T04:00:00.000Z" },
+    });
+    await first;
   });
 });

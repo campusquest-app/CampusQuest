@@ -727,9 +727,10 @@ function FieldNoteCardInner({
   useEffect(() => {
     return subscribeEmberCast((event) => {
       if (event.noteId !== note.id) return;
+      // Immediate purple pulse on the flame. Success toast is owned by
+      // toggleQuadSpark so the cast overlay never duplicates "Ember given".
       const reduceMotion =
         typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      showAppToast(EMBER_COPY.emberSent, { tone: "success", durationMs: 2200 });
       if (!reduceMotion) {
         setEmberPulse(true);
         if (emberPulseTimerRef.current != null) window.clearTimeout(emberPulseTimerRef.current);
@@ -738,9 +739,6 @@ function FieldNoteCardInner({
           emberPulseTimerRef.current = null;
         }, 220);
       }
-      void import("@/lib/client/capacitorNative").then(({ nativeImpact }) => {
-        void nativeImpact("light");
-      });
     });
   }, [note.id]);
 

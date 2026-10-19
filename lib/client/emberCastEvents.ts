@@ -15,9 +15,11 @@ export type EmberCastEvent = {
   anchor?: EmberCastAnchor;
 };
 
-type Listener = (event: EmberCastEvent) => void;
+type CastListener = (event: EmberCastEvent) => void;
+type DismissListener = (noteId: string) => void;
 
-const listeners = new Set<Listener>();
+const listeners = new Set<CastListener>();
+const dismissListeners = new Set<DismissListener>();
 
 function readAnchor(noteId: string): EmberCastAnchor | undefined {
   if (typeof document === "undefined") return undefined;
@@ -29,13 +31,28 @@ function readAnchor(noteId: string): EmberCastAnchor | undefined {
 }
 
 export function publishEmberCast(event: EmberCastEvent): void {
-  const next = { ...event, anchor: event.anchor ?? readAnchor(event.noteId) };
+  const anchor = event.anchor ?? readAnchor(event.noteId);
+  const next: EmberCastEvent = { ...event };
+  if (anchor) next.anchor = anchor;
+  else delete next.anchor;
   Array.from(listeners).forEach((listener) => listener(next));
 }
 
-export function subscribeEmberCast(listener: Listener): () => void {
+/** Clear an in-flight optimistic cast when the server rejects the award. */
+export function dismissEmberCast(noteId: string): void {
+  Array.from(dismissListeners).forEach((listener) => listener(noteId));
+}
+
+export function subscribeEmberCast(listener: CastListener): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
+  };
+}
+
+export function subscribeEmberCastDismiss(listener: DismissListener): () => void {
+  dismissListeners.add(listener);
+  return () => {
+    dismissListeners.delete(listener);
   };
 }

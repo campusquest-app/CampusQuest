@@ -36,6 +36,11 @@ describe("viewport AppToast", () => {
     expect(quad).not.toContain("cq-quad-reaction-notice");
     expect(card).toContain("showAppToast");
     expect(card).not.toContain("actionToast");
+    const actions = readFileSync(join(root, "lib/client/quadReactionActions.ts"), "utf8");
+    const overlay = readFileSync(join(root, "components/embers/EmberCastOverlay.tsx"), "utf8");
+    expect(actions).toContain("showAppToast(EMBER_COPY.emberSent");
+    expect(card).not.toContain("EMBER_COPY.emberSent");
+    expect(overlay).not.toContain("EMBER_COPY.emberSent");
   });
 
   it("stores the latest toast for the host", () => {

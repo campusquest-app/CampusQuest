@@ -12,17 +12,17 @@ import { isPersistedQuadPostId } from "@/lib/quadFieldNote";
 import { getAccessToken } from "@/lib/client/apiSession";
 import { ApiRequestError, CQ_MISSING_SESSION_CODE } from "@/lib/client/dashboardApi";
 import { likeQuadPost, unlikeQuadPost, toggleQuadPostReaction } from "@/lib/client/quadPostsClient";
-import {
-  applyOptimisticEmberGive,
-  setEmberAllowance,
-  snapshotEmberAllowance,
-} from "@/lib/client/emberAllowance";
-import { publishEmberCast } from "@/lib/client/emberCastEvents";
+import { setEmberAllowance, snapshotEmberAllowance } from "@/lib/client/emberAllowance";
+import { dismissEmberCast, publishEmberCast } from "@/lib/client/emberCastEvents";
+import { showAppToast } from "@/lib/client/appToast";
 import { EMBER_COPY, EMBER_ERROR_CODES, type EmberAllowance } from "@/lib/embers";
 
 export type QuadReactionActionResult =
   | { ok: true; given?: boolean; allowance?: EmberAllowance }
   | { ok: false; message: string; code?: string; requiresSignIn?: boolean; demoPost?: boolean; allowance?: EmberAllowance };
+
+/** Prevents duplicate network awards while a tap is still in flight. */
+const sparkInFlight = new Set<string>();
 
 function mapReactionError(error: unknown, kind: "like" | "ember" = "like"): QuadReactionActionResult {
   if (error instanceof ApiRequestError) {
@@ -75,6 +75,12 @@ function mapReactionError(error: unknown, kind: "like" | "ember" = "like"): Quad
     ok: false,
     message: kind === "ember" ? EMBER_COPY.saveFailed : "Could not save your reaction. Please try again.",
   };
+}
+
+function fireEmberHaptic(): void {
+  void import("@/lib/client/capacitorNative").then(({ nativeImpact }) => {
+    void nativeImpact("light");
+  });
 }
 
 export async function toggleQuadLike(args: {
@@ -161,10 +167,28 @@ export async function toggleQuadSpark(args: {
     return { ok: true, given: false, allowance: snapshotEmberAllowance() ?? undefined };
   }
 
+  if (sparkInFlight.has(noteId)) {
+    return { ok: true, given: false, allowance: snapshotEmberAllowance() ?? undefined };
+  }
+  sparkInFlight.add(noteId);
+
   const allowanceSnapshot = snapshotEmberAllowance();
+  // Visual fill only — daily allowance stays unchanged until the server confirms.
   optimisticGiveSparkOnAllCopies(noteId, userId);
-  applyOptimisticEmberGive();
   onOptimistic();
+
+  const unlimitedPreview = Boolean(allowanceSnapshot?.unlimited);
+  const remainingAfterPreview = unlimitedPreview
+    ? 0
+    : Math.max(0, (allowanceSnapshot?.remaining ?? 1) - 1);
+  // Start cast / haptic on the same tap; do not wait for the network.
+  publishEmberCast(
+    unlimitedPreview
+      ? { noteId, remainingAfter: remainingAfterPreview, unlimited: true }
+      : { noteId, remainingAfter: remainingAfterPreview },
+  );
+  fireEmberHaptic();
+  onSparkSent?.();
 
   try {
     const result = await toggleQuadPostReaction(noteId, "spark");
@@ -175,20 +199,23 @@ export async function toggleQuadSpark(args: {
     });
     if (result.emberAllowance) setEmberAllowance(result.emberAllowance);
     onOptimistic();
-    const given = sparked;
-    if (given) {
-      onSparkSent?.();
-      const unlimited = Boolean(result.emberAllowance?.unlimited);
-      const remainingAfter = unlimited
-        ? 0
-        : (result.emberAllowance?.remaining ?? Math.max(0, (allowanceSnapshot?.remaining ?? 1) - 1));
-      publishEmberCast(unlimited ? { noteId, remainingAfter, unlimited: true } : { noteId, remainingAfter });
+    if (!sparked) {
+      dismissEmberCast(noteId);
+      restoreReactionStateToAllCopies(noteId, userId, snapshot);
+      if (allowanceSnapshot) setEmberAllowance(allowanceSnapshot);
+      onOptimistic();
+      return { ok: false, message: EMBER_COPY.saveFailed };
     }
-    return { ok: true, given, allowance: result.emberAllowance };
+    // Single success toast — cast overlay never shows "Ember given".
+    showAppToast(EMBER_COPY.emberSent, { tone: "success", durationMs: 2200 });
+    return { ok: true, given: true, allowance: result.emberAllowance };
   } catch (error) {
+    dismissEmberCast(noteId);
     restoreReactionStateToAllCopies(noteId, userId, snapshot);
     if (allowanceSnapshot) setEmberAllowance(allowanceSnapshot);
     onOptimistic();
     return mapReactionError(error, "ember");
+  } finally {
+    sparkInFlight.delete(noteId);
   }
 }

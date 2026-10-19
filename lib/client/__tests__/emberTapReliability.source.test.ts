@@ -49,10 +49,12 @@ describe("Ember tap reliability", () => {
 
   it("keeps Ember controls above video/image media and triggers haptic cast feedback", () => {
     expect(emberBtn).toContain('data-cq-media-control="true"');
-    expect(card).toContain("nativeImpact");
-    expect(card).toContain('"light"');
+    expect(actions).toContain("nativeImpact");
+    expect(actions).toContain('"light"');
+    expect(actions).toContain("publishEmberCast");
     expect(card).not.toContain("EmberCastOverlay");
     expect(card).toContain("prefers-reduced-motion");
+    expect(card).toContain("setEmberPulse(true)");
   });
 
   it("surfaces replenish copy when Embers are exhausted", () => {

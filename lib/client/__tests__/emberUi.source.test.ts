@@ -43,7 +43,8 @@ describe("Ember UI and copy", () => {
     expect(overlay).toContain("getAnchorRect");
     expect(overlay).toContain("plan.startingCount");
     expect(overlay).toContain("reducedMotion");
-    expect(overlay).toContain("EMBER_COPY.emberSent");
+    expect(overlay).not.toContain("EMBER_COPY.emberSent");
+    expect(overlay).not.toContain("cq-ember-cast__toast");
     expect(overlay).toContain("plan.unlimited");
     expect(overlay).toContain("cq-ember-cast--unlimited");
     expect(overlay).toContain("FLAME_SIZE = 34");
@@ -61,11 +62,17 @@ describe("Ember UI and copy", () => {
     expect(css).toContain("cq-ember-cast-consume");
     expect(host).toContain("EmberCastOverlay");
     expect(host).toContain("subscribeEmberCast");
+    expect(host).toContain("subscribeEmberCastDismiss");
     expect(card).not.toContain("EmberCastOverlay");
     expect(card).toContain("subscribeEmberCast");
+    expect(card).not.toContain("EMBER_COPY.emberSent");
     expect(actions).toContain("publishEmberCast");
+    expect(actions).toContain("dismissEmberCast");
+    expect(actions).toContain("showAppToast(EMBER_COPY.emberSent");
     expect(actions).toContain("optimisticGiveSparkOnAllCopies");
+    expect(actions).not.toContain("applyOptimisticEmberGive");
     expect(actions).toContain("if (wasSparked)");
+    expect(actions).toContain("sparkInFlight");
   });
 
   it("keeps public Ember totals private and hides zero counts", () => {

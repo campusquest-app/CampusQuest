@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   EMBER_CAST_DURATION_MS,
   EMBER_CAST_REDUCED_DURATION_MS,
-  EMBER_COPY,
   clampEmberCastAnchor,
   emberCastFlameSlots,
   type EmberCastPlan,
@@ -13,6 +12,10 @@ import { EmberFlameMark } from "@/components/embers/EmberFlameMark";
 
 const FLAME_SIZE = 34;
 
+/**
+ * Three-flame cast only. Success copy lives in the viewport AppToast —
+ * never duplicate "Ember given" on the post media.
+ */
 export function EmberCastOverlay({
   plan,
   reducedMotion,
@@ -56,12 +59,8 @@ export function EmberCastOverlay({
         style={{ left: anchor.left, top: anchor.top }}
         role="status"
         aria-live="polite"
-      >
-        <div className="cq-ember-cast__toast">
-          <strong>{EMBER_COPY.emberSent}</strong>
-          {plan.unlimited ? null : <span>{plan.confirmationDetail}</span>}
-        </div>
-      </div>
+        aria-label="Ember"
+      />
     );
   }
 
@@ -71,6 +70,7 @@ export function EmberCastOverlay({
       style={{ left: anchor.left, top: anchor.top }}
       role="status"
       aria-live="polite"
+      aria-label="Ember"
     >
       <div className="cq-ember-cast__stage">
         {slots.map((slot, index) => {
@@ -98,13 +98,6 @@ export function EmberCastOverlay({
             </span>
           );
         })}
-      </div>
-      {plan.unlimited || !plan.remainingLabel ? null : (
-        <p className="cq-ember-cast__label">{plan.remainingLabel}</p>
-      )}
-      <div className="cq-ember-cast__toast">
-        <strong>{EMBER_COPY.emberSent}</strong>
-        {plan.unlimited || !plan.confirmationDetail ? null : <span>{plan.confirmationDetail}</span>}
       </div>
     </div>
   );
