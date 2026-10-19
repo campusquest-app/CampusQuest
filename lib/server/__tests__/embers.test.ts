@@ -67,6 +67,10 @@ describe("Ember server policy", () => {
 });
 
 describe("Ember allowance query", () => {
+  beforeEach(() => {
+    adminFrom.mockReset();
+  });
+
   it("counts only the current campus-day spark rows", async () => {
     const lt = vi.fn().mockResolvedValue({ count: 2, error: null });
     const gte = vi.fn().mockReturnValue({ lt });
@@ -75,18 +79,24 @@ describe("Ember allowance query", () => {
     const select = vi.fn().mockReturnValue({ eq: eqUser });
     const userClient = {
       from: vi.fn((table: string) => {
-        if (table === "profiles") {
-          return {
-            select: () => ({
-              eq: () => ({
-                maybeSingle: async () => ({ data: { role: "student" }, error: null }),
-              }),
-            }),
-          };
-        }
+        // Allowance counting uses the user session; eligibility uses service role.
+        expect(table).not.toBe("profiles");
         return { select };
       }),
     };
+    adminFrom.mockImplementation((table: string) => {
+      expect(table).toBe("profiles");
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({
+              data: { role: "student", student_status: "current_student", campus_email_verified_at: null },
+              error: null,
+            }),
+          }),
+        }),
+      };
+    });
 
     const allowance = await getViewerEmberAllowance({
       userClient: userClient as never,
@@ -101,21 +111,40 @@ describe("Ember allowance query", () => {
 
   it("does not apply the daily cap when the stored role is admin or super_admin", async () => {
     expect(hasUnlimitedDailyEmbers("admin")).toBe(true);
-    const from = vi.fn().mockReturnValue({
+    adminFrom.mockReturnValue({
       select: () => ({
         eq: () => ({
-          maybeSingle: async () => ({ data: { role: "super_admin" }, error: null }),
+          maybeSingle: async () => ({
+            data: { role: "super_admin", student_status: null, campus_email_verified_at: null },
+            error: null,
+          }),
         }),
       }),
     });
+    const userFrom = vi.fn();
     const allowance = await getViewerEmberAllowance({
-      userClient: { from } as never,
+      userClient: { from: userFrom } as never,
       userId: "admin-1",
       now: new Date("2026-07-09T16:00:00.000Z"),
     });
     expect(allowance.unlimited).toBe(true);
-    expect(from).toHaveBeenCalledWith("profiles");
-    expect(from).not.toHaveBeenCalledWith("quad_post_reactions");
+    expect(adminFrom).toHaveBeenCalledWith("profiles");
+    expect(userFrom).not.toHaveBeenCalled();
+  });
+
+  it("loads Ember eligibility via service role so revoked student_status cannot abort awards", async () => {
+    const source = readFileSync(join(process.cwd(), "lib/server/embers.ts"), "utf8");
+    expect(source).toContain("loadEmberGiverProfile");
+    expect(source).toContain("createAdminClient()");
+    expect(source).not.toMatch(
+      /userClient\s*\n?\s*\.from\("profiles"\)\s*\n?\s*\.select\("role, student_status/,
+    );
+    const revoke = readFileSync(
+      join(process.cwd(), "supabase/migrations/20261016010000_profile_private_column_revoke.sql"),
+      "utf8",
+    );
+    expect(revoke).toContain("grant select (bio, major, class_year, academic_area, requested_school_name, student_status)");
+    expect(revoke).toContain("to service_role");
   });
 });
 

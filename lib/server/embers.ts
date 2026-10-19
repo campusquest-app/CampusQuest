@@ -62,43 +62,60 @@ export async function getViewerEmberAllowance(args: {
 }
 
 /**
- * Reads profiles.role through the caller's session. Email, username, and
- * client-supplied flags are ignored. Role escalation is blocked in the database.
+ * Eligibility / unlimited checks read profiles via the service role.
+ * Authenticated clients cannot SELECT profiles.student_status (column REVOKE
+ * in 20261016010000); selecting it through the user session returns
+ * "permission denied for table profiles" and aborts the Ember award before insert.
+ * Email, username, and client-supplied flags are ignored. Role escalation remains
+ * blocked by DB triggers.
  */
-export async function viewerHasUnlimitedEmbers(
-  userClient: SupabaseClientLike,
-  userId: string,
-): Promise<boolean> {
-  const { data, error } = await userClient.from("profiles").select("role").eq("id", userId).maybeSingle();
-  if (error) {
-    throw new ApiError(400, error.message ?? "Could not load profile.", "EMBER_PROFILE_LOAD_FAILED");
-  }
-  return hasUnlimitedDailyEmbers(data?.role ?? null);
-}
-
-export async function assertEmberGiverEligible(args: {
-  userClient: SupabaseClientLike;
-  userId: string;
-}): Promise<{ unlimited: boolean }> {
-  const { data, error } = await args.userClient
+async function loadEmberGiverProfile(userId: string): Promise<{
+  role: string | null;
+  student_status: string | null;
+  campus_email_verified_at: string | null;
+}> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
     .from("profiles")
     .select("role, student_status, campus_email_verified_at")
-    .eq("id", args.userId)
+    .eq("id", userId)
     .maybeSingle();
 
   if (error) {
     throw new ApiError(400, error.message ?? "Could not load profile.", "EMBER_PROFILE_LOAD_FAILED");
   }
 
-  const decision = isEligibleEmberGiver({
+  return {
     role: data?.role ?? null,
     student_status: data?.student_status ?? null,
     campus_email_verified_at: data?.campus_email_verified_at ?? null,
+  };
+}
+
+export async function viewerHasUnlimitedEmbers(
+  _userClient: SupabaseClientLike,
+  userId: string,
+): Promise<boolean> {
+  const profile = await loadEmberGiverProfile(userId);
+  return hasUnlimitedDailyEmbers(profile.role);
+}
+
+export async function assertEmberGiverEligible(args: {
+  userClient: SupabaseClientLike;
+  userId: string;
+}): Promise<{ unlimited: boolean }> {
+  void args.userClient;
+  const profile = await loadEmberGiverProfile(args.userId);
+
+  const decision = isEligibleEmberGiver({
+    role: profile.role,
+    student_status: profile.student_status,
+    campus_email_verified_at: profile.campus_email_verified_at,
   });
   if (!decision.ok) {
     throw new ApiError(403, decision.message, decision.code);
   }
-  return { unlimited: hasUnlimitedDailyEmbers(data?.role ?? null) };
+  return { unlimited: hasUnlimitedDailyEmbers(profile.role) };
 }
 
 export async function assertEmberNotBlocked(args: {
