@@ -14,6 +14,9 @@ describe("Events experience source contracts", () => {
     expect(cardSrc).toContain("Interested");
     expect(cardSrc).toContain("View Game");
     expect(cardSrc).toContain("View Event");
+    expect(cardSrc).toContain("cq-event-card--grid");
+    expect(cardSrc).toContain('role="link"');
+    expect(cardSrc).not.toContain("cq-event-card-action--view");
     expect(cardSrc).not.toContain("toLocaleString");
     expect(cardSrc).not.toContain("View on URInvolved");
     expect(cardSrc).not.toContain("View full listing on URInvolved");

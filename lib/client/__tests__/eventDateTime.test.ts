@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatEventCardWhen, formatEventDateTimeRange } from "@/lib/client/eventDateTime";
+import {
+  formatEventCardStatusBadge,
+  formatEventCardWhen,
+  formatEventDateTimeRange,
+} from "@/lib/client/eventDateTime";
 
 describe("formatEventDateTimeRange", () => {
   const now = new Date("2026-09-08T16:00:00.000Z"); // Tue Sep 8, 12:00 PM EDT
@@ -31,5 +35,16 @@ describe("formatEventDateTimeRange", () => {
   it("returns Date TBA for missing or invalid starts", () => {
     expect(formatEventDateTimeRange(null, null, now)).toBe("Date TBA");
     expect(formatEventDateTimeRange("not-a-date", null, now)).toBe("Date TBA");
+  });
+
+  it("builds compact status badges for live and near-term events", () => {
+    expect(
+      formatEventCardStatusBadge("2026-09-08T14:00:00.000Z", "2026-09-08T16:00:00.000Z", now, {
+        live: true,
+      }),
+    ).toBe("Happening Now");
+    expect(formatEventCardStatusBadge("2026-09-08T20:00:00.000Z", null, now)).toBe("Today");
+    expect(formatEventCardStatusBadge("2026-09-09T20:30:00.000Z", null, now)).toBe("Tomorrow");
+    expect(formatEventCardStatusBadge("2026-09-15T16:00:00.000Z", null, now)).toBe("Tue, Sep 15");
   });
 });

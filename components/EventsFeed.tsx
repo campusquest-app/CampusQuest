@@ -512,7 +512,7 @@ export function EventsFeed({
   const searching = Boolean(filters.search.trim()) || savedOnly;
   const showForYouSection = filters.timeframe === "for_you" && !searching;
 
-  function renderFeedCard(row: (typeof prioritizedEvents)[number]) {
+  function renderFeedCard(row: (typeof prioritizedEvents)[number], index = 0) {
     const item = row.item;
     return (
       <EventDiscoveryCard
@@ -520,6 +520,7 @@ export function EventsFeed({
         item={item}
         recommendation={row.recommendation}
         interestedPending={rsvping === item.event.id}
+        priority={index < 4}
         onView={() => setActiveDetail(item)}
         onViewOnMap={onViewOnMap ? () => onViewOnMap(item.event.id) : undefined}
         onRsvpGoing={

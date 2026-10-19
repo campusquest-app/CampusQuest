@@ -90,6 +90,29 @@ export function formatEventCardWhen(startsAt: string | null | undefined): string
   return `${campusShortDate(start)} • ${formatCampusTime(start)}`;
 }
 
+/**
+ * Small status badge for compact discovery cards.
+ * Uses live-window + campus-day labels (Happening Now / Today / Tomorrow / …).
+ */
+export function formatEventCardStatusBadge(
+  startsAt: string | null | undefined,
+  endsAt: string | null | undefined,
+  now: Date = new Date(),
+  opts?: { live?: boolean },
+): string | null {
+  const start = parseInstant(startsAt);
+  if (!start) return null;
+  if (opts?.live) return "Happening Now";
+  return dayPrefix(start, now);
+}
+
+/** Compact time-only line under the status badge: "7:00 PM". */
+export function formatEventCardTimeOnly(startsAt: string | null | undefined): string | null {
+  const start = parseInstant(startsAt);
+  if (!start) return null;
+  return formatCampusTime(start);
+}
+
 export function eventDateTimeIso(startsAt: string | null | undefined): string | undefined {
   const start = parseInstant(startsAt);
   return start ? start.toISOString() : undefined;
