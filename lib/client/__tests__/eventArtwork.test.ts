@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  CAMPUSQUEST_EVENT_FALLBACK_SRC,
   eventArtworkAfterError,
+  eventArtworkFallbackBrand,
   resolveEventArtwork,
   URI_RAMS_EVENT_FALLBACK_SRC,
   usableEventImageUrl,
@@ -76,16 +78,20 @@ describe("event artwork fallback", () => {
     );
   });
 
-  it("uses the RI logo when image and banner are missing", () => {
+  it("uses brand-aware fallbacks when image and banner are missing", () => {
     expect(resolveEventArtwork({ imageUrl: null, bannerUrl: null })).toEqual({
       src: URI_RAMS_EVENT_FALLBACK_SRC,
       kind: "fallback",
     });
     expect(URI_RAMS_EVENT_FALLBACK_SRC).toBe("/brand/uri-rams-ri.png");
+    expect(CAMPUSQUEST_EVENT_FALLBACK_SRC).toBe("/campusquest-logo.png");
+    expect(eventArtworkFallbackBrand({ kind: "campus" })).toBe("uri");
+    expect(eventArtworkFallbackBrand({ kind: "external", source: "urinvolved" })).toBe("uri");
+    expect(eventArtworkFallbackBrand({ kind: "external", source: "manual" })).toBe("campusquest");
     expect(eventCardImageUrl(event({ imageUrl: null, source: "athletics", category: "Athletics" }))).toBe(
       URI_RAMS_EVENT_FALLBACK_SRC,
     );
-    expect(eventCardImageUrl(event({ imageUrl: "   ", source: "manual" }))).toBe(URI_RAMS_EVENT_FALLBACK_SRC);
+    expect(eventCardImageUrl(event({ imageUrl: "   ", source: "manual" }))).toBe(CAMPUSQUEST_EVENT_FALLBACK_SRC);
     expect(eventCardImageUrl({ kind: "campus", event: campus() })).toBe(URI_RAMS_EVENT_FALLBACK_SRC);
   });
 
@@ -121,7 +127,8 @@ describe("event artwork fallback", () => {
     const artwork = readFileSync("components/events/EventArtwork.tsx", "utf8");
     expect(artwork).toContain("eventArtworkAfterError");
     expect(artwork).toContain("cq-event-artwork--fallback");
-    expect(artwork).toContain("URI_RAMS_EVENT_FALLBACK_SRC");
+    expect(artwork).toContain("resolveEventFallbackSrc");
+    expect(artwork).toContain("fallbackBrand");
     const css = readFileSync("app/globals.css", "utf8");
     expect(css).toContain(".cq-event-artwork--fallback > .cq-event-artwork__img");
     expect(css).toContain("object-fit: contain");

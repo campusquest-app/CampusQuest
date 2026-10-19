@@ -1,4 +1,4 @@
-import { resolveEventArtwork } from "@/lib/client/eventArtwork";
+import { eventArtworkFallbackBrand, resolveEventArtwork } from "@/lib/client/eventArtwork";
 import { canonicalEventCategory, eventMatchesCanonicalCategory } from "@/lib/eventSources/categories";
 import type { CanonicalEventCategory } from "@/lib/eventSources/types";
 import { eventHasMappedLocation } from "@/lib/client/eventDiscovery";
@@ -183,14 +183,20 @@ export function eventCardFallbackAccent(item: FeedEvent): string {
   return "clubs";
 }
 
-/** Resolved artwork URL: event photo, then provider banner, then the Rams logo. */
+/** Resolved artwork URL: event photo, then provider banner, then brand fallback. */
 export function eventCardImageUrl(item: FeedEvent): string {
+  const fallbackBrand = eventArtworkFallbackBrand({
+    kind: item.kind,
+    source: item.kind === "external" ? item.event.source : item.event.sourceType ?? item.event.source,
+    sport: item.kind === "external" ? item.event.sport : null,
+  });
   if (item.kind !== "external") {
-    return resolveEventArtwork({}).src;
+    return resolveEventArtwork({ fallbackBrand }).src;
   }
   return resolveEventArtwork({
     imageUrl: item.event.imageUrl,
     bannerUrl: item.event.bannerUrl,
+    fallbackBrand,
   }).src;
 }
 

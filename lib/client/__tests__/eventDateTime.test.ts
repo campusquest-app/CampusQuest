@@ -37,14 +37,15 @@ describe("formatEventDateTimeRange", () => {
     expect(formatEventDateTimeRange("not-a-date", null, now)).toBe("Date TBA");
   });
 
-  it("builds compact status badges for live and near-term events", () => {
+  it("builds compact uppercase status badges for live and near-term events", () => {
     expect(
       formatEventCardStatusBadge("2026-09-08T14:00:00.000Z", "2026-09-08T16:00:00.000Z", now, {
         live: true,
       }),
-    ).toBe("Happening Now");
-    expect(formatEventCardStatusBadge("2026-09-08T20:00:00.000Z", null, now)).toBe("Today");
-    expect(formatEventCardStatusBadge("2026-09-09T20:30:00.000Z", null, now)).toBe("Tomorrow");
-    expect(formatEventCardStatusBadge("2026-09-15T16:00:00.000Z", null, now)).toBe("Tue, Sep 15");
+    ).toBe("HAPPENING NOW");
+    expect(formatEventCardStatusBadge("2026-09-08T20:00:00.000Z", null, now)).toBe("TODAY");
+    expect(formatEventCardStatusBadge("2026-09-09T20:30:00.000Z", null, now)).toBe("TOMORROW");
+    expect(formatEventCardStatusBadge("2026-09-12T17:00:00.000Z", null, now)).toBe("SAT");
+    expect(formatEventCardStatusBadge("2026-09-15T16:00:00.000Z", null, now)).toBe("SEP 15");
   });
 });

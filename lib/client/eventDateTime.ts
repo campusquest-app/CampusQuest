@@ -91,8 +91,9 @@ export function formatEventCardWhen(startsAt: string | null | undefined): string
 }
 
 /**
- * Small status badge for compact discovery cards.
- * Uses live-window + campus-day labels (Happening Now / Today / Tomorrow / …).
+ * Compact uppercase status badge for immersive discovery cards.
+ * Live only when the caller confirms the event is within its real start/end window.
+ * Examples: HAPPENING NOW · TODAY · TOMORROW · WED · OCT 21
  */
 export function formatEventCardStatusBadge(
   startsAt: string | null | undefined,
@@ -102,8 +103,27 @@ export function formatEventCardStatusBadge(
 ): string | null {
   const start = parseInstant(startsAt);
   if (!start) return null;
-  if (opts?.live) return "Happening Now";
-  return dayPrefix(start, now);
+  if (opts?.live) return "HAPPENING NOW";
+  if (isOnCampusDay(start, now)) return "TODAY";
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  if (isOnCampusDay(start, tomorrow)) return "TOMORROW";
+  const days = daysUntilCampusDay(start, now);
+  if (days >= 2 && days <= 6) {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: CAMPUS_TIME_ZONE,
+      weekday: "short",
+    })
+      .format(start)
+      .toUpperCase();
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: CAMPUS_TIME_ZONE,
+    month: "short",
+    day: "numeric",
+  })
+    .format(start)
+    .replace(",", "")
+    .toUpperCase();
 }
 
 /** Compact time-only line under the status badge: "7:00 PM". */

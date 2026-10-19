@@ -10,11 +10,11 @@ describe("Events experience source contracts", () => {
 
   it("keeps compact cards free of source CTAs and raw timestamps", () => {
     expect(cardSrc).toContain("formatEventDateTimeRange");
-    expect(cardSrc).toContain("formatEventCardWhen");
+    expect(cardSrc).toContain("formatEventCardStatusBadge");
     expect(cardSrc).toContain("Interested");
     expect(cardSrc).toContain("View Game");
     expect(cardSrc).toContain("View Event");
-    expect(cardSrc).toContain("cq-event-card--grid");
+    expect(cardSrc).toContain("cq-event-card--immersive");
     expect(cardSrc).toContain('role="link"');
     expect(cardSrc).not.toContain("cq-event-card-action--view");
     expect(cardSrc).not.toContain("toLocaleString");
