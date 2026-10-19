@@ -59,6 +59,7 @@ export function ProfileSocialPage({
   onPostDeleted,
   onSharePost,
   pendingReactions,
+  pendingEmbers,
   reactionNotice,
   activeProfileTab,
   onProfileTabChange,
@@ -102,6 +103,7 @@ export function ProfileSocialPage({
   onPostDeleted?: (postId: string) => void;
   onSharePost?: (note: FieldNote) => void;
   pendingReactions: Set<string>;
+  pendingEmbers?: Set<string>;
   reactionNotice?: string | null;
   activeProfileTab?: ProfileTab;
   onProfileTabChange?: (tab: ProfileTab) => void;
@@ -376,6 +378,7 @@ export function ProfileSocialPage({
           currentUserId={viewer.id}
           currentUser={viewer}
           likePending={pendingReactions.has(activePost.id)}
+          emberPending={(pendingEmbers ?? pendingReactions).has(activePost.id)}
           onClose={() => setSelectedPost(null)}
           onNod={onNod}
           onHype={onHype}

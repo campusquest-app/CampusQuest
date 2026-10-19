@@ -103,6 +103,7 @@ export function MyProfileScreen({
   const [posts, setPosts] = useState<FieldNote[]>([]);
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
+  const [pendingEmbers, setPendingEmbers] = useState<Set<string>>(() => new Set());
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutWorking, setLogoutWorking] = useState(false);
   const [logoutSaveError, setLogoutSaveError] = useState<string | null>(null);
@@ -447,15 +448,15 @@ export function MyProfileScreen({
   }
 
   function handleHype(noteId: string) {
-    if (pendingReactions.has(noteId)) return;
-    setPendingReactions((prev) => new Set(prev).add(noteId));
+    if (pendingEmbers.has(noteId)) return;
+    setPendingEmbers((prev) => new Set(prev).add(noteId));
     setReactionNotice(null);
     void toggleQuadSpark({
       noteId,
       userId: character.id,
       onOptimistic: syncPostsFromCache,
     }).then((result) => {
-      setPendingReactions((prev) => {
+      setPendingEmbers((prev) => {
         const next = new Set(prev);
         next.delete(noteId);
         return next;
@@ -557,6 +558,7 @@ export function MyProfileScreen({
           syncPostsFromCache();
         }}
         pendingReactions={pendingReactions}
+        pendingEmbers={pendingEmbers}
         reactionNotice={reactionNotice}
         onSharePost={onSharePost}
         activeProfileTab={activeProfileTab}

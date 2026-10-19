@@ -95,7 +95,7 @@ describe("Ember allowance store and first-use", () => {
       "Give Ember. 2 of 3 Embers left today",
     );
     expect(emberActionLabel({ active: false, count: 4, remaining: 2, isOwnPost: false })).not.toContain("4");
-    expect(emberActionLabel({ active: true, count: 5, remaining: 1, isOwnPost: false })).toBe("Remove Ember");
+    expect(emberActionLabel({ active: true, count: 5, remaining: 1, isOwnPost: false })).toBe("Ember given");
     expect(emberActionLabel({ active: false, count: 3, remaining: null, isOwnPost: false, unlimited: true })).toBe(
       "Give Ember",
     );

@@ -83,7 +83,7 @@ export function emberActionLabel(args: {
     const received = args.count > 0 ? (args.count === 1 ? EMBER_COPY.receivedOne : `${args.count} Embers received`) : "";
     return received || EMBER_COPY.ownPost;
   }
-  if (args.active) return EMBER_COPY.remove;
+  if (args.active) return EMBER_COPY.alreadyGiven;
   if (args.unlimited) return EMBER_COPY.give;
   if (args.remaining === 0) return `${EMBER_COPY.give}. ${EMBER_COPY.exhausted}`;
   if (args.remaining != null) return `${EMBER_COPY.give}. ${remainingEmbersCopy(args.remaining)}`;

@@ -64,6 +64,7 @@ export function UserProfileScreen({
   const [friendsCount, setFriendsCount] = useState(initialFriendsCount ?? 0);
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
+  const [pendingEmbers, setPendingEmbers] = useState<Set<string>>(() => new Set());
   const [profileQuadPostsReady, setProfileQuadPostsReady] = useState(true);
   const [postsLoadError, setPostsLoadError] = useState<string | null>(null);
   const [socialCountsReady, setSocialCountsReady] = useState(true);
@@ -168,15 +169,15 @@ export function UserProfileScreen({
   }
 
   function handleHype(noteId: string) {
-    if (!canViewPrivateContent || pendingReactions.has(noteId)) return;
-    setPendingReactions((prev) => new Set(prev).add(noteId));
+    if (!canViewPrivateContent || pendingEmbers.has(noteId)) return;
+    setPendingEmbers((prev) => new Set(prev).add(noteId));
     setReactionNotice(null);
     void toggleQuadSpark({
       noteId,
       userId: viewer.id,
       onOptimistic: syncPostsFromCache,
     }).then((result) => {
-      setPendingReactions((prev) => {
+      setPendingEmbers((prev) => {
         const next = new Set(prev);
         next.delete(noteId);
         return next;
@@ -260,6 +261,7 @@ export function UserProfileScreen({
         syncPostsFromCache();
       }}
       pendingReactions={pendingReactions}
+      pendingEmbers={pendingEmbers}
       reactionNotice={reactionNotice}
       onSharePost={onSharePost}
       canModeratePosts={canModeratePosts}

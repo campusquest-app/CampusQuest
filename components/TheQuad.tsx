@@ -150,7 +150,8 @@ export function TheQuad({
   const [feedError, setFeedError] = useState<string | null>(null);
   const [reactionNotice, setReactionNotice] = useState<string | null>(null);
   const [postActionMessage, setPostActionMessage] = useState<string | null>(null);
-  const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
+  const [pendingLikes, setPendingLikes] = useState<Set<string>>(() => new Set());
+  const [pendingEmbers, setPendingEmbers] = useState<Set<string>>(() => new Set());
   const [memoryGroup, setMemoryGroup] = useState<CampusMemoryGroup | null>(null);
   const [memoryViewerInitialId, setMemoryViewerInitialId] = useState<string | undefined>();
   const [memoryViewerIncludeExpired, setMemoryViewerIncludeExpired] = useState(false);
@@ -572,20 +573,22 @@ export function TheQuad({
     setNotes(cloneFeedNotesForDisplay(list));
   }, [character.id, baseFeedType, feedTab]);
 
-  const pendingReactionsRef = useRef(pendingReactions);
-  pendingReactionsRef.current = pendingReactions;
+  const pendingLikesRef = useRef(pendingLikes);
+  pendingLikesRef.current = pendingLikes;
+  const pendingEmbersRef = useRef(pendingEmbers);
+  pendingEmbersRef.current = pendingEmbers;
 
   const handleNod = useCallback(
     (noteId: string) => {
-      if (pendingReactionsRef.current.has(noteId)) return;
-      setPendingReactions((prev) => new Set(prev).add(noteId));
+      if (pendingLikesRef.current.has(noteId)) return;
+      setPendingLikes((prev) => new Set(prev).add(noteId));
       setReactionNotice(null);
       void toggleQuadLike({
         noteId,
         userId: character.id,
         onOptimistic: syncNotesFromFeed,
       }).then((result) => {
-        setPendingReactions((prev) => {
+        setPendingLikes((prev) => {
           const next = new Set(prev);
           next.delete(noteId);
           return next;
@@ -600,15 +603,15 @@ export function TheQuad({
 
   const handleHype = useCallback(
     (noteId: string) => {
-      if (pendingReactionsRef.current.has(noteId)) return;
-      setPendingReactions((prev) => new Set(prev).add(noteId));
+      if (pendingEmbersRef.current.has(noteId)) return;
+      setPendingEmbers((prev) => new Set(prev).add(noteId));
       setReactionNotice(null);
       void toggleQuadSpark({
         noteId,
         userId: character.id,
         onOptimistic: syncNotesFromFeed,
       }).then((result) => {
-        setPendingReactions((prev) => {
+        setPendingEmbers((prev) => {
           const next = new Set(prev);
           next.delete(noteId);
           return next;
@@ -826,7 +829,8 @@ export function TheQuad({
                   onAssist={handleAssist}
                   onAddComment={handleAddComment}
                   onCommentsUpdated={handleCommentsUpdated}
-                  likePending={pendingReactions.has(item.note.id)}
+                  likePending={pendingLikes.has(item.note.id)}
+                  emberPending={pendingEmbers.has(item.note.id)}
                   onPostUpdated={handlePostUpdated}
                   onPostDeleted={handlePostDeleted}
                   canModeratePosts={canModeratePosts}

@@ -15,6 +15,7 @@ export function ProfilePostDetail({
   currentUserId,
   currentUser,
   likePending,
+  emberPending,
   onClose,
   onNod,
   onHype,
@@ -31,6 +32,7 @@ export function ProfilePostDetail({
   currentUserId: string;
   currentUser: { id: string; name: string; username: string; avatar: string };
   likePending?: boolean;
+  emberPending?: boolean;
   onClose: () => void;
   onNod: (noteId: string) => void;
   onHype: (noteId: string) => void;
@@ -101,6 +103,7 @@ export function ProfilePostDetail({
           onAddComment={onAddComment}
           currentUser={currentUser}
           likePending={likePending}
+          emberPending={emberPending}
           variant="feed"
           onCommentsUpdated={() => setCommentsTick((n) => n + 1)}
           onPostUpdated={onPostUpdated}

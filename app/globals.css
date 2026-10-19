@@ -3641,9 +3641,10 @@ html[data-cq-bottom-nav-hidden] {
 
 .cq-feed-post-actions {
   position: relative;
-  z-index: 1;
+  z-index: 3;
   padding-top: 0.1rem;
   padding-bottom: 0.1rem;
+  isolation: isolate;
 }
 
 .cq-feed-post-caption,
@@ -4586,12 +4587,47 @@ html[data-cq-media-pinching] {
   animation: cq-reaction-zap-pulse 0.42s ease-out;
 }
 
+.cq-ember-reaction-wrap {
+  position: relative;
+  z-index: 4;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
 .cq-ember-flame {
   flex-shrink: 0;
+  filter: drop-shadow(0 0 0 transparent);
+  transition: filter 180ms ease, transform 180ms ease;
+}
+
+.cq-ember-flame--active {
+  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.65));
 }
 
 .cq-ember-reaction {
+  position: relative;
+  z-index: 4;
   color: #8b9bb4;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cq-ember-reaction--active {
+  color: #a78bfa;
+}
+
+.cq-ember-reaction--exhausted {
+  opacity: 0.72;
+}
+
+.cq-ember-reaction--own {
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-ember-flame {
+    transition: none;
+  }
 }
 
 @keyframes cq-ember-pulse {

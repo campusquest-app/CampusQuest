@@ -73,6 +73,7 @@ export function RealmArchiveExperience({
   const [detailLoading, setDetailLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
+  const [pendingEmbers, setPendingEmbers] = useState<Set<string>>(() => new Set());
   const [, setHydratedPostId] = useState<string | null>(null);
   const dragStartX = useRef(0);
   const dragStartY = useRef(0);
@@ -293,14 +294,14 @@ export function RealmArchiveExperience({
   }
 
   function handleHype(noteId: string) {
-    if (!viewer || pendingReactions.has(noteId)) return;
-    setPendingReactions((prev) => new Set(prev).add(noteId));
+    if (!viewer || pendingEmbers.has(noteId)) return;
+    setPendingEmbers((prev) => new Set(prev).add(noteId));
     void toggleQuadSpark({
       noteId,
       userId: viewer.id,
       onOptimistic: () => setHydratedPostId(noteId),
     }).finally(() => {
-      setPendingReactions((prev) => {
+      setPendingEmbers((prev) => {
         const next = new Set(prev);
         next.delete(noteId);
         return next;
@@ -563,6 +564,7 @@ export function RealmArchiveExperience({
           currentUserId={viewer.id}
           currentUser={viewer}
           likePending={pendingReactions.has(detailNote.id)}
+          emberPending={pendingEmbers.has(detailNote.id)}
           onClose={() => setDetailNote(null)}
           onNod={handleNod}
           onHype={handleHype}

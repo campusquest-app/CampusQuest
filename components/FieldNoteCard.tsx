@@ -270,6 +270,8 @@ type FieldNoteCardProps = {
   ) => void | Promise<void | QuadCommentActionResult>;
   currentUser?: { id: string; name: string; username: string; avatar: string };
   likePending?: boolean;
+  /** Independent of likes so Ember taps are never blocked by a nod in-flight. */
+  emberPending?: boolean;
   onCommentsUpdated?: () => void;
   highlightStat?: StatKey | null;
   variant?: "default" | "feed";
@@ -293,18 +295,18 @@ type FieldNoteCardProps = {
   priorityMedia?: boolean;
 };
 
-function userHasReacted(note: FieldNote, userId: string): boolean {
-  return (
-    note.nodByUserIds.has(userId) ||
-    (note.hypeByUserIds?.has(userId) ?? note.vouchByUserIds.has(userId)) ||
-    (note.verifyByUserIds?.has(userId) ?? false) ||
-    (note.assistByUserIds?.has(userId) ?? false)
-  );
+function userHasNodded(note: FieldNote, userId: string): boolean {
+  return note.nodByUserIds.has(userId);
+}
+
+function userHasEmbered(note: FieldNote, userId: string): boolean {
+  return note.hypeByUserIds?.has(userId) ?? note.vouchByUserIds.has(userId);
 }
 
 function fieldNoteCardPropsAreEqual(prev: FieldNoteCardProps, next: FieldNoteCardProps): boolean {
   if (prev.note.id !== next.note.id) return false;
   if (prev.likePending !== next.likePending) return false;
+  if (prev.emberPending !== next.emberPending) return false;
   if (prev.variant !== next.variant) return false;
   if (prev.canModeratePosts !== next.canModeratePosts) return false;
   if (prev.currentUserId !== next.currentUserId) return false;
@@ -328,7 +330,10 @@ function fieldNoteCardPropsAreEqual(prev: FieldNoteCardProps, next: FieldNoteCar
   if (pn.authorVerifiedBadge !== nn.authorVerifiedBadge) return false;
   if (pn.authorAvatar !== nn.authorAvatar) return false;
   if (pn.locationName !== nn.locationName) return false;
-  if (userHasReacted(pn, prev.currentUserId) !== userHasReacted(nn, next.currentUserId)) return false;
+  // Compare nod and Ember membership separately. Bundling them hid Ember
+  // activation after a post was already liked (private Ember totals don't change).
+  if (userHasNodded(pn, prev.currentUserId) !== userHasNodded(nn, next.currentUserId)) return false;
+  if (userHasEmbered(pn, prev.currentUserId) !== userHasEmbered(nn, next.currentUserId)) return false;
   const prevPreview = pn.likedByPreview ?? [];
   const nextPreview = nn.likedByPreview ?? [];
   if (prevPreview.length !== nextPreview.length) return false;
@@ -350,6 +355,7 @@ function FieldNoteCardInner({
   onAddComment,
   currentUser,
   likePending = false,
+  emberPending = false,
   highlightStat,
   variant = "default",
   onPostUpdated,
@@ -687,6 +693,15 @@ function FieldNoteCardInner({
   }
 
   function fireEmber() {
+    if (emberPending) return;
+    if (isOwner || hasHyped) return;
+    const remaining = emberAllowance?.remaining;
+    const unlimited = emberAllowance?.unlimited === true;
+    if (!unlimited && remaining === 0) {
+      setActionToast(EMBER_COPY.exhausted);
+      window.setTimeout(() => setActionToast(null), 2800);
+      return;
+    }
     onHype(note.id);
   }
 
@@ -699,6 +714,8 @@ function FieldNoteCardInner({
       const reduceMotion =
         typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       setEmberCast(event.unlimited ? planUnlimitedEmberCast() : planEmberCast(event.remainingAfter));
+      setActionToast(EMBER_COPY.emberSent);
+      window.setTimeout(() => setActionToast(null), 2200);
       if (!reduceMotion) {
         setEmberPulse(true);
         if (emberPulseTimerRef.current != null) window.clearTimeout(emberPulseTimerRef.current);
@@ -720,13 +737,20 @@ function FieldNoteCardInner({
   }, []);
 
   function handleHype() {
-    if (isOwner) return;
+    if (isOwner || emberPending) return;
     if (!hasSeenEmberExplainer()) {
       pendingEmberActionRef.current = true;
       setEmberExplainerOpen(true);
       return;
     }
     fireEmber();
+  }
+
+  function handleEmberBlocked(reason: "exhausted" | "own_post" | "already_given") {
+    if (reason === "exhausted") setActionToast(EMBER_COPY.exhausted);
+    else if (reason === "own_post") setActionToast(EMBER_COPY.ownPost);
+    else setActionToast(EMBER_COPY.alreadyGiven);
+    window.setTimeout(() => setActionToast(null), 2800);
   }
 
   function acknowledgeEmberExplainer() {
@@ -1013,26 +1037,28 @@ function FieldNoteCardInner({
           <EmberReactionButton
             active={hasHyped}
             onToggle={handleHype}
+            onBlocked={handleEmberBlocked}
             count={hypeCount}
             remaining={emberAllowance?.remaining ?? null}
             isOwnPost={isOwner}
             unlimited={emberAllowance?.unlimited === true}
-            pending={likePending}
+            pending={emberPending}
             pulse={emberPulse}
             anchorRef={emberAnchorRef}
           />
         ) : null}
       </div>
       {isFeed ? (
-        <div className="flex items-center -mr-1.5">
+        <div className="relative z-[3] flex items-center -mr-1.5">
           <EmberReactionButton
             active={hasHyped}
             onToggle={handleHype}
+            onBlocked={handleEmberBlocked}
             count={hypeCount}
             remaining={emberAllowance?.remaining ?? null}
             isOwnPost={isOwner}
             unlimited={emberAllowance?.unlimited === true}
-            pending={likePending}
+            pending={emberPending}
             pulse={emberPulse}
             compact
             anchorRef={emberAnchorRef}
