@@ -48,6 +48,7 @@ import {
 } from "@/lib/client/emberAllowance";
 import { subscribeEmberCast } from "@/lib/client/emberCastEvents";
 import { shouldIgnoreLikersOpen } from "@/lib/client/emberTapGuard";
+import { showAppToast } from "@/lib/client/appToast";
 import { EMBER_COPY } from "@/lib/embers";
 
 function ReactionButton({
@@ -417,7 +418,6 @@ function FieldNoteCardInner({
   const [reportOpen, setReportOpen] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
-  const [actionToast, setActionToast] = useState<string | null>(null);
   const [showPhotoTags, setShowPhotoTags] = useState(false);
   const [addTagsOpen, setAddTagsOpen] = useState(false);
   const [editTagSelections, setEditTagSelections] = useState<ComposerTagSelection[]>([]);
@@ -512,19 +512,9 @@ function FieldNoteCardInner({
     };
   }, [menuOpen]);
 
-  useEffect(() => {
-    if (!actionToast) return undefined;
-    const tid = window.setTimeout(() => setActionToast(null), 2800);
-    return () => window.clearTimeout(tid);
-  }, [actionToast]);
-
-  const showToast = useCallback(
-    (message: string) => {
-      if (onActionMessage) onActionMessage(message);
-      else setActionToast(message);
-    },
-    [onActionMessage],
-  );
+  const showToast = useCallback((message: string, tone: "success" | "error" | "info" = "success") => {
+    showAppToast(message, { tone });
+  }, []);
 
   useEffect(() => {
     if (!isPersistedQuadPostId(note.id)) return undefined;
@@ -728,8 +718,7 @@ function FieldNoteCardInner({
     const remaining = emberAllowance?.remaining;
     const unlimited = emberAllowance?.unlimited === true;
     if (!unlimited && remaining === 0) {
-      setActionToast(EMBER_COPY.exhausted);
-      window.setTimeout(() => setActionToast(null), 2800);
+      showToast(EMBER_COPY.exhausted, "info");
       return;
     }
     onHype(note.id);
@@ -740,8 +729,7 @@ function FieldNoteCardInner({
       if (event.noteId !== note.id) return;
       const reduceMotion =
         typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      setActionToast(EMBER_COPY.emberSent);
-      window.setTimeout(() => setActionToast(null), 2200);
+      showAppToast(EMBER_COPY.emberSent, { tone: "success", durationMs: 2200 });
       if (!reduceMotion) {
         setEmberPulse(true);
         if (emberPulseTimerRef.current != null) window.clearTimeout(emberPulseTimerRef.current);
@@ -778,10 +766,9 @@ function FieldNoteCardInner({
   }
 
   function handleEmberBlocked(reason: "exhausted" | "own_post" | "already_given") {
-    if (reason === "exhausted") setActionToast(EMBER_COPY.exhausted);
-    else if (reason === "own_post") setActionToast(EMBER_COPY.ownPost);
-    else setActionToast(EMBER_COPY.alreadyGiven);
-    window.setTimeout(() => setActionToast(null), 2800);
+    if (reason === "exhausted") showAppToast(EMBER_COPY.exhausted, { tone: "info" });
+    else if (reason === "own_post") showAppToast(EMBER_COPY.ownPost, { tone: "info" });
+    else showAppToast(EMBER_COPY.alreadyGiven, { tone: "info" });
   }
 
   function acknowledgeEmberExplainer() {
@@ -1175,11 +1162,6 @@ function FieldNoteCardInner({
           : `p-4 transition-colors hover:bg-cq-elevated/8${menuOpen ? " cq-feed-post--menu-open" : ""}`
       }
     >
-      {actionToast ? (
-        <p className="mx-3 mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800" aria-live="polite">
-          {actionToast}
-        </p>
-      ) : null}
       {isFeed ? (
         <>
           <header className="cq-feed-post-header flex items-center gap-2.5 px-3">

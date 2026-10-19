@@ -375,19 +375,18 @@ async function toggleSparkReaction(args: {
     }
   }
 
-  const { data: inserted, error: insertError } = await userClient
-    .from("quad_post_reactions")
-    .insert({
-      post_id: postId,
-      user_id: userId,
-      reaction_type: EMBER_REACTION_TYPE,
-    })
-    .select("id")
-    .maybeSingle();
+  // Avoid INSERT…RETURNING — RLS on SELECT of the new row can fail the whole
+  // statement even when the insert itself is allowed.
+  const { error: insertError } = await userClient.from("quad_post_reactions").insert({
+    post_id: postId,
+    user_id: userId,
+    reaction_type: EMBER_REACTION_TYPE,
+  });
 
   if (insertError) {
+    // Unique race: treat as success (give-only / idempotent).
     if (insertError.code === "23505") {
-      throw new ApiError(409, "You already gave this post an Ember.", "QUAD_REACTION_DUPLICATE");
+      return;
     }
     if (insertError.message?.includes("ember_daily_limit")) {
       throw emberDailyLimitError();
@@ -400,17 +399,26 @@ async function toggleSparkReaction(args: {
 
   if (!unlimited) {
     const usedAfter = await countUserEmbersInWindow({ userClient, userId, start, end });
-    if (emberInsertExceededLimit(usedAfter, false) && inserted?.id) {
-      await userClient.from("quad_post_reactions").delete().eq("id", inserted.id).eq("user_id", userId);
+    if (emberInsertExceededLimit(usedAfter, false)) {
+      await userClient
+        .from("quad_post_reactions")
+        .delete()
+        .eq("post_id", postId)
+        .eq("user_id", userId)
+        .eq("reaction_type", EMBER_REACTION_TYPE);
       throw emberDailyLimitError();
     }
   }
 
-  await notifyEmberGiven({
-    postOwnerUserId: postAuthorId,
-    actorUserId: userId,
-    postId,
-  });
+  try {
+    await notifyEmberGiven({
+      postOwnerUserId: postAuthorId,
+      actorUserId: userId,
+      postId,
+    });
+  } catch {
+    // Award already persisted — never fail the client for notification issues.
+  }
 }
 
 /**
@@ -455,13 +463,17 @@ export async function toggleQuadPostReaction(args: {
   }
 
   const refreshed = await loadPostForReaction(userClient, postId);
-  const state = await loadUserReactionState(userClient, postId, userId);
+  let state = await loadUserReactionState(userClient, postId, userId);
+  // Insert succeeded (or was idempotent). Never report inactive after a give.
+  if (reactionType === "spark" && !state.sparked) {
+    state = { ...state, sparked: true };
+  }
   const emberAllowance = await getViewerEmberAllowance({ userClient, userId });
 
   return {
     postId,
     reactionType,
-    active: state.sparked,
+    active: reactionType === "spark" ? state.sparked : state.liked,
     likeCount: Math.max(0, refreshed.nod_count ?? 0),
     sparkCount: await emberTotalForViewer(userId, refreshed.user_id, postId),
     currentUserHasLiked: state.liked,

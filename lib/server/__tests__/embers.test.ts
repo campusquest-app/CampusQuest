@@ -169,7 +169,13 @@ describe("Ember notifications", () => {
     expect(reactions).toContain("discloseEmberCounts");
     expect(reactions).toContain("Already awarded — keep the row");
     expect(reactions).toMatch(/if \(existing\?\.id\) \{\s*return;\s*\}/);
+    expect(reactions).toContain("Avoid INSERT…RETURNING");
     const posts = readFileSync(join(process.cwd(), "lib/server/quadPosts.ts"), "utf8");
+    const triggerFix = readFileSync(
+      join(process.cwd(), "supabase/migrations/20261019010000_ember_hype_count_trigger_fix.sql"),
+      "utf8",
+    );
+    expect(triggerFix).toContain("count(*)::integer into spark_total");
     expect(posts).not.toMatch(/^\s*hype_count,?$/m);
     expect(posts).toContain("Feed reads omit hype_count");
   });

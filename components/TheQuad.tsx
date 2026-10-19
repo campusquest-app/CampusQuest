@@ -14,6 +14,7 @@ import {
 } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
 import { fetchEmberAllowance } from "@/lib/client/emberAllowance";
+import { showAppToast } from "@/lib/client/appToast";
 import { submitQuadComment } from "@/lib/client/quadCommentActions";
 import { fetchQuadHomePosts, fetchQuadFriendsPosts, fetchQuadCommunityPosts, fetchLocalBusinessPosts, fetchOrganizationPosts } from "@/lib/client/quadPostsClient";
 import { subscribeSocialSync } from "@/lib/client/socialSync";
@@ -148,8 +149,6 @@ export function TheQuad({
   const [campusListings, setCampusListings] = useState<MarketplaceListing[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
-  const [reactionNotice, setReactionNotice] = useState<string | null>(null);
-  const [postActionMessage, setPostActionMessage] = useState<string | null>(null);
   const [pendingLikes, setPendingLikes] = useState<Set<string>>(() => new Set());
   const [pendingEmbers, setPendingEmbers] = useState<Set<string>>(() => new Set());
   const [memoryGroup, setMemoryGroup] = useState<CampusMemoryGroup | null>(null);
@@ -460,12 +459,6 @@ export function TheQuad({
     };
   }, [refresh, sessionReady]);
 
-  useEffect(() => {
-    if (!postActionMessage) return undefined;
-    const tid = window.setTimeout(() => setPostActionMessage(null), 2800);
-    return () => window.clearTimeout(tid);
-  }, [postActionMessage]);
-
   // The inline tab row was removed (replaced by the CampusQuest ▼ feed selector),
   // so the quad header no longer contributes extra fixed height. Keep the legacy
   // CSS var pinned to 0 so any remaining `calc(... + var(--cq-quad-header-h))`
@@ -560,7 +553,6 @@ export function TheQuad({
     (noteId: string) => {
       if (pendingLikesRef.current.has(noteId)) return;
       setPendingLikes((prev) => new Set(prev).add(noteId));
-      setReactionNotice(null);
       void toggleQuadLike({
         noteId,
         userId: character.id,
@@ -572,7 +564,7 @@ export function TheQuad({
           return next;
         });
         if (!result.ok && result.message) {
-          setReactionNotice(result.message);
+          showAppToast(result.message, { tone: "error" });
         }
       });
     },
@@ -586,7 +578,6 @@ export function TheQuad({
       const pending = new Set(pendingEmbersRef.current).add(noteId);
       pendingEmbersRef.current = pending;
       setPendingEmbers(pending);
-      setReactionNotice(null);
       void toggleQuadSpark({
         noteId,
         userId: character.id,
@@ -597,7 +588,7 @@ export function TheQuad({
         pendingEmbersRef.current = next;
         setPendingEmbers(next);
         if (!result.ok && result.message) {
-          setReactionNotice(result.message);
+          showAppToast(result.message, { tone: "error" });
         }
       });
     },
@@ -637,7 +628,7 @@ export function TheQuad({
         onOptimistic: () => refresh({ silent: true }),
       }).then((result) => {
         if (!result.ok && result.message) {
-          setPostActionMessage(result.message);
+          showAppToast(result.message, { tone: "error" });
         }
         return result;
       });
@@ -671,7 +662,7 @@ export function TheQuad({
   }, []);
 
   const handleActionMessage = useCallback((message: string) => {
-    setPostActionMessage(message);
+    showAppToast(message, { tone: "success" });
   }, []);
 
   const quadCurrentUser = useMemo(
@@ -774,16 +765,6 @@ export function TheQuad({
                     setShowAddMemory(true);
                   }}
                 />
-              ) : null}
-              {reactionNotice ? (
-                <p className="cq-quad-reaction-notice mx-3 mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  {reactionNotice}
-                </p>
-              ) : null}
-              {postActionMessage ? (
-                <p className="mx-3 mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800" aria-live="polite">
-                  {postActionMessage}
-                </p>
               ) : null}
               {streamItems.map((item) =>
                 item.kind === "market" ? (

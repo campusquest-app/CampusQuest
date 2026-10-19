@@ -47,7 +47,20 @@ function mapReactionError(error: unknown, kind: "like" | "ember" = "like"): Quad
       return { ok: false, message: EMBER_COPY.blocked, code: error.code };
     }
     if (error.code === EMBER_ERROR_CODES.duplicate) {
-      return { ok: false, message: "You already gave this post an Ember.", code: error.code };
+      return { ok: false, message: EMBER_COPY.alreadyGiven, code: error.code };
+    }
+    if (kind === "ember" && error.message?.trim()) {
+      const serverMsg = error.message.trim();
+      // Surface readable API copy; hide raw SQL/permission noise behind saveFailed.
+      if (
+        /permission denied|hype_count|violates row-level|PGRST/i.test(serverMsg) ||
+        serverMsg.startsWith("Backend request failed")
+      ) {
+        return { ok: false, message: EMBER_COPY.saveFailed, code: error.code };
+      }
+      if (serverMsg !== "Invalid API response." && serverMsg.length < 140) {
+        return { ok: false, message: serverMsg, code: error.code };
+      }
     }
     return {
       ok: false,

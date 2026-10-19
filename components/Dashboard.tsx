@@ -28,6 +28,7 @@ import { ProgressHubScreen } from "./ProgressHubScreen";
 import { SkillsLoreScreen } from "./SkillsLoreScreen";
 import { TheQuad, type QuadFeedTab } from "./TheQuad";
 import { EmberCastHost } from "@/components/embers/EmberCastHost";
+import { AppToastHost } from "@/components/AppToastHost";
 import { readQuadFeedTabSession, writeQuadFeedTabSession } from "@/lib/client/quadFeedTabSession";
 import { BossBattles } from "./BossBattles";
 import { FindFriends } from "./FindFriends";
@@ -3306,6 +3307,7 @@ export function Dashboard() {
 
       {character ? (
         <>
+          <AppToastHost />
           <EmberCastHost />
           <AchievementUnlockCelebration />
           <QuestCompleteCelebration />

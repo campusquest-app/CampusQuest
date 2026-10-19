@@ -209,14 +209,15 @@ export function clampEmberCastAnchor(args: {
 }): { left: number; top: number } {
   const overlayW = 200;
   const overlayH = 210;
-  const navReserve = 96;
+  const navReserve = 110;
   const edge = 12;
   let left = args.button.left + args.button.width / 2;
-  // Sit just above the button so flames rise into the post body.
+  // Viewport coords from getBoundingClientRect — never document/feed offset.
   let top = args.button.top - 8;
   const minLeft = edge + overlayW / 2;
   const maxLeft = args.viewport.width - edge - overlayW / 2;
-  const minTop = edge + overlayH;
+  // Prefer keeping the cast near the button; only clamp when it would leave the screen.
+  const minTop = edge + 48;
   const maxTop = args.viewport.height - navReserve;
   left = Math.min(maxLeft, Math.max(minLeft, left));
   top = Math.min(maxTop, Math.max(minTop, top));

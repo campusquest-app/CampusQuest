@@ -209,7 +209,7 @@ describe("Ember cast animation plan", () => {
     expect(se.left).toBeGreaterThanOrEqual(12 + 100);
     expect(se.left).toBeLessThanOrEqual(375 - 12 - 100);
     expect(se.top).toBeLessThanOrEqual(667 - 96);
-    expect(se.top).toBeGreaterThanOrEqual(12 + 210);
+    expect(se.top).toBeGreaterThanOrEqual(12 + 48);
   });
 });
 

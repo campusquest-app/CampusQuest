@@ -11,6 +11,7 @@ import {
 } from "@/lib/feedStore";
 import { toggleQuadLike, toggleQuadSpark } from "@/lib/client/quadReactionActions";
 import { fetchEmberAllowance } from "@/lib/client/emberAllowance";
+import { showAppToast } from "@/lib/client/appToast";
 import { submitQuadComment } from "@/lib/client/quadCommentActions";
 import {
   fetchUserProfileView,
@@ -62,7 +63,6 @@ export function UserProfileScreen({
   const [posts, setPosts] = useState<FieldNote[]>(initialPosts);
   const [postCount, setPostCount] = useState(initialPostCount);
   const [friendsCount, setFriendsCount] = useState(initialFriendsCount ?? 0);
-  const [reactionNotice, setReactionNotice] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(() => new Set());
   const [pendingEmbers, setPendingEmbers] = useState<Set<string>>(() => new Set());
   const [profileQuadPostsReady, setProfileQuadPostsReady] = useState(true);
@@ -153,7 +153,6 @@ export function UserProfileScreen({
   function handleNod(noteId: string) {
     if (!canViewPrivateContent || pendingReactions.has(noteId)) return;
     setPendingReactions((prev) => new Set(prev).add(noteId));
-    setReactionNotice(null);
     void toggleQuadLike({
       noteId,
       userId: viewer.id,
@@ -164,7 +163,7 @@ export function UserProfileScreen({
         next.delete(noteId);
         return next;
       });
-      if (!result.ok && result.message) setReactionNotice(result.message);
+      if (!result.ok && result.message) showAppToast(result.message, { tone: "error" });
     });
   }
 
@@ -172,7 +171,6 @@ export function UserProfileScreen({
     if (!canViewPrivateContent || pendingEmbers.has(noteId)) return;
     const pending = new Set(pendingEmbers).add(noteId);
     setPendingEmbers(pending);
-    setReactionNotice(null);
     void toggleQuadSpark({
       noteId,
       userId: viewer.id,
@@ -183,7 +181,7 @@ export function UserProfileScreen({
         next.delete(noteId);
         return next;
       });
-      if (!result.ok && result.message) setReactionNotice(result.message);
+      if (!result.ok && result.message) showAppToast(result.message, { tone: "error" });
     });
   }
 
@@ -263,7 +261,6 @@ export function UserProfileScreen({
       }}
       pendingReactions={pendingReactions}
       pendingEmbers={pendingEmbers}
-      reactionNotice={reactionNotice}
       onSharePost={onSharePost}
       canModeratePosts={canModeratePosts}
     />
