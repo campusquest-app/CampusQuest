@@ -7,7 +7,11 @@ import {
   PartnerOpenStatus,
   RewardSoonBadge,
 } from "@/components/partners/PartnerBadges";
-import { PartnerLogoChip, PartnerMedia } from "@/components/partners/PartnerMedia";
+import {
+  PartnerLogoChip,
+  PartnerMedia,
+  partnerPrefersLogoAsCardHero,
+} from "@/components/partners/PartnerMedia";
 import { getPartnerOpenStatus } from "@/lib/partners/partnerHours";
 import {
   isFreeLocalBusinessListing,
@@ -42,6 +46,7 @@ export function PartnerCard({
   const status = getPartnerOpenStatus(partner.hours, now);
   const hasReward = partnerHasLiveReward(partner, now);
   const freeListing = isFreeLocalBusinessListing(partner);
+  const logoAsHero = partnerPrefersLogoAsCardHero(partner);
   const titleId = `cq-perk-${partner.id}-name`;
 
   return (
@@ -51,12 +56,28 @@ export function PartnerCard({
           <PartnerMedia partner={partner} variant="thumb" />
         </span>
         <span className="cq-perk-card__body">
-          <span id={titleId} className="cq-perk-card__name">
-            {partner.name}
-          </span>
-          {partner.categories.length > 0 ? (
-            <span className="cq-perk-card__category">{partnerCategoryLine(partner)}</span>
-          ) : null}
+          {logoAsHero ? (
+            <span className="cq-perk-card__heading cq-perk-card__heading--with-chip">
+              <PartnerLogoChip partner={partner} size="sm" accent="photo" />
+              <span className="cq-perk-card__titles">
+                <span id={titleId} className="cq-perk-card__name">
+                  {partner.name}
+                </span>
+                {partner.categories.length > 0 ? (
+                  <span className="cq-perk-card__category">{partnerCategoryLine(partner)}</span>
+                ) : null}
+              </span>
+            </span>
+          ) : (
+            <>
+              <span id={titleId} className="cq-perk-card__name">
+                {partner.name}
+              </span>
+              {partner.categories.length > 0 ? (
+                <span className="cq-perk-card__category">{partnerCategoryLine(partner)}</span>
+              ) : null}
+            </>
+          )}
           {freeListing && partner.description ? (
             <span className="cq-perk-card__blurb">{partner.description}</span>
           ) : null}
@@ -144,7 +165,11 @@ export function FeaturedDealCard({
       ) : null}
       <div className="cq-perk-featured__body">
         <div className="cq-perk-featured__heading">
-          <PartnerLogoChip partner={partner} size="sm" />
+          <PartnerLogoChip
+            partner={partner}
+            size="sm"
+            accent={partnerPrefersLogoAsCardHero(partner) ? "photo" : "logo"}
+          />
           <div className="cq-perk-featured__titles">
             <h3 id={titleId} className="cq-perk-featured__name">
               {partner.name}

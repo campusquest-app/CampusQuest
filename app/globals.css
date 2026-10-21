@@ -16168,6 +16168,19 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   object-fit: contain;
 }
 
+/* Daisy's / Pocket Café card hero: full logo, no crop or stretch. */
+.cq-partner-media--logo-hero {
+  background: linear-gradient(165deg, #f7fafc 0%, #e8eef6 100%);
+}
+
+.cq-partner-media--logo-hero .cq-partner-media__logo-fill {
+  max-width: 82%;
+  max-height: 82%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
 .cq-partner-media--placeholder {
   display: flex;
   align-items: center;
@@ -16195,6 +16208,16 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 .cq-partner-logo-chip img {
   width: 100%;
   height: 100%;
+  object-fit: cover;
+}
+
+/* Food-photo chip beside the name when the logo is the large card image. */
+.cq-partner-logo-chip--photo {
+  background: rgba(12, 22, 40, 0.85);
+  border-color: rgba(104, 171, 232, 0.35);
+}
+
+.cq-partner-logo-chip--photo img {
   object-fit: cover;
 }
 
@@ -16248,11 +16271,33 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 }
 
 .cq-perk-card__thumb .cq-partner-media,
-.cq-perk-card__thumb .cq-partner-media__photo,
-.cq-perk-card__thumb .cq-partner-media__logo-fill {
+.cq-perk-card__thumb .cq-partner-media__photo {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.cq-perk-card__thumb .cq-partner-media--logo:not(.cq-partner-media--logo-hero) .cq-partner-media__logo-fill {
+  width: 100%;
+  height: 100%;
+  max-width: 78%;
+  max-height: 78%;
+  object-fit: contain;
+}
+
+.cq-perk-card__heading--with-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.cq-perk-card__titles {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
 }
 
 .cq-perk-card__body {
@@ -16414,11 +16459,28 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   object-fit: cover;
 }
 
+.cq-perk-featured__media .cq-partner-media--logo-hero {
+  width: 100%;
+  height: 100%;
+}
+
+.cq-perk-featured__media .cq-partner-media--logo-hero .cq-partner-media__logo-fill {
+  max-width: 70%;
+  max-height: 70%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
 .cq-perk-featured__shade {
   position: absolute;
   inset: 0;
   background: linear-gradient(180deg, rgba(5, 10, 20, 0) 45%, rgba(5, 10, 20, 0.6) 100%);
   pointer-events: none;
+}
+
+.cq-perk-featured__media:has(.cq-partner-media--logo-hero) .cq-perk-featured__shade {
+  background: linear-gradient(180deg, rgba(5, 10, 20, 0) 58%, rgba(5, 10, 20, 0.38) 100%);
 }
 
 .cq-perk-featured__badge {

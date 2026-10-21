@@ -98,7 +98,11 @@ describe("Community Quests screen", () => {
     expect(featured).toContain(DAISYS_HTML);
     expect(featured).toContain("20% OFF");
     expect(featured).toContain("Go on a quest for 20% OFF at Daisy");
+    expect(featured).toContain('src="/partners/daisys/logo.jpg"');
+    expect(featured).toContain("cq-partner-media--logo-hero");
     expect(featured).toContain('src="/partners/daisys/cover.jpg"');
+    expect(featured).toContain("cq-partner-logo-chip--photo");
+    expect(featured.indexOf("/partners/daisys/logo.jpg")).toBeLessThan(featured.indexOf("/partners/daisys/cover.jpg"));
     expect(featured).toContain("Open Now");
     expect(featured).toContain("Closes at 10 PM");
     expect(featured).toContain("View Deal");
@@ -145,8 +149,21 @@ describe("Community Quests screen", () => {
     expect(explore).toContain(pocketCafe.name);
     expect(explore).toContain("99 Fortin Rd, Kingston, RI");
     expect(explore).toContain("View Details");
+    expect(explore).toContain('src="/partners/daisys/logo.jpg"');
+    expect(explore).toContain('src="/partners/daisys/cover.jpg"');
+    expect(explore).toContain('src="/partners/international-pocket-cafe/logo.png"');
     expect(explore).toContain('src="/partners/international-pocket-cafe/cover.jpg"');
+    expect(explore).toContain("cq-partner-media--logo-hero");
+    expect(explore).toContain("cq-partner-logo-chip--photo");
     expect(explore).not.toMatch(/International Pocket[\s\S]*Reward soon/);
+  });
+
+  it("keeps Sandbar cover-first (logo-only) and does not invent a food photo chip", () => {
+    const explore = exploreSection(renderScreen(ready));
+    const sandbarSlice = explore.slice(explore.indexOf(sandbar.name) - 400, explore.indexOf(sandbar.name) + 400);
+    expect(sandbarSlice).toContain("/partners/sandbar/logo.png");
+    expect(sandbarSlice).not.toContain("cq-partner-media--logo-hero");
+    expect(sandbarSlice).not.toContain("cq-partner-logo-chip--photo");
   });
 
   it("updates statuses with the clock: Sandbar open in the morning, Daisy's opening at noon", () => {
@@ -257,6 +274,37 @@ describe("PartnerCard and FeaturedDealCard", () => {
     const html = renderToStaticMarkup(createElement(PartnerCard, { partner: sandbar, now: AFTERNOON, onSelect: () => {} }));
     expect(html).not.toMatch(/%\s*off/i);
     expect(html).toContain("Reward soon");
+  });
+
+  it("puts Daisy's logo in the large card image and food photo beside the name", () => {
+    const featured = renderToStaticMarkup(
+      createElement(FeaturedDealCard, {
+        partner: daisys,
+        now: AFTERNOON,
+        onSelect: () => {},
+        onViewReward: () => {},
+      }),
+    );
+    expect(featured).toContain("cq-partner-media--logo-hero");
+    expect(featured).toContain('src="/partners/daisys/logo.jpg"');
+    expect(featured).toContain("cq-partner-logo-chip--photo");
+    expect(featured).toContain('src="/partners/daisys/cover.jpg"');
+
+    const explore = renderToStaticMarkup(createElement(PartnerCard, { partner: daisys, now: AFTERNOON, onSelect: () => {} }));
+    expect(explore).toContain("cq-partner-media--logo-hero");
+    expect(explore).toContain("cq-perk-card__heading--with-chip");
+    expect(explore).toContain('src="/partners/daisys/logo.jpg"');
+    expect(explore).toContain('src="/partners/daisys/cover.jpg"');
+  });
+
+  it("puts International Pocket Café logo large and food photo beside the name on Explore", () => {
+    const html = renderToStaticMarkup(
+      createElement(PartnerCard, { partner: pocketCafe, now: AFTERNOON, onSelect: () => {} }),
+    );
+    expect(html).toContain("cq-partner-media--logo-hero");
+    expect(html).toContain('src="/partners/international-pocket-cafe/logo.png"');
+    expect(html).toContain("cq-partner-logo-chip--photo");
+    expect(html).toContain('src="/partners/international-pocket-cafe/cover.jpg"');
   });
 
   it("featured card keeps the favorite button outside the media button", () => {
