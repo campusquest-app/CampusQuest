@@ -14,8 +14,10 @@ import {
  * trapped by transformed ancestors (the tab swipe shell uses `will-change: transform`),
  * stacked above the dock nav and composer, sized to the visual viewport.
  *
- * Bottom sheet on phones, centered dialog from `sm` up. Children supply the panel
- * contents; use `.cq-modal-header`, `.cq-modal-body`, `.cq-modal-footer` for layout.
+ * `placement="sheet"` (default): bottom sheet on phones, centered from `sm` up.
+ * `placement="dialog"`: centered dialog on all breakpoints (Events filters, etc.).
+ * Children supply the panel contents; use `.cq-modal-header`, `.cq-modal-body`,
+ * `.cq-modal-footer` for layout.
  */
 export function CqModalLayer({
   open,
@@ -23,6 +25,7 @@ export function CqModalLayer({
   dismissible = true,
   labelledBy,
   panelClassName = "",
+  placement = "sheet",
   panelAs = "div",
   onSubmit,
   children,
@@ -33,6 +36,8 @@ export function CqModalLayer({
   dismissible?: boolean;
   labelledBy: string;
   panelClassName?: string;
+  /** sheet = bottom sheet on phones; dialog = centered on all sizes. */
+  placement?: "sheet" | "dialog";
   /** Render the panel as a <form> so header/body/footer share one submit target. */
   panelAs?: "div" | "form";
   onSubmit?: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -81,7 +86,7 @@ export function CqModalLayer({
   if (!open || !mounted) return null;
 
   const panelProps = {
-    className: `cq-modal-panel ${panelClassName}`.trim(),
+    className: `cq-modal-panel ${placement === "dialog" ? "cq-modal-panel--dialog" : ""} ${panelClassName}`.trim(),
     tabIndex: -1,
     onClick: (event: React.MouseEvent) => event.stopPropagation(),
   };
@@ -89,7 +94,7 @@ export function CqModalLayer({
   return createPortal(
     <div
       ref={setLayerEl}
-      className="cq-modal-layer"
+      className={`cq-modal-layer${placement === "dialog" ? " cq-modal-layer--dialog" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={labelledBy}

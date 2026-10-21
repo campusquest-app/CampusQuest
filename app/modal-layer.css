@@ -26,7 +26,7 @@
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
   touch-action: none;
-  animation: cq-modal-fade-in 180ms ease-out;
+  animation: cq-modal-fade-in 160ms ease-out;
 }
 
 .cq-modal-panel {
@@ -97,6 +97,28 @@ html[data-cq-modal-keyboard] .cq-modal-panel {
   .cq-modal-grabber {
     display: none;
   }
+}
+
+/* Always-centered dialog (Events filters and similar). */
+.cq-modal-layer--dialog {
+  align-items: center;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+}
+
+.cq-modal-panel--dialog {
+  width: min(100%, 36rem);
+  max-height: min(var(--cq-modal-vv-h, 100dvh) - 24px, 40rem);
+  margin: 0;
+  border-radius: 16px;
+  padding-bottom: 0;
+  animation-name: cq-modal-dialog-in;
+  animation-duration: 180ms;
+}
+
+.cq-modal-layer--dialog .cq-modal-grabber {
+  display: none;
 }
 
 /* Dock nav must never peek over or intercept an open modal. */

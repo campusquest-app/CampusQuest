@@ -630,6 +630,11 @@ export function EventsFeed({
         >
           <SlidersHorizontal className="h-4 w-4" aria-hidden />
           Filters
+          {activeChips.length > 0 ? (
+            <span className="cq-events-filter-count" aria-hidden>
+              {activeChips.length}
+            </span>
+          ) : null}
         </button>
       </div>
 

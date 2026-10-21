@@ -252,6 +252,19 @@ describe("Edit Post and Add Tags use the shared modal layer", () => {
   it("portals to document.body so transformed tab shells cannot trap position: fixed", () => {
     expect(layer).toContain("createPortal(");
     expect(layer).toContain("document.body");
+    expect(layer).toContain('placement?: "sheet" | "dialog"');
+    expect(css).toContain(".cq-modal-layer--dialog");
+    expect(css).toContain(".cq-modal-panel--dialog");
+  });
+
+  it("centers the Events filter dialog via the shared modal layer", () => {
+    const filters = read("components/events/EventsFilterSheet.tsx");
+    expect(filters).toContain("<CqModalLayer");
+    expect(filters).toContain('placement="dialog"');
+    expect(filters).toContain("cq-modal-header");
+    expect(filters).toContain("cq-modal-body");
+    expect(filters).toContain("cq-modal-footer");
+    expect(filters).not.toContain("cq-create-sheet-overlay");
   });
 
   it("stacks above the dock nav and composer and hides the dock while open", () => {

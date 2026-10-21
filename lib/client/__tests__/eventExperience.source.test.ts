@@ -62,13 +62,20 @@ describe("Events experience source contracts", () => {
     expect(feedSrc).not.toMatch(/if \(liveDetail\) \{\s*return \(/);
   });
 
-  it("defaults discovery to For You and hides filters in a sheet", () => {
+  it("defaults discovery to For You and opens filters in a centered modal", () => {
     expect(feedSrc).toContain('timeframe: "for_you"');
     expect(feedSrc).toContain("EventsFilterSheet");
+    expect(feedSrc).toContain("cq-events-filter-count");
     expect(feedSrc).toContain("EVENTS_SEARCH_PLACEHOLDER");
     expect(feedSrc).toContain("scoreEventsSearch");
     expect(feedSrc).toContain("nextInterestedRsvpStatus");
     expect(feedSrc).toContain("applyCampusRsvpStatus");
+    const sheetSrc = readFileSync(join(process.cwd(), "components/events/EventsFilterSheet.tsx"), "utf8");
+    expect(sheetSrc).toContain("CqModalLayer");
+    expect(sheetSrc).toContain('placement="dialog"');
+    expect(sheetSrc).toContain("Apply Filters");
+    expect(sheetSrc).toContain("Reset");
+    expect(sheetSrc).not.toContain("cq-create-sheet-overlay");
   });
 
   it("starts Walk Here from the existing Realm map after focus", () => {
