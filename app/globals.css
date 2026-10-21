@@ -27364,13 +27364,19 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   box-shadow:
     0 -18px 48px rgba(0, 0, 0, 0.48),
     inset 0 1px 0 rgba(240, 215, 140, 0.16);
-  transform: translate3d(0, 51.1364%, 0);
+  /* Peek offset: 1 - LOCATION_SHEET_PEEK_RATIO / LOCATION_SHEET_EXPANDED_RATIO */
+  transform: translate3d(0, 40.9091%, 0);
   transition: transform 340ms cubic-bezier(0.32, 0.72, 0, 1);
   will-change: transform;
 }
 
 .cq-loc-sheet--dock.cq-loc-sheet--expanded {
   transform: translate3d(0, 0, 0);
+}
+
+/* Dining peek: keep primary card content visible without nested scroll. */
+.cq-loc-sheet--dock.cq-loc-sheet--dining:not(.cq-loc-sheet--expanded) .cq-loc-scroll {
+  overflow-y: hidden;
 }
 
 .cq-loc-sheet--dock.cq-loc-sheet--dragging {
@@ -28209,6 +28215,233 @@ button.cq-loc-activity-card {
 @media (max-width: 340px) {
   .cq-loc-actions {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Location sheet — shared dining hall map cards */
+.cq-dining-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 0.95rem 0.15rem;
+}
+
+.cq-dining-card-hero {
+  display: grid;
+  grid-template-columns: 4.75rem minmax(0, 1fr);
+  column-gap: 0.7rem;
+  align-items: start;
+}
+
+.cq-dining-card-thumb {
+  width: 4.75rem;
+  height: 4.75rem;
+  overflow: hidden;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(104, 184, 232, 0.28);
+  background: rgba(12, 22, 38, 0.9);
+}
+
+.cq-dining-card-thumb-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cq-dining-card-thumb-fallback {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: #9fd2ff;
+  background: linear-gradient(160deg, rgba(20, 40, 68, 0.95), rgba(8, 16, 28, 0.98));
+}
+
+.cq-dining-card-copy {
+  min-width: 0;
+  padding-top: 0.1rem;
+}
+
+.cq-dining-card-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: #fff;
+}
+
+.cq-dining-card-desc {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: rgba(210, 225, 240, 0.78);
+}
+
+.cq-dining-card-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.55rem 0.65rem 0.6rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(104, 184, 232, 0.2);
+  background: rgba(8, 16, 28, 0.72);
+}
+
+.cq-dining-card-menu-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.cq-dining-card-menu-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.cq-dining-card-meal {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #9fd2ff;
+}
+
+.cq-dining-card-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.cq-dining-card-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.cq-dining-card-item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: rgba(245, 248, 252, 0.94);
+}
+
+.cq-dining-card-item-station {
+  flex-shrink: 0;
+  max-width: 38%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: rgba(180, 200, 220, 0.62);
+}
+
+.cq-dining-card-more {
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: rgba(159, 210, 255, 0.85);
+}
+
+.cq-dining-card-empty {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: rgba(200, 214, 230, 0.72);
+}
+
+.cq-dining-card-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.cq-dining-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.cq-dining-card-actions:has(> :only-child) {
+  grid-template-columns: 1fr;
+}
+
+.cq-dining-card-action {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 2.65rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(12, 18, 30, 0.95);
+  padding: 0.55rem 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 750;
+  color: #fff;
+}
+
+.cq-dining-card-action:disabled {
+  opacity: 0.45;
+}
+
+.cq-dining-card-action--menu {
+  border-color: rgba(232, 199, 90, 0.42);
+  color: #f0d78c;
+}
+
+.cq-dining-card-action--menu .cq-dining-card-action-icon {
+  color: #e8c75a;
+}
+
+.cq-dining-card-action--memory {
+  border-color: rgba(104, 171, 232, 0.42);
+}
+
+.cq-dining-card-action--memory .cq-dining-card-action-icon {
+  color: #9fd2ff;
+}
+
+.cq-loc-content--dining {
+  gap: 0.75rem;
+  padding-top: 0.15rem;
+}
+
+@media (max-width: 380px) {
+  .cq-dining-card {
+    padding-inline: 0.8rem;
+    gap: 0.6rem;
+  }
+
+  .cq-dining-card-hero {
+    grid-template-columns: 4.15rem minmax(0, 1fr);
+    column-gap: 0.55rem;
+  }
+
+  .cq-dining-card-thumb {
+    width: 4.15rem;
+    height: 4.15rem;
+  }
+
+  .cq-dining-card-title {
+    font-size: 1.02rem;
+  }
+
+  .cq-dining-card-action {
+    min-height: 2.5rem;
+    font-size: 0.76rem;
   }
 }
 

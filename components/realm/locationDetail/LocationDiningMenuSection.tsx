@@ -63,19 +63,26 @@ export function LocationDiningMenuSection({
 }: {
   campusQuestLocationId: string;
 }) {
-  const resolvedHall =
-    resolveDiningLocationId(campusQuestLocationId) ?? ("butterfield" as DiningLocationId);
-  const [hallId, setHallId] = useState<DiningLocationId>(resolvedHall);
+  const resolvedHall = resolveDiningLocationId(campusQuestLocationId);
+  const [hallId, setHallId] = useState<DiningLocationId | null>(resolvedHall);
   const [today] = useState(() => uriTodayIso());
   const dayOptions = useMemo(() => upcomingIsoDates(today, 5), [today]);
   const [date, setDate] = useState(today);
-  const [menu, setMenu] = useState<DiningMenuResponse | null>(() =>
-    getDiningMenuSessionCache(resolvedHall, today),
-  );
-  const [loaded, setLoaded] = useState(() => Boolean(getDiningMenuSessionCache(resolvedHall, today)));
-  const [initialLoading, setInitialLoading] = useState(
-    () => !getDiningMenuSessionCache(resolvedHall, today),
-  );
+  const [menu, setMenu] = useState<DiningMenuResponse | null>(() => {
+    if (!resolvedHall) return null;
+    const cached = getDiningMenuSessionCache(resolvedHall, today);
+    return cached && cached.location.id === resolvedHall ? cached : null;
+  });
+  const [loaded, setLoaded] = useState(() => {
+    if (!resolvedHall) return false;
+    const cached = getDiningMenuSessionCache(resolvedHall, today);
+    return Boolean(cached && cached.location.id === resolvedHall);
+  });
+  const [initialLoading, setInitialLoading] = useState(() => {
+    if (!resolvedHall) return false;
+    const cached = getDiningMenuSessionCache(resolvedHall, today);
+    return !(cached && cached.location.id === resolvedHall);
+  });
   const [slowLoading, setSlowLoading] = useState(false);
   const [softRefreshing, setSoftRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,7 +117,8 @@ export function LocationDiningMenuSection({
   }, []);
 
   useEffect(() => {
-    const next = resolveDiningLocationId(campusQuestLocationId) ?? "butterfield";
+    // Never fall back to another dining hall's menu.
+    const next = resolveDiningLocationId(campusQuestLocationId);
     setHallId((current) => (current === next ? current : next));
   }, [campusQuestLocationId]);
 
@@ -122,13 +130,26 @@ export function LocationDiningMenuSection({
 
   const load = useCallback(
     async (opts?: { background?: boolean }) => {
+      if (!hallId) {
+        setMenu(null);
+        setLoaded(true);
+        setInitialLoading(false);
+        setSlowLoading(false);
+        setSoftRefreshing(false);
+        setError("Menu unavailable for this location");
+        return;
+      }
+
       const key = diningMenuRequestKey(hallId, date);
       const sessionCached = getDiningMenuSessionCache(hallId, date);
       const background =
         Boolean(opts?.background) || (sessionCached != null && loadedKeyRef.current === key);
 
-      if (sessionCached && !opts?.background) {
-        setMenu(sessionCached);
+      const sessionCachedForHall =
+        sessionCached && sessionCached.location.id === hallId ? sessionCached : null;
+
+      if (sessionCachedForHall && !opts?.background) {
+        setMenu(sessionCachedForHall);
         setLoaded(true);
         setInitialLoading(false);
         setSlowLoading(false);
@@ -141,7 +162,7 @@ export function LocationDiningMenuSection({
           date,
           key,
         });
-      } else if (!background && !sessionCached) {
+      } else if (!background && !sessionCachedForHall) {
         // Only blank the UI when we have nothing to show for this target.
         setInitialLoading(true);
         setLoaded(false);
@@ -184,6 +205,26 @@ export function LocationDiningMenuSection({
         }
         if (!mountedRef.current) return;
 
+        // Never display another dining hall's menu as a fallback.
+        if (data.location.id !== hallId) {
+          setError("Menu unavailable right now");
+          setLoaded(true);
+          setInitialLoading(false);
+          setSlowLoading(false);
+          setSoftRefreshing(false);
+          setMenu(null);
+          hasMenuRef.current = false;
+          logDiningDev({
+            phase: "hall-mismatch",
+            diningSourceId: hallId,
+            responseHall: data.location.id,
+            date,
+            path,
+            seq,
+          });
+          return;
+        }
+
         setDiningMenuSessionCache(hallId, date, data);
         setMenu(data);
         hasMenuRef.current = true;
@@ -215,7 +256,9 @@ export function LocationDiningMenuSection({
         }
         if (!mountedRef.current) return;
 
-        const fallback = sessionCached ?? getDiningMenuSessionCache(hallId, date);
+        const fallbackRaw = sessionCached ?? getDiningMenuSessionCache(hallId, date);
+        const fallback =
+          fallbackRaw && fallbackRaw.location.id === hallId ? fallbackRaw : null;
         if (isAbortError(err)) {
           if (fallback) {
             setMenu(fallback);
@@ -367,12 +410,28 @@ export function LocationDiningMenuSection({
   const showSlowHint = shouldShowDiningSlowLoadingHint({ showSkeleton, slowLoading });
   const isEmptyDay = isDiningMenuEmpty({ loaded, menu });
 
+  if (!hallId) {
+    return (
+      <section
+        className="cq-loc-section cq-dining-menu"
+        aria-label="Today's Menu"
+        data-cq-dining-hall="unresolved"
+      >
+        <div className="cq-loc-section-head">
+          <h3 className="cq-loc-section-title">Today&apos;s Menu</h3>
+        </div>
+        <p className="cq-dining-empty">Menu unavailable for this location</p>
+      </section>
+    );
+  }
+
   return (
     <section
       className="cq-loc-section cq-dining-menu"
       aria-label="Today's Menu"
       data-cq-dining-fetches={fetchCountRef.current}
       data-cq-dining-soft-refresh={softRefreshing ? "1" : "0"}
+      data-cq-dining-hall={hallId}
     >
       <div className="cq-loc-section-head">
         <h3 className="cq-loc-section-title">Today&apos;s Menu</h3>
