@@ -28,6 +28,7 @@ describe("partner directory integrity", () => {
   it("gives every discount a title and redemption instructions, and valid offer dates", () => {
     for (const partner of PARTNER_DIRECTORY) {
       if (!partner.discountValue) continue;
+      expect(partner.listingType, partner.id).toBe("partner");
       expect(partner.offerTitle, partner.id).toBeTruthy();
       expect(partner.redemptionInstructions, partner.id).toBeTruthy();
       for (const date of [partner.startsAt, partner.endsAt]) {
@@ -36,6 +37,22 @@ describe("partner directory integrity", () => {
       if (partner.startsAt && partner.endsAt) {
         expect(Date.parse(partner.startsAt), partner.id).toBeLessThan(Date.parse(partner.endsAt));
       }
+    }
+  });
+
+  it("keeps free local listings free of rewards, redemption, and partnership claims", () => {
+    for (const partner of PARTNER_DIRECTORY) {
+      if (partner.listingType !== "free_local_business") continue;
+      expect(partner.discountValue, partner.id).toBeNull();
+      expect(partner.offerTitle, partner.id).toBeNull();
+      expect(partner.offerDescription, partner.id).toBeNull();
+      expect(partner.offerType, partner.id).toBeNull();
+      expect(partner.redemptionInstructions, partner.id).toBeNull();
+      expect(partner.rewardTerms, partner.id).toBeNull();
+      expect(partner.partnerSince, partner.id).toBeNull();
+      expect(partner.questTitle, partner.id).toBeNull();
+      expect(partner.address, partner.id).toBeTruthy();
+      expect(partner.websiteUrl || partner.menuUrl, partner.id).toBeTruthy();
     }
   });
 

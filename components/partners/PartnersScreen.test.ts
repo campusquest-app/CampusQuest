@@ -23,6 +23,7 @@ const MORNING = new Date("2026-10-12T09:00:00-04:00");
 
 const daisys = PARTNER_DIRECTORY.find((p) => p.slug === "daisys-chicken-ice-cream")!;
 const sandbar = PARTNER_DIRECTORY.find((p) => p.slug === "the-sandbar-cafe")!;
+const pocketCafe = PARTNER_DIRECTORY.find((p) => p.slug === "international-pocket-cafe")!;
 const DAISYS_HTML = daisys.name.replace(/&/g, "&amp;");
 const ready: PartnersLoadState = { status: "ready", partners: PARTNER_DIRECTORY };
 
@@ -124,17 +125,24 @@ describe("Community Quests screen", () => {
     expect(featured.split(`id="cq-perk-featured-${daisys.id}-name"`).length - 1).toBe(1);
   });
 
-  it("lists both businesses in Explore with category, live hours, and reward badges", () => {
+  it("lists partner and free local businesses in Explore with category, hours/location, and actions", () => {
     const explore = exploreSection(renderScreen(ready));
     expect(explore).toContain("Explore Local Businesses");
     expect(explore).toContain("Go on a quest to discover local favorites near your campus.");
     expect(explore.indexOf(DAISYS_HTML)).toBeLessThan(explore.indexOf(sandbar.name));
+    expect(explore.indexOf(sandbar.name)).toBeLessThan(explore.indexOf(pocketCafe.name));
     expect(explore).toContain("Chicken \u00b7 Ice Cream");
     expect(explore).toContain("Coffee \u00b7 Breakfast \u00b7 Drinks");
+    expect(explore).toContain("Food &amp; Dining");
     expect(explore).toContain("Closed");
     expect(explore).toContain("Opens tomorrow at 7 AM");
     expect(explore).toContain("Reward soon");
     expect(explore).toContain('src="/partners/sandbar/logo.png"');
+    expect(explore).toContain(pocketCafe.name);
+    expect(explore).toContain("99 Fortin Rd, Kingston, RI");
+    expect(explore).toContain("View Details");
+    expect(explore).toContain('src="/partners/international-pocket-cafe/cover.jpg"');
+    expect(explore).not.toMatch(/International Pocket[\s\S]*Reward soon/);
   });
 
   it("updates statuses with the clock: Sandbar open in the morning, Daisy's opening at noon", () => {
@@ -305,6 +313,29 @@ describe("PartnerDetailView", () => {
     expect(html).toContain('href="https://order.toasttab.com/online/the-sandbar-cafe-106-point-judith-road"');
     expect(html).not.toContain(">Website<");
     expect(html).toContain("Closed");
+  });
+
+  it("shows free local listings with description, directions, and website — never rewards or partnership claims", () => {
+    const html = renderDetail(pocketCafe);
+    expect(html).toContain(pocketCafe.name);
+    expect(html).toContain('src="/partners/international-pocket-cafe/cover.jpg"');
+    expect(html).toContain('src="/partners/international-pocket-cafe/logo.png"');
+    expect(html).toContain("Food &amp; Dining");
+    expect(html).toContain(pocketCafe.description!);
+    expect(html).toContain("99 Fortin Rd, Kingston, RI");
+    expect(html).toContain("Get Directions");
+    expect(html).toContain(
+      `href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(`${pocketCafe.name}, ${pocketCafe.address}`)}"`,
+    );
+    expect(html).toContain("Visit Website");
+    expect(html).toContain('href="https://internationalpocketcafe.com/"');
+    expect(html).not.toContain("Verified CampusQuest Partner");
+    expect(html).not.toContain("Quest deal");
+    expect(html).not.toContain("Coming soon");
+    expect(html).not.toContain("View Quest Deal");
+    expect(html).not.toContain("Redeem");
+    expect(html).not.toContain("% OFF");
+    expect(html).not.toContain("Hours Unavailable");
   });
 
   it("shows expired and temporarily unavailable rewards without a pass button", () => {
@@ -494,15 +525,24 @@ describe("partners directory data", () => {
     expect(sandbar.hours?.weekly).toEqual(everyDay({ open: "07:00", close: "12:00" }));
   });
 
-  it("keeps Daisy's 20% OFF and does not invent a Sandbar reward or terms", () => {
+  it("keeps Daisy's 20% OFF, Sandbar without a reward, and Pocket Café as a free listing", () => {
     expect(daisys.discountValue).toBe("20% OFF");
     expect(daisys.offerTitle).toBe("Go on a quest for 20% OFF at Daisy\u2019s");
     expect(daisys.rewardTerms).toBeNull();
+    expect(daisys.listingType).toBe("partner");
     expect(sandbar.discountValue).toBeNull();
     expect(sandbar.offerTitle).toBeNull();
     expect(sandbar.redemptionInstructions).toBeNull();
     expect(sandbar.rewardTerms).toBeNull();
-    expect(PARTNER_DIRECTORY).toHaveLength(2);
+    expect(sandbar.listingType).toBe("partner");
+    expect(pocketCafe.listingType).toBe("free_local_business");
+    expect(pocketCafe.discountValue).toBeNull();
+    expect(pocketCafe.offerTitle).toBeNull();
+    expect(pocketCafe.redemptionInstructions).toBeNull();
+    expect(pocketCafe.partnerSince).toBeNull();
+    expect(pocketCafe.websiteUrl).toBe("https://internationalpocketcafe.com/");
+    expect(PARTNER_DIRECTORY).toHaveLength(3);
+    expect(PARTNER_DIRECTORY.filter((p) => p.slug === "international-pocket-cafe")).toHaveLength(1);
   });
 
   it("never mentions CampusQuest Day in the partners feature", () => {

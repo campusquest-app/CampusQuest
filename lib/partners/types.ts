@@ -1,11 +1,19 @@
 /**
- * CampusQuest Partners: local businesses with an official CampusQuest partnership.
+ * CampusQuest Partners: local businesses shown in Community Quests / Student Perks.
  * Keep this module free of server/client-only imports so it can be shared and unit tested.
+ *
+ * Two listing kinds share one directory:
+ * - `partner` — official CampusQuest partnership; may carry a configured student reward
+ * - `free_local_business` — discovery listing only; never invents discounts or partnership claims
  */
 
 export const PARTNER_OFFER_TYPES = ["standard_offer", "partner_quest", "special_promotion"] as const;
 
 export type PartnerOfferType = (typeof PARTNER_OFFER_TYPES)[number];
+
+export const PARTNER_LISTING_TYPES = ["partner", "free_local_business"] as const;
+
+export type PartnerListingType = (typeof PARTNER_LISTING_TYPES)[number];
 
 export const PARTNER_FILTER_TAGS = ["food", "coffee", "dessert"] as const;
 
@@ -46,6 +54,7 @@ export type PartnerRow = {
   id: string;
   name: string;
   slug: string;
+  listing_type: PartnerListingType | null;
   logo_url: string | null;
   cover_image_url: string | null;
   categories: string[] | null;
@@ -79,6 +88,11 @@ export type Partner = {
   id: string;
   name: string;
   slug: string;
+  /**
+   * `partner` may show a student reward once configured.
+   * `free_local_business` is discovery-only: no discount, redeem UI, or partnership badge.
+   */
+  listingType: PartnerListingType;
   logoUrl: string | null;
   coverImageUrl: string | null;
   categories: string[];

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Gift } from "lucide-react";
+import { ChevronRight, Gift, MapPin } from "lucide-react";
 import {
   DiscountBadge,
   FavoriteButton,
@@ -9,7 +9,7 @@ import {
 } from "@/components/partners/PartnerBadges";
 import { PartnerLogoChip, PartnerMedia } from "@/components/partners/PartnerMedia";
 import { getPartnerOpenStatus } from "@/lib/partners/partnerHours";
-import { partnerHasLiveReward } from "@/lib/partners/partnerStatus";
+import { isFreeLocalBusinessListing, partnerHasLiveReward } from "@/lib/partners/partnerStatus";
 import type { Partner } from "@/lib/partners/types";
 
 export type PartnerFavoriteProps = {
@@ -37,6 +37,7 @@ export function PartnerCard({
 }) {
   const status = getPartnerOpenStatus(partner.hours, now);
   const hasReward = partnerHasLiveReward(partner, now);
+  const freeListing = isFreeLocalBusinessListing(partner);
   const titleId = `cq-perk-${partner.id}-name`;
 
   return (
@@ -52,14 +53,28 @@ export function PartnerCard({
           {partner.categories.length > 0 ? (
             <span className="cq-perk-card__category">{partnerCategoryLine(partner)}</span>
           ) : null}
-          <PartnerOpenStatus status={status} className="cq-perk-card__status" />
-          <span className="cq-perk-card__reward">
-            {hasReward && partner.discountValue ? <DiscountBadge value={partner.discountValue} size="sm" /> : null}
-            {hasReward && !partner.discountValue && partner.offerTitle ? (
-              <span className="cq-perk-card__offer">{partner.offerTitle}</span>
-            ) : null}
-            {!hasReward ? <RewardSoonBadge /> : null}
-          </span>
+          {freeListing && partner.description ? (
+            <span className="cq-perk-card__blurb">{partner.description}</span>
+          ) : null}
+          {freeListing && partner.address ? (
+            <span className="cq-perk-card__location">
+              <MapPin className="h-3 w-3 shrink-0" aria-hidden strokeWidth={2.3} />
+              <span>{partner.address}</span>
+            </span>
+          ) : (
+            <PartnerOpenStatus status={status} className="cq-perk-card__status" />
+          )}
+          {freeListing ? (
+            <span className="cq-perk-card__details">View Details</span>
+          ) : (
+            <span className="cq-perk-card__reward">
+              {hasReward && partner.discountValue ? <DiscountBadge value={partner.discountValue} size="sm" /> : null}
+              {hasReward && !partner.discountValue && partner.offerTitle ? (
+                <span className="cq-perk-card__offer">{partner.offerTitle}</span>
+              ) : null}
+              {!hasReward ? <RewardSoonBadge /> : null}
+            </span>
+          )}
         </span>
         {favorite ? null : <ChevronRight className="cq-perk-card__chevron" aria-hidden strokeWidth={2.2} />}
       </button>

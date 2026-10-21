@@ -86,7 +86,7 @@ export async function issueStudentRewardPass(args: {
   if (!partner) throw new ApiError(404, "This business isn\u2019t a CampusQuest partner.", REWARD_ERROR_CODES.partnerNotFound);
 
   const offerState = partnerRewardOfferState(partner, now);
-  if (offerState === "coming_soon") {
+  if (offerState === "none" || offerState === "coming_soon") {
     throw new ApiError(409, "This business hasn\u2019t launched a student reward yet.", REWARD_ERROR_CODES.comingSoon);
   }
   if (offerState === "expired") {

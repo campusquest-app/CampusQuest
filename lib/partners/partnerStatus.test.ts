@@ -133,6 +133,7 @@ describe("mapPartnerRow", () => {
       id: "row-id",
       name: "Row Partner",
       slug: "row-partner",
+      listing_type: "partner",
       logo_url: "https://cdn.test/logo.png",
       cover_image_url: "https://cdn.test/cover.png",
       categories: ["Food", ""],
@@ -164,6 +165,7 @@ describe("mapPartnerRow", () => {
     const mapped = mapPartnerRow(row);
     expect(mapped).toMatchObject({
       id: "row-id",
+      listingType: "partner",
       categories: ["Food"],
       keywords: ["latte"],
       filterTags: ["coffee"],
@@ -176,6 +178,8 @@ describe("mapPartnerRow", () => {
     });
     expect(Object.keys(mapped)).toHaveLength(Object.keys(row).length);
     expect(mapPartnerRow({ ...row, offer_type: "bogus" as never }).offerType).toBeNull();
+    expect(mapPartnerRow({ ...row, listing_type: null }).listingType).toBe("partner");
+    expect(mapPartnerRow({ ...row, listing_type: "free_local_business" }).listingType).toBe("free_local_business");
   });
 
   it("parses structured hours JSON and drops malformed hours", () => {
@@ -183,6 +187,7 @@ describe("mapPartnerRow", () => {
       id: "r",
       name: "R",
       slug: "r",
+      listing_type: null,
       logo_url: null,
       cover_image_url: null,
       categories: null,
@@ -221,6 +226,18 @@ describe("mapPartnerRow", () => {
 describe("partnerRewardOfferState", () => {
   it("is coming soon when no reward is configured", () => {
     expect(partnerRewardOfferState(partner(), NOW)).toBe("coming_soon");
+  });
+
+  it("is none for free local business listings even if offer fields were set by mistake", () => {
+    expect(
+      partnerRewardOfferState(
+        partner({ listingType: "free_local_business", discountValue: "20% OFF", offerTitle: "Nope" }),
+        NOW,
+      ),
+    ).toBe("none");
+    expect(partnerHasLiveReward(partner({ listingType: "free_local_business", discountValue: "20% OFF" }), NOW)).toBe(
+      false,
+    );
   });
 
   it("is active, expired, scheduled, or paused based on the configured window", () => {

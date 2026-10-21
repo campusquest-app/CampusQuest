@@ -165,6 +165,15 @@ describe("issueStudentRewardPass", () => {
     expect(admin.reads).toEqual([]);
   });
 
+  it("refuses reward passes for free local business listings", async () => {
+    const { admin, run } = await issue(
+      { profiles: verifiedProfile },
+      { partnerId: "international-pocket-cafe" },
+    );
+    await expectApiError(run, 409, REWARD_ERROR_CODES.comingSoon);
+    expect(admin.reads).toEqual([]);
+  });
+
   it("returns expired and temporarily unavailable from the offer configuration", async () => {
     PARTNER_DIRECTORY.push(
       definePartner({ id: "test-expired", slug: "test-expired", name: "Old", discountValue: "10% OFF", endsAt: "2026-10-01T00:00:00Z" }),

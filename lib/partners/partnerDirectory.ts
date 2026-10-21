@@ -6,6 +6,7 @@ type PartnerInput = Pick<Partner, "id" | "name" | "slug"> & Partial<Omit<Partner
 /** Fills every optional field with "not provided" so entries only list what the business has confirmed. */
 export function definePartner(input: PartnerInput): Partner {
   return {
+    listingType: "partner",
     logoUrl: null,
     coverImageUrl: null,
     categories: [],
@@ -38,10 +39,12 @@ export function definePartner(input: PartnerInput): Partner {
 }
 
 /**
- * Official CampusQuest Partners, in display order.
+ * Local businesses shown in Community Quests, in display order.
+ * Includes official partners (with optional student rewards) and free local business listings.
  * Images must be the business's own assets (website, ordering page, or files they send us) stored under
  * /public/partners/<slug>/ — never generated or stock imagery. Hours must come from the business's own
  * published listing (record `source` + `checkedOn`); leave hours and rewards null until confirmed.
+ * Free listings must not set discount, offer, redemption, or partnerSince fields.
  */
 export const PARTNER_DIRECTORY: Partner[] = [
   definePartner({
@@ -88,6 +91,32 @@ export const PARTNER_DIRECTORY: Partner[] = [
       checkedOn: "2026-10-12",
     },
     menuUrl: "https://order.toasttab.com/online/the-sandbar-cafe-106-point-judith-road",
+  }),
+  definePartner({
+    id: "international-pocket-cafe",
+    slug: "international-pocket-cafe",
+    listingType: "free_local_business",
+    name: "International Pocket Caf\u00e9",
+    // Logo and cover are from internationalpocketcafe.com (wp-content/uploads).
+    logoUrl: "/partners/international-pocket-cafe/logo.png",
+    coverImageUrl: "/partners/international-pocket-cafe/cover.jpg",
+    categories: ["Food & Dining"],
+    keywords: [
+      "mediterranean",
+      "falafel",
+      "gyro",
+      "hummus",
+      "wraps",
+      "shawarma",
+      "baklava",
+      "middle eastern",
+      "kingston",
+    ],
+    filterTags: ["food"],
+    description:
+      "Family-owned Mediterranean caf\u00e9 serving authentic Middle Eastern cuisine \u2014 wraps, platters, falafel, and more \u2014 near campus on Fortin Road.",
+    address: "99 Fortin Rd, Kingston, RI",
+    websiteUrl: "https://internationalpocketcafe.com/",
   }),
 ];
 

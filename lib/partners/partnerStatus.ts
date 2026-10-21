@@ -1,12 +1,19 @@
 import { isPartnerOpenNow, parsePartnerHours } from "@/lib/partners/partnerHours";
 import {
   PARTNER_FILTER_TAGS,
+  PARTNER_LISTING_TYPES,
   PARTNER_OFFER_TYPES,
   type Partner,
   type PartnerFilterTag,
+  type PartnerListingType,
   type PartnerOfferType,
   type PartnerRow,
 } from "@/lib/partners/types";
+
+/** True for discovery-only listings that must never show rewards, redeem UI, or partnership claims. */
+export function isFreeLocalBusinessListing(partner: Pick<Partner, "listingType">): boolean {
+  return partner.listingType === "free_local_business";
+}
 
 function parseTime(value: string | null): number | null {
   if (!value) return null;
@@ -30,12 +37,15 @@ export function isOfferLive(partner: Partner, now: Date = new Date()): boolean {
 }
 
 /**
- * Business-side reward availability. `coming_soon` covers both "no reward configured yet" and
- * "configured but not started" — the UI never fills in an offer that does not exist.
+ * Business-side reward availability.
+ * - `none` — free local listing; no student perk and no coming-soon tease
+ * - `coming_soon` — partner with no reward configured yet, or configured but not started
+ * The UI never fills in an offer that does not exist.
  */
-export type PartnerRewardOfferState = "active" | "coming_soon" | "expired" | "unavailable";
+export type PartnerRewardOfferState = "none" | "active" | "coming_soon" | "expired" | "unavailable";
 
 export function partnerRewardOfferState(partner: Partner, now: Date = new Date()): PartnerRewardOfferState {
+  if (isFreeLocalBusinessListing(partner)) return "none";
   if (!partner.discountValue && !partner.offerTitle) return "coming_soon";
   const nowMs = now.getTime();
   const end = parseTime(partner.endsAt);
@@ -127,6 +137,12 @@ function normalizeOfferType(value: string | null): PartnerOfferType | null {
   return value && (PARTNER_OFFER_TYPES as readonly string[]).includes(value) ? (value as PartnerOfferType) : null;
 }
 
+function normalizeListingType(value: string | null): PartnerListingType {
+  return value && (PARTNER_LISTING_TYPES as readonly string[]).includes(value)
+    ? (value as PartnerListingType)
+    : "partner";
+}
+
 function normalizeFilterTags(value: string[] | null): PartnerFilterTag[] {
   if (!Array.isArray(value)) return [];
   return value.filter((tag): tag is PartnerFilterTag => (PARTNER_FILTER_TAGS as readonly string[]).includes(tag));
@@ -137,6 +153,7 @@ export function mapPartnerRow(row: PartnerRow): Partner {
     id: row.id,
     name: row.name,
     slug: row.slug,
+    listingType: normalizeListingType(row.listing_type),
     logoUrl: row.logo_url,
     coverImageUrl: row.cover_image_url,
     categories: Array.isArray(row.categories) ? row.categories.filter(Boolean) : [],

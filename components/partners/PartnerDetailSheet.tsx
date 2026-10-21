@@ -19,7 +19,11 @@ import {
   getUpcomingSpecialHours,
   getWeeklyHoursRows,
 } from "@/lib/partners/partnerHours";
-import { partnerDirectionsUrl, partnerRewardOfferState } from "@/lib/partners/partnerStatus";
+import {
+  isFreeLocalBusinessListing,
+  partnerDirectionsUrl,
+  partnerRewardOfferState,
+} from "@/lib/partners/partnerStatus";
 import type { Partner } from "@/lib/partners/types";
 
 type DetailProps = {
@@ -57,6 +61,7 @@ function RewardSection({
   onViewReward: (partner: Partner) => void;
 }) {
   const state = partnerRewardOfferState(partner, now);
+  if (state === "none") return null;
 
   if (state === "active") {
     return (
@@ -189,6 +194,7 @@ export function PartnerDetailView({ partner, now, onClose, onViewReward, favorit
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const directionsUrl = partnerDirectionsUrl(partner);
   const status = getPartnerOpenStatus(partner.hours, now);
+  const freeListing = isFreeLocalBusinessListing(partner);
   const titleId = `cq-perk-detail-${partner.id}-title`;
 
   useEffect(() => {
@@ -241,12 +247,14 @@ export function PartnerDetailView({ partner, now, onClose, onViewReward, favorit
               ) : null}
             </div>
           </div>
-          <VerifiedPartnerBadge />
+          {freeListing ? null : <VerifiedPartnerBadge />}
 
-          <div className="cq-perk-detail__status">
-            <PartnerOpenStatus status={status} />
-            {status.note ? <span className="cq-perk-detail__status-note">{status.note}</span> : null}
-          </div>
+          {freeListing ? null : (
+            <div className="cq-perk-detail__status">
+              <PartnerOpenStatus status={status} />
+              {status.note ? <span className="cq-perk-detail__status-note">{status.note}</span> : null}
+            </div>
+          )}
 
           <RewardSection partner={partner} now={now} onViewReward={onViewReward} />
 
@@ -257,7 +265,9 @@ export function PartnerDetailView({ partner, now, onClose, onViewReward, favorit
             </section>
           ) : null}
 
-          <HoursSection partner={partner} now={now} initialOpen={initialHoursOpen} />
+          {freeListing && !partner.hours ? null : (
+            <HoursSection partner={partner} now={now} initialOpen={initialHoursOpen} />
+          )}
 
           {partner.address ? (
             <p className="cq-perk-detail__address">
@@ -276,7 +286,7 @@ export function PartnerDetailView({ partner, now, onClose, onViewReward, favorit
                   rel="noopener noreferrer"
                 >
                   <Navigation className="h-4 w-4" aria-hidden strokeWidth={2.2} />
-                  Directions
+                  {freeListing ? "Get Directions" : "Directions"}
                 </a>
               ) : null}
               {partner.websiteUrl ? (
@@ -287,7 +297,7 @@ export function PartnerDetailView({ partner, now, onClose, onViewReward, favorit
                   rel="noopener noreferrer"
                 >
                   <Globe className="h-4 w-4" aria-hidden strokeWidth={2.2} />
-                  Website
+                  {freeListing ? "Visit Website" : "Website"}
                 </a>
               ) : null}
               {partner.menuUrl ? (
