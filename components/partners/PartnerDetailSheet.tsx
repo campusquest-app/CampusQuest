@@ -22,7 +22,9 @@ import {
 import {
   isFreeLocalBusinessListing,
   partnerDirectionsUrl,
+  partnerRewardCtaLabel,
   partnerRewardOfferState,
+  partnerRewardSectionLabel,
 } from "@/lib/partners/partnerStatus";
 import type { Partner } from "@/lib/partners/types";
 
@@ -63,13 +65,15 @@ function RewardSection({
   const state = partnerRewardOfferState(partner, now);
   if (state === "none") return null;
 
+  const sectionLabel = partnerRewardSectionLabel(partner);
+
   if (state === "active") {
     return (
-      <section className="cq-perk-reward cq-perk-reward--active" aria-label="Quest deal">
+      <section className="cq-perk-reward cq-perk-reward--active" aria-label={sectionLabel}>
         <div className="cq-perk-reward__head">
           <span className="cq-perk-reward__eyebrow">
             <Gift className="h-3.5 w-3.5" aria-hidden strokeWidth={2.4} />
-            Quest deal
+            {sectionLabel}
           </span>
           <span className="cq-perk-reward__state">Active</span>
         </div>
@@ -78,18 +82,36 @@ function RewardSection({
           {partner.offerTitle ? <span className="cq-perk-reward__title">{partner.offerTitle}</span> : null}
         </div>
         {partner.offerDescription ? <p className="cq-perk-reward__text">{partner.offerDescription}</p> : null}
+        {partner.questTitle ? <p className="cq-perk-reward__text">{partner.questTitle}</p> : null}
+        {partner.questDescription ? <p className="cq-perk-reward__text">{partner.questDescription}</p> : null}
         <button
           type="button"
           className="cq-perk-btn cq-perk-btn--primary cq-perk-btn--block cq-tap-press touch-manipulation"
           onClick={() => onViewReward(partner)}
         >
           <Gift className="h-4 w-4" aria-hidden strokeWidth={2.3} />
-          View Quest Deal
+          {partnerRewardCtaLabel(partner)}
         </button>
         {partner.redemptionInstructions ? (
           <p className="cq-perk-reward__fine">{partner.redemptionInstructions}</p>
         ) : null}
         {partner.rewardTerms ? <p className="cq-perk-reward__fine">{partner.rewardTerms}</p> : null}
+        {(() => {
+          const endsMs = partner.endsAt ? Date.parse(partner.endsAt) : NaN;
+          if (!Number.isFinite(endsMs)) return null;
+          return (
+            <p className="cq-perk-reward__fine">
+              Offer ends{" "}
+              {new Date(endsMs).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                timeZone: "America/New_York",
+              })}
+              .
+            </p>
+          );
+        })()}
       </section>
     );
   }
@@ -103,11 +125,11 @@ function RewardSection({
         : { label: "Coming soon", text: start ? `Student reward starts ${start}.` : "Student reward coming soon." };
 
   return (
-    <section className={`cq-perk-reward cq-perk-reward--${state}`} aria-label="Quest deal">
+    <section className={`cq-perk-reward cq-perk-reward--${state}`} aria-label={sectionLabel}>
       <div className="cq-perk-reward__head">
         <span className="cq-perk-reward__eyebrow">
           <Gift className="h-3.5 w-3.5" aria-hidden strokeWidth={2.4} />
-          Quest deal
+          {sectionLabel}
         </span>
         <span className="cq-perk-reward__state">{copy.label}</span>
       </div>
@@ -208,6 +230,7 @@ export function PartnerDetailView({ partner, now, onClose, onViewReward, favorit
 
   return (
     <div className="cq-perk-sheet" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <button type="button" className="cq-perk-sheet__backdrop" aria-label="Close business details" onClick={onClose} />
       <div className="cq-perk-sheet__scroll">
         <div className="cq-perk-detail__hero">
           <PartnerMedia partner={partner} variant="hero" />

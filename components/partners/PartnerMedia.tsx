@@ -13,6 +13,9 @@ export function PartnerMedia({ partner, variant }: { partner: Partner; variant: 
   const base = `cq-partner-media cq-partner-media--${variant}`;
   const loading = variant === "hero" ? "eager" : "lazy";
 
+  const dims =
+    variant === "thumb" ? { width: 96, height: 96 } : variant === "featured" ? { width: 720, height: 405 } : { width: 960, height: 600 };
+
   if (partner.coverImageUrl && !coverFailed) {
     return (
       <span className={base}>
@@ -21,6 +24,8 @@ export function PartnerMedia({ partner, variant }: { partner: Partner; variant: 
           src={partner.coverImageUrl}
           alt={`Photo from ${partner.name}`}
           className="cq-partner-media__photo"
+          width={dims.width}
+          height={dims.height}
           loading={loading}
           decoding="async"
           onError={() => setCoverFailed(true)}
@@ -37,6 +42,8 @@ export function PartnerMedia({ partner, variant }: { partner: Partner; variant: 
           src={partner.logoUrl}
           alt={`${partner.name} logo`}
           className="cq-partner-media__logo-fill"
+          width={dims.width}
+          height={dims.height}
           loading={loading}
           decoding="async"
           onError={() => setLogoFailed(true)}

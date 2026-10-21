@@ -5,6 +5,7 @@ import { partnerRewardOfferState } from "@/lib/partners/partnerStatus";
 import { REVIEW_DEMO_PARTNER } from "@/lib/partners/reviewDemoPartner";
 import {
   evaluateStudentRewardEligibility,
+  isCommunityQuestsAdminPreviewRole,
   REWARD_ERROR_CODES,
   REWARD_PASS_TTL_SECONDS,
   type StudentRewardPass,
@@ -111,8 +112,9 @@ export async function issueStudentRewardPass(args: {
   const identity = (identityResult.data ?? null) as { identity_type?: string | null } | null;
   const safety = (safetyResult.data ?? null) as { status?: string | null; suspended_until?: string | null } | null;
 
+  const role = profile?.role ?? null;
   const eligibility = evaluateStudentRewardEligibility({
-    role: profile?.role ?? null,
+    role,
     studentStatus: profile?.student_status ?? null,
     campusEmailVerifiedAt: profile?.campus_email_verified_at ?? null,
     email: args.user.email ?? null,
@@ -124,7 +126,11 @@ export async function issueStudentRewardPass(args: {
   });
   if (!eligibility.eligible) throw new ApiError(eligibility.status, eligibility.message, eligibility.code);
 
-  if (!args.refresh) {
+  // Admin/super_admin preview: same UI as a live pass, but watermarked and never logged as a
+  // production authorization. No XP or merchant-liability side effects.
+  const adminPreview = isCommunityQuestsAdminPreviewRole(role);
+
+  if (!args.refresh && !adminPreview) {
     await recordPartnerEngagement(args.admin, {
       userId: args.user.id,
       partnerId: partner.id,
@@ -132,8 +138,10 @@ export async function issueStudentRewardPass(args: {
     });
   }
 
+  const passId = args.passId ?? (adminPreview ? `ADMIN-${generatePassId().slice(0, 3)}` : generatePassId());
+
   return {
-    passId: args.passId ?? generatePassId(),
+    passId,
     partnerId: partner.id,
     partnerName: partner.name,
     partnerLogoUrl: partner.logoUrl,
@@ -142,10 +150,11 @@ export async function issueStudentRewardPass(args: {
     offerDescription: partner.offerDescription,
     rewardTerms: partner.rewardTerms,
     redemptionInstructions: partner.redemptionInstructions,
-    verifiedLabel: verifiedLabel(),
+    verifiedLabel: adminPreview ? "Admin preview \u2014 not valid for redemption" : verifiedLabel(),
     studentName: passDisplayName(profile?.display_name, profile?.username),
     issuedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + REWARD_PASS_TTL_SECONDS * 1000).toISOString(),
     serverNow: now.toISOString(),
+    ...(adminPreview ? { demo: true as const } : {}),
   };
 }

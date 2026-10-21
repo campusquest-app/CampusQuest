@@ -18,7 +18,11 @@ export const REWARD_ERROR_CODES = {
 } as const;
 
 export type StudentRewardEligibilityInput = {
-  /** `profiles.role`, read server-side. Only the exact value "student" is eligible. */
+  /**
+   * `profiles.role`, read server-side.
+   * Exact `"student"` qualifies for production passes; `"admin"` / `"super_admin"`
+   * qualify for preview access only (issuer must not grant production rewards).
+   */
   role: string | null;
   studentStatus: string | null;
   campusEmailVerifiedAt: string | null;
@@ -37,6 +41,11 @@ export type StudentRewardEligibility =
   | { eligible: false; status: 403; code: string; message: string };
 
 const NON_STUDENT_STATUSES = new Set(["faculty_staff", "not_student"]);
+
+/** Trusted DB roles that may open Community Quests / reward passes for preview & testing. */
+export function isCommunityQuestsAdminPreviewRole(role: string | null | undefined): boolean {
+  return role === "admin" || role === "super_admin";
+}
 
 function emailDomain(email: string | null): string | null {
   if (!email) return null;
@@ -60,6 +69,10 @@ export function evaluateStudentRewardEligibility(input: StudentRewardEligibility
       code: REWARD_ERROR_CODES.restricted,
       message: "Student rewards aren\u2019t available while your account is restricted.",
     };
+  }
+  // Platform admins manage/preview Community Quests without student verification.
+  if (isCommunityQuestsAdminPreviewRole(input.role)) {
+    return { eligible: true };
   }
   if (input.role !== "student" || (input.studentStatus && NON_STUDENT_STATUSES.has(input.studentStatus))) {
     return {

@@ -78,9 +78,18 @@ function FeaturedDealsRail({
     dragRef.current.moved = false;
   };
 
+  const solo = partners.length === 1;
+  const rootClass = [
+    "cq-perks-featured",
+    carousel ? "cq-perks-featured--carousel" : null,
+    solo ? "cq-perks-featured--solo" : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <div
-      className={carousel ? "cq-perks-featured cq-perks-featured--carousel" : "cq-perks-featured"}
+      className={rootClass}
       data-cq-horizontal-scroll={carousel ? "true" : undefined}
       data-cq-gesture-block={carousel ? "swipe-tab" : undefined}
       data-no-drawer-swipe={carousel ? "true" : undefined}
@@ -237,7 +246,7 @@ export function PartnersScreenView({
             Community <span className="cq-perks-header__accent">Quests</span>
           </h1>
           <p className="cq-perks-header__subtitle">
-            Go on a quest to local businesses near your campus. Find deals, support local, and discover new spots.
+            Discover local businesses near campus and access available student offers.
           </p>
         </div>
         {favorites.status !== "unavailable" ? (
@@ -257,14 +266,16 @@ export function PartnersScreenView({
       <div className="cq-perks-search" role="search">
         <Search className="cq-perks-search__icon" aria-hidden strokeWidth={2.2} />
         <label htmlFor="cq-perks-search-input" className="sr-only">
-          Search businesses, food, and quests
+          Search businesses, categories, and deals
         </label>
         <input
           id="cq-perks-search-input"
           type="search"
           enterKeyHint="search"
           autoComplete="off"
-          placeholder="Search businesses, food, and quests..."
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="Search businesses, categories, and deals..."
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           className={`cq-perks-search__input${searching ? " has-value" : ""}`}
@@ -312,12 +323,17 @@ export function PartnersScreenView({
       {state.status === "loading" ? (
         <div className="cq-perks-body" aria-label="Loading businesses">
           <div className="cq-perk-skeleton cq-perk-skeleton--featured" aria-hidden />
-          <div className="cq-perk-skeleton cq-perk-skeleton--row" aria-hidden />
-          <div className="cq-perk-skeleton cq-perk-skeleton--row" aria-hidden />
+          <div className="cq-perk-skeleton-grid" aria-hidden>
+            <div className="cq-perk-skeleton cq-perk-skeleton--row" />
+            <div className="cq-perk-skeleton cq-perk-skeleton--row" />
+            <div className="cq-perk-skeleton cq-perk-skeleton--row" />
+            <div className="cq-perk-skeleton cq-perk-skeleton--row" />
+          </div>
         </div>
       ) : state.status === "error" ? (
         <div className="cq-perks-error" role="alert">
-          <p className="cq-perks-error__text">We couldn&apos;t load Community Quests right now.</p>
+          <p className="cq-perks-error__title">Couldn&apos;t load Community Quests</p>
+          <p className="cq-perks-error__text">Check your connection and try again.</p>
           <button type="button" className="cq-perk-btn cq-perk-btn--secondary cq-tap-press touch-manipulation" onClick={onRetry}>
             Try again
           </button>
@@ -345,7 +361,9 @@ export function PartnersScreenView({
               {savedOnly ? "Saved Businesses" : "Explore Local Businesses"}
             </h2>
             {!savedOnly ? (
-              <p className="cq-perks-section__sub">Go on a quest to discover local favorites near your campus.</p>
+              <p className="cq-perks-section__sub">
+                Browse nearby spots and student deals — exploring doesn&apos;t require completing a quest.
+              </p>
             ) : null}
             <p className="sr-only" aria-live="polite">
               {results.length === 1 ? "1 business" : `${results.length} businesses`}

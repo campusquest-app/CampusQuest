@@ -15,7 +15,7 @@ describe("primary bottom navigation destinations", () => {
   it("uses Feed, Partners, Explore/Map, Events, and Profile", () => {
     expect(APP_BOTTOM_NAV_TABS).toEqual(["quad", "partners", "realm", "events", "character"]);
     expect(navSrc).toContain('onSelectTab("partners")');
-    expect(APP_BOTTOM_NAV_HINT_LABELS.partners).toBe("Community Quests");
+    expect(APP_BOTTOM_NAV_HINT_LABELS.partners).toBe("Perks");
     expect(navSrc).toContain('label="Community Quests"');
     expect(navSrc).toContain('caption="Perks"');
     expect(navSrc).not.toContain("Community\\nQuests");

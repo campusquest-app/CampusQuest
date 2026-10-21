@@ -132,6 +132,33 @@ describe("issueStudentRewardPass", () => {
     await expectApiError(run, 403, REWARD_ERROR_CODES.ineligible);
   });
 
+  it("issues a watermarked admin preview pass without logging production engagement", async () => {
+    for (const role of ["admin", "super_admin"] as const) {
+      const profile = {
+        data: {
+          role,
+          student_status: "not_student",
+          campus_email_verified_at: null,
+          display_name: "Ops Admin",
+          username: "ops",
+        },
+        error: null,
+      };
+      const { admin, run } = await issue(
+        { profiles: profile },
+        { user: { id: STUDENT.id, email: "ops@gmail.com" } },
+      );
+      const pass = await run;
+      expect(pass.demo).toBe(true);
+      expect(pass.verifiedLabel).toMatch(/admin preview/i);
+      expect(pass.verifiedLabel).toMatch(/not valid for redemption/i);
+      expect(pass.passId.startsWith("ADMIN-")).toBe(true);
+      expect(pass.studentName).toBe("Ops A.");
+      expect(pass.partnerId).toBe(DAISYS);
+      expect(admin.inserts).toEqual([]);
+    }
+  });
+
   it("denies accounts with no profile row or no chosen role", async () => {
     await expectApiError((await issue({ profiles: { data: null, error: null } })).run, 403, REWARD_ERROR_CODES.ineligible);
     const noRole = { data: { ...(verifiedProfile.data as object), role: null }, error: null };

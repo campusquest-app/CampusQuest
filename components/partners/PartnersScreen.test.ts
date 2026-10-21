@@ -71,10 +71,10 @@ describe("Community Quests screen", () => {
     expect(html).toContain("Community");
     expect(html).toContain("cq-perks-header__accent");
     expect(html).toContain("Quests");
-    expect(html).toContain("Go on a quest to local businesses near your campus. Find deals, support local, and discover new spots.");
+    expect(html).toContain("Discover local businesses near campus and access available student offers.");
     expect(html).toContain("cq-perks-header__icon");
     expect(html).toContain("lucide-store");
-    expect(html).toContain('placeholder="Search businesses, food, and quests..."');
+    expect(html).toContain('placeholder="Search businesses, categories, and deals..."');
     expect(html).toContain('class="cq-perks-chips"');
     expect(html).toContain('data-cq-horizontal-scroll="true"');
     expect(html).toContain('data-cq-gesture-block="swipe-tab"');
@@ -83,23 +83,26 @@ describe("Community Quests screen", () => {
     }
     expect(html).toContain('aria-busy="true"');
     expect(html).toContain("cq-perk-skeleton--featured");
+    expect(html).toContain("cq-perk-skeleton-grid");
     expect(html).not.toContain("CampusQuest Partners</h1>");
   });
 
-  it("features Daisy's 20% OFF with photo, open status, and a View Quest Deal button", () => {
+  it("features Daisy's 20% OFF with photo, open status, and a View Deal button", () => {
     const html = renderScreen(ready);
     const start = html.indexOf('id="cq-perks-featured-title"');
     const featured = html.slice(start, html.indexOf('id="cq-perks-explore-title"'));
     expect(start).toBeGreaterThan(-1);
     expect(featured).toContain("Featured Community Quests");
     expect(featured).toContain("cq-perks-section__pin");
+    expect(featured).toContain("cq-perks-featured--solo");
     expect(featured).toContain(DAISYS_HTML);
     expect(featured).toContain("20% OFF");
     expect(featured).toContain("Go on a quest for 20% OFF at Daisy");
     expect(featured).toContain('src="/partners/daisys/cover.jpg"');
     expect(featured).toContain("Open Now");
     expect(featured).toContain("Closes at 10 PM");
-    expect(featured).toContain("View Quest Deal");
+    expect(featured).toContain("View Deal");
+    expect(featured).not.toContain("View Quest Deal");
     expect(featured).not.toContain(sandbar.name);
     expect(featured).not.toContain("cq-perks-featured--carousel");
   });
@@ -115,6 +118,7 @@ describe("Community Quests screen", () => {
     const start = html.indexOf("Featured Community Quests");
     const featured = html.slice(start, html.indexOf('id="cq-perks-explore-title"'));
     expect(featured).toContain("cq-perks-featured--carousel");
+    expect(featured).not.toContain("cq-perks-featured--solo");
     expect(featured).toContain('data-cq-horizontal-scroll="true"');
     expect(featured).toContain('aria-roledescription="carousel"');
     expect(featured).toContain("cq-perks-featured__slide");
@@ -128,7 +132,7 @@ describe("Community Quests screen", () => {
   it("lists partner and free local businesses in Explore with category, hours/location, and actions", () => {
     const explore = exploreSection(renderScreen(ready));
     expect(explore).toContain("Explore Local Businesses");
-    expect(explore).toContain("Go on a quest to discover local favorites near your campus.");
+    expect(explore).toContain("Browse nearby spots and student deals");
     expect(explore.indexOf(DAISYS_HTML)).toBeLessThan(explore.indexOf(sandbar.name));
     expect(explore.indexOf(sandbar.name)).toBeLessThan(explore.indexOf(pocketCafe.name));
     expect(explore).toContain("Chicken \u00b7 Ice Cream");
@@ -208,7 +212,7 @@ describe("Community Quests screen", () => {
     const savedHtml = renderScreen(ready, { savedOnly: true, favorites: favorites(["the-sandbar-cafe"]) });
     expect(savedHtml).toContain("Saved Businesses");
     expect(savedHtml).toContain(">Saved</span>");
-    expect(exploreSection(savedHtml)).not.toContain("Go on a quest to discover local favorites near your campus.");
+    expect(exploreSection(savedHtml)).not.toContain("Browse nearby spots and student deals");
     expect(exploreSection(savedHtml)).toContain(sandbar.name);
     expect(exploreSection(savedHtml)).not.toContain(DAISYS_HTML);
     expect(savedHtml).toContain('aria-pressed="true"');
@@ -284,12 +288,15 @@ describe("PartnerDetailView", () => {
     expect(html).toContain("Today: 12 PM \u2013 10 PM");
     expect(html).toContain("20% OFF");
     expect(html).toContain("Go on a quest for 20% OFF at Daisy");
-    expect(html).toContain("View Quest Deal");
+    expect(html).toContain("Student deal");
+    expect(html).toContain("View Deal");
+    expect(html).not.toContain("View Quest Deal");
     expect(html).toContain("Show your CampusQuest account at checkout.");
     expect(html).toContain("106 Point Judith Rd, Narragansett, RI");
     expect(html).toContain(">Directions<");
     expect(html).toContain('href="https://daisysnarragansett.com/"');
     expect(html).not.toContain(">Menu<");
+    expect(html).toContain("cq-perk-sheet__backdrop");
   });
 
   it("expands to the full weekly schedule with its source", () => {
@@ -309,7 +316,7 @@ describe("PartnerDetailView", () => {
     const html = renderDetail(sandbar);
     expect(html).toContain("Coming soon");
     expect(html).toContain("Student reward coming soon.");
-    expect(html).not.toContain("View Quest Deal");
+    expect(html).not.toContain("View Deal");
     expect(html).toContain('href="https://order.toasttab.com/online/the-sandbar-cafe-106-point-judith-road"');
     expect(html).not.toContain(">Website<");
     expect(html).toContain("Closed");
@@ -331,8 +338,9 @@ describe("PartnerDetailView", () => {
     expect(html).toContain('href="https://internationalpocketcafe.com/"');
     expect(html).not.toContain("Verified CampusQuest Partner");
     expect(html).not.toContain("Quest deal");
+    expect(html).not.toContain("Student deal");
     expect(html).not.toContain("Coming soon");
-    expect(html).not.toContain("View Quest Deal");
+    expect(html).not.toContain("View Deal");
     expect(html).not.toContain("Redeem");
     expect(html).not.toContain("% OFF");
     expect(html).not.toContain("Hours Unavailable");
@@ -341,10 +349,22 @@ describe("PartnerDetailView", () => {
   it("shows expired and temporarily unavailable rewards without a pass button", () => {
     const expired = renderDetail({ ...daisys, endsAt: "2026-10-01T00:00:00Z" });
     expect(expired).toContain("This student reward has ended.");
-    expect(expired).not.toContain("View Quest Deal");
+    expect(expired).not.toContain("View Deal");
     const paused = renderDetail({ ...daisys, rewardPaused: true });
     expect(paused).toContain("Temporarily unavailable");
-    expect(paused).not.toContain("View Quest Deal");
+    expect(paused).not.toContain("View Deal");
+  });
+
+  it("uses View Quest only when a partner quest offer exists", () => {
+    const html = renderDetail({
+      ...daisys,
+      offerType: "partner_quest",
+      questTitle: "Visit Daisy's this week",
+    });
+    expect(html).toContain("Student quest");
+    expect(html).toContain("View Quest");
+    expect(html).toContain("Visit Daisy&#x27;s this week");
+    expect(html).not.toContain("View Deal");
   });
 
   it("shows Hours Unavailable and hides link buttons when data is missing", () => {
@@ -572,5 +592,13 @@ describe("partners directory data", () => {
     for (const file of ["PartnerDetailSheet.tsx", "StudentRewardPass.tsx", "SuggestBusinessSheet.tsx"]) {
       expect(readFileSync(join(process.cwd(), "components/partners", file), "utf8")).toContain("<PartnerOverlayPortal>");
     }
+  });
+
+  it("clears the measured bottom dock so Explore cards can scroll above the nav", () => {
+    const css = readFileSync(join(process.cwd(), "app/globals.css"), "utf8");
+    expect(css).toContain("--cq-perks-bottom-clearance: calc(var(--cq-bottom-nav-h, 5.2rem) + 1.35rem)");
+    expect(css).toMatch(/\.cq-dashboard-scroll-pad:has\(\.cq-tab-shell--partners\)\s*\{\s*padding-bottom:\s*0;/);
+    expect(css).toContain(".cq-perks-featured--solo");
+    expect(css).toContain("grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr)");
   });
 });

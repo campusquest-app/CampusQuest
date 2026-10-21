@@ -9,7 +9,8 @@ export type AppBottomNavTab = (typeof APP_BOTTOM_NAV_TABS)[number];
 /** Short dock captions. Map keeps the first-session “Explore” hint only. */
 export const APP_BOTTOM_NAV_HINT_LABELS: Record<AppBottomNavTab, string> = {
   quad: "Home",
-  partners: "Community Quests",
+  /** Short dock caption; page title remains "Community Quests". */
+  partners: "Perks",
   realm: "Explore",
   events: "Events",
   character: "Profile",

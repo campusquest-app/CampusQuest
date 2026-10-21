@@ -81,12 +81,36 @@ export function filterPartners(partners: Partner[], query: string): Partner[] {
   if (terms.length === 0) return partners;
   return partners.filter((partner) => {
     const haystack = normalizeSearchText(
-      [partner.name, ...partner.categories, ...partner.filterTags, ...partner.keywords, partner.address ?? ""].join(
-        " ",
-      ),
+      [
+        partner.name,
+        ...partner.categories,
+        ...partner.filterTags,
+        ...partner.keywords,
+        partner.address ?? "",
+        partner.offerTitle ?? "",
+        partner.offerDescription ?? "",
+        partner.discountValue ?? "",
+        partner.questTitle ?? "",
+        partner.questDescription ?? "",
+      ].join(" "),
     );
     return terms.every((term) => haystack.includes(term));
   });
+}
+
+/** True when a live offer is tied to an actual partner quest (not a standard discount). */
+export function partnerHasQuestOffer(partner: Pick<Partner, "offerType" | "questTitle">): boolean {
+  return partner.offerType === "partner_quest" || Boolean(partner.questTitle?.trim());
+}
+
+/** Primary CTA for an active student offer. Never says "Quest" unless a quest exists. */
+export function partnerRewardCtaLabel(partner: Pick<Partner, "offerType" | "questTitle">): string {
+  return partnerHasQuestOffer(partner) ? "View Quest" : "View Deal";
+}
+
+/** Section eyebrow for the detail reward panel. */
+export function partnerRewardSectionLabel(partner: Pick<Partner, "offerType" | "questTitle">): string {
+  return partnerHasQuestOffer(partner) ? "Student quest" : "Student deal";
 }
 
 export const PERKS_FILTERS = [

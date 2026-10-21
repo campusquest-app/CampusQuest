@@ -5,7 +5,10 @@ import {
   applyPerksFilter,
   filterPartners,
   PERKS_FILTERS,
+  partnerHasQuestOffer,
+  partnerRewardCtaLabel,
   partnerRewardOfferState,
+  partnerRewardSectionLabel,
   isOfferLive,
   mapPartnerRow,
   partnerDirectionsUrl,
@@ -273,5 +276,29 @@ describe("applyPerksFilter", () => {
 
   it("exposes exactly the six requested chips in order", () => {
     expect(PERKS_FILTERS.map((f) => f.label)).toEqual(["All", "Open Now", "Student Deals", "Food", "Coffee", "Dessert"]);
+  });
+});
+
+describe("partner reward CTA labels", () => {
+  it("says View Deal for standard offers and View Quest only for quest offers", () => {
+    expect(partnerRewardCtaLabel(partner({ offerType: "standard_offer" }))).toBe("View Deal");
+    expect(partnerRewardCtaLabel(partner({ offerType: "special_promotion" }))).toBe("View Deal");
+    expect(partnerRewardCtaLabel(partner({ offerType: "partner_quest" }))).toBe("View Quest");
+    expect(partnerRewardCtaLabel(partner({ questTitle: "Campus walk" }))).toBe("View Quest");
+    expect(partnerHasQuestOffer(partner({ offerType: "standard_offer" }))).toBe(false);
+    expect(partnerRewardSectionLabel(partner({ offerType: "standard_offer" }))).toBe("Student deal");
+    expect(partnerRewardSectionLabel(partner({ offerType: "partner_quest" }))).toBe("Student quest");
+  });
+});
+
+describe("filterPartners deal fields", () => {
+  it("matches offer titles and discount copy without inventing results", () => {
+    const list = [
+      partner({ id: "d", name: "Daisy", offerTitle: "Go on a quest for 20% OFF", discountValue: "20% OFF" }),
+      partner({ id: "s", name: "Sandbar", offerTitle: null, discountValue: null }),
+    ];
+    expect(filterPartners(list, "20%").map((p) => p.id)).toEqual(["d"]);
+    expect(filterPartners(list, "quest for").map((p) => p.id)).toEqual(["d"]);
+    expect(filterPartners(list, "pizza")).toEqual([]);
   });
 });

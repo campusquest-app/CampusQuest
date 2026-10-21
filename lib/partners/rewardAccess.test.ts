@@ -46,10 +46,27 @@ describe("evaluateStudentRewardEligibility", () => {
     expect(codeOf(check({ email: null }))).toBe(REWARD_ERROR_CODES.verificationRequired);
   });
 
-  it("denies faculty/staff and every non-student role, including unset roles", () => {
-    for (const role of ["faculty_staff", "admin", "super_admin", "qa", "beta_internal", null, "STUDENT", ""]) {
+  it("denies faculty/staff and non-admin non-student roles, including unset roles", () => {
+    for (const role of ["faculty_staff", "qa", "beta_internal", null, "STUDENT", ""]) {
       expect(codeOf(check({ role }))).toBe(REWARD_ERROR_CODES.ineligible);
     }
+  });
+
+  it("allows admin and super_admin without student verification or URI email", () => {
+    expect(check({ role: "admin", campusEmailVerifiedAt: null, email: "ops@gmail.com" })).toEqual({ eligible: true });
+    expect(
+      check({
+        role: "super_admin",
+        campusEmailVerifiedAt: null,
+        email: "founder@campusquestapp.com",
+        studentStatus: "not_student",
+        activeIdentityType: "business",
+      }),
+    ).toEqual({ eligible: true });
+  });
+
+  it("still blocks restricted admin accounts", () => {
+    expect(codeOf(check({ role: "admin", accountStatus: "banned" }))).toBe(REWARD_ERROR_CODES.restricted);
   });
 
   it("denies a student-role account whose onboarding says faculty/staff or not a student", () => {

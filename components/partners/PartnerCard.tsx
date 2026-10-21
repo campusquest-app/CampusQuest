@@ -9,7 +9,11 @@ import {
 } from "@/components/partners/PartnerBadges";
 import { PartnerLogoChip, PartnerMedia } from "@/components/partners/PartnerMedia";
 import { getPartnerOpenStatus } from "@/lib/partners/partnerHours";
-import { isFreeLocalBusinessListing, partnerHasLiveReward } from "@/lib/partners/partnerStatus";
+import {
+  isFreeLocalBusinessListing,
+  partnerHasLiveReward,
+  partnerRewardCtaLabel,
+} from "@/lib/partners/partnerStatus";
 import type { Partner } from "@/lib/partners/types";
 
 export type PartnerFavoriteProps = {
@@ -155,7 +159,7 @@ export function FeaturedDealCard({
           onClick={() => onViewReward(partner)}
         >
           <Gift className="h-4 w-4" aria-hidden strokeWidth={2.3} />
-          View Quest Deal
+          {partnerRewardCtaLabel(partner)}
         </button>
       </div>
     </article>

@@ -10,10 +10,13 @@ export function PartnersNoResults({
   onReset?: () => void;
 }) {
   const copy = {
-    search: { title: "No businesses found", text: "Try a different search or filter." },
-    filter: { title: "Nothing here right now", text: "No partner matches this filter at the moment." },
+    search: {
+      title: "No businesses found",
+      text: "Try another name, category, or deal keyword — or clear your filters.",
+    },
+    filter: { title: "Nothing here right now", text: "No businesses match this filter at the moment." },
     saved: { title: "No saved businesses yet", text: "Tap the heart on a business to save it here." },
-    empty: { title: "No partners yet", text: "New CampusQuest partners are on the way." },
+    empty: { title: "No businesses yet", text: "Local spots and student deals are on the way." },
   }[variant];
   const Icon = variant === "saved" ? Heart : SearchX;
   return (
