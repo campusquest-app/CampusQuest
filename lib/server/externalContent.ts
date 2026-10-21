@@ -23,6 +23,8 @@ export type ExternalEventItem = {
   description: string;
   organizationName: string | null;
   organizationId?: string | null;
+  /** student_organizations.id when linked via external_organization_id. */
+  hostCampusOrganizationId?: string | null;
   location: string | null;
   venueName: string | null;
   address: string | null;
@@ -136,6 +138,36 @@ export async function listActiveExternalEvents(filters?: {
 }): Promise<ExternalEventItem[]> {
   const feed = await listExternalEventsFeed(filters);
   return feed.events;
+}
+
+async function attachHostCampusOrganizationIds(
+  admin: ReturnType<typeof createAdminClient>,
+  events: Array<{ organizationId?: string | null; hostCampusOrganizationId?: string | null }>,
+): Promise<void> {
+  const externalIds = Array.from(
+    new Set(events.map((event) => event.organizationId).filter((id): id is string => Boolean(id))),
+  );
+  if (externalIds.length === 0) return;
+
+  const { data, error } = await admin
+    .from("student_organizations")
+    .select("id, external_organization_id")
+    .in("external_organization_id", externalIds);
+  if (error || !data?.length) return;
+
+  const campusByExternal = new Map<string, string>();
+  for (const row of data) {
+    const externalId = row.external_organization_id ? String(row.external_organization_id) : "";
+    const campusId = row.id ? String(row.id) : "";
+    if (externalId && campusId && !campusByExternal.has(externalId)) {
+      campusByExternal.set(externalId, campusId);
+    }
+  }
+
+  for (const event of events) {
+    if (!event.organizationId) continue;
+    event.hostCampusOrganizationId = campusByExternal.get(event.organizationId) ?? null;
+  }
 }
 
 export async function listExternalEventsFeed(filters?: {
@@ -346,6 +378,7 @@ export async function listExternalEventsFeed(filters?: {
       description: row.description ?? "",
       organizationName: row.organization_name,
       organizationId: row.organization_id ?? null,
+      hostCampusOrganizationId: null as string | null,
       location: row.location_name,
       venueName: row.venue_name,
       address: row.address,
@@ -378,6 +411,8 @@ export async function listExternalEventsFeed(filters?: {
       myRsvpStatus: null as ExternalEventItem["myRsvpStatus"],
       imported: true as const,
     }));
+
+  await attachHostCampusOrganizationIds(admin, mapped);
 
   const deduped = dedupeLogicalEventFields(
     mapped.map((item) => ({

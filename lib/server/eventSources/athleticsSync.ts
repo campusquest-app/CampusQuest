@@ -312,9 +312,9 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
             .eq("source", ATHLETICS_SOURCE)
             .eq("external_id", org.externalId)
             .maybeSingle();
-          const { error: orgError } = await (async () => {
+          const { error: orgError, orgId } = await (async () => {
             try {
-              await upsertBySourceExternalId(
+              const upsertedOrg = await upsertBySourceExternalId(
                 admin,
                 "external_organizations",
                 {
@@ -334,16 +334,28 @@ async function runAthleticsSyncExclusive(syncType: "cron" | "manual" | "api"): P
                   last_seen_at: now,
                   updated_at: now,
                 },
-                { selectId: false },
+                { selectId: true },
               );
-              return { error: null as null };
+              return {
+                error: null as null,
+                orgId: upsertedOrg.id ?? (existingOrg?.id ? String(existingOrg.id) : null),
+              };
             } catch (error) {
-              return { error: { message: error instanceof Error ? error.message : String(error) } };
+              return {
+                error: { message: error instanceof Error ? error.message : String(error) },
+                orgId: null as string | null,
+              };
             }
           })();
           if (!orgError) {
             if (existingOrg) orgsUpdated += 1;
             else orgsCreated += 1;
+            if (orgId && externalEventId) {
+              await admin
+                .from("external_events")
+                .update({ organization_id: orgId, updated_at: now })
+                .eq("id", externalEventId);
+            }
           } else if (isStructuralSyncFailure(orgError.message)) {
             errors.push(
               orgError.message.includes("EVENT_SCHEMA_INCOMPATIBLE")

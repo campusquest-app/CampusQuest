@@ -17969,9 +17969,13 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 
 .cq-happening-card-source {
   display: block;
+  max-width: 100%;
   font-size: 0.65rem;
-  letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.42);
+  letter-spacing: 0.02em;
+  color: rgba(216, 180, 254, 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cq-happening-card-actions {
@@ -18292,6 +18296,18 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   overflow: hidden;
   text-overflow: ellipsis;
   text-shadow: none;
+}
+
+.cq-event-card--immersive .cq-event-card-host,
+.cq-event-card-host {
+  margin: 0.1rem 0 0;
+  font-size: 0.62rem;
+  font-weight: 550;
+  line-height: 1.25;
+  color: rgba(196, 181, 253, 0.78);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 359px) {

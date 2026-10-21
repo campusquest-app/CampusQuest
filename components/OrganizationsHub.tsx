@@ -1081,7 +1081,16 @@ export function OrganizationsHub({
                 {activeExternalEvent.category ? (
                   <p className="text-xs text-white/55">Category: {activeExternalEvent.category}</p>
                 ) : null}
-                <p className="text-xs text-cyan-200/80">{eventSourceLabel(activeExternalEvent.source ?? "urinvolved")}</p>
+                {activeExternalEvent.organizationName?.trim() &&
+                activeExternalEvent.organizationName.trim().toLowerCase() !==
+                  eventSourceLabel(activeExternalEvent.source ?? "urinvolved").toLowerCase() ? (
+                  <p className="text-xs text-cyan-200/80" title={activeExternalEvent.organizationName}>
+                    Hosted by {activeExternalEvent.organizationName.trim()}
+                  </p>
+                ) : null}
+                <p className="text-[11px] text-white/40">
+                  Source: {eventSourceLabel(activeExternalEvent.source ?? "urinvolved")}
+                </p>
                 {activeExternalEvent.eventUrl ? (
                   <a
                     href={activeExternalEvent.eventUrl}

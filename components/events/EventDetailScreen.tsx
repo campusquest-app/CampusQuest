@@ -28,8 +28,9 @@ import { eventCardRecommendationReason, eventHasMappedLocation, eventShareText }
 import { EventArtwork } from "@/components/events/EventArtwork";
 import { resolveEventArtwork, usableEventImageUrl } from "@/lib/client/eventArtwork";
 import { eventCardDisplayTitle } from "@/lib/client/eventCardPresentation";
+import { feedEventHostPresentation } from "@/lib/client/eventHostPresentation";
 import { eventSourceActionLabel, eventSourceLabel } from "@/lib/eventSources/catalog";
-import { campusEventHostLabel, type FeedEvent } from "@/lib/client/eventFeedTypes";
+import type { FeedEvent } from "@/lib/client/eventFeedTypes";
 import { isInterestedRsvp } from "@/lib/client/eventInterested";
 import { nativeShare, openExternalUrl } from "@/lib/client/capacitorNative";
 import { externalEventLocationLines } from "@/lib/externalEventLocation";
@@ -190,8 +191,9 @@ function EventDetailBody({
   const dateLine = formatEventDateLine(event.startsAt);
   const timeLine = formatEventTimeLine(event.startsAt, event.endsAt);
   const whenIso = eventDateTimeIso(event.startsAt);
-  const hostName = item.kind === "campus" ? campusEventHostLabel(item.event) : item.event.organizationName;
-  const hostOrgId = item.kind === "campus" ? item.event.hostOrganization?.id ?? null : null;
+  const host = feedEventHostPresentation(item);
+  const hostName = host.hostName;
+  const hostOrgId = host.campusOrganizationId;
   const rawImage = item.kind === "external" ? item.event.imageUrl : null;
   const rawBanner = item.kind === "external" ? item.event.bannerUrl : null;
   const artworkKey = `${rawImage ?? ""}\n${rawBanner ?? ""}`;

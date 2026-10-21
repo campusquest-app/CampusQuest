@@ -20,6 +20,7 @@ import {
 import { useLiveNow } from "@/lib/client/useLiveNow";
 import { eventInterestMatchLabel } from "@/lib/client/eventDiscovery";
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
+import { feedEventHostPresentation } from "@/lib/client/eventHostPresentation";
 import { isInterestedRsvp } from "@/lib/client/eventInterested";
 import type { RecommendationScore } from "@/lib/recommendations/types";
 
@@ -48,6 +49,7 @@ export function EventDiscoveryCard({
   const whenIso = eventDateTimeIso(event.startsAt);
   const reason = eventInterestMatchLabel(recommendation);
   const venue = eventCardVenueLabel(item);
+  const host = feedEventHostPresentation(item);
   const interested =
     feedEventCanRsvp(item) &&
     ((item.kind === "campus" && isInterestedRsvp(item.event.myRsvpStatus)) ||
@@ -83,7 +85,7 @@ export function EventDiscoveryCard({
       className="cq-event-card cq-event-card--grid cq-event-card--immersive"
       role="link"
       tabIndex={0}
-      aria-label={`${viewLabel}: ${title}. ${whenRange}${venue ? `. ${venue}` : ""}`}
+      aria-label={`${viewLabel}: ${title}. ${whenRange}${venue ? `. ${venue}` : ""}${host.hostedByLabel ? `. ${host.hostedByLabel}` : ""}`}
       data-cq-event-fit={fit}
       onClick={onView}
       onKeyDown={(event) => {
@@ -142,6 +144,11 @@ export function EventDiscoveryCard({
       <div className="cq-event-card-copy">
         <h4 className="cq-event-card-title">{title}</h4>
         {venue ? <p className="cq-event-card-location">{venue}</p> : null}
+        {host.hostedByLabel ? (
+          <p className="cq-event-card-host" title={host.hostName ?? undefined}>
+            Hosted by {host.compactHostName}
+          </p>
+        ) : null}
       </div>
 
       <time className="sr-only" dateTime={whenIso}>

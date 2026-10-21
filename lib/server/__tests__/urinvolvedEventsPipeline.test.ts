@@ -24,6 +24,7 @@ describe("parseUrinvolvedDiscoveryEvents", () => {
         endsOn: "2026-09-08T16:00:00+00:00",
         imagePath: "abc.png",
         organizationName: "MAVE",
+        organizationId: 4242,
         categoryNames: ["New Students", "Social / Gatherings"],
         status: "Approved",
         visibility: "Public",
@@ -55,7 +56,9 @@ describe("parseUrinvolvedDiscoveryEvents", () => {
     expect(events[0]?.startsAt).toBe("2026-09-08T14:00:00.000Z");
     expect(events[0]?.imageUrl).toContain("se-images.campuslabs.com");
     expect(events[0]?.organizationName).toBe("MAVE");
+    expect(events[0]?.organizationExternalId).toBe("4242");
     expect(events[1]?.organizationName).toBe("Student Senate");
+    expect(events[1]?.organizationExternalId ?? null).toBeNull();
     expect(events[1]?.tags).toContain("cancelled");
     expect(events[1]?.endsAt).toBeNull();
   });

@@ -1,15 +1,27 @@
 "use client";
 
-import { eventSourceChipLabel } from "@/lib/eventSources/catalog";
+import { formatHostedByLabel, isVerifiedEventHostName, truncateEventHostName } from "@/lib/client/eventHostPresentation";
 
+/**
+ * Compact host line for event cards. Provider source chips (URInvolved, etc.)
+ * are not shown here — use eventSourceLabel only for attribution elsewhere.
+ */
 export function EventSourceLabel({
+  hostName,
   source,
-  className = "text-[10px] font-medium tracking-wide text-white/40",
+  className = "text-[10px] font-medium tracking-wide text-violet-200/70",
+  compact = true,
 }: {
+  hostName?: string | null;
   source?: string | null;
   className?: string;
+  compact?: boolean;
 }) {
-  const label = eventSourceChipLabel(source);
-  if (!label) return null;
-  return <span className={className}>{label}</span>;
+  if (!isVerifiedEventHostName(hostName, source)) return null;
+  const display = compact ? truncateEventHostName(hostName!.trim()) : hostName!.trim();
+  return (
+    <span className={className} title={hostName!.trim()}>
+      {formatHostedByLabel(display)}
+    </span>
+  );
 }

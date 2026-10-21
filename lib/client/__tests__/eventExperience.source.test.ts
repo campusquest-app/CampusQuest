@@ -15,11 +15,15 @@ describe("Events experience source contracts", () => {
     expect(cardSrc).toContain("View Game");
     expect(cardSrc).toContain("View Event");
     expect(cardSrc).toContain("cq-event-card--immersive");
+    expect(cardSrc).toContain("feedEventHostPresentation");
+    expect(cardSrc).toContain("cq-event-card-host");
+    expect(cardSrc).toContain("Hosted by");
     expect(cardSrc).toContain('role="link"');
     expect(cardSrc).not.toContain("cq-event-card-action--view");
     expect(cardSrc).not.toContain("toLocaleString");
     expect(cardSrc).not.toContain("View on URInvolved");
     expect(cardSrc).not.toContain("View full listing on URInvolved");
+    expect(cardSrc).not.toContain("eventSourceChipLabel");
   });
 
   it("renders a complete in-app detail page with secondary URInvolved source", () => {

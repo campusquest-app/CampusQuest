@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bookmark, Clock, Clock3, MapPin } from "lucide-react";
-import { eventSourceChipLabel } from "@/lib/eventSources/catalog";
 import { EventArtwork } from "@/components/events/EventArtwork";
 import {
   eventCardCategoryChip,
@@ -13,9 +12,9 @@ import {
   eventCardVenueLabel,
   eventShowOnRealmEligible,
   feedEventCanRsvp,
-  feedEventSourceKey,
   isEventLive,
 } from "@/lib/client/eventCardPresentation";
+import { feedEventHostPresentation } from "@/lib/client/eventHostPresentation";
 import { formatEventCardWhen, eventDateTimeIso } from "@/lib/client/eventDateTime";
 import { useLiveNow } from "@/lib/client/useLiveNow";
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
@@ -50,8 +49,7 @@ function HappeningSoonCard({
     feedEventCanRsvp(item) &&
     ((item.kind === "campus" && isInterestedRsvp(item.event.myRsvpStatus)) ||
       (item.kind === "external" && isInterestedRsvp(item.event.myRsvpStatus ?? null)));
-  const source = feedEventSourceKey(item);
-  const sourceLabel = eventSourceChipLabel(source);
+  const host = feedEventHostPresentation(item);
   const accent = eventCardFallbackAccent(item);
 
   return (
@@ -92,8 +90,10 @@ function HappeningSoonCard({
             <span>{venue}</span>
           </p>
         ) : null}
-        {sourceLabel && sourceLabel !== category ? (
-          <span className="cq-happening-card-source">{sourceLabel}</span>
+        {host.hostedByLabel ? (
+          <span className="cq-happening-card-source" title={host.hostName ?? undefined}>
+            Hosted by {host.compactHostName}
+          </span>
         ) : null}
       </div>
       <div className="cq-happening-card-actions">

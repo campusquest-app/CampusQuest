@@ -8,6 +8,8 @@ export type ParsedUrinvolvedEvent = {
   address: string | null;
   locationName: string | null;
   organizationName: string | null;
+  /** Campus Labs organization id when present on the discovery payload. */
+  organizationExternalId?: string | null;
   startsAt: string | null;
   endsAt: string | null;
   imageUrl: string | null;

@@ -31,7 +31,10 @@ export type ExternalFeedEventItem = {
   startsAt: string | null;
   endsAt: string | null;
   organizationName: string | null;
+  /** external_organizations.id when linked during import. */
   organizationId?: string | null;
+  /** student_organizations.id when a CampusQuest org profile claims the external host. */
+  hostCampusOrganizationId?: string | null;
   imageUrl: string | null;
   /** Provider or banner art used only when imageUrl is missing. */
   bannerUrl?: string | null;

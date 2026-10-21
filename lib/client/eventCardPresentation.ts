@@ -3,7 +3,8 @@ import { canonicalEventCategory, eventMatchesCanonicalCategory } from "@/lib/eve
 import type { CanonicalEventCategory } from "@/lib/eventSources/types";
 import { eventHasMappedLocation } from "@/lib/client/eventDiscovery";
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
-import { feedEventHostName, feedEventLocationText } from "@/lib/client/eventFeedTypes";
+import { feedEventLocationText } from "@/lib/client/eventFeedTypes";
+import { feedEventSearchHostName } from "@/lib/client/eventHostPresentation";
 import { isEventLiveNow } from "@/lib/realm/eventVisibility";
 
 export const EVENTS_CATEGORY_RAIL = [
@@ -214,7 +215,7 @@ export function eventSearchHaystack(item: FeedEvent): {
     title: item.event.title,
     description: item.event.description,
     location: feedEventLocationText(item),
-    organizationName: feedEventHostName(item),
+    organizationName: feedEventSearchHostName(item),
     category: item.event.category ?? "",
     tags: item.kind === "external" ? item.event.tags ?? [] : [],
     sport: item.kind === "external" ? item.event.sport ?? "" : "",

@@ -33,6 +33,10 @@ import { getRecentSuccessfulImportCounts } from "@/lib/server/eventSources/syncL
 import { applyAdminOverrideMerge } from "@/lib/server/eventSources/upsert";
 import { upsertBySourceExternalId } from "@/lib/server/eventSources/upsertBySourceExternalId";
 import {
+  buildExternalOrganizationNameIndex,
+  resolveExternalOrganizationIdForHost,
+} from "@/lib/server/eventSources/resolveExternalHostOrganization";
+import {
   SCHEMA_INCOMPATIBLE_DIAGNOSTIC,
   assertExternalIdentitySchemaReady,
   isStructuralSyncFailure,
@@ -354,6 +358,18 @@ async function runUrinvolvedSyncExclusive(
         name: row.name,
       }));
 
+      const { data: hostOrgRows } = await admin
+        .from("external_organizations")
+        .select("id, name, external_id")
+        .eq("source", URINVOLVED_SOURCE)
+        .eq("is_active", true);
+      const hostOrgNameIndex = buildExternalOrganizationNameIndex(hostOrgRows ?? []);
+      const hostOrgByExternalId = new Map(
+        (hostOrgRows ?? [])
+          .filter((row) => row.external_id != null && row.id)
+          .map((row) => [String(row.external_id), String(row.id)]),
+      );
+
       for (const event of parsedEvents) {
         try {
           const logicalDuplicate = await findActiveLogicalDuplicateEvent(admin, event);
@@ -377,6 +393,15 @@ async function runUrinvolvedSyncExclusive(
             eventsMapMatched += 1;
           }
 
+          const organizationId =
+            (event.organizationExternalId
+              ? hostOrgByExternalId.get(event.organizationExternalId) ?? null
+              : null) ??
+            resolveExternalOrganizationIdForHost({
+              organizationName: event.organizationName,
+              nameIndex: hostOrgNameIndex,
+            });
+
           const row = {
             source: URINVOLVED_SOURCE,
             source_type: URINVOLVED_SOURCE,
@@ -384,6 +409,7 @@ async function runUrinvolvedSyncExclusive(
             title: event.title.slice(0, 500),
             description: event.description.slice(0, 5000) || null,
             organization_name: event.organizationName,
+            organization_id: organizationId,
             venue_name: location.venueName,
             address: location.address,
             location_name: location.locationName,

@@ -2,6 +2,7 @@
 
 import { CalendarDays, ChevronRight, MapPin } from "lucide-react";
 import { EventArtwork } from "@/components/events/EventArtwork";
+import { mapEventHostPresentation } from "@/lib/client/eventHostPresentation";
 import type { MapEventPin } from "@/lib/mapLocationGroups";
 import { getEventCountdownState, isEventCancelled } from "@/lib/realm/eventCountdown";
 import { formatCampusEventRange } from "@/lib/realm/formatCampusEventWhen";
@@ -36,6 +37,11 @@ export function LocationActivityCard({
   const state = getEventCountdownState(event.startsAt, event.endsAt, now, cancelled);
   const category = categoryForEvent(event, state.kind, cancelled);
   const place = event.locationText?.trim() || locationName || null;
+  const host = mapEventHostPresentation({
+    organizationName: event.organizationName,
+    source: event.source,
+    organizationId: event.organizationId,
+  });
 
   const inner = (
     <>
@@ -48,8 +54,10 @@ export function LocationActivityCard({
           {category.label}
         </span>
         <span className="cq-loc-activity-title">{event.title}</span>
-        {event.organizationName ? (
-          <span className="cq-loc-activity-org">{event.organizationName}</span>
+        {host.hostedByLabel ? (
+          <span className="cq-loc-activity-org" title={host.hostName ?? undefined}>
+            Hosted by {host.compactHostName}
+          </span>
         ) : null}
         <span className="cq-loc-activity-meta">
           <CalendarDays className="h-3 w-3 shrink-0" aria-hidden />

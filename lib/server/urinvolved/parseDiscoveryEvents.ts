@@ -15,6 +15,9 @@ export type UrinvolvedDiscoveryEventRaw = {
   imageUrl?: string | null;
   organizationName?: string | null;
   organizationNames?: string[] | null;
+  /** Campus Labs org id when the discovery API includes it. */
+  organizationId?: string | number | null;
+  organizationIds?: Array<string | number> | null;
   categoryNames?: string[] | null;
   status?: string | null;
   visibility?: string | null;
@@ -45,6 +48,15 @@ function organizationFromDiscovery(raw: UrinvolvedDiscoveryEventRaw): string | n
   return names.length > 0 ? names.join(", ") : null;
 }
 
+function organizationExternalIdFromDiscovery(raw: UrinvolvedDiscoveryEventRaw): string | null {
+  if (raw.organizationId != null && String(raw.organizationId).trim()) {
+    return String(raw.organizationId).trim();
+  }
+  const first = raw.organizationIds?.[0];
+  if (first != null && String(first).trim()) return String(first).trim();
+  return null;
+}
+
 /** Map Campus Labs Engage discovery search rows into the shared ParsedUrinvolvedEvent shape. */
 export function parseUrinvolvedDiscoveryEvents(rows: UrinvolvedDiscoveryEventRaw[]): ParsedUrinvolvedEvent[] {
   const parsed: ParsedUrinvolvedEvent[] = [];
@@ -70,6 +82,7 @@ export function parseUrinvolvedDiscoveryEvents(rows: UrinvolvedDiscoveryEventRaw
       address: null,
       locationName,
       organizationName: organizationFromDiscovery(raw),
+      organizationExternalId: organizationExternalIdFromDiscovery(raw),
       startsAt: parseIsoDate(raw.startsOn),
       endsAt: parseIsoDate(raw.endsOn),
       imageUrl: buildDiscoveryEventImageUrl(raw.imagePath, raw.imageUrl),

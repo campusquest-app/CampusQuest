@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { EventArtwork } from "@/components/events/EventArtwork";
-import { eventSourceLabel } from "@/lib/eventSources/catalog";
+import { mapEventHostPresentation } from "@/lib/client/eventHostPresentation";
 import type { MapEventPin } from "@/lib/mapLocationGroups";
 import {
   formatCampusTime,
@@ -32,8 +32,8 @@ function badgeText(state: EventCountdownState): string {
 
 /**
  * Event card for the Realm location sheet. Handles cancelled (muted + red
- * warning), live/starting-soon badges, URInvolved source metadata, and the
- * View Event link. `compact` renders the mini carousel tile.
+ * warning), live/starting-soon badges, verified host label (never the provider
+ * chip), and the View Event link. `compact` renders the mini carousel tile.
  */
 export const EventPinCard = memo(function EventPinCard({
   event,
@@ -48,7 +48,11 @@ export const EventPinCard = memo(function EventPinCard({
 }) {
   const cancelled = isEventCancelled(event);
   const state = getEventCountdownState(event.startsAt, event.endsAt, now, cancelled);
-  const sourceLabel = eventSourceLabel(event.source);
+  const host = mapEventHostPresentation({
+    organizationName: event.organizationName,
+    source: event.source,
+    organizationId: event.organizationId,
+  });
   const time = formatCampusTime(event.startsAt);
   const location = event.locationText ?? locationName ?? null;
 
@@ -77,11 +81,10 @@ export const EventPinCard = memo(function EventPinCard({
           <span>{time}</span>
           {location ? <span> · {location}</span> : null}
         </p>
-        {!compact && event.organizationName ? (
-          <p className="cq-event-pin-card-org">{event.organizationName}</p>
-        ) : null}
-        {!compact && sourceLabel && event.source && event.source !== "campusquest" ? (
-          <p className="cq-event-pin-card-source">{sourceLabel}</p>
+        {!compact && host.hostedByLabel ? (
+          <p className="cq-event-pin-card-org" title={host.hostName ?? undefined}>
+            Hosted by {host.compactHostName}
+          </p>
         ) : null}
         {cancelled ? (
           <p className="cq-event-pin-card-warning">This event has been cancelled.</p>
