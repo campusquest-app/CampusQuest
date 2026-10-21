@@ -1,5 +1,10 @@
 export { LocationHero } from "./LocationHero";
-export { LocationUpcomingHighlight, pickFeaturedEvent } from "./LocationUpcomingHighlight";
+export {
+  LocationUpcomingHighlight,
+  isFocusedMapEvent,
+  orderEventsForFocusedSelection,
+  pickFeaturedEvent,
+} from "./LocationUpcomingHighlight";
 export { LocationPrimaryActions } from "./LocationPrimaryActions";
 export { LocationActivitySection } from "./LocationActivitySection";
 export { LocationActivityCard } from "./LocationActivityCard";

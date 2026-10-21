@@ -8,6 +8,7 @@ import {
   type LocationQuestSectionState,
 } from "@/components/realm/LocationQuestSection";
 import { LocationActivityCard } from "./LocationActivityCard";
+import { isFocusedMapEvent } from "./LocationUpcomingHighlight";
 import { shouldShowLocationActivitySection } from "@/lib/realm/locationActivityVisibility";
 import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
@@ -32,6 +33,7 @@ export function LocationActivitySection({
   onOpenEvent,
   showAll = false,
   eventsLoaded = true,
+  focusedEventId = null,
 }: {
   events: MapEventPin[];
   historyEvents?: MapEventPin[];
@@ -45,6 +47,7 @@ export function LocationActivitySection({
   onOpenEvent?: (event: MapEventPin) => void;
   showAll?: boolean;
   eventsLoaded?: boolean;
+  focusedEventId?: string | null;
 }) {
   const showQuests = FEATURE_FLAGS.progression;
   const [questState, setQuestState] = useState(() =>
@@ -127,6 +130,7 @@ export function LocationActivitySection({
                 event={event}
                 now={now}
                 locationName={locationName}
+                highlighted={isFocusedMapEvent(event, focusedEventId)}
                 onOpen={onOpenEvent}
               />
             </li>

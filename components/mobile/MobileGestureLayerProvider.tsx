@@ -1,14 +1,28 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
-type MobileGestureLayerContextValue = {
-  detailLayerCount: number;
+/**
+ * Split contexts so registering/unregistering a detail layer does not re-render
+ * every consumer that only needs the stable register APIs — and so bumping the
+ * count only re-renders shells that read `detailLayerCount` (tab swipe).
+ */
+
+type MobileGestureRegisterContextValue = {
   registerDetailLayer: () => void;
   unregisterDetailLayer: () => void;
 };
 
-const MobileGestureLayerContext = createContext<MobileGestureLayerContextValue | null>(null);
+const MobileGestureRegisterContext = createContext<MobileGestureRegisterContextValue | null>(null);
+const MobileGestureCountContext = createContext(0);
 
 export function MobileGestureLayerProvider({ children }: { children: ReactNode }) {
   const [detailLayerCount, setDetailLayerCount] = useState(0);
@@ -21,28 +35,48 @@ export function MobileGestureLayerProvider({ children }: { children: ReactNode }
     setDetailLayerCount((count) => Math.max(0, count - 1));
   }, []);
 
-  const value = useMemo(
-    () => ({ detailLayerCount, registerDetailLayer, unregisterDetailLayer }),
-    [detailLayerCount, registerDetailLayer, unregisterDetailLayer],
+  const registerValue = useMemo(
+    () => ({ registerDetailLayer, unregisterDetailLayer }),
+    [registerDetailLayer, unregisterDetailLayer],
   );
 
-  return <MobileGestureLayerContext.Provider value={value}>{children}</MobileGestureLayerContext.Provider>;
+  return (
+    <MobileGestureRegisterContext.Provider value={registerValue}>
+      <MobileGestureCountContext.Provider value={detailLayerCount}>{children}</MobileGestureCountContext.Provider>
+    </MobileGestureRegisterContext.Provider>
+  );
 }
 
-export function useMobileGestureLayers(): MobileGestureLayerContextValue {
-  const ctx = useContext(MobileGestureLayerContext);
-  if (!ctx) {
+export function useMobileGestureLayers(): {
+  detailLayerCount: number;
+  registerDetailLayer: () => void;
+  unregisterDetailLayer: () => void;
+} {
+  const register = useContext(MobileGestureRegisterContext);
+  const detailLayerCount = useContext(MobileGestureCountContext);
+  if (!register) {
     return {
       detailLayerCount: 0,
       registerDetailLayer: () => {},
       unregisterDetailLayer: () => {},
     };
   }
-  return ctx;
+  return {
+    detailLayerCount,
+    registerDetailLayer: register.registerDetailLayer,
+    unregisterDetailLayer: register.unregisterDetailLayer,
+  };
+}
+
+/** Subscribe only to the count — used by tab-swipe shells. */
+export function useMobileGestureDetailLayerCount(): number {
+  return useContext(MobileGestureCountContext);
 }
 
 export function useRegisterMobileDetailLayer(active: boolean) {
-  const { registerDetailLayer, unregisterDetailLayer } = useMobileGestureLayers();
+  const register = useContext(MobileGestureRegisterContext);
+  const registerDetailLayer = register?.registerDetailLayer ?? (() => {});
+  const unregisterDetailLayer = register?.unregisterDetailLayer ?? (() => {});
 
   useEffect(() => {
     if (!active) return undefined;

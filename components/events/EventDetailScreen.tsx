@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Calendar,
@@ -24,7 +24,10 @@ import {
   extractWhatToExpect,
   shouldCollapseEventDescription,
 } from "@/lib/client/eventDetailContent";
-import { eventCardRecommendationReason, eventHasMappedLocation, eventShareText } from "@/lib/client/eventDiscovery";
+import { createEventDetailDismissHandle, type EventDetailDismissHandle } from "@/lib/client/eventDetailDismiss";
+import { eventCardRecommendationReason, eventShareText } from "@/lib/client/eventDiscovery";
+import { eventViewOnMapEligible } from "@/lib/client/eventViewOnMap";
+import { useLiveNow } from "@/lib/client/useLiveNow";
 import { EventArtwork } from "@/components/events/EventArtwork";
 import { resolveEventArtwork, usableEventImageUrl } from "@/lib/client/eventArtwork";
 import { eventCardDisplayTitle } from "@/lib/client/eventCardPresentation";
@@ -42,10 +45,10 @@ export function EventDetailScreen({
   error,
   interestedPending = false,
   onBack,
+  backLabel = "Events",
   onRetry,
   onToggleInterested,
   onViewOnMap,
-  onWalkHere,
   onOpenOrganization,
   onRsvpGoing,
 }: {
@@ -54,10 +57,11 @@ export function EventDetailScreen({
   error?: string | null;
   interestedPending?: boolean;
   onBack: () => void;
+  /** Label for the ← back control; keep the caller's history (Events, Map, …). */
+  backLabel?: string;
   onRetry?: () => void;
   onToggleInterested?: () => void;
   onViewOnMap?: () => void;
-  onWalkHere?: () => void;
   onOpenOrganization?: (organizationId: string) => void;
   onRsvpGoing?: () => void;
 }) {
@@ -65,17 +69,28 @@ export function EventDetailScreen({
   const [imageOpen, setImageOpen] = useState(false);
   const [shareNote, setShareNote] = useState<string | null>(null);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const previousBodyOverflowRef = useRef("");
+  const dismissRef = useRef<EventDetailDismissHandle | null>(null);
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!mounted) return undefined;
-    const prev = document.body.style.overflow;
+    previousBodyOverflowRef.current = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    dismissRef.current = createEventDetailDismissHandle({
+      getSurface: () => surfaceRef.current,
+      onBack: () => onBackRef.current(),
+      getPreviousBodyOverflow: () => previousBodyOverflowRef.current,
+    });
     return () => {
-      document.body.style.overflow = prev;
+      document.body.style.overflow = previousBodyOverflowRef.current;
+      dismissRef.current = null;
     };
   }, [mounted]);
 
@@ -85,13 +100,26 @@ export function EventDetailScreen({
     setShareNote(null);
   }, [item?.event.id]);
 
+  const handleBack = () => {
+    if (!dismissRef.current) {
+      dismissRef.current = createEventDetailDismissHandle({
+        getSurface: () => surfaceRef.current,
+        onBack: () => onBackRef.current(),
+        getPreviousBodyOverflow: () => previousBodyOverflowRef.current,
+      });
+    }
+    dismissRef.current.dismiss();
+  };
+
   if (!mounted || typeof document === "undefined") return null;
 
   const unavailable = Boolean(error) || !item;
+  const backAria = `Back to ${backLabel}`;
 
   return createPortal(
     <MobileSwipeBackSurface
-      onBack={onBack}
+      ref={surfaceRef}
+      onBack={handleBack}
       className="cq-event-detail cq-external-event-detail fixed inset-x-0 top-0 z-[110] overflow-y-auto overscroll-y-contain bg-uri-navy"
       style={{ bottom: CQ_BOTTOM_NAV_CLEARANCE }}
       role="dialog"
@@ -102,12 +130,12 @@ export function EventDetailScreen({
         <header className="cq-event-detail-header">
           <button
             type="button"
-            onClick={onBack}
-            className="cq-event-detail-back"
-            aria-label="Back to Events"
+            onClick={handleBack}
+            className="cq-event-detail-back cq-tap-press touch-manipulation"
+            aria-label={backAria}
           >
             <ChevronLeft className="h-5 w-5 shrink-0" strokeWidth={2.2} aria-hidden />
-            <span>Events</span>
+            <span>{backLabel}</span>
           </button>
         </header>
 
@@ -120,11 +148,15 @@ export function EventDetailScreen({
               </p>
               {error ? <p className="mt-2 text-xs text-white/45">{error}</p> : null}
               <div className="mt-5 flex flex-wrap gap-2">
-                <button type="button" onClick={onBack} className="cq-event-detail-action cq-event-detail-action--primary">
-                  Back to Events
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="cq-event-detail-action cq-event-detail-action--primary cq-tap-press touch-manipulation"
+                >
+                  Back to {backLabel}
                 </button>
                 {onRetry ? (
-                  <button type="button" onClick={onRetry} className="cq-event-detail-action">
+                  <button type="button" onClick={onRetry} className="cq-event-detail-action cq-tap-press touch-manipulation">
                     Try again
                   </button>
                 ) : null}
@@ -144,7 +176,6 @@ export function EventDetailScreen({
             setDescriptionExpanded={setDescriptionExpanded}
             onToggleInterested={onToggleInterested}
             onViewOnMap={onViewOnMap}
-            onWalkHere={onWalkHere}
             onOpenOrganization={onOpenOrganization}
             onRsvpGoing={onRsvpGoing}
           />
@@ -167,7 +198,6 @@ function EventDetailBody({
   setDescriptionExpanded,
   onToggleInterested,
   onViewOnMap,
-  onWalkHere,
   onOpenOrganization,
   onRsvpGoing,
 }: {
@@ -182,10 +212,10 @@ function EventDetailBody({
   setDescriptionExpanded: (expanded: boolean) => void;
   onToggleInterested?: () => void;
   onViewOnMap?: () => void;
-  onWalkHere?: () => void;
   onOpenOrganization?: (organizationId: string) => void;
   onRsvpGoing?: () => void;
 }) {
+  const now = useLiveNow();
   const event = item.event;
   const when = formatEventDateTimeRange(event.startsAt, event.endsAt);
   const dateLine = formatEventDateLine(event.startsAt);
@@ -219,19 +249,7 @@ function EventDetailBody({
       ? item.event.location
       : null);
   const externalAddress = externalLocation?.address ?? null;
-  const mapped = eventHasMappedLocation(
-    item.kind === "external"
-      ? {
-          latitude: item.event.latitude,
-          longitude: item.event.longitude,
-          venueName: item.event.venueName,
-          location: item.event.location,
-          address: item.event.address,
-          source: item.event.source,
-          homeAway: item.event.homeAway,
-        }
-      : { location: item.event.location },
-  );
+  const showViewOnMap = Boolean(onViewOnMap) && eventViewOnMapEligible(item, now);
   const facts = extractEventKeyFacts({
     description: event.description,
     isPaid: item.kind === "campus" ? item.event.isPaid : null,
@@ -448,18 +466,13 @@ function EventDetailBody({
               Add to Calendar
             </button>
           ) : null}
-          {mapped && onViewOnMap ? (
-            <button type="button" onClick={onViewOnMap} className="cq-event-detail-action">
+          {showViewOnMap ? (
+            <button type="button" onClick={onViewOnMap} className="cq-event-detail-action cq-tap-press touch-manipulation">
               <MapPin className="h-4 w-4" aria-hidden />
               View on Map
             </button>
           ) : null}
-          {mapped && onWalkHere ? (
-            <button type="button" onClick={onWalkHere} className="cq-event-detail-action">
-              Walk Here
-            </button>
-          ) : null}
-          <button type="button" onClick={() => void handleShare()} className="cq-event-detail-action">
+          <button type="button" onClick={() => void handleShare()} className="cq-event-detail-action cq-tap-press touch-manipulation">
             <Share2 className="h-4 w-4" aria-hidden />
             Share
           </button>

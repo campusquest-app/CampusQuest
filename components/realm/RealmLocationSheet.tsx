@@ -24,6 +24,7 @@ import {
   LocationHero,
   LocationPrimaryActions,
   LocationUpcomingHighlight,
+  orderEventsForFocusedSelection,
   pickFeaturedEvent,
 } from "@/components/realm/locationDetail";
 import { LocationDiningMenuSection } from "@/components/realm/locationDetail/LocationDiningMenuSection";
@@ -52,6 +53,7 @@ export function RealmLocationSheet({
   onRefreshAll,
   onPullRefreshAll,
   onOpenEvent,
+  focusedEventId = null,
 }: {
   location: RealmLocation | null;
   mapContent?: GroupedMapLocation | null;
@@ -78,6 +80,8 @@ export function RealmLocationSheet({
   onClearDirections?: () => void;
   onOpenInRealmMap?: () => void;
   onOpenEvent?: (event: MapEventPin) => void;
+  /** Event the student opened from Events / shared link — featured + highlighted in the list. */
+  focusedEventId?: string | null;
 }) {
   const [mounted, setMounted] = useState(false);
   const [archiveExpanded, setArchiveExpanded] = useState(false);
@@ -286,7 +290,8 @@ export function RealmLocationSheet({
 
   const rawContent = mapContent ?? emptyMapLocationContent();
   const rawEvents = Array.isArray(rawContent.events) ? rawContent.events : [];
-  const { upcoming: upcomingEvents, history: historyEvents } = partitionMapEventsForSheet(rawEvents, now);
+  const { upcoming: upcomingRaw, history: historyEvents } = partitionMapEventsForSheet(rawEvents, now);
+  const upcomingEvents = orderEventsForFocusedSelection(upcomingRaw, focusedEventId);
   const content = {
     ...rawContent,
     quests: Array.isArray(rawContent.quests) ? rawContent.quests : [],
@@ -303,7 +308,7 @@ export function RealmLocationSheet({
       : null)
   ) as CampusLocationId | null;
   const momentCount = memoryStats?.activeCount ?? location?.activeMomentCount ?? 0;
-  const featuredEvent = pickFeaturedEvent(upcomingEvents, now);
+  const featuredEvent = pickFeaturedEvent(upcomingEvents, now, focusedEventId);
   const heroFallbackImage =
     featuredEvent?.imageUrl ??
     upcomingEvents.find((event) => event.imageUrl)?.imageUrl ??
@@ -395,6 +400,7 @@ export function RealmLocationSheet({
                   questReloadToken={questReloadToken}
                   eventsLoaded={mapContentLoaded}
                   showAll={showAllEvents}
+                  focusedEventId={focusedEventId}
                   onOpenEvent={onOpenEvent}
                   onSeeAll={
                     upcomingEvents.length > 4 || historyEvents.length > 3

@@ -856,8 +856,10 @@ export function Dashboard() {
     });
   }, []);
 
-  const openEventOnMap = useCallback((eventId: string, options?: { walk?: boolean }) => {
-    setRealmMapFocus({ eventId, source: "events", walk: options?.walk || undefined });
+  const openEventOnMap = useCallback((eventId: string) => {
+    // Immediate handoff: stash focus payload then switch tabs. RealmMap consumes
+    // the payload once groups are ready — no map reload, no walk route.
+    setRealmMapFocus({ eventId, source: "events" });
     navigateToTab("realm");
   }, [navigateToTab]);
 

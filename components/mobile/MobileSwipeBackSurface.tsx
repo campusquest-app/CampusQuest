@@ -1,24 +1,39 @@
 "use client";
 
-import { useRef, type CSSProperties, type HTMLAttributes, type ReactNode } from "react";
+import {
+  forwardRef,
+  useRef,
+  type CSSProperties,
+  type HTMLAttributes,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { useSwipeBack } from "@/lib/client/useSwipeBack";
 import { useRegisterMobileDetailLayer } from "@/components/mobile/MobileGestureLayerProvider";
 
-export function MobileSwipeBackSurface({
-  onBack,
-  enabled = true,
-  children,
-  className,
-  style,
-  ...rest
-}: {
-  onBack: () => void;
-  enabled?: boolean;
-  children: ReactNode;
-  className?: string;
-  style?: CSSProperties;
-} & Omit<HTMLAttributes<HTMLDivElement>, "style">) {
-  const ref = useRef<HTMLDivElement>(null);
+function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
+  if (!ref) return;
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  (ref as { current: T | null }).current = value;
+}
+
+export const MobileSwipeBackSurface = forwardRef<
+  HTMLDivElement,
+  {
+    onBack: () => void;
+    enabled?: boolean;
+    children: ReactNode;
+    className?: string;
+    style?: CSSProperties;
+  } & Omit<HTMLAttributes<HTMLDivElement>, "style">
+>(function MobileSwipeBackSurface(
+  { onBack, enabled = true, children, className, style, ...rest },
+  forwardedRef,
+) {
+  const ref = useRef<HTMLDivElement | null>(null);
   useRegisterMobileDetailLayer(enabled);
   const { dragX, dragging, transitionMs } = useSwipeBack({
     onBack,
@@ -39,7 +54,10 @@ export function MobileSwipeBackSurface({
 
   return (
     <div
-      ref={ref}
+      ref={(node) => {
+        ref.current = node;
+        assignRef(forwardedRef, node);
+      }}
       data-cq-swipe-back-root=""
       className={`cq-swipe-back-surface ${className ?? ""}`.trim()}
       style={mergedStyle}
@@ -48,4 +66,4 @@ export function MobileSwipeBackSurface({
       {children}
     </div>
   );
-}
+});

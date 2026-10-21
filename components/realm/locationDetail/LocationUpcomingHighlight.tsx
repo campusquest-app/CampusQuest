@@ -5,8 +5,25 @@ import type { MapEventPin } from "@/lib/mapLocationGroups";
 import { getEventCountdownState, isEventCancelled } from "@/lib/realm/eventCountdown";
 import { formatCampusEventWhen } from "@/lib/realm/formatCampusEventWhen";
 
-export function pickFeaturedEvent(events: MapEventPin[], now: Date): MapEventPin | null {
+function eventPinMatchesFocusId(event: MapEventPin, focusedEventId: string | null | undefined): boolean {
+  const needle = focusedEventId?.trim().toLowerCase();
+  if (!needle) return false;
+  return [event.id, event.externalEventId, event.sourceExternalId].some(
+    (id) => typeof id === "string" && id.toLowerCase() === needle,
+  );
+}
+
+export function pickFeaturedEvent(
+  events: MapEventPin[],
+  now: Date,
+  focusedEventId?: string | null,
+): MapEventPin | null {
   if (events.length === 0) return null;
+
+  const preferred = events.find(
+    (event) => eventPinMatchesFocusId(event, focusedEventId) && !isEventCancelled(event),
+  );
+  if (preferred) return preferred;
 
   const scored = events
     .filter((event) => !isEventCancelled(event))
@@ -24,6 +41,23 @@ export function pickFeaturedEvent(events: MapEventPin[], now: Date): MapEventPin
     .sort((a, b) => a.score - b.score || a.start - b.start);
 
   return scored[0]?.event ?? null;
+}
+
+/** Prefer the student-selected event at the top of a venue's upcoming list. */
+export function orderEventsForFocusedSelection(
+  events: MapEventPin[],
+  focusedEventId?: string | null,
+): MapEventPin[] {
+  if (!focusedEventId || events.length < 2) return events;
+  const index = events.findIndex((event) => eventPinMatchesFocusId(event, focusedEventId));
+  if (index <= 0) return events;
+  const next = events.slice();
+  const [selected] = next.splice(index, 1);
+  return [selected, ...next];
+}
+
+export function isFocusedMapEvent(event: MapEventPin, focusedEventId?: string | null): boolean {
+  return eventPinMatchesFocusId(event, focusedEventId);
 }
 
 export function LocationUpcomingHighlight({

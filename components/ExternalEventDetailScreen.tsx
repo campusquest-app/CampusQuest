@@ -25,14 +25,13 @@ export type ExternalEventDetailData = {
 export function ExternalEventDetailScreen({
   event,
   onBack,
+  backLabel = "Events",
   onViewOnMap,
-  onWalkHere,
 }: {
   event: ExternalEventDetailData;
   onBack: () => void;
   backLabel?: string;
   onViewOnMap?: () => void;
-  onWalkHere?: () => void;
 }) {
   const feedEvent: ExternalFeedEventItem = {
     ...event,
@@ -45,8 +44,8 @@ export function ExternalEventDetailScreen({
     <EventDetailScreen
       item={{ kind: "external", event: feedEvent }}
       onBack={onBack}
+      backLabel={backLabel}
       onViewOnMap={onViewOnMap}
-      onWalkHere={onWalkHere}
     />
   );
 }

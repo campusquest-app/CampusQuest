@@ -26,9 +26,10 @@ describe("first-entry + Events/Map wiring", () => {
 
   it("connects Events For You to the same map focus handoff", () => {
     expect(eventDetailSrc).toContain("View on Map");
-    expect(eventDetailSrc).toContain("Walk Here");
+    expect(eventDetailSrc).not.toContain("Walk Here");
+    expect(eventDetailSrc).toContain("eventViewOnMapEligible");
     expect(eventsSrc).toContain("onViewOnMap");
-    expect(eventsSrc).toContain("walk: true");
+    expect(eventsSrc).not.toContain("walk: true");
     expect(dashboardSrc).toContain("onViewOnMap={openEventOnMap}");
     expect(dashboardSrc).toContain('source: "events"');
   });

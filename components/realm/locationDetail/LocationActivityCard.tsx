@@ -26,11 +26,13 @@ export function LocationActivityCard({
   event,
   now,
   locationName,
+  highlighted = false,
   onOpen,
 }: {
   event: MapEventPin;
   now: Date;
   locationName?: string | null;
+  highlighted?: boolean;
   onOpen?: (event: MapEventPin) => void;
 }) {
   const cancelled = isEventCancelled(event);
@@ -78,13 +80,18 @@ export function LocationActivityCard({
     </>
   );
 
+  const className = [
+    "cq-loc-activity-card",
+    "touch-manipulation",
+    cancelled ? "cq-loc-activity-card--cancelled" : "",
+    highlighted ? "cq-loc-activity-card--focused" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   if (onOpen) {
     return (
-      <button
-        type="button"
-        onClick={() => onOpen(event)}
-        className={`cq-loc-activity-card touch-manipulation${cancelled ? " cq-loc-activity-card--cancelled" : ""}`}
-      >
+      <button type="button" onClick={() => onOpen(event)} className={className} aria-current={highlighted ? "true" : undefined}>
         {inner}
       </button>
     );
@@ -92,21 +99,14 @@ export function LocationActivityCard({
 
   if (event.eventUrl) {
     return (
-      <a
-        href={event.eventUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`cq-loc-activity-card touch-manipulation${cancelled ? " cq-loc-activity-card--cancelled" : ""}`}
-      >
+      <a href={event.eventUrl} target="_blank" rel="noopener noreferrer" className={className} aria-current={highlighted ? "true" : undefined}>
         {inner}
       </a>
     );
   }
 
   return (
-    <article
-      className={`cq-loc-activity-card${cancelled ? " cq-loc-activity-card--cancelled" : ""}`}
-    >
+    <article className={className} aria-current={highlighted ? "true" : undefined}>
       {inner}
     </article>
   );

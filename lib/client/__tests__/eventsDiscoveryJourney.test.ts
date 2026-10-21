@@ -179,7 +179,9 @@ describe("events discovery journey", () => {
     expect(feed).toContain("useDebouncedValue");
     expect(feed).toContain("Clear search");
     expect(feed).toContain("setActiveDetail");
-    expect(feed).toContain("pointer-events-none");
+    expect(feed).toContain("closeDetail");
+    expect(feed).toContain("openDetail");
+    expect(feed).not.toContain("pointer-events-none");
     expect(feed).not.toContain("Admin sync status");
     expect(feed).not.toContain("☆");
     expect(carousel).toContain("Clock3");

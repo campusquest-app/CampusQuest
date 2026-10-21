@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import type { AppBottomNavTab } from "@/components/AppBottomNav";
-import { useMobileGestureLayers } from "@/components/mobile/MobileGestureLayerProvider";
+import { useMobileGestureDetailLayerCount } from "@/components/mobile/MobileGestureLayerProvider";
 import { useBottomNavTabSwipe } from "@/lib/client/useBottomNavTabSwipe";
 import { readTouchMobileDevice, type SwipeNavDirection } from "@/lib/client/mobileGestures";
 
@@ -26,7 +26,7 @@ export function DashboardTabSwipeShell({
   children: ReactNode;
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
-  const { detailLayerCount } = useMobileGestureLayers();
+  const detailLayerCount = useMobileGestureDetailLayerCount();
   const touchMobile = readTouchMobileDevice();
 
   const tabSwipeDisabled =

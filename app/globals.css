@@ -15256,11 +15256,32 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   font-size: 0.85rem;
   font-weight: 650;
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .cq-event-detail-back:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
+}
+
+.cq-event-detail-back:active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.cq-event-detail[data-cq-event-detail-dismissed="true"] {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cq-event-detail-back.cq-tap-press {
+    transition: none;
+  }
+
+  .cq-event-detail-back.cq-tap-press:active {
+    transform: none;
+  }
 }
 
 .cq-event-detail-body {
@@ -27973,6 +27994,12 @@ button.cq-loc-activity-card {
 
 .cq-loc-activity-card--cancelled {
   opacity: 0.72;
+}
+
+.cq-loc-activity-card--focused {
+  border-color: rgba(104, 171, 232, 0.55);
+  background: linear-gradient(180deg, rgba(20, 42, 72, 0.98), rgba(12, 24, 44, 0.98));
+  box-shadow: 0 0 0 1px rgba(104, 171, 232, 0.18);
 }
 
 .cq-loc-activity-thumb {

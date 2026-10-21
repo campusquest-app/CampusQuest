@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Calendar, CalendarSearch, Search, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { EventDetailScreen } from "@/components/events/EventDetailScreen";
@@ -83,7 +83,7 @@ export function EventsFeed({
     classYear?: number | null;
   } | null;
   onBack?: () => void;
-  onViewOnMap?: (eventId: string, options?: { walk?: boolean }) => void;
+  onViewOnMap?: (eventId: string) => void;
   onOpenOrganization?: (organizationId: string) => void;
 }) {
   const [events, setEvents] = useState<CampusEventItem[]>([]);
@@ -104,6 +104,12 @@ export function EventsFeed({
   const loadAbortRef = useRef<AbortController | null>(null);
   const recProfile = useRecommendationProfile(personalization);
   const hasSavedInterests = recProfile.explicitInterests.length > 0;
+  const openDetail = useCallback((item: FeedEvent) => {
+    setActiveDetail(item);
+  }, []);
+  const closeDetail = useCallback(() => {
+    setActiveDetail(null);
+  }, []);
 
   useEffect(() => {
     setFilters((prev) => (prev.search === debouncedSearch ? prev : { ...prev, search: debouncedSearch }));
@@ -521,7 +527,7 @@ export function EventsFeed({
         recommendation={row.recommendation}
         interestedPending={rsvping === item.event.id}
         priority={index < 4}
-        onView={() => setActiveDetail(item)}
+        onView={openDetail}
         onViewOnMap={onViewOnMap ? () => onViewOnMap(item.event.id) : undefined}
         onRsvpGoing={
           item.kind === "campus" || (item.kind === "external" && item.event.cqRsvpEnabled)
@@ -539,12 +545,13 @@ export function EventsFeed({
 
   return (
     <>
-    {/* Keep the list mounted under the portaled detail so document scroll position is preserved. */}
-    <section
-      className={`cq-events-discovery${liveDetail ? " pointer-events-none" : ""}`}
-      aria-hidden={liveDetail ? true : undefined}
-      inert={liveDetail ? true : undefined}
-    >
+    {/*
+      Keep the list mounted under the portaled detail so document scroll position,
+      filters, and search are preserved. Do not toggle inert/aria-hidden on this
+      large tree when opening/closing detail — the fixed portal already blocks
+      interaction, and attribute thrash was a major source of back-nav delay.
+    */}
+    <section className="cq-events-discovery">
       {onBack ? <ScreenBackHeader title="Events" onBack={onBack} /> : null}
       <header className="cq-events-header">
         <div className="cq-events-header-row">
@@ -702,7 +709,7 @@ export function EventsFeed({
         <HappeningSoonCarousel
           rows={discoverySections.happeningSoon}
           rsvpingId={rsvping}
-          onView={setActiveDetail}
+          onView={openDetail}
           onViewOnMap={onViewOnMap}
           onToggleInterested={(item) => void handleInterested(item.event.id, item.kind)}
         />
@@ -768,7 +775,8 @@ export function EventsFeed({
         recommendation={prioritizedEvents.find((row) => row.item.event.id === liveDetail.event.id)?.recommendation ?? null}
         error={error}
         interestedPending={rsvping === liveDetail.event.id}
-        onBack={() => setActiveDetail(null)}
+        onBack={closeDetail}
+        backLabel="Events"
         onRetry={() => void loadEvents()}
         onToggleInterested={
           liveDetail.kind === "campus" || (liveDetail.kind === "external" && liveDetail.event.cqRsvpEnabled)
@@ -781,7 +789,6 @@ export function EventsFeed({
             : undefined
         }
         onViewOnMap={onViewOnMap ? () => onViewOnMap(liveDetail.event.id) : undefined}
-        onWalkHere={onViewOnMap ? () => onViewOnMap(liveDetail.event.id, { walk: true }) : undefined}
         onOpenOrganization={onOpenOrganization}
       />
     ) : null}

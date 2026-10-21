@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Heart, Sparkles } from "lucide-react";
 import { EventArtwork } from "@/components/events/EventArtwork";
 import {
@@ -24,7 +24,7 @@ import { feedEventHostPresentation } from "@/lib/client/eventHostPresentation";
 import { isInterestedRsvp } from "@/lib/client/eventInterested";
 import type { RecommendationScore } from "@/lib/recommendations/types";
 
-export function EventDiscoveryCard({
+export const EventDiscoveryCard = memo(function EventDiscoveryCard({
   item,
   recommendation,
   interestedPending = false,
@@ -37,7 +37,7 @@ export function EventDiscoveryCard({
   interestedPending?: boolean;
   /** Eager-load artwork for above-the-fold grid cells. */
   priority?: boolean;
-  onView: () => void;
+  onView: (item: FeedEvent) => void;
   onToggleInterested?: () => void;
   /** Kept for call-site compatibility; detail screen owns map / RSVP actions. */
   onViewOnMap?: () => void;
@@ -87,11 +87,11 @@ export function EventDiscoveryCard({
       tabIndex={0}
       aria-label={`${viewLabel}: ${title}. ${whenRange}${venue ? `. ${venue}` : ""}${host.hostedByLabel ? `. ${host.hostedByLabel}` : ""}`}
       data-cq-event-fit={fit}
-      onClick={onView}
+      onClick={() => onView(item)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onView();
+          onView(item);
         }
       }}
     >
@@ -156,4 +156,4 @@ export function EventDiscoveryCard({
       </time>
     </article>
   );
-}
+});

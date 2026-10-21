@@ -251,6 +251,8 @@ export function RealmMap({
   });
   const [selectedMapContent, setSelectedMapContent] = useState<GroupedMapLocation | null>(null);
   const [selectedEventPin, setSelectedEventPin] = useState<MapEventPin | null>(null);
+  /** Event id handed off from Events / feed — featured + highlighted in the location sheet. */
+  const [focusedEventId, setFocusedEventId] = useState<string | null>(null);
   const [mapScale, setMapScale] = useState(1);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const mapRootRef = useRef<HTMLDivElement>(null);
@@ -508,6 +510,7 @@ export function RealmMap({
         setSelectedLocation(location);
         setSelectedMapContent(normalizeGroupedMapContent(location.mapContent));
         setSelectedEventPin(null);
+        setFocusedEventId(null);
         setActiveMarkerId(location.id);
         setSheetOpen(true);
         setMarkerNotice(null);
@@ -539,6 +542,7 @@ export function RealmMap({
         setSelectedLocation(null);
         setSelectedMapContent(normalizeGroupedMapContent(group));
         setSelectedEventPin(null);
+        setFocusedEventId(null);
         setActiveMarkerId(group.groupKey);
         setSheetOpen(true);
         setMarkerNotice(null);
@@ -692,6 +696,7 @@ export function RealmMap({
   const closeSheet = useCallback(() => {
     setSheetOpen(false);
     setSelectedEventPin(null);
+    setFocusedEventId(null);
     setSearchPin(null);
     setFlyToForce(false);
     if (!isRouteSheetOpen) {
@@ -1077,7 +1082,8 @@ export function RealmMap({
       if (seq !== focusSeqRef.current) return;
       consumeRealmMapFocus();
       pendingWalkAfterFocusRef.current = pending.walk === true;
-      setMarkerFilter((prev) => (prev === "live" ? prev : "for_you"));
+      // Land on the Events filter so the venue pin is visible (For You can hide it).
+      setMarkerFilter("events");
       setActiveMarkerId(found.markerId);
       setRailFocus({ lat: found.lat, lng: found.lng });
       setFlyToForce(true);
@@ -1087,6 +1093,8 @@ export function RealmMap({
         const group = supplementaryPins.find((row) => row.groupKey === found.markerId);
         if (group) openSupplementaryPin(group);
       }
+      // Set after openLocation/openSupplementaryPin so their clears don't wipe the handoff.
+      setFocusedEventId(pending.eventId);
       const rec = mapRecommendations.find((item) => item.eventId === pending.eventId || item.markerId === found.markerId);
       setSelectedRecommendationId(rec?.id ?? null);
       return;
@@ -1768,6 +1776,7 @@ export function RealmMap({
           location={selectedLocation}
           mapContent={selectedMapContent}
           open={sheetOpen && !selectedEventPin}
+          focusedEventId={focusedEventId}
           onOpenEvent={(event) => openEventDetail(event, true)}
           memoryStats={selectedLocation ? memoryStatsByLocation[selectedLocation.id] ?? null : null}
           mapContentLoaded={mapGroupsLoaded}
@@ -1793,6 +1802,7 @@ export function RealmMap({
           <EventDetailScreen
             item={mapEventPinToFeedEvent(selectedEventPin)}
             onBack={closeEventDetail}
+            backLabel="Map"
             onOpenOrganization={onOpenOrganization}
           />
         ) : null}

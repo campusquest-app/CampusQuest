@@ -42,7 +42,8 @@ describe("Events experience source contracts", () => {
     expect(detailSrc).toContain("Share");
     expect(detailSrc).toContain("Interested");
     expect(detailSrc).toContain("View on Map");
-    expect(detailSrc).toContain("Walk Here");
+    expect(detailSrc).not.toContain("Walk Here");
+    expect(detailSrc).toContain("eventViewOnMapEligible");
     expect(detailSrc).toContain("eventSourceActionLabel");
     expect(detailSrc).toContain("More Info on URInvolved");
     expect(detailSrc).toContain("Read More");
@@ -50,16 +51,22 @@ describe("Events experience source contracts", () => {
     expect(detailSrc).toContain("openExternalUrl");
     expect(detailSrc).toContain("nativeShare");
     expect(detailSrc).toContain("downloadEventIcs");
-    expect(detailSrc).toContain("eventHasMappedLocation");
+    expect(detailSrc).not.toContain("eventHasMappedLocation");
     expect(detailSrc).not.toMatch(/top:\s*["']var\(--cq-topnav-h/);
     expect(detailSrc).not.toContain("min-h-full");
     expect(detailSrc).not.toContain("toLocaleString");
   });
 
-  it("keeps the events list mounted under the detail portal", () => {
-    expect(feedSrc).toContain("aria-hidden={liveDetail ? true : undefined}");
+  it("keeps the events list mounted under the detail portal without inert thrash on back", () => {
     expect(feedSrc).toContain("<EventDetailScreen");
+    expect(feedSrc).toContain("closeDetail");
+    expect(feedSrc).toContain('backLabel="Events"');
     expect(feedSrc).not.toMatch(/if \(liveDetail\) \{\s*return \(/);
+    expect(feedSrc).not.toContain("inert={liveDetail");
+    expect(feedSrc).not.toContain("aria-hidden={liveDetail");
+    expect(detailSrc).toContain("createEventDetailDismissHandle");
+    expect(detailSrc).toContain("backLabel");
+    expect(mapSrc).toContain('backLabel="Map"');
   });
 
   it("defaults discovery to For You and opens filters in a centered modal", () => {
@@ -78,9 +85,12 @@ describe("Events experience source contracts", () => {
     expect(sheetSrc).not.toContain("cq-create-sheet-overlay");
   });
 
-  it("starts Walk Here from the existing Realm map after focus", () => {
-    expect(mapSrc).toContain("pendingWalkAfterFocusRef");
-    expect(mapSrc).toContain("startWalkingRoute");
-    expect(mapSrc).toContain("pending.walk === true");
+  it("focuses the venue and selected event from Events View on Map", () => {
+    expect(mapSrc).toContain('setMarkerFilter("events")');
+    expect(mapSrc).toContain("setFocusedEventId(pending.eventId)");
+    expect(mapSrc).toContain("focusedEventId={focusedEventId}");
+    expect(mapSrc).toContain("findMapFocusForEvent");
+    expect(feedSrc).not.toContain("walk: true");
+    expect(feedSrc).not.toContain("onWalkHere");
   });
 });
