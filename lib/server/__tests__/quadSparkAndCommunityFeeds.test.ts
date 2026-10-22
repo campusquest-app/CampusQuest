@@ -27,4 +27,9 @@ describe("quad community channels", () => {
       expect(QUAD_COMMUNITY_FEED_LABELS[channel].label.length).toBeGreaterThan(0);
     }
   });
+
+  it("describes Greek Life as org-designated content, not every affiliated author's campus posts", () => {
+    expect(QUAD_COMMUNITY_FEED_LABELS.greek_life.emptyBody).toMatch(/fraternit|sororit|Greek organization/i);
+    expect(QUAD_COMMUNITY_FEED_LABELS.greek_life.emptyBody).not.toMatch(/Greek Life students/i);
+  });
 });

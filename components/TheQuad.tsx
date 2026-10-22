@@ -146,6 +146,8 @@ export function TheQuad({
   const feedCacheRef = useRef(new Map<string, FieldNote[]>());
   const scrollByFeedRef = useRef(new Map<string, number>());
   const feedTabRef = useRef(feedTab);
+  /** Bumped on each refresh / feed switch so stale async responses cannot overwrite another tab. */
+  const refreshGenerationRef = useRef(0);
   const [campusListings, setCampusListings] = useState<MarketplaceListing[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
@@ -241,6 +243,11 @@ export function TheQuad({
       setFeedLoading(false);
       return;
     }
+    const generation = ++refreshGenerationRef.current;
+    const tabAtStart = feedTab;
+    const stillCurrent = () =>
+      generation === refreshGenerationRef.current && feedTabRef.current === tabAtStart;
+
     if (!silent) {
       setFeedError(null);
       if ((feedCacheRef.current.get(feedTab)?.length ?? 0) === 0) {
@@ -250,6 +257,7 @@ export function TheQuad({
 
     try {
       if (isMarketFeedTab(feedTab)) {
+        if (!stillCurrent()) return;
         setFeedLoading(false);
         setNotes([]);
         setCampusListings([]);
@@ -263,6 +271,7 @@ export function TheQuad({
         setCampusListings([]);
         try {
           const remote = await fetchOrganizationPosts(character.id, 80);
+          if (!stillCurrent()) return;
           mergeRemoteQuadPostsCache(remote);
           const list = remote.map((note) => enrichNote(getNoteForReaction(note.id) ?? note));
           setNotes(cloneFeedNotesForDisplay(list));
@@ -272,9 +281,11 @@ export function TheQuad({
             handleSessionMissing();
             return;
           }
+          if (!stillCurrent()) return;
           setNotes([]);
           setFeedError("Could not load Organizations.");
         }
+        if (!stillCurrent()) return;
         await refreshPlayerSnapshotSafe();
         onRefresh?.();
         return;
@@ -284,6 +295,7 @@ export function TheQuad({
         setCampusListings([]);
         try {
           const remote = await fetchLocalBusinessPosts(character.id, 80);
+          if (!stillCurrent()) return;
           mergeRemoteQuadPostsCache(remote);
           const list = remote.map((note) => enrichNote(getNoteForReaction(note.id) ?? note));
           setNotes(cloneFeedNotesForDisplay(list));
@@ -293,9 +305,11 @@ export function TheQuad({
             handleSessionMissing();
             return;
           }
+          if (!stillCurrent()) return;
           setNotes([]);
           setFeedError("Could not load Local Businesses.");
         }
+        if (!stillCurrent()) return;
         await refreshPlayerSnapshotSafe();
         onRefresh?.();
         return;
@@ -305,6 +319,7 @@ export function TheQuad({
         setCampusListings([]);
         try {
           const remote = await fetchQuadFriendsPosts(character.id, 80);
+          if (!stillCurrent()) return;
           mergeRemoteQuadPostsCache(remote);
           const list = remote.map((note) => enrichNote(getNoteForReaction(note.id) ?? note));
           setNotes(cloneFeedNotesForDisplay(list));
@@ -314,9 +329,11 @@ export function TheQuad({
             handleSessionMissing();
             return;
           }
+          if (!stillCurrent()) return;
           setNotes([]);
           setFeedError("Could not load your Following feed.");
         }
+        if (!stillCurrent()) return;
         await refreshPlayerSnapshotSafe();
         onRefresh?.();
         return;
@@ -326,6 +343,7 @@ export function TheQuad({
         setCampusListings([]);
         try {
           const remote = await fetchQuadCommunityPosts(character.id, feedTab, 80);
+          if (!stillCurrent()) return;
           mergeRemoteQuadPostsCache(remote);
           const list = remote.map((note) => enrichNote(getNoteForReaction(note.id) ?? note));
           setNotes(cloneFeedNotesForDisplay(list));
@@ -335,9 +353,11 @@ export function TheQuad({
             handleSessionMissing();
             return;
           }
+          if (!stillCurrent()) return;
           setNotes([]);
           setFeedError("Could not load this community feed.");
         }
+        if (!stillCurrent()) return;
         await refreshPlayerSnapshotSafe();
         onRefresh?.();
         return;
@@ -346,6 +366,7 @@ export function TheQuad({
       let homeFetchFailed = false;
       try {
         const remote = await fetchQuadHomePosts(character.id, 80);
+        if (!stillCurrent()) return;
         mergeRemoteQuadPostsCache(remote);
       } catch (err) {
         if (isMissingSessionError(err)) {
@@ -355,6 +376,7 @@ export function TheQuad({
         homeFetchFailed = true;
         // Keep cached posts on transient failures so reactions are not lost in-session.
       }
+      if (!stillCurrent()) return;
       let list = getFeed(character.id, baseFeedType).map(enrichNote);
       if (feedTab === "trending") {
         list = [...list].sort((a, b) => {
@@ -367,8 +389,11 @@ export function TheQuad({
       setNotes(cloneFeedNotesForDisplay(list));
       if (feedTab === "public") {
         try {
-          setCampusListings(await fetchMarketplaceListings({ campusFeed: true }));
+          const listings = await fetchMarketplaceListings({ campusFeed: true });
+          if (!stillCurrent()) return;
+          setCampusListings(listings);
         } catch {
+          if (!stillCurrent()) return;
           setCampusListings([]);
         }
       } else {
@@ -382,7 +407,7 @@ export function TheQuad({
       await refreshPlayerSnapshotSafe();
       onRefresh?.();
     } finally {
-      setFeedLoading(false);
+      if (stillCurrent()) setFeedLoading(false);
     }
   }, [
     character.id,
@@ -408,6 +433,8 @@ export function TheQuad({
   useEffect(() => {
     const previous = feedTabRef.current;
     if (previous === feedTab) return;
+    // Invalidate in-flight refreshes so a slower Campus Feed response cannot paint into Greek Life.
+    refreshGenerationRef.current += 1;
     if (notes.length > 0) feedCacheRef.current.set(previous, notes);
     scrollByFeedRef.current.set(previous, window.scrollY);
     feedTabRef.current = feedTab;

@@ -28,7 +28,8 @@ export const QUAD_COMMUNITY_FEED_LABELS: Record<
     label: "Greek Life",
     hint: "Fraternity and sorority community",
     emptyTitle: "No Greek Life posts yet",
-    emptyBody: "Posts from Greek Life students, and posts tagging fraternities or sororities, will show up here.",
+    emptyBody:
+      "Posts from fraternities and sororities — tagging a Greek organization or posting as one — will show up here.",
   },
   athletics: {
     label: "Athletics",
