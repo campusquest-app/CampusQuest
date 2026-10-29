@@ -151,6 +151,7 @@ export function RealmLocationSheet({
       startY: number;
       lastY: number;
       startX: number;
+      startedAt: number;
       onHandle: boolean;
       active: boolean;
       resting: number;
@@ -198,12 +199,16 @@ export function RealmLocationSheet({
         startY: event.clientY,
         lastY: event.clientY,
         startX: event.clientX,
+        startedAt: Date.now(),
         onHandle,
         active: false,
         resting: locationSheetRestingOffset(height, snapRef.current),
         height,
       };
-      if (onHandle) sheet.setPointerCapture(event.pointerId);
+      if (onHandle) {
+        if (event.cancelable) event.preventDefault();
+        sheet.setPointerCapture(event.pointerId);
+      }
     };
 
     const onMove = (event: PointerEvent) => {
@@ -253,7 +258,9 @@ export function RealmLocationSheet({
         sheet.style.transform = "";
         return;
       }
-      const next = nextLocationSheetSnap(snapRef.current, finished.lastY - finished.startY);
+      const dy = finished.lastY - finished.startY;
+      const elapsed = Math.max(1, Date.now() - finished.startedAt);
+      const next = nextLocationSheetSnap(snapRef.current, dy, dy / elapsed);
       if (next === "closed") {
         onClose();
         return;
@@ -267,12 +274,20 @@ export function RealmLocationSheet({
       });
     };
 
+    const onViewportChange = () => {
+      drag = null;
+      releaseDragChrome();
+      sheet.style.transform = "";
+    };
+
     sheet.addEventListener("pointerdown", onDown);
     sheet.addEventListener("pointermove", onMove, { passive: false });
     sheet.addEventListener("pointerup", onUp);
     sheet.addEventListener("pointercancel", onUp);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
+    window.addEventListener("resize", onViewportChange);
+    window.visualViewport?.addEventListener("resize", onViewportChange);
     return () => {
       sheet.removeEventListener("pointerdown", onDown);
       sheet.removeEventListener("pointermove", onMove);
@@ -280,6 +295,8 @@ export function RealmLocationSheet({
       sheet.removeEventListener("pointercancel", onUp);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("resize", onViewportChange);
+      window.visualViewport?.removeEventListener("resize", onViewportChange);
       if (frame) window.cancelAnimationFrame(frame);
       releaseDragChrome();
     };

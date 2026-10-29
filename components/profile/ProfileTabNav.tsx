@@ -2,7 +2,7 @@
 
 import { FEATURE_FLAGS } from "@/lib/featureFlags";
 
-export type ProfileTab = "posts" | "tagged" | "memories" | "collectibles" | "activity";
+export type ProfileTab = "posts" | "tagged" | "anonymous" | "memories" | "collectibles" | "activity";
 
 const TABS: { id: ProfileTab; label: string }[] = [
   { id: "posts", label: "Posts" },
@@ -24,20 +24,23 @@ export function getVisibleProfileTabs(
 
 /** Which visible tab owns the given profile tab state ("tagged" → Posts). */
 export function visibleProfileTabFor(tab: ProfileTab): ProfileTab {
-  return tab === "tagged" ? "posts" : tab;
+  return tab === "tagged" || tab === "anonymous" ? "posts" : tab;
 }
 
 /** Posts tab filter: the user's own posts, or posts they're tagged in. */
 export function ProfilePostsFilter({
   active,
   onChange,
+  includeAnonymous = false,
 }: {
-  active: "posts" | "tagged";
-  onChange: (tab: "posts" | "tagged") => void;
+  active: "posts" | "tagged" | "anonymous";
+  onChange: (tab: "posts" | "tagged" | "anonymous") => void;
+  includeAnonymous?: boolean;
 }) {
   const options = [
     { id: "posts" as const, label: "Posts" },
     { id: "tagged" as const, label: "Tagged" },
+    ...(includeAnonymous ? [{ id: "anonymous" as const, label: "Anonymous Posts" }] : []),
   ];
   return (
     <div className="cq-profile-posts-filter" role="group" aria-label="Filter posts">

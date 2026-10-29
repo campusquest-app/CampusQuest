@@ -174,11 +174,13 @@ export async function addQuadPostComment(args: {
 
   const { data: postRow, error: postError } = await userClient
     .from("quad_posts")
-    .select("id, user_id")
+    .select("id, user_id, is_anonymous")
     .eq("id", postId)
     .maybeSingle();
   if (postError) throw new ApiError(400, postError.message, "QUAD_POST_LOOKUP_FAILED");
   if (!postRow) throw new ApiError(404, "Post not found.", "QUAD_POST_NOT_FOUND");
+  const { resolveQuadPostOwnerId } = await import("@/lib/server/anonymousPosts");
+  const ownerId = await resolveQuadPostOwnerId(postRow);
 
   let resolvedParentId: string | null = null;
   if (parentCommentId) {
@@ -210,9 +212,9 @@ export async function addQuadPostComment(args: {
   const profile = profileMap.get(userId) as CommentProfile | undefined;
   const comment = formatQuadPostComment(data as QuadPostCommentRow, profile, { likeCount: 0, viewerHasLiked: false });
 
-  if (postRow.user_id !== userId) {
+  if (ownerId && ownerId !== userId) {
     await notifyQuadPostCommented({
-      postOwnerUserId: postRow.user_id,
+      postOwnerUserId: ownerId,
       actorUserId: userId,
       actorUsername: profile?.username ?? "someone",
       postId,

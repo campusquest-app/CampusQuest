@@ -41,6 +41,10 @@ describe("location sheet snaps", () => {
     expect(nextLocationSheetSnap("peek", 10)).toBe("peek");
     expect(nextLocationSheetSnap("expanded", 12)).toBe("expanded");
     expect(nextLocationSheetSnap("peek", Number.NaN)).toBe("peek");
+    expect(nextLocationSheetSnap("peek", -20, -0.6)).toBe("expanded");
+    expect(nextLocationSheetSnap("peek", -20, -0.05)).toBe("peek");
+    expect(nextLocationSheetSnap("expanded", 22, 0.5)).toBe("peek");
+    expect(nextLocationSheetSnap("expanded", 8, 2)).toBe("expanded");
   });
 
   it("shifts the full sheet down to the peek and follows the finger without leaving the screen", () => {
@@ -149,6 +153,13 @@ describe("location sheet source contract", () => {
     expect(sheet).toContain("passive: false");
     expect(sheet).toContain("data-realm-sheet-dragging");
     expect(sheet).toContain("translate3d");
+    expect(sheet).toContain("dy / elapsed");
+    const css = readFileSync("app/globals.css", "utf8");
+    expect(css).toContain(
+      ".cq-loc-sheet.cq-loc-sheet--dock.cq-realm-archive-screen.cq-loc-sheet--expanded",
+    );
+    expect(css).toContain("z-index: 10050");
+    expect(css).toContain("height: 100dvh");
     expect(sheet).toContain('aria-label="Close location details"');
     expect(sheet).toContain("onAddMemory");
     expect(sheet).not.toContain("RealmDirectionsPanel");

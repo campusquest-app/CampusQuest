@@ -17,12 +17,15 @@ export async function reportQuadPost(args: {
 
   const { data: post, error: postError } = await userClient
     .from("quad_posts")
-    .select("id, user_id")
+    .select("id, user_id, is_anonymous")
     .eq("id", postId)
     .maybeSingle();
   if (postError) throw new ApiError(400, postError.message, "QUAD_POST_LOOKUP_FAILED");
   if (!post) throw new ApiError(404, "Post not found.", "QUAD_POST_NOT_FOUND");
-  if (post.user_id === userId) {
+  const { resolveQuadPostOwnerId } = await import("@/lib/server/anonymousPosts");
+  const ownerId = (await resolveQuadPostOwnerId(post)) ?? post.user_id;
+  if (!ownerId) throw new ApiError(404, "Post not found.", "QUAD_POST_NOT_FOUND");
+  if (ownerId === userId) {
     throw new ApiError(403, "You cannot report your own post.", "QUAD_POST_SELF_REPORT");
   }
 
@@ -42,7 +45,7 @@ export async function reportQuadPost(args: {
     .insert({
       post_id: postId,
       reporter_id: userId,
-      post_owner_id: post.user_id,
+      post_owner_id: ownerId,
       reason,
       details: details?.trim() ? details.trim().slice(0, 1000) : null,
       status: "open",

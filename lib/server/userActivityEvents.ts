@@ -185,6 +185,7 @@ export async function listUserActivityFeed(args: {
     .from("quad_posts")
     .select("id, body, created_at")
     .eq("user_id", args.userId)
+    .eq("is_anonymous", false)
     .order("created_at", { ascending: false })
     .limit(Math.min(20, limit));
 

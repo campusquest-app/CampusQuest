@@ -1746,14 +1746,25 @@ export async function listBlockedUsers(args: { userClient: SupabaseClientLike; u
   if (error) throw new ApiError(400, error.message, "BLOCKED_USERS_FETCH_FAILED");
 
   const blockedIds = (data ?? []).map((row) => row.blocked_id);
-  if (blockedIds.length === 0) return [];
+  const { listAnonymousBlocksForViewer } = await import("@/lib/server/anonymousPosts");
+  const anonymous = await listAnonymousBlocksForViewer(userClient);
+  const anonymousRows = anonymous.map((row) => ({
+    userId: "",
+    blockId: row.blockId,
+    username: "",
+    displayName: row.displayName,
+    avatarUrl: null,
+    blockedAt: row.blockedAt,
+    anonymous: true as const,
+  }));
+  if (blockedIds.length === 0) return anonymousRows;
   const { data: profiles, error: profilesError } = await userClient
     .from("profiles")
     .select("id, username, display_name, avatar_url, avatar_custom_json")
     .in("id", blockedIds);
   if (profilesError) throw new ApiError(400, profilesError.message, "BLOCKED_USER_PROFILES_FAILED");
   const profileMap = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
-  return (data ?? [])
+  const named = (data ?? [])
     .map((row) => {
       const profile = profileMap.get(row.blocked_id);
       if (!profile) return null;
@@ -1763,9 +1774,11 @@ export async function listBlockedUsers(args: { userClient: SupabaseClientLike; u
         displayName: profile.display_name,
         avatarUrl: resolveProfileAvatar(profile),
         blockedAt: row.created_at,
+        anonymous: false as const,
       };
     })
     .filter(Boolean);
+  return [...named, ...anonymousRows];
 }
 
 export async function reportMessage(args: {

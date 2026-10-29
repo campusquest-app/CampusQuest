@@ -55,12 +55,16 @@ export function ProfilePostsGrid({
   error,
   onRetry,
   onSelectPost,
+  emptyMessage = "No posts yet",
+  emptyDetail = "Share campus moments on The Quad to fill your grid.",
 }: {
   posts: FieldNote[];
   loading: boolean;
   error?: string | null;
   onRetry?: () => void;
   onSelectPost: (note: FieldNote) => void;
+  emptyMessage?: string;
+  emptyDetail?: string;
 }) {
   if (loading) {
     return (
@@ -91,8 +95,8 @@ export function ProfilePostsGrid({
       <div className="px-4 py-8">
         <ScreenDataState
           variant="empty"
-          message="No posts yet"
-          detail="Share campus moments on The Quad to fill your grid."
+          message={emptyMessage}
+          detail={emptyDetail}
           compact
         />
       </div>

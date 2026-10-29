@@ -61,10 +61,13 @@ export async function POST(
 
     const { data: post, error } = await auth.userClient
       .from("quad_posts")
-      .select("id, user_id")
+      .select("id, user_id, is_anonymous")
       .eq("id", parsed.data)
       .maybeSingle();
     if (error || !post) throw new ApiError(404, "Post not found.", "POST_NOT_FOUND");
+    if (post.is_anonymous) {
+      throw new ApiError(403, "Anonymous posts can’t tag or mention anyone.", "TAG_FORBIDDEN");
+    }
     if (post.user_id !== auth.user.id) {
       throw new ApiError(403, "Only the author can add tags.", "TAG_FORBIDDEN");
     }

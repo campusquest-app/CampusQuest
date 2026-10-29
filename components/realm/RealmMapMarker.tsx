@@ -172,7 +172,10 @@ export const RealmMapMarker = memo(function RealmMapMarker({
         </span>
       ) : null}
       {showCountdown && effectiveCountdown ? (
-        <EventCountdownBadge countdown={effectiveCountdown} />
+        <>
+          <span className="cq-realm-marker-badge-hit" aria-hidden />
+          <EventCountdownBadge countdown={effectiveCountdown} />
+        </>
       ) : null}
       {editMode && locationAdjusted ? (
         <span className="cq-realm-marker-adjusted" title="Admin adjusted location">
@@ -218,6 +221,7 @@ export const RealmMapMarker = memo(function RealmMapMarker({
               </span>
             ) : null}
           </div>
+          <span className="cq-realm-marker-hit" aria-hidden />
 
           <span className="marker-ground-ring" aria-hidden />
         </div>

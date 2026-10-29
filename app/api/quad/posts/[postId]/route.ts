@@ -17,6 +17,7 @@ import {
   syncRealmMomentForPostEdit,
 } from "@/lib/server/quadPostMutations";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
+import { presentAnonymousQuadPosts } from "@/lib/server/anonymousPosts";
 
 async function parsePostId(context: { params: Promise<{ postId: string }> }): Promise<string> {
   const { postId: rawPostId } = await context.params;
@@ -40,8 +41,15 @@ export async function PATCH(
     const existing = await getOwnedQuadPost({ userClient: auth.userClient, postId, userId: auth.user.id });
 
     const patch: Record<string, unknown> = {};
+    if (existing.is_anonymous && input.visibility === "friends") {
+      throw new ApiError(
+        403,
+        "Anonymous posts stay on the Campus Feed. Create a new post to publish under your name.",
+        "ANONYMITY_IMMUTABLE",
+      );
+    }
     if (input.body !== undefined) patch.body = input.body.trim().slice(0, 300);
-    if (input.visibility !== undefined) patch.visibility = input.visibility;
+    if (input.visibility !== undefined && !existing.is_anonymous) patch.visibility = input.visibility;
     if (input.locationId !== undefined || input.locationName !== undefined) {
       const loc = resolveQuadPostLocationFields({
         locationId: input.locationId,
@@ -74,8 +82,9 @@ export async function PATCH(
 
     const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, [postId]);
     const enriched = await enrichQuadPostsWithViewerReactions([post], viewerReactions, auth.user.id);
+    const [presented] = await presentAnonymousQuadPosts(enriched, auth.user.id);
 
-    return ok({ post: enriched[0] ?? post });
+    return ok({ post: presented ?? post });
   } catch (error) {
     if (error instanceof ZodError) {
       return fail(new ApiError(400, formatZodError(error), "VALIDATION_ERROR"));

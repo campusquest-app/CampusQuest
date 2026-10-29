@@ -15,6 +15,7 @@ export function SwitchProfileSheet({
   onAdd,
   onClose,
   hideAdd = false,
+  extraActions = [],
 }: {
   identities: CampusIdentity[];
   currentId: string;
@@ -23,6 +24,7 @@ export function SwitchProfileSheet({
   onAdd: () => void;
   onClose: () => void;
   hideAdd?: boolean;
+  extraActions?: { id: string; title: string; subtitle: string; selected: boolean; onSelect: () => void }[];
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -44,6 +46,25 @@ export function SwitchProfileSheet({
         <div className="cq-identity-sheet-handle" aria-hidden />
         <h2 className="cq-identity-sheet-title">Switch Profile</h2>
         <ul className="cq-identity-list">
+          {extraActions.map((action) => (
+            <li key={action.id}>
+              <button type="button" className="cq-identity-row" onClick={action.onSelect}>
+                <div className="cq-identity-row-avatar" aria-hidden>
+                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-lg">👤</span>
+                </div>
+                <span className="cq-identity-row-copy">
+                  <span className="cq-identity-row-name">{action.title}</span>
+                  <span className="cq-identity-row-meta">{action.subtitle}</span>
+                </span>
+                {action.selected ? (
+                  <span className="cq-identity-current">
+                    <Check className="h-4 w-4" aria-hidden />
+                    Current
+                  </span>
+                ) : null}
+              </button>
+            </li>
+          ))}
           {identities.map((identity) => {
             const isCurrent = identity.id === currentId;
             return (

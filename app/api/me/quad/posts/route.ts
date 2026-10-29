@@ -23,6 +23,7 @@ export async function GET(request: Request) {
       .from("quad_posts")
       .select(QUAD_POSTS_WITH_PROFILE_SELECT)
       .eq("user_id", auth.user.id)
+      .eq("is_anonymous", false)
       .order("created_at", { ascending: false })
       .limit(limit);
 

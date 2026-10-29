@@ -55,9 +55,10 @@ export async function GET(
     const friendSet = new Set(friendIds);
 
     const visible = ((posts ?? []) as unknown as QuadPostApiRow[]).filter((p) =>
+      !p.is_anonymous &&
       canViewerSeeTaggedPost({
         viewerId: auth.user.id,
-        authorId: p.user_id,
+        authorId: p.user_id ?? "",
         visibility: p.visibility,
         friendAuthorIds: friendSet,
       }),

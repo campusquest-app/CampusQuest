@@ -75,7 +75,8 @@ async function countQuadPosts(args: {
   let query = args.userClient
     .from("quad_posts")
     .select("id", { count: "exact", head: true })
-    .eq("user_id", args.authorId);
+    .eq("user_id", args.authorId)
+    .eq("is_anonymous", false);
   if (!args.includeFriendsOnly) {
     query = query.eq("visibility", "public");
   }
@@ -93,7 +94,8 @@ async function listAuthorQuadPosts(args: {
   let query = args.userClient
     .from("quad_posts")
     .select(QUAD_POSTS_WITH_PROFILE_SELECT)
-    .eq("user_id", args.authorId);
+    .eq("user_id", args.authorId)
+    .eq("is_anonymous", false);
 
   if (args.authorId !== args.viewerId) {
     const friendIds = await getAcceptedFriendUserIds({

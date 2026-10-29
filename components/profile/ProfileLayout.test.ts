@@ -41,9 +41,12 @@ describe("profile tabs", () => {
   it("moves Tagged into a Posts filter without dropping the tagged state", () => {
     expect(getVisibleProfileTabs({ codex: false }).map((t) => t.id)).toEqual(["posts", "memories", "activity"]);
     expect(visibleProfileTabFor("tagged")).toBe("posts");
+    expect(visibleProfileTabFor("anonymous")).toBe("posts");
     expect(visibleProfileTabFor("memories")).toBe("memories");
-    expect(page).toContain('tab === "posts" || tab === "tagged"');
-    expect(page).toContain("<ProfilePostsFilter active={tab} onChange={handleProfileTabChange} />");
+    expect(page).toContain('tab === "posts" || tab === "tagged" || tab === "anonymous"');
+    expect(page).toContain("includeAnonymous={isOwner}");
+    expect(page).toContain('if (next === "anonymous" && !isOwner) return;');
+    expect(page).toContain('if (!isOwner && tab === "anonymous") setTab("posts");');
     expect(page).toMatch(/tab === "tagged" \? \(\s*<ProfilePostsGrid\s+posts=\{taggedPosts\}/);
     expect(page).toContain('if (tab !== "tagged" || locked) return;');
   });

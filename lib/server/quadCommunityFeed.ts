@@ -248,6 +248,7 @@ export async function listCommunityQuadPosts(args: {
     .from("quad_posts")
     .select(QUAD_POSTS_WITH_PROFILE_SELECT)
     .eq("visibility", "public")
+    .eq("is_anonymous", false)
     .or(destinationFilter)
     .order("created_at", { ascending: false })
     .limit(fetchLimit);
@@ -277,7 +278,7 @@ export async function listCommunityQuadPosts(args: {
       viewerId: userId,
       post: {
         id: post.id,
-        user_id: post.user_id,
+        user_id: post.user_id ?? "",
         feed_destination: post.feed_destination ?? null,
       },
       authorIds: authorSet,

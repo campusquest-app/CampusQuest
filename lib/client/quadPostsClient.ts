@@ -98,6 +98,25 @@ export async function fetchQuadPostsByAuthor(
   return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
 }
 
+export async function fetchMyAnonymousPosts(
+  viewerId: string,
+  args?: { limit?: number; before?: string | null },
+): Promise<{ posts: FieldNote[]; nextCursor: string | null; stale: boolean }> {
+  const { anonymousPostListGeneration, isCurrentAnonymousPostList } = await import("@/lib/client/anonymousPostList");
+  const started = anonymousPostListGeneration();
+  const qs = new URLSearchParams({ limit: String(args?.limit ?? 20) });
+  if (args?.before) qs.set("before", args.before);
+  const data = await fetchAuthed<{ posts: QuadPostApiRow[]; nextCursor: string | null }>(
+    `/api/me/quad/anonymous-posts?${qs.toString()}`,
+  );
+  if (!isCurrentAnonymousPostList(started)) return { posts: [], nextCursor: null, stale: true };
+  return {
+    posts: data.posts.map((row) => quadPostRowToFieldNote(row, viewerId)),
+    nextCursor: data.nextCursor,
+    stale: false,
+  };
+}
+
 export async function fetchMyQuadPosts(viewerId: string, limit = 40): Promise<FieldNote[]> {
   const data = await fetchAuthed<{ posts: QuadPostApiRow[] }>(`/api/me/quad/posts?limit=${limit}`);
   return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
@@ -172,6 +191,7 @@ export async function createQuadPostRequest(
     mediaFileSizeBytes?: number;
     postedAsType?: "personal" | "student_business" | "organization";
     postedAsId?: string;
+    anonymous?: boolean;
     feedDestination?: "campus" | "local_businesses" | "organizations";
   },
   viewerId?: string,

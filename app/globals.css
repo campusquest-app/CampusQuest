@@ -3709,6 +3709,126 @@ html[data-cq-bottom-nav-hidden] {
   line-height: 1.4;
 }
 
+.cq-quad-feed-stream > .cq-feed-post--text {
+  contain-intrinsic-size: auto 7.5rem;
+  padding-bottom: 2px;
+}
+
+.cq-quad-feed-stream > .cq-feed-post--text:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 0;
+}
+
+.cq-feed-text-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 10px 16px 4px;
+}
+
+.cq-feed-text-identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cq-feed-text-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: #fff;
+  text-align: left;
+}
+
+.cq-feed-text-time {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.46);
+}
+
+.cq-feed-text-body {
+  padding: 0 16px 8px;
+}
+
+.cq-feed-text-copy p {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.45;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.96);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.cq-feed-text-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 8;
+  line-clamp: 8;
+  overflow: hidden;
+}
+
+.cq-feed-text-more {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 2px;
+  min-height: 32px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.cq-feed-text-location {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cq-feed-text-link {
+  margin-top: 8px;
+}
+
+.cq-feed-post--text .cq-feed-post-actions,
+.cq-feed-post--text .cq-feed-post-engagement,
+.cq-feed-post--text .cq-feed-post-comments {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.cq-feed-post--text .cq-feed-post-actions {
+  padding-top: 0;
+  padding-bottom: 4px;
+}
+
+.cq-feed-post--text .cq-feed-post-engagement {
+  padding-top: 0;
+  padding-bottom: 4px;
+}
+
+.cq-feed-post--text .cq-feed-post-comments {
+  padding-top: 0;
+  padding-bottom: 8px;
+}
+
 .cq-feed-post-engagement {
   padding-top: 0;
   padding-bottom: 0.2rem;
@@ -4370,6 +4490,19 @@ html[data-cq-media-pinching] {
 
   .cq-feed-post {
     padding-bottom: 1.15rem;
+  }
+
+  .cq-feed-post--text .cq-feed-text-header,
+  .cq-feed-post--text .cq-feed-text-body,
+  .cq-feed-post--text .cq-feed-post-actions,
+  .cq-feed-post--text .cq-feed-post-engagement,
+  .cq-feed-post--text .cq-feed-post-comments {
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  .cq-feed-post--text {
+    padding-bottom: 2px;
   }
 }
 
@@ -19552,11 +19685,34 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
 
 .cq-profile-posts-filter {
   display: flex;
+  flex-wrap: nowrap;
   gap: 0.375rem;
   padding: 0.5rem 0.375rem 0.125rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cq-anonymous-notice {
+  width: min(100%, 28rem);
+  max-height: min(78dvh, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 1.5rem));
+}
+
+.cq-anonymous-composer-note {
+  margin-top: 0.45rem;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.cq-profile-anonymous-note {
+  margin: 0.35rem 0.75rem 0.15rem;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.62);
 }
 
 .cq-profile-posts-filter-btn {
+  flex: 0 0 auto;
   min-height: 2rem;
   padding: 0 0.875rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -24390,9 +24546,9 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   width: 44px;
   height: 44px;
   transform: translateX(-50%);
-  /* iOS WKWebView skips hit-testing empty transparent pseudo-elements. */
-  pointer-events: auto;
-  background: rgba(0, 0, 0, 0.001);
+  /* The pin and countdown badge own taps. This pad must not sit above them. */
+  pointer-events: none;
+  background: transparent;
 }
 
 .marker-stack,
@@ -24403,7 +24559,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   align-items: center;
   overflow: visible;
   transition: transform 0.2s ease;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .marker-pin-anchor,
@@ -24412,10 +24568,37 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  width: 36px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   overflow: visible;
-  pointer-events: none;
+  pointer-events: auto;
+}
+
+/* Unrotated pad over the pin center. The rotated pin itself is not a reliable iOS target. */
+.cq-realm-marker-hit {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  z-index: 8;
+  width: 44px;
+  height: 44px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  touch-action: manipulation;
+  background: rgba(0, 0, 0, 0.001);
+}
+
+.cq-realm-marker-badge-hit {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 2px);
+  z-index: 10000;
+  width: 8.75rem;
+  height: 52px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  touch-action: manipulation;
+  background: rgba(0, 0, 0, 0.001);
 }
 
 /* Pointed pin body — classic map-pin silhouette */
@@ -24442,7 +24625,7 @@ html[data-realm-map-tilted] .cq-raised-building-pin {
     box-shadow 0.2s ease,
     filter 0.2s ease;
   animation: realm-marker-idle-breathe 3.6s ease-in-out infinite;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .marker-icon,
@@ -27654,8 +27837,24 @@ html[data-cq-map-exploring] .cq-gmap-user-here-label {
   will-change: transform;
 }
 
-.cq-loc-sheet--dock.cq-loc-sheet--expanded {
-  transform: translate3d(0, 0, 0);
+.cq-loc-sheet.cq-loc-sheet--dock.cq-realm-archive-screen.cq-loc-sheet--expanded {
+  inset: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 10050;
+  width: 100%;
+  height: 100dvh;
+  height: 100svh;
+  max-height: none;
+  margin: 0;
+  border-radius: 0;
+  transform: none;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.cq-loc-sheet--dock.cq-loc-sheet--expanded .cq-loc-scroll {
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
 }
 
 .cq-loc-sheet--dock.cq-loc-sheet--dragging {

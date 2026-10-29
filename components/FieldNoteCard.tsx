@@ -28,6 +28,7 @@ import { PostCommentsSheet } from "./posts/PostCommentsSheet";
 import { LikedByRow } from "./posts/LikedByRow";
 import { PostLikersSheet } from "./posts/PostLikersSheet";
 import { ReportPostSheet } from "./posts/ReportPostSheet";
+import { CqModalLayer } from "./ui/CqModalLayer";
 import { CaptionWithMentions } from "./quad/CaptionWithMentions";
 import { TaggedWithLine } from "./quad/TaggedWithLine";
 import { FeedPhotoTags } from "./quad/FeedPhotoTags";
@@ -38,6 +39,7 @@ import { filterRenderableCarouselMedia } from "@/lib/quadMedia";
 import { ZoomableImage } from "./quad/ZoomableImage";
 import type { CaptionMentionDraft, ComposerTagSelection } from "@/lib/postTags";
 import { looksLikeVideoUrl } from "@/lib/quadVideo";
+import { formatFeedExactTime, formatFeedRelativeTime } from "@/lib/client/feedRelativeTime";
 import { EmberReactionButton } from "@/components/embers/EmberReactionButton";
 import { EmberExplainerSheet } from "@/components/embers/EmberExplainerSheet";
 import {
@@ -270,6 +272,60 @@ function FeedCaption({
   );
 }
 
+function TextPostCopy({
+  body,
+  tags,
+  mentions,
+}: {
+  body: string;
+  tags: string[];
+  mentions?: CaptionMentionDraft[] | null;
+}) {
+  const trimmed = body.trim();
+  const bodyRef = useRef<HTMLParagraphElement | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [canExpand, setCanExpand] = useState(false);
+
+  useLayoutEffect(() => {
+    setExpanded(false);
+  }, [trimmed]);
+
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el || expanded) return;
+    const measure = () => setCanExpand(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [trimmed, expanded, tags]);
+
+  if (!trimmed && tags.length === 0) return null;
+
+  return (
+    <div className="cq-feed-text-copy">
+      <p ref={trimmed ? bodyRef : undefined} className={trimmed && !expanded ? "cq-feed-text-clamp" : undefined}>
+        {trimmed ? <CaptionWithMentions body={body} mentions={mentions} /> : null}
+        {tags.map((tag, index) => (
+          <span key={`${tag}-${index}`} className="font-medium text-uri-keaney/90">
+            {trimmed || index > 0 ? " " : ""}#{tag}
+          </span>
+        ))}
+      </p>
+      {canExpand ? (
+        <button
+          type="button"
+          className="cq-feed-text-more"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 /** Treat common CDN URLs as images even when the path has no file extension. */
 function looksLikeImageProofUrl(url: string): boolean {
   const u = url.trim();
@@ -416,6 +472,7 @@ function FieldNoteCardInner({
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [blockAnonymousOpen, setBlockAnonymousOpen] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [showPhotoTags, setShowPhotoTags] = useState(false);
@@ -428,7 +485,10 @@ function FieldNoteCardInner({
   const menuDropdownRef = useRef<HTMLDivElement | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number } | null>(null);
   const isPersistedPost = note.isPersisted ?? isPersistedQuadPostId(note.id);
-  const isOwner = (canManagePost ?? note.authorId === currentUserId) && isPersistedPost;
+  const isAnonymousPost = note.isAnonymous === true;
+  const isOwner =
+    (canManagePost ?? (isAnonymousPost ? note.viewerIsAuthor === true : note.authorId === currentUserId)) &&
+    isPersistedPost;
   const canModerateDelete = canModeratePosts && isPersistedPost && note.authorId !== currentUserId;
   const canReportPost = isPersistedPost && !isOwner;
   const showPostMenu = isOwner || canModerateDelete || canReportPost;
@@ -456,6 +516,7 @@ function FieldNoteCardInner({
     );
   const streak = streakBadge(note.authorStreakDays);
   const isFeed = variant === "feed";
+  const isMediaFeedPost = Boolean(usableCarousel || isVideo || isImgUrl);
 
   useEffect(() => {
     return () => {
@@ -618,7 +679,7 @@ function FieldNoteCardInner({
                 Edit Post
               </button>
             ) : null}
-            {isOwner ? (
+            {isOwner && !isAnonymousPost ? (
               <button
                 type="button"
                 role="menuitem"
@@ -630,6 +691,19 @@ function FieldNoteCardInner({
                 }}
               >
                 Add tags
+              </button>
+            ) : null}
+            {isAnonymousPost && !isOwner ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="cq-feed-post-menu-item"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setBlockAnonymousOpen(true);
+                }}
+              >
+                Block account
               </button>
             ) : null}
             {canReportPost ? (
@@ -822,7 +896,7 @@ function FieldNoteCardInner({
   );
   const eventTag = structuredTags.find((tag) => tag.entityType === "event" || tag.entityType === "external_event");
   const contextLinks =
-    onViewEvent || onViewOnMap ? (
+    (eventTag && onViewEvent) || (note.locationId && onViewOnMap) ? (
       <div className="cq-feed-context-links mt-1.5 flex flex-wrap gap-2">
         {eventTag && onViewEvent ? (
           <button
@@ -874,7 +948,10 @@ function FieldNoteCardInner({
     });
   }
 
-  const avatarFrame = onViewAuthor ? (
+  const showAuthorLink = Boolean(onViewAuthor) && !isAnonymousPost;
+  const authorLabel = isAnonymousPost ? note.authorName : note.authorUsername;
+
+  const avatarFrame = showAuthorLink ? (
     <button
       type="button"
       onClick={handleViewAuthor}
@@ -889,21 +966,51 @@ function FieldNoteCardInner({
     </div>
   );
 
-  const authorUsernamePrimary = onViewAuthor ? (
+  const textAvatarClass = `cq-avatar-slot h-7 w-7 flex-shrink-0 border border-white/15 bg-cq-elevated/8 ${
+    highlightStat === "strength"
+      ? "stat-aura-strength"
+      : highlightStat === "knowledge"
+        ? "stat-aura-knowledge"
+        : ""
+  }`;
+  const textAvatarFrame = showAuthorLink ? (
+    <button
+      type="button"
+      onClick={handleViewAuthor}
+      className={`${textAvatarClass} touch-manipulation transition hover:opacity-90`}
+      aria-label={`View ${note.authorName}'s profile`}
+    >
+      <AvatarDisplay avatar={note.authorAvatar} fitParent size={28} />
+    </button>
+  ) : (
+    <div className={textAvatarClass}>
+      <AvatarDisplay avatar={note.authorAvatar} fitParent size={28} />
+    </div>
+  );
+  const textAuthorName = showAuthorLink ? (
+    <button type="button" onClick={handleViewAuthor} className="cq-feed-text-name">
+      {authorLabel}
+    </button>
+  ) : (
+    <span className="cq-feed-text-name">{authorLabel}</span>
+  );
+  const textPostedAt = formatFeedExactTime(note.createdAt);
+
+  const authorUsernamePrimary = showAuthorLink ? (
     <button
       type="button"
       onClick={handleViewAuthor}
       className="truncate text-left text-[13px] font-semibold leading-tight tracking-tight text-white transition hover:text-uri-keaney/90"
     >
-      {note.authorUsername}
+      {authorLabel}
     </button>
   ) : (
     <span className="truncate text-[13px] font-semibold leading-tight tracking-tight text-white">
-      {note.authorUsername}
+      {authorLabel}
     </span>
   );
 
-  const authorNameEl = onViewAuthor ? (
+  const authorNameEl = showAuthorLink ? (
     <button
       type="button"
       onClick={handleViewAuthor}
@@ -1156,11 +1263,71 @@ function FieldNoteCardInner({
     <article
       className={
         isFeed
-          ? `cq-feed-post quad-feed-post bg-transparent${menuOpen ? " cq-feed-post--menu-open" : ""}`
+          ? `cq-feed-post quad-feed-post bg-transparent${isMediaFeedPost ? "" : " cq-feed-post--text"}${menuOpen ? " cq-feed-post--menu-open" : ""}`
           : `p-4 transition-colors hover:bg-cq-elevated/8${menuOpen ? " cq-feed-post--menu-open" : ""}`
       }
     >
-      {isFeed ? (
+      {isFeed && !isMediaFeedPost ? (
+        <>
+          <header className="cq-feed-text-header">
+            {textAvatarFrame}
+            <div className="cq-feed-text-identity">
+              {textAuthorName}
+              {note.authorVerifiedBadge && !isAnonymousPost ? (
+                <span className="cq-identity-badge shrink-0" aria-label="Verified">✓</span>
+              ) : null}
+              {isAnonymousPost && note.viewerIsAuthor ? (
+                <span className="shrink-0 text-[11px] font-medium text-white/55">Your anonymous post</span>
+              ) : null}
+              <time
+                dateTime={new Date(note.createdAt).toISOString()}
+                title={textPostedAt}
+                className="cq-feed-text-time"
+              >
+                {formatFeedRelativeTime(note.createdAt)}
+                <span className="sr-only">, {textPostedAt}</span>
+              </time>
+              {(note.verifyCount ?? 0) >= 2 ? (
+                <span className="shrink-0 text-[10px] font-medium text-emerald-300/75">Verified</span>
+              ) : null}
+              {streak ? (
+                <span className="shrink-0 text-[10px] font-medium text-uri-gold/85">{streak}</span>
+              ) : null}
+            </div>
+            {ownerMenu}
+          </header>
+
+          <div className="cq-feed-text-body">
+            <TextPostCopy
+              body={note.body}
+              tags={note.ramMarks.map((r) => r.tag)}
+              mentions={captionMentions}
+            />
+            {headerLocation ? <p className="cq-feed-text-location">{headerLocation}</p> : null}
+            {!isAnonymousPost && structuredTags.length > 0 ? <TaggedWithLine tags={structuredTags} /> : null}
+            {contextLinks}
+            {proofBlock ? <div className="cq-feed-text-link">{proofBlock}</div> : null}
+          </div>
+
+          <div className="cq-feed-post-actions post-actions" data-no-drawer-swipe="true">
+            {actionsRow}
+          </div>
+
+          {note.nodCount > 0 ? (
+            <div className="cq-feed-post-engagement">
+              <LikedByRow
+                preview={note.likedByPreview ?? []}
+                likeCount={note.nodCount}
+                onOpenLikers={openLikers}
+              />
+            </div>
+          ) : null}
+
+          {feedCommentsSection ? (
+            <div className="cq-feed-post-comments">{feedCommentsSection}</div>
+          ) : null}
+        </>
+      ) : isFeed ? (
         <>
           <header className="cq-feed-post-header flex items-center gap-2.5 px-3">
             {avatarFrame}
@@ -1218,13 +1385,13 @@ function FieldNoteCardInner({
           {(note.body.trim() || note.ramMarks.length > 0 || structuredTags.length > 0) && (
             <div className="cq-feed-post-caption px-3">
               <FeedCaption
-                username={note.authorUsername}
-                onUsernameClick={onViewAuthor ? handleViewAuthor : undefined}
+                username={isAnonymousPost ? undefined : note.authorUsername}
+                onUsernameClick={showAuthorLink ? handleViewAuthor : undefined}
                 body={note.body}
                 tags={note.ramMarks.map((r) => r.tag)}
                 mentions={captionMentions}
               />
-              {structuredTags.length > 0 ? <TaggedWithLine tags={structuredTags} /> : null}
+              {!isAnonymousPost && structuredTags.length > 0 ? <TaggedWithLine tags={structuredTags} /> : null}
               {contextLinks}
             </div>
           )}
@@ -1238,10 +1405,15 @@ function FieldNoteCardInner({
             <div className="flex items-start gap-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               {authorNameEl}
-              {note.authorVerifiedBadge ? (
+              {note.authorVerifiedBadge && !isAnonymousPost ? (
                 <span className="cq-identity-badge" aria-label="Verified">✓</span>
               ) : null}
-              {onViewAuthor ? authorUsernameEl : (
+              {isAnonymousPost && note.viewerIsAuthor ? (
+                <span className="text-[11px] font-medium text-white/55">Your anonymous post</span>
+              ) : null}
+              {isAnonymousPost ? null : onViewAuthor ? (
+                authorUsernameEl
+              ) : (
                 <span className="text-uri-keaney/90 text-sm">@{note.authorUsername}</span>
               )}
               <span className="text-white/50 text-xs">· {formatTime(note.createdAt)}</span>
@@ -1259,7 +1431,7 @@ function FieldNoteCardInner({
             <p className="text-white/90 mt-1 whitespace-pre-wrap break-words">
               <CaptionWithMentions body={note.body} mentions={captionMentions} />
             </p>
-            {structuredTags.length > 0 ? <TaggedWithLine tags={structuredTags} /> : null}
+            {!isAnonymousPost && structuredTags.length > 0 ? <TaggedWithLine tags={structuredTags} /> : null}
             {proofImgUrl && (
               <div className="mt-2 rounded-xl overflow-hidden border border-white/15 max-w-full">{proofBlock}</div>
             )}
@@ -1349,6 +1521,52 @@ function FieldNoteCardInner({
           onError={(message) => showToast(message)}
         />
       ) : null}
+
+      <CqModalLayer
+        open={blockAnonymousOpen}
+        onDismiss={() => {
+          if (!actionPending) setBlockAnonymousOpen(false);
+        }}
+        labelledBy="block-anonymous-title"
+        placement="dialog"
+        panelClassName="w-full max-w-sm rounded-2xl border border-white/15 bg-cq-elevated p-5 shadow-2xl"
+      >
+        <h2 id="block-anonymous-title" className="font-display text-lg font-bold text-white">
+          Block this account?
+        </h2>
+        <p className="mt-2 text-sm text-white/70">
+          This applies to the underlying account. Their profile is not shown, and you will stop seeing their posts.
+        </p>
+        <div className="mt-5 flex gap-2">
+          <button
+            type="button"
+            disabled={actionPending}
+            onClick={() => setBlockAnonymousOpen(false)}
+            className="flex-1 rounded-xl border border-white/15 py-2.5 text-sm font-medium text-white/70"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={actionPending}
+            onClick={() => {
+              setActionPending(true);
+              void postAuthed("/api/social/blocks/anonymous-post", { postId: note.id })
+                .then(() => {
+                  setBlockAnonymousOpen(false);
+                  showToast("You’ll no longer see posts from this account.");
+                })
+                .catch((err) => {
+                  showToast(err instanceof Error ? err.message : "Could not block this account.");
+                })
+                .finally(() => setActionPending(false));
+            }}
+            className="flex-1 rounded-xl bg-rose-600/90 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {actionPending ? "Blocking…" : "Block"}
+          </button>
+        </div>
+      </CqModalLayer>
 
       {deleteOpen && typeof document !== "undefined"
         ? createPortal(

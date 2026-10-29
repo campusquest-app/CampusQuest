@@ -120,7 +120,7 @@ export async function enrichQuadPostsWithViewerReactions(
     if (reactions?.has("spark")) viewer_reactions.push("spark");
     return {
       ...post,
-      hype_count: post.user_id === viewerId ? Math.max(0, post.hype_count ?? 0) : 0,
+      hype_count: Math.max(0, post.hype_count ?? 0),
       viewer_reactions,
       like_count: Math.max(0, post.nod_count ?? 0),
       current_user_has_liked: currentUserHasLiked,
@@ -131,10 +131,10 @@ export async function enrichQuadPostsWithViewerReactions(
 async function loadPostForReaction(
   userClient: SupabaseClientLike,
   postId: string,
-): Promise<{ id: string; user_id: string; nod_count: number }> {
+): Promise<{ id: string; user_id: string | null; is_anonymous?: boolean | null; nod_count: number }> {
   const { data, error } = await userClient
     .from("quad_posts")
-    .select("id, user_id, nod_count")
+    .select("id, user_id, is_anonymous, nod_count")
     .eq("id", postId)
     .maybeSingle();
 
@@ -148,8 +148,10 @@ async function loadPostForReaction(
 }
 
 /** Author-only total. Other viewers receive null so the response cannot be counted. */
-async function emberTotalForViewer(viewerId: string, authorId: string, postId: string): Promise<number | null> {
-  if (viewerId !== authorId) return null;
+async function emberTotalForViewer(viewerId: string, authorId: string | null, postId: string): Promise<number | null> {
+  const { viewerOwnsAnonymousPost } = await import("@/lib/server/anonymousPosts");
+  const owns = viewerId === authorId || (await viewerOwnsAnonymousPost(viewerId, postId));
+  if (!owns) return null;
   try {
     const admin = createAdminClient();
     const { data, error } = await admin.from("quad_posts").select("hype_count").eq("id", postId).maybeSingle();
@@ -259,13 +261,15 @@ export async function setQuadPostLike(args: {
 
   const post = await loadPostForReaction(userClient, postId);
   const before = await loadUserReactionState(userClient, postId, userId);
+  const { resolveQuadPostOwnerId } = await import("@/lib/server/anonymousPosts");
+  const ownerId = await resolveQuadPostOwnerId(post);
 
   if (liked) {
     await insertPostLike({ userClient, userId, postId });
-    if (!before.liked && post.user_id !== userId) {
+    if (!before.liked && ownerId && ownerId !== userId) {
       const actorUsername = await loadActorUsername(userClient, userId);
       await notifyQuadPostLiked({
-        postOwnerUserId: post.user_id,
+        postOwnerUserId: ownerId,
         actorUserId: userId,
         actorUsername,
         postId,
@@ -273,9 +277,9 @@ export async function setQuadPostLike(args: {
     }
   } else {
     await deletePostLike({ userClient, userId, postId });
-    if (before.liked && post.user_id !== userId) {
+    if (before.liked && ownerId && ownerId !== userId) {
       await removeQuadPostLikeNotification({
-        postOwnerUserId: post.user_id,
+        postOwnerUserId: ownerId,
         actorUserId: userId,
         postId,
       });
@@ -454,11 +458,13 @@ export async function toggleQuadPostReaction(args: {
       currentUserHasSparked: state.sparked,
     };
   } else {
+    const { resolveQuadPostOwnerId } = await import("@/lib/server/anonymousPosts");
+    const ownerId = (await resolveQuadPostOwnerId(post)) ?? "";
     await toggleSparkReaction({
       userClient,
       userId,
       postId,
-      postAuthorId: post.user_id,
+      postAuthorId: ownerId,
     });
   }
 

@@ -194,7 +194,8 @@ describe("Ember notifications", () => {
   it("hides private totals from non-authors in the reaction API", () => {
     const reactions = readFileSync(join(process.cwd(), "lib/server/quadReactions.ts"), "utf8");
     expect(reactions).toContain("emberTotalForViewer");
-    expect(reactions).toContain("if (viewerId !== authorId) return null");
+    expect(reactions).toContain("if (!owns) return null");
+    expect(reactions).toContain("viewerOwnsAnonymousPost");
     expect(reactions).toContain("discloseEmberCounts");
     expect(reactions).toContain("Already awarded — keep the row");
     expect(reactions).toMatch(/if \(existing\?\.id\) \{\s*return;\s*\}/);

@@ -9,6 +9,7 @@ import { QUAD_COMMENT_MAX_CHARS } from "@/lib/types";
 import type { QuadCommentActionResult } from "@/lib/client/quadCommentActions";
 import { nestQuadComments, type QuadCommentNode } from "@/lib/quadCommentsTree";
 import { ReportContentSheet } from "@/components/safety/ReportContentSheet";
+import { ANONYMOUS_COMMENT_COPY } from "@/lib/anonymousPost";
 
 const DISMISS_DRAG_PX = 96;
 const QUICK_EMOJIS = ["❤️", "🙌", "🔥", "👏", "😮", "😂", "🎉", "💯"] as const;
@@ -371,6 +372,7 @@ export function PostCommentsSheet({
 
         {onAddComment ? (
           <form className="cq-comments-sheet-composer" onSubmit={handleSubmit}>
+            {note.isAnonymous ? <p className="cq-anonymous-composer-note px-1">{ANONYMOUS_COMMENT_COPY}</p> : null}
             {replyingTo ? (
               <div className="cq-comments-sheet-replying col-span-full">
                 <span>

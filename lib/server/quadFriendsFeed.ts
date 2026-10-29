@@ -21,6 +21,7 @@ export async function listFriendsQuadPosts(args: {
     .from("quad_posts")
     .select(QUAD_POSTS_WITH_PROFILE_SELECT)
     .in("user_id", friendIds)
+    .eq("is_anonymous", false)
     .in("visibility", ["public", "friends"])
     .or("feed_destination.eq.campus,feed_destination.is.null")
     .order("created_at", { ascending: false })

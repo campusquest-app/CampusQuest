@@ -341,6 +341,10 @@ export interface FieldNote {
   postedAsType?: "personal" | "student_business" | "organization";
   postedAsId?: string;
   authorVerifiedBadge?: boolean;
+  /** Campus Feed post with no public author. */
+  isAnonymous?: boolean;
+  /** True only for the signed-in author. Never derived from a public author id. */
+  viewerIsAuthor?: boolean;
 }
 
 // For serialization we store nod/rally as arrays

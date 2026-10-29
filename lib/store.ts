@@ -501,6 +501,7 @@ export function logout(): void {
   if (typeof window === "undefined") return;
   clearCampusBossContributors();
   clearGuildBossContributors();
+  void import("@/lib/client/anonymousPostList").then((mod) => mod.invalidateAnonymousPostList());
 }
 
 export interface CreateCharacterOptions {

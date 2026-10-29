@@ -125,9 +125,11 @@ export function unlimitedEmberAllowance(now: Date = new Date()): EmberAllowance 
 export function disclosedEmberTotal(args: {
   viewerId: string | null | undefined;
   authorId: string | null | undefined;
+  viewerIsAuthor?: boolean;
   count: number | null | undefined;
 }): number {
-  if (!args.viewerId || args.viewerId !== args.authorId) return 0;
+  const owns = args.viewerIsAuthor === true || Boolean(args.viewerId && args.viewerId === args.authorId);
+  if (!owns) return 0;
   const count = Number(args.count ?? 0);
   if (!Number.isFinite(count)) return 0;
   return Math.max(0, Math.floor(count));

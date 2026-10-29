@@ -45,6 +45,7 @@ export const QUAD_POST_READER_COLUMNS = `
   media_count,
   cover_media_id,
   is_review_demo,
+  is_anonymous,
   created_at,
   updated_at
 `;

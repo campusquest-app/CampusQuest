@@ -22,7 +22,8 @@ import type { CampusMemoryGroup } from "@/lib/types";
 import { ConnectionActionButton } from "@/components/ConnectionActionButton";
 import { ReportContentSheet } from "@/components/safety/ReportContentSheet";
 import { postAuthed } from "@/lib/client/dashboardApi";
-import { fetchTaggedPosts } from "@/lib/client/quadPostsClient";
+import { fetchMyAnonymousPosts, fetchTaggedPosts } from "@/lib/client/quadPostsClient";
+import { invalidateAnonymousPostList } from "@/lib/client/anonymousPostList";
 import type { ProfileRelationshipStatus } from "@/lib/client/userProfileViewClient";
 
 export function ProfileSocialPage({
@@ -125,6 +126,10 @@ export function ProfileSocialPage({
   const [taggedPosts, setTaggedPosts] = useState<FieldNote[]>([]);
   const [taggedLoading, setTaggedLoading] = useState(false);
   const [taggedError, setTaggedError] = useState<string | null>(null);
+  const [anonymousPosts, setAnonymousPosts] = useState<FieldNote[]>([]);
+  const [anonymousLoading, setAnonymousLoading] = useState(false);
+  const [anonymousError, setAnonymousError] = useState<string | null>(null);
+  const [anonymousCursor, setAnonymousCursor] = useState<string | null>(null);
 
   async function handleBlockUser() {
     if (blockBusy) return;
@@ -181,8 +186,42 @@ export function ProfileSocialPage({
     void loadTagged();
   }, [tab, locked, loadTagged]);
 
+  useEffect(() => {
+    invalidateAnonymousPostList();
+    setAnonymousPosts([]);
+    setAnonymousCursor(null);
+    setAnonymousError(null);
+  }, [viewer.id]);
+
+  useEffect(() => {
+    if (!isOwner && tab === "anonymous") setTab("posts");
+  }, [isOwner, tab]);
+
+  const loadAnonymous = useCallback(async (before?: string | null) => {
+    if (!isOwner) return;
+    setAnonymousLoading(true);
+    setAnonymousError(null);
+    try {
+      const result = await fetchMyAnonymousPosts(viewer.id, { before });
+      if (result.stale) return;
+      setAnonymousPosts((current) => (before ? [...current, ...result.posts] : result.posts));
+      setAnonymousCursor(result.nextCursor);
+    } catch (err) {
+      if (!before) setAnonymousPosts([]);
+      setAnonymousError(err instanceof Error ? err.message : "Could not load anonymous posts.");
+    } finally {
+      setAnonymousLoading(false);
+    }
+  }, [isOwner, viewer.id]);
+
+  useEffect(() => {
+    if (tab !== "anonymous" || !isOwner || locked) return;
+    void loadAnonymous(null);
+  }, [tab, isOwner, locked, loadAnonymous]);
+
   const handleProfileTabChange = useCallback(
     (next: ProfileTab) => {
+      if (next === "anonymous" && !isOwner) return;
       if (next === "collectibles" && !FEATURE_FLAGS.codex) {
         setTab("posts");
         onProfileTabChange?.("posts");
@@ -191,7 +230,7 @@ export function ProfileSocialPage({
       setTab(next);
       onProfileTabChange?.(next);
     },
-    [onProfileTabChange],
+    [isOwner, onProfileTabChange],
   );
 
   const activitiesCount = canViewPrivateContent ? getActivityLogs(character.id).length : 0;
@@ -199,6 +238,7 @@ export function ProfileSocialPage({
     selectedPost
       ? posts.find((p) => p.id === selectedPost.id) ??
         taggedPosts.find((p) => p.id === selectedPost.id) ??
+        anonymousPosts.find((p) => p.id === selectedPost.id) ??
         selectedPost
       : null;
   const displayPostCount = postCount ?? posts.length;
@@ -334,8 +374,12 @@ export function ProfileSocialPage({
               <p className="border-b border-amber-400/30 bg-amber-500/15 px-4 py-2 text-sm text-amber-200">{reactionNotice}</p>
             ) : null}
 
-            {tab === "posts" || tab === "tagged" ? (
-              <ProfilePostsFilter active={tab} onChange={handleProfileTabChange} />
+            {tab === "posts" || tab === "tagged" || tab === "anonymous" ? (
+              <ProfilePostsFilter
+                active={tab === "anonymous" ? "anonymous" : tab === "tagged" ? "tagged" : "posts"}
+                includeAnonymous={isOwner}
+                onChange={handleProfileTabChange}
+              />
             ) : null}
             {tab === "posts" ? (
               <ProfilePostsGrid
@@ -354,6 +398,33 @@ export function ProfileSocialPage({
                 onRetry={() => void loadTagged()}
                 onSelectPost={setSelectedPost}
               />
+            ) : null}
+            {tab === "anonymous" && isOwner ? (
+              <>
+                <p className="cq-profile-anonymous-note">
+                  Only you can see this section. Your anonymous posts are still visible in the Campus Feed.
+                </p>
+                <ProfilePostsGrid
+                  posts={anonymousPosts}
+                  loading={anonymousLoading && anonymousPosts.length === 0}
+                  error={anonymousError}
+                  onRetry={() => void loadAnonymous(null)}
+                  onSelectPost={setSelectedPost}
+                  emptyMessage="No anonymous posts yet"
+                  emptyDetail="Posts you publish as Anonymous Student will show up here."
+                />
+                {anonymousCursor ? (
+                  <button
+                    type="button"
+                    className="cq-profile-posts-filter-btn"
+                    style={{ margin: "0.75rem" }}
+                    onClick={() => void loadAnonymous(anonymousCursor)}
+                    disabled={anonymousLoading}
+                  >
+                    {anonymousLoading ? "Loading…" : "Load more"}
+                  </button>
+                ) : null}
+              </>
             ) : null}
             {tab === "memories" ? (
               <ProfileMemoriesGrid
@@ -385,8 +456,12 @@ export function ProfileSocialPage({
           onVerify={onVerify}
           onAssist={onAssist}
           onAddComment={onAddComment}
-          onPostUpdated={onPostUpdated}
+          onPostUpdated={(note) => {
+            setAnonymousPosts((rows) => rows.map((row) => (row.id === note.id ? { ...row, ...note } : row)));
+            onPostUpdated?.(note);
+          }}
           onPostDeleted={(postId) => {
+            setAnonymousPosts((rows) => rows.filter((row) => row.id !== postId));
             setSelectedPost(null);
             onPostDeleted?.(postId);
           }}

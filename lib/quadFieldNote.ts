@@ -1,3 +1,4 @@
+import { anonymousAuthorPresentation } from "@/lib/anonymousPost";
 import { disclosedEmberTotal } from "@/lib/embers";
 import { resolveProfileAvatar } from "./avatarSource";
 import type { QuadCarouselMediaDto } from "./quadMedia";
@@ -23,7 +24,9 @@ export function isPersistedQuadPostId(id: string): boolean {
 /** Row shape from GET /api/quad/posts (with profiles join). */
 export type QuadPostApiRow = {
   id: string;
-  user_id: string;
+  user_id: string | null;
+  is_anonymous?: boolean | null;
+  viewer_is_author?: boolean | null;
   body: string;
   proof_url: string | null;
   media_type?: "none" | "image" | "video" | null;
@@ -76,14 +79,18 @@ export type QuadPostApiRow = {
 };
 
 export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): FieldNote {
+  const anonymous = row.is_anonymous === true;
+  const viewerIsAuthor = anonymous && row.viewer_is_author === true;
+  const presented = anonymous ? anonymousAuthorPresentation(viewerIsAuthor) : null;
   const p = row.profiles;
   const prof = Array.isArray(p) ? p[0] : p;
   const postedAsName = row.posted_as_display_name?.trim();
-  const name = (postedAsName || prof?.display_name || "Student").trim() || "Student";
+  const name = presented?.authorName || (postedAsName || prof?.display_name || "Student").trim() || "Student";
   const postedAsUsername = row.posted_as_username?.trim();
-  const username =
-    (postedAsUsername || prof?.username || "student").trim().toLowerCase().replace(/\s+/g, "_") || "student";
-  const avatar = row.posted_as_avatar_url?.trim() || resolveProfileAvatar(prof ?? undefined);
+  const username = presented
+    ? ""
+    : (postedAsUsername || prof?.username || "student").trim().toLowerCase().replace(/\s+/g, "_") || "student";
+  const avatar = presented?.authorAvatar || row.posted_as_avatar_url?.trim() || resolveProfileAvatar(prof ?? undefined);
 
   let ramMarks: RamMark[] = [];
   if (Array.isArray(row.ram_marks)) {
@@ -100,16 +107,19 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
   const hasSparked = viewerReactions.includes("spark");
   const emberTotal = disclosedEmberTotal({
     viewerId,
-    authorId: row.user_id,
+    authorId: presented ? "" : row.user_id,
+    viewerIsAuthor,
     count: row.hype_count,
   });
 
   return {
     id: row.id,
-    authorId: row.user_id,
+    authorId: presented ? "" : (row.user_id ?? ""),
     authorName: name,
     authorUsername: username,
     authorAvatar: avatar,
+    isAnonymous: anonymous,
+    viewerIsAuthor,
     body: row.body,
     ramMarks,
     nodCount: Math.max(0, row.like_count ?? row.nod_count ?? 0),
@@ -141,7 +151,7 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
       row.feed_destination === "local_businesses" || row.feed_destination === "organizations"
         ? row.feed_destination
         : "campus",
-    authorStreakDays: row.author_streak_days ?? undefined,
+    authorStreakDays: anonymous ? undefined : row.author_streak_days ?? undefined,
     locationId: row.location_id ?? undefined,
     locationName: row.location_name ?? undefined,
     isPersisted: true,

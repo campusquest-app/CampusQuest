@@ -1,3 +1,4 @@
+import { anonymousAuthorPresentation } from "@/lib/anonymousPost";
 import { resolveProfileAvatar } from "@/lib/avatarSource";
 import { ApiError } from "@/lib/server/http";
 import { sniffImageMimeFromBytes } from "@/lib/server/sniffImageMime";
@@ -420,6 +421,24 @@ export async function buildSharedPostPreview(args: {
   }
 
   const profile = Array.isArray(post.profiles) ? post.profiles[0] : post.profiles;
+  if (post.is_anonymous === true) {
+    const presented = anonymousAuthorPresentation(false);
+    return {
+      postId,
+      postType,
+      authorId: presented.authorId,
+      authorName: presented.authorName,
+      authorUsername: presented.authorUsername,
+      authorAvatar: presented.authorAvatar,
+      caption: String(post.body ?? "").slice(0, 500),
+      imageUrl:
+        post.media_type === "video"
+          ? (post.poster_url?.trim() || null)
+          : (post.proof_url?.trim() || null),
+      mediaType: post.media_type === "video" || post.media_type === "image" ? post.media_type : post.proof_url ? "image" : "none",
+      locationName: args.locationName ?? post.location_name ?? null,
+    };
+  }
   const authorId = post.user_id as string;
   const canView = await viewerCanSeeQuadPost({
     userClient,

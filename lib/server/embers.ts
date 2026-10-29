@@ -159,14 +159,20 @@ export function emberInsertExceededLimit(usedAfterInsert: number, unlimited = fa
   return shouldRollbackOverLimitInsert(usedAfterInsert, unlimited);
 }
 
-type EmberCountPost = { id: string; user_id: string; hype_count?: number | null };
+type EmberCountPost = { id: string; user_id: string | null; hype_count?: number | null; is_anonymous?: boolean | null };
 
 /**
  * Owner totals come from the service role. Every other viewer gets 0.
  * Direct reaction enumeration is closed by the spark SELECT policy.
  */
 export async function discloseEmberCounts<T extends EmberCountPost>(posts: T[], viewerId: string): Promise<T[]> {
-  const ownIds = posts.filter((post) => post.user_id === viewerId).map((post) => post.id);
+  const anonymousIds = posts.filter((post) => post.is_anonymous === true).map((post) => post.id);
+  const anonymousOwned =
+    anonymousIds.length > 0
+      ? await (await import("@/lib/server/anonymousPosts")).anonymousPostIdsOwnedBy(viewerId, anonymousIds)
+      : new Set<string>();
+  const owns = (post: T) => post.user_id === viewerId || anonymousOwned.has(post.id);
+  const ownIds = posts.filter(owns).map((post) => post.id);
   const counts = new Map<string, number>();
   if (ownIds.length > 0) {
     try {
@@ -184,7 +190,7 @@ export async function discloseEmberCounts<T extends EmberCountPost>(posts: T[], 
     }
   }
   return posts.map((post) => {
-    if (post.user_id !== viewerId) return { ...post, hype_count: 0 };
+    if (!owns(post)) return { ...post, hype_count: 0 };
     const fromStore = counts.get(post.id);
     const fallback = Math.max(0, Number(post.hype_count ?? 0) || 0);
     return { ...post, hype_count: fromStore ?? fallback };

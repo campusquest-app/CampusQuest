@@ -59,10 +59,17 @@ export function FieldNoteEditModal({
         <h2 id="field-note-edit-title" className="font-display text-lg font-bold text-white">
           Edit Post
         </h2>
-        <p className="mt-1 text-xs text-white/45">Update your caption, visibility, or map location. Media stays attached.</p>
+        <p className="mt-1 text-xs text-white/45">
+          {note.isAnonymous
+            ? "Update the caption or map location. This post stays anonymous on the Campus Feed."
+            : "Update your caption, visibility, or map location. Media stays attached."}
+        </p>
       </header>
 
       <div className="cq-modal-body space-y-3 px-5 py-4">
+        {note.isAnonymous ? (
+          <p className="text-xs text-white/55">Publishing under your name requires a new post.</p>
+        ) : (
         <div>
           <span className="mb-1.5 block text-xs text-white/60">Post to</span>
           <div className="flex gap-2">
@@ -90,6 +97,7 @@ export function FieldNoteEditModal({
             </button>
           </div>
         </div>
+        )}
 
         <div>
           <label htmlFor="edit-field-note-location" className="mb-1 block text-xs text-white/60">

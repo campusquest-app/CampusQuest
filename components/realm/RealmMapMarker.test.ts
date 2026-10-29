@@ -29,6 +29,7 @@ describe("RealmMapMarker magical pin", () => {
     expect(html).toContain("realm-marker");
     expect(html).toContain('data-color="electric-blue"');
     expect(html).toContain("marker-pin");
+    expect(html).toContain("cq-realm-marker-hit");
     expect(html).toContain("marker-icon");
     expect(html).toContain("marker-aura");
     expect(html).toContain("marker-particles");

@@ -20,19 +20,21 @@ export function locationSheetHeightPx(available: number, snap: LocationSheetSnap
 }
 
 /**
- * Positive dy is a downward drag.
+ * Positive dy is a downward drag. Velocity is px/ms, positive downward.
  * Expanded + down collapses to peek. Peek + down dismisses. Up expands.
- * A long downward flick from expanded can dismiss in one gesture.
+ * A short fast flick counts the same as a longer drag. A tap (tiny dy) does not.
  */
 export function nextLocationSheetSnap(
   current: LocationSheetSnap,
   dy: number,
+  velocity = 0,
 ): LocationSheetSnap | "closed" {
   if (!Number.isFinite(dy)) return current;
-  if (dy <= -48) return "expanded";
-  if (current === "expanded" && dy >= 160) return "closed";
-  if (current === "expanded" && dy >= 56) return "peek";
-  if (current === "peek" && dy >= 72) return "closed";
+  const speed = Number.isFinite(velocity) ? velocity : 0;
+  if (dy <= -48 || (dy <= -16 && speed <= -0.45)) return "expanded";
+  if (current === "expanded" && (dy >= 160 || (dy >= 36 && speed >= 1.1))) return "closed";
+  if (current === "expanded" && (dy >= 48 || (dy >= 16 && speed >= 0.4))) return "peek";
+  if (current === "peek" && (dy >= 72 || (dy >= 28 && speed >= 0.65))) return "closed";
   return current;
 }
 

@@ -56,7 +56,7 @@ export async function GET(request: Request) {
     const items: PendingTagItem[] = [];
     for (const tag of tags) {
       const post = postById.get(tag.post_id as string);
-      if (!post) continue;
+      if (!post || post.is_anonymous || !post.user_id) continue;
       const p = post.profiles;
       const prof = Array.isArray(p) ? p[0] : p;
       items.push({

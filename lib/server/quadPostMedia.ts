@@ -249,6 +249,7 @@ export async function attachCarouselMediaToPost(args: {
   userId: string;
   items: { mediaId: string; sortOrder: number }[];
   coverMediaId?: string | null;
+  anonymous?: boolean;
 }): Promise<{ cover: ReadyQuadMedia; mediaCount: number }> {
   const { postId, userId, items } = args;
   if (items.length < 1 || items.length > QUAD_CAROUSEL_MAX_ITEMS) {
@@ -297,7 +298,7 @@ export async function attachCarouselMediaToPost(args: {
   const coverId = args.coverMediaId && mediaIds.includes(args.coverMediaId) ? args.coverMediaId : items.sort((a, b) => a.sortOrder - b.sortOrder)[0]!.mediaId;
   const cover = ready.find((m) => m.id === coverId) ?? ready[0]!;
 
-  await admin
+  let postUpdate = admin
     .from("quad_posts")
     .update({
       media_count: items.length,
@@ -314,8 +315,9 @@ export async function attachCarouselMediaToPost(args: {
       media_storage_path: cover.storagePath,
       media_processing_status: "ready",
     })
-    .eq("id", postId)
-    .eq("user_id", userId);
+    .eq("id", postId);
+  if (!args.anonymous) postUpdate = postUpdate.eq("user_id", userId);
+  await postUpdate;
 
   return { cover, mediaCount: items.length };
 }
@@ -325,6 +327,7 @@ export async function attachSingleVideoToPost(args: {
   mediaId: string;
   postId: string;
   userId: string;
+  anonymous?: boolean;
 }): Promise<ReadyQuadVideoMedia> {
   const media = await attachMediaToPost(args);
   const admin = createAdminClient();
@@ -332,11 +335,12 @@ export async function attachSingleVideoToPost(args: {
     .from("quad_post_media")
     .update({ sort_order: 0 })
     .eq("id", args.mediaId);
-  await admin
+  let postUpdate = admin
     .from("quad_posts")
     .update({ media_count: 1, cover_media_id: args.mediaId })
-    .eq("id", args.postId)
-    .eq("user_id", args.userId);
+    .eq("id", args.postId);
+  if (!args.anonymous) postUpdate = postUpdate.eq("user_id", args.userId);
+  await postUpdate;
   return media;
 }
 

@@ -7,10 +7,12 @@ import { deleteAuthed, fetchAuthed } from "@/lib/client/dashboardApi";
 
 type BlockedUserRow = {
   userId: string;
+  blockId?: string;
   username: string;
   displayName: string;
   avatarUrl?: string | null;
   blockedAt?: string;
+  anonymous?: boolean;
 };
 
 export function BlockedUsersPanel({ onBack }: { onBack: () => void }) {
@@ -38,14 +40,23 @@ export function BlockedUsersPanel({ onBack }: { onBack: () => void }) {
     void load();
   }, [load]);
 
-  async function handleUnblock(userId: string) {
-    setBusyId(userId);
+  function rowKey(row: BlockedUserRow): string {
+    return row.anonymous && row.blockId ? `anon:${row.blockId}` : row.userId;
+  }
+
+  async function handleUnblock(row: BlockedUserRow) {
+    const key = rowKey(row);
+    setBusyId(key);
     setNotice(null);
     try {
-      await deleteAuthed(`/api/social/blocks/${userId}`);
-      setRows((prev) => prev.filter((r) => r.userId !== userId));
+      if (row.anonymous && row.blockId) {
+        await deleteAuthed(`/api/social/blocks/anonymous/${row.blockId}`);
+      } else {
+        await deleteAuthed(`/api/social/blocks/${row.userId}`);
+      }
+      setRows((prev) => prev.filter((entry) => rowKey(entry) !== key));
       setConfirmId(null);
-      setNotice("User unblocked.");
+      setNotice(row.anonymous ? "Account unblocked." : "User unblocked.");
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "Could not unblock user.");
     } finally {
@@ -81,7 +92,7 @@ export function BlockedUsersPanel({ onBack }: { onBack: () => void }) {
         <ul className="overflow-hidden rounded-2xl border border-white/[0.08] bg-cq-card/60">
           {rows.map((row, index) => (
             <li
-              key={row.userId}
+              key={rowKey(row)}
               className={`flex items-center gap-3 px-3 py-3 ${
                 index < rows.length - 1 ? "border-b border-white/[0.06]" : ""
               }`}
@@ -94,21 +105,25 @@ export function BlockedUsersPanel({ onBack }: { onBack: () => void }) {
               />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-white/90">{row.displayName}</p>
-                <p className="truncate text-[11px] text-white/40">@{row.username}</p>
+                {row.anonymous ? (
+                  <p className="truncate text-[11px] text-white/40">Profile hidden</p>
+                ) : (
+                  <p className="truncate text-[11px] text-white/40">@{row.username}</p>
+                )}
               </div>
-              {confirmId === row.userId ? (
+              {confirmId === rowKey(row) ? (
                 <div className="flex shrink-0 gap-1.5">
                   <button
                     type="button"
-                    disabled={busyId === row.userId}
-                    onClick={() => void handleUnblock(row.userId)}
+                    disabled={busyId === rowKey(row)}
+                    onClick={() => void handleUnblock(row)}
                     className="rounded-lg border border-cyan-300/40 px-2.5 py-1.5 text-xs font-semibold text-cyan-100 hover:bg-white/[0.06] disabled:opacity-45 touch-manipulation"
                   >
-                    {busyId === row.userId ? "…" : "Confirm"}
+                    {busyId === rowKey(row) ? "…" : "Confirm"}
                   </button>
                   <button
                     type="button"
-                    disabled={busyId === row.userId}
+                    disabled={busyId === rowKey(row)}
                     onClick={() => setConfirmId(null)}
                     className="rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/[0.06] disabled:opacity-45 touch-manipulation"
                   >
@@ -118,8 +133,8 @@ export function BlockedUsersPanel({ onBack }: { onBack: () => void }) {
               ) : (
                 <button
                   type="button"
-                  disabled={busyId === row.userId}
-                  onClick={() => setConfirmId(row.userId)}
+                  disabled={busyId === rowKey(row)}
+                  onClick={() => setConfirmId(rowKey(row))}
                   className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/[0.06] disabled:opacity-45 touch-manipulation"
                 >
                   Unblock

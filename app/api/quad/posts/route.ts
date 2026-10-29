@@ -33,6 +33,11 @@ import {
 } from "@/lib/server/quadPostMedia";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 import { localBusinessPostDenial, organizationPostDenial, postBelongsInFeed } from "@/lib/quad/localBusinessFeed";
+import { anonymousPostRequestError } from "@/lib/anonymousPost";
+import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
+import { assertAnonymousNoticeAccepted, presentAnonymousQuadPosts } from "@/lib/server/anonymousPosts";
+import { requireVerifiedSchoolForCoreAccess } from "@/lib/server/schoolVerification";
+import { relocateAnonymousPostMedia } from "@/lib/server/anonymousPostMedia";
 
 async function withTagsAndMentions(posts: QuadPostApiRow[]): Promise<QuadPostApiRow[]> {
   return (await enrichQuadPostsWithTagsAndMentions(posts)) as QuadPostApiRow[];
@@ -46,12 +51,15 @@ async function finalizeFeedPosts(
   const withMedia = (await enrichPostsWithCarouselMedia(tagged)) as QuadPostApiRow[];
   const { enrichPostsWithPostedAs } = await import("@/lib/server/identities");
   const withPostedAs = (await enrichPostsWithPostedAs(withMedia as Record<string, unknown>[])) as QuadPostApiRow[];
-  if (!args) return withPostedAs;
-  return attachRecentLikersToPosts({
-    userClient: args.userClient,
-    viewerId: args.viewerId,
-    posts: withPostedAs,
-  });
+  const liked = args
+    ? await attachRecentLikersToPosts({
+        userClient: args.userClient,
+        viewerId: args.viewerId,
+        posts: withPostedAs,
+      })
+    : withPostedAs;
+  if (!args) return liked;
+  return presentAnonymousQuadPosts(liked, args.viewerId);
 }
 
 function missingFeedDestinationColumn(error: { message?: string; details?: string } | null | undefined): boolean {
@@ -104,7 +112,7 @@ export async function GET(request: Request) {
           userClient: auth.userClient,
           userId: auth.user.id,
         });
-        if (!friendIds.includes(post.user_id)) {
+        if (!post.user_id || !friendIds.includes(post.user_id)) {
           return ok({ posts: [] as QuadPostApiRow[] });
         }
       } else if (post.user_id !== auth.user.id && post.visibility !== "public") {
@@ -126,6 +134,7 @@ export async function GET(request: Request) {
         .from("quad_posts")
         .select(QUAD_POSTS_WITH_PROFILE_SELECT)
         .eq("visibility", "public")
+        .eq("is_anonymous", false)
         .eq("feed_destination", destination)
         .order("created_at", { ascending: false })
         .limit(limit);
@@ -144,7 +153,7 @@ export async function GET(request: Request) {
       const posts = ((listedQuery.data ?? []) as unknown as QuadPostApiRow[]).filter(
         (post) =>
           postBelongsInFeed(post.feed_destination, destination) &&
-          (post.user_id === auth.user.id || !hiddenIds.has(post.user_id)),
+          (post.user_id === auth.user.id || (post.user_id != null && !hiddenIds.has(post.user_id))),
       );
       const postIds = posts.map((p) => p.id);
       const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, postIds);
@@ -214,7 +223,7 @@ export async function GET(request: Request) {
       if (!parsed.success) {
         throw new ApiError(400, "Invalid author id.", "INVALID_AUTHOR");
       }
-      query = query.eq("user_id", authorIdParam);
+      query = query.eq("user_id", authorIdParam).eq("is_anonymous", false);
       if (authorIdParam !== auth.user.id) {
         const { getAcceptedFriendUserIds } = await import("@/lib/server/friendProfileAccess");
         const friendIds = await getAcceptedFriendUserIds({
@@ -272,7 +281,7 @@ export async function GET(request: Request) {
 
     // QA/test account posts stay visible to the author, hidden from everyone else.
     const posts = ((listed ?? []) as unknown as QuadPostApiRow[]).filter((post) => {
-      if (post.user_id !== auth.user.id && hiddenIds.has(post.user_id)) return false;
+      if (post.user_id && post.user_id !== auth.user.id && hiddenIds.has(post.user_id)) return false;
       if (!authorIdParam && !postBelongsInFeed(post.feed_destination, "campus")) return false;
       return true;
     });
@@ -348,8 +357,27 @@ export async function POST(request: Request) {
       }
     }
 
+    const anonymous = input.anonymous === true;
+    const scopeError = anonymousPostRequestError({
+      anonymous,
+      feedDestination: input.feedDestination ?? "campus",
+      visibility: input.visibility ?? "public",
+      postedAsType: input.postedAsType ?? "personal",
+      tagCount: input.tags?.length ?? 0,
+      mentionCount: input.mentions?.length ?? 0,
+      photoTagCount: input.photoTags?.length ?? 0,
+    });
+    if (scopeError) {
+      throw new ApiError(403, scopeError, "ANONYMOUS_POST_FORBIDDEN");
+    }
+    if (anonymous) {
+      await assertAccountCanSocialize(auth.userClient, auth.user.id);
+      await requireVerifiedSchoolForCoreAccess({ userClient: auth.userClient, user: auth.user });
+      await assertAnonymousNoticeAccepted(auth.user.id);
+    }
+
     const ramMarks = normalizeRamMarks(input.ramMarks);
-    const visibility = input.visibility ?? "public";
+    const visibility = anonymous ? "public" : (input.visibility ?? "public");
     const locationId = input.locationId?.trim();
     const locationName = input.locationName?.trim();
     const hasValidLocation = !!locationId && isRealmLocationId(locationId);
@@ -361,7 +389,7 @@ export async function POST(request: Request) {
       requestedType: input.postedAsType ?? "personal",
       requestedId: input.postedAsId ?? auth.user.id,
     });
-    const feedDestination = input.feedDestination ?? "campus";
+    const feedDestination = anonymous ? "campus" : (input.feedDestination ?? "campus");
     const postingDenial =
       localBusinessPostDenial({
         feedDestination,
@@ -402,7 +430,8 @@ export async function POST(request: Request) {
       ram_marks: ramMarks,
       related_activity_id: input.relatedActivityId ?? null,
       related_quest_slug: input.relatedQuestSlug ?? null,
-      author_streak_days: input.authorStreakDays ?? null,
+      author_streak_days: anonymous ? null : (input.authorStreakDays ?? null),
+      is_anonymous: anonymous,
       location_id: hasValidLocation ? locationId : null,
       location_name: hasValidLocation && locationName ? locationName.slice(0, 80) : null,
       visibility: feedDestination === "campus" ? visibility : "public",
@@ -482,6 +511,7 @@ export async function POST(request: Request) {
             mediaId: carouselItems[0]!.mediaId,
             postId: post.id,
             userId: auth.user.id,
+            anonymous,
           });
         } else {
           await attachCarouselMediaToPost({
@@ -489,18 +519,23 @@ export async function POST(request: Request) {
             userId: auth.user.id,
             items: carouselItems,
             coverMediaId,
+            anonymous,
           });
+        }
+        if (anonymous) {
+          await relocateAnonymousPostMedia({ postId: post.id, userId: auth.user.id });
         }
       } catch (mediaErr) {
         logQuadPostError("media_attach", mediaErr, { userId: auth.user.id, postId: post.id });
-        await auth.userClient.from("quad_posts").delete().eq("id", post.id).eq("user_id", auth.user.id);
+        const removal = auth.userClient.from("quad_posts").delete().eq("id", post.id);
+        await (anonymous ? removal : removal.eq("user_id", auth.user.id));
         throw mediaErr instanceof ApiError
           ? mediaErr
           : new ApiError(400, "Could not attach media to post.", "MEDIA_ATTACH_FAILED");
       }
     }
 
-    try {
+    if (!anonymous) try {
       const authorUsername =
         (post as { profiles?: { username?: string | null } }).profiles?.username?.trim() ||
         "Someone";
@@ -543,7 +578,7 @@ export async function POST(request: Request) {
     });
 
     let realmMoment: { id: string; locationId: string; locationName: string; expiresAt: string } | null = null;
-    if (shouldCreateRealmMoment({ visibility, locationId: hasValidLocation ? locationId : null })) {
+    if (!anonymous && shouldCreateRealmMoment({ visibility, locationId: hasValidLocation ? locationId : null })) {
       realmMoment = await createRealmMomentForPost({
         userClient: auth.userClient,
         postId: post.id,

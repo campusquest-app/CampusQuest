@@ -17,7 +17,16 @@ import {
 import { normalizeRamMarkTag, prependRemoteQuadPost } from "@/lib/feedStore";
 import { createQuadPostRequest } from "@/lib/client/quadPostsClient";
 import type { QuadPostXpReward } from "@/lib/quadPostXp";
-import { ApiRequestError } from "@/lib/client/dashboardApi";
+import { ApiRequestError, fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import {
+  ANONYMOUS_ACCOUNTABILITY_LINE,
+  ANONYMOUS_AUDIENCE_COPY,
+  ANONYMOUS_IDENTITY_HINT,
+  ANONYMOUS_NOTICE_VERSION,
+  ANONYMOUS_STUDENT_AVATAR,
+  ANONYMOUS_STUDENT_NAME,
+} from "@/lib/anonymousPost";
+import { AnonymousPostNotice } from "@/components/posts/AnonymousPostNotice";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import type { Character } from "@/lib/types";
 import type { QuadPostVisibility } from "@/lib/types";
@@ -185,11 +194,52 @@ export function FieldNoteComposer({
   const postingToLocalBusinesses = canPostLocalBusinesses && feedDestination === "local_businesses" && Boolean(businessIdentity);
   const postingToOrganizations = canPostOrganizations && feedDestination === "organizations" && Boolean(organizationIdentity);
   const [identityPickerOpen, setIdentityPickerOpen] = useState(false);
+  const [anonymousMode, setAnonymousMode] = useState(false);
+  const [audienceBeforeAnonymous, setAudienceBeforeAnonymous] = useState<QuadPostVisibility | null>(null);
+  const [identityNotice, setIdentityNotice] = useState<string | null>(null);
+  const [noticeOpen, setNoticeOpen] = useState(false);
+  const [noticeAccepted, setNoticeAccepted] = useState(false);
+  const [noticeBusy, setNoticeBusy] = useState(false);
   const photoFileRef = useRef<HTMLInputElement>(null);
   const cameraFileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const locationSelectRef = useRef<HTMLSelectElement>(null);
   const { locations: campusLocations } = useCampusLocations();
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAuthed<{ accepted: boolean }>("/api/me/anonymous-posting")
+      .then((status) => {
+        if (!cancelled) setNoticeAccepted(status.accepted === true);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function enableAnonymous() {
+    setAudienceBeforeAnonymous((current) => current ?? visibility);
+    setVisibility("public");
+    setAnonymousMode(true);
+    setIdentityNotice(null);
+  }
+
+  function leaveAnonymousMode() {
+    if (audienceBeforeAnonymous) setVisibility(audienceBeforeAnonymous);
+    setAudienceBeforeAnonymous(null);
+    setAnonymousMode(false);
+  }
+
+  useEffect(() => {
+    if (!anonymousMode || feedDestination === "campus") return;
+    leaveAnonymousMode();
+    setIdentityNotice(
+      "Anonymous posts are only available in the Campus Feed. Switched back to your profile. Your draft is still here.",
+    );
+    // leaveAnonymousMode closes over the audience saved when anonymous mode started.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anonymousMode, feedDestination]);
 
   const openLocationOptions = useCallback(() => {
     setMoreOpen(true);
@@ -403,6 +453,11 @@ export function FieldNoteComposer({
       setError("Only approved organization representatives can post to Organizations.");
       return;
     }
+    if (anonymousMode && (composerTags.length > 0 || captionMentions.length > 0 || photoTags.length > 0)) {
+      setError("Remove tags and mentions before posting anonymously.");
+      postingLockRef.current = false;
+      return;
+    }
     setError(null);
     setSuccessMessage(null);
     postingLockRef.current = true;
@@ -430,19 +485,24 @@ export function FieldNoteComposer({
           publishIdempotencyKey: publishKeyRef.current,
           mediaId: published.length === 1 ? published[0]!.mediaId : undefined,
           posterUrl: cover?.mediaType === "video" ? cover.thumbnailUrl ?? undefined : undefined,
-          visibility: postingToLocalBusinesses || postingToOrganizations ? "public" : visibility,
+          visibility: anonymousMode || postingToLocalBusinesses || postingToOrganizations ? "public" : visibility,
           ramMarks,
-          authorStreakDays: character.streakDays ?? 0,
-          postedAsType: postingToOrganizations
-            ? "organization"
-            : postingToLocalBusinesses
-              ? "student_business"
-              : postingIdentity?.type ?? "personal",
-          postedAsId: postingToOrganizations
-            ? organizationIdentity?.id ?? character.id
-            : postingToLocalBusinesses
-              ? businessIdentity?.id ?? character.id
-              : postingIdentity?.id ?? character.id,
+          authorStreakDays: anonymousMode ? undefined : character.streakDays ?? 0,
+          anonymous: anonymousMode || undefined,
+          postedAsType: anonymousMode
+            ? "personal"
+            : postingToOrganizations
+              ? "organization"
+              : postingToLocalBusinesses
+                ? "student_business"
+                : postingIdentity?.type ?? "personal",
+          postedAsId: anonymousMode
+            ? character.id
+            : postingToOrganizations
+              ? organizationIdentity?.id ?? character.id
+              : postingToLocalBusinesses
+                ? businessIdentity?.id ?? character.id
+                : postingIdentity?.id ?? character.id,
           feedDestination: postingToOrganizations
             ? "organizations"
             : postingToLocalBusinesses
@@ -451,14 +511,16 @@ export function FieldNoteComposer({
           ...(selectedLocation
             ? { locationId: selectedLocation.slug, locationName: selectedLocation.name }
             : {}),
-          tags: composerTags.map((t) => ({
+          tags: anonymousMode
+            ? []
+            : composerTags.map((t) => ({
             entityType: t.entityType,
             entityId: t.entityId,
             displayLabel: t.displayLabel,
             subtitle: t.subtitle ?? null,
             mentionSlug: t.mentionSlug ?? null,
           })),
-          photoTags: !hasMedia
+          photoTags: anonymousMode || !hasMedia
             ? []
             : photoTags.map((t) => {
                 const resolved =
@@ -474,7 +536,9 @@ export function FieldNoteComposer({
                   displayLabel: t.displayLabel,
                 };
               }),
-          mentions: captionMentions.map((m) => ({
+          mentions: anonymousMode
+            ? []
+            : captionMentions.map((m) => ({
             entityType: m.entityType,
             entityId: m.entityId,
             displayText: m.displayText,
@@ -539,9 +603,11 @@ export function FieldNoteComposer({
       : postingToLocalBusinesses && businessIdentity
         ? businessIdentity
         : postingIdentity;
-  const previewName = previewSource?.displayName || character.name || "You";
-  const previewUsername = previewSource?.username || character.username || "you";
-  const previewAvatar = previewSource?.avatarUrl || character.avatar;
+  const previewName = anonymousMode
+    ? ANONYMOUS_STUDENT_NAME
+    : previewSource?.displayName || character.name || "You";
+  const previewUsername = anonymousMode ? "" : previewSource?.username || character.username || "you";
+  const previewAvatar = anonymousMode ? ANONYMOUS_STUDENT_AVATAR : previewSource?.avatarUrl || character.avatar;
   const showPreview = body.trim().length > 0 || hasMedia;
   const uploadPct = overallUploadProgress(carouselItems);
 
@@ -617,7 +683,15 @@ export function FieldNoteComposer({
                 ) : null}
               </div>
             ) : null}
-            {postingToLocalBusinesses || postingToOrganizations ? null : (
+            {anonymousMode ? (
+              <div className="cq-anonymous-composer-note">
+                <p>{ANONYMOUS_AUDIENCE_COPY}</p>
+                <p>{ANONYMOUS_ACCOUNTABILITY_LINE}</p>
+                <p>{ANONYMOUS_IDENTITY_HINT}</p>
+              </div>
+            ) : null}
+            {identityNotice ? <p className="cq-anonymous-composer-note">{identityNotice}</p> : null}
+            {postingToLocalBusinesses || postingToOrganizations || anonymousMode ? null : (
             <div className="cq-composer-visibility" role="group" aria-label="Who can see this post">
               <button
                 type="button"
@@ -914,7 +988,9 @@ export function FieldNoteComposer({
                 </div>
                 <div className="min-w-0">
                   <p className="cq-composer-preview-name">{previewName}</p>
-                  <p className="cq-composer-preview-sub">@{previewUsername} · now</p>
+                  <p className="cq-composer-preview-sub">
+                    {anonymousMode ? "Campus Feed · now" : `@${previewUsername} · now`}
+                  </p>
                 </div>
               </div>
               {body.trim() ? <p className="cq-composer-preview-body">{body.trim()}</p> : null}
@@ -999,10 +1075,32 @@ export function FieldNoteComposer({
       {identityPickerOpen ? (
         <SwitchProfileSheet
           identities={postingToOrganizations ? approvedOrganizations : identityState.identities}
-          currentId={(postingToOrganizations ? organizationIdentity?.id : identityState.active.id) || character.id}
+          currentId={
+            anonymousMode
+              ? "anonymous"
+              : (postingToOrganizations ? organizationIdentity?.id : identityState.active.id) || character.id
+          }
           pendingRequests={[]}
           hideAdd
+          extraActions={
+            postingToOrganizations || postingToLocalBusinesses
+              ? []
+              : [
+                  {
+                    id: "anonymous",
+                    title: "Post anonymously",
+                    subtitle: "Campus Feed · Anonymous Student",
+                    selected: anonymousMode,
+                    onSelect: () => {
+                      setIdentityPickerOpen(false);
+                      if (noticeAccepted) enableAnonymous();
+                      else setNoticeOpen(true);
+                    },
+                  },
+                ]
+          }
           onSelect={(identity) => {
+            if (anonymousMode) leaveAnonymousMode();
             void switchCampusIdentity({ type: identity.type, id: identity.id }).finally(() => {
               setIdentityPickerOpen(false);
             });
@@ -1011,6 +1109,28 @@ export function FieldNoteComposer({
           onClose={() => setIdentityPickerOpen(false)}
         />
       ) : null}
+
+      <AnonymousPostNotice
+        open={noticeOpen}
+        busy={noticeBusy}
+        onCancel={() => {
+          setNoticeOpen(false);
+          setAnonymousMode(false);
+        }}
+        onAccept={() => {
+          setNoticeBusy(true);
+          void postAuthed("/api/me/anonymous-posting", { version: ANONYMOUS_NOTICE_VERSION })
+            .then(() => {
+              setNoticeAccepted(true);
+              setNoticeOpen(false);
+              enableAnonymous();
+            })
+            .catch(() => {
+              setError("Could not save the anonymity notice. Try again.");
+            })
+            .finally(() => setNoticeBusy(false));
+        }}
+      />
 
       {posted ? (
         <div className="cq-composer-success-overlay" role="status" aria-live="polite">
