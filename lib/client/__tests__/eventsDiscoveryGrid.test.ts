@@ -12,7 +12,7 @@ describe("Events discovery compact two-column grid", () => {
   it("renders tappable immersive cards without a permanent View Event button", () => {
     expect(card).toContain("cq-event-card--immersive");
     expect(card).toContain('role="link"');
-    expect(card).toContain("onClick={onView}");
+    expect(card).toContain("onClick={() => onView(item)}");
     expect(card).toContain("formatEventCardStatusBadge");
     expect(card).toContain("eventInterestMatchLabel");
     expect(card).toContain("cq-event-card-match");

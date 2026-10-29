@@ -14,7 +14,7 @@ export const AUTH_RESEND_COOLDOWN_MS = 60_000;
 export const AUTH_RESEND_SERVER_LIMIT = 3;
 export const AUTH_RESEND_SERVER_WINDOW_MS = 15 * 60_000;
 
-type AuthProviderError = {
+export type AuthProviderErrorShape = {
   message?: string;
   code?: string;
   status?: number;
@@ -24,7 +24,7 @@ function normalize(value: string | null | undefined): string {
   return (value ?? "").toLowerCase().trim();
 }
 
-export function isAuthEmailRateLimitError(error: AuthProviderError): boolean {
+export function isAuthEmailRateLimitError(error: AuthProviderErrorShape): boolean {
   if (error.status === 429) return true;
   const code = normalize(error.code);
   if (
@@ -45,7 +45,7 @@ export function isAuthEmailRateLimitError(error: AuthProviderError): boolean {
 }
 
 export function classifyAuthEmailProviderError(
-  error: AuthProviderError,
+  error: AuthProviderErrorShape,
   action: "resend" | "reset",
 ): ApiError {
   if (isAuthEmailRateLimitError(error)) {

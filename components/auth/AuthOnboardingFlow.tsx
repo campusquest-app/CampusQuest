@@ -170,6 +170,7 @@ export function AuthOnboardingFlow({
   const sendLock = useRef(false);
   const verifyLock = useRef(false);
   const statusInFlight = useRef(false);
+  const autoSendAttempted = useRef(false);
   const startedAtRef = useRef(Date.now());
   const trackedStart = useRef(false);
 
@@ -305,7 +306,7 @@ export function AuthOnboardingFlow({
   }, [sparkInterestId]);
 
   async function refreshCampusVerificationStatus() {
-    if (statusInFlight.current) return;
+    if (statusInFlight.current) return null;
     statusInFlight.current = true;
     try {
       const status = await fetchAuthed<{
@@ -320,8 +321,9 @@ export function AuthOnboardingFlow({
       setEmailMasked(status.emailMasked);
       setHasActiveChallenge(status.hasActiveChallenge);
       setResendAvailableInSeconds(status.resendAvailableInSeconds);
+      return status;
     } catch {
-      // Keep last known status.
+      return null;
     } finally {
       statusInFlight.current = false;
     }
@@ -329,7 +331,18 @@ export function AuthOnboardingFlow({
 
   useEffect(() => {
     if (step !== "campus") return;
-    void refreshCampusVerificationStatus();
+    let cancelled = false;
+    void (async () => {
+      const status = await refreshCampusVerificationStatus();
+      if (cancelled || !status || status.verified) return;
+      if (status.hasActiveChallenge || status.resendAvailableInSeconds > 0) return;
+      if (autoSendAttempted.current) return;
+      autoSendAttempted.current = true;
+      await sendCampusCode({ automatic: true });
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [step]);
 
   function setActionError(message: string) {
@@ -363,7 +376,7 @@ export function AuthOnboardingFlow({
     }
   }
 
-  async function sendCampusCode() {
+  async function sendCampusCode(options?: { automatic?: boolean }) {
     if (sendLock.current || codeSending) return;
     sendLock.current = true;
     setCodeSending(true);
@@ -396,9 +409,14 @@ export function AuthOnboardingFlow({
         });
       }
     } catch (err) {
-      setResendAvailableInSeconds(0);
-      setActionError(err instanceof Error ? err.message : CAMPUS_EMAIL_USER_MESSAGES.sendFailed);
-      void refreshCampusVerificationStatus();
+      const message = err instanceof Error ? err.message : CAMPUS_EMAIL_USER_MESSAGES.sendFailed;
+      const status = await refreshCampusVerificationStatus();
+      if (options?.automatic && status?.hasActiveChallenge) {
+        setError(null);
+        return;
+      }
+      if (!options?.automatic) setResendAvailableInSeconds(0);
+      setActionError(message);
     } finally {
       sendLock.current = false;
       setCodeSending(false);
@@ -898,7 +916,13 @@ export function AuthOnboardingFlow({
                       disabled={codeSending || resendLocked}
                       onClick={() => void sendCampusCode()}
                     >
-                      {codeSending ? "Sending…" : hasActiveChallenge ? "Resend code" : "Send verification code"}
+                      {codeSending
+                        ? "Sending…"
+                        : resendAvailableInSeconds > 0
+                          ? `Try again in ${resendAvailableInSeconds}s`
+                          : hasActiveChallenge || error
+                            ? "Resend verification email"
+                            : "Send verification email"}
                     </button>
                     {showQaVerification ? (
                       <button

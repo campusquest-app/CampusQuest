@@ -31,7 +31,7 @@ export function buildAuthQaStatus() {
     },
     emailProvider: {
       integration:
-        "New signups receive the CampusQuest 6-digit code through the app Resend API (RESEND_API_KEY). Supabase Auth email remains available for password reset and legacy callback recovery, not new-account confirmation.",
+        "Signup creates the Supabase Auth user first, then sends a 6-digit URI code through Resend. Supabase does not send its confirmation email for those accounts. Resend verification sends that code again when Auth is already confirmed. Password reset still uses Supabase email.",
       smtpConfiguredInApp: Boolean(process.env.RESEND_API_KEY?.trim()),
       note: "This panel never returns API keys or secrets.",
     },

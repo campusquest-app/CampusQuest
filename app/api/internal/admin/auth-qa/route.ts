@@ -10,6 +10,7 @@ import {
   authEmailAcceptedPayload,
   classifyAuthEmailProviderError,
 } from "@/lib/authEmailDelivery";
+import { resendStudentVerificationEmail } from "@/lib/server/resendStudentVerificationEmail";
 import { isAllowedAuthQaTargetEmail, logAuthQa } from "@/lib/server/authQa";
 import { buildAuthQaStatus } from "@/lib/server/authQaStatus";
 import { readJson } from "@/lib/server/validation";
@@ -54,17 +55,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = createPublicClient();
     if (input.action === "resend_confirmation") {
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email: targetEmail,
-        options: { emailRedirectTo: getAuthEmailRedirectUrl() },
-      });
-      if (error) throw classifyAuthEmailProviderError(error, "resend");
-      logAuthQa("resend accepted", { adminUserId: auth.user.id });
-      return ok({ ...authEmailAcceptedPayload("resend"), action: input.action });
+      const result = await resendStudentVerificationEmail(targetEmail);
+      logAuthQa("resend accepted", { adminUserId: auth.user.id, channel: result.channel });
+      return ok({ ...result, action: input.action });
     }
+
+    const supabase = createPublicClient();
 
     const { error } = await supabase.auth.resetPasswordForEmail(targetEmail, {
       redirectTo: getAuthEmailRedirectUrl(),

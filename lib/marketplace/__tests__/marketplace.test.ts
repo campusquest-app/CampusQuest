@@ -138,6 +138,7 @@ describe("marketplace schemas", () => {
 describe("marketplace source contracts", () => {
   const root = process.cwd();
   const selector = readFileSync(join(root, "components/QuadFeedSelector.tsx"), "utf8");
+  const feedOptions = readFileSync(join(root, "lib/client/quadFeedOptions.ts"), "utf8");
   const quad = readFileSync(join(root, "components/TheQuad.tsx"), "utf8");
   const fab = readFileSync(join(root, "components/QuadCreatePostFab.tsx"), "utf8");
   const feed = readFileSync(join(root, "components/market/TheMarketFeed.tsx"), "utf8");
@@ -147,7 +148,8 @@ describe("marketplace source contracts", () => {
   const css = readFileSync(join(root, "app/globals.css"), "utf8");
 
   it("selects The Market without using the Quad composer", () => {
-    expect(selector).toContain("QUAD_FEED_OPTIONS");
+    expect(feedOptions).toContain("QUAD_FEED_OPTIONS");
+    expect(selector).toContain("quadFeedOptionsByGroup");
     expect(quad).toContain("TheMarketFeed");
     expect(quad).toContain("isMarketFeedTab");
     expect(fab).toContain('feedTab === "market"');

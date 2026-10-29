@@ -26,7 +26,9 @@ import { FEATURE_FLAGS } from "@/lib/featureFlags";
 import {
   clearSignupVerificationDeliveryFailure,
   rememberSignupVerificationDeliveryFailed,
+  signupVerificationUi,
 } from "@/lib/client/signupVerificationDelivery";
+import { CAMPUS_EMAIL_USER_MESSAGES } from "@/lib/campusEmailVerification";
 
 import {
   HttpRequestError,
@@ -155,6 +157,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
+  const [signupEmailDeliveryFailed, setSignupEmailDeliveryFailed] = useState(false);
   const [nowMs, setNowMs] = useState(() => (typeof Date !== "undefined" ? Date.now() : 0));
   const [callbackRecovery, setCallbackRecovery] = useState(() => {
     if (typeof window === "undefined") return null;
@@ -547,11 +550,21 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       const accessToken = session?.access_token;
       const lifecycle = payload?.data?.lifecycle;
       const verificationState = payload?.data?.verification?.state;
-      if (verificationState === "send_failed") {
+      const deliveryUi = signupVerificationUi(verificationState);
+      if (deliveryUi.blockEntry) {
         rememberSignupVerificationDeliveryFailed();
-      } else {
-        clearSignupVerificationDeliveryFailure();
+        if (accessToken) {
+          await persistIncomingSession(session ?? {});
+        }
+        setSignupEmailDeliveryFailed(true);
+        setSignupLifecycle("verification_required");
+        setSuccessBanner(null);
+        setNotice(null);
+        setError(deliveryUi.errorMessage);
+        return;
       }
+      clearSignupVerificationDeliveryFailure();
+      setSignupEmailDeliveryFailed(false);
       const needsVerification =
         lifecycle === "verification_required" || FEATURE_FLAGS.requireEmailVerification;
       if (accessToken) {
@@ -689,17 +702,67 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
     }
     resendInFlightRef.current = true;
     setIsResendingConfirmation(true);
+    setError(null);
     try {
-      await fetchJson("/api/auth/resend-confirmation", {
+      const token = getAccessToken();
+      if (token) {
+        const payload = await fetchJson<{
+          alreadyVerified?: boolean;
+          resendAvailableInSeconds?: number;
+        }>("/api/auth/email-verification/send", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: "{}",
+        });
+        const waitSeconds = payload.data?.resendAvailableInSeconds ?? 60;
+        writeResendCooldownState(
+          startResendCooldown({
+            email: targetEmail,
+            nowMs: Date.now(),
+            cooldownMs: Math.max(1000, waitSeconds * 1000),
+          }),
+        );
+        clearSignupVerificationDeliveryFailure();
+        setSignupEmailDeliveryFailed(false);
+        setNotice(
+          payload.data?.alreadyVerified
+            ? CAMPUS_EMAIL_USER_MESSAGES.alreadyVerified
+            : CAMPUS_EMAIL_USER_MESSAGES.sent,
+        );
+        await completeAuthenticatedSession({ isSignup: true });
+        return;
+      }
+
+      const payload = await fetchJson<{
+        delivered?: boolean;
+        alreadyVerified?: boolean;
+        message?: string;
+        resendAvailableInSeconds?: number;
+      }>("/api/auth/resend-confirmation", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: targetEmail }),
       });
-      const next = startResendCooldown({ email: targetEmail, nowMs: Date.now() });
-      writeResendCooldownState(next);
-      setNotice(AUTH_EMAIL_USER_MESSAGES.accepted);
+      const waitSeconds = payload.data?.resendAvailableInSeconds ?? 60;
+      writeResendCooldownState(
+        startResendCooldown({
+          email: targetEmail,
+          nowMs: Date.now(),
+          cooldownMs: Math.max(1000, waitSeconds * 1000),
+        }),
+      );
+      if (payload.data?.delivered || payload.data?.alreadyVerified) {
+        clearSignupVerificationDeliveryFailure();
+        setSignupEmailDeliveryFailed(false);
+      }
+      setNotice(payload.data?.message || AUTH_EMAIL_USER_MESSAGES.accepted);
     } catch (resendError) {
-      setNotice(mapAuthEmailActionError(resendError));
+      const message = mapAuthEmailActionError(resendError);
+      if (callbackRecovery) setNotice(message);
+      else setError(message);
     } finally {
       resendInFlightRef.current = false;
       setIsResendingConfirmation(false);
@@ -709,11 +772,11 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   function switchMode(next: Mode) {
     if (next === mode) return;
     setMode(next);
-    setError(null);
     setShowPasswordRequirementsError(false);
     setNotice(null);
     setSuccessBanner(null);
     setPassword("");
+    setError(next === "signup" && signupEmailDeliveryFailed ? CAMPUS_EMAIL_USER_MESSAGES.sendFailed : null);
   }
 
   if (needsConsent) {
@@ -877,6 +940,19 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                   <button type="submit" disabled={isSubmitting} className="cq-auth-btn-primary w-full">
                     {isSubmitting ? "Signing In..." : "Sign In"}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleResendConfirmation()}
+                    disabled={resendLocked || !email.trim()}
+                    aria-busy={isResendingConfirmation}
+                    className="cq-auth-link block w-full text-center text-sm"
+                  >
+                    {isResendingConfirmation
+                      ? "Sending..."
+                      : resendRemaining > 0
+                        ? formatResendCooldownLabel(resendRemaining)
+                        : "Resend verification email"}
+                  </button>
                   <p className="cq-auth-trust pt-1">
                     {FEATURE_FLAGS.requireEmailVerification
                     ? "Secure sign-in · Email verification supported"
@@ -996,6 +1072,21 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
                   {error ? <p className="cq-auth-error">{error}</p> : null}
                   {successBanner ? <p className="cq-auth-success">{successBanner}</p> : null}
                   {notice ? <p className="cq-auth-notice">{notice}</p> : null}
+                  {signupEmailDeliveryFailed ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleResendConfirmation()}
+                      disabled={resendLocked || !email.trim()}
+                      aria-busy={isResendingConfirmation}
+                      className="cq-auth-btn-primary w-full"
+                    >
+                      {isResendingConfirmation
+                        ? "Sending..."
+                        : resendRemaining > 0
+                          ? formatResendCooldownLabel(resendRemaining)
+                          : "Resend verification email"}
+                    </button>
+                  ) : null}
                   <button type="submit" disabled={isSubmitting || usernameAvailability === "taken"} className="cq-auth-btn-primary w-full">
                     {isSubmitting ||
                     signupLifecycle === "initializing" ||

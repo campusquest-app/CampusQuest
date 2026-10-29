@@ -9,7 +9,7 @@ const AUTHOR = "author-campusquest";
 const OTHER = "author-other";
 
 function check(
-  overrides: Partial<Parameters<typeof postQualifiesForCommunityChannel>[0]> & {
+  overrides: Omit<Partial<Parameters<typeof postQualifiesForCommunityChannel>[0]>, "post"> & {
     post?: Partial<Parameters<typeof postQualifiesForCommunityChannel>[0]["post"]>;
   } = {},
 ) {

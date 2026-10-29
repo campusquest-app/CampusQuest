@@ -68,10 +68,24 @@ describe("single-step signup email verification regression", () => {
     const verificationScreen = readSource("components/auth/AuthOnboardingFlow.tsx");
     const deliveryState = readSource("lib/client/signupVerificationDelivery.ts");
 
-    expect(authScreen).toContain('verificationState === "send_failed"');
+    expect(authScreen).toContain("signupVerificationUi(verificationState)");
     expect(authScreen).toContain("rememberSignupVerificationDeliveryFailed()");
+    expect(authScreen).toContain("Resend verification email");
+    expect(authScreen).toContain('"/api/auth/email-verification/send"');
     expect(verificationScreen).toContain("takeSignupVerificationDeliveryError()");
+    expect(verificationScreen).toContain("Resend verification email");
     expect(deliveryState).toContain("CAMPUS_EMAIL_USER_MESSAGES.sendFailed");
+  });
+
+  it("keeps a failed verification send on the signup screen", async () => {
+    const { signupVerificationUi } = await import("@/lib/client/signupVerificationDelivery");
+    expect(signupVerificationUi("send_failed")).toEqual({
+      blockEntry: true,
+      offerResend: true,
+      errorMessage: "We couldn't send your code. Please try again.",
+    });
+    expect(signupVerificationUi("sent").blockEntry).toBe(false);
+    expect(signupVerificationUi("already_verified").offerResend).toBe(false);
   });
 
   it("routes explicit unverified sessions to the code gate before onboarding", async () => {

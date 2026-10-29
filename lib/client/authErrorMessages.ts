@@ -200,6 +200,9 @@ export function mapAuthEmailActionError(error: unknown): string {
   }
   if (error instanceof HttpRequestError) {
     const code = (error.code ?? "").toUpperCase();
+    if (code.startsWith("EMAIL_VERIFICATION_")) {
+      return sanitizeVerificationMessage(error.message);
+    }
     if (error.status === 429 || code === "EMAIL_RATE_LIMIT" || code === "RATE_LIMITED") {
       return AUTH_EMAIL_USER_MESSAGES.rateLimited;
     }
@@ -212,4 +215,13 @@ export function mapAuthEmailActionError(error: unknown): string {
     return AUTH_EMAIL_USER_MESSAGES.generic;
   }
   return AUTH_EMAIL_USER_MESSAGES.generic;
+}
+
+function sanitizeVerificationMessage(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed || trimmed.length > 240) return AUTH_EMAIL_USER_MESSAGES.generic;
+  if (/sk_|service_role|eyJ|api[_-]?key|smtp|password|bearer /i.test(trimmed)) {
+    return AUTH_EMAIL_USER_MESSAGES.generic;
+  }
+  return trimmed;
 }

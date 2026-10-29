@@ -325,6 +325,17 @@ describe("verification resend", () => {
     );
     expect(mapped).toBe(AUTH_EMAIL_USER_MESSAGES.generic);
     expect(mapped.toLowerCase()).not.toContain("smtp");
+
+    const delivery = mapAuthEmailActionError(
+      new HttpRequestError(
+        "We couldn't send your code. Please try again.",
+        "/api/auth/email-verification/send",
+        502,
+        "Bad Gateway",
+        "EMAIL_VERIFICATION_SEND_FAILED",
+      ),
+    );
+    expect(delivery).toBe("We couldn't send your code. Please try again.");
   });
 });
 

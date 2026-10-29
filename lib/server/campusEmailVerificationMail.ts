@@ -10,6 +10,14 @@ import { CAMPUS_EMAIL_CODE_TTL_SECONDS } from "@/lib/campusEmailVerification";
  */
 const DEFAULT_FROM = "CampusQuest <noreply@auth.campusquestapp.com>";
 
+/** Bounded retries for transient Resend/network failures. Permanent 4xx responses are not retried. */
+export const CAMPUS_EMAIL_SEND_ATTEMPTS = 3;
+export const CAMPUS_EMAIL_SEND_BACKOFF_MS = [400, 1200] as const;
+
+export function isRetryableResendStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
 function recipientDomain(email: string): string {
   const at = email.lastIndexOf("@");
   return at >= 0 ? email.slice(at + 1).toLowerCase() : "unknown";
@@ -77,51 +85,85 @@ export async function sendCampusVerificationEmailViaResend(args: {
   code: string;
   fetchImpl?: typeof fetch;
   env?: Record<string, string | undefined>;
+  sleep?: (ms: number) => Promise<void>;
 }): Promise<void> {
   const env = args.env ?? process.env;
   const apiKey = getResendApiKey(env);
   const from = getCampusVerificationFromAddress(env);
   const fetchImpl = args.fetchImpl ?? fetch;
+  const sleep = args.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   const keyConfigured = Boolean(apiKey);
   const toDomain = recipientDomain(args.to);
-
-  const response = await fetchImpl("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: [args.to],
-      subject: "Your CampusQuest verification code",
-      text: buildCampusVerificationEmailText(args.code),
-    }),
+  const payload = JSON.stringify({
+    from,
+    to: [args.to],
+    subject: "Your CampusQuest verification code",
+    text: buildCampusVerificationEmailText(args.code),
   });
 
-  if (!response.ok) {
+  let lastFailure: { status: number; summary: ReturnType<typeof summarizeResendErrorBody>; requestId: string | null } | null =
+    null;
+
+  for (let attempt = 1; attempt <= CAMPUS_EMAIL_SEND_ATTEMPTS; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetchImpl("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: payload,
+      });
+    } catch {
+      lastFailure = {
+        status: 0,
+        summary: { errorName: "network_error", errorMessage: null, requestId: null },
+        requestId: null,
+      };
+      if (attempt < CAMPUS_EMAIL_SEND_ATTEMPTS) {
+        await sleep(CAMPUS_EMAIL_SEND_BACKOFF_MS[attempt - 1] ?? 1200);
+        continue;
+      }
+      break;
+    }
+
+    if (response.ok) {
+      logEmailVerification("campus code email accepted", {
+        from,
+        recipientDomain: toDomain,
+        httpStatus: response.status,
+        attempt,
+      });
+      return;
+    }
+
     const raw = await response.text().catch(() => "");
-    const summary = summarizeResendErrorBody(raw);
-    // Always log failures (safe fields only) so production diagnosis is possible.
-    console.warn("[Email Verification] campus code email send failed", {
-      RESEND_API_KEY_configured: keyConfigured,
-      from,
-      recipientDomain: toDomain,
-      httpStatus: response.status,
-      resendErrorName: summary.errorName,
-      resendErrorMessage: summary.errorMessage,
-      resendRequestId: summary.requestId ?? response.headers.get("x-request-id"),
-    });
-    throw new ApiError(
-      502,
-      "We couldn't send your code. Please try again.",
-      "EMAIL_VERIFICATION_SEND_FAILED",
-    );
+    lastFailure = {
+      status: response.status,
+      summary: summarizeResendErrorBody(raw),
+      requestId: response.headers.get("x-request-id"),
+    };
+    if (isRetryableResendStatus(response.status) && attempt < CAMPUS_EMAIL_SEND_ATTEMPTS) {
+      await sleep(CAMPUS_EMAIL_SEND_BACKOFF_MS[attempt - 1] ?? 1200);
+      continue;
+    }
+    break;
   }
 
-  logEmailVerification("campus code email accepted", {
+  console.warn("[Email Verification] campus code email send failed", {
+    RESEND_API_KEY_configured: keyConfigured,
     from,
     recipientDomain: toDomain,
-    httpStatus: response.status,
+    httpStatus: lastFailure?.status ?? 0,
+    resendErrorName: lastFailure?.summary.errorName ?? null,
+    resendErrorMessage: lastFailure?.summary.errorMessage ?? null,
+    resendRequestId: lastFailure?.summary.requestId ?? lastFailure?.requestId ?? null,
+    attempts: CAMPUS_EMAIL_SEND_ATTEMPTS,
   });
+  throw new ApiError(
+    502,
+    "We couldn't send your code. Please try again.",
+    "EMAIL_VERIFICATION_SEND_FAILED",
+  );
 }

@@ -3,6 +3,7 @@ import { ApiError } from "@/lib/server/http";
 import {
   buildCampusVerificationEmailText,
   getResendApiKey,
+  isRetryableResendStatus,
   sendCampusVerificationEmailViaResend,
 } from "@/lib/server/campusEmailVerificationMail";
 
@@ -82,5 +83,57 @@ describe("campus verification mail", () => {
       from?: string;
     };
     expect(body.from).toBe("CampusQuest <custom@auth.campusquestapp.com>");
+  });
+
+  it("retries a temporary Resend outage and stops when the next attempt is accepted", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("upstream", { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "email_ok" }), { status: 200 }));
+    await sendCampusVerificationEmailViaResend({
+      to: "student@uri.edu",
+      code: "482913",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      env: { RESEND_API_KEY: "re_test" },
+      sleep: async () => undefined,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(isRetryableResendStatus(503)).toBe(true);
+    expect(isRetryableResendStatus(403)).toBe(false);
+  });
+
+  it("does not retry a permanent Resend rejection", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: "invalid" }), { status: 422 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await expect(
+      sendCampusVerificationEmailViaResend({
+        to: "student@uri.edu",
+        code: "482913",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        env: { RESEND_API_KEY: "re_test" },
+        sleep: async () => undefined,
+      }),
+    ).rejects.toMatchObject({ code: "EMAIL_VERIFICATION_SEND_FAILED" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("gives up after bounded retries when Resend stays down", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("network down");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await expect(
+      sendCampusVerificationEmailViaResend({
+        to: "student@uri.edu",
+        code: "482913",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        env: { RESEND_API_KEY: "re_test" },
+        sleep: async () => undefined,
+      }),
+    ).rejects.toMatchObject({ code: "EMAIL_VERIFICATION_SEND_FAILED" });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("482913");
+    warn.mockRestore();
   });
 });

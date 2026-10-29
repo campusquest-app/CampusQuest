@@ -1,17 +1,14 @@
 import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
-import { createPublicClient } from "@/lib/server/supabase";
 import { authResendConfirmationSchema, readJson } from "@/lib/server/validation";
-import { getAuthEmailRedirectUrl } from "@/lib/authRedirect";
 import {
   AUTH_EMAIL_USER_MESSAGES,
   AUTH_RESEND_SERVER_LIMIT,
   AUTH_RESEND_SERVER_WINDOW_MS,
-  authEmailAcceptedPayload,
-  classifyAuthEmailProviderError,
   logEmailVerification,
 } from "@/lib/authEmailDelivery";
 import { enforceKeyedRateLimit, getRequestClientIp } from "@/lib/server/security";
+import { resendStudentVerificationEmail } from "@/lib/server/resendStudentVerificationEmail";
 
 export async function POST(request: Request) {
   try {
@@ -36,22 +33,13 @@ export async function POST(request: Request) {
       code: "EMAIL_RATE_LIMIT",
     });
 
-    const supabase = createPublicClient();
-    const { error } = await supabase.auth.resend({
-      type: "signup",
-      email,
-      options: { emailRedirectTo: getAuthEmailRedirectUrl() },
+    const result = await resendStudentVerificationEmail(email);
+    logEmailVerification("resend finished", {
+      channel: result.channel,
+      delivered: "delivered" in result ? result.delivered : false,
+      alreadyVerified: "alreadyVerified" in result ? result.alreadyVerified : false,
     });
-    if (error) {
-      logEmailVerification("resend provider error", {
-        code: error.code ?? null,
-        status: error.status ?? null,
-      });
-      throw classifyAuthEmailProviderError(error, "resend");
-    }
-
-    logEmailVerification("resend accepted", {});
-    return ok(authEmailAcceptedPayload("resend"));
+    return ok(result);
   } catch (error) {
     if (error instanceof ZodError) {
       return fail(new ApiError(400, AUTH_EMAIL_USER_MESSAGES.invalidEmail, "VALIDATION_ERROR"));
