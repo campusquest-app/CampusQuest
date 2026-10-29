@@ -966,7 +966,7 @@ function FieldNoteCardInner({
     </div>
   );
 
-  const textAvatarClass = `cq-avatar-slot h-7 w-7 flex-shrink-0 border border-white/15 bg-cq-elevated/8 ${
+  const textAvatarClass = `cq-avatar-slot cq-feed-text-avatar-slot flex-shrink-0 border border-white/15 bg-cq-elevated/8 ${
     highlightStat === "strength"
       ? "stat-aura-strength"
       : highlightStat === "knowledge"
@@ -980,11 +980,11 @@ function FieldNoteCardInner({
       className={`${textAvatarClass} touch-manipulation transition hover:opacity-90`}
       aria-label={`View ${note.authorName}'s profile`}
     >
-      <AvatarDisplay avatar={note.authorAvatar} fitParent size={28} />
+      <AvatarDisplay avatar={note.authorAvatar} fitParent size={34} />
     </button>
   ) : (
     <div className={textAvatarClass}>
-      <AvatarDisplay avatar={note.authorAvatar} fitParent size={28} />
+      <AvatarDisplay avatar={note.authorAvatar} fitParent size={34} />
     </div>
   );
   const textAuthorName = showAuthorLink ? (
@@ -1268,65 +1268,67 @@ function FieldNoteCardInner({
       }
     >
       {isFeed && !isMediaFeedPost ? (
-        <>
-          <header className="cq-feed-text-header">
-            {textAvatarFrame}
-            <div className="cq-feed-text-identity">
-              {textAuthorName}
-              {note.authorVerifiedBadge && !isAnonymousPost ? (
-                <span className="cq-identity-badge shrink-0" aria-label="Verified">✓</span>
-              ) : null}
-              {isAnonymousPost && note.viewerIsAuthor ? (
-                <span className="shrink-0 text-[11px] font-medium text-white/55">Your anonymous post</span>
-              ) : null}
-              <time
-                dateTime={new Date(note.createdAt).toISOString()}
-                title={textPostedAt}
-                className="cq-feed-text-time"
-              >
-                {formatFeedRelativeTime(note.createdAt)}
-                <span className="sr-only">, {textPostedAt}</span>
-              </time>
-              {(note.verifyCount ?? 0) >= 2 ? (
-                <span className="shrink-0 text-[10px] font-medium text-emerald-300/75">Verified</span>
-              ) : null}
-              {streak ? (
-                <span className="shrink-0 text-[10px] font-medium text-uri-gold/85">{streak}</span>
-              ) : null}
-            </div>
-            {ownerMenu}
-          </header>
+        <div className="cq-feed-text-layout">
+          <div className="cq-feed-text-avatar">{textAvatarFrame}</div>
+          <div className="cq-feed-text-main">
+            <header className="cq-feed-text-header">
+              <div className="cq-feed-text-identity">
+                {textAuthorName}
+                <time
+                  dateTime={new Date(note.createdAt).toISOString()}
+                  title={textPostedAt}
+                  className="cq-feed-text-time"
+                >
+                  {formatFeedRelativeTime(note.createdAt)}
+                  <span className="sr-only">, {textPostedAt}</span>
+                </time>
+                {note.authorVerifiedBadge && !isAnonymousPost ? (
+                  <span className="cq-identity-badge shrink-0" aria-label="Verified">✓</span>
+                ) : null}
+                {(note.verifyCount ?? 0) >= 2 ? (
+                  <span className="shrink-0 text-[10px] font-medium text-emerald-300/75">Verified</span>
+                ) : null}
+                {streak ? (
+                  <span className="shrink-0 text-[10px] font-medium text-uri-gold/85">{streak}</span>
+                ) : null}
+              </div>
+              <div className="cq-feed-text-menu">{ownerMenu}</div>
+            </header>
+            {isAnonymousPost && note.viewerIsAuthor ? (
+              <p className="cq-feed-text-hint">Your anonymous post</p>
+            ) : null}
 
-          <div className="cq-feed-text-body">
-            <TextPostCopy
-              body={note.body}
-              tags={note.ramMarks.map((r) => r.tag)}
-              mentions={captionMentions}
-            />
-            {headerLocation ? <p className="cq-feed-text-location">{headerLocation}</p> : null}
-            {!isAnonymousPost && structuredTags.length > 0 ? <TaggedWithLine tags={structuredTags} /> : null}
-            {contextLinks}
-            {proofBlock ? <div className="cq-feed-text-link">{proofBlock}</div> : null}
-          </div>
-
-          <div className="cq-feed-post-actions post-actions" data-no-drawer-swipe="true">
-            {actionsRow}
-          </div>
-
-          {note.nodCount > 0 ? (
-            <div className="cq-feed-post-engagement">
-              <LikedByRow
-                preview={note.likedByPreview ?? []}
-                likeCount={note.nodCount}
-                onOpenLikers={openLikers}
+            <div className="cq-feed-text-body">
+              <TextPostCopy
+                body={note.body}
+                tags={note.ramMarks.map((r) => r.tag)}
+                mentions={captionMentions}
               />
+              {headerLocation ? <p className="cq-feed-text-location">{headerLocation}</p> : null}
+              {!isAnonymousPost && structuredTags.length > 0 ? <TaggedWithLine tags={structuredTags} /> : null}
+              {contextLinks}
+              {proofBlock ? <div className="cq-feed-text-link">{proofBlock}</div> : null}
             </div>
-          ) : null}
 
-          {feedCommentsSection ? (
-            <div className="cq-feed-post-comments">{feedCommentsSection}</div>
-          ) : null}
-        </>
+            <div className="cq-feed-post-actions post-actions" data-no-drawer-swipe="true">
+              {actionsRow}
+            </div>
+
+            {note.nodCount > 0 ? (
+              <div className="cq-feed-post-engagement">
+                <LikedByRow
+                  preview={note.likedByPreview ?? []}
+                  likeCount={note.nodCount}
+                  onOpenLikers={openLikers}
+                />
+              </div>
+            ) : null}
+
+            {feedCommentsSection ? (
+              <div className="cq-feed-post-comments">{feedCommentsSection}</div>
+            ) : null}
+          </div>
+        </div>
       ) : isFeed ? (
         <>
           <header className="cq-feed-post-header flex items-center gap-2.5 px-3">

@@ -711,6 +711,7 @@ export function TheQuad({
   const quadTopChrome =
     showQuadChrome && typeof document !== "undefined"
       ? createPortal(
+          <div className="cq-quad-status-shield" aria-hidden="true" />
           <div className="cq-quad-header-shell" data-cq-quad-header-shell>
             <TopNav
               username={character.username}

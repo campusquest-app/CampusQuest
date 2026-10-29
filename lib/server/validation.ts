@@ -723,6 +723,8 @@ export const postQuadPostSchema = z
       .optional(),
     coverMediaId: uuidSchema.optional(),
     publishIdempotencyKey: z.string().trim().min(8).max(80).optional(),
+    /** Private batch label. Stored only in the receipt table, never on the public post. */
+    publishBatchId: z.string().trim().min(8).max(64).optional(),
     posterUrl: z
       .string()
       .trim()

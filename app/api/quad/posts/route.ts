@@ -34,10 +34,17 @@ import {
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 import { localBusinessPostDenial, organizationPostDenial, postBelongsInFeed } from "@/lib/quad/localBusinessFeed";
 import { anonymousPostRequestError } from "@/lib/anonymousPost";
+import { URI_HALLOWEEN_ANON_BATCH_ID } from "@/lib/anonymousPostBatch";
 import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
 import { assertAnonymousNoticeAccepted, presentAnonymousQuadPosts } from "@/lib/server/anonymousPosts";
 import { requireVerifiedSchoolForCoreAccess } from "@/lib/server/schoolVerification";
 import { relocateAnonymousPostMedia } from "@/lib/server/anonymousPostMedia";
+import {
+  beginPublishReceipt,
+  completePublishReceipt,
+  failPublishReceipt,
+  releasePublishReceipt,
+} from "@/lib/server/publishReceipts";
 
 async function withTagsAndMentions(posts: QuadPostApiRow[]): Promise<QuadPostApiRow[]> {
   return (await enrichQuadPostsWithTagsAndMentions(posts)) as QuadPostApiRow[];
@@ -300,11 +307,59 @@ export async function GET(request: Request) {
   }
 }
 
+async function replayIdempotentPost(args: {
+  userClient: Awaited<ReturnType<typeof requireAuthUser>>["userClient"];
+  viewerId: string;
+  postId: string;
+}) {
+  const { data, error } = await args.userClient
+    .from("quad_posts")
+    .select(QUAD_POSTS_WITH_PROFILE_SELECT)
+    .eq("id", args.postId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const [presented] = await finalizeFeedPosts([data as unknown as QuadPostApiRow], {
+    userClient: args.userClient,
+    viewerId: args.viewerId,
+  });
+  return presented ?? null;
+}
+
 export async function POST(request: Request) {
+  let publishReceipt: { userId: string; idempotencyKey: string } | null = null;
   try {
     const auth = await requireAuthUser(request);
-    enforceRateLimit({ userId: auth.user.id, routeKey: "quad:posts:post", limit: 30, windowMs: 60_000 });
     const input = await readJson(request, postQuadPostSchema);
+    const tracksBatch =
+      input.publishBatchId === URI_HALLOWEEN_ANON_BATCH_ID && Boolean(input.publishIdempotencyKey);
+    if (tracksBatch && input.publishIdempotencyKey) {
+      const prior = await beginPublishReceipt({
+        userId: auth.user.id,
+        idempotencyKey: input.publishIdempotencyKey,
+        batchId: URI_HALLOWEEN_ANON_BATCH_ID,
+      });
+      if (!prior.proceed) {
+        if (!prior.postId || prior.alreadyRemoved) {
+          throw new ApiError(409, "This post was already published and removed.", "PUBLISH_ALREADY_CONSUMED");
+        }
+        const replayed = await replayIdempotentPost({
+          userClient: auth.userClient,
+          viewerId: auth.user.id,
+          postId: prior.postId,
+        });
+        if (!replayed) {
+          throw new ApiError(409, "This post was already published and removed.", "PUBLISH_ALREADY_CONSUMED");
+        }
+        return ok({
+          post: replayed,
+          realmMoment: null,
+          xpReward: { awarded: false, xpAmount: 0 },
+          idempotent: true,
+        });
+      }
+      publishReceipt = { userId: auth.user.id, idempotencyKey: input.publishIdempotencyKey };
+    }
+    enforceRateLimit({ userId: auth.user.id, routeKey: "quad:posts:post", limit: 30, windowMs: 60_000 });
     touchUserActivityFromAuth(auth);
 
     const carouselItems =
@@ -493,6 +548,7 @@ export async function POST(request: Request) {
     }
 
     if (insErr || !created) {
+      if (publishReceipt) await failPublishReceipt(publishReceipt);
       logQuadPostError("create", insErr ?? new Error("insert returned no row"), {
         userId: auth.user.id,
         code: insErr?.code,
@@ -503,6 +559,21 @@ export async function POST(request: Request) {
     }
 
     const post = created as unknown as QuadPostApiRow;
+    if (publishReceipt) {
+      try {
+        await completePublishReceipt({
+          ...publishReceipt,
+          batchId: URI_HALLOWEEN_ANON_BATCH_ID,
+          postId: post.id,
+        });
+        publishReceipt = null;
+      } catch (receiptError) {
+        const removal = auth.userClient.from("quad_posts").delete().eq("id", post.id);
+        await (anonymous ? removal : removal.eq("user_id", auth.user.id));
+        await failPublishReceipt({ userId: auth.user.id, idempotencyKey: input.publishIdempotencyKey! });
+        throw receiptError;
+      }
+    }
 
     if (carouselItems) {
       try {
@@ -529,6 +600,9 @@ export async function POST(request: Request) {
         logQuadPostError("media_attach", mediaErr, { userId: auth.user.id, postId: post.id });
         const removal = auth.userClient.from("quad_posts").delete().eq("id", post.id);
         await (anonymous ? removal : removal.eq("user_id", auth.user.id));
+        if (tracksBatch && input.publishIdempotencyKey) {
+          await releasePublishReceipt({ userId: auth.user.id, idempotencyKey: input.publishIdempotencyKey });
+        }
         throw mediaErr instanceof ApiError
           ? mediaErr
           : new ApiError(400, "Could not attach media to post.", "MEDIA_ATTACH_FAILED");
