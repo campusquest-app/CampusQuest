@@ -19,6 +19,7 @@ import {
 const root = process.cwd();
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf8");
 const migration = read("supabase/migrations/20261029180000_anonymous_posts.sql");
+const authorFkMigration = read("supabase/migrations/20261029233000_anonymous_author_fk_deferred.sql");
 const createRoute = read("app/api/quad/posts/route.ts");
 const patchRoute = read("app/api/quad/posts/[postId]/route.ts");
 const privateRoute = read("app/api/me/quad/anonymous-posts/route.ts");
@@ -155,6 +156,7 @@ describe("database privacy boundary", () => {
     expect(migration).toContain("returns table (id uuid, created_at timestamptz)");
     expect(migration).toContain("revoke select (post_owner_id)");
     expect(migration).toContain("is_anonymous boolean not null default false");
+    expect(authorFkMigration).toContain("alter constraint quad_anonymous_authors_post_id_fkey deferrable initially deferred");
   });
 
   it("does not grant a function that returns an author id to authenticated users", () => {
