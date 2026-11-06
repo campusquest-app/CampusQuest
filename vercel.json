@@ -5,6 +5,10 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/cron/sync-uri-events",
+      "schedule": "20,50 * * * *"
+    },
+    {
       "path": "/api/cron/provider-health",
       "schedule": "*/30 * * * *"
     },

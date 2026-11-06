@@ -15,6 +15,7 @@ import {
   type CatalogLocationLike,
   type EventLocationMatch,
 } from "@/lib/server/urinvolved/mapEventLocationMatch";
+import { officialCampusMapCoordinate } from "@/lib/server/urinvolved/uriCampusBounds";
 
 export type TodayExternalMapEvent = {
   pin: MapEventPin;
@@ -31,6 +32,15 @@ export type TodayExternalMapEvent = {
 };
 
 type RawRow = Record<string, unknown>;
+
+function finiteCoord(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
 
 function str(row: RawRow, ...keys: string[]): string | null {
   for (const key of keys) {
@@ -62,6 +72,8 @@ function normalizeRow(row: RawRow) {
     ticketUrl: str(row, "ticket_url"),
     broadcastUrl: str(row, "broadcast_url"),
     canonicalEventId: str(row, "canonical_event_id"),
+    latitude: finiteCoord(row.latitude),
+    longitude: finiteCoord(row.longitude),
     cqRsvpEnabled: row.cq_rsvp_enabled === true,
     status: str(row, "status", "event_status", "live_status"),
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
@@ -232,9 +244,23 @@ export async function getTodayExternalEventsForMap(args: {
       renderOnMap: resolved.renderOnMap,
     });
 
-    if (!resolved.renderOnMap || !resolved.match) {
+    const hiddenByOverride = override?.matchStatus === "hidden" || override?.matchStatus === "ignored";
+    const officialPin = officialCampusMapCoordinate(row.latitude, row.longitude);
+    const officialMatch: EventLocationMatch | null =
+      !resolved.renderOnMap && !hiddenByOverride && officialPin
+        ? {
+            kind: "coords",
+            locationName: rawLocation,
+            latitude: officialPin.latitude,
+            longitude: officialPin.longitude,
+            matchedText: rawLocation,
+          }
+        : null;
+    const match = resolved.renderOnMap && resolved.match ? resolved.match : officialMatch;
+
+    if (!match) {
       unmatchedLocations.push(rawLocation);
-      if (!override || (override.matchStatus !== "hidden" && override.matchStatus !== "ignored")) {
+      if (!hiddenByOverride) {
         console.warn("[cq:urinvolved-map] UNMATCHED event location:", rawLocation, `(${row.title})`);
       }
       continue;
@@ -245,14 +271,17 @@ export async function getTodayExternalEventsForMap(args: {
     const cancelled = rowCancelled(row);
     if (cancelled) cancelledCount += 1;
 
+    const usingOfficialPin = officialMatch != null && match === officialMatch;
     matched.push({
-      match: resolved.match,
+      match,
       placement: {
-        status: override?.matchStatus ?? "runtime_auto",
-        confidence: resolved.meta?.confidence ?? override?.matchConfidence ?? null,
-        matchReason: resolved.meta?.matchReason ?? override?.matchReason ?? null,
-        needsReview: resolved.meta?.needsReview ?? false,
-        appliedOverride: resolved.appliedOverride,
+        status: usingOfficialPin ? "runtime_auto" : (override?.matchStatus ?? "runtime_auto"),
+        confidence: usingOfficialPin ? 1 : (resolved.meta?.confidence ?? override?.matchConfidence ?? null),
+        matchReason: usingOfficialPin
+          ? "official_source_coordinates"
+          : (resolved.meta?.matchReason ?? override?.matchReason ?? null),
+        needsReview: usingOfficialPin ? false : (resolved.meta?.needsReview ?? false),
+        appliedOverride: usingOfficialPin ? false : resolved.appliedOverride,
         rawLocation,
         normalizedLocation: normalizeEventLocationText(rawLocation),
       },
@@ -277,10 +306,12 @@ export async function getTodayExternalEventsForMap(args: {
         canonicalEventId: row.canonicalEventId,
         cqRsvpEnabled: row.cqRsvpEnabled,
         locationText: rawLocation,
-        placementStatus: override?.matchStatus ?? "auto_matched",
-        matchConfidence: resolved.meta?.confidence ?? override?.matchConfidence ?? null,
-        matchReason: resolved.meta?.matchReason ?? override?.matchReason ?? null,
-        needsReview: resolved.meta?.needsReview ?? false,
+        placementStatus: usingOfficialPin ? "auto_matched" : (override?.matchStatus ?? "auto_matched"),
+        matchConfidence: usingOfficialPin ? 1 : (resolved.meta?.confidence ?? override?.matchConfidence ?? null),
+        matchReason: usingOfficialPin
+          ? "official_source_coordinates"
+          : (resolved.meta?.matchReason ?? override?.matchReason ?? null),
+        needsReview: usingOfficialPin ? false : (resolved.meta?.needsReview ?? false),
         locationManuallyAdjusted: override?.matchStatus === "manually_adjusted",
       },
     });

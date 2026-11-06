@@ -26,6 +26,11 @@ describe("event detail content", () => {
     expect(facts.some((fact) => fact.id === "contact" && fact.value === "help@uri.edu")).toBe(true);
   });
 
+  it("shows a URI Events cost line when the source states one", () => {
+    const facts = extractEventKeyFacts({ description: "Clinic hours.\n\nCost: Free" });
+    expect(facts).toEqual([{ id: "cost", label: "Cost", value: "Free" }]);
+  });
+
   it("surfaces explicit walk-in, capacity, QR, and ID facts when present", () => {
     const facts = extractEventKeyFacts({
       description: "Walk-ins welcome. Space is limited. Scan the QR to register. Bring your URI ID.",

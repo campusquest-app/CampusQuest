@@ -1,5 +1,6 @@
 import type { EventSourceAdapter, EventSourceSyncResult, EventSourceType } from "@/lib/eventSources/types";
 import { ATHLETICS_CONFIGURATION_HINT, athleticsFeedConfigured, runAthleticsSync } from "@/lib/server/eventSources/athleticsSync";
+import { URI_EVENTS_CONFIGURATION_HINT, runUriEventsSync } from "@/lib/server/eventSources/uriEventsSync";
 import { runUrinvolvedSync } from "@/lib/server/urinvolved/sync";
 
 function skippedAdapter(source: EventSourceType, hint: string): EventSourceAdapter {
@@ -51,6 +52,13 @@ export const EVENT_SOURCE_ADAPTERS: EventSourceAdapter[] = [
         syncLogId: result.syncLogId,
       };
     },
+  },
+  {
+    source: "uri_events",
+    label: "URI Events",
+    isConfigured: () => true,
+    configurationHint: URI_EVENTS_CONFIGURATION_HINT,
+    sync: (syncType) => runUriEventsSync(syncType),
   },
   {
     source: "athletics",

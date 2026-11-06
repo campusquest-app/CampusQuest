@@ -120,6 +120,28 @@ describe("events feed query filters", () => {
     vi.useRealTimers();
   });
 
+  it("hides cancelled events from the default feed and keeps a saved one", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const cancelled = event({ kind: "external", id: "cancelled", title: "Clinic" });
+    if (cancelled.kind === "external") {
+      cancelled.event.isCancelled = true;
+      cancelled.event.myRsvpStatus = "going";
+    }
+    expect(eventPassesListFilters(cancelled, filters(), false, now)).toBe(false);
+    expect(eventPassesListFilters(cancelled, filters(), true, now)).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("treats an explicit URI Events cost as paid", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const paid = event({ kind: "external", title: "Concert", description: "Doors at 7.\n\nCost: $15" });
+    expect(eventPassesListFilters(paid, filters({ isPaid: "paid" }), false, now)).toBe(true);
+    expect(eventPassesListFilters(paid, filters({ isPaid: "free" }), false, now)).toBe(false);
+    vi.useRealTimers();
+  });
+
   it("omits For You and the active quick date from chips, and removes one chip at a time", () => {
     expect(activeEventFilterChips(filters({ timeframe: "for_you" }))).toEqual([]);
     expect(activeEventFilterChips(filters({ when: ["today"], timeframe: "today" }))).toEqual([]);

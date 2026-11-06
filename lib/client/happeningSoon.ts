@@ -1,4 +1,5 @@
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
+import { feedEventLocationText } from "@/lib/client/eventFeedTypes";
 import { eventIsCurrentOrUpcoming } from "@/lib/client/eventsFeedFilters";
 import type { RecommendationScore } from "@/lib/recommendations/types";
 
@@ -17,13 +18,30 @@ function hoursUntilStart(startsAt: string | null, now: Date): number | null {
   return (start - now.getTime()) / (60 * 60 * 1000);
 }
 
+function identityText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function feedEventIdentity(item: FeedEvent): string {
-  const title = item.event.title.trim().toLowerCase().replace(/\s+/g, " ");
-  return `${title}|${item.event.startsAt ?? ""}`;
+  const title = identityText(item.event.title);
+  const location = identityText(feedEventLocationText(item));
+  return `${title}|${item.event.startsAt ?? ""}|${location}`;
 }
 
 function feedEventHasArtwork(item: FeedEvent): boolean {
   return item.kind === "external" && Boolean(item.event.imageUrl || item.event.bannerUrl);
+}
+
+/** Native CampusQuest rows win a display tie. Otherwise keep the row that has artwork. */
+function preferFeedDuplicate(existing: FeedEvent, incoming: FeedEvent): FeedEvent {
+  if (incoming.kind === "campus" && existing.kind !== "campus") return incoming;
+  if (existing.kind === "campus" && incoming.kind !== "campus") return existing;
+  if (feedEventHasArtwork(incoming) && !feedEventHasArtwork(existing)) return incoming;
+  return existing;
 }
 
 /** Collapse the same event imported from more than one provider. Prefer a row that has artwork. */
@@ -41,10 +59,9 @@ export function dedupeFeedEvents(items: FeedEvent[]): FeedEvent[] {
       chosen.set(key, item);
       continue;
     }
-    if (feedEventHasArtwork(item) && !feedEventHasArtwork(existing)) {
-      chosen.set(identity, item);
-      chosen.set(key, item);
-    }
+    const preferred = preferFeedDuplicate(existing, item);
+    chosen.set(identity, preferred);
+    chosen.set(key, preferred);
   }
   return order.map((key) => chosen.get(key)!);
 }

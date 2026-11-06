@@ -149,6 +149,14 @@ describe("happening soon ranking", () => {
     expect(selected).not.toContain("ended");
     expect(selected.indexOf("club")).toBeLessThan(selected.indexOf("bball-later"));
     expect(dedupeFeedEvents([soonerClub.item, duplicate.item]).map((item) => item.event.id)).toEqual(["club-copy"]);
+    const otherRoom = event({
+      id: "other-room",
+      title: "Club meetup",
+      startsAt: "2026-08-29T23:00:00.000Z",
+      venueName: "Library",
+      location: "Library",
+    });
+    expect(dedupeFeedEvents([soonerClub.item, otherRoom.item])).toHaveLength(2);
     expect(visibleCarouselIndex(0, 320, [0, 300, 600])).toBe(0);
     expect(visibleCarouselIndex(280, 320, [0, 300, 600])).toBe(1);
     vi.useRealTimers();

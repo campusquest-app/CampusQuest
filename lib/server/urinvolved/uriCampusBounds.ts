@@ -8,6 +8,21 @@ export const URI_CAMPUS_BOUNDS = {
   radiusMeters: 2200,
 } as const;
 
+/**
+ * Official source coordinates that are safe to draw as a campus pin.
+ * Off-campus venues, null island, and the campus-centroid placeholder stay unpinned.
+ */
+export function officialCampusMapCoordinate(
+  latitude: number | null | undefined,
+  longitude: number | null | undefined,
+): { latitude: number; longitude: number } | null {
+  if (typeof latitude !== "number" || typeof longitude !== "number") return null;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (isPlaceholderCampusCoordinate(latitude, longitude)) return null;
+  if (!isWithinUriCampusBounds(latitude, longitude)) return null;
+  return { latitude, longitude };
+}
+
 export function isWithinUriCampusBounds(latitude: number, longitude: number): boolean {
   return (
     latitude >= URI_CAMPUS_BOUNDS.minLat &&

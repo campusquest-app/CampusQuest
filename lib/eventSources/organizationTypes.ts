@@ -3,6 +3,7 @@ import type { EventSourceType, OrganizationType } from "@/lib/eventSources/types
 
 const SOURCE_DEFAULT_ORG_TYPE: Record<EventSourceType, OrganizationType> = {
   urinvolved: "student_club",
+  uri_events: "campus_office",
   athletics: "athletics_team",
   fine_arts: "arts_group",
   academic: "academic_department",

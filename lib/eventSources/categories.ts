@@ -9,6 +9,7 @@ export { CANONICAL_EVENT_CATEGORIES };
 
 const SOURCE_DEFAULT_CATEGORY: Record<EventSourceType, CanonicalEventCategory> = {
   urinvolved: "Clubs",
+  uri_events: "Campus Life",
   athletics: "Athletics",
   fine_arts: "Fine Arts",
   academic: "Academic",

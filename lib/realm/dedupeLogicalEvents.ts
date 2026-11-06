@@ -115,16 +115,38 @@ export function getLogicalEventKey(event: LogicalEventFields): string {
   return getLogicalEventFallbackKey(event);
 }
 
+function isNativeSource(event: LogicalEventFields): boolean {
+  const source = fieldSource(event);
+  return source === "campusquest" || source === "manual";
+}
+
+function isBlankField(value: unknown): boolean {
+  if (value == null) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
+
 function pickWinningFields<T extends LogicalEventFields>(a: T, b: T): T {
   const aCancelled = isLogicalEventCancelled(a);
   const bCancelled = isLogicalEventCancelled(b);
-  if (aCancelled && !bCancelled) return a;
-  if (bCancelled && !aCancelled) return b;
+  if (aCancelled !== bCancelled) return aCancelled ? a : b;
+  if (isNativeSource(a) !== isNativeSource(b)) return isNativeSource(a) ? a : b;
 
   const aUpdated = fieldUpdatedAtMs(a);
   const bUpdated = fieldUpdatedAtMs(b);
   if (aUpdated !== bUpdated) return aUpdated > bUpdated ? a : b;
   return a;
+}
+
+/** Keep the winning record, and fill only fields the winner does not already have. */
+export function fillMissingEventFields<T extends LogicalEventFields>(winner: T, other: T): T {
+  const merged = { ...winner };
+  for (const key of Object.keys(other) as Array<keyof T>) {
+    if (key === "id") continue;
+    if (isBlankField(merged[key]) && !isBlankField(other[key])) merged[key] = other[key];
+  }
+  return merged;
 }
 
 function laterIso(a: string | null | undefined, b: string | null | undefined): string | null {
@@ -203,7 +225,9 @@ export function dedupeLogicalEventFields<T extends LogicalEventFields>(events: T
       byKey.set(key, event);
       continue;
     }
-    byKey.set(key, pickWinningFields(existing, event));
+    const winner = pickWinningFields(existing, event);
+    const loser = winner === existing ? event : existing;
+    byKey.set(key, fillMissingEventFields(winner, loser));
   }
 
   return Array.from(byKey.values());

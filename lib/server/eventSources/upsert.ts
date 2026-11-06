@@ -227,7 +227,7 @@ export async function linkCrossSourceDuplicate(
   await admin
     .from("external_events")
     .update({
-      canonical_event_id: match.canonical_event_id ?? null,
+      canonical_event_id: canonicalId,
       source_ids: mergedIds,
     })
     .eq("id", match.id);

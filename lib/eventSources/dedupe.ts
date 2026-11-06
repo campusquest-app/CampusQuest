@@ -55,6 +55,14 @@ function locationBlob(event: DedupeEventLike): string {
   return normalizeTokenField([event.venueName, event.locationName, event.address].filter(Boolean).join(" "));
 }
 
+/** Ignore punctuation so "Club Fair!" and "Club Fair" can match. */
+function comparableTitle(title: string): string {
+  return normalizeEventTitle(title)
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function sameOrEmpty(a: string, b: string): boolean {
   if (!a || !b) return false;
   return a === b || a.includes(b) || b.includes(a);
@@ -70,8 +78,12 @@ function genderedTeam(event: DedupeEventLike): "men" | "women" | null {
 }
 
 /**
- * Conservative cross-source match. Never merges events that clearly differ
- * on start time, opponent, or sport.
+ * Conservative cross-source match.
+ *
+ * Source priority: CampusQuest-native and manual rows win the displayed card.
+ * Imported rows keep their own ids, RSVPs, and source URLs, and are linked by
+ * canonical id. Matching requires the same start window plus agreeing venue
+ * or organizer. Different dates, venues, or same-source ids never merge.
  */
 export function eventsLikelyDuplicate(a: DedupeEventLike, b: DedupeEventLike): boolean {
   if (a.source && b.source && a.externalId && b.externalId && a.source === b.source && a.externalId === b.externalId) {
@@ -104,11 +116,15 @@ export function eventsLikelyDuplicate(a: DedupeEventLike, b: DedupeEventLike): b
   const sportB = normalizeTokenField(b.sport);
   if (sportA && sportB && sportA !== sportB) return false;
 
-  const titleA = normalizeEventTitle(a.title);
-  const titleB = normalizeEventTitle(b.title);
+  const locationA = locationBlob(a);
+  const locationB = locationBlob(b);
+  if (locationA && locationB && !sameOrEmpty(locationA, locationB)) return false;
+
+  const titleA = comparableTitle(a.title);
+  const titleB = comparableTitle(b.title);
   if (titleA && titleA === titleB) {
     const orgMatch = sameOrEmpty(normalizeTokenField(a.organizationName), normalizeTokenField(b.organizationName));
-    const locMatch = sameOrEmpty(locationBlob(a), locationBlob(b));
+    const locMatch = sameOrEmpty(locationA, locationB);
     const oppMatch = Boolean(opponentA && opponentB && sameOrEmpty(opponentA, opponentB));
     return orgMatch || locMatch || oppMatch;
   }
@@ -117,14 +133,16 @@ export function eventsLikelyDuplicate(a: DedupeEventLike, b: DedupeEventLike): b
     return !sportA || !sportB || sportA === sportB;
   }
 
-  const tokensA = new Set(significantTitleTokens(a.title));
+  const tokensA = significantTitleTokens(a.title);
   const tokensB = significantTitleTokens(b.title);
-  const overlap = tokensB.filter((token) => tokensA.has(token));
-  if (overlap.length < 2) return false;
+  const tokenSetA = new Set(tokensA);
+  const overlap = tokensB.filter((token) => tokenSetA.has(token));
+  const unionSize = new Set([...tokensA, ...tokensB]).size;
+  if (overlap.length < 2 || unionSize === 0 || overlap.length / unionSize < 0.66) return false;
 
-  const locMatch = sameOrEmpty(locationBlob(a), locationBlob(b));
+  const locMatch = sameOrEmpty(locationA, locationB);
   const orgMatch = sameOrEmpty(normalizeTokenField(a.organizationName), normalizeTokenField(b.organizationName));
-  return locMatch || orgMatch || Boolean(opponentA && opponentB);
+  return locMatch || orgMatch;
 }
 
 export function mergeSourceIds(

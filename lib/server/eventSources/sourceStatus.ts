@@ -18,6 +18,22 @@ import {
 } from "@/lib/server/eventSources/providerHealthService";
 import type { ProviderIncidentRow } from "@/lib/server/eventSources/incidentStore";
 
+/** Next UTC instant matching one of the minute marks, used by the URI Events cron. */
+export function nextHalfHourCronUtc(now: Date, minutes: number[]): string | null {
+  const marks = [...minutes].filter((minute) => minute >= 0 && minute < 60).sort((a, b) => a - b);
+  if (marks.length === 0) return null;
+  const upcoming = marks.find((minute) => minute > now.getUTCMinutes());
+  const next = new Date(now);
+  next.setUTCSeconds(0, 0);
+  if (upcoming == null) {
+    next.setUTCHours(next.getUTCHours() + 1);
+    next.setUTCMinutes(marks[0]!);
+  } else {
+    next.setUTCMinutes(upcoming);
+  }
+  return next.toISOString();
+}
+
 export type EventSourceAdminStatus = {
   source: string;
   label: string;
@@ -86,13 +102,15 @@ export async function listEventSourceAdminStatuses(): Promise<EventSourcesAdminP
     });
 
     const nextScheduledSync =
-      adapter.source === "urinvolved" || adapter.source === "athletics"
-        ? estimateNextDailyCronUtc({
-            scheduled: configured || activeEventsCount > 0,
-            cronHourUtc: 3,
-            cronMinuteUtc: adapter.source === "athletics" ? 30 : 0,
-          })
-        : null;
+      adapter.source === "uri_events"
+        ? nextHalfHourCronUtc(new Date(), [20, 50])
+        : adapter.source === "urinvolved" || adapter.source === "athletics"
+          ? estimateNextDailyCronUtc({
+              scheduled: configured || activeEventsCount > 0,
+              cronHourUtc: 3,
+              cronMinuteUtc: adapter.source === "athletics" ? 30 : 0,
+            })
+          : null;
 
     const watchdogCard = central.watchdog.providers.find((row) => row.source === adapter.source);
     const incident = latestIncidentForProvider(central.incidents, adapter.source);

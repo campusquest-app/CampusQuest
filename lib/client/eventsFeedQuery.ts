@@ -8,6 +8,7 @@ import {
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
 import { feedEventLocationText } from "@/lib/client/eventFeedTypes";
 import {
+  eventIsCancelled,
   eventIsCurrentOrUpcoming,
   matchesAnyEventsWhen,
   matchesEventsSearch,
@@ -58,13 +59,30 @@ function organizationMatches(item: FeedEvent, organizationKey: string): boolean 
   return true;
 }
 
+/** Explicit "Cost:" lines written by the URI Events importer. Unknown cost stays unclassified. */
+export function explicitEventCost(description: string | null | undefined): "free" | "paid" | null {
+  const match = (description ?? "").match(/(?:^|\n)\s*Cost:\s*(.+)/i);
+  if (!match?.[1]) return null;
+  const value = match[1].trim().toLowerCase();
+  if (!value) return null;
+  if (value === "free" || value === "$0" || value === "$0.00" || value === "0") return "free";
+  return "paid";
+}
+
 export function eventPassesListFilters(
   item: FeedEvent,
   filters: EventsFeedFilterState,
   savedOnly = false,
   now: Date = new Date(),
 ): boolean {
-  if (
+  const cancelled = eventIsCancelled({
+    isCancelled: item.event.isCancelled,
+    title: item.event.title,
+  });
+  // Saved RSVPs can still open a cancelled event. The default feed never lists one as active.
+  if (cancelled) {
+    if (!(savedOnly && feedEventIsSaved(item))) return false;
+  } else if (
     !eventIsCurrentOrUpcoming(
       {
         startsAt: item.event.startsAt,
@@ -91,9 +109,10 @@ export function eventPassesListFilters(
   const locationNeedle = filters.location.trim().toLowerCase();
   if (locationNeedle && !feedEventLocationText(item).toLowerCase().includes(locationNeedle)) return false;
 
-  const isPaid = item.kind === "external" ? false : item.event.isPaid;
-  if (filters.isPaid === "paid" && !isPaid) return false;
-  if (filters.isPaid === "free" && isPaid) return false;
+  const campusPaid = item.kind === "campus" && item.event.isPaid;
+  const externalPaid = item.kind === "external" && explicitEventCost(item.event.description) === "paid";
+  if (filters.isPaid === "paid" && !(campusPaid || externalPaid)) return false;
+  if (filters.isPaid === "free" && (campusPaid || externalPaid)) return false;
   if (filters.foodOnly && !eventExplicitlyHasFood(item)) return false;
   if (!organizationMatches(item, filters.organizationKey)) return false;
   return true;

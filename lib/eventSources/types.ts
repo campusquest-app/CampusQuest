@@ -1,5 +1,6 @@
 export const EVENT_SOURCE_TYPES = [
   "urinvolved",
+  "uri_events",
   "athletics",
   "fine_arts",
   "academic",

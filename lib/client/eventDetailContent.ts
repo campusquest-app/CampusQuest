@@ -28,7 +28,10 @@ export function extractEventKeyFacts(input: {
   } else if (input.isPaid === false) {
     facts.push({ id: "cost", label: "Cost", value: "Free" });
   } else {
-    const priced = firstMatch(description, /\b(?:admission|tickets?|cost)\s+(?:is\s+)?(\$[\d.,]+(?:\s*(?:USD|per person))?)/i);
+    const stated = firstMatch(description, /(?:^|\n)\s*Cost:\s*(.+)/i);
+    const priced =
+      stated ??
+      firstMatch(description, /\b(?:admission|tickets?|cost)\s+(?:is\s+)?(\$[\d.,]+(?:\s*(?:USD|per person))?)/i);
     if (priced) facts.push({ id: "cost", label: "Cost", value: priced });
   }
 

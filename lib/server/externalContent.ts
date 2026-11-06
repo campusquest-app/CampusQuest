@@ -1,6 +1,6 @@
 import { canonicalEventCategory } from "@/lib/eventSources/categories";
 import { inferOrganizationType } from "@/lib/eventSources/organizationTypes";
-import { dedupeLogicalEventFields } from "@/lib/realm/dedupeLogicalEvents";
+import { dedupeLogicalEventFields, getLogicalEventKey } from "@/lib/realm/dedupeLogicalEvents";
 import { createAdminClient } from "@/lib/server/supabase";
 import { resolveUrinvolvedEventLocation } from "@/lib/server/urinvolved/eventLocation";
 import { externalEventQualifiesForMap } from "@/lib/server/urinvolved/locationAliases";
@@ -414,17 +414,23 @@ export async function listExternalEventsFeed(filters?: {
 
   await attachHostCampusOrganizationIds(admin, mapped);
 
-  const deduped = dedupeLogicalEventFields(
-    mapped.map((item) => ({
-      ...item,
-      sourceExternalId: item.externalId,
-      locationText: item.location,
-      canonicalEventId: item.canonicalEventId,
-    })),
-  );
+  const withLogicalFields = mapped.map((item) => ({
+    ...item,
+    sourceExternalId: item.externalId,
+    locationText: item.location,
+    canonicalEventId: item.canonicalEventId,
+  }));
+  const idsByLogicalKey = new Map<string, string[]>();
+  for (const item of withLogicalFields) {
+    const key = getLogicalEventKey(item);
+    const ids = idsByLogicalKey.get(key) ?? [];
+    ids.push(item.id);
+    idsByLogicalKey.set(key, ids);
+  }
+  const deduped = dedupeLogicalEventFields(withLogicalFields);
 
   if (filters?.userId && deduped.length > 0) {
-    const ids = deduped.map((item) => item.id);
+    const ids = withLogicalFields.map((item) => item.id);
     const [{ data: rsvps }, { data: mine }] = await Promise.all([
       admin.from("external_event_rsvps").select("event_id, status, user_id").in("event_id", ids),
       admin
@@ -441,8 +447,9 @@ export async function listExternalEventsFeed(filters?: {
       (mine ?? []).map((row) => [row.event_id, row.status as ExternalEventItem["myRsvpStatus"]]),
     );
     for (const item of deduped) {
-      item.rsvpCount = counts.get(item.id) ?? 0;
-      item.myRsvpStatus = mineMap.get(item.id) ?? null;
+      const groupIds = idsByLogicalKey.get(getLogicalEventKey(item)) ?? [item.id];
+      item.rsvpCount = groupIds.reduce((sum, id) => sum + (counts.get(id) ?? 0), 0);
+      item.myRsvpStatus = groupIds.map((id) => mineMap.get(id)).find((status) => status) ?? null;
     }
   }
 

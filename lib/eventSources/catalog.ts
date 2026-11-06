@@ -19,6 +19,12 @@ const CATALOG: Record<EventSourceType, EventSourcePresentation> = {
     chip: "URInvolved",
     actionLabel: "More Info on URInvolved",
   },
+  uri_events: {
+    source: "uri_events",
+    label: "URI Events",
+    chip: "URI Events",
+    actionLabel: "View on URI Events",
+  },
   athletics: {
     source: "athletics",
     label: "Athletics",

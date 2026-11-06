@@ -2,6 +2,7 @@ import { fail, ok } from "@/lib/server/http";
 import { assertCronSecret } from "@/lib/server/urinvolved/cronAuth";
 import { runUrinvolvedSync } from "@/lib/server/urinvolved/sync";
 import { runAthleticsSync } from "@/lib/server/eventSources/athleticsSync";
+import { runUriEventsSync } from "@/lib/server/eventSources/uriEventsSync";
 import { inspectEventProviderWatchdog, runProviderWatchdogAfterSync } from "@/lib/server/eventSources/providerWatchdog";
 import { classifyProviderIncident, shouldSkipWatchdogRetries } from "@/lib/server/eventSources/incidentTypes";
 import { runProviderRecoveryController } from "@/lib/server/eventSources/recoveryController";
@@ -50,6 +51,7 @@ export async function GET(request: Request) {
       });
     }
 
+    const uriEvents = await runUriEventsSync("cron");
     const athletics = await runAthleticsSync("cron");
     const athleticsWatchdog = await runProviderWatchdogAfterSync({
       source: "athletics",
@@ -62,6 +64,7 @@ export async function GET(request: Request) {
 
     return ok({
       urinvolved: { result: urinvolved, watchdog: urinvolvedWatchdog, recovery },
+      uriEvents,
       athletics: { result: athletics, watchdog: athleticsWatchdog },
     });
   } catch (error) {
