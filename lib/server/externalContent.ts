@@ -196,26 +196,32 @@ export async function listExternalEventsFeed(filters?: {
   const lastError = urinvolvedStatus.lastError || athleticsSync?.lastError || null;
   let source: ExternalEventsFeedMeta["source"] = "active";
 
-  let query = admin
-    .from("external_events")
-    .select(EXTERNAL_EVENT_COLUMNS)
-    .eq("is_active", true)
-    .order("starts_at", { ascending: true, nullsFirst: false });
+  const pageSize = 1000;
+  let rows: ExternalEventRow[] = [];
+  for (let page = 0; page < 10; page += 1) {
+    let query = admin
+      .from("external_events")
+      .select(EXTERNAL_EVENT_COLUMNS)
+      .eq("is_active", true)
+      .order("starts_at", { ascending: true, nullsFirst: false })
+      .range(page * pageSize, page * pageSize + pageSize - 1);
 
-  if (filters?.category?.trim()) {
-    query = query.ilike("category", `%${filters.category.trim()}%`);
-  }
-  if (filters?.location?.trim()) {
-    query = query.ilike("location_name", `%${filters.location.trim()}%`);
-  }
-  if (filters?.organization?.trim()) {
-    query = query.ilike("organization_name", `%${filters.organization.trim()}%`);
-  }
+    if (filters?.category?.trim()) {
+      query = query.ilike("category", `%${filters.category.trim()}%`);
+    }
+    if (filters?.location?.trim()) {
+      query = query.ilike("location_name", `%${filters.location.trim()}%`);
+    }
+    if (filters?.organization?.trim()) {
+      query = query.ilike("organization_name", `%${filters.organization.trim()}%`);
+    }
 
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-
-  let rows = (data ?? []) as ExternalEventRow[];
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    const batch = (data ?? []) as ExternalEventRow[];
+    rows = rows.concat(batch);
+    if (batch.length < pageSize) break;
+  }
   const pastCutoff = Date.now() - EXTERNAL_EVENTS_PAST_GRACE_MS;
   const providerHealth = await listEventProviderHealth(admin).catch(() => []);
   const staleSources: string[] = [];
