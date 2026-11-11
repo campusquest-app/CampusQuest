@@ -2,13 +2,12 @@ import { ZodError } from "zod";
 import { z } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { requireAdminUser } from "@/lib/server/adminAuth";
-import { createPublicClient } from "@/lib/server/supabase";
 import { enforceRateLimit } from "@/lib/server/security";
-import { getAuthEmailRedirectUrl } from "@/lib/authRedirect";
+import { getPasswordResetRedirectUrl } from "@/lib/authRedirect";
+import { deliverPasswordResetEmail } from "@/lib/server/passwordResetMail";
 import {
   AUTH_EMAIL_USER_MESSAGES,
   authEmailAcceptedPayload,
-  classifyAuthEmailProviderError,
 } from "@/lib/authEmailDelivery";
 import { resendStudentVerificationEmail } from "@/lib/server/resendStudentVerificationEmail";
 import { isAllowedAuthQaTargetEmail, logAuthQa } from "@/lib/server/authQa";
@@ -61,12 +60,7 @@ export async function POST(request: Request) {
       return ok({ ...result, action: input.action });
     }
 
-    const supabase = createPublicClient();
-
-    const { error } = await supabase.auth.resetPasswordForEmail(targetEmail, {
-      redirectTo: getAuthEmailRedirectUrl(),
-    });
-    if (error) throw classifyAuthEmailProviderError(error, "reset");
+    await deliverPasswordResetEmail(targetEmail, getPasswordResetRedirectUrl());
     logAuthQa("password reset accepted", { adminUserId: auth.user.id });
     return ok({ ...authEmailAcceptedPayload("reset"), action: input.action });
   } catch (error) {

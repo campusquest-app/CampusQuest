@@ -6,6 +6,8 @@
  * All helpers no-op safely in ordinary browsers.
  */
 
+import { inAppAuthUrlFromOpenUrl } from "@/lib/client/passwordResetFlow";
+
 type CapPluginListenerHandle = { remove: () => void | Promise<void> };
 
 type CapacitorRuntime = {
@@ -39,6 +41,10 @@ type CapacitorRuntime = {
     };
     App?: {
       openUrl?: (opts: { url: string }) => Promise<void>;
+      addListener?: (
+        event: string,
+        cb: (payload: { url?: string }) => void,
+      ) => Promise<CapPluginListenerHandle> | CapPluginListenerHandle;
     };
     SplashScreen?: {
       hide?: (opts?: { fadeOutDuration?: number }) => Promise<void>;
@@ -53,6 +59,27 @@ function getCapacitor(): CapacitorRuntime | null {
 
 export function isNativeCapacitorApp(): boolean {
   return Boolean(getCapacitor()?.isNativePlatform?.());
+}
+
+/** Open a campusquest:// reset link inside the loaded web app. */
+export function listenForNativeAuthLinks(): () => void {
+  const app = getCapacitor()?.Plugins?.App;
+  if (!app?.addListener || typeof window === "undefined") return () => undefined;
+  let removed = false;
+  let handle: CapPluginListenerHandle | null = null;
+  const pending = app.addListener("appUrlOpen", (payload) => {
+    const next = payload.url ? inAppAuthUrlFromOpenUrl(payload.url, window.location.origin) : null;
+    if (!next || next === window.location.href) return;
+    window.location.replace(next);
+  });
+  void Promise.resolve(pending).then((value) => {
+    if (removed) void value.remove();
+    else handle = value;
+  });
+  return () => {
+    removed = true;
+    void handle?.remove();
+  };
 }
 
 /** Open http(s)/mailto/maps links outside the WebView when possible. */

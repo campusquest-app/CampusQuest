@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
+import { CqModalLayer } from "@/components/ui/CqModalLayer";
 import { centsToPriceLabel } from "@/lib/marketplace/policy";
 import type { MarketplaceListing, MarketplaceOffer } from "@/lib/marketplace/types";
 import { createMarketplaceOfferRequest, respondMarketplaceOfferRequest } from "@/lib/client/marketplaceClient";
@@ -54,12 +55,60 @@ export function MarketOfferSheet({
     }
   }
 
+  if (mode === "create") {
+    return (
+      <CqModalLayer
+        open
+        onDismiss={onClose}
+        dismissible={!busy}
+        labelledBy="cq-market-offer-title"
+        placement="dialog"
+        panelClassName="cq-offer-modal border border-white/15 bg-uri-navy shadow-2xl"
+        panelAs="form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submitOffer();
+        }}
+      >
+        <header className="cq-modal-header cq-offer-modal-header">
+          <h2 id="cq-market-offer-title" className="cq-create-sheet-title">Make Offer</h2>
+          <button type="button" className="cq-create-sheet-close" onClick={onClose} aria-label="Close" disabled={busy}>
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+        <div className="cq-modal-body cq-offer-modal-body">
+          <p className="cq-market-sheet-copy">
+            {listing.title} · {centsToPriceLabel(listing.priceCents, listing.startingPrice)}
+          </p>
+          <label className="cq-market-label" htmlFor="cq-market-offer-amount">Your offer</label>
+          <div className="cq-market-offer-row">
+            <span aria-hidden>$</span>
+            <input
+              id="cq-market-offer-amount"
+              className="cq-market-input"
+              inputMode="decimal"
+              placeholder="28"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+            />
+          </div>
+          <p className="cq-market-sheet-note">CampusQuest does not process payments. If accepted, you and the seller arrange payment and meetup yourselves.</p>
+        </div>
+        <footer className="cq-modal-footer cq-offer-modal-footer">
+          <button type="submit" className="cq-market-btn cq-market-btn--primary cq-market-btn--block" disabled={busy}>
+            {busy ? "Sending…" : "Send offer"}
+          </button>
+        </footer>
+      </CqModalLayer>
+    );
+  }
+
   return (
-    <div className="cq-create-sheet-overlay" role="dialog" aria-modal="true" aria-label={mode === "create" ? "Make offer" : "Listing offers"} onClick={onClose}>
+    <div className="cq-create-sheet-overlay" role="dialog" aria-modal="true" aria-label="Listing offers" onClick={onClose}>
       <div className="cq-create-sheet" onClick={(event) => event.stopPropagation()}>
         <div className="cq-create-sheet-grip" aria-hidden />
         <div className="cq-create-sheet-head">
-          <h2 className="cq-create-sheet-title">{mode === "create" ? "Make Offer" : "Offers"}</h2>
+          <h2 className="cq-create-sheet-title">Offers</h2>
           <button type="button" className="cq-create-sheet-close" onClick={onClose} aria-label="Close">
             <X className="h-5 w-5" />
           </button>
@@ -67,27 +116,7 @@ export function MarketOfferSheet({
         <p className="cq-market-sheet-copy">
           {listing.title} · {centsToPriceLabel(listing.priceCents, listing.startingPrice)}
         </p>
-        {mode === "create" ? (
-          <>
-            <label className="cq-market-label" htmlFor="cq-market-offer-amount">Your offer</label>
-            <div className="cq-market-offer-row">
-              <span aria-hidden>$</span>
-              <input
-                id="cq-market-offer-amount"
-                className="cq-market-input"
-                inputMode="decimal"
-                placeholder="28"
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-              />
-            </div>
-            <p className="cq-market-sheet-note">CampusQuest does not process payments. If accepted, you and the seller arrange payment and meetup yourselves.</p>
-            <button type="button" className="cq-market-btn cq-market-btn--primary cq-market-btn--block" disabled={busy} onClick={() => void submitOffer()}>
-              {busy ? "Sending…" : "Send offer"}
-            </button>
-          </>
-        ) : (
-          <ul className="cq-market-offer-list">
+        <ul className="cq-market-offer-list">
             {offers.length === 0 ? <li className="cq-market-sheet-copy">No offers yet.</li> : null}
             {offers.map((offer) => (
               <li key={offer.id} className="cq-market-offer-item">
@@ -108,7 +137,6 @@ export function MarketOfferSheet({
               </li>
             ))}
           </ul>
-        )}
       </div>
     </div>
   );

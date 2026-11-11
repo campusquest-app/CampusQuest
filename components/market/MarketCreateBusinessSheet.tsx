@@ -10,6 +10,7 @@ import {
   type MarketplaceBusinessOffering,
   type MarketplaceCategory,
 } from "@/lib/marketplace/policy";
+import { BusinessLogoField } from "@/components/identity/BusinessLogoField";
 import { createStudentBusinessRequest, uploadMarketplaceImage } from "@/lib/client/marketplaceClient";
 
 const OFFERING_LABELS: Record<MarketplaceBusinessOffering, string> = {
@@ -105,7 +106,7 @@ export function MarketCreateBusinessSheet({
         ) : null}
         {step === 4 ? (
           <>
-            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setLogoFile(event.target.files?.[0] ?? null)} />
+            <BusinessLogoField file={logoFile} onFile={setLogoFile} onError={setError} inputId="cq-biz-logo" />
             <label className="cq-market-label" htmlFor="cq-biz-bio">Bio</label>
             <textarea id="cq-biz-bio" className="cq-market-input cq-market-textarea" value={bio} maxLength={400} onChange={(event) => setBio(event.target.value)} />
           </>

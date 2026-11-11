@@ -1,17 +1,15 @@
 import { ZodError } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
-import { createPublicClient } from "@/lib/server/supabase";
 import { authResendConfirmationSchema, readJson } from "@/lib/server/validation";
-import { getAuthEmailRedirectUrl } from "@/lib/authRedirect";
+import { getPasswordResetRedirectUrl } from "@/lib/authRedirect";
+import { deliverPasswordResetEmail } from "@/lib/server/passwordResetMail";
 import {
   AUTH_EMAIL_USER_MESSAGES,
-  AUTH_RESEND_SERVER_LIMIT,
-  AUTH_RESEND_SERVER_WINDOW_MS,
   authEmailAcceptedPayload,
-  classifyAuthEmailProviderError,
   logEmailVerification,
 } from "@/lib/authEmailDelivery";
-import { enforceKeyedRateLimit, getRequestClientIp } from "@/lib/server/security";
+import { enforcePasswordResetRateLimits } from "@/lib/server/passwordResetRateLimit";
+import { getRequestClientIp } from "@/lib/server/security";
 
 export async function POST(request: Request) {
   try {
@@ -19,34 +17,9 @@ export async function POST(request: Request) {
     const email = input.email.trim().toLowerCase();
     const clientIp = getRequestClientIp(request);
 
-    enforceKeyedRateLimit({
-      key: `email:${email}`,
-      routeKey: "auth:reset-password:email",
-      limit: AUTH_RESEND_SERVER_LIMIT,
-      windowMs: AUTH_RESEND_SERVER_WINDOW_MS,
-      message: AUTH_EMAIL_USER_MESSAGES.rateLimited,
-      code: "EMAIL_RATE_LIMIT",
-    });
-    enforceKeyedRateLimit({
-      key: `ip:${clientIp}`,
-      routeKey: "auth:reset-password:ip",
-      limit: 8,
-      windowMs: AUTH_RESEND_SERVER_WINDOW_MS,
-      message: AUTH_EMAIL_USER_MESSAGES.rateLimited,
-      code: "EMAIL_RATE_LIMIT",
-    });
+    await enforcePasswordResetRateLimits({ email, ip: clientIp });
 
-    const supabase = createPublicClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: getAuthEmailRedirectUrl(),
-    });
-    if (error) {
-      logEmailVerification("reset provider error", {
-        code: error.code ?? null,
-        status: error.status ?? null,
-      });
-      throw classifyAuthEmailProviderError(error, "reset");
-    }
+    await deliverPasswordResetEmail(email, getPasswordResetRedirectUrl());
 
     logEmailVerification("reset accepted", {});
     return ok(authEmailAcceptedPayload("reset"));

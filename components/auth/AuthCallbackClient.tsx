@@ -6,6 +6,8 @@ import { supabaseClient } from "@/lib/supabase/client";
 import { persistSupabaseSession } from "@/lib/client/supabaseSession";
 import { setAccessToken } from "@/lib/client/apiSession";
 import { mapAuthCallbackError, parseAuthCallbackParams } from "@/lib/client/authCallbackErrors";
+import { isPasswordRecoveryCallback } from "@/lib/client/passwordResetFlow";
+import { PASSWORD_RESET_PATH } from "@/lib/authRedirect";
 import { AuthEmailRecoveryCard } from "@/components/auth/AuthEmailRecoveryCard";
 import {
   canAttemptResend,
@@ -47,6 +49,11 @@ export function AuthCallbackClient() {
       const mapped = mapAuthCallbackError(params);
       if (mapped) {
         if (!cancelled) setRecovery(mapped);
+        return;
+      }
+
+      if (isPasswordRecoveryCallback(params)) {
+        window.location.replace(`${PASSWORD_RESET_PATH}${window.location.search}${window.location.hash}`);
         return;
       }
 

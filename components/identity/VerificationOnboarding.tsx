@@ -27,6 +27,7 @@ import {
   type GreekOrganizationType,
   type OrgVerificationVariant,
 } from "@/lib/identity/organizationVerification";
+import { BusinessLogoField } from "@/components/identity/BusinessLogoField";
 import { ApiRequestError } from "@/lib/client/dashboardApi";
 import { loadCampusIdentities } from "@/lib/client/identityStore";
 
@@ -81,7 +82,7 @@ export function VerificationOnboarding({
   const [urinvolvedUrl, setUrinvolvedUrl] = useState("");
   const [applicantRole, setApplicantRole] = useState("");
   const [reasonForAccess, setReasonForAccess] = useState("");
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [matches, setMatches] = useState<OrganizationClaimMatch[]>([]);
   const [claimedOrg, setClaimedOrg] = useState<OrganizationClaimMatch | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -89,7 +90,6 @@ export function VerificationOnboarding({
   const [error, setError] = useState<string | null>(null);
   const [submittedName, setSubmittedName] = useState("");
   const [submittedAt, setSubmittedAt] = useState("");
-  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -203,24 +203,12 @@ export function VerificationOnboarding({
     setStep("category");
   }
 
-  async function onPickFile(file: File | null) {
-    if (!file) return;
-    setUploading(true);
-    setError(null);
-    try {
-      setLogoUrl(await uploadVerificationImage(file));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not upload that image.");
-    } finally {
-      setUploading(false);
-    }
-  }
-
   async function submit() {
     if (!identityType || !confirmed || busy) return;
     setBusy(true);
     setError(null);
     try {
+      const logoUrl = logoFile ? await uploadVerificationImage(logoFile) : null;
       const result = await submitVerificationRequest({
         identityType,
         name: name.trim(),
@@ -480,18 +468,9 @@ export function VerificationOnboarding({
           <>
             <h1 className="cq-onboard-title">{identityType === "organization" ? "Organization image" : "Business image"}</h1>
             <p className="cq-onboard-sub">A logo or photo is optional, but it helps students recognize you.</p>
-            <label className="cq-verify-upload">
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                hidden
-                onChange={(event) => void onPickFile(event.target.files?.[0] ?? null)}
-              />
-              {logoUrl ? "Change image" : "Upload logo or image"}
-            </label>
-            {logoUrl ? <img src={logoUrl} alt="" className="cq-verify-preview" /> : null}
-            <button type="button" className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6 disabled:opacity-50" disabled={uploading} onClick={() => setStep("confirm")}>
-              {uploading ? "Uploading…" : "Continue"}
+            <BusinessLogoField file={logoFile} onFile={setLogoFile} onError={setError} inputId="cq-verify-logo" />
+            <button type="button" className="cq-onboard-btn-primary cq-onboard-btn-primary--glow mt-6" onClick={() => setStep("confirm")}>
+              Continue
             </button>
           </>
         ) : null}

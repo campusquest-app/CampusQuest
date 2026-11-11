@@ -50,6 +50,8 @@ import { mapAuthCallbackError, parseAuthCallbackParams } from "@/lib/client/auth
 import { AuthEmailRecoveryCard } from "@/components/auth/AuthEmailRecoveryCard";
 import { AuthDesktopBrand, AuthDesktopFooter } from "@/components/auth/AuthDesktopLanding";
 import { SignedOutWelcome } from "@/components/auth/SignedOutWelcome";
+import { AuthScrollShell } from "@/components/auth/AuthScrollShell";
+import { PASSWORD_RESET_SUCCESS_PARAM } from "@/lib/client/passwordResetFlow";
 import { syncOnboardingQaReplayFromAccessToken } from "@/lib/client/onboardingQaSession";
 import { isAllowedSignupEmail, SCHOOL_EMAIL_REQUIRED_MESSAGE } from "@/lib/signupEmailPolicy";
 import { clearAuthSignupDraft, readAuthSignupDraft, writeAuthSignupDraft } from "@/lib/client/authSignupDraft";
@@ -190,6 +192,13 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
       setUsername(draft.username);
       setPassword(draft.password);
       setAcceptedTerms(draft.acceptedTerms);
+    }
+    if (new URLSearchParams(window.location.search).get(PASSWORD_RESET_SUCCESS_PARAM) === "1") {
+      setMode("signin");
+      setSuccessBanner("Password updated. Sign in with your new password.");
+      const url = new URL(window.location.href);
+      url.searchParams.delete(PASSWORD_RESET_SUCCESS_PARAM);
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
     }
     const expiredNotice = sessionStorage.getItem(AUTH_SESSION_EXPIRED_NOTICE_KEY);
     if (expiredNotice) {
@@ -808,7 +817,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
 
   if (callbackRecovery) {
     return (
-      <div className="cq-auth-shell min-h-[100dvh] flex flex-col items-center px-5 py-6">
+      <AuthScrollShell className="cq-auth-shell flex flex-col items-center px-5 py-6">
         <div className="cq-auth-inner cq-auth-enter w-full">
           <AuthHeader />
           <AuthEmailRecoveryCard
@@ -839,7 +848,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
             </button>
           </p>
         </div>
-      </div>
+      </AuthScrollShell>
     );
   }
 
@@ -855,7 +864,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
   return (
     <div className="cq-auth-desktop-frame">
       <AuthDesktopBrand />
-      <div className="cq-auth-shell min-h-[100dvh] flex flex-col items-center px-5 py-6">
+      <AuthScrollShell className="cq-auth-shell flex flex-col items-center px-5 py-6">
       {isSubmitting ||
       signupLifecycle === "initializing" ||
       signupLifecycle === "auth_created" ||
@@ -1107,7 +1116,7 @@ export function AuthScreen({ onComplete }: { onComplete: () => void }) {
           </AnimatePresence>
         </div>
       </div>
-    </div>
+      </AuthScrollShell>
       <AuthDesktopFooter />
     </div>
   );

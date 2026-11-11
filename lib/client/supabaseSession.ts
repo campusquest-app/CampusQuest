@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  clearPasswordResetPending,
+  isPasswordResetPending,
+  shouldHoldRecoverySession,
+} from "@/lib/client/passwordResetFlow";
 import { supabaseClient } from "@/lib/supabase/client";
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/client/apiSession";
 import {
@@ -35,6 +40,14 @@ export type RefreshClientSessionResult = {
 
 const IS_DEV = process.env.NODE_ENV !== "production";
 
+/** A recovery session must not become an app login before the password changes. */
+async function blockPendingPasswordReset(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const decision = shouldHoldRecoverySession(isPasswordResetPending(), window.location.pathname);
+  if (decision === "release") clearPasswordResetPending();
+  return decision === "hold";
+}
+
 function logAuthDev(payload: Record<string, unknown>): void {
   if (!IS_DEV) return;
   console.info("[cq:auth]", payload);
@@ -46,6 +59,7 @@ export async function refreshClientSession(): Promise<RefreshClientSessionResult
 
   sessionRefreshInFlight = (async () => {
     try {
+      if (await blockPendingPasswordReset()) return { accessToken: null, outcome: "invalid" as const };
       const { data, error } = await supabaseClient.auth.refreshSession();
       if (error) {
         logAuthDev({
@@ -116,6 +130,7 @@ export function attachSupabaseAuthSync(): void {
   authSyncAttached = true;
 
   supabaseClient.auth.onAuthStateChange(async (event, session) => {
+    if (await blockPendingPasswordReset()) return;
     if (session?.access_token) {
       setAccessToken(session.access_token);
       logAuthDev({ phase: "auth-state", event, hasSession: true });
@@ -144,6 +159,7 @@ export async function restoreSupabaseSession(): Promise<string | null> {
   if (typeof window === "undefined") return null;
 
   try {
+    if (await blockPendingPasswordReset()) return null;
     const { data, error } = await supabaseClient.auth.getSession();
     if (error) {
       logAuthDev({
@@ -216,9 +232,20 @@ export function initClientAuth(): Promise<string | null> {
  * Persist a freshly issued session (immediately after login/signup) so it
  * survives reloads/app restarts and auto-refreshes from here on.
  */
+export function clearPersistedSupabaseAuthStorage(): void {
+  if (typeof localStorage === "undefined") return;
+  const remove: string[] = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key && /^sb-.+-auth-token$/.test(key)) remove.push(key);
+  }
+  for (const key of remove) localStorage.removeItem(key);
+}
+
 export async function persistSupabaseSession(session: PersistableSession): Promise<void> {
   if (typeof window === "undefined") return;
   if (!session.access_token || !session.refresh_token) return;
+  if (shouldHoldRecoverySession(isPasswordResetPending(), window.location.pathname) === "hold") return;
   attachSupabaseAuthSync();
   resetAuthCheckState();
   try {

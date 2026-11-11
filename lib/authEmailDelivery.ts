@@ -4,7 +4,7 @@ export const AUTH_EMAIL_USER_MESSAGES = {
   accepted:
     "If this address still needs verification, another email is on the way. Delivery can take a minute.",
   resetAccepted:
-    "If an account exists for this address, a password reset email is on the way. Delivery can take a minute.",
+    "If an account exists for this address, a password reset email is on the way. Delivery can take a minute. Check spam if it does not arrive in your inbox.",
   rateLimited: "Please wait a moment before requesting another email.",
   invalidEmail: "Enter a valid email address.",
   generic: "We couldn't send that email right now. Please try again in a moment.",

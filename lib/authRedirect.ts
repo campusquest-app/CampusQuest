@@ -9,6 +9,7 @@
  */
 
 export const AUTH_CALLBACK_PATH = "/auth/callback";
+export const PASSWORD_RESET_PATH = "/auth/reset-password";
 export const LOCAL_DEV_SITE_URL = "http://localhost:3000";
 /** Documented production origin for CampusQuest. */
 export const PRODUCTION_SITE_ORIGIN = "https://campusquestapp.com";
@@ -149,6 +150,11 @@ export function getPublicSiteUrl(env: EnvLike = process.env): string {
 
 export function getAuthEmailRedirectUrl(env: EnvLike = process.env): string {
   return `${getPublicSiteUrl(env)}${AUTH_CALLBACK_PATH}`;
+}
+
+/** Dedicated reset screen. Signup verification keeps using the callback URL. */
+export function getPasswordResetRedirectUrl(env: EnvLike = process.env): string {
+  return `${getPublicSiteUrl(env)}${PASSWORD_RESET_PATH}`;
 }
 
 export function describeAuthRedirectConfig(env: EnvLike = process.env): {

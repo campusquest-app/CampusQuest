@@ -6,6 +6,7 @@ import {
   PRODUCTION_SITE_ORIGIN,
   describeAuthRedirectConfig,
   getAuthEmailRedirectUrl,
+  getPasswordResetRedirectUrl,
   getPublicSiteUrl,
   isProductionRuntime,
   normalizePublicSiteOrigin,
@@ -116,6 +117,7 @@ describe("getPublicSiteUrl / getAuthEmailRedirectUrl", () => {
     expect(canonical).toBe("https://campusquestapp.com/auth/callback");
     expect(canonical.endsWith(AUTH_CALLBACK_PATH)).toBe(true);
     expect(canonical.includes("//auth")).toBe(false);
+    expect(getPasswordResetRedirectUrl(env)).toBe("https://campusquestapp.com/auth/reset-password");
   });
 });
 

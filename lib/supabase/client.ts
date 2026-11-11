@@ -1,4 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
+import {
+  markPasswordResetPendingIfNeeded,
+  supabaseAuthOptionsForPath,
+} from "@/lib/client/passwordResetFlow";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -9,12 +13,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+const authPath = typeof window === "undefined" ? "" : window.location.pathname;
+const authSearch = typeof window === "undefined" ? "" : window.location.search;
+const authHash = typeof window === "undefined" ? "" : window.location.hash;
+markPasswordResetPendingIfNeeded(authPath, authSearch, authHash);
+const authOptions = supabaseAuthOptionsForPath(authPath, authSearch, authHash);
+
 export const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
+  auth: authOptions,
 });
 
 if (process.env.NODE_ENV !== "production") {
