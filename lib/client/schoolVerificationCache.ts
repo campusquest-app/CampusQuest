@@ -14,6 +14,8 @@ export type SchoolVerificationClientSnapshot = {
   internalTesterAccess?: boolean;
   /** @deprecated Use platformAdminAccess */
   moderationAdminAccess?: boolean;
+  /** Opens the app for a local business without marking the account as a verified student. */
+  localBusinessAccess?: boolean;
 };
 
 const STORAGE_KEY = "cq_school_verification_v2";

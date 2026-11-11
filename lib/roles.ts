@@ -6,7 +6,14 @@
 
 import { selectableRoleFromStudentStatus } from "@/lib/onboarding/studentStatusRole";
 
-export type UserRole = "student" | "faculty_staff" | "admin" | "super_admin" | "qa" | "beta_internal";
+export type UserRole =
+  | "student"
+  | "faculty_staff"
+  | "admin"
+  | "super_admin"
+  | "qa"
+  | "beta_internal"
+  | "local_business";
 
 export const USER_ROLES: readonly UserRole[] = [
   "student",
@@ -15,6 +22,7 @@ export const USER_ROLES: readonly UserRole[] = [
   "super_admin",
   "qa",
   "beta_internal",
+  "local_business",
 ] as const;
 
 /** Roles a normal user may pick for themselves (sign-up + settings). */
@@ -43,6 +51,11 @@ export function hasRole(user: RoleHolder, role: UserRole): boolean {
 
 export function isStudent(user: RoleHolder): boolean {
   return roleOf(user) === "student";
+}
+
+/** Trusted local-business accounts. They are not students and cannot self-select this role. */
+export function isLocalBusiness(user: RoleHolder): boolean {
+  return roleOf(user) === "local_business";
 }
 
 export function isFacultyStaff(user: RoleHolder): boolean {
@@ -88,6 +101,8 @@ export function roleLabel(role: string | null | undefined): string {
       return "QA Test Account";
     case "beta_internal":
       return "Internal Tester";
+    case "local_business":
+      return "Local Business";
     default:
       return "Not set";
   }
@@ -109,7 +124,9 @@ export function hasValidRoleSelection(profile: {
   student_status?: string | null;
 }): boolean {
   const role = profile.role ?? null;
-  if (role === "admin" || role === "super_admin" || role === "beta_internal") return true;
+  if (role === "admin" || role === "super_admin" || role === "beta_internal" || role === "local_business") {
+    return true;
+  }
   if (profile.is_test_user === true || role === "qa") {
     if (isSelectableRole(profile.qa_selected_role)) return true;
     return selectableRoleFromStudentStatus(profile.student_status) != null;

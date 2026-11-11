@@ -11,6 +11,8 @@ const patchSchema = z.object({
   messagesEnabled: z.boolean().optional(),
   socialEnabled: z.boolean().optional(),
   eventsEnabled: z.boolean().optional(),
+  announcementsEnabled: z.boolean().optional(),
+  perksEnabled: z.boolean().optional(),
 });
 
 export async function GET(request: Request) {

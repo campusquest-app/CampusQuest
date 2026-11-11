@@ -3,6 +3,7 @@ import { enforceRateLimit } from "@/lib/server/security";
 import { createAdminClient, requireAuthUser } from "@/lib/server/supabase";
 import { QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
+import { loadLocalBusinessActor } from "@/lib/server/localBusinessAccount";
 
 export type PendingTagItem = {
   tagId: string;
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
   try {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:pending-tags:get", limit: 60, windowMs: 60_000 });
+    const businessActor = await loadLocalBusinessActor(auth.userClient, auth.user.id);
     const admin = createAdminClient();
 
     const { data: tags, error } = await admin
@@ -57,6 +59,7 @@ export async function GET(request: Request) {
     for (const tag of tags) {
       const post = postById.get(tag.post_id as string);
       if (!post || post.is_anonymous || !post.user_id) continue;
+      if (businessActor.restricted && post.feed_destination !== "local_businesses") continue;
       const p = post.profiles;
       const prof = Array.isArray(p) ? p[0] : p;
       items.push({

@@ -16,6 +16,8 @@ type Settings = {
   messagesEnabled: boolean;
   socialEnabled: boolean;
   eventsEnabled: boolean;
+  announcementsEnabled: boolean;
+  perksEnabled: boolean;
 };
 
 export function PushNotificationsSettingsPanel({ onBack }: { onBack: () => void }) {
@@ -25,6 +27,8 @@ export function PushNotificationsSettingsPanel({ onBack }: { onBack: () => void 
     messagesEnabled: true,
     socialEnabled: true,
     eventsEnabled: true,
+    announcementsEnabled: true,
+    perksEnabled: false,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -169,6 +173,29 @@ export function PushNotificationsSettingsPanel({ onBack }: { onBack: () => void 
               </>
             );
           })()}
+        </section>
+
+        <section className="rounded-2xl border border-white/[0.08] bg-cq-card/60 divide-y divide-white/[0.06]">
+          {(
+            [
+              ["announcementsEnabled", "CampusQuest announcements", "Manual updates from CampusQuest"],
+              ["perksEnabled", "Student Perks", "Promotional alerts. Off until you opt in."],
+            ] as const
+          ).map(([key, label, description]) => (
+            <label key={key} className="flex items-center justify-between gap-3 px-4 py-3">
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-white">{label}</span>
+                <span className="block text-xs text-white/45">{description}</span>
+              </span>
+              <input
+                type="checkbox"
+                className="h-5 w-5 accent-sky-400"
+                checked={settings[key]}
+                disabled={saving || loading}
+                onChange={(e) => void save({ [key]: e.target.checked })}
+              />
+            </label>
+          ))}
         </section>
       </div>
     </DrawerSubPanelShell>

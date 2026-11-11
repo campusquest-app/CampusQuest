@@ -13,6 +13,8 @@ import { requireAuthUser } from "@/lib/server/supabase";
 import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { createCampusMemorySchema, readJson, uuidSchema } from "@/lib/server/validation";
 import { formatZodError } from "@/lib/server/zodErrors";
+import { loadLocalBusinessActor } from "@/lib/server/localBusinessAccount";
+import { STUDENT_PRIVACY_MESSAGE } from "@/lib/localBusiness/access";
 
 function resolveLocationIdParam(locationId: string, locationKey: string): string | null {
   const id = locationId.trim();
@@ -26,6 +28,9 @@ function resolveLocationIdParam(locationId: string, locationKey: string): string
 export async function GET(request: Request) {
   try {
     const auth = await requireAuthUser(request);
+    if ((await loadLocalBusinessActor(auth.userClient, auth.user.id)).restricted) {
+      throw new ApiError(403, STUDENT_PRIVACY_MESSAGE, "STUDENT_FEED_PRIVATE");
+    }
     enforceRateLimit({
       userId: auth.user.id,
       routeKey: "campus-memories:get",
@@ -77,6 +82,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const auth = await requireAuthUser(request);
+    if ((await loadLocalBusinessActor(auth.userClient, auth.user.id)).restricted) {
+      throw new ApiError(403, STUDENT_PRIVACY_MESSAGE, "STUDENT_FEED_PRIVATE");
+    }
     await assertAccountCanSocialize(auth.userClient, auth.user.id);
     enforceRateLimit({
       userId: auth.user.id,

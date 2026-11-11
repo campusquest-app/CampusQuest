@@ -18,6 +18,8 @@ import {
 } from "@/lib/server/quadPostMutations";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 import { presentAnonymousQuadPosts } from "@/lib/server/anonymousPosts";
+import { loadLocalBusinessActor } from "@/lib/server/localBusinessAccount";
+import { STUDENT_PRIVACY_MESSAGE } from "@/lib/localBusiness/access";
 
 async function parsePostId(context: { params: Promise<{ postId: string }> }): Promise<string> {
   const { postId: rawPostId } = await context.params;
@@ -39,6 +41,10 @@ export async function PATCH(
 
     const input = await readJson(request, patchQuadPostSchema);
     const existing = await getOwnedQuadPost({ userClient: auth.userClient, postId, userId: auth.user.id });
+    const businessActor = await loadLocalBusinessActor(auth.userClient, auth.user.id);
+    if (businessActor.restricted && existing.feed_destination !== "local_businesses") {
+      throw new ApiError(403, STUDENT_PRIVACY_MESSAGE, "STUDENT_FEED_PRIVATE");
+    }
 
     const patch: Record<string, unknown> = {};
     if (existing.is_anonymous && input.visibility === "friends") {

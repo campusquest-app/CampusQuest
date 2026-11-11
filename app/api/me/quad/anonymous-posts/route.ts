@@ -11,12 +11,18 @@ import { enrichQuadPostsWithTagsAndMentions } from "@/lib/server/postTagService"
 import { enrichPostsWithCarouselMedia } from "@/lib/server/quadPostMedia";
 import { presentAnonymousQuadPosts } from "@/lib/server/anonymousPosts";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
+import { loadLocalBusinessActor } from "@/lib/server/localBusinessAccount";
+import { STUDENT_PRIVACY_MESSAGE } from "@/lib/localBusiness/access";
 
 /** Owner-only anonymous posts. The author is taken from the session, never the query string. */
 export async function GET(request: Request) {
   try {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:anonymous-posts", limit: 60, windowMs: 60_000 });
+    const businessActor = await loadLocalBusinessActor(auth.userClient, auth.user.id);
+    if (businessActor.restricted) {
+      throw new ApiError(403, STUDENT_PRIVACY_MESSAGE, "STUDENT_FEED_PRIVATE");
+    }
     const { searchParams } = new URL(request.url);
     const limit = Math.min(40, Math.max(1, Math.floor(Number(searchParams.get("limit") || "20"))));
     const before = searchParams.get("before")?.trim() || null;

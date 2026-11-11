@@ -43,7 +43,8 @@ export type CampusNotificationType =
   | "verification_request_submitted"
   | "verification_request_approved"
   | "verification_request_needs_info"
-  | "verification_request_rejected";
+  | "verification_request_rejected"
+  | "campus_announcement";
 
 const NOTIFICATION_INSERT_SELECT = "id, user_id, type, title, body, created_at";
 

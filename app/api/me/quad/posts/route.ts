@@ -10,6 +10,7 @@ import { logQuadPostError, QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/q
 import { enrichQuadPostsWithTagsAndMentions } from "@/lib/server/postTagService";
 import { enrichPostsWithCarouselMedia } from "@/lib/server/quadPostMedia";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
+import { loadLocalBusinessActor } from "@/lib/server/localBusinessAccount";
 
 /** Current user's Quad posts (newest first) — for profile “Posts to the Quad”. */
 export async function GET(request: Request) {
@@ -18,14 +19,15 @@ export async function GET(request: Request) {
     enforceRateLimit({ userId: auth.user.id, routeKey: "me:quad:posts:get", limit: 80, windowMs: 60_000 });
     const { searchParams } = new URL(request.url);
     const limit = Math.min(100, Math.max(1, Math.floor(Number(searchParams.get("limit") || "40"))));
+    const businessActor = await loadLocalBusinessActor(auth.userClient, auth.user.id);
 
-    const { data, error } = await auth.userClient
+    let query = auth.userClient
       .from("quad_posts")
       .select(QUAD_POSTS_WITH_PROFILE_SELECT)
       .eq("user_id", auth.user.id)
-      .eq("is_anonymous", false)
-      .order("created_at", { ascending: false })
-      .limit(limit);
+      .eq("is_anonymous", false);
+    if (businessActor.restricted) query = query.eq("feed_destination", "local_businesses");
+    const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
 
     if (error) {
       logQuadPostError("my_posts_list", error, { userId: auth.user.id });

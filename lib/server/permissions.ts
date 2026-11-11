@@ -5,9 +5,17 @@ import { isInternalAccount } from "@/lib/internalAccount";
 import { isAdminEmailFallback } from "@/lib/platformAdmin";
 import { isAdminEmail, userHasModerationAdminAccess } from "@/lib/server/adminEmails";
 
-export type ProfileRole = "student" | "faculty_staff" | "qa" | "beta_internal" | "admin" | "super_admin";
+export type ProfileRole =
+  | "student"
+  | "faculty_staff"
+  | "qa"
+  | "beta_internal"
+  | "admin"
+  | "super_admin"
+  | "local_business";
 
 const ROLE_RANK: Record<ProfileRole, number> = {
+  local_business: -1,
   student: 0,
   faculty_staff: 0,
   qa: 0,
@@ -22,7 +30,8 @@ export function normalizeProfileRole(raw: string | null | undefined): ProfileRol
     raw === "super_admin" ||
     raw === "qa" ||
     raw === "beta_internal" ||
-    raw === "faculty_staff"
+    raw === "faculty_staff" ||
+    raw === "local_business"
   ) {
     return raw;
   }

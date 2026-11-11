@@ -32,7 +32,7 @@ import { conversationPreviewText } from "@/lib/client/dmMessagesClient";
 import { CreateGroupChatSheet } from "@/components/messages/CreateGroupChatSheet";
 import { GroupMessageThread } from "@/components/messages/GroupMessageThread";
 import { GroupAvatarStack } from "@/components/messages/GroupAvatarStack";
-import { NotificationsCenter } from "./NotificationsCenter";
+import { NotificationsCenter, type NotificationDestination } from "./NotificationsCenter";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 import { UserSearchInput } from "@/components/ui/UserSearchInput";
 import { avatarFromUserSearchResult } from "@/lib/client/userSearchClient";
@@ -162,6 +162,7 @@ export function Inbox({
   onSubTabChange,
   onUnreadCountChange,
   deepLink = null,
+  onOpenNotificationDestination,
 }: {
   character: Character;
   onBack: () => void;
@@ -171,6 +172,7 @@ export function Inbox({
   onSubTabChange: (tab: InboxSubTab) => void;
   onUnreadCountChange?: Dispatch<SetStateAction<number>>;
   deepLink?: InboxDeepLink | null;
+  onOpenNotificationDestination?: (notification: NotificationDestination) => void;
 }) {
   const [messageSearch, setMessageSearch] = useState("");
   const [dmWith, setDmWith] = useState<{ userId: string; username: string; name: string; avatar: string } | null>(null);
@@ -787,6 +789,13 @@ export function Inbox({
           onUnreadCountChange={onUnreadCountChange}
           personalization={personalization}
           onOpenQuadPost={(postId) => void openQuadPostFromNotification(postId)}
+          onOpenDestination={(notification) => {
+            if (notification.relatedEntityType === "quad_post" && notification.relatedEntityId) {
+              void openQuadPostFromNotification(notification.relatedEntityId);
+              return;
+            }
+            onOpenNotificationDestination?.(notification);
+          }}
         />
       )}
 

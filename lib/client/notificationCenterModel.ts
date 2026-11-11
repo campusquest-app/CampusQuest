@@ -34,7 +34,7 @@ export function notificationIconKind(type: string): NotificationIconKind {
   if (type === "direct_message") return "message";
   if (type === "friend_request" || type === "connection_accepted") return "social";
   if (type === "event_rsvp_reminder") return "event";
-  if (type === "organization_event_announcement") return "announcement";
+  if (type === "organization_event_announcement" || type === "campus_announcement") return "announcement";
   if (type.startsWith("organization_")) return "organization";
   if (type === "moderation_safety_update") return "safety";
   if (type.startsWith("verification_request_")) return "verification";

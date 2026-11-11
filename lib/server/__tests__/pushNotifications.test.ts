@@ -4,7 +4,7 @@ import {
   PUSH_ENABLED_NOTIFICATION_TYPES,
   pushCategoryForType,
 } from "@/lib/pushNotificationTypes";
-import { isApnsConfigured } from "@/lib/server/apnsProvider";
+import { isApnsConfigured, isInvalidApnsToken } from "@/lib/server/apnsProvider";
 
 describe("push notification type policy", () => {
   it("pushes high-signal social and message types", () => {
@@ -73,18 +73,32 @@ describe("push notification type policy", () => {
 });
 
 describe("apns configuration", () => {
+  it("treats expired and unregistered device tokens as invalid", () => {
+    expect(isInvalidApnsToken("Unregistered", 410)).toBe(true);
+    expect(isInvalidApnsToken("ExpiredToken", 400)).toBe(true);
+    expect(isInvalidApnsToken("BadDeviceToken", 400)).toBe(true);
+    expect(isInvalidApnsToken("PayloadTooLarge", 413)).toBe(false);
+  });
+
   it("reports unconfigured when APNs env vars are absent", () => {
     const prev = {
       APNS_KEY_ID: process.env.APNS_KEY_ID,
       APNS_TEAM_ID: process.env.APNS_TEAM_ID,
       APNS_P8_KEY: process.env.APNS_P8_KEY,
+      APNS_PRIVATE_KEY: process.env.APNS_PRIVATE_KEY,
     };
     delete process.env.APNS_KEY_ID;
     delete process.env.APNS_TEAM_ID;
     delete process.env.APNS_P8_KEY;
+    delete process.env.APNS_PRIVATE_KEY;
     expect(isApnsConfigured()).toBe(false);
-    process.env.APNS_KEY_ID = prev.APNS_KEY_ID;
-    process.env.APNS_TEAM_ID = prev.APNS_TEAM_ID;
-    process.env.APNS_P8_KEY = prev.APNS_P8_KEY;
+    if (prev.APNS_KEY_ID == null) delete process.env.APNS_KEY_ID;
+    else process.env.APNS_KEY_ID = prev.APNS_KEY_ID;
+    if (prev.APNS_TEAM_ID == null) delete process.env.APNS_TEAM_ID;
+    else process.env.APNS_TEAM_ID = prev.APNS_TEAM_ID;
+    if (prev.APNS_P8_KEY == null) delete process.env.APNS_P8_KEY;
+    else process.env.APNS_P8_KEY = prev.APNS_P8_KEY;
+    if (prev.APNS_PRIVATE_KEY == null) delete process.env.APNS_PRIVATE_KEY;
+    else process.env.APNS_PRIVATE_KEY = prev.APNS_PRIVATE_KEY;
   });
 });

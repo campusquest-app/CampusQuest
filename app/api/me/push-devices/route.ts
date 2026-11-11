@@ -40,8 +40,6 @@ export async function POST(request: Request) {
       enabled: device.enabled,
       environment: device.environment,
       lastSeenAt: device.last_seen_at,
-      // Never echo the full token back unnecessarily.
-      tokenFingerprint: device.device_token.slice(0, 8),
     });
   } catch (error) {
     if (error instanceof ZodError) return fail(new ApiError(400, formatZodError(error), "VALIDATION_ERROR"));

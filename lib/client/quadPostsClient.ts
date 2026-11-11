@@ -83,6 +83,14 @@ export async function fetchQuadCommunityPosts(
   return data.posts.map((row) => quadPostRowToFieldNote(row, viewerId));
 }
 
+export async function fetchBusinessPosts(viewerId: string, partnerId: string, limit = 40): Promise<FieldNote[]> {
+  const qs = new URLSearchParams({ businessPartnerId: partnerId, limit: String(limit) });
+  const data = await fetchAuthed<{ posts: QuadPostApiRow[] }>(`/api/quad/posts?${qs.toString()}`);
+  return data.posts
+    .map((row) => quadPostRowToFieldNote(row, viewerId))
+    .filter((note) => note.businessPartnerId === partnerId);
+}
+
 export async function fetchQuadPostsByAuthor(
   viewerId: string,
   authorId: string,
@@ -193,6 +201,7 @@ export async function createQuadPostRequest(
     postedAsId?: string;
     anonymous?: boolean;
     feedDestination?: "campus" | "local_businesses" | "organizations";
+    businessPartnerId?: string;
   },
   viewerId?: string,
 ): Promise<CreateQuadPostResult> {

@@ -340,6 +340,7 @@ export interface FieldNote {
   likedByPreview?: import("./quadFieldNote").QuadPostLikerPreview[];
   postedAsType?: "personal" | "student_business" | "organization";
   postedAsId?: string;
+  businessPartnerId?: string;
   authorVerifiedBadge?: boolean;
   /** Campus Feed post with no public author. */
   isAnonymous?: boolean;

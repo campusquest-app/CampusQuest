@@ -35,6 +35,9 @@ import { FindFriends } from "./FindFriends";
 import { GuildsScreen } from "./GuildsScreen";
 import { Leaderboards } from "./Leaderboards";
 import { MyProfileScreen } from "./MyProfileScreen";
+import { OwnBusinessProfile, LocalBusinessPasswordGate } from "./localBusiness/BusinessProfileScreen";
+import { activeBusinessStorageKey, resolveActivePartnerId } from "@/lib/localBusiness/access";
+import { StudentPrivacyScreen } from "./localBusiness/StudentPrivacyScreen";
 import { UserProfileScreen } from "./UserProfileScreen";
 import { CharacterProfilePaneToggle } from "./profile/CharacterProfilePaneToggle";
 import type { ProfileTab } from "./profile/ProfileTabNav";
@@ -262,6 +265,12 @@ export function Dashboard() {
   const [tab, setTab] = useState<Tab>("quad");
   const identityUi = useCampusIdentities();
   const [quadFeedTab, setQuadFeedTab] = useState<QuadFeedTab>(() => readQuadFeedTabSession() ?? "public");
+  const [accountRole, setAccountRole] = useState<string | null>(null);
+  const [businessMustResetPassword, setBusinessMustResetPassword] = useState(false);
+  const [managedBusinesses, setManagedBusinesses] = useState<
+    { partnerId: string; name: string; logoUrl: string | null; canPost: boolean; canEdit: boolean; approved: boolean }[]
+  >([]);
+  const [activePartnerId, setActivePartnerId] = useState<string | null>(null);
   const [inboxSubTab, setInboxSubTab] = useState<InboxSubTab>("messages");
   const [inboxDeepLink, setInboxDeepLink] = useState<InboxDeepLink | null>(null);
   const pushDeepLinkNonceRef = useRef(0);
@@ -349,6 +358,58 @@ export function Dashboard() {
     campusEmailVerifiedAt?: string | null;
   } | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("bootstrapping");
+
+  useEffect(() => {
+    if (accountRole !== "local_business" || bootstrapStatus !== "authenticated" || !character?.id) {
+      if (accountRole !== "local_business") {
+        setManagedBusinesses([]);
+        setActivePartnerId(null);
+      }
+      return;
+    }
+    const userId = character.id;
+    let cancelled = false;
+    setManagedBusinesses([]);
+    setActivePartnerId(null);
+    void fetchAuthed<{
+      account: {
+        mustResetPassword?: boolean;
+        businesses?: {
+          partnerId: string;
+          name: string;
+          logoUrl: string | null;
+          canPost: boolean;
+          canEdit: boolean;
+          approved: boolean;
+        }[];
+      } | null;
+    }>("/api/local-business/me")
+      .then((body) => {
+        if (cancelled) return;
+        const businesses = body.account?.businesses ?? [];
+        let remembered: string | null = null;
+        try {
+          remembered = window.sessionStorage.getItem(activeBusinessStorageKey(userId));
+        } catch {
+          remembered = null;
+        }
+        const nextId = resolveActivePartnerId(businesses, null, remembered);
+        setBusinessMustResetPassword(body.account?.mustResetPassword === true);
+        setManagedBusinesses(businesses);
+        setActivePartnerId(nextId);
+        if (nextId) {
+          try {
+            window.sessionStorage.setItem(activeBusinessStorageKey(userId), nextId);
+          } catch {
+            /* session storage is optional */
+          }
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [accountRole, bootstrapStatus, character?.id]);
   const [bootstrapNonce, setBootstrapNonce] = useState(0);
   const bootstrapFailureRef = useRef(0);
   const [bootstrapRecoverableError, setBootstrapRecoverableError] = useState(false);
@@ -409,8 +470,9 @@ export function Dashboard() {
   }, [tab, profileTab, characterPane]);
 
   useEffect(() => {
+    if (accountRole === "local_business") return;
     if (tab === "realm") setRealmKeepAlive(true);
-  }, [tab]);
+  }, [tab, accountRole]);
 
   const showMilestonePopupIfNeeded = useCallback((popup: XpMilestoneStatus | null | undefined) => {
     if (!popup || dismissedMilestoneKeysRef.current.has(popup.key)) return;
@@ -541,8 +603,33 @@ export function Dashboard() {
         const eventId =
           link.eventId ??
           (link.relatedEntityType === "event" ? link.relatedEntityId : undefined);
+        const businessAccount = accountRole === "local_business";
+
+        if (link.destination === "campus_feed" || (businessAccount && link.destination === "events")) {
+          setQuadFeedTab(businessAccount ? "local_businesses" : "public");
+          setTab("quad");
+          return;
+        }
+        if (link.destination === "local_businesses") {
+          setQuadFeedTab("local_businesses");
+          setTab("quad");
+          return;
+        }
+        if (link.destination === "events") {
+          setTab("events");
+          return;
+        }
+        if (link.destination === "student_perks") {
+          setTab("partners");
+          return;
+        }
 
         if (eventId) {
+          if (businessAccount) {
+            setQuadFeedTab("local_businesses");
+            setTab("quad");
+            return;
+          }
           try {
             window.sessionStorage.setItem("cq_open_event_id", eventId);
           } catch {
@@ -587,7 +674,7 @@ export function Dashboard() {
       cancelled = true;
       unsubDeepLink?.();
     };
-  }, [bootstrapStatus, character]);
+  }, [bootstrapStatus, character, accountRole]);
 
   useEffect(() => {
     friendViewUserIdRef.current = friendView?.character.id ?? null;
@@ -1050,13 +1137,15 @@ export function Dashboard() {
       if (drawerBlocksNavigation) return;
       setTabEnterDirection(direction);
       setTab(nextTab);
-      if (nextTab === "quad") setQuadFeedTab("public");
+      if (nextTab === "quad") {
+        setQuadFeedTab(accountRole === "local_business" ? "local_businesses" : "public");
+      }
       if (nextTab === "character") {
         setCharacterPane("profile");
         setProfileTab("posts");
       }
     },
-    [drawerBlocksNavigation],
+    [accountRole, drawerBlocksNavigation],
   );
 
   const openSideMenu = useCallback(() => {
@@ -1864,6 +1953,12 @@ export function Dashboard() {
           }
         };
 
+        setAccountRole(profileMerged.role ?? null);
+        if (profileMerged.role === "local_business") {
+          setQuadFeedTab("local_businesses");
+          writeQuadFeedTabSession("local_businesses");
+        }
+
         const routeDecision = resolveProfileRoute(profileMerged, {
           preferences: prefsSnapshot
             ? {
@@ -1932,7 +2027,11 @@ export function Dashboard() {
                   onboardingComplete: true,
                 }),
             );
-            setTab(landRealm ? "realm" : "quad");
+            setTab(profileMerged.role === "local_business" ? "quad" : landRealm ? "realm" : "quad");
+            if (profileMerged.role === "local_business") {
+              setShowRealmIntro(false);
+              setShowRealmArrival(false);
+            }
           } else {
             clearLegacyLocalMismatch();
             commitSnap();
@@ -2969,6 +3068,15 @@ export function Dashboard() {
         document.body
       )}
 
+      {accountRole === "local_business" && businessMustResetPassword ? (
+        <LocalBusinessPasswordGate onDone={() => setBusinessMustResetPassword(false)} />
+      ) : null}
+
+      {(() => {
+        const businessAccount = accountRole === "local_business";
+        const businessMayOpenTab =
+          !businessAccount || tab === "quad" || tab === "character" || tab === "partners";
+        return (
       <DashboardTabSwipeShell
         activeTab={bottomNavSwipeActive}
         tabKey={tab}
@@ -2978,7 +3086,16 @@ export function Dashboard() {
         disabled={tabSwipeGestureDisabled}
         className={`tab-content-enter cq-tab-shell${tab === "realm" ? " cq-tab-shell--realm" : ""}${tab === "events" ? " cq-tab-shell--events" : ""}${tab === "partners" ? " cq-tab-shell--partners" : ""} ${tabFullBleed || tab === "events" || tab === "partners" ? "w-full pb-0" : "space-y-6 sm:space-y-7 px-4 pb-8"}`}
       >
-        {tab === "inbox" && character && renderPilotCampusGate(
+        {businessAccount && !businessMayOpenTab ? (
+          <StudentPrivacyScreen
+            onGoToLocalBusinesses={() => {
+              setQuadFeedTab("local_businesses");
+              setTab("quad");
+            }}
+          />
+        ) : null}
+
+        {businessMayOpenTab && tab === "inbox" && character && renderPilotCampusGate(
           <Inbox
             character={character}
             onBack={() => setTab("quad")}
@@ -2988,11 +3105,38 @@ export function Dashboard() {
             onSubTabChange={setInboxSubTab}
             onUnreadCountChange={setUnreadNotificationCount}
             deepLink={inboxDeepLink}
+            onOpenNotificationDestination={(notification) => {
+              const kind = notification.relatedEntityType;
+              const businessAccount = accountRole === "local_business";
+              if (kind === "campus_feed" || (businessAccount && (kind === "events" || kind === "event"))) {
+                setQuadFeedTab(businessAccount ? "local_businesses" : "public");
+                setTab("quad");
+                return;
+              }
+              if (kind === "local_businesses") {
+                setQuadFeedTab("local_businesses");
+                setTab("quad");
+                return;
+              }
+              if (kind === "events" || kind === "event") {
+                if (kind === "event" && notification.relatedEntityId) {
+                  try {
+                    window.sessionStorage.setItem("cq_open_event_id", notification.relatedEntityId);
+                  } catch {
+                    /* ignore */
+                  }
+                }
+                setTab("events");
+                return;
+              }
+              if (kind === "student_perks") setTab("partners");
+            }}
           />,
         )}
 
         {tab === "quad" && (
             <TheQuad
+            key={`${character.id}:${accountRole ?? "member"}`}
             character={character}
             onRefresh={refresh}
             feedTab={quadFeedTab}
@@ -3017,6 +3161,11 @@ export function Dashboard() {
             personalization={onboardingPreferences}
             onViewEvent={openTaggedEvent}
             onViewOnMap={openLocationOnMap}
+            viewerIsLocalBusiness={accountRole === "local_business"}
+            activeBusiness={(() => {
+              const selected = managedBusinesses.find((business) => business.partnerId === activePartnerId);
+              return selected?.canPost ? selected : null;
+            })()}
             onMessageSeller={(seller) =>
               openDirectMessage({
                 userId: seller.id,
@@ -3028,7 +3177,7 @@ export function Dashboard() {
           />
         )}
 
-        {tab === "friends" &&
+        {businessMayOpenTab && tab === "friends" && (
           renderPilotCampusGate(
             <FindFriends
               character={character}
@@ -3036,25 +3185,28 @@ export function Dashboard() {
               onOpenDm={openDirectMessage}
               onViewProfile={openFriendView}
             />,
-          )}
+          )
+        )}
 
-        {FEATURE_FLAGS.progression && tab === "guilds" &&
+        {businessMayOpenTab && FEATURE_FLAGS.progression && tab === "guilds" && (
           renderPilotCampusGate(
             <GuildsScreen character={character} onRefresh={refresh} onBack={goBackTab} />,
-          )}
+          )
+        )}
 
-        {tab === "events" &&
+        {businessMayOpenTab && tab === "events" && (
           renderPilotCampusGate(
             <EventsFeed
               personalization={onboardingPreferences}
               onViewOnMap={openEventOnMap}
               onOpenOrganization={openOrganizationFromEvents}
             />,
-          )}
+          )
+        )}
 
         {tab === "partners" && renderPilotCampusGate(<PartnersScreen />)}
 
-        {realmKeepAlive ? (
+        {businessMayOpenTab && realmKeepAlive ? (
           <div className={tab === "realm" ? undefined : "hidden"} aria-hidden={tab !== "realm"}>
             {renderPilotCampusGate(
               <TheRealm
@@ -3128,9 +3280,9 @@ export function Dashboard() {
           </div>
         ) : null}
 
-        {tab === "organizations" && renderPilotCampusGate(<OrganizationsHub personalization={onboardingPreferences} onBack={goBackTab} />)}
+        {businessMayOpenTab && tab === "organizations" && renderPilotCampusGate(<OrganizationsHub personalization={onboardingPreferences} onBack={goBackTab} />)}
 
-        {FEATURE_FLAGS.progression && tab === "leaderboards" && (
+        {businessMayOpenTab && FEATURE_FLAGS.progression && tab === "leaderboards" && (
           <Leaderboards
             character={character}
             onRefresh={refreshAuthoritativeProfileInBackground}
@@ -3139,21 +3291,21 @@ export function Dashboard() {
           />
         )}
 
-        {FEATURE_FLAGS.progression && FEATURE_FLAGS.bossBattles && tab === "battle" && (
+        {businessMayOpenTab && FEATURE_FLAGS.progression && FEATURE_FLAGS.bossBattles && tab === "battle" && (
           <div className="space-y-4 sm:space-y-5">
             <BossBattles character={character} onRefresh={refresh} />
           </div>
         )}
 
-        {FEATURE_FLAGS.progression && tab === "mini-games" && (
+        {businessMayOpenTab && FEATURE_FLAGS.progression && tab === "mini-games" && (
           <TrainingGrounds character={character} onRefresh={refresh} onBack={() => setTab("quad")} />
         )}
 
-        {FEATURE_FLAGS.progression && tab === "achievements" && (
+        {businessMayOpenTab && FEATURE_FLAGS.progression && tab === "achievements" && (
           <TrophyRoom character={character} onRefresh={refresh} />
         )}
 
-        {FEATURE_FLAGS.progression && tab === "quest-board" && (
+        {businessMayOpenTab && FEATURE_FLAGS.progression && tab === "quest-board" && (
           <QuestBoard
             character={character}
             onRefresh={refreshAuthoritativeProfileInBackground}
@@ -3162,18 +3314,18 @@ export function Dashboard() {
           />
         )}
 
-        {FEATURE_FLAGS.progression && FEATURE_FLAGS.manualLog && tab === "manual-log" && character && (
+        {businessMayOpenTab && FEATURE_FLAGS.progression && FEATURE_FLAGS.manualLog && tab === "manual-log" && character && (
           <ManualLogScreen character={character} onLog={handleLog} onBack={() => setTab("quad")} />
         )}
 
-        {FEATURE_FLAGS.progression && tab === "progress-hub" && character && (
+        {businessMayOpenTab && FEATURE_FLAGS.progression && tab === "progress-hub" && character && (
           <ProgressHubScreen
             character={character}
             onOpenLeaderboard={() => navigateToTab("leaderboards")}
           />
         )}
 
-        {FEATURE_FLAGS.progression && tab === "skills-lore" && character && (
+        {businessMayOpenTab && FEATURE_FLAGS.progression && tab === "skills-lore" && character && (
           <SkillsLoreScreen character={character} onRefresh={refresh} />
         )}
 
@@ -3212,6 +3364,26 @@ export function Dashboard() {
                   Dismiss
                 </button>
               </div>
+            ) : accountRole === "local_business" ? (
+              <OwnBusinessProfile
+                viewerId={character.id}
+                businesses={managedBusinesses}
+                partnerId={activePartnerId}
+                onPartnerChange={(partnerId) => {
+                  if (!managedBusinesses.some((business) => business.partnerId === partnerId && business.canEdit)) return;
+                  setActivePartnerId(partnerId);
+                  try {
+                    window.sessionStorage.setItem(activeBusinessStorageKey(character.id), partnerId);
+                  } catch {
+                    /* session storage is optional */
+                  }
+                }}
+                onCreatePost={() => {
+                  setQuadFeedTab("local_businesses");
+                  setTab("quad");
+                }}
+                onViewPerk={() => setTab("partners")}
+              />
             ) : characterPane === "profile" || !FEATURE_FLAGS.progression ? (
               <MyProfileScreen
                 character={character}
@@ -3235,6 +3407,8 @@ export function Dashboard() {
           </div>
         ) : null}
       </DashboardTabSwipeShell>
+        );
+      })()}
       </div>
 
       <AnimatePresence>
@@ -3250,7 +3424,9 @@ export function Dashboard() {
               if (drawerBlocksNavigation) return;
               persistNavHintsSeen();
               setTab(t);
-              if (t === "quad") setQuadFeedTab("public");
+              if (t === "quad") {
+                setQuadFeedTab(accountRole === "local_business" ? "local_businesses" : "public");
+              }
               if (t === "character") {
                 setCharacterPane("profile");
                 setProfileTab("posts");

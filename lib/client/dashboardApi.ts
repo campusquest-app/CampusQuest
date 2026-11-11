@@ -94,6 +94,7 @@ type ApiSchoolPayload = {
   internalTesterAccess?: boolean;
   moderationAdminAccess?: boolean;
   verified?: boolean;
+  localBusinessAccess?: boolean;
   schoolName?: string | null;
   schoolDomain?: string | null;
   requiredDomain?: string | null;
@@ -121,6 +122,7 @@ function buildSnapshotFromApiPayload(data: ApiSchoolPayload): MeSchoolVerificati
       platformAdminAccess,
       internalTesterAccess: data.internalTesterAccess === true,
       moderationAdminAccess: platformAdminAccess,
+      localBusinessAccess: data.localBusinessAccess === true,
     };
   }
 
@@ -139,6 +141,7 @@ function buildSnapshotFromApiPayload(data: ApiSchoolPayload): MeSchoolVerificati
       platformAdminAccess,
       internalTesterAccess: data.internalTesterAccess === true,
       moderationAdminAccess: platformAdminAccess,
+      localBusinessAccess: data.localBusinessAccess === true,
     };
   }
 

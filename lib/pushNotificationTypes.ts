@@ -16,14 +16,29 @@ export const PUSH_ENABLED_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
   "organization_event_announcement",
 ]);
 
-export type PushCategory = "messages" | "social" | "events" | "system";
+export type PushCategory = "messages" | "social" | "events" | "system" | "announcements" | "perks";
+
+/**
+ * Automated categories the sender can understand later.
+ * They stay out of PUSH_ENABLED_NOTIFICATION_TYPES until a product decision turns each one on.
+ */
+export const FUTURE_PUSH_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
+  "event_rsvp_reminder",
+  "student_perk_published",
+  "campus_announcement",
+]);
 
 export function pushCategoryForType(type: string): PushCategory {
   switch (type) {
     case "direct_message":
       return "messages";
     case "organization_event_announcement":
+    case "event_rsvp_reminder":
       return "events";
+    case "campus_announcement":
+      return "announcements";
+    case "student_perk_published":
+      return "perks";
     case "moderation_safety_update":
     case "organization_request_approved":
     case "organization_request_denied":

@@ -12,6 +12,8 @@ import {
 import { Heart, Lightbulb, MapPin, Search, Store, X } from "lucide-react";
 import { FeaturedDealCard, PartnerCard, type PartnerFavoriteProps } from "@/components/partners/PartnerCard";
 import { PartnerDetailSheet } from "@/components/partners/PartnerDetailSheet";
+import { BusinessProfileScreen } from "@/components/localBusiness/BusinessProfileScreen";
+import { getCharacter } from "@/lib/store";
 import { PartnersNoResults } from "@/components/partners/PartnersNoResults";
 import { StudentRewardPass } from "@/components/partners/StudentRewardPass";
 import { SuggestBusinessSheet } from "@/components/partners/SuggestBusinessSheet";
@@ -166,6 +168,7 @@ export function PartnersScreenView({
   const [filter, setFilter] = useState<PerksFilterId>(initialFilter);
   const [savedOnly, setSavedOnly] = useState(initialSavedOnly);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [profilePartnerId, setProfilePartnerId] = useState<string | null>(null);
   const [passPartnerId, setPassPartnerId] = useState<string | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const chipsRef = useRef<HTMLDivElement>(null);
@@ -414,6 +417,21 @@ export function PartnersScreenView({
           onClose={closeDetail}
           onViewReward={openReward}
           favorite={favoriteFor(selected)}
+          onViewProfile={(partner) => {
+            setSelectedId(null);
+            setProfilePartnerId(partner.id);
+          }}
+        />
+      ) : null}
+      {profilePartnerId ? (
+        <BusinessProfileScreen
+          partnerId={profilePartnerId}
+          viewerId={getCharacter()?.id ?? ""}
+          onClose={() => setProfilePartnerId(null)}
+          onViewPerk={() => {
+            setSelectedId(profilePartnerId);
+            setProfilePartnerId(null);
+          }}
         />
       ) : null}
       {passPartner ? <StudentRewardPass partner={passPartner} onClose={closePass} /> : null}

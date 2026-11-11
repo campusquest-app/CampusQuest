@@ -38,8 +38,17 @@ export function localBusinessPostDenial(args: {
   feedDestination: string | null | undefined;
   postedAsType: string | null | undefined;
   postedAsVerified: boolean;
+  /** Approved local_business account. They may post only on Local Businesses, as themselves. */
+  actorIsApprovedLocalBusiness?: boolean;
 }): string | null {
-  if (normalizeFeedDestination(args.feedDestination) !== LOCAL_BUSINESSES_FEED) return null;
+  const destination = normalizeFeedDestination(args.feedDestination);
+  if (args.actorIsApprovedLocalBusiness) {
+    if (destination !== LOCAL_BUSINESSES_FEED) {
+      return "Local business accounts can only post to the Local Businesses feed.";
+    }
+    return null;
+  }
+  if (destination !== LOCAL_BUSINESSES_FEED) return null;
   if (args.postedAsType === "student_business" && args.postedAsVerified) return null;
   return "Only verified business accounts can post to Local Businesses.";
 }

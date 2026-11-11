@@ -17,6 +17,7 @@ import { AdminUsersSection } from "@/components/admin/AdminUsersSection";
 import { AdminSystemSection } from "@/components/admin/AdminSystemSection";
 import { AdminEventSourcesSection } from "@/components/admin/AdminEventSourcesSection";
 import { AdminVerificationSection } from "@/components/admin/AdminVerificationSection";
+import { AdminPushNotificationsSection } from "@/components/admin/AdminPushNotificationsSection";
 
 function BackToQuadLink() {
   return (
@@ -194,6 +195,7 @@ export function InternalAdminDashboard({
       {section === "quests" ? <AdminQuestsSection /> : null}
       {section === "users" ? <AdminUsersSection /> : null}
       {section === "system" ? <AdminSystemSection /> : null}
+      {section === "push" ? <AdminPushNotificationsSection /> : null}
     </AdminShell>
   );
 }

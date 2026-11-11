@@ -13,10 +13,10 @@ Native push is implemented for the Capacitor shell (`/native`) and wired into th
 
 ### 2. Xcode
 1. Open `native/ios/App/App.xcodeproj`.
-2. Target **App** → **Signing & Capabilities**.
-3. Click **+ Capability** → **Push Notifications** (required in the Apple Developer portal; the repo already has `App.entitlements` / `AppRelease.entitlements` with `aps-environment`).
-4. Click **+ Capability** → **Background Modes** → check **Remote notifications** (Info.plist already lists `remote-notification`).
-5. Use an Apple Development Team that matches the App ID.
+2. Target **App** → **Signing & Capabilities**. Team must stay **CampusQuest, Inc. (`484VK346B4`)**. Do not switch the target to `22HZFLJZ9X`.
+3. Xcode 16 and later do not list **Push Notifications** in the + Capability picker. Searching “noti” only shows Communication, Fall Detection, and Time Sensitive Notifications. Standard push is the `aps-environment` entitlement, which is already in the Debug and Release entitlement files. Do not add Location Push (`com.apple.developer.location.push`); that is a different, restricted capability.
+4. Background Modes → Remote notifications is already in `Info.plist` (`remote-notification`).
+5. APNs auth uses the same team as the signed app. Set `APNS_TEAM_ID=484VK346B4`. The Key ID is not a substitute for the Team ID.
 
 Repo entitlements:
 - Debug: `native/ios/App/App/App.entitlements` → `aps-environment = development`
@@ -28,10 +28,10 @@ Enabling the capability in the Developer portal is still a manual step. Do not t
 Set (Production + Preview as needed):
 
 ```bash
-APNS_KEY_ID=...
-APNS_TEAM_ID=...
+APNS_KEY_ID=34Q7U6QWCT
+APNS_TEAM_ID=484VK346B4
 APNS_BUNDLE_ID=com.nicklockhart.campusquest
-APNS_P8_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+APNS_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
 APNS_PRODUCTION=true   # false only for local Xcode debug sandbox tokens
 ```
 
@@ -53,6 +53,16 @@ Creates `push_devices` + `user_push_settings` with RLS.
 - Users enable push from **Settings → Push notifications**.
 - Logout disables the current device token association.
 - Push is sent **after** the in-app notification row is created (fire-and-forget).
+
+## Admin Push Notifications
+
+The admin dashboard section **Push Notifications** sends an announcement after confirmation. A test send is limited to one selected user. The same idempotency key cannot send a second time.
+
+`push_broadcast_attempts` records whether Apple accepted or rejected each request. Acceptance is not delivery and does not mean the student saw the alert.
+
+Apply `supabase/migrations/20261111180000_admin_push_broadcasts.sql` before the first send. The page cannot send until that migration is applied.
+
+Promotional Student Perks pushes require `perks_enabled` (default off). CampusQuest announcements use `announcements_enabled` (default on). Account and safety alerts stay on the existing system category.
 
 ## v1 push types
 Messages, friend request / accepted, tags/mentions/tag approval, comments, org request approved/denied, moderation safety, org event announcements.

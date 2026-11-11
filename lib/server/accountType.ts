@@ -9,6 +9,7 @@ export type AccountTypeProfile = {
 export type AccountTypeDecision =
   | { kind: "invalid_role" }
   | { kind: "admin_locked" }
+  | { kind: "role_locked" }
   | {
       kind: "update";
       /** Column patch to apply with the service-role client. */
@@ -36,6 +37,7 @@ export function resolveAccountTypeUpdate(
   if (currentRole === "admin" || currentRole === "super_admin") {
     return { kind: "admin_locked" };
   }
+  if (currentRole === "local_business") return { kind: "role_locked" };
 
   const qaAccount = profile.is_test_user === true || currentRole === "qa";
   return {
@@ -67,7 +69,9 @@ export function shouldHealRoleFromStudentStatus(profile: AccountTypeProfile & {
   qa_selected_role?: string | null;
 }): boolean {
   const role = profile.role ?? null;
-  if (role === "admin" || role === "super_admin" || role === "beta_internal") return false;
+  if (role === "admin" || role === "super_admin" || role === "beta_internal" || role === "local_business") {
+    return false;
+  }
   if (profile.is_test_user === true || role === "qa") {
     return !isSelectableRole(profile.qa_selected_role);
   }

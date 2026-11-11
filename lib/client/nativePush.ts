@@ -9,6 +9,7 @@
 import { getAccessToken } from "@/lib/client/apiSession";
 import { postAuthed } from "@/lib/client/dashboardApi";
 import { APP_VERSION } from "@/lib/appVersion";
+import { osPermissionStep } from "@/lib/push/adminBroadcast";
 
 type CapPluginListenerHandle = { remove: () => void | Promise<void> };
 
@@ -49,10 +50,17 @@ export type PushDeepLink = {
   eventId?: string;
   relatedEntityType?: string;
   relatedEntityId?: string;
+  destination?: string;
 };
 
 type PushDeepLinkListener = (link: PushDeepLink) => void;
 const deepLinkListeners = new Set<PushDeepLinkListener>();
+const foregroundListeners = new Set<() => void>();
+
+export function subscribePushForeground(listener: () => void): () => void {
+  foregroundListeners.add(listener);
+  return () => foregroundListeners.delete(listener);
+}
 
 export function subscribePushDeepLink(listener: PushDeepLinkListener): () => void {
   deepLinkListeners.add(listener);
@@ -96,6 +104,7 @@ function parseDeepLinkFromData(data: Record<string, unknown> | undefined): PushD
   const postId = data.post_id ?? data.postId;
   const eventId = data.event_id ?? data.eventId;
   const notificationId = data.notification_id ?? data.notificationId;
+  const destination = data.destination;
   return {
     type,
     notificationId: notificationId ? String(notificationId) : undefined,
@@ -104,6 +113,7 @@ function parseDeepLinkFromData(data: Record<string, unknown> | undefined): PushD
     eventId: eventId ? String(eventId) : undefined,
     relatedEntityType: relatedEntityType ? String(relatedEntityType) : undefined,
     relatedEntityId: relatedEntityId ? String(relatedEntityId) : undefined,
+    destination: destination ? String(destination) : undefined,
   };
 }
 
@@ -147,7 +157,15 @@ async function attachPushListeners(plugin: PushNotificationsPlugin) {
   listenerHandles.push(regError);
 
   const received = await plugin.addListener("pushNotificationReceived", () => {
-    // Foreground: in-app inbox already polls; no extra UI for v1.
+    // Foreground alerts stay in the system banner. The payload is not rendered here,
+    // so a previous account's private text cannot be shown after a switch.
+    foregroundListeners.forEach((listener) => {
+      try {
+        listener();
+      } catch {
+        /* ignore */
+      }
+    });
   });
   listenerHandles.push(received);
 
@@ -208,8 +226,18 @@ export async function enableNativePushNotifications(): Promise<{
   await attachPushListeners(plugin);
 
   const current = await plugin.checkPermissions();
+  const step = osPermissionStep(
+    current.receive === "granted" ? "granted" : current.receive === "denied" ? "denied" : "prompt",
+  );
   let receive = current.receive;
-  if (receive !== "granted") {
+  if (step === "stop") {
+    return {
+      ok: false,
+      status: "denied",
+      message: "Notifications are off. You can enable them in iOS Settings.",
+    };
+  }
+  if (step === "request") {
     const requested = await plugin.requestPermissions();
     receive = requested.receive;
   }

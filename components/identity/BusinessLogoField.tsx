@@ -8,11 +8,13 @@ export function BusinessLogoField({
   onFile,
   onError,
   inputId = "cq-business-logo",
+  label = "logo",
 }: {
   file: File | null;
   onFile: (file: File | null) => void;
   onError: (message: string | null) => void;
   inputId?: string;
+  label?: string;
 }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -48,7 +50,7 @@ export function BusinessLogoField({
         {previewUrl ? (
           <img src={previewUrl} alt="" className="cq-logo-preview-img" />
         ) : (
-          <span className="cq-logo-preview-empty">Logo</span>
+          <span className="cq-logo-preview-empty">{label}</span>
         )}
       </div>
       <div className="cq-logo-field-actions">
@@ -63,7 +65,7 @@ export function BusinessLogoField({
               event.target.value = "";
             }}
           />
-          {file ? "Replace logo" : "Upload logo"}
+          {file ? `Replace ${label}` : `Upload ${label}`}
         </label>
         {file ? (
           <button type="button" className="cq-logo-remove" onClick={() => choose(null)}>

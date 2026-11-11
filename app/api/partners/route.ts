@@ -5,13 +5,19 @@ import { visiblePartners } from "@/lib/partners/partnerStatus";
 import { REVIEW_DEMO_PARTNER } from "@/lib/partners/reviewDemoPartner";
 import { viewerCanSeeReviewDemo } from "@/lib/server/reviewDemo";
 import type { PartnersResponse } from "@/lib/partners/types";
+import { loadPartnerOverride } from "@/lib/server/localBusinessAccount";
+import { mergePartnerProfile } from "@/lib/localBusiness/profile";
 
 export async function GET(request: Request) {
   try {
     const { userClient } = await requireAuthUser(request);
     // Partners live in a static directory until a partners table exists. When it does, read active rows
     // via the user-scoped client (RLS: read-only) and map them with `mapPartnerRow`.
-    const partners = visiblePartners(PARTNER_DIRECTORY);
+    const partners = await Promise.all(
+      visiblePartners(PARTNER_DIRECTORY).map(async (partner) =>
+        mergePartnerProfile(partner, await loadPartnerOverride(partner.id)),
+      ),
+    );
     if (await viewerCanSeeReviewDemo(userClient)) partners.push(REVIEW_DEMO_PARTNER);
     const body: PartnersResponse = { partners };
     return ok(body);

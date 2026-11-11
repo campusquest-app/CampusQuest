@@ -2,10 +2,14 @@ import { fail, ok } from "@/lib/server/http";
 import { searchPeopleProfiles } from "@/lib/server/friendsGuildsSearch";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
+import { loadLocalBusinessActor } from "@/lib/server/localBusinessAccount";
 
 export async function GET(request: Request) {
   try {
     const auth = await requireAuthUser(request);
+    if ((await loadLocalBusinessActor(auth.userClient, auth.user.id)).restricted) {
+      return ok({ results: [] });
+    }
     enforceRateLimit({
       userId: auth.user.id,
       routeKey: "social:users:search",

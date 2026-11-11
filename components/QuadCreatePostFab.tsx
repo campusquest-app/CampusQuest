@@ -33,12 +33,16 @@ export function QuadCreatePostFab({
   onPosted,
   onXpReward,
   onMarketSell,
+  viewerIsLocalBusiness = false,
+  activeBusiness = null,
 }: {
   feedTab: QuadFeedTab;
   character: Character;
   onPosted: () => void;
   onXpReward?: (reward: QuadPostXpReward) => void;
   onMarketSell?: () => void;
+  viewerIsLocalBusiness?: boolean;
+  activeBusiness?: { partnerId: string; name: string; logoUrl?: string | null } | null;
 }) {
   const identityState = useCampusIdentities();
   const canPostLocalBusinesses = canOfferLocalBusinessComposer(identityState.identities);
@@ -161,7 +165,7 @@ export function QuadCreatePostFab({
             />
           ) : (
             <FieldNoteComposer
-              key={`${feedTab}-${open}-compose`}
+              key={`${feedTab}-${open}-${activeBusiness?.partnerId ?? "composer"}`}
               character={character}
               defaultVisibility={baseFeedType(feedTab)}
               initialImage={pendingMedia.kind === "image" ? pendingMedia.dataUrl : ""}
@@ -192,6 +196,8 @@ export function QuadCreatePostFab({
                 handleClose();
               }}
               onXpReward={onXpReward}
+              lockedLocalBusinessFeed={viewerIsLocalBusiness}
+              activeBusiness={activeBusiness}
               defaultFeedDestination={
                 feedTab === "student_organizations"
                   ? "organizations"
@@ -206,7 +212,8 @@ export function QuadCreatePostFab({
     ) : null;
 
   if (typeof document === "undefined") return null;
-  if (isLocalBusinessesFeedTab(feedTab) && !canPostLocalBusinesses) return null;
+  if (viewerIsLocalBusiness && !isLocalBusinessesFeedTab(feedTab)) return null;
+  if (isLocalBusinessesFeedTab(feedTab) && !canPostLocalBusinesses && !viewerIsLocalBusiness) return null;
   if (feedTab === "student_organizations" && !canPostOrganizations) return null;
 
   return (

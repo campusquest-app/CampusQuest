@@ -114,21 +114,35 @@ export type UserPushSettings = {
   messagesEnabled: boolean;
   socialEnabled: boolean;
   eventsEnabled: boolean;
+  announcementsEnabled: boolean;
+  perksEnabled: boolean;
 };
 
-export async function getUserPushSettings(userId: string): Promise<UserPushSettings> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("user_push_settings")
-    .select("push_enabled, messages_enabled, social_enabled, events_enabled")
-    .eq("user_id", userId)
-    .maybeSingle();
+function mapPushSettings(data: Record<string, unknown> | null | undefined): UserPushSettings {
   return {
     pushEnabled: data?.push_enabled !== false,
     messagesEnabled: data?.messages_enabled !== false,
     socialEnabled: data?.social_enabled !== false,
     eventsEnabled: data?.events_enabled !== false,
+    announcementsEnabled: data?.announcements_enabled !== false,
+    perksEnabled: data?.perks_enabled === true,
   };
+}
+
+export async function getUserPushSettings(userId: string): Promise<UserPushSettings> {
+  const admin = createAdminClient();
+  const full = await admin
+    .from("user_push_settings")
+    .select("push_enabled, messages_enabled, social_enabled, events_enabled, announcements_enabled, perks_enabled")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!full.error) return mapPushSettings(full.data as Record<string, unknown> | null);
+  const legacy = await admin
+    .from("user_push_settings")
+    .select("push_enabled, messages_enabled, social_enabled, events_enabled")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return mapPushSettings(legacy.data as Record<string, unknown> | null);
 }
 
 export async function upsertUserPushSettings(
@@ -141,21 +155,46 @@ export async function upsertUserPushSettings(
     messages_enabled: patch.messagesEnabled ?? current.messagesEnabled,
     social_enabled: patch.socialEnabled ?? current.socialEnabled,
     events_enabled: patch.eventsEnabled ?? current.eventsEnabled,
+    announcements_enabled: patch.announcementsEnabled ?? current.announcementsEnabled,
+    perks_enabled: patch.perksEnabled ?? current.perksEnabled,
     updated_at: new Date().toISOString(),
   };
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const saved = await admin
     .from("user_push_settings")
     .upsert({ user_id: userId, ...next }, { onConflict: "user_id" })
+    .select("push_enabled, messages_enabled, social_enabled, events_enabled, announcements_enabled, perks_enabled")
+    .single();
+  if (!saved.error && saved.data) return mapPushSettings(saved.data as Record<string, unknown>);
+
+  const legacyColumns = /announcements_enabled|perks_enabled|42703/.test(saved.error?.message ?? "");
+  if (!legacyColumns) {
+    throw new ApiError(400, saved.error?.message ?? "Could not save push settings.", "PUSH_SETTINGS_SAVE_FAILED");
+  }
+  if (patch.announcementsEnabled != null || patch.perksEnabled != null) {
+    throw new ApiError(
+      503,
+      "Announcement preferences need the push settings migration before they can be saved.",
+      "PUSH_SETTINGS_MIGRATION_REQUIRED",
+    );
+  }
+  const legacy = await admin
+    .from("user_push_settings")
+    .upsert(
+      {
+        user_id: userId,
+        push_enabled: next.push_enabled,
+        messages_enabled: next.messages_enabled,
+        social_enabled: next.social_enabled,
+        events_enabled: next.events_enabled,
+        updated_at: next.updated_at,
+      },
+      { onConflict: "user_id" },
+    )
     .select("push_enabled, messages_enabled, social_enabled, events_enabled")
     .single();
-  if (error || !data) {
-    throw new ApiError(400, error?.message ?? "Could not save push settings.", "PUSH_SETTINGS_SAVE_FAILED");
+  if (legacy.error || !legacy.data) {
+    throw new ApiError(400, legacy.error?.message ?? "Could not save push settings.", "PUSH_SETTINGS_SAVE_FAILED");
   }
-  return {
-    pushEnabled: data.push_enabled !== false,
-    messagesEnabled: data.messages_enabled !== false,
-    socialEnabled: data.social_enabled !== false,
-    eventsEnabled: data.events_enabled !== false,
-  };
+  return mapPushSettings(legacy.data as Record<string, unknown>);
 }

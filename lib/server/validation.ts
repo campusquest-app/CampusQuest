@@ -741,6 +741,7 @@ export const postQuadPostSchema = z
     postedAsId: uuidSchema.optional(),
     anonymous: z.boolean().optional(),
     feedDestination: z.enum(["campus", "local_businesses", "organizations"]).optional(),
+    businessPartnerId: z.string().trim().regex(/^[a-z0-9-]{1,80}$/).optional(),
     tags: z
       .array(
         z.object({

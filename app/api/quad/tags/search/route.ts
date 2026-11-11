@@ -1,12 +1,16 @@
 import { fail, ok } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
 import { requireAuthUser } from "@/lib/server/supabase";
+import { loadLocalBusinessActor } from "@/lib/server/localBusinessAccount";
 import { searchTaggableEntities } from "@/lib/server/entityTagSearch";
 
 export async function GET(request: Request) {
   try {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "quad:tags:search", limit: 60, windowMs: 60_000 });
+    if ((await loadLocalBusinessActor(auth.userClient, auth.user.id)).restricted) {
+      return ok({ results: [] });
+    }
     const { searchParams } = new URL(request.url);
     const q = (searchParams.get("q") ?? "").trim();
     const filterRaw = (searchParams.get("filter") ?? "all").toLowerCase();

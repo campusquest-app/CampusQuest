@@ -325,9 +325,15 @@ export function collectPostedAsIds(posts: Array<Record<string, unknown>>): {
 
 export async function enrichPostsWithPostedAs<T extends Record<string, unknown>>(posts: T[]): Promise<T[]> {
   const ids = collectPostedAsIds(posts);
-  if (ids.businessIds.length === 0 && ids.orgIds.length === 0) return posts;
-  const lookups = await loadPostedAsLookups(ids);
-  return posts.map((post) => overlayPostedAsOnPost(post, lookups));
+  let withPostedAs = posts;
+  if (ids.businessIds.length > 0 || ids.orgIds.length > 0) {
+    const lookups = await loadPostedAsLookups(ids);
+    withPostedAs = posts.map((post) => overlayPostedAsOnPost(post, lookups));
+  }
+  const identifiable = withPostedAs.filter((post): post is T & { id: string } => typeof post.id === "string");
+  if (identifiable.length !== withPostedAs.length) return withPostedAs;
+  const { attachBusinessPartnerIdentity } = await import("@/lib/server/localBusinessAccount");
+  return attachBusinessPartnerIdentity(identifiable);
 }
 
 export type { ProfileLite };

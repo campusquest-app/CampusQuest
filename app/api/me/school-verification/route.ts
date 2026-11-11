@@ -8,6 +8,9 @@ import {
 } from "@/lib/server/schoolVerification";
 import type { SchoolVerificationState } from "@/lib/server/schoolVerification";
 import { requireAuthUser } from "@/lib/server/supabase";
+import { getPilotSchoolConfig } from "@/lib/server/pilotMode";
+import { fetchProfileRole } from "@/lib/server/permissions";
+import { isLocalBusinessRole } from "@/lib/localBusiness/access";
 
 type MeSchoolVerificationPayload = {
   verification: SchoolVerificationState;
@@ -17,6 +20,8 @@ type MeSchoolVerificationPayload = {
   /** @deprecated Use platformAdminAccess — kept for older clients */
   moderationAdminAccess: boolean;
   verified: boolean;
+  /** Local business login. Opens the app without granting student verification. */
+  localBusinessAccess: boolean;
   schoolName: string | null;
   schoolDomain: string | null;
   requiredDomain: string | null;
@@ -31,14 +36,27 @@ export async function GET(request: Request) {
     const identity = await resolveCampusAccessIdentity(auth.userClient, auth.user);
     const platformAdminAccess = identity.isPlatformAdmin;
     const internalTesterAccess = identity.isInternalTester;
+    const localBusinessAccess = isLocalBusinessRole(
+      await fetchProfileRole(auth.userClient, auth.user.id, { email: auth.user.email }),
+    );
     const trustedBypass = platformAdminAccess || internalTesterAccess;
 
+    const pilot = getPilotSchoolConfig();
     const verification: SchoolVerificationState = trustedBypass
       ? syntheticPilotVerificationForPlatformAdmin()
-      : await ensureSchoolVerificationForUser({
-          userClient: auth.userClient as any,
-          user: auth.user,
-        });
+      : localBusinessAccess
+        ? {
+            status: "pending",
+            schoolName: null,
+            schoolDomain: null,
+            verifiedAt: null,
+            requiredPilotDomain: pilot.schoolDomain,
+            requiredPilotSchoolName: pilot.schoolName,
+          }
+        : await ensureSchoolVerificationForUser({
+            userClient: auth.userClient as any,
+            user: auth.user,
+          });
 
     const verified = canUserAccessCampusFeatures({
       user: auth.user,
@@ -63,6 +81,7 @@ export async function GET(request: Request) {
       internalTesterAccess,
       moderationAdminAccess: platformAdminAccess,
       verified,
+      localBusinessAccess,
       schoolName: verification.schoolName,
       schoolDomain: verification.schoolDomain,
       requiredDomain: verification.requiredPilotDomain,

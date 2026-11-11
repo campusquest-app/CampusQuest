@@ -53,7 +53,7 @@ export function isProfileSetupComplete(profile: ProfileRouteInput): boolean {
 /** Admins and internal testers are not sent through student email or demographic gates. */
 function skipsStudentVerificationGates(profile: ProfileRouteInput): boolean {
   const role = profile.role ?? null;
-  return role === "admin" || role === "super_admin" || role === "beta_internal";
+  return role === "admin" || role === "super_admin" || role === "beta_internal" || role === "local_business";
 }
 
 /**

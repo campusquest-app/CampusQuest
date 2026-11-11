@@ -22,7 +22,7 @@ export function canAccessCampusFromSnapshot(snapshot: SchoolVerificationClientSn
   const isAdmin = snapshotPlatformAdminAccess(snapshot);
   const isInternalTester = snapshot.internalTesterAccess === true;
 
-  if (isAdmin || isInternalTester) {
+  if (isAdmin || isInternalTester || snapshot.localBusinessAccess === true) {
     logCampusAccessDev({
       isAdmin,
       isInternalTester,

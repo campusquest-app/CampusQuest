@@ -8,6 +8,7 @@ import { QUAD_POSTS_WITH_PROFILE_SELECT } from "@/lib/server/quadPosts";
 import { enrichQuadPostsWithTagsAndMentions } from "@/lib/server/postTagService";
 import { getAcceptedFriendUserIds } from "@/lib/server/friendProfileAccess";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
+import { loadLocalBusinessActor } from "@/lib/server/localBusinessAccount";
 
 export async function GET(
   request: Request,
@@ -16,6 +17,7 @@ export async function GET(
   try {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "quad:tagged:get", limit: 60, windowMs: 60_000 });
+    const businessActor = await loadLocalBusinessActor(auth.userClient, auth.user.id);
     const { entityType, entityId } = await context.params;
     if (!isTagEntityType(entityType)) throw new ApiError(400, "Invalid entity type.", "INVALID_TYPE");
     const idParsed = uuidSchema.safeParse(entityId);
@@ -56,6 +58,7 @@ export async function GET(
 
     const visible = ((posts ?? []) as unknown as QuadPostApiRow[]).filter((p) =>
       !p.is_anonymous &&
+      (!businessActor.restricted || p.feed_destination === "local_businesses") &&
       canViewerSeeTaggedPost({
         viewerId: auth.user.id,
         authorId: p.user_id ?? "",

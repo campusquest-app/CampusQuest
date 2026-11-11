@@ -40,6 +40,8 @@ import {
 } from "@/lib/client/authSessionClient";
 import { isQuadCommunityChannel, QUAD_COMMUNITY_FEED_LABELS, type QuadCommunityChannel } from "@/lib/quadCommunityChannels";
 import { isLocalBusinessesFeedTab, isMarketFeedTab, type QuadFeedTab } from "@/lib/client/quadFeedOptions";
+import { businessCanOpenFeed } from "@/lib/localBusiness/access";
+import { StudentPrivacyScreen } from "@/components/localBusiness/StudentPrivacyScreen";
 import { useCampusIdentities } from "@/lib/client/useCampusIdentities";
 import { canManageOrganizationPost } from "@/lib/quad/localBusinessFeed";
 import { fetchMarketplaceListings } from "@/lib/client/marketplaceClient";
@@ -104,6 +106,8 @@ export function TheQuad({
   onViewEvent,
   onViewOnMap,
   onMessageSeller,
+  viewerIsLocalBusiness = false,
+  activeBusiness = null,
 }: {
   character: Character;
   onRefresh?: () => void;
@@ -141,6 +145,9 @@ export function TheQuad({
   onViewEvent?: (eventId: string) => void;
   onViewOnMap?: (locationId: string) => void;
   onMessageSeller?: (seller: MarketplaceSeller) => void;
+  /** Local business accounts never load student feeds. */
+  viewerIsLocalBusiness?: boolean;
+  activeBusiness?: { partnerId: string; name: string; logoUrl?: string | null } | null;
 }) {
   const [notes, setNotes] = useState<FieldNote[]>([]);
   const feedCacheRef = useRef(new Map<string, FieldNote[]>());
@@ -247,6 +254,16 @@ export function TheQuad({
     const tabAtStart = feedTab;
     const stillCurrent = () =>
       generation === refreshGenerationRef.current && feedTabRef.current === tabAtStart;
+
+    if (viewerIsLocalBusiness && !businessCanOpenFeed(feedTab)) {
+      feedCacheRef.current.delete(feedTab);
+      if (!stillCurrent()) return;
+      setNotes([]);
+      setCampusListings([]);
+      setFeedError(null);
+      setFeedLoading(false);
+      return;
+    }
 
     if (!silent) {
       setFeedError(null);
@@ -418,6 +435,7 @@ export function TheQuad({
     handleSessionMissing,
     refreshPlayerSnapshotSafe,
     applyCampusFeedRanking,
+    viewerIsLocalBusiness,
   ]);
 
   const handlePullRefresh = useCallback(async () => {
@@ -439,8 +457,11 @@ export function TheQuad({
     scrollByFeedRef.current.set(previous, window.scrollY);
     feedTabRef.current = feedTab;
     const y = scrollByFeedRef.current.get(feedTab) ?? 0;
-    const cached = feedCacheRef.current.get(feedTab);
-    if (cached && cached.length > 0) {
+    const cached = viewerIsLocalBusiness && !businessCanOpenFeed(feedTab) ? undefined : feedCacheRef.current.get(feedTab);
+    if (viewerIsLocalBusiness && !businessCanOpenFeed(feedTab)) {
+      setNotes([]);
+      setFeedLoading(false);
+    } else if (cached && cached.length > 0) {
       setNotes(cached);
       setFeedLoading(false);
     } else {
@@ -448,7 +469,7 @@ export function TheQuad({
       setNotes([]);
     }
     window.requestAnimationFrame(() => window.scrollTo({ top: y, behavior: "auto" }));
-  }, [feedTab, notes]);
+  }, [feedTab, notes, viewerIsLocalBusiness]);
 
   useEffect(() => {
     if (!sessionReady || !hasClientAccessSession()) return undefined;
@@ -761,7 +782,9 @@ export function TheQuad({
           style={{ paddingTop: showQuadChrome ? quadChromeStackPadding : "0px" }}
         >
           {orgCtaVariant ? <OrgVerificationCta variant={orgCtaVariant} /> : null}
-          {isMarketFeedTab(feedTab) ? (
+          {viewerIsLocalBusiness && !businessCanOpenFeed(feedTab) ? (
+            <StudentPrivacyScreen onGoToLocalBusinesses={() => onFeedTabChange("local_businesses")} />
+          ) : isMarketFeedTab(feedTab) ? (
             <TheMarketFeed
               viewerId={character.id}
               sellOpen={marketSellOpen}
@@ -853,6 +876,8 @@ export function TheQuad({
       <QuadCreatePostFab
         feedTab={feedTab}
         character={character}
+        viewerIsLocalBusiness={viewerIsLocalBusiness}
+        activeBusiness={activeBusiness}
         onPosted={() => refresh({ silent: true })}
         onXpReward={onPostXpReward}
         onMarketSell={() => setMarketSellOpen(true)}

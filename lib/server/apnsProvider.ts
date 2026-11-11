@@ -6,12 +6,16 @@
  * - APNS_KEY_ID
  * - APNS_TEAM_ID
  * - APNS_BUNDLE_ID (default: com.nicklockhart.campusquest)
- * - APNS_P8_KEY  (PEM contents of AuthKey_XXX.p8, newlines as \n ok)
+ * - APNS_P8_KEY or APNS_PRIVATE_KEY (PEM contents of AuthKey_XXX.p8, newlines as \n ok)
  * - APNS_PRODUCTION=true|false  (TestFlight/App Store → true; Xcode debug → false)
  */
 
 import { createPrivateKey, createSign, randomUUID } from "crypto";
 import * as http2 from "http2";
+
+export function isInvalidApnsToken(reason: string, status: number): boolean {
+  return reason === "BadDeviceToken" || reason === "Unregistered" || reason === "ExpiredToken" || status === 410;
+}
 
 export type ApnsSendResult =
   | { ok: true; apnsId: string }
@@ -25,13 +29,37 @@ type ApnsConfig = {
   production: boolean;
 };
 
+function normalizeApnsPrivateKey(raw: string): string | null {
+  let value = raw.trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  value = value.includes("\\n") ? value.replace(/\\n/g, "\n") : value;
+  if (!value.includes("BEGIN")) {
+    const body = value.replace(/\s+/g, "");
+    if (!/^[A-Za-z0-9+/=]+$/.test(body) || body.length < 80) return null;
+    const lines = body.match(/.{1,64}/g)?.join("\n") ?? body;
+    value = `-----BEGIN PRIVATE KEY-----\n${lines}\n-----END PRIVATE KEY-----\n`;
+  }
+  try {
+    createPrivateKey(value);
+    return value;
+  } catch {
+    return null;
+  }
+}
+
 function readApnsConfig(): ApnsConfig | null {
   const keyId = process.env.APNS_KEY_ID?.trim();
   const teamId = process.env.APNS_TEAM_ID?.trim();
   const bundleId = process.env.APNS_BUNDLE_ID?.trim() || "com.nicklockhart.campusquest";
-  const p8KeyRaw = process.env.APNS_P8_KEY?.trim();
+  const p8KeyRaw = (process.env.APNS_P8_KEY ?? process.env.APNS_PRIVATE_KEY)?.trim();
   if (!keyId || !teamId || !p8KeyRaw) return null;
-  const p8Key = p8KeyRaw.includes("\\n") ? p8KeyRaw.replace(/\\n/g, "\n") : p8KeyRaw;
+  const p8Key = normalizeApnsPrivateKey(p8KeyRaw);
+  if (!p8Key) return null;
   const production = (process.env.APNS_PRODUCTION ?? "true").toLowerCase() !== "false";
   return { keyId, teamId, bundleId, p8Key, production };
 }
@@ -63,6 +91,25 @@ function mintApnsJwt(config: ApnsConfig): string {
   const token = `${unsigned}.${base64Url(sig)}`;
   cachedJwt = { token, expiresAtMs: Date.now() + 50 * 60_000 };
   return token;
+}
+
+/** A debug install can present a sandbox token while the app labels it production. Try the other host once. */
+export async function sendApnsAlertResolvingEnvironment(args: {
+  deviceToken: string;
+  title: string;
+  body: string;
+  data: Record<string, string>;
+  environment?: "development" | "production";
+}): Promise<ApnsSendResult & { environment: "development" | "production" }> {
+  const first = args.environment === "development" ? "development" : "production";
+  const initial = await sendApnsAlert({ ...args, environment: first });
+  if (initial.ok || initial.reason !== "BadDeviceToken") {
+    return { ...initial, environment: first };
+  }
+  const alternate = first === "development" ? "production" : "development";
+  const retry = await sendApnsAlert({ ...args, environment: alternate });
+  if (retry.ok) return { ...retry, environment: alternate };
+  return { ...initial, environment: first };
 }
 
 export async function sendApnsAlert(args: {
@@ -139,11 +186,7 @@ export async function sendApnsAlert(args: {
       } catch {
         /* keep raw */
       }
-      const invalidToken =
-        reason === "BadDeviceToken" ||
-        reason === "Unregistered" ||
-        reason === "ExpiredToken" ||
-        status === 410;
+      const invalidToken = isInvalidApnsToken(reason, status);
       resolve({ ok: false, status, reason, invalidToken });
     });
     req.on("error", (err) => {

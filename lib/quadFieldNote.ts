@@ -50,6 +50,7 @@ export type QuadPostApiRow = {
   posted_as_username?: string | null;
   posted_as_avatar_url?: string | null;
   posted_as_verified?: boolean | null;
+  business_partner_id?: string | null;
   nod_count: number;
   hype_count: number;
   verify_count: number;
@@ -162,6 +163,7 @@ export function quadPostRowToFieldNote(row: QuadPostApiRow, viewerId?: string): 
     mediaCount: row.media_count ?? row.media?.length ?? 0,
     coverMediaId: row.cover_media_id ?? undefined,
     likedByPreview: row.recent_likers ?? [],
+    businessPartnerId: row.business_partner_id ?? undefined,
     postedAsType: row.posted_as_type === "student_business" || row.posted_as_type === "organization" ? row.posted_as_type : "personal",
     postedAsId: row.posted_as_id ?? undefined,
     authorVerifiedBadge: row.posted_as_verified === true,

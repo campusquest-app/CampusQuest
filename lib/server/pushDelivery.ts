@@ -3,7 +3,7 @@ import {
   PUSH_ENABLED_NOTIFICATION_TYPES,
   pushCategoryForType,
 } from "@/lib/pushNotificationTypes";
-import { isApnsConfigured, sendApnsAlert } from "@/lib/server/apnsProvider";
+import { isApnsConfigured, sendApnsAlertResolvingEnvironment } from "@/lib/server/apnsProvider";
 import {
   disablePushDeviceByToken,
   getUserPushSettings,
@@ -50,6 +50,8 @@ export async function dispatchPushForNotification(args: DispatchArgs): Promise<{
   if (category === "messages" && !settings.messagesEnabled) return { sent: 0, skipped: "messages_disabled" };
   if (category === "social" && !settings.socialEnabled) return { sent: 0, skipped: "social_disabled" };
   if (category === "events" && !settings.eventsEnabled) return { sent: 0, skipped: "events_disabled" };
+  if (category === "announcements" && !settings.announcementsEnabled) return { sent: 0, skipped: "announcements_disabled" };
+  if (category === "perks" && !settings.perksEnabled) return { sent: 0, skipped: "perks_disabled" };
 
   const devices = await listEnabledPushDevicesForUser(args.userId);
   const iosDevices = devices.filter((d) => d.platform === "ios");
@@ -75,13 +77,21 @@ export async function dispatchPushForNotification(args: DispatchArgs): Promise<{
 
   let sent = 0;
   for (const device of iosDevices) {
-    const result = await sendApnsAlert({
+    const result = await sendApnsAlertResolvingEnvironment({
       deviceToken: device.device_token,
       title: args.title,
       body: args.body,
       data,
       environment: device.environment,
     });
+    if (result.ok && result.environment !== device.environment) {
+      const { createAdminClient } = await import("@/lib/server/supabase");
+      await createAdminClient()
+        .from("push_devices")
+        .update({ environment: result.environment, updated_at: new Date().toISOString() })
+        .eq("id", device.id)
+        .then(() => undefined, () => undefined);
+    }
     if (result.ok) {
       sent += 1;
       continue;

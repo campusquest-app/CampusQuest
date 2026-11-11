@@ -55,6 +55,13 @@ export async function POST(request: Request) {
         "ADMIN_ROLE_LOCKED",
       );
     }
+    if (decision.kind === "role_locked") {
+      throw new ApiError(
+        403,
+        "Local business accounts cannot switch to a student account.",
+        "BUSINESS_ROLE_LOCKED",
+      );
+    }
 
     const { data: updated, error: updateError } = await admin
       .from("profiles")

@@ -35,6 +35,7 @@ type DetailProps = {
   onViewReward: (partner: Partner) => void;
   favorite?: PartnerFavoriteProps;
   initialHoursOpen?: boolean;
+  onViewProfile?: (partner: Partner) => void;
 };
 
 export function PartnerDetailSheet(props: DetailProps) {
@@ -212,7 +213,7 @@ function HoursSection({ partner, now, initialOpen }: { partner: Partner; now: Da
   );
 }
 
-export function PartnerDetailView({ partner, now, onClose, onViewReward, favorite, initialHoursOpen = false }: DetailProps) {
+export function PartnerDetailView({ partner, now, onClose, onViewReward, favorite, initialHoursOpen = false, onViewProfile }: DetailProps) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const directionsUrl = partnerDirectionsUrl(partner);
   const status = getPartnerOpenStatus(partner.hours, now);
@@ -278,6 +279,12 @@ export function PartnerDetailView({ partner, now, onClose, onViewReward, favorit
               {status.note ? <span className="cq-perk-detail__status-note">{status.note}</span> : null}
             </div>
           )}
+
+          {onViewProfile ? (
+            <button type="button" className="cq-perk-btn cq-perk-btn--primary cq-tap-press" onClick={() => onViewProfile(partner)}>
+              View profile
+            </button>
+          ) : null}
 
           <RewardSection partner={partner} now={now} onViewReward={onViewReward} />
 

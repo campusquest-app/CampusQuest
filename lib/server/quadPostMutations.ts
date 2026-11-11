@@ -20,6 +20,7 @@ export type QuadPostRow = {
   feed_destination?: string | null;
   posted_as_type?: string | null;
   posted_as_id?: string | null;
+  business_partner_id?: string | null;
 };
 
 async function fetchQuadPostRow(
@@ -28,9 +29,19 @@ async function fetchQuadPostRow(
 ): Promise<QuadPostRow> {
   let { data, error } = await userClient
     .from("quad_posts")
-    .select("id, user_id, is_anonymous, body, proof_url, visibility, location_id, location_name, feed_destination, posted_as_type, posted_as_id")
+    .select("id, user_id, is_anonymous, body, proof_url, visibility, location_id, location_name, feed_destination, posted_as_type, posted_as_id, business_partner_id")
     .eq("id", postId)
     .maybeSingle();
+
+  if (error && /business_partner_id/i.test(`${error.message ?? ""} ${error.details ?? ""}`)) {
+    const retry = await userClient
+      .from("quad_posts")
+      .select("id, user_id, is_anonymous, body, proof_url, visibility, location_id, location_name, feed_destination, posted_as_type, posted_as_id")
+      .eq("id", postId)
+      .maybeSingle();
+    data = retry.data as typeof data;
+    error = retry.error;
+  }
 
   if (error && /feed_destination/i.test(`${error.message ?? ""} ${error.details ?? ""}`)) {
     const retry = await userClient
@@ -63,12 +74,32 @@ async function managesOrganizationPost(userClient: SupabaseClientLike, post: Qua
   return data === true;
 }
 
+async function managesLocalBusinessPost(userId: string, partnerId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const [{ data: membership }, { data: account }] = await Promise.all([
+    admin
+      .from("local_business_memberships")
+      .select("partner_id")
+      .eq("user_id", userId)
+      .eq("partner_id", partnerId)
+      .eq("approved", true)
+      .is("revoked_at", null)
+      .maybeSingle(),
+    admin.from("local_business_accounts").select("revoked_at").eq("user_id", userId).maybeSingle(),
+  ]);
+  return Boolean(membership) && !account?.revoked_at;
+}
+
 export async function getOwnedQuadPost(args: {
   userClient: SupabaseClientLike;
   postId: string;
   userId: string;
 }): Promise<QuadPostRow> {
   const post = await fetchQuadPostRow(args.userClient, args.postId);
+  if (post.business_partner_id) {
+    if (await managesLocalBusinessPost(args.userId, post.business_partner_id)) return post;
+    throw new ApiError(403, "You can only change posts for a business you manage.", "QUAD_POST_FORBIDDEN");
+  }
   if (post.user_id === args.userId) return post;
   if (post.is_anonymous && (await viewerOwnsAnonymousPost(args.userId, post.id))) return post;
   if (await managesOrganizationPost(args.userClient, post)) return post;

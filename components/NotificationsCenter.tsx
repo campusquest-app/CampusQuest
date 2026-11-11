@@ -66,6 +66,10 @@ function notificationHasDestination(notification: NotificationItem): boolean {
     (type === "quad_post" ||
       type === "conversation" ||
       type === "event" ||
+      type === "campus_feed" ||
+      type === "local_businesses" ||
+      type === "events" ||
+      type === "student_perks" ||
       type === "student_organization" ||
       type === "organization")
   ) {

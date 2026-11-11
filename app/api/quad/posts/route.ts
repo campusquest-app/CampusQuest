@@ -33,6 +33,14 @@ import {
 } from "@/lib/server/quadPostMedia";
 import type { QuadPostApiRow } from "@/lib/quadFieldNote";
 import { localBusinessPostDenial, organizationPostDenial, postBelongsInFeed } from "@/lib/quad/localBusinessFeed";
+import {
+  assertBusinessCanReadAuthor,
+  assertBusinessCanReadFeed,
+  assertBusinessPostIsVisible,
+  actorManagesPartner,
+  loadLocalBusinessActor,
+} from "@/lib/server/localBusinessAccount";
+import { findPartnerById } from "@/lib/partners/partnerDirectory";
 import { anonymousPostRequestError } from "@/lib/anonymousPost";
 import { URI_HALLOWEEN_ANON_BATCH_ID } from "@/lib/anonymousPostBatch";
 import { assertAccountCanSocialize } from "@/lib/server/accountSafety";
@@ -88,6 +96,7 @@ export async function GET(request: Request) {
   try {
     const auth = await requireAuthUser(request);
     enforceRateLimit({ userId: auth.user.id, routeKey: "quad:posts:get", limit: 120, windowMs: 60_000 });
+    const businessActor = await loadLocalBusinessActor(auth.userClient, auth.user.id);
     const { searchParams } = new URL(request.url);
     const limit = Math.min(120, Math.max(1, Math.floor(Number(searchParams.get("limit") || "60"))));
     const authorIdParam = searchParams.get("authorId")?.trim();
@@ -112,6 +121,7 @@ export async function GET(request: Request) {
         return ok({ posts: [] as QuadPostApiRow[] });
       }
       const post = data as unknown as QuadPostApiRow;
+      await assertBusinessPostIsVisible(businessActor, post);
       // Respect Public/Following (friends) visibility for deep links.
       if (post.user_id !== auth.user.id && post.visibility === "friends") {
         const { getAcceptedFriendUserIds } = await import("@/lib/server/friendProfileAccess");
@@ -135,7 +145,40 @@ export async function GET(request: Request) {
       });
     }
 
+    const businessPartnerParam = searchParams.get("businessPartnerId")?.trim() ?? "";
+    if (businessPartnerParam) {
+      if (!findPartnerById(businessPartnerParam)) {
+        throw new ApiError(404, "Business not found.", "BUSINESS_NOT_FOUND");
+      }
+      assertBusinessCanReadFeed(businessActor, "local_businesses");
+      const listedQuery = await auth.userClient
+        .from("quad_posts")
+        .select(QUAD_POSTS_WITH_PROFILE_SELECT)
+        .eq("business_partner_id", businessPartnerParam)
+        .eq("feed_destination", "local_businesses")
+        .eq("visibility", "public")
+        .eq("is_anonymous", false)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (listedQuery.error && /business_partner_id/i.test(`${listedQuery.error.message ?? ""}`)) {
+        return ok({ posts: [] as QuadPostApiRow[] });
+      }
+      if (listedQuery.error) {
+        throw new ApiError(400, listedQuery.error.message ?? "Could not load business posts.", "LOCAL_BUSINESS_POSTS_FAILED");
+      }
+      const posts = (listedQuery.data ?? []) as unknown as QuadPostApiRow[];
+      const viewerReactions = await fetchViewerReactionsForPosts(auth.userClient, auth.user.id, posts.map((post) => post.id));
+      const enriched = await enrichQuadPostsWithViewerReactions(posts, viewerReactions, auth.user.id);
+      return ok({
+        posts: await finalizeFeedPosts(enriched, {
+          userClient: auth.userClient,
+          viewerId: auth.user.id,
+        }),
+      });
+    }
+
     if (feedParam === "organizations" || feedParam === "local_businesses") {
+      assertBusinessCanReadFeed(businessActor, feedParam);
       const destination = feedParam === "organizations" ? "organizations" : "local_businesses";
       const listedQuery = await auth.userClient
         .from("quad_posts")
@@ -174,6 +217,7 @@ export async function GET(request: Request) {
     }
 
     if (feedParam === "friends") {
+      assertBusinessCanReadFeed(businessActor, feedParam);
       const { listFriendsQuadPosts } = await import("@/lib/server/quadFriendsFeed");
       const posts = await listFriendsQuadPosts({
         userClient: auth.userClient,
@@ -196,6 +240,7 @@ export async function GET(request: Request) {
       const { isQuadCommunityChannel, listCommunityQuadPosts } = await import(
         "@/lib/server/quadCommunityFeed"
       );
+      assertBusinessCanReadFeed(businessActor, communityParam);
       if (!isQuadCommunityChannel(communityParam)) {
         throw new ApiError(
           400,
@@ -230,7 +275,9 @@ export async function GET(request: Request) {
       if (!parsed.success) {
         throw new ApiError(400, "Invalid author id.", "INVALID_AUTHOR");
       }
+      assertBusinessCanReadAuthor(businessActor, authorIdParam, auth.user.id);
       query = query.eq("user_id", authorIdParam).eq("is_anonymous", false);
+      if (businessActor.restricted) query = query.eq("feed_destination", "local_businesses");
       if (authorIdParam !== auth.user.id) {
         const { getAcceptedFriendUserIds } = await import("@/lib/server/friendProfileAccess");
         const friendIds = await getAcceptedFriendUserIds({
@@ -251,6 +298,7 @@ export async function GET(request: Request) {
         query = query.eq("posted_as_type", "personal");
       }
     } else if (feedParam === "public" || !feedParam) {
+      assertBusinessCanReadFeed(businessActor, feedParam || "public");
       query = query
         .eq("visibility", "public")
         .or("feed_destination.eq.campus,feed_destination.eq.organizations,feed_destination.is.null");
@@ -330,6 +378,10 @@ export async function POST(request: Request) {
   try {
     const auth = await requireAuthUser(request);
     const input = await readJson(request, postQuadPostSchema);
+    const businessActor = await loadLocalBusinessActor(auth.userClient, auth.user.id);
+    if (businessActor.restricted && input.anonymous === true) {
+      throw new ApiError(403, "Local business accounts cannot post anonymously.", "STUDENT_FEED_PRIVATE");
+    }
     const tracksBatch =
       input.publishBatchId === URI_HALLOWEEN_ANON_BATCH_ID && Boolean(input.publishIdempotencyKey);
     if (tracksBatch && input.publishIdempotencyKey) {
@@ -441,15 +493,26 @@ export async function POST(request: Request) {
     const postingIdentity = await resolvePostingIdentity({
       userClient: auth.userClient,
       userId: auth.user.id,
-      requestedType: input.postedAsType ?? "personal",
-      requestedId: input.postedAsId ?? auth.user.id,
+      requestedType: businessActor.restricted ? "personal" : (input.postedAsType ?? "personal"),
+      requestedId: businessActor.restricted ? auth.user.id : (input.postedAsId ?? auth.user.id),
     });
-    const feedDestination = anonymous ? "campus" : (input.feedDestination ?? "campus");
+    const requestedDestination = anonymous ? "campus" : (input.feedDestination ?? "campus");
+    const feedDestination = businessActor.restricted ? "local_businesses" : requestedDestination;
+    if (businessActor.restricted && !businessActor.canPost) {
+      throw new ApiError(403, "This business account cannot post yet.", "LOCAL_BUSINESS_POST_FORBIDDEN");
+    }
+    if (businessActor.restricted && !actorManagesPartner(businessActor, input.businessPartnerId)) {
+      throw new ApiError(403, "You are not authorized to post for that business.", "LOCAL_BUSINESS_POST_FORBIDDEN");
+    }
+    const postingIdentityForFeed = businessActor.restricted
+      ? { type: "personal" as const, id: auth.user.id }
+      : postingIdentity;
     const postingDenial =
       localBusinessPostDenial({
         feedDestination,
-        postedAsType: postingIdentity.type,
-        postedAsVerified: postingIdentity.type === "student_business",
+        postedAsType: postingIdentityForFeed.type,
+        postedAsVerified: postingIdentityForFeed.type === "student_business",
+        actorIsApprovedLocalBusiness: businessActor.canPost,
       }) ??
       organizationPostDenial({
         feedDestination,
@@ -466,8 +529,8 @@ export async function POST(request: Request) {
 
     const insert = {
       user_id: auth.user.id,
-      posted_as_type: postingIdentity.type,
-      posted_as_id: postingIdentity.id,
+      posted_as_type: postingIdentityForFeed.type,
+      posted_as_id: postingIdentityForFeed.id,
       body: input.body.trim().slice(0, 300),
       proof_url: proofUrl,
       media_type: mediaType,
@@ -491,6 +554,7 @@ export async function POST(request: Request) {
       location_name: hasValidLocation && locationName ? locationName.slice(0, 80) : null,
       visibility: feedDestination === "campus" ? visibility : "public",
       feed_destination: feedDestination,
+      ...(businessActor.restricted ? { business_partner_id: input.businessPartnerId } : {}),
     };
     let insertPayload: Record<string, unknown> = insert;
     let { data: created, error: insErr } = await auth.userClient

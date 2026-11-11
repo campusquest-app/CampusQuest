@@ -68,6 +68,7 @@ import { logMediaStage, logQuadUpload, logQuadUploadError } from "@/lib/client/q
 import { probeVideoFile } from "@/lib/client/probeVideoFile";
 import { useCampusIdentities } from "@/lib/client/useCampusIdentities";
 import { canOfferLocalBusinessComposer, canOfferOrganizationComposer } from "@/lib/quad/localBusinessFeed";
+import { LOCAL_BUSINESS_POST_DESTINATION_COPY } from "@/lib/localBusiness/access";
 import { switchCampusIdentity } from "@/lib/client/identityStore";
 import { SwitchProfileSheet } from "@/components/identity/SwitchProfileSheet";
 
@@ -122,6 +123,8 @@ export function FieldNoteComposer({
   initialCarousel = null,
   autoOpenPhotoPicker = false,
   defaultFeedDestination = "campus",
+  lockedLocalBusinessFeed = false,
+  activeBusiness = null,
 }: {
   character: Character;
   onPosted: () => void;
@@ -145,6 +148,9 @@ export function FieldNoteComposer({
   autoOpenPhotoPicker?: boolean;
   /** When opened from a dedicated feed, start on that destination for accounts allowed to post there. */
   defaultFeedDestination?: "campus" | "local_businesses" | "organizations";
+  /** Local business accounts post only to Local Businesses. */
+  lockedLocalBusinessFeed?: boolean;
+  activeBusiness?: { partnerId: string; name: string; logoUrl?: string | null } | null;
 }) {
   const seeded = seedCarouselItems({ initialCarousel, initialImage, initialVideo });
   const [body, setBody] = useState(initialBody);
@@ -183,15 +189,19 @@ export function FieldNoteComposer({
   const canPostLocalBusinesses = canOfferLocalBusinessComposer(identityState.identities);
   const canPostOrganizations = canOfferOrganizationComposer(identityState.identities);
   const [feedDestination, setFeedDestination] = useState<"campus" | "local_businesses" | "organizations">(
-    defaultFeedDestination === "local_businesses" || defaultFeedDestination === "organizations"
-      ? defaultFeedDestination
-      : "campus",
+    lockedLocalBusinessFeed
+      ? "local_businesses"
+      : defaultFeedDestination === "local_businesses" || defaultFeedDestination === "organizations"
+        ? defaultFeedDestination
+        : "campus",
   );
   const businessIdentity =
     verifiedBusinesses.find((identity) => identity.id === postingIdentity?.id) ?? verifiedBusinesses[0] ?? null;
   const organizationIdentity =
     approvedOrganizations.find((identity) => identity.id === postingIdentity?.id) ?? approvedOrganizations[0] ?? null;
-  const postingToLocalBusinesses = canPostLocalBusinesses && feedDestination === "local_businesses" && Boolean(businessIdentity);
+  const postingToLocalBusinesses =
+    lockedLocalBusinessFeed ||
+    (canPostLocalBusinesses && feedDestination === "local_businesses" && Boolean(businessIdentity));
   const postingToOrganizations = canPostOrganizations && feedDestination === "organizations" && Boolean(organizationIdentity);
   const [identityPickerOpen, setIdentityPickerOpen] = useState(false);
   const [anonymousMode, setAnonymousMode] = useState(false);
@@ -263,7 +273,8 @@ export function FieldNoteComposer({
     (body.trim().length > 0 || (hasMedia && mediaReady)) &&
     bodyCount <= FIELD_NOTE_MAX_CHARS &&
     !isSubmitting &&
-    !mediaBlocking;
+    !mediaBlocking &&
+    (!lockedLocalBusinessFeed || Boolean(activeBusiness?.partnerId));
 
   const dirty =
     body.trim().length > 0 ||
@@ -489,25 +500,30 @@ export function FieldNoteComposer({
           ramMarks,
           authorStreakDays: anonymousMode ? undefined : character.streakDays ?? 0,
           anonymous: anonymousMode || undefined,
-          postedAsType: anonymousMode
+          postedAsType: anonymousMode || lockedLocalBusinessFeed
             ? "personal"
             : postingToOrganizations
               ? "organization"
               : postingToLocalBusinesses
                 ? "student_business"
                 : postingIdentity?.type ?? "personal",
-          postedAsId: anonymousMode
+          postedAsId: anonymousMode || lockedLocalBusinessFeed
             ? character.id
             : postingToOrganizations
               ? organizationIdentity?.id ?? character.id
               : postingToLocalBusinesses
                 ? businessIdentity?.id ?? character.id
                 : postingIdentity?.id ?? character.id,
-          feedDestination: postingToOrganizations
-            ? "organizations"
-            : postingToLocalBusinesses
-              ? "local_businesses"
-              : "campus",
+          feedDestination: lockedLocalBusinessFeed
+            ? "local_businesses"
+            : postingToOrganizations
+              ? "organizations"
+              : postingToLocalBusinesses
+                ? "local_businesses"
+                : "campus",
+          ...(lockedLocalBusinessFeed && activeBusiness?.partnerId
+            ? { businessPartnerId: activeBusiness.partnerId }
+            : {}),
           ...(selectedLocation
             ? { locationId: selectedLocation.slug, locationName: selectedLocation.name }
             : {}),
@@ -566,7 +582,7 @@ export function FieldNoteComposer({
       if (realmMoment) {
         setSuccessMessage(`Posted to Quad and added to ${realmMoment.locationName} Moments.`);
       } else {
-        setSuccessMessage("Posted to Quad.");
+        setSuccessMessage(lockedLocalBusinessFeed ? "Posted to Local Businesses." : "Posted to Quad.");
       }
       setPosted(true);
       // Brief success animation before the parent closes/refreshes the feed.
@@ -605,9 +621,15 @@ export function FieldNoteComposer({
         : postingIdentity;
   const previewName = anonymousMode
     ? ANONYMOUS_STUDENT_NAME
-    : previewSource?.displayName || character.name || "You";
+    : lockedLocalBusinessFeed && activeBusiness?.name
+      ? activeBusiness.name
+      : previewSource?.displayName || character.name || "You";
   const previewUsername = anonymousMode ? "" : previewSource?.username || character.username || "you";
-  const previewAvatar = anonymousMode ? ANONYMOUS_STUDENT_AVATAR : previewSource?.avatarUrl || character.avatar;
+  const previewAvatar = anonymousMode
+    ? ANONYMOUS_STUDENT_AVATAR
+    : lockedLocalBusinessFeed && activeBusiness?.logoUrl
+      ? activeBusiness.logoUrl
+      : previewSource?.avatarUrl || character.avatar;
   const showPreview = body.trim().length > 0 || hasMedia;
   const uploadPct = overallUploadProgress(carouselItems);
 
@@ -646,6 +668,9 @@ export function FieldNoteComposer({
             />
           </div>
           <div className="min-w-0 flex-1">
+            {lockedLocalBusinessFeed ? (
+              <p className="cq-composer-posting-as">Posting as: {previewName}</p>
+            ) : (
             <button
               type="button"
               className="cq-composer-posting-as"
@@ -654,7 +679,10 @@ export function FieldNoteComposer({
               {postingToOrganizations ? "Post as:" : "Posting as:"} {previewName}
               <ChevronDown className="h-4 w-4" aria-hidden />
             </button>
-            {canPostLocalBusinesses || canPostOrganizations ? (
+            )}
+            {lockedLocalBusinessFeed ? (
+              <p className="cq-anonymous-composer-note">{LOCAL_BUSINESS_POST_DESTINATION_COPY}</p>
+            ) : canPostLocalBusinesses || canPostOrganizations ? (
               <div className="cq-composer-visibility" role="group" aria-label="Where to post">
                 <button
                   type="button"
