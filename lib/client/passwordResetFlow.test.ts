@@ -164,7 +164,9 @@ describe("auth and offer regressions", () => {
     const market = readFileSync(join(process.cwd(), "components/market/MarketCreateBusinessSheet.tsx"), "utf8");
     const picker = readFileSync(join(process.cwd(), "components/identity/BusinessLogoField.tsx"), "utf8");
     expect(picker).toContain("URL.createObjectURL");
-    expect(picker).toContain("Replace logo");
+    expect(picker).toContain('label = "logo"');
+    expect(picker).toContain("Replace ${label}");
+    expect(picker).toContain("Upload ${label}");
     expect(picker).toContain("Remove");
     expect(verification).toContain("BusinessLogoField");
     expect(verification.indexOf("await uploadVerificationImage")).toBeGreaterThan(verification.indexOf("async function submit"));
