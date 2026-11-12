@@ -11,12 +11,14 @@ export function BusinessProfileHeader({
   logoUrl,
   coverImageUrl,
   nameControl,
+  switchControl,
 }: {
   name: string;
   handle: string;
   logoUrl?: string | null;
   coverImageUrl?: string | null;
   nameControl?: ReactNode;
+  switchControl?: ReactNode;
 }) {
   return (
     <>
@@ -31,6 +33,7 @@ export function BusinessProfileHeader({
           <div className="min-w-0 flex-1 pt-3">
             {nameControl ?? <h1 className="break-words text-xl font-bold leading-tight">{name}</h1>}
             <p className="break-words text-sm text-white/60">@{handle}</p>
+            {switchControl}
           </div>
         </div>
       </div>

@@ -17,7 +17,8 @@ import { getCharacter } from "@/lib/store";
 import { PartnersNoResults } from "@/components/partners/PartnersNoResults";
 import { StudentRewardPass } from "@/components/partners/StudentRewardPass";
 import { SuggestBusinessSheet } from "@/components/partners/SuggestBusinessSheet";
-import { reportPartnerView } from "@/lib/client/partnersApi";
+import { beginCommunityVisit, scheduleEndCommunityVisit } from "@/lib/client/communityVisit";
+import { recordCommunityVisit, reportPartnerView } from "@/lib/client/partnersApi";
 import { useLiveClock } from "@/lib/client/useLiveClock";
 import { usePartnerFavorites, type PartnerFavoritesStatus } from "@/lib/client/usePartnerFavorites";
 import { usePartners, type PartnersLoadState } from "@/lib/client/usePartners";
@@ -54,12 +55,14 @@ function FeaturedDealsRail({
   now,
   onSelect,
   onViewReward,
+  onOpenProfile,
   favoriteFor,
 }: {
   partners: Partner[];
   now: Date;
   onSelect: (partner: Partner) => void;
   onViewReward: (partner: Partner) => void;
+  onOpenProfile: (partner: Partner) => void;
   favoriteFor: (partner: Partner) => PartnerFavoriteProps | undefined;
 }) {
   const dragRef = useRef({ x: 0, moved: false });
@@ -109,6 +112,7 @@ function FeaturedDealsRail({
             now={now}
             onSelect={onSelect}
             onViewReward={onViewReward}
+            onOpenProfile={onOpenProfile}
             favorite={favoriteFor(partner)}
           />
         </div>
@@ -119,7 +123,16 @@ function FeaturedDealsRail({
 
 export function PartnersScreen() {
   const { state, reload } = usePartners();
+  const recordedVisit = useRef<string | null>(null);
   const now = useLiveClock(30_000);
+  useEffect(() => () => scheduleEndCommunityVisit(), []);
+  useEffect(() => {
+    if (state.status !== "ready") return;
+    const visitId = beginCommunityVisit();
+    if (recordedVisit.current === visitId) return;
+    recordedVisit.current = visitId;
+    recordCommunityVisit(visitId);
+  }, [state.status]);
   const favorites = usePartnerFavorites();
   const perksFavorites = useMemo<PerksFavorites>(
     () => ({
@@ -200,6 +213,11 @@ export function PartnersScreenView({
     },
     [onProfileView],
   );
+  const openBusinessProfile = useCallback((partner: Partner) => {
+    setSelectedId(null);
+    setPassPartnerId(null);
+    setProfilePartnerId(partner.id);
+  }, []);
   const openReward = useCallback(
     (partner: Partner) => {
       setPassPartnerId(partner.id);
@@ -354,6 +372,7 @@ export function PartnersScreenView({
                 now={now}
                 onSelect={openDetail}
                 onViewReward={openReward}
+                onOpenProfile={openBusinessProfile}
                 favoriteFor={favoriteFor}
               />
             </section>
@@ -417,16 +436,14 @@ export function PartnersScreenView({
           onClose={closeDetail}
           onViewReward={openReward}
           favorite={favoriteFor(selected)}
-          onViewProfile={(partner) => {
-            setSelectedId(null);
-            setProfilePartnerId(partner.id);
-          }}
+          onViewProfile={openBusinessProfile}
         />
       ) : null}
       {profilePartnerId ? (
         <BusinessProfileScreen
           partnerId={profilePartnerId}
           viewerId={getCharacter()?.id ?? ""}
+          initialTab="offers"
           onClose={() => setProfilePartnerId(null)}
           onViewPerk={() => {
             setSelectedId(profilePartnerId);

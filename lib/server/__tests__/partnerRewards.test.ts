@@ -107,6 +107,31 @@ describe("issueStudentRewardPass", () => {
     ]);
   });
 
+  it("uses a manager's saved offer on the pass and keeps the same business id", async () => {
+    const { run } = await issue({
+      profiles: verifiedProfile,
+      partner_profile_overrides: {
+        data: {
+          partner_id: DAISYS,
+          offer_managed: true,
+          offer_title: "Weekend cones",
+          discount_value: "15% OFF",
+          offer_description: null,
+          redemption_instructions: "Show the app at the counter.",
+          reward_paused: false,
+          starts_at: null,
+          ends_at: null,
+        },
+        error: null,
+      },
+    });
+    const pass = await run;
+    expect(pass.partnerId).toBe(DAISYS);
+    expect(pass.discountValue).toBe("15% OFF");
+    expect(pass.offerTitle).toBe("Weekend cones");
+    expect(pass.redemptionInstructions).toBe("Show the app at the counter.");
+  });
+
   it("re-checks eligibility on refresh without counting another authorization", async () => {
     const { admin, run } = await issue({ profiles: verifiedProfile }, { refresh: true });
     await run;
@@ -186,10 +211,10 @@ describe("issueStudentRewardPass", () => {
     await expectApiError(run, 500, "REWARD_VERIFICATION_FAILED");
   });
 
-  it("returns coming soon for Sandbar without touching the database", async () => {
+  it("returns coming soon for Sandbar after checking for a saved offer", async () => {
     const { admin, run } = await issue({ profiles: verifiedProfile }, { partnerId: "the-sandbar-cafe" });
     await expectApiError(run, 409, REWARD_ERROR_CODES.comingSoon);
-    expect(admin.reads).toEqual([]);
+    expect(admin.reads).toEqual(["partner_profile_overrides"]);
   });
 
   it("refuses reward passes for free local business listings", async () => {

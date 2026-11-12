@@ -130,7 +130,20 @@ type OverrideRow = {
   logo_url: string | null;
   cover_image_url: string | null;
   photos: string[] | null;
+  offer_managed?: boolean | null;
+  offer_title?: string | null;
+  discount_value?: string | null;
+  offer_description?: string | null;
+  redemption_instructions?: string | null;
+  reward_paused?: boolean | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
 };
+
+const PROFILE_OVERRIDE_COLUMNS =
+  "partner_id, username, description, website_url, contact_email, contact_phone, hours, logo_url, cover_image_url, photos";
+const OFFER_OVERRIDE_COLUMNS =
+  "offer_managed, offer_title, discount_value, offer_description, redemption_instructions, reward_paused, starts_at, ends_at";
 
 function overrideFromRow(row: OverrideRow | null): PartnerProfileOverride | null {
   if (!row) return null;
@@ -144,16 +157,32 @@ function overrideFromRow(row: OverrideRow | null): PartnerProfileOverride | null
     logoUrl: row.logo_url,
     coverImageUrl: row.cover_image_url,
     photos: Array.isArray(row.photos) ? row.photos.filter((photo) => typeof photo === "string") : [],
+    offer: row.offer_managed
+      ? {
+          offerTitle: row.offer_title ?? null,
+          discountValue: row.discount_value ?? null,
+          offerDescription: row.offer_description ?? null,
+          redemptionInstructions: row.redemption_instructions ?? null,
+          rewardPaused: row.reward_paused === true,
+          startsAt: row.starts_at ?? null,
+          endsAt: row.ends_at ?? null,
+        }
+      : null,
   };
 }
 
-export async function loadPartnerOverride(partnerId: string): Promise<PartnerProfileOverride | null> {
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("partner_profile_overrides")
-    .select("partner_id, username, description, website_url, contact_email, contact_phone, hours, logo_url, cover_image_url, photos")
-    .eq("partner_id", partnerId)
-    .maybeSingle();
+type OverrideClient = Pick<SupabaseClient, "from">;
+
+export async function loadPartnerOverride(partnerId: string, client?: OverrideClient): Promise<PartnerProfileOverride | null> {
+  const db = client ?? createAdminClient();
+  const read = (columns: string) =>
+    db.from("partner_profile_overrides").select(columns).eq("partner_id", partnerId).maybeSingle();
+  let { data, error } = await read(`${PROFILE_OVERRIDE_COLUMNS}, ${OFFER_OVERRIDE_COLUMNS}`);
+  if (error?.code === "42703") {
+    const fallback = await read(PROFILE_OVERRIDE_COLUMNS);
+    data = fallback.data as typeof data;
+    error = fallback.error;
+  }
   if (error) {
     if (missingRelation(error)) return null;
     throw new ApiError(400, "Could not load the business profile.", "BUSINESS_PROFILE_LOOKUP_FAILED");

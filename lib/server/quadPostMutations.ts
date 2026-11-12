@@ -118,19 +118,25 @@ export async function deleteQuadPost(args: {
   // authorized admin client. Non-admins still resolve the post under their own RLS.
   const post = await fetchQuadPostRow(args.isAdmin ? args.adminClient : args.userClient, args.postId);
 
+  const businessManager = post.business_partner_id
+    ? await managesLocalBusinessPost(args.userId, post.business_partner_id)
+    : false;
+  if (post.business_partner_id && !businessManager && !args.isAdmin) {
+    throw new ApiError(403, "You can only change posts for a business you manage.", "QUAD_POST_FORBIDDEN");
+  }
   const anonymousOwner =
     post.user_id !== args.userId && post.is_anonymous === true
       ? await viewerOwnsAnonymousPost(args.userId, post.id)
       : false;
   const orgManager = post.user_id === args.userId ? false : await managesOrganizationPost(args.userClient, post);
-  if (post.user_id !== args.userId && !args.isAdmin && !orgManager && !anonymousOwner) {
+  if (!post.business_partner_id && post.user_id !== args.userId && !args.isAdmin && !orgManager && !anonymousOwner) {
     throw new ApiError(403, "You can only delete your own posts.", "QUAD_POST_FORBIDDEN");
   }
 
   const useAdminClient = args.isAdmin && post.user_id !== args.userId && !anonymousOwner;
   const client = useAdminClient ? args.adminClient : args.userClient;
   let query = client.from("quad_posts").delete().eq("id", args.postId);
-  if (!useAdminClient && !orgManager && !anonymousOwner) {
+  if (!useAdminClient && !orgManager && !anonymousOwner && !businessManager) {
     query = query.eq("user_id", args.userId);
   }
 

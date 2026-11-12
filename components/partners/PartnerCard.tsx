@@ -124,12 +124,14 @@ export function FeaturedDealCard({
   now,
   onSelect,
   onViewReward,
+  onOpenProfile,
   favorite,
 }: {
   partner: Partner;
   now: Date;
   onSelect: (partner: Partner) => void;
   onViewReward: (partner: Partner) => void;
+  onOpenProfile?: (partner: Partner) => void;
   favorite?: PartnerFavoriteProps;
 }) {
   const status = getPartnerOpenStatus(partner.hours, now);
@@ -172,7 +174,13 @@ export function FeaturedDealCard({
           />
           <div className="cq-perk-featured__titles">
             <h3 id={titleId} className="cq-perk-featured__name">
-              {partner.name}
+              {onOpenProfile ? (
+                <button type="button" className="cq-perk-featured__name-btn" onClick={() => onOpenProfile(partner)}>
+                  {partner.name}
+                </button>
+              ) : (
+                partner.name
+              )}
             </h3>
             {partner.offerTitle ? <p className="cq-perk-featured__offer">{partner.offerTitle}</p> : null}
           </div>

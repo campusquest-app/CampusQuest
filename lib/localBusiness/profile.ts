@@ -1,3 +1,4 @@
+import type { ManagedOffer } from "@/lib/localBusiness/offers";
 import { everyDay, DEFAULT_PARTNER_TIME_ZONE } from "@/lib/partners/partnerHours";
 import { partnerHasLiveReward } from "@/lib/partners/partnerStatus";
 import type { Partner, PartnerHours } from "@/lib/partners/types";
@@ -12,6 +13,8 @@ export type PartnerProfileOverride = {
   logoUrl?: string | null;
   coverImageUrl?: string | null;
   photos?: string[];
+  /** Present only after a manager saves this listing's offer. */
+  offer?: ManagedOffer | null;
 };
 
 /** Feed card identity for a post that belongs to one Student Perks listing. */
@@ -28,16 +31,27 @@ export function businessPostFields(
   };
 }
 
-/** Directory listing plus owner edits. Null override fields keep the Student Perks listing. */
+/** Directory listing plus owner edits. Null profile fields keep the directory. A managed offer replaces that listing's offer copy. */
 export function mergePartnerProfile(partner: Partner, override: PartnerProfileOverride | null | undefined): Partner {
   if (!override) return partner;
-  return {
+  const merged: Partner = {
     ...partner,
     description: override.description ?? partner.description,
     websiteUrl: override.websiteUrl ?? partner.websiteUrl,
     logoUrl: override.logoUrl ?? partner.logoUrl,
     coverImageUrl: override.coverImageUrl ?? partner.coverImageUrl,
     hours: override.hours ?? partner.hours,
+  };
+  if (!override.offer) return merged;
+  return {
+    ...merged,
+    offerTitle: override.offer.offerTitle,
+    discountValue: override.offer.discountValue,
+    offerDescription: override.offer.offerDescription,
+    redemptionInstructions: override.offer.redemptionInstructions,
+    rewardPaused: override.offer.rewardPaused,
+    startsAt: override.offer.startsAt,
+    endsAt: override.offer.endsAt,
   };
 }
 

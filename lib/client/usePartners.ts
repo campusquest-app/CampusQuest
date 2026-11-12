@@ -14,6 +14,12 @@ export function usePartners(): { state: PartnersLoadState; reload: () => void } 
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
+    const refresh = () => setNonce((current) => current + 1);
+    window.addEventListener("cq-partners-changed", refresh);
+    return () => window.removeEventListener("cq-partners-changed", refresh);
+  }, []);
+
+  useEffect(() => {
     const controller = new AbortController();
     setState({ status: "loading" });
     fetchAuthed<PartnersResponse>("/api/partners", { signal: controller.signal })

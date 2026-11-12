@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { mergePartnerProfile } from "@/lib/localBusiness/profile";
 import { findPartnerById } from "@/lib/partners/partnerDirectory";
-import { partnerRewardOfferState } from "@/lib/partners/partnerStatus";
+import { isFreeLocalBusinessListing, partnerRewardOfferState } from "@/lib/partners/partnerStatus";
+import { loadPartnerOverride } from "@/lib/server/localBusinessAccount";
 import { REVIEW_DEMO_PARTNER } from "@/lib/partners/reviewDemoPartner";
 import {
   evaluateStudentRewardEligibility,
@@ -83,8 +85,12 @@ export async function issueStudentRewardPass(args: {
   passId?: string;
 }): Promise<StudentRewardPass> {
   const now = args.now ?? new Date();
-  const partner = findPartnerById(args.partnerId);
-  if (!partner) throw new ApiError(404, "This business isn\u2019t a CampusQuest partner.", REWARD_ERROR_CODES.partnerNotFound);
+  const base = findPartnerById(args.partnerId);
+  if (!base) throw new ApiError(404, "This business isn\u2019t a CampusQuest partner.", REWARD_ERROR_CODES.partnerNotFound);
+  if (isFreeLocalBusinessListing(base)) {
+    throw new ApiError(409, "This business hasn\u2019t launched a student reward yet.", REWARD_ERROR_CODES.comingSoon);
+  }
+  const partner = mergePartnerProfile(base, await loadPartnerOverride(args.partnerId, args.admin));
 
   const offerState = partnerRewardOfferState(partner, now);
   if (offerState === "none" || offerState === "coming_soon") {

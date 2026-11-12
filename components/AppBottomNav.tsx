@@ -295,8 +295,7 @@ export function AppBottomNav({
         />
 
         <DockItem
-          label="Community Quests"
-          caption="Perks"
+          label={APP_BOTTOM_NAV_HINT_LABELS.partners}
           active={resolvedActive === "partners"}
           onClick={() => guardNav(() => onSelectTab("partners"))}
           icon={<Handshake className="cq-dock-nav__glyph" strokeWidth={2.25} />}

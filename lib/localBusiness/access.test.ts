@@ -19,7 +19,10 @@ import {
   localBusinessAssignmentsError,
   localBusinessProvisionError,
   postsForPartner,
+  manageableBusinesses,
+  readRememberedPartnerId,
   resolveActivePartnerId,
+  writeRememberedPartnerId,
   studentFeedDenial,
 } from "@/lib/localBusiness/access";
 import { activeOfferCount, businessPostFields, mergePartnerProfile, weeklyHoursFromEditor } from "@/lib/localBusiness/profile";
@@ -137,9 +140,41 @@ describe("Daisy's listing stays the source profile", () => {
     });
     expect(merged.description).toMatch(/Updated hours/);
     expect(merged.discountValue).toBe(daisy.discountValue);
+    expect(merged.id).toBe(daisy.id);
     expect(merged.logoUrl).toBe(daisy.logoUrl);
     expect(weeklyHoursFromEditor("12:00", "22:00")?.weekly).toHaveLength(7);
     expect(weeklyHoursFromEditor("12:00", "")).toBeNull();
+  });
+
+  it("replaces only the managed offer and keeps the listing id", () => {
+    const merged = mergePartnerProfile(daisy, {
+      offer: {
+        offerTitle: "Weekend cones",
+        discountValue: "15% OFF",
+        offerDescription: null,
+        redemptionInstructions: "Show the app at the counter.",
+        rewardPaused: false,
+        startsAt: null,
+        endsAt: null,
+      },
+    });
+    expect(merged.id).toBe(DAISY_PARTNER_ID);
+    expect(merged.discountValue).toBe("15% OFF");
+    expect(merged.offerTitle).toBe("Weekend cones");
+    expect(merged.redemptionInstructions).toBe("Show the app at the counter.");
+    expect(activeOfferCount(merged, new Date("2026-10-12T17:00:00Z"))).toBe(1);
+    const paused = mergePartnerProfile(daisy, {
+      offer: {
+        offerTitle: daisy.offerTitle,
+        discountValue: daisy.discountValue,
+        offerDescription: null,
+        redemptionInstructions: daisy.redemptionInstructions,
+        rewardPaused: true,
+        startsAt: null,
+        endsAt: null,
+      },
+    });
+    expect(activeOfferCount(paused, new Date("2026-10-12T17:00:00Z"))).toBe(0);
   });
 });
 
@@ -157,6 +192,35 @@ describe("one login can manage Daisy's and Sandbar separately", () => {
     expect(resolveActivePartnerId(grants, SANDBAR_PARTNER_ID, DAISY_PARTNER_ID)).toBe(SANDBAR_PARTNER_ID);
     expect(resolveActivePartnerId(grants, "international-pocket-cafe", SANDBAR_PARTNER_ID)).toBe(SANDBAR_PARTNER_ID);
     expect(resolveActivePartnerId(grants, null, null)).toBe(DAISY_PARTNER_ID);
+    expect(manageableBusinesses(grants)).toHaveLength(2);
+    expect(manageableBusinesses([{ partnerId: DAISY_PARTNER_ID, approved: true }])).toHaveLength(1);
+    expect(manageableBusinesses([{ partnerId: "international-pocket-cafe", approved: false }])).toHaveLength(0);
+
+    const memory = {
+      local: new Map<string, string>(),
+      session: new Map<string, string>(),
+    };
+    const stores = {
+      localStorage: {
+        getItem: (key: string) => memory.local.get(key) ?? null,
+        setItem: (key: string, value: string) => void memory.local.set(key, value),
+        removeItem: (key: string) => void memory.local.delete(key),
+      },
+      sessionStorage: {
+        getItem: (key: string) => memory.session.get(key) ?? null,
+        setItem: (key: string, value: string) => void memory.session.set(key, value),
+        removeItem: (key: string) => void memory.session.delete(key),
+      },
+    };
+    memory.session.set(`cq_active_business_partner:user-1`, SANDBAR_PARTNER_ID);
+    expect(readRememberedPartnerId(stores, "user-1")).toBe(SANDBAR_PARTNER_ID);
+    writeRememberedPartnerId(stores, "user-1", DAISY_PARTNER_ID);
+    expect(memory.local.get("cq_active_business_partner:user-1")).toBe(DAISY_PARTNER_ID);
+    expect(memory.session.has("cq_active_business_partner:user-1")).toBe(false);
+    expect(resolveActivePartnerId(grants, null, readRememberedPartnerId(stores, "user-1"))).toBe(DAISY_PARTNER_ID);
+    expect(resolveActivePartnerId([{ partnerId: DAISY_PARTNER_ID, approved: true }], null, SANDBAR_PARTNER_ID)).toBe(
+      DAISY_PARTNER_ID,
+    );
   });
 
   it("keeps posts, offers, and public names on the business that published them", () => {

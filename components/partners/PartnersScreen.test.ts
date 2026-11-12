@@ -106,6 +106,7 @@ describe("Community Quests screen", () => {
     expect(featured).toContain("Open Now");
     expect(featured).toContain("Closes at 10 PM");
     expect(featured).toContain("View Deal");
+    expect(featured).toContain("cq-perk-featured__name-btn");
     expect(featured).not.toContain("View Quest Deal");
     expect(featured).not.toContain(sandbar.name);
     expect(featured).not.toContain("cq-perks-featured--carousel");

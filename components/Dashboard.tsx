@@ -36,7 +36,7 @@ import { GuildsScreen } from "./GuildsScreen";
 import { Leaderboards } from "./Leaderboards";
 import { MyProfileScreen } from "./MyProfileScreen";
 import { OwnBusinessProfile, LocalBusinessPasswordGate } from "./localBusiness/BusinessProfileScreen";
-import { activeBusinessStorageKey, resolveActivePartnerId } from "@/lib/localBusiness/access";
+import { readRememberedPartnerId, resolveActivePartnerId, writeRememberedPartnerId } from "@/lib/localBusiness/access";
 import { StudentPrivacyScreen } from "./localBusiness/StudentPrivacyScreen";
 import { UserProfileScreen } from "./UserProfileScreen";
 import { CharacterProfilePaneToggle } from "./profile/CharacterProfilePaneToggle";
@@ -387,23 +387,12 @@ export function Dashboard() {
       .then((body) => {
         if (cancelled) return;
         const businesses = body.account?.businesses ?? [];
-        let remembered: string | null = null;
-        try {
-          remembered = window.sessionStorage.getItem(activeBusinessStorageKey(userId));
-        } catch {
-          remembered = null;
-        }
+        const remembered = readRememberedPartnerId(window, userId);
         const nextId = resolveActivePartnerId(businesses, null, remembered);
         setBusinessMustResetPassword(body.account?.mustResetPassword === true);
         setManagedBusinesses(businesses);
         setActivePartnerId(nextId);
-        if (nextId) {
-          try {
-            window.sessionStorage.setItem(activeBusinessStorageKey(userId), nextId);
-          } catch {
-            /* session storage is optional */
-          }
-        }
+        if (nextId) writeRememberedPartnerId(window, userId, nextId);
       })
       .catch(() => undefined);
     return () => {
@@ -3136,7 +3125,7 @@ export function Dashboard() {
 
         {tab === "quad" && (
             <TheQuad
-            key={`${character.id}:${accountRole ?? "member"}`}
+            key={`${character.id}:${accountRole ?? "member"}:${activePartnerId ?? "none"}`}
             character={character}
             onRefresh={refresh}
             feedTab={quadFeedTab}
@@ -3372,11 +3361,7 @@ export function Dashboard() {
                 onPartnerChange={(partnerId) => {
                   if (!managedBusinesses.some((business) => business.partnerId === partnerId && business.canEdit)) return;
                   setActivePartnerId(partnerId);
-                  try {
-                    window.sessionStorage.setItem(activeBusinessStorageKey(character.id), partnerId);
-                  } catch {
-                    /* session storage is optional */
-                  }
+                  writeRememberedPartnerId(window, character.id, partnerId);
                 }}
                 onCreatePost={() => {
                   setQuadFeedTab("local_businesses");

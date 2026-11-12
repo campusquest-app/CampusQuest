@@ -45,6 +45,39 @@ export function activeBusinessStorageKey(userId: string): string {
   return `cq_active_business_partner:${userId}`;
 }
 
+type BusinessMemoryStore = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+/** Last selection is stored on the device. A previous tab-only value is still read once. */
+export function readRememberedPartnerId(
+  stores: { localStorage?: BusinessMemoryStore | null; sessionStorage?: BusinessMemoryStore | null },
+  userId: string,
+): string | null {
+  const key = activeBusinessStorageKey(userId);
+  try {
+    return stores.localStorage?.getItem(key) || stores.sessionStorage?.getItem(key) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeRememberedPartnerId(
+  stores: { localStorage?: BusinessMemoryStore | null; sessionStorage?: BusinessMemoryStore | null },
+  userId: string,
+  partnerId: string,
+): void {
+  const key = activeBusinessStorageKey(userId);
+  try {
+    stores.localStorage?.setItem(key, partnerId);
+    stores.sessionStorage?.removeItem(key);
+  } catch {
+    /* storage is optional */
+  }
+}
+
+export function manageableBusinesses<T extends BusinessGrant>(grants: T[]): T[] {
+  return grants.filter((grant) => canManagePartner([grant], grant.partnerId));
+}
+
 export const STUDENT_PRIVACY_TITLE = "Student Privacy";
 export const STUDENT_PRIVACY_MESSAGE =
   "To protect student privacy, local business accounts can only access the Local Businesses feed. Student-only feeds are reserved for verified campus members.";

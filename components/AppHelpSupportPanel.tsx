@@ -34,7 +34,7 @@ const HELP_ARTICLES: HelpArticle[] = [
     keywords: ["campus", "quad", "feed", "social", "start", "post", "posts", "map", "events", "perks"],
     body: [
       "CampusQuest is your home for posts, campus events, the map, organizations, and Student Perks.",
-      "The bottom nav keeps Home, Perks, Map, Events, and Profile one tap away.",
+      "The bottom nav keeps Home, Community, Map, Events, and Profile one tap away.",
       "Open the menu for friends, notifications, and account settings.",
     ],
   },
@@ -47,7 +47,7 @@ const HELP_ARTICLES: HelpArticle[] = [
     body: [
       "How do I change my name or avatar? Edit them from your Profile tab.",
       "Is CampusQuest only for one school? Access may be campus-specific. Verify your school email when prompted.",
-      "Where are student deals? Open Perks from the bottom navigation.",
+      "Where are student deals? Open Community from the bottom navigation.",
       "How do I report or block someone? Use ••• on a post, comment, profile, or conversation, or open Settings → Safety.",
     ],
   },

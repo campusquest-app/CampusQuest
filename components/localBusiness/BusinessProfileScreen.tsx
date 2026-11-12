@@ -7,8 +7,11 @@ import { deleteQuadPostRequest, fetchBusinessPosts, updateQuadPostRequest } from
 import { uploadMarketplaceImage } from "@/lib/client/marketplaceClient";
 import { BusinessLogoField } from "@/components/identity/BusinessLogoField";
 import { BusinessProfileHeader } from "@/components/localBusiness/BusinessProfileHeader";
+import { BusinessSwitcher } from "@/components/localBusiness/BusinessSwitcher";
+import { OfferEditor } from "@/components/localBusiness/OfferEditor";
+import { offerDraftFromPartner } from "@/lib/localBusiness/offers";
 import { getTodayHoursLabel, getWeeklyHoursRows } from "@/lib/partners/partnerHours";
-import { partnerDirectionsUrl } from "@/lib/partners/partnerStatus";
+import { partnerDirectionsUrl, partnerRewardOfferState } from "@/lib/partners/partnerStatus";
 import { weeklyHoursFromEditor } from "@/lib/localBusiness/profile";
 import type { Partner, PartnerHours } from "@/lib/partners/types";
 import type { FieldNote } from "@/lib/types";
@@ -31,6 +34,8 @@ type ProfilePayload = {
     | "offerTitle"
     | "offerDescription"
     | "redemptionInstructions"
+    | "rewardPaused"
+    | "startsAt"
     | "endsAt"
     | "listingType"
   > & { username?: string | null };
@@ -44,8 +49,7 @@ type ProfilePayload = {
     posts: number;
     followers: number | null;
     postEngagement: number | null;
-    offerViews: number | null;
-    redemptions: number | null;
+    businessViews: number | null;
   };
 };
 
@@ -89,6 +93,7 @@ export function BusinessProfileScreen({
   onViewPerk,
   businesses = [],
   onPartnerChange,
+  initialTab = "posts",
 }: {
   partnerId: string;
   viewerId: string;
@@ -97,10 +102,13 @@ export function BusinessProfileScreen({
   onViewPerk?: () => void;
   businesses?: ManagedBusiness[];
   onPartnerChange?: (partnerId: string) => void;
+  initialTab?: Tab;
 }) {
   const [profile, setProfile] = useState<ProfilePayload | null>(null);
   const [posts, setPosts] = useState<FieldNote[]>([]);
-  const [tab, setTab] = useState<Tab>("posts");
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const [editingOffer, setEditingOffer] = useState(false);
+  const [offerNotice, setOfferNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -219,25 +227,19 @@ export function BusinessProfileScreen({
           handle={partner.username || partner.slug}
           logoUrl={partner.logoUrl}
           coverImageUrl={partner.coverImageUrl}
-          nameControl={
-            businesses.length > 1 && onPartnerChange ? (
-              <label className="block">
-                <span className="sr-only">Active business</span>
-                <select
-                  aria-label="Active business"
-                  className="w-full max-w-full rounded-full bg-white px-3 py-1.5 text-base font-bold text-uri-navy"
-                  value={partnerId}
-                  onChange={(event) => onPartnerChange(event.target.value)}
-                >
-                  {businesses.map((business) => (
-                    <option key={business.partnerId} value={business.partnerId}>
-                      {business.name}
-                    </option>
-                  ))}
-                </select>
-                <span className="mt-1 block text-xs font-semibold text-uri-keaney">Active business</span>
-              </label>
-            ) : undefined
+          switchControl={
+            onPartnerChange ? (
+              <BusinessSwitcher
+                businesses={businesses.map((business) => ({
+                  partnerId: business.partnerId,
+                  name: business.name,
+                  approved: business.canEdit !== false,
+                  revoked: business.canEdit === false,
+                }))}
+                activePartnerId={partnerId}
+                onSwitch={onPartnerChange}
+              />
+            ) : null
           }
         />
         <div className="px-4 pb-4">
@@ -281,11 +283,16 @@ export function BusinessProfileScreen({
                     Create Post
                   </button>
                 ) : null}
-                {onViewPerk ? (
-                  <button type="button" className="rounded-full border border-white/20 px-4 py-2 text-sm font-bold" onClick={onViewPerk}>
-                    Manage Offers
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  className="rounded-full border border-white/20 px-4 py-2 text-sm font-bold"
+                  onClick={() => {
+                    setEditingOffer(false);
+                    setTab("offers");
+                  }}
+                >
+                  Manage Offers
+                </button>
                 <button type="button" className="rounded-full border border-white/20 px-4 py-2 text-sm font-bold" onClick={() => setTab("dashboard")}>
                   Business Dashboard
                 </button>
@@ -324,7 +331,10 @@ export function BusinessProfileScreen({
             role="tab"
             aria-selected={tab === id}
             className={`rounded-full px-4 py-2 text-sm font-bold ${tab === id ? "bg-white text-uri-navy" : "bg-white/10 text-white"}`}
-            onClick={() => setTab(id)}
+            onClick={() => {
+              setEditingOffer(false);
+              setTab(id);
+            }}
           >
             {id[0]!.toUpperCase() + id.slice(1)}
           </button>
@@ -397,19 +407,90 @@ export function BusinessProfileScreen({
       ) : null}
 
       {tab === "offers" ? (
-        <div className="mt-4 rounded-3xl border border-white/10 p-4">
-          {profile.activeOffers === 0 ? (
-            <p className="text-sm text-white/70">No active student offer.</p>
-          ) : (
-            <>
-              <h2 className="text-lg font-bold">{partner.offerTitle ?? partner.discountValue}</h2>
-              {partner.discountValue ? <p className="mt-1 text-sm text-uri-keaney">{partner.discountValue}</p> : null}
-              {partner.offerDescription ? <p className="mt-2 text-sm text-white/75">{partner.offerDescription}</p> : null}
-              {partner.endsAt ? <p className="mt-2 text-xs text-white/50">Ends {partner.endsAt.slice(0, 10)}</p> : null}
-              {partner.redemptionInstructions ? <p className="mt-2 text-sm text-white/75">{partner.redemptionInstructions}</p> : null}
-            </>
-          )}
-        </div>
+        editingOffer && isOwner ? (
+          <OfferEditor
+            key={partner.id}
+            partnerId={partner.id}
+            initial={offerDraftFromPartner(partner)}
+            onCancel={() => setEditingOffer(false)}
+            onSaved={(saved) => {
+              setProfile((current) =>
+                current
+                  ? {
+                      ...current,
+                      activeOffers: saved.activeOffers,
+                      partner: {
+                        ...current.partner,
+                        offerTitle: saved.offer.offerTitle,
+                        discountValue: saved.offer.discountValue,
+                        offerDescription: saved.offer.offerDescription,
+                        redemptionInstructions: saved.offer.redemptionInstructions,
+                        rewardPaused: saved.offer.rewardPaused,
+                        startsAt: saved.offer.startsAt,
+                        endsAt: saved.offer.endsAt,
+                      },
+                    }
+                  : current,
+              );
+              setEditingOffer(false);
+              setOfferNotice("Offer saved.");
+              window.dispatchEvent(new Event("cq-partners-changed"));
+            }}
+          />
+        ) : (
+          <div className="mt-4 rounded-3xl border border-white/10 p-4">
+            {offerNotice ? (
+              <p className="mb-3 text-sm font-semibold text-uri-keaney" role="status">
+                {offerNotice}
+              </p>
+            ) : null}
+            {profile.activeOffers === 0 && !isOwner ? (
+              <p className="text-sm text-white/70">No active student offer.</p>
+            ) : partner.offerTitle || partner.discountValue || partner.redemptionInstructions ? (
+              <>
+                <h2 className="text-lg font-bold">{partner.offerTitle ?? partner.discountValue}</h2>
+                {partner.discountValue ? <p className="mt-1 text-sm text-uri-keaney">{partner.discountValue}</p> : null}
+                {partner.offerDescription ? <p className="mt-2 text-sm text-white/75">{partner.offerDescription}</p> : null}
+                {partner.startsAt ? <p className="mt-2 text-xs text-white/50">Starts {partner.startsAt.slice(0, 10)}</p> : null}
+                {partner.endsAt ? <p className="mt-2 text-xs text-white/50">Ends {partner.endsAt.slice(0, 10)}</p> : null}
+                {partner.rewardPaused || partnerRewardOfferState(partner) !== "active" ? (
+                  <p className="mt-2 text-xs text-white/50">
+                    {partner.rewardPaused ? "Inactive" : partnerRewardOfferState(partner) === "expired" ? "Expired" : "Not live"}
+                  </p>
+                ) : null}
+                {partner.redemptionInstructions ? <p className="mt-2 text-sm text-white/75">{partner.redemptionInstructions}</p> : null}
+                {isOwner ? (
+                  <button
+                    type="button"
+                    className="mt-4 rounded-full border border-white/20 px-4 py-2 text-sm font-bold"
+                    onClick={() => {
+                      setOfferNotice(null);
+                      setEditingOffer(true);
+                    }}
+                  >
+                    Edit Offer
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-white/70">{isOwner ? "No student offer yet." : "No active student offer."}</p>
+                {isOwner ? (
+                  <button
+                    type="button"
+                    className="mt-4 rounded-full border border-white/20 px-4 py-2 text-sm font-bold"
+                    onClick={() => {
+                      setOfferNotice(null);
+                      setEditingOffer(true);
+                    }}
+                  >
+                    Edit Offer
+                  </button>
+                ) : null}
+              </>
+            )}
+          </div>
+        )
       ) : null}
 
       {tab === "about" ? (
@@ -436,8 +517,12 @@ export function BusinessProfileScreen({
           <Metric label="Followers" value={profile.stats.followers} />
           <Metric label="Active offers" value={profile.activeOffers} />
           <Metric label="Post engagement" value={profile.stats.postEngagement} />
-          <Metric label="Offer views" value={profile.stats.offerViews} />
-          <Metric label="Offer redemptions" value={profile.stats.redemptions} />
+          <Metric
+            className="col-span-2"
+            label="Business views"
+            value={profile.stats.businessViews}
+            hint="Counts each student visit to Community while your business is listed."
+          />
         </div>
       ) : null}
 
@@ -488,11 +573,22 @@ export function BusinessProfileScreen({
   );
 }
 
-function Metric({ label, value }: { label: string; value: number | null }) {
+function Metric({
+  label,
+  value,
+  hint,
+  className,
+}: {
+  label: string;
+  value: number | null;
+  hint?: string;
+  className?: string;
+}) {
   return (
-    <div className="rounded-3xl border border-white/10 p-4">
+    <div className={`rounded-3xl border border-white/10 p-4 ${className ?? ""}`}>
       <p className="text-xs text-white/50">{label}</p>
       <p className="mt-1 text-2xl font-bold">{value == null ? "Unavailable" : value}</p>
+      {hint ? <p className="mt-1 text-xs leading-5 text-white/50">{hint}</p> : null}
     </div>
   );
 }

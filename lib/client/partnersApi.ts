@@ -18,6 +18,12 @@ export function reportPartnerView(partnerId: string, type: "profile_view" | "rew
   void postAuthed(`/api/partners/${encodeURIComponent(partnerId)}/events`, { type }).catch(() => {});
 }
 
+/** One Community visit. A retry uses the same visit id so it cannot add a second view. */
+export function recordCommunityVisit(visitId: string): void {
+  const send = () => postAuthed("/api/partners/community-visit", { visitId });
+  void send().catch(() => send().catch(() => undefined));
+}
+
 export function fetchPartnerFavorites(): Promise<PartnerFavoritesPayload> {
   return fetchAuthed<PartnerFavoritesPayload>("/api/partners/favorites");
 }

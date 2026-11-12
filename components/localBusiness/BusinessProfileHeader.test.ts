@@ -14,6 +14,10 @@ describe("business profile header", () => {
     expect(header).not.toContain("truncate");
     expect(header).not.toContain("items-end");
     expect(screen).toContain("<BusinessProfileHeader");
+    expect(screen).toContain("<BusinessSwitcher");
+    expect(screen).toContain('key={partnerId}');
+    expect(screen).toContain('setTab("offers")');
+    expect(screen).not.toContain("<select");
     expect(screen).not.toContain("overflow-hidden rounded-3xl");
     expect(screen).toContain('className="rounded-3xl border border-white/10 bg-uri-navy"');
   });

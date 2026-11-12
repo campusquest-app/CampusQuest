@@ -44,7 +44,10 @@ export function isOfferLive(partner: Partner, now: Date = new Date()): boolean {
  */
 export type PartnerRewardOfferState = "none" | "active" | "coming_soon" | "expired" | "unavailable";
 
-export function partnerRewardOfferState(partner: Partner, now: Date = new Date()): PartnerRewardOfferState {
+export function partnerRewardOfferState(
+  partner: Pick<Partner, "listingType" | "discountValue" | "offerTitle" | "startsAt" | "endsAt" | "rewardPaused">,
+  now: Date = new Date(),
+): PartnerRewardOfferState {
   if (isFreeLocalBusinessListing(partner)) return "none";
   if (!partner.discountValue && !partner.offerTitle) return "coming_soon";
   const nowMs = now.getTime();

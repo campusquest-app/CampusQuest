@@ -264,7 +264,13 @@ export function PartnerDetailView({ partner, now, onClose, onViewReward, favorit
             <PartnerLogoChip partner={partner} size="lg" />
             <div className="cq-perk-detail__titles">
               <h2 id={titleId} className="cq-perk-detail__name">
-                {partner.name}
+                {onViewProfile ? (
+                  <button type="button" className="cq-perk-detail__name-btn" onClick={() => onViewProfile(partner)}>
+                    {partner.name}
+                  </button>
+                ) : (
+                  partner.name
+                )}
               </h2>
               {partner.categories.length > 0 ? (
                 <p className="cq-perk-detail__category">{partnerCategoryLine(partner)}</p>

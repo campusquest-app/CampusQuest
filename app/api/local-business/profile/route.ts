@@ -40,21 +40,20 @@ async function countsFor(partnerId: string) {
       .from("partner_engagement_events")
       .select("id", { count: "exact", head: true })
       .eq("partner_id", partnerId)
-      .eq("event_type", "reward_view"),
+      .eq("event_type", "business_view"),
   ]);
 
   const postRows = (posts.data ?? []) as { nod_count?: number | null }[];
   const postCount = typeof posts.count === "number" ? posts.count : postRows.length;
   const engagementAvailable = !posts.error;
-  const offerViewsAvailable = !engagement.error;
+  const businessViewsAvailable = !engagement.error;
   return {
     posts: postCount,
     followers: followers.error ? null : followers.count ?? 0,
     postEngagement: engagementAvailable
       ? postRows.reduce((sum, row) => sum + Math.max(0, Number(row.nod_count ?? 0)), 0)
       : null,
-    offerViews: offerViewsAvailable ? engagement.count ?? 0 : null,
-    redemptions: null,
+    businessViews: businessViewsAvailable ? engagement.count ?? 0 : null,
   };
 }
 
@@ -82,7 +81,7 @@ export async function GET(request: Request) {
     const stats = await countsFor(partnerId);
     const publicStats = canEdit
       ? stats
-      : { ...stats, postEngagement: null, offerViews: null, redemptions: null };
+      : { ...stats, postEngagement: null, businessViews: null };
     const partner = merged.partner;
     return ok({
       partner: {
@@ -100,6 +99,8 @@ export async function GET(request: Request) {
         offerTitle: partner.offerTitle,
         offerDescription: partner.offerDescription,
         redemptionInstructions: partner.redemptionInstructions,
+        rewardPaused: partner.rewardPaused,
+        startsAt: partner.startsAt,
         endsAt: partner.endsAt,
         listingType: partner.listingType,
         username: merged.override?.username ?? null,
