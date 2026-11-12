@@ -6,6 +6,7 @@ import { fetchAuthed, patchAuthed, postAuthed, deleteAuthed } from "@/lib/client
 import { deleteQuadPostRequest, fetchBusinessPosts, updateQuadPostRequest } from "@/lib/client/quadPostsClient";
 import { uploadMarketplaceImage } from "@/lib/client/marketplaceClient";
 import { BusinessLogoField } from "@/components/identity/BusinessLogoField";
+import { BusinessProfileHeader } from "@/components/localBusiness/BusinessProfileHeader";
 import { getTodayHoursLabel, getWeeklyHoursRows } from "@/lib/partners/partnerHours";
 import { partnerDirectionsUrl } from "@/lib/partners/partnerStatus";
 import { weeklyHoursFromEditor } from "@/lib/localBusiness/profile";
@@ -212,41 +213,34 @@ export function BusinessProfileScreen({
           Back
         </button>
       ) : null}
-      <div className="overflow-hidden rounded-3xl border border-white/10 bg-uri-navy">
-        <div className="relative h-36 bg-black/40">
-          {partner.coverImageUrl ? (
-            <img src={partner.coverImageUrl} alt="" className="h-full w-full object-cover" />
-          ) : null}
-        </div>
+      <div className="rounded-3xl border border-white/10 bg-uri-navy">
+        <BusinessProfileHeader
+          name={partner.name}
+          handle={partner.username || partner.slug}
+          logoUrl={partner.logoUrl}
+          coverImageUrl={partner.coverImageUrl}
+          nameControl={
+            businesses.length > 1 && onPartnerChange ? (
+              <label className="block">
+                <span className="sr-only">Active business</span>
+                <select
+                  aria-label="Active business"
+                  className="w-full max-w-full rounded-full bg-white px-3 py-1.5 text-base font-bold text-uri-navy"
+                  value={partnerId}
+                  onChange={(event) => onPartnerChange(event.target.value)}
+                >
+                  {businesses.map((business) => (
+                    <option key={business.partnerId} value={business.partnerId}>
+                      {business.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs font-semibold text-uri-keaney">Active business</span>
+              </label>
+            ) : undefined
+          }
+        />
         <div className="px-4 pb-4">
-          <div className="-mt-10 flex items-end gap-3">
-            <div className="h-20 w-20 overflow-hidden rounded-2xl border-2 border-uri-navy bg-black">
-              {partner.logoUrl ? <img src={partner.logoUrl} alt="" className="h-full w-full object-contain" /> : null}
-            </div>
-            <div className="min-w-0 flex-1 pb-1">
-              {businesses.length > 1 && onPartnerChange ? (
-                <label className="block">
-                  <span className="sr-only">Active business</span>
-                  <select
-                    aria-label="Active business"
-                    className="w-full truncate rounded-full bg-white px-3 py-1.5 text-base font-bold text-uri-navy"
-                    value={partnerId}
-                    onChange={(event) => onPartnerChange(event.target.value)}
-                  >
-                    {businesses.map((business) => (
-                      <option key={business.partnerId} value={business.partnerId}>
-                        {business.name}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="mt-1 block text-xs font-semibold text-uri-keaney">Active business</span>
-                </label>
-              ) : (
-                <h1 className="truncate text-xl font-bold">{partner.name}</h1>
-              )}
-              <p className="text-sm text-white/60">@{partner.username || partner.slug}</p>
-            </div>
-          </div>
           <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
             <span className="rounded-full bg-white/10 px-3 py-1">Local Business</span>
             {profile.approved ? (
