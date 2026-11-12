@@ -58,6 +58,19 @@ export function hasRecoveryCredentials(params: Record<string, string>): boolean 
   return Boolean((params.access_token && params.refresh_token) || params.code);
 }
 
+/**
+ * A reset link has to win over any session already stored in the browser.
+ * Otherwise the new password is saved onto the signed-in account, the screen
+ * still says it succeeded, and the account in the email is unchanged.
+ */
+export type RecoverySessionPlan = "tokens" | "code" | "existing";
+
+export function recoverySessionPlan(params: Record<string, string>): RecoverySessionPlan {
+  if (params.access_token && params.refresh_token) return "tokens";
+  if (params.code) return "code";
+  return "existing";
+}
+
 export function passwordResetFormError(password: string, confirmation: string): string | null {
   if (!passwordMeetsRequirements(password)) {
     return "Choose a password that meets every requirement.";

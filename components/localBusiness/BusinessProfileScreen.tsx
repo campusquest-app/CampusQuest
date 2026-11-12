@@ -511,17 +511,18 @@ export function LocalBusinessPasswordGate({ onDone }: { onDone: () => void }) {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!passwordMeetsRequirements(password)) {
+    const nextPassword = password.trim();
+    if (!passwordMeetsRequirements(nextPassword)) {
       setError("Choose a password that meets every requirement.");
       return;
     }
-    if (password !== confirm) {
+    if (nextPassword !== confirm.trim()) {
       setError("Those passwords do not match.");
       return;
     }
     setBusy(true);
     try {
-      await postAuthed("/api/local-business/me", { password });
+      await postAuthed("/api/local-business/me", { password: nextPassword });
       onDone();
     } catch {
       setError("Could not update the password.");

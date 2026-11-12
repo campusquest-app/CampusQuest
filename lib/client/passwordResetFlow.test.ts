@@ -5,6 +5,7 @@ import { PASSWORD_RESET_PATH } from "@/lib/authRedirect";
 import {
   hasRecoveryCredentials,
   httpsPasswordResetFromNativeUrl,
+  recoverySessionPlan,
   inAppAuthUrlFromOpenUrl,
   isPasswordRecoveryCallback,
   isPasswordResetPath,
@@ -43,6 +44,10 @@ describe("password reset session gate", () => {
     expect(hasRecoveryCredentials({ code: "abc" })).toBe(true);
     expect(hasRecoveryCredentials({ access_token: "a", refresh_token: "b" })).toBe(true);
     expect(hasRecoveryCredentials({})).toBe(false);
+    expect(recoverySessionPlan({ access_token: "a", refresh_token: "b" })).toBe("tokens");
+    expect(recoverySessionPlan({ code: "abc" })).toBe("code");
+    expect(recoverySessionPlan({})).toBe("existing");
+    expect(recoverySessionPlan({ access_token: "a" })).toBe("existing");
     expect(isPasswordResetPath("/auth/reset-password")).toBe(true);
     expect(isPasswordResetPath("/auth/callback")).toBe(false);
   });
@@ -109,6 +114,13 @@ describe("auth and offer regressions", () => {
     expect(source.slice(prepare, submit)).not.toContain("exchangeCodeForSession");
     expect(source.slice(prepare, submit)).not.toContain("setSession");
     expect(source.slice(submit)).toContain("establishRecoverySession()");
+    const establish = source.indexOf("async function establishRecoverySession");
+    const plan = source.indexOf("recoverySessionPlan", establish);
+    const existingSession = source.indexOf("getSession()", establish);
+    expect(plan).toBeGreaterThan(establish);
+    expect(existingSession).toBeGreaterThan(plan);
+    expect(source).toContain("password.trim()");
+    expect(source).toContain("!updated.user");
   });
 
   it("does not mirror a recovery session from the auth listener or callback", () => {

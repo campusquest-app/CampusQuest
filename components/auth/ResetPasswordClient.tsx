@@ -12,6 +12,7 @@ import {
   clearPasswordResetPending,
   hasRecoveryCredentials,
   nativePasswordResetHandoffUrl,
+  recoverySessionPlan,
   PASSWORD_RESET_SUCCESS_PARAM,
   passwordResetFormError,
   passwordResetLinkFailure,
@@ -21,24 +22,24 @@ import { clearPersistedSupabaseAuthStorage } from "@/lib/client/supabaseSession"
 import { supabaseClient } from "@/lib/supabase/client";
 
 async function establishRecoverySession(): Promise<boolean> {
-  const { data } = await supabaseClient.auth.getSession();
-  if (data.session) return true;
   const params = parseAuthCallbackParams({
     search: window.location.search,
     hash: window.location.hash,
   });
-  if (params.access_token && params.refresh_token) {
+  const plan = recoverySessionPlan(params);
+  if (plan === "tokens" && params.access_token && params.refresh_token) {
     const { error } = await supabaseClient.auth.setSession({
       access_token: params.access_token,
       refresh_token: params.refresh_token,
     });
     return !error;
   }
-  if (params.code) {
+  if (plan === "code" && params.code) {
     const { error } = await supabaseClient.auth.exchangeCodeForSession(params.code);
     return !error;
   }
-  return false;
+  const { data } = await supabaseClient.auth.getSession();
+  return Boolean(data.session);
 }
 
 export function ResetPasswordClient() {
@@ -88,7 +89,8 @@ export function ResetPasswordClient() {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    const formError = passwordResetFormError(password, confirmation);
+    const nextPassword = password.trim();
+    const formError = passwordResetFormError(nextPassword, confirmation.trim());
     if (formError) {
       setError(formError);
       return;
@@ -101,8 +103,10 @@ export function ResetPasswordClient() {
       setLinkError("This reset link is no longer valid. It may have expired or already been used.");
       return;
     }
-    const { error: updateError } = await supabaseClient.auth.updateUser({ password });
-    if (updateError) {
+    const { data: updated, error: updateError } = await supabaseClient.auth.updateUser({
+      password: nextPassword,
+    });
+    if (updateError || !updated.user) {
       setBusy(false);
       setError("Could not update that password. Request a new reset link and try again.");
       return;
