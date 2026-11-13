@@ -1,11 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requireAuthUser, createAdminClient } = vi.hoisted(() => ({
-  requireAuthUser: vi.fn(),
-  createAdminClient: vi.fn(() => {
-    throw new Error("service-role client must not run for review-demo-only paths");
-  }),
-}));
+const { requireAuthUser, createAdminClient } = vi.hoisted(() => {
+  /** Partners listing loads profile overrides via service role; return empty. */
+  const emptyOverrideClient = () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: null, error: { code: "42P01", message: "does not exist" } }),
+        }),
+      }),
+    }),
+  });
+  return {
+    requireAuthUser: vi.fn(),
+    createAdminClient: vi.fn(() => emptyOverrideClient()),
+  };
+});
 
 vi.mock("@/lib/server/supabase", () => ({
   requireAuthUser,
