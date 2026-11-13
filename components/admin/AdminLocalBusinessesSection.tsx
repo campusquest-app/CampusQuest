@@ -38,10 +38,12 @@ export function AdminLocalBusinessesSection() {
   const [approved, setApproved] = useState(true);
   const [chosenPassword, setChosenPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [confirmPasswordChange, setConfirmPasswordChange] = useState(false);
   const [generateTemp, setGenerateTemp] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ProvisionResult | null>(null);
+  const [passwordApplied, setPasswordApplied] = useState(false);
 
   const selectedPartner = partners.find((partner) => partner.id === partnerId) ?? null;
 
@@ -49,6 +51,7 @@ export function AdminLocalBusinessesSection() {
     event.preventDefault();
     setError(null);
     setResult(null);
+    setPasswordApplied(false);
 
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedUsername = username.trim().replace(/^@+/, "");
@@ -71,6 +74,10 @@ export function AdminLocalBusinessesSection() {
         setError("Use at least 8 characters with an uppercase letter, a lowercase letter, a number, and a symbol.");
         return;
       }
+      if (!confirmPasswordChange) {
+        setError("Check the confirmation box to set or reset this login password.");
+        return;
+      }
       passwordToSend = chosenPassword;
     }
 
@@ -84,12 +91,16 @@ export function AdminLocalBusinessesSection() {
           username: trimmedUsername,
           approved,
           accountUsername: trimmedUsername,
-          ...(passwordToSend !== undefined ? { chosenPassword: passwordToSend } : {}),
+          ...(passwordToSend !== undefined
+            ? { chosenPassword: passwordToSend, confirmPasswordChange: true as const }
+            : {}),
         },
       );
       setResult(data);
+      setPasswordApplied(passwordToSend !== undefined || Boolean(data.temporaryPassword));
       setChosenPassword("");
       setConfirmPassword("");
+      setConfirmPasswordChange(false);
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : err instanceof Error ? err.message : "Could not save the login.");
     } finally {
@@ -101,7 +112,7 @@ export function AdminLocalBusinessesSection() {
     <div className="space-y-4">
       <AdminSectionIntro
         title="Local Businesses"
-        description="Create or update a business login and assign it to a Student Perks listing. The password you type is never shown again after save."
+        description="Create a business login or assign listings. Typed passwords are never shown again after save. Existing passwords change only when you confirm a reset."
       />
 
       <AdminPanel className="p-4 space-y-4">
@@ -110,7 +121,7 @@ export function AdminLocalBusinessesSection() {
           <p className="mt-1 text-xs text-white/55">
             Defaults are set for International Pocket Café (
             <span className="text-white/75">{INTERNATIONAL_POCKET.email}</span>
-            ). Change any field before saving. Existing business logins can have their password reset here.
+            ). Change any field before saving. Re-saving without a confirmed password leaves an existing password unchanged.
           </p>
         </div>
 
@@ -186,11 +197,12 @@ export function AdminLocalBusinessesSection() {
                 if (event.target.checked) {
                   setChosenPassword("");
                   setConfirmPassword("");
+                  setConfirmPasswordChange(false);
                 }
               }}
               className="rounded border-white/30"
             />
-            Generate a temporary password (must change on first sign-in)
+            Generate a temporary password for a <span className="font-semibold">new</span> login (must change on first sign-in). Does not change an existing password.
           </label>
 
           {!generateTemp ? (
@@ -217,6 +229,18 @@ export function AdminLocalBusinessesSection() {
                   className="w-full rounded-lg border border-white/15 bg-black/20 px-3 py-2 text-sm text-white"
                   required={!generateTemp}
                 />
+              </label>
+              <label className="flex items-start gap-2 text-sm text-amber-100/90">
+                <input
+                  type="checkbox"
+                  checked={confirmPasswordChange}
+                  onChange={(event) => setConfirmPasswordChange(event.target.checked)}
+                  className="mt-1 rounded border-white/30"
+                  required={!generateTemp}
+                />
+                <span>
+                  I am intentionally setting or resetting this login password. Existing business passwords are left alone unless this box is checked.
+                </span>
               </label>
             </div>
           ) : null}
@@ -246,11 +270,13 @@ export function AdminLocalBusinessesSection() {
                 Temporary password (copy now): {result.temporaryPassword}
                 {result.mustResetPassword ? " — must change on first sign-in" : ""}
               </p>
+            ) : passwordApplied ? (
+              <p className="text-xs text-emerald-200/80">
+                Password was set as typed and will not be shown again.
+              </p>
             ) : (
               <p className="text-xs text-emerald-200/80">
-                {result.created
-                  ? "Password was set as typed and will not be shown again."
-                  : "Login updated. Typed password was applied if you entered one."}
+                Login and listing assignment updated. The existing password was not changed.
               </p>
             )}
           </div>

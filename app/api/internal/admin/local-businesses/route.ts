@@ -1,8 +1,9 @@
-import { z } from "zod";
+import { ZodError, z } from "zod";
 import { ApiError, fail, ok } from "@/lib/server/http";
 import { requireAdminUser } from "@/lib/server/adminAuth";
 import { enforceRateLimit } from "@/lib/server/security";
-import { readJson } from "@/lib/server/validation";
+import { passwordFieldSchema, readJson } from "@/lib/server/validation";
+import { formatZodError } from "@/lib/server/zodErrors";
 import { provisionLocalBusinessAccount, type LocalBusinessAssignmentInput } from "@/lib/server/localBusinessProvision";
 import { createAdminClient } from "@/lib/server/supabase";
 
@@ -12,21 +13,44 @@ const assignmentSchema = z.object({
   approved: z.boolean().optional(),
 });
 
-const provisionSchema = z.object({
-  email: z.string().trim().email(),
-  accountUsername: z.string().trim().min(3).max(24).optional(),
-  partnerId: z.string().trim().min(1).max(80).optional(),
-  username: z.string().trim().min(3).max(24).optional(),
-  approved: z.boolean().optional(),
-  /** Operator-typed password. Never logged or returned when set. */
-  chosenPassword: z.string().min(8).max(128).optional(),
-  businesses: z.array(assignmentSchema).min(1).max(20).optional(),
-});
+/**
+ * chosenPassword is operator-typed. Never log the raw ZodError (it can carry
+ * the password). Always require confirmPasswordChange when a password is set
+ * so existing logins are not reset by accident.
+ */
+const provisionSchema = z
+  .object({
+    email: z.string().trim().email(),
+    accountUsername: z.string().trim().min(3).max(24).optional(),
+    partnerId: z.string().trim().min(1).max(80).optional(),
+    username: z.string().trim().min(3).max(24).optional(),
+    approved: z.boolean().optional(),
+    chosenPassword: passwordFieldSchema.optional(),
+    confirmPasswordChange: z.literal(true).optional(),
+    businesses: z.array(assignmentSchema).min(1).max(20).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.chosenPassword !== undefined && data.confirmPasswordChange !== true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Confirm that you intend to set or reset this login password.",
+        path: ["confirmPasswordChange"],
+      });
+    }
+  });
 
 const revokeSchema = z.object({
   userId: z.string().uuid(),
   partnerId: z.string().trim().min(1).max(80).optional(),
 });
+
+function failValidation(error: unknown) {
+  if (error instanceof ZodError) {
+    // Convert before fail() so the Zod payload (which may include chosenPassword) is never logged.
+    return fail(new ApiError(400, formatZodError(error), "VALIDATION_ERROR"));
+  }
+  return fail(error);
+}
 
 export async function POST(request: Request) {
   try {
@@ -50,7 +74,7 @@ export async function POST(request: Request) {
     });
     return ok(created, created.created ? 201 : 200);
   } catch (error) {
-    return fail(error);
+    return failValidation(error);
   }
 }
 
@@ -91,6 +115,6 @@ export async function DELETE(request: Request) {
     }
     return ok({ revoked: true, userId: input.userId, loginDisabled: true });
   } catch (error) {
-    return fail(error);
+    return failValidation(error);
   }
 }

@@ -11,7 +11,8 @@ export const uuidSchema = z.string().uuid();
 
 export const campusLocationSlugSchema = z.string().trim().regex(/^[a-z0-9-]{2,64}$/);
 
-const passwordFieldSchema = z
+/** Shared strength check for operator- or user-typed passwords. */
+export const passwordFieldSchema = z
   .string()
   .min(8, "PASSWORD_REQUIREMENTS")
   .max(128)
