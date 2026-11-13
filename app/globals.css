@@ -10489,7 +10489,8 @@ html[data-cq-scrolling] .cq-quad-create-fab {
 .cq-composer-overlay {
   position: fixed;
   inset: 0;
-  z-index: 10060;
+  /* Above the Quad feed selector (9000) and toast host so New Post owns the viewport. */
+  z-index: 13000;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -10497,6 +10498,17 @@ html[data-cq-scrolling] .cq-quad-create-fab {
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   animation: cq-composer-overlay-in 200ms ease;
+}
+
+/* While New Post is open, hide the Home feed selector / top chrome so the
+   composer header is not stacked under CampusQuest ▼ (especially after the
+   iOS keyboard dismisses and safe-area / transform layers reshuffle). */
+html[data-cq-create-post-open] .cq-quad-header-shell,
+html[data-cq-create-post-open] .cq-quad-status-shield,
+html[data-cq-create-post-open] .cq-feed-selector-layer {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 @keyframes cq-composer-overlay-in {
@@ -10891,8 +10903,12 @@ html[data-cq-scrolling] .cq-quad-create-fab {
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 0.5rem;
-  padding: max(0.75rem, env(safe-area-inset-top, 0px)) 1rem 0.75rem;
+  /* Keep New Post clear of the status bar after iOS keyboard dismiss; env() alone
+     can briefly collapse while visualViewport resettles. */
+  padding: max(0.75rem, env(safe-area-inset-top, 0px), var(--cq-safe-top, 0px)) 1rem 0.75rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+  z-index: 1;
 }
 
 .cq-composer-head-cancel {
@@ -11558,6 +11574,14 @@ html[data-cq-scrolling] .cq-quad-create-fab {
 .cq-composer-error {
   font-size: 0.875rem;
   color: #f87171;
+}
+
+.cq-composer-error--head {
+  margin: 0;
+  padding: 0.55rem 1rem 0.65rem;
+  border-bottom: 1px solid rgba(248, 113, 113, 0.28);
+  background: rgba(127, 29, 29, 0.35);
+  line-height: 1.35;
 }
 
 .cq-composer-rammark-remove {

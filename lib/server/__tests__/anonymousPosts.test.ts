@@ -20,13 +20,15 @@ const root = process.cwd();
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf8");
 const migration = read("supabase/migrations/20261029180000_anonymous_posts.sql");
 const authorFkMigration = read("supabase/migrations/20261029233000_anonymous_author_fk_deferred.sql");
+const insertStripMigration = read("supabase/migrations/20261113210000_anonymous_post_insert_after_strip.sql");
 const createRoute = read("app/api/quad/posts/route.ts");
+const composer = read("components/FieldNoteComposer.tsx");
+const submitErrorHelper = read("lib/client/quadPostSubmitError.ts");
 const patchRoute = read("app/api/quad/posts/[postId]/route.ts");
 const privateRoute = read("app/api/me/quad/anonymous-posts/route.ts");
 const noticeRoute = read("app/api/me/anonymous-posting/route.ts");
 const blockRoute = read("app/api/social/blocks/anonymous-post/route.ts");
 const moderationRoute = read("app/api/moderation/quad/posts/[postId]/author/route.ts");
-const composer = read("components/FieldNoteComposer.tsx");
 const profilePage = read("components/profile/ProfileSocialPage.tsx");
 const card = read("components/FieldNoteCard.tsx");
 const comments = read("components/posts/PostCommentsSheet.tsx");
@@ -159,9 +161,33 @@ describe("database privacy boundary", () => {
     expect(authorFkMigration).toContain("alter constraint quad_anonymous_authors_post_id_fkey deferrable initially deferred");
   });
 
+  it("authorizes anonymous inserts with the session user, then strips identity after insert", () => {
+    expect(insertStripMigration).toContain("strip_anonymous_post_identity");
+    expect(insertStripMigration).toContain("trg_zzz_strip_anonymous_post_identity");
+    expect(insertStripMigration).toContain("after insert on public.quad_posts");
+    expect(insertStripMigration).toContain("is_anonymous = true");
+    expect(insertStripMigration).toContain("and auth.uid() = user_id");
+    expect(insertStripMigration).toContain("insert into public.quad_anonymous_authors");
+    expect(insertStripMigration).toContain("user_id = null");
+    expect(createRoute).toContain("anonymous_identity_leak");
+    expect(createRoute).toContain("COMPOSER_PUBLISH_BATCH_ID");
+  });
+
   it("does not grant a function that returns an author id to authenticated users", () => {
     expect(migration).not.toMatch(/returns\s+uuid[\s\S]{0,200}grant execute/i);
     expect(migration).toContain("returns boolean");
+  });
+});
+
+describe("composer failure UX", () => {
+  it("keeps the draft, shows actionable errors near Post, and avoids fake connectivity copy", () => {
+    expect(composer).toContain("formatQuadPostSubmitError");
+    expect(composer).toContain("cq-composer-error--head");
+    expect(composer).toContain("Keep caption, media, location, and anonymous mode");
+    expect(composer).not.toContain("Could not post right now. Check your connection and try again.");
+    expect(submitErrorHelper).toContain("Check your connection and try again.");
+    expect(submitErrorHelper).toContain("NETWORK_ERROR");
+    expect(submitErrorHelper).toContain("SCHOOL_VERIFICATION_REQUIRED");
   });
 });
 
@@ -173,7 +199,7 @@ describe("server enforcement", () => {
     expect(gate).toContain("requireVerifiedSchoolForCoreAccess");
     expect(gate).toContain("assertAnonymousNoticeAccepted");
     expect(gate).toContain('visibility = anonymous ? "public"');
-    expect(gate).toContain('feedDestination = anonymous ? "campus"');
+    expect(gate).toContain('requestedDestination = anonymous ? "campus"');
     expect(gate).toContain("relocateAnonymousPostMedia");
     expect(gate).toContain("if (!anonymous && shouldCreateRealmMoment");
     expect(createRoute).toContain('.eq("is_anonymous", false)');

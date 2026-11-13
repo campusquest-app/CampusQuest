@@ -76,6 +76,26 @@ export function TopNav({
     };
   }, [character?.id, character?.level, character?.totalXP, character?.streakDays, showXpProgressBar]);
 
+  // Close the feed selector when New Post opens so it cannot cover the composer header.
+  useLayoutEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const closeIfComposerOpen = (): void => {
+      if (document.documentElement.hasAttribute("data-cq-create-post-open")) {
+        setFeedMenuOpen(false);
+      }
+    };
+    closeIfComposerOpen();
+    const observer =
+      typeof MutationObserver !== "undefined"
+        ? new MutationObserver(closeIfComposerOpen)
+        : null;
+    observer?.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-cq-create-post-open"],
+    });
+    return () => observer?.disconnect();
+  }, []);
+
   return (
     <header
       ref={shellRef}

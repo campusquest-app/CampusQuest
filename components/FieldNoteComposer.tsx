@@ -18,6 +18,7 @@ import { normalizeRamMarkTag, prependRemoteQuadPost } from "@/lib/feedStore";
 import { createQuadPostRequest } from "@/lib/client/quadPostsClient";
 import type { QuadPostXpReward } from "@/lib/quadPostXp";
 import { ApiRequestError, fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { formatQuadPostSubmitError } from "@/lib/client/quadPostSubmitError";
 import {
   ANONYMOUS_ACCOUNTABILITY_LINE,
   ANONYMOUS_AUDIENCE_COPY,
@@ -595,18 +596,12 @@ export function FieldNoteComposer({
         status: err instanceof ApiRequestError ? err.status : undefined,
         details: err instanceof ApiRequestError ? err.details : undefined,
         stack: err instanceof Error ? err.stack : undefined,
+        anonymous: anonymousMode,
       });
-      const detail =
-        err instanceof ApiRequestError && err.message.trim().length > 0
-          ? err.message
-          : err instanceof Error && err.message.trim().length > 0
-            ? err.message
-            : null;
-      setError(
-        detail && process.env.NODE_ENV !== "production"
-          ? detail
-          : "Could not post right now. Check your connection and try again.",
-      );
+      // Keep caption, media, location, and anonymous mode so the student can retry.
+      setPosted(false);
+      setSuccessMessage(null);
+      setError(formatQuadPostSubmitError(err));
     } finally {
       setIsSubmitting(false);
       postingLockRef.current = false;
@@ -655,6 +650,11 @@ export function FieldNoteComposer({
           {posted ? "Posted" : isSubmitting ? "Posting…" : "Post"}
         </button>
       </header>
+      {error ? (
+        <p className="cq-composer-error cq-composer-error--head" role="alert">
+          {error}
+        </p>
+      ) : null}
 
       <div className="cq-composer-scroll">
         <div className="cq-composer-identity">
@@ -1060,7 +1060,6 @@ export function FieldNoteComposer({
         ) : null}
 
         {successMessage && !posted ? <p className="cq-composer-success">{successMessage}</p> : null}
-        {error ? <p className="cq-composer-error" role="alert">{error}</p> : null}
       </div>
 
       <TagPickerSheet

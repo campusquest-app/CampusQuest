@@ -41,9 +41,33 @@ export function restoreBodyScrollLock(): void {
   bodyScrollSnapshot = null;
 }
 
+/** Snapshot the current top safe-area so New Post padding survives iOS keyboard churn. */
+function rememberSafeTopInset(): void {
+  if (typeof document === "undefined" || typeof window === "undefined") return;
+  try {
+    const probe = document.createElement("div");
+    probe.setAttribute("aria-hidden", "true");
+    probe.style.cssText =
+      "position:fixed;left:0;top:0;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px);";
+    document.body.appendChild(probe);
+    const px = Number.parseFloat(window.getComputedStyle(probe).paddingTop || "0");
+    probe.remove();
+    if (Number.isFinite(px) && px > 0) {
+      const current = Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--cq-safe-top") || "0",
+      );
+      const next = Math.max(px, Number.isFinite(current) ? current : 0);
+      document.documentElement.style.setProperty("--cq-safe-top", `${Math.ceil(next)}px`);
+    }
+  } catch {
+    // best effort
+  }
+}
+
 export function markCreatePostModalOpen(open: boolean): void {
   if (typeof document === "undefined") return;
   if (open) {
+    rememberSafeTopInset();
     document.documentElement.setAttribute(CREATE_POST_MODAL_ATTR, "true");
     return;
   }

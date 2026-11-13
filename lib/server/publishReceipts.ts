@@ -13,15 +13,19 @@ function receiptError(error: { code?: string; message?: string } | null, code: s
   throw new ApiError(400, message, error.code === "42P01" ? "PUBLISH_RECEIPT_UNAVAILABLE" : code);
 }
 
+/** Default ledger label for composer publishes (not a public batch). */
+export const COMPOSER_PUBLISH_BATCH_ID = "composer-publish";
+
 export async function beginPublishReceipt(
   args: {
     userId: string;
     idempotencyKey: string;
-    batchId: string;
+    batchId?: string | null;
   },
   attempt = 0,
 ): Promise<PublishReceiptClaim> {
   const admin = createAdminClient();
+  const batchId = args.batchId ?? COMPOSER_PUBLISH_BATCH_ID;
   const { data: existing, error: readError } = await admin
     .from("quad_publish_receipts")
     .select("post_id, status")
@@ -37,11 +41,14 @@ export async function beginPublishReceipt(
       alreadyRemoved: existing.status === "deleted" || !postId,
     };
   }
+  if (existing && existing.status === "creating") {
+    throw new ApiError(409, "This post is already being published.", "PUBLISH_IN_PROGRESS");
+  }
   if (!existing) {
     const { error: insertError } = await admin.from("quad_publish_receipts").insert({
       user_id: args.userId,
       idempotency_key: args.idempotencyKey,
-      batch_id: args.batchId,
+      batch_id: batchId,
       status: "creating",
     });
     if (insertError?.code === "23505") {
@@ -51,20 +58,33 @@ export async function beginPublishReceipt(
       return beginPublishReceipt(args, attempt + 1);
     }
     receiptError(insertError, "PUBLISH_RECEIPT_FAILED", "Could not start this post.");
+    return { proceed: true, postId: null, alreadyRemoved: false };
   }
+  // Reclaim a prior failed attempt with the same key (retry after timeout/error).
+  const { error: reclaimError } = await admin
+    .from("quad_publish_receipts")
+    .update({ status: "creating", post_id: null, batch_id: batchId })
+    .eq("user_id", args.userId)
+    .eq("idempotency_key", args.idempotencyKey)
+    .eq("status", "failed");
+  receiptError(reclaimError, "PUBLISH_RECEIPT_FAILED", "Could not retry this post.");
   return { proceed: true, postId: null, alreadyRemoved: false };
 }
 
 export async function completePublishReceipt(args: {
   userId: string;
   idempotencyKey: string;
-  batchId: string;
+  batchId?: string | null;
   postId: string;
 }): Promise<void> {
   const admin = createAdminClient();
   const { error } = await admin
     .from("quad_publish_receipts")
-    .update({ post_id: args.postId, status: "published", batch_id: args.batchId })
+    .update({
+      post_id: args.postId,
+      status: "published",
+      batch_id: args.batchId ?? COMPOSER_PUBLISH_BATCH_ID,
+    })
     .eq("user_id", args.userId)
     .eq("idempotency_key", args.idempotencyKey);
   receiptError(error, "PUBLISH_RECEIPT_FAILED", "Could not record this post.");

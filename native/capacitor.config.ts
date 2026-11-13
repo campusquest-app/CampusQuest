@@ -25,7 +25,10 @@ const config: CapacitorConfig = {
     ],
   },
   ios: {
-    contentInset: "automatic",
+    // Never: the web UI applies env(safe-area-inset-*) in CSS (TopNav / New Post).
+    // "automatic" double-applies the top inset and lets the feed selector sit over
+    // the New Post header after the keyboard dismisses.
+    contentInset: "never",
     preferredContentMode: "mobile",
     allowsLinkPreview: false,
     scrollEnabled: true,

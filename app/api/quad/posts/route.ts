@@ -1,7 +1,7 @@
 import { ZodError } from "zod";
 import { fail, ok, ApiError } from "@/lib/server/http";
 import { enforceRateLimit } from "@/lib/server/security";
-import { requireAuthUser } from "@/lib/server/supabase";
+import { createAdminClient, requireAuthUser } from "@/lib/server/supabase";
 import { touchUserActivityFromAuth } from "@/lib/server/userActivity";
 import { postQuadPostSchema, readJson, uuidSchema } from "@/lib/server/validation";
 import { formatZodError } from "@/lib/server/zodErrors";
@@ -50,6 +50,7 @@ import { relocateAnonymousPostMedia } from "@/lib/server/anonymousPostMedia";
 import {
   beginPublishReceipt,
   completePublishReceipt,
+  COMPOSER_PUBLISH_BATCH_ID,
   failPublishReceipt,
   releasePublishReceipt,
 } from "@/lib/server/publishReceipts";
@@ -384,11 +385,16 @@ export async function POST(request: Request) {
     }
     const tracksBatch =
       input.publishBatchId === URI_HALLOWEEN_ANON_BATCH_ID && Boolean(input.publishIdempotencyKey);
-    if (tracksBatch && input.publishIdempotencyKey) {
+    const publishBatchId = tracksBatch
+      ? URI_HALLOWEEN_ANON_BATCH_ID
+      : input.publishIdempotencyKey
+        ? COMPOSER_PUBLISH_BATCH_ID
+        : null;
+    if (publishBatchId && input.publishIdempotencyKey) {
       const prior = await beginPublishReceipt({
         userId: auth.user.id,
         idempotencyKey: input.publishIdempotencyKey,
-        batchId: URI_HALLOWEEN_ANON_BATCH_ID,
+        batchId: publishBatchId,
       });
       if (!prior.proceed) {
         if (!prior.postId || prior.alreadyRemoved) {
@@ -622,12 +628,43 @@ export async function POST(request: Request) {
       throw new ApiError(400, insErr?.message ?? "Could not create post.", "QUAD_POST_CREATE_FAILED");
     }
 
-    const post = created as unknown as QuadPostApiRow;
-    if (publishReceipt) {
+    let post = created as unknown as QuadPostApiRow;
+    // Anonymous AFTER INSERT strips identity. INSERT RETURNING can still show the
+    // pre-strip author; always re-read before responding.
+    if (anonymous) {
+      const admin = createAdminClient();
+      const { data: stripped, error: stripReadError } = await admin
+        .from("quad_posts")
+        .select(QUAD_POSTS_WITH_PROFILE_SELECT)
+        .eq("id", post.id)
+        .eq("is_anonymous", true)
+        .maybeSingle();
+      if (stripReadError || !stripped) {
+        logQuadPostError("anonymous_reread_failed", stripReadError ?? new Error("missing anonymous row"), {
+          userId: auth.user.id,
+          postId: post.id,
+        });
+        await auth.userClient.from("quad_posts").delete().eq("id", post.id);
+        if (publishReceipt) await failPublishReceipt(publishReceipt);
+        throw new ApiError(500, "Could not publish anonymously. Try again.", "ANONYMOUS_POST_PRIVACY_FAILED");
+      }
+      const strippedPost = stripped as unknown as QuadPostApiRow;
+      if (strippedPost.user_id) {
+        logQuadPostError("anonymous_identity_leak", new Error("anonymous post still had user_id after insert"), {
+          userId: auth.user.id,
+          postId: post.id,
+        });
+        await auth.userClient.from("quad_posts").delete().eq("id", post.id);
+        if (publishReceipt) await failPublishReceipt(publishReceipt);
+        throw new ApiError(500, "Could not publish anonymously. Try again.", "ANONYMOUS_POST_PRIVACY_FAILED");
+      }
+      post = strippedPost;
+    }
+    if (publishReceipt && publishBatchId) {
       try {
         await completePublishReceipt({
           ...publishReceipt,
-          batchId: URI_HALLOWEEN_ANON_BATCH_ID,
+          batchId: publishBatchId,
           postId: post.id,
         });
         publishReceipt = null;
@@ -664,7 +701,7 @@ export async function POST(request: Request) {
         logQuadPostError("media_attach", mediaErr, { userId: auth.user.id, postId: post.id });
         const removal = auth.userClient.from("quad_posts").delete().eq("id", post.id);
         await (anonymous ? removal : removal.eq("user_id", auth.user.id));
-        if (tracksBatch && input.publishIdempotencyKey) {
+        if (publishBatchId && input.publishIdempotencyKey) {
           await releasePublishReceipt({ userId: auth.user.id, idempotencyKey: input.publishIdempotencyKey });
         }
         throw mediaErr instanceof ApiError
@@ -733,6 +770,9 @@ export async function POST(request: Request) {
 
     return ok({ post: finalPost ?? post, realmMoment, xpReward });
   } catch (error) {
+    if (publishReceipt) {
+      await failPublishReceipt(publishReceipt).catch(() => undefined);
+    }
     if (error instanceof ZodError) {
       const message = formatZodError(error);
       logQuadPostError("validate", error, { issues: message });
