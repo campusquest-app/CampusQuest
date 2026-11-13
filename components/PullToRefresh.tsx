@@ -1,12 +1,13 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { usePullToRefresh } from "@/lib/client/usePullToRefresh";
 
 export function PullToRefresh({
   onRefresh,
   disabled = false,
   indicatorTop = "var(--cq-topnav-h, 56px)",
+  scrollRootRef,
   className,
   children,
 }: {
@@ -14,12 +15,15 @@ export function PullToRefresh({
   disabled?: boolean;
   /** CSS top offset for the fixed indicator (Quad uses header stack). */
   indicatorTop?: string;
+  /** Inner feed scroller (Quad). Falls back to window when omitted. */
+  scrollRootRef?: RefObject<HTMLElement | null>;
   className?: string;
   children: ReactNode;
 }) {
   const { pullDistance, refreshing, indicatorVisible, progress, label } = usePullToRefresh({
     onRefresh,
     disabled,
+    scrollRootRef,
   });
 
   const contentShift = refreshing ? 12 : pullDistance > 0 ? pullDistance * 0.35 : 0;

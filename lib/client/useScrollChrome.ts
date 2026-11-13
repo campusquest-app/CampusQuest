@@ -2,6 +2,12 @@
 
 import { useEffect } from "react";
 import { isCreatePostModalOpen } from "@/lib/client/modalViewportCleanup";
+import {
+  readScrollY,
+  resolveBottomNavScrollRoot,
+} from "@/lib/client/bottomNavAutoHide";
+
+export { QUAD_SCROLL_ROOT_SELECTOR } from "@/lib/client/bottomNavAutoHide";
 
 const TOP_REVEAL_Y = 40;
 /** Ignore micro jitter (touch noise, momentum tail). */
@@ -9,9 +15,6 @@ const SCROLL_DELTA_MIN = 1.5;
 /** Pixels of scroll to fully conceal the bottom nav (Instagram-style linked offset). */
 const BOTTOM_CONCEAL_MAX = 72;
 const SCROLL_IDLE_MS = 150;
-
-/** Optional inner scroll container (falls back to window). */
-export const QUAD_SCROLL_ROOT_SELECTOR = "[data-cq-quad-scroll-root]";
 
 /** Mark vertically scrolling feed surfaces (inbox lists, modals, etc.). */
 export const SCROLL_ROOT_SELECTOR = "[data-cq-scroll-root]";
@@ -28,8 +31,6 @@ const HEADER_SNAP_HIDE_AT = 0.6;
 /** On scroll stop, snap toward visible only when this close to fully visible. */
 const HEADER_SNAP_SHOW_AT = 0.4;
 
-type ScrollRoot = Window | HTMLElement;
-
 export type ScrollChromeOptions = {
   enabled: boolean;
   /** Hide Quad top nav + sub-header on scroll down (Quad tab only). */
@@ -38,13 +39,6 @@ export type ScrollChromeOptions = {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function readScrollY(root: ScrollRoot): number {
-  if (root instanceof HTMLElement) {
-    return root.scrollTop;
-  }
-  return window.scrollY || document.documentElement.scrollTop || 0;
 }
 
 let lastAppliedHideProgress = -1;
@@ -105,7 +99,8 @@ export function computeBottomConcealPx(args: {
  * gradually in proportion to how far the user has scrolled down, accumulating
  * over `range` px (≈140) so it never disappears after a tiny scroll. Scrolling
  * up unwinds the same offset so the header smoothly returns. Near the very top
- * it is pinned fully visible; micro jitter is ignored so it holds still.
+ * (including iOS overscroll / negative scrollY) it is pinned fully visible and
+ * never translates below that clamp; micro jitter is ignored so it holds still.
  *
  * Returns the current hide offset in px, clamped to [0, range]. progress =
  * offset / range drives translateY (-progress × 100%) and opacity (1 − progress).
@@ -122,6 +117,8 @@ export function computeHeaderHideOffset(args: {
   const revealAboveY = args.revealAboveY ?? HEADER_REVEAL_ABOVE_Y;
   const deltaMin = args.deltaMin ?? SCROLL_DELTA_MIN;
 
+  // Pin fully visible at/above the top — never allow a negative hide offset
+  // (which would translate the header downward into a blank strip).
   if (args.scrollY <= revealAboveY) return 0;
   if (Math.abs(args.delta) < deltaMin) return clamp(args.prevOffsetPx, 0, range);
   return clamp(args.prevOffsetPx + args.delta, 0, range);
@@ -140,8 +137,7 @@ export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOpti
       return undefined;
     }
 
-    const activeRoot: ScrollRoot = window;
-    let lastScrollY = readScrollY(activeRoot);
+    let lastScrollY = readScrollY(resolveBottomNavScrollRoot());
     let headerHideOffset = 0;
     let rafId: number | null = null;
     let scrollIdleTimer: number | null = null;
@@ -171,7 +167,10 @@ export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOpti
     };
 
     const syncChrome = (): void => {
-      const currentY = readScrollY(activeRoot);
+      // Resolve on each frame so an element scroll root mounted by TheQuad is
+      // picked up even if this effect started while only the document marker existed.
+      const activeRoot = resolveBottomNavScrollRoot();
+      const currentY = Math.max(0, readScrollY(activeRoot));
       const delta = currentY - lastScrollY;
 
       if (topChrome) {
@@ -201,7 +200,7 @@ export function useScrollChrome({ enabled, topChrome = false }: ScrollChromeOpti
       document.documentElement.setAttribute("data-cq-quad-chrome", "visible");
       applyHeaderHideOffset(0, HEADER_HIDE_RANGE);
     }
-    lastScrollY = readScrollY(activeRoot);
+    lastScrollY = Math.max(0, readScrollY(resolveBottomNavScrollRoot()));
 
     document.addEventListener("scroll", onScrollCapture, { passive: true, capture: true });
 

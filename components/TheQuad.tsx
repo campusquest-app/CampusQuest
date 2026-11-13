@@ -179,17 +179,33 @@ export function TheQuad({
     if (!isMarketFeedTab(feedTab)) setMarketSellOpen(false);
   }, [feedTab]);
 
+  const scrollRootRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
     document.documentElement.setAttribute("data-cq-on-quad", "true");
-    // Marks the document as the Social feed scroll surface for bottom-nav auto-hide.
-    document.documentElement.setAttribute("data-cq-quad-scroll-root", "true");
+    // Scroll surface is the element marked data-cq-quad-scroll-root below
+    // (keeps the fixed header outside the iOS bouncing scroller).
     return () => {
       document.documentElement.removeAttribute("data-cq-on-quad");
-      document.documentElement.removeAttribute("data-cq-quad-scroll-root");
       document.documentElement.style.removeProperty("--cq-topnav-h");
       document.documentElement.style.removeProperty("--cq-quad-header-h");
     };
+  }, []);
+
+  const readFeedScrollY = useCallback((): number => {
+    const root = scrollRootRef.current;
+    if (root) return root.scrollTop;
+    return window.scrollY || document.documentElement.scrollTop || 0;
+  }, []);
+
+  const writeFeedScrollY = useCallback((y: number): void => {
+    const root = scrollRootRef.current;
+    if (root) {
+      root.scrollTop = y;
+      return;
+    }
+    window.scrollTo({ top: y, behavior: "auto" });
   }, []);
 
   useEffect(() => {
@@ -454,7 +470,7 @@ export function TheQuad({
     // Invalidate in-flight refreshes so a slower Campus Feed response cannot paint into Greek Life.
     refreshGenerationRef.current += 1;
     if (notes.length > 0) feedCacheRef.current.set(previous, notes);
-    scrollByFeedRef.current.set(previous, window.scrollY);
+    scrollByFeedRef.current.set(previous, readFeedScrollY());
     feedTabRef.current = feedTab;
     const y = scrollByFeedRef.current.get(feedTab) ?? 0;
     const cached = viewerIsLocalBusiness && !businessCanOpenFeed(feedTab) ? undefined : feedCacheRef.current.get(feedTab);
@@ -468,8 +484,8 @@ export function TheQuad({
       setFeedLoading(true);
       setNotes([]);
     }
-    window.requestAnimationFrame(() => window.scrollTo({ top: y, behavior: "auto" }));
-  }, [feedTab, notes, viewerIsLocalBusiness]);
+    window.requestAnimationFrame(() => writeFeedScrollY(y));
+  }, [feedTab, notes, readFeedScrollY, viewerIsLocalBusiness, writeFeedScrollY]);
 
   useEffect(() => {
     if (!sessionReady || !hasClientAccessSession()) return undefined;
@@ -772,9 +788,15 @@ export function TheQuad({
     <>
       {quadTopChrome}
 
+      <div
+        ref={scrollRootRef}
+        className="cq-quad-scroll-root"
+        data-cq-quad-scroll-root
+      >
       <PullToRefresh
         onRefresh={handlePullRefresh}
         indicatorTop={quadChromeStackPadding}
+        scrollRootRef={scrollRootRef}
       >
       <div className="flex min-h-[50vh] w-full flex-col bg-cq-app">
         <div
@@ -872,6 +894,7 @@ export function TheQuad({
         </div>
       </div>
       </PullToRefresh>
+      </div>
 
       <QuadCreatePostFab
         feedTab={feedTab}

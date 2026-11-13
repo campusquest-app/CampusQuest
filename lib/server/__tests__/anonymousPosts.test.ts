@@ -173,7 +173,7 @@ describe("server enforcement", () => {
     expect(gate).toContain("requireVerifiedSchoolForCoreAccess");
     expect(gate).toContain("assertAnonymousNoticeAccepted");
     expect(gate).toContain('visibility = anonymous ? "public"');
-    expect(gate).toContain('feedDestination = anonymous ? "campus"');
+    expect(gate).toContain('requestedDestination = anonymous ? "campus"');
     expect(gate).toContain("relocateAnonymousPostMedia");
     expect(gate).toContain("if (!anonymous && shouldCreateRealmMoment");
     expect(createRoute).toContain('.eq("is_anonymous", false)');

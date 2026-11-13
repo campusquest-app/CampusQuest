@@ -54,9 +54,28 @@ describe("AUD-001 migration is a single forward-only security migration", () => 
       const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, later), "utf8");
       expect(/disable\s+row\s+level\s+security/i.test(sql), later).toBe(false);
       for (const policy of auditedPolicies) {
-        expect(sql.includes(`"${policy}"`), `${later} must not redefine AUD-001 policy "${policy}"`).toBe(false);
+        if (!sql.includes(`"${policy}"`)) continue;
+        // Forward updates may extend an AUD-001 policy (e.g. anonymous posts)
+        // only via DROP POLICY IF EXISTS + CREATE POLICY — never a bare create.
+        expect(
+          new RegExp(`drop\\s+policy\\s+if\\s+exists\\s+"${policy}"`, "i").test(sql),
+          `${later} must DROP POLICY IF EXISTS before redefining AUD-001 policy "${policy}"`,
+        ).toBe(true);
       }
     }
+
+    // Anonymous-post visibility still keeps AUD-001 block/hidden/QA guards.
+    const anonymousSql = fs.readFileSync(
+      path.join(MIGRATIONS_DIR, "20261029180000_anonymous_posts.sql"),
+      "utf8",
+    );
+    const selectStart = anonymousSql.indexOf('create policy "quad_posts select visible"');
+    expect(selectStart).toBeGreaterThan(-1);
+    const selectBody = anonymousSql.slice(selectStart, anonymousSql.indexOf(";", selectStart));
+    expect(selectBody).toMatch(/not\s+public\.cq_viewer_blocked_with\(quad_posts\.user_id\)/i);
+    expect(selectBody).toMatch(/author\.is_hidden/i);
+    expect(selectBody).toMatch(/author\.is_test_user/i);
+    expect(selectBody).toMatch(/author\.role,\s*''\)\s*=\s*'qa'/i);
   });
 
   it("never disables row level security and always pairs DROP POLICY IF EXISTS with CREATE POLICY", () => {

@@ -31,9 +31,10 @@ describe("recordBusinessViews", () => {
       visitId: "11111111-1111-4111-8111-111111111111",
       partnerIds: ["daisys-chicken-ice-cream", "daisys-chicken-ice-cream", "the-sandbar-cafe"],
     };
-    await recordBusinessViews(admin, visit);
-    await recordBusinessViews(admin, visit);
-    await recordBusinessViews(admin, { ...visit, visitId: "22222222-2222-4222-8222-222222222222" });
+    // Narrow mock — same pattern as partnerRewards.test.ts (`as never`).
+    await recordBusinessViews(admin as never, visit);
+    await recordBusinessViews(admin as never, visit);
+    await recordBusinessViews(admin as never, { ...visit, visitId: "22222222-2222-4222-8222-222222222222" });
 
     const count = (partnerId: string) => rows.filter((row) => row.partner_id === partnerId).length;
     expect(count("daisys-chicken-ice-cream")).toBe(2);
