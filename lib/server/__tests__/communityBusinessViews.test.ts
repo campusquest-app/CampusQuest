@@ -31,9 +31,9 @@ describe("recordBusinessViews", () => {
       visitId: "11111111-1111-4111-8111-111111111111",
       partnerIds: ["daisys-chicken-ice-cream", "daisys-chicken-ice-cream", "the-sandbar-cafe"],
     };
-    await recordBusinessViews(admin, visit);
-    await recordBusinessViews(admin, visit);
-    await recordBusinessViews(admin, { ...visit, visitId: "22222222-2222-4222-8222-222222222222" });
+    await recordBusinessViews(admin as never, visit);
+    await recordBusinessViews(admin as never, visit);
+    await recordBusinessViews(admin as never, { ...visit, visitId: "22222222-2222-4222-8222-222222222222" });
 
     const count = (partnerId: string) => rows.filter((row) => row.partner_id === partnerId).length;
     expect(count("daisys-chicken-ice-cream")).toBe(2);
@@ -60,8 +60,8 @@ describe("recordWebsiteClick", () => {
       },
     };
     const click = { userId: "student-1", partnerId: "daisys-chicken-ice-cream", clickId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" };
-    await recordWebsiteClick(admin, click);
-    await recordWebsiteClick(admin, click);
+    await recordWebsiteClick(admin as never, click);
+    await recordWebsiteClick(admin as never, click);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.partner_id).toBe("daisys-chicken-ice-cream");
     expect(rows.every((row) => row.event_type === "website_click")).toBe(true);

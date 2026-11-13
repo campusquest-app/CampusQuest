@@ -106,7 +106,7 @@ describe("event date overlap", () => {
 
   it("keeps category and free filters when a date is selected and ignores a leftover preset", () => {
     const paid = campusEvent("paid", "Ticketed show", "2026-11-20T19:00:00-05:00");
-    paid.event.isPaid = true;
+    if (paid.kind === "campus") paid.event.isPaid = true;
     const free = campusEvent("free", "Open mic", "2026-11-20T19:00:00-05:00");
     const otherDay = campusEvent("later", "Open mic", "2026-11-22T19:00:00-05:00");
     const chosen = filters({ date: "2026-11-20", when: ["today"], isPaid: "free", categories: ["Social"] });
