@@ -18,6 +18,8 @@ const provisionSchema = z.object({
   partnerId: z.string().trim().min(1).max(80).optional(),
   username: z.string().trim().min(3).max(24).optional(),
   approved: z.boolean().optional(),
+  /** Operator-typed password. Never logged or returned when set. */
+  chosenPassword: z.string().min(8).max(128).optional(),
   businesses: z.array(assignmentSchema).min(1).max(20).optional(),
 });
 
@@ -44,6 +46,7 @@ export async function POST(request: Request) {
       businesses,
       createdBy: auth.user.id,
       accountUsername: input.accountUsername,
+      chosenPassword: input.chosenPassword,
     });
     return ok(created, created.created ? 201 : 200);
   } catch (error) {

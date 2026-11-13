@@ -99,6 +99,7 @@ export function AdminDashboardHome({
           <AdminQuickAction label="Admin sync status" onClick={() => onNavigate("urinvolved")} />
           <AdminQuickAction label="Review Reports" onClick={() => onNavigate("moderation", "messages")} />
           <AdminQuickAction label="Approve Organizations" onClick={() => onNavigate("organizations", "requests")} />
+          <AdminQuickAction label="Local Business Logins" onClick={() => onNavigate("businesses")} />
           <AdminQuickAction label="Search User" onClick={() => onNavigate("moderation", "safety")} />
           <AdminQuickAction label="View Audit Logs" onClick={() => onNavigate("audit")} />
           <Link href="/?tab=events" className="cq-admin-action cq-admin-action--default text-center">

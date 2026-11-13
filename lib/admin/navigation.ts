@@ -10,7 +10,8 @@ export type AdminSectionId =
   | "system"
   | "quests"
   | "users"
-  | "push";
+  | "push"
+  | "businesses";
 
 export type ModerationTabId = "messages" | "content" | "safety" | "appeals";
 
@@ -25,6 +26,7 @@ export type AdminNavItem = {
 
 export const ADMIN_NAV: AdminNavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: "🏠" },
+  { id: "businesses", label: "Local Businesses", icon: "🏪" },
   { id: "push", label: "Push Notifications", icon: "🔔" },
   {
     id: "moderation",
