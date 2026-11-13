@@ -5,7 +5,6 @@ import { createAdminClient } from "@/lib/server/supabase";
 import { resolveUrinvolvedEventLocation } from "@/lib/server/urinvolved/eventLocation";
 import { externalEventQualifiesForMap } from "@/lib/server/urinvolved/locationAliases";
 import { mapPositionForExternalEvent } from "@/lib/server/urinvolved/geoToMapPosition";
-import { getUrinvolvedSyncStatus } from "@/lib/server/urinvolved/sync";
 import { getLatestSyncBySource } from "@/lib/server/eventSources/syncLogs";
 import { listEventProviderHealth } from "@/lib/server/eventSources/providerHealthStore";
 import {
@@ -83,6 +82,42 @@ export type ExternalMapEventMarker = {
 };
 
 const EXTERNAL_EVENTS_PAST_GRACE_MS = 2 * 60 * 60 * 1000;
+/** Warm-instance reuse of the public upcoming catalog. RSVP state is applied per student after this. */
+const FEED_CATALOG_TTL_MS = 15_000;
+
+type FeedCatalog = {
+  at: number;
+  events: ExternalEventItem[];
+  rsvpGroupIds: Map<string, string[]>;
+  meta: ExternalEventsFeedMeta;
+};
+
+let defaultFeedCatalog: FeedCatalog | null = null;
+
+function isDefaultStudentFeed(filters?: {
+  category?: string;
+  location?: string;
+  organization?: string;
+  search?: string;
+  timeframe?: string;
+  includePast?: boolean;
+  sport?: string;
+}): boolean {
+  if (!filters) return true;
+  return (
+    !filters.includePast &&
+    !filters.category?.trim() &&
+    !filters.location?.trim() &&
+    !filters.organization?.trim() &&
+    !filters.search?.trim() &&
+    !filters.sport?.trim() &&
+    !filters.timeframe
+  );
+}
+
+function cloneFeedEvents(events: ExternalEventItem[]): ExternalEventItem[] {
+  return events.map((event) => ({ ...event, tags: [...event.tags], rsvpCount: 0, myRsvpStatus: null }));
+}
 
 export type ExternalEventsFeedMeta = {
   source: "active" | "stale_cache";
@@ -170,35 +205,20 @@ async function attachHostCampusOrganizationIds(
   }
 }
 
-export async function listExternalEventsFeed(filters?: {
-  category?: string;
-  location?: string;
-  organization?: string;
-  search?: string;
-  timeframe?: "today" | "tomorrow" | "this_week" | "this_month";
-  includePast?: boolean;
-  sport?: string;
-  userId?: string;
-}): Promise<{ events: ExternalEventItem[]; meta: ExternalEventsFeedMeta }> {
-  const admin = createAdminClient();
-  const [urinvolvedStatus, athleticsSync] = await Promise.all([
-    getUrinvolvedSyncStatus(),
-    getLatestSyncBySource(admin, "athletics").catch(() => null),
-  ]);
-  const lastSuccessfulSync = [urinvolvedStatus.lastSuccessfulSync, athleticsSync?.lastSuccessfulSync]
-    .filter(Boolean)
-    .sort()
-    .at(-1) ?? urinvolvedStatus.lastSuccessfulSync;
-  const lastAttemptedSync = [urinvolvedStatus.lastAttemptedSync, athleticsSync?.lastAttemptedSync]
-    .filter(Boolean)
-    .sort()
-    .at(-1) ?? urinvolvedStatus.lastAttemptedSync;
-  const lastError = urinvolvedStatus.lastError || athleticsSync?.lastError || null;
-  let source: ExternalEventsFeedMeta["source"] = "active";
-
+async function loadActiveExternalEventRows(
+  admin: ReturnType<typeof createAdminClient>,
+  filters: {
+    category?: string;
+    location?: string;
+    organization?: string;
+    includePast?: boolean;
+  } | undefined,
+  pastCutoffIso: string,
+): Promise<ExternalEventRow[]> {
   const pageSize = 1000;
-  let rows: ExternalEventRow[] = [];
-  for (let page = 0; page < 10; page += 1) {
+  const pageLimit = filters?.includePast ? 10 : 3;
+  const rows: ExternalEventRow[] = [];
+  for (let page = 0; page < pageLimit; page += 1) {
     let query = admin
       .from("external_events")
       .select(EXTERNAL_EVENT_COLUMNS)
@@ -206,6 +226,9 @@ export async function listExternalEventsFeed(filters?: {
       .order("starts_at", { ascending: true, nullsFirst: false })
       .range(page * pageSize, page * pageSize + pageSize - 1);
 
+    if (!filters?.includePast) {
+      query = query.gte("starts_at", pastCutoffIso);
+    }
     if (filters?.category?.trim()) {
       query = query.ilike("category", `%${filters.category.trim()}%`);
     }
@@ -218,12 +241,78 @@ export async function listExternalEventsFeed(filters?: {
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);
-    const batch = (data ?? []) as ExternalEventRow[];
-    rows = rows.concat(batch);
+    const batch = (data ?? []) as unknown as ExternalEventRow[];
+    rows.push(...batch);
     if (batch.length < pageSize) break;
   }
+  return rows;
+}
+
+async function applyExternalEventRsvps(
+  admin: ReturnType<typeof createAdminClient>,
+  events: ExternalEventItem[],
+  groupIds: Map<string, string[]>,
+  userId?: string,
+) {
+  if (!userId || events.length === 0) return;
+  const ids = Array.from(new Set(events.flatMap((event) => groupIds.get(event.id) ?? [event.id])));
+  if (ids.length === 0) return;
+  const [{ data: rsvps }, { data: mine }] = await Promise.all([
+    admin.from("external_event_rsvps").select("event_id, status, user_id").in("event_id", ids),
+    admin.from("external_event_rsvps").select("event_id, status").in("event_id", ids).eq("user_id", userId),
+  ]);
+  const counts = new Map<string, number>();
+  for (const row of rsvps ?? []) {
+    if (row.status === "going") counts.set(String(row.event_id), (counts.get(String(row.event_id)) ?? 0) + 1);
+  }
+  const mineMap = new Map(
+    (mine ?? []).map((row) => [String(row.event_id), row.status as ExternalEventItem["myRsvpStatus"]]),
+  );
+  for (const item of events) {
+    const idsForItem = groupIds.get(item.id) ?? [item.id];
+    item.rsvpCount = idsForItem.reduce((sum, id) => sum + (counts.get(id) ?? 0), 0);
+    item.myRsvpStatus = idsForItem.map((id) => mineMap.get(id)).find((status) => status) ?? null;
+  }
+}
+
+export async function listExternalEventsFeed(filters?: {
+  category?: string;
+  location?: string;
+  organization?: string;
+  search?: string;
+  timeframe?: "today" | "tomorrow" | "this_week" | "this_month";
+  includePast?: boolean;
+  sport?: string;
+  userId?: string;
+}): Promise<{ events: ExternalEventItem[]; meta: ExternalEventsFeedMeta }> {
+  const admin = createAdminClient();
+  if (
+    process.env.NODE_ENV !== "test" &&
+    isDefaultStudentFeed(filters) &&
+    defaultFeedCatalog &&
+    Date.now() - defaultFeedCatalog.at < FEED_CATALOG_TTL_MS
+  ) {
+    const events = cloneFeedEvents(defaultFeedCatalog.events);
+    await applyExternalEventRsvps(admin, events, defaultFeedCatalog.rsvpGroupIds, filters?.userId);
+    return { events, meta: defaultFeedCatalog.meta };
+  }
+
   const pastCutoff = Date.now() - EXTERNAL_EVENTS_PAST_GRACE_MS;
-  const providerHealth = await listEventProviderHealth(admin).catch(() => []);
+  const pastCutoffIso = new Date(pastCutoff).toISOString();
+  const [urinvolvedSync, athleticsSync, providerHealth, loadedRows] = await Promise.all([
+    getLatestSyncBySource(admin, "urinvolved").catch(() => null),
+    getLatestSyncBySource(admin, "athletics").catch(() => null),
+    listEventProviderHealth(admin).catch(() => []),
+    loadActiveExternalEventRows(admin, filters, pastCutoffIso),
+  ]);
+  const lastSuccessfulSync =
+    [urinvolvedSync?.lastSuccessfulSync, athleticsSync?.lastSuccessfulSync].filter(Boolean).sort().at(-1) ?? null;
+  const lastAttemptedSync =
+    [urinvolvedSync?.lastAttemptedSync, athleticsSync?.lastAttemptedSync].filter(Boolean).sort().at(-1) ?? null;
+  const lastError = urinvolvedSync?.lastError || athleticsSync?.lastError || null;
+  const urinvolvedImportedCount = (urinvolvedSync?.eventsCreated ?? 0) + (urinvolvedSync?.eventsUpdated ?? 0);
+  let source: ExternalEventsFeedMeta["source"] = "active";
+  let rows = loadedRows;
   const staleSources: string[] = [];
 
   for (const provider of ["urinvolved", "athletics", "manual"] as const) {
@@ -240,7 +329,7 @@ export async function listExternalEventsFeed(filters?: {
       health?.status === "degraded" ||
       health?.status === "circuit_open" ||
       health?.status === "recovering" ||
-      (provider === "urinvolved" && Boolean(urinvolvedStatus.lastError));
+      (provider === "urinvolved" && Boolean(lastError));
 
     let staleQuery = admin
       .from("external_events")
@@ -267,12 +356,9 @@ export async function listExternalEventsFeed(filters?: {
         sourceUpcomingActiveCount: upcomingActiveForSource,
         sourceHasInactiveUpcoming: staleRows.length > 0,
         providerDegraded: degraded,
-        lastError:
-          health?.last_error ?? (provider === "urinvolved" ? urinvolvedStatus.lastError : null),
+        lastError: health?.last_error ?? (provider === "urinvolved" ? lastError : null),
         lastSyncImportedCount:
-          provider === "urinvolved"
-            ? urinvolvedStatus.lastSyncImportedCount
-            : (health?.latest_import_count ?? 0),
+          provider === "urinvolved" ? urinvolvedImportedCount : (health?.latest_import_count ?? 0),
       })
     ) {
       rows = mergeFeedRowsById(rows, staleRows);
@@ -286,7 +372,17 @@ export async function listExternalEventsFeed(filters?: {
     const hasUpcomingActive = rows.some(
       (row) => row.starts_at && new Date(row.starts_at).getTime() >= pastCutoff,
     );
-    if (!hasUpcomingActive && shouldServeStaleInactiveEvents(urinvolvedStatus)) {
+    const urinvolvedUpcoming = rows.filter(
+      (row) => row.source === "urinvolved" && row.starts_at && new Date(row.starts_at).getTime() >= pastCutoff,
+    ).length;
+    if (
+      !hasUpcomingActive &&
+      shouldServeStaleInactiveEvents({
+        upcomingActiveEventsCount: urinvolvedUpcoming,
+        lastError,
+        lastSyncImportedCount: urinvolvedImportedCount,
+      })
+    ) {
       let staleQuery = admin
         .from("external_events")
         .select(EXTERNAL_EVENT_COLUMNS)
@@ -434,41 +530,29 @@ export async function listExternalEventsFeed(filters?: {
     idsByLogicalKey.set(key, ids);
   }
   const deduped = dedupeLogicalEventFields(withLogicalFields);
+  const rsvpGroupIds = new Map<string, string[]>();
+  for (const item of deduped) {
+    rsvpGroupIds.set(item.id, idsByLogicalKey.get(getLogicalEventKey(item)) ?? [item.id]);
+  }
+  await applyExternalEventRsvps(admin, deduped, rsvpGroupIds, filters?.userId);
 
-  if (filters?.userId && deduped.length > 0) {
-    const ids = withLogicalFields.map((item) => item.id);
-    const [{ data: rsvps }, { data: mine }] = await Promise.all([
-      admin.from("external_event_rsvps").select("event_id, status, user_id").in("event_id", ids),
-      admin
-        .from("external_event_rsvps")
-        .select("event_id, status")
-        .in("event_id", ids)
-        .eq("user_id", filters.userId),
-    ]);
-    const counts = new Map<string, number>();
-    for (const row of rsvps ?? []) {
-      if (row.status === "going") counts.set(row.event_id, (counts.get(row.event_id) ?? 0) + 1);
-    }
-    const mineMap = new Map(
-      (mine ?? []).map((row) => [row.event_id, row.status as ExternalEventItem["myRsvpStatus"]]),
-    );
-    for (const item of deduped) {
-      const groupIds = idsByLogicalKey.get(getLogicalEventKey(item)) ?? [item.id];
-      item.rsvpCount = groupIds.reduce((sum, id) => sum + (counts.get(id) ?? 0), 0);
-      item.myRsvpStatus = groupIds.map((id) => mineMap.get(id)).find((status) => status) ?? null;
-    }
+  const meta: ExternalEventsFeedMeta = {
+    source,
+    stale: source === "stale_cache" || Boolean(lastError),
+    lastSuccessfulSync,
+    lastAttemptedSync,
+    lastError,
+  };
+  if (process.env.NODE_ENV !== "test" && isDefaultStudentFeed(filters)) {
+    defaultFeedCatalog = {
+      at: Date.now(),
+      events: cloneFeedEvents(deduped),
+      rsvpGroupIds,
+      meta,
+    };
   }
 
-  return {
-    events: deduped,
-    meta: {
-      source,
-      stale: source === "stale_cache" || Boolean(lastError),
-      lastSuccessfulSync,
-      lastAttemptedSync,
-      lastError,
-    },
-  };
+  return { events: deduped, meta };
 }
 
 export async function listActiveExternalOrganizations(filters?: {

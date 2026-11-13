@@ -1,6 +1,7 @@
 "use client";
 
 import { clearSchoolVerificationSnapshot } from "@/lib/client/schoolVerificationCache";
+import { clearEventsFeedCache } from "@/lib/client/eventsFeedCache";
 
 /** Matches `localStorage` key — used by admin route gate + cross-tab listeners. */
 export const ACCESS_TOKEN_STORAGE_KEY = "campusquest_access_token";
@@ -46,4 +47,5 @@ export function clearAccessToken(): void {
     // Ignore storage errors so logout still succeeds.
   }
   clearSchoolVerificationSnapshot();
+  clearEventsFeedCache();
 }

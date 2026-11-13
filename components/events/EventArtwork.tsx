@@ -20,6 +20,7 @@ export function EventArtwork({
   alt,
   className,
   loading = "lazy",
+  fetchPriority = "auto",
   fallbackBrand = "uri",
   fit = "contain",
   showBlurFill = false,
@@ -31,6 +32,7 @@ export function EventArtwork({
   alt: string;
   className?: string;
   loading?: "eager" | "lazy";
+  fetchPriority?: "high" | "low" | "auto";
   fallbackBrand?: EventArtworkFallbackBrand;
   /** contain = full flyer/logo; cover = fill-frame photography */
   fit?: EventArtworkFit;
@@ -79,6 +81,7 @@ export function EventArtwork({
           aria-hidden
           className="cq-event-artwork__blur"
           loading={loading}
+          fetchPriority={fetchPriority}
           decoding="async"
           draggable={false}
         />
@@ -89,6 +92,7 @@ export function EventArtwork({
         alt={fallback ? "" : alt}
         className="cq-event-artwork__img"
         loading={loading}
+        fetchPriority={fetchPriority}
         decoding="async"
         data-cq-event-artwork-src={fallback ? fallbackSrc : displayed.src}
         onLoad={(event) => {

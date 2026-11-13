@@ -24,6 +24,14 @@ export function recordCommunityVisit(visitId: string): void {
   void send().catch(() => send().catch(() => undefined));
 }
 
+/** One Website button tap. A retry uses the same click id. The link still opens if this fails. */
+export function reportWebsiteClick(partnerId: string): void {
+  const clickId = crypto.randomUUID();
+  const send = () =>
+    postAuthed(`/api/partners/${encodeURIComponent(partnerId)}/events`, { type: "website_click", clickId });
+  void send().catch(() => send().catch(() => undefined));
+}
+
 export function fetchPartnerFavorites(): Promise<PartnerFavoritesPayload> {
   return fetchAuthed<PartnerFavoritesPayload>("/api/partners/favorites");
 }

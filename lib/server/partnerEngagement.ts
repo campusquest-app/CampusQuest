@@ -5,7 +5,7 @@ import { uniquePartnerIds } from "@/lib/partners/communityVisits";
  * Partner analytics. These count profile opens, reward views, Community listing views,
  * and server-authorized pass displays. None of them is a purchase or a redemption.
  */
-export const PARTNER_ENGAGEMENT_EVENTS = ["profile_view", "reward_view", "reward_pass_authorized", "business_view"] as const;
+export const PARTNER_ENGAGEMENT_EVENTS = ["profile_view", "reward_view", "reward_pass_authorized", "business_view", "website_click"] as const;
 
 export type PartnerEngagementEvent = (typeof PARTNER_ENGAGEMENT_EVENTS)[number];
 
@@ -64,6 +64,32 @@ export async function recordBusinessViews(
     return true;
   } catch (error) {
     console.warn("[cq][partners] community views not recorded", error instanceof Error ? error.message : error);
+    return false;
+  }
+}
+
+/** One Website button tap. The same click id is a retry and does not add another click. */
+export async function recordWebsiteClick(
+  admin: Pick<SupabaseClient, "from">,
+  event: { userId: string; partnerId: string; clickId: string },
+): Promise<boolean> {
+  try {
+    const { error } = await admin.from("partner_engagement_events").upsert(
+      {
+        user_id: event.userId,
+        partner_id: event.partnerId,
+        event_type: "website_click" as const,
+        click_id: event.clickId,
+      },
+      { onConflict: "click_id", ignoreDuplicates: true },
+    );
+    if (error) {
+      console.warn("[cq][partners] website click not recorded", { code: error.code });
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn("[cq][partners] website click not recorded", error instanceof Error ? error.message : error);
     return false;
   }
 }

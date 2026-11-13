@@ -26,6 +26,7 @@ import {
   partnerRewardOfferState,
   partnerRewardSectionLabel,
 } from "@/lib/partners/partnerStatus";
+import { reportWebsiteClick } from "@/lib/client/partnersApi";
 import type { Partner } from "@/lib/partners/types";
 
 type DetailProps = {
@@ -331,6 +332,7 @@ export function PartnerDetailView({ partner, now, onClose, onViewReward, favorit
                   href={partner.websiteUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => reportWebsiteClick(partner.id)}
                 >
                   <Globe className="h-4 w-4" aria-hidden strokeWidth={2.2} />
                   {freeListing ? "Visit Website" : "Website"}

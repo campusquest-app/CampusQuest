@@ -61,6 +61,7 @@ function HappeningSoonCard({
           alt={`${title} event image`}
           className="cq-happening-card-image"
           loading={eager ? "eager" : "lazy"}
+          fetchPriority={eager ? "high" : "auto"}
         />
         <div className="cq-happening-card-scrim" />
         <span className={`cq-happening-card-chip cq-happening-card-chip--${accent}`}>{category}</span>

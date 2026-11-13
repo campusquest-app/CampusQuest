@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BadgeCheck, MapPin } from "lucide-react";
 import { fetchAuthed, patchAuthed, postAuthed, deleteAuthed } from "@/lib/client/dashboardApi";
+import { reportWebsiteClick } from "@/lib/client/partnersApi";
 import { deleteQuadPostRequest, fetchBusinessPosts, updateQuadPostRequest } from "@/lib/client/quadPostsClient";
 import { uploadMarketplaceImage } from "@/lib/client/marketplaceClient";
 import { BusinessLogoField } from "@/components/identity/BusinessLogoField";
@@ -50,6 +51,8 @@ type ProfilePayload = {
     followers: number | null;
     postEngagement: number | null;
     businessViews: number | null;
+    websiteLinked: boolean;
+    websiteClicks: number | null;
   };
 };
 
@@ -308,7 +311,13 @@ export function BusinessProfileScreen({
                   </button>
                 ) : null}
                 {partner.websiteUrl ? (
-                  <a className="rounded-full border border-white/20 px-4 py-2 text-sm font-bold" href={partner.websiteUrl} target="_blank" rel="noreferrer">
+                  <a
+                    className="rounded-full border border-white/20 px-4 py-2 text-sm font-bold"
+                    href={partner.websiteUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => reportWebsiteClick(partner.id)}
+                  >
                     Website
                   </a>
                 ) : null}
@@ -518,10 +527,15 @@ export function BusinessProfileScreen({
           <Metric label="Active offers" value={profile.activeOffers} />
           <Metric label="Post engagement" value={profile.stats.postEngagement} />
           <Metric
-            className="col-span-2"
             label="Business views"
             value={profile.stats.businessViews}
-            hint="Counts each student visit to Community while your business is listed."
+            hint="Counts each student who views your listed business"
+          />
+          <Metric
+            label="Website clicks"
+            value={profile.stats.websiteClicks}
+            emptyLabel={profile.stats.websiteLinked ? undefined : "No website linked"}
+            hint="Counts each time a student taps your website link in CampusQuest."
           />
         </div>
       ) : null}
@@ -577,17 +591,22 @@ function Metric({
   label,
   value,
   hint,
+  emptyLabel,
   className,
 }: {
   label: string;
   value: number | null;
   hint?: string;
+  emptyLabel?: string;
   className?: string;
 }) {
+  const empty = value == null;
   return (
     <div className={`rounded-3xl border border-white/10 p-4 ${className ?? ""}`}>
       <p className="text-xs text-white/50">{label}</p>
-      <p className="mt-1 text-2xl font-bold">{value == null ? "Unavailable" : value}</p>
+      <p className={empty && emptyLabel ? "mt-1 text-lg font-bold leading-6" : "mt-1 text-2xl font-bold"}>
+        {empty ? (emptyLabel ?? "Unavailable") : value}
+      </p>
       {hint ? <p className="mt-1 text-xs leading-5 text-white/50">{hint}</p> : null}
     </div>
   );

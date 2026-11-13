@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { recordBusinessViews } from "@/lib/server/partnerEngagement";
+import { recordBusinessViews, recordWebsiteClick } from "@/lib/server/partnerEngagement";
 
 describe("recordBusinessViews", () => {
   it("writes one row per business per visit and ignores a retry", async () => {
@@ -39,5 +39,32 @@ describe("recordBusinessViews", () => {
     expect(count("daisys-chicken-ice-cream")).toBe(2);
     expect(count("the-sandbar-cafe")).toBe(2);
     expect(rows.every((row) => row.event_type === "business_view")).toBe(true);
+  });
+});
+
+describe("recordWebsiteClick", () => {
+  it("counts one tap once and leaves other businesses unchanged", async () => {
+    const rows: { partner_id: string; click_id: string; event_type: string }[] = [];
+    const admin = {
+      from() {
+        return {
+          upsert(
+            value: { partner_id: string; click_id: string; event_type: string },
+            options: { onConflict: string; ignoreDuplicates: boolean },
+          ) {
+            expect(options).toEqual({ onConflict: "click_id", ignoreDuplicates: true });
+            if (!rows.some((row) => row.click_id === value.click_id)) rows.push(value);
+            return Promise.resolve({ error: null });
+          },
+        };
+      },
+    };
+    const click = { userId: "student-1", partnerId: "daisys-chicken-ice-cream", clickId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" };
+    await recordWebsiteClick(admin, click);
+    await recordWebsiteClick(admin, click);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.partner_id).toBe("daisys-chicken-ice-cream");
+    expect(rows.every((row) => row.event_type === "website_click")).toBe(true);
+    expect(rows.some((row) => row.partner_id === "the-sandbar-cafe")).toBe(false);
   });
 });

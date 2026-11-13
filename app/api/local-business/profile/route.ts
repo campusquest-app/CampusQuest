@@ -28,7 +28,7 @@ const patchSchema = z.object({
 
 async function countsFor(partnerId: string) {
   const admin = createAdminClient();
-  const [followers, posts, engagement] = await Promise.all([
+  const [followers, posts, engagement, websiteClicks] = await Promise.all([
     admin.from("partner_favorites").select("user_id", { count: "exact", head: true }).eq("partner_id", partnerId),
     admin
       .from("quad_posts")
@@ -41,6 +41,11 @@ async function countsFor(partnerId: string) {
       .select("id", { count: "exact", head: true })
       .eq("partner_id", partnerId)
       .eq("event_type", "business_view"),
+    admin
+      .from("partner_engagement_events")
+      .select("id", { count: "exact", head: true })
+      .eq("partner_id", partnerId)
+      .eq("event_type", "website_click"),
   ]);
 
   const postRows = (posts.data ?? []) as { nod_count?: number | null }[];
@@ -54,6 +59,7 @@ async function countsFor(partnerId: string) {
       ? postRows.reduce((sum, row) => sum + Math.max(0, Number(row.nod_count ?? 0)), 0)
       : null,
     businessViews: businessViewsAvailable ? engagement.count ?? 0 : null,
+    websiteClicks: websiteClicks.error ? null : websiteClicks.count ?? 0,
   };
 }
 
@@ -79,10 +85,16 @@ export async function GET(request: Request) {
       .maybeSingle();
     const approved = Boolean(approvedRow);
     const stats = await countsFor(partnerId);
-    const publicStats = canEdit
-      ? stats
-      : { ...stats, postEngagement: null, businessViews: null };
     const partner = merged.partner;
+    const websiteLinked = Boolean(partner.websiteUrl?.trim());
+    const scopedStats = {
+      ...stats,
+      websiteLinked,
+      websiteClicks: websiteLinked ? stats.websiteClicks : null,
+    };
+    const publicStats = canEdit
+      ? scopedStats
+      : { ...scopedStats, postEngagement: null, businessViews: null, websiteClicks: null };
     return ok({
       partner: {
         id: partner.id,

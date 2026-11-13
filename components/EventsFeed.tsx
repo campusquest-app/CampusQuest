@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Calendar, CalendarSearch, Search, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
 import { EventDetailScreen } from "@/components/events/EventDetailScreen";
@@ -34,6 +34,12 @@ import {
   type ExternalFeedEventItem,
   type FeedEvent,
 } from "@/lib/client/eventFeedTypes";
+import {
+  currentEventsFeedUserId,
+  eventsFeedCacheIsFresh,
+  readEventsFeedCache,
+  writeEventsFeedCache,
+} from "@/lib/client/eventsFeedCache";
 import { applyCampusRsvpStatus, nextInterestedRsvpStatus } from "@/lib/client/eventInterested";
 import { shouldPersonalizeForYouEvents } from "@/lib/basic/forYouAccess";
 import { dedupeFeedEvents, partitionDiscoverySections } from "@/lib/client/happeningSoon";
@@ -47,6 +53,18 @@ import {
 } from "@/lib/recommendations";
 import type { RecommendationScore } from "@/lib/recommendations/types";
 
+const MORE_EVENTS_BATCH = 12;
+
+function chronologicalFeed(items: FeedEvent[]) {
+  return [...items]
+    .sort((a, b) => {
+      const aTime = a.event.startsAt ? new Date(a.event.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.event.startsAt ? new Date(b.event.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    })
+    .map((item) => ({ item, recommendation: null as RecommendationScore | null }));
+}
+
 type Filters = EventsFeedFilterState;
 
 const initialFilters: Filters = {
@@ -59,6 +77,7 @@ const initialFilters: Filters = {
   location: "",
   timeframe: "for_you",
   sport: "",
+  date: "",
 };
 
 const TIMEFRAME_OPTIONS: Array<{ value: "for_you" | "today" | "this_weekend"; label: string }> = [
@@ -98,10 +117,15 @@ export function EventsFeed({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [savedOnly, setSavedOnly] = useState(false);
   const [forYouExpanded, setForYouExpanded] = useState(false);
+  const [moreVisible, setMoreVisible] = useState(MORE_EVENTS_BATCH);
   const [activeDetail, setActiveDetail] = useState<FeedEvent | null>(null);
   const [rsvping, setRsvping] = useState<string | null>(null);
   const loadGenerationRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
+  const eventsRef = useRef(events);
+  const externalEventsRef = useRef(externalEvents);
+  eventsRef.current = events;
+  externalEventsRef.current = externalEvents;
   const recProfile = useRecommendationProfile(personalization);
   const hasSavedInterests = recProfile.explicitInterests.length > 0;
   const openDetail = useCallback((item: FeedEvent) => {
@@ -115,74 +139,97 @@ export function EventsFeed({
     setFilters((prev) => (prev.search === debouncedSearch ? prev : { ...prev, search: debouncedSearch }));
   }, [debouncedSearch]);
 
-  async function loadEvents() {
+  async function loadEvents(options?: { background?: boolean }) {
     loadAbortRef.current?.abort();
     const controller = new AbortController();
     loadAbortRef.current = controller;
     const generation = ++loadGenerationRef.current;
+    const background = options?.background === true;
 
-    setLoading(true);
-    setError(null);
-    const bust = `_=${Date.now()}`;
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
-      const [campusResult, externalResult] = await Promise.allSettled([
-        fetchAuthed<{ events: CampusEventItem[] }>(`/api/events?${bust}`, { signal: controller.signal }),
-        fetchAuthed<{
-          events: ExternalFeedEventItem[];
-          meta?: {
-            stale?: boolean;
-            source?: string;
-            lastSuccessfulSync?: string | null;
-          };
-        }>(`/api/external/events?${bust}`, {
-          signal: controller.signal,
-        }),
-      ]);
+      let nextEvents: CampusEventItem[] | null = null;
+      let nextExternal: ExternalFeedEventItem[] | null = null;
+      let campusFailed = false;
+      let externalFailed = false;
+      let failureMessage = "Could not load events.";
 
-      if (generation !== loadGenerationRef.current) return;
+      const campusTask = fetchAuthed<{ events: CampusEventItem[] }>("/api/events", { signal: controller.signal })
+        .then((result) => {
+          if (generation !== loadGenerationRef.current) return;
+          nextEvents = result.events ?? [];
+          setEvents(nextEvents);
+          if (nextEvents.length > 0) setLoading(false);
+        })
+        .catch((reason: unknown) => {
+          if (controller.signal.aborted || generation !== loadGenerationRef.current) return;
+          campusFailed = true;
+          failureMessage = reason instanceof Error ? reason.message : failureMessage;
+        });
 
-      if (campusResult.status === "fulfilled") {
-        setEvents(campusResult.value.events ?? []);
-      } else if (!controller.signal.aborted) {
+      const externalTask = fetchAuthed<{
+        events: ExternalFeedEventItem[];
+        meta?: { stale?: boolean; source?: string; lastSuccessfulSync?: string | null };
+      }>("/api/external/events", { signal: controller.signal })
+        .then((result) => {
+          if (generation !== loadGenerationRef.current) return;
+          nextExternal = result.events ?? [];
+          setExternalEvents(nextExternal);
+          setSyncBanner(
+            eventsSyncBanner({
+              stale: Boolean(result.meta?.stale),
+              emptyFeed: nextExternal.length === 0 && (nextEvents?.length ?? 0) === 0,
+              lastSuccessfulSync: result.meta?.lastSuccessfulSync ?? null,
+              warningText: EVENTS_STALE_NOTICE,
+            }),
+          );
+          if (nextExternal.length > 0) setLoading(false);
+        })
+        .catch((reason: unknown) => {
+          if (controller.signal.aborted || generation !== loadGenerationRef.current) return;
+          externalFailed = true;
+          failureMessage = reason instanceof Error ? reason.message : "Could not load campus events.";
+          setSyncBanner(
+            eventsSyncBanner({
+              stale: true,
+              fetchFailed: true,
+              emptyFeed: (nextEvents?.length ?? 0) === 0,
+              warningText: EVENTS_STALE_NOTICE,
+            }),
+          );
+        });
+
+      await Promise.allSettled([campusTask, externalTask]);
+      if (generation !== loadGenerationRef.current || controller.signal.aborted) return;
+
+      if (campusFailed && !background) {
         setEvents([]);
-        setError(
-          campusResult.reason instanceof Error ? campusResult.reason.message : "Could not load events.",
-        );
+        setError(failureMessage);
+      } else if (externalFailed && campusFailed) {
+        setError(failureMessage);
+      } else {
+        setError(null);
       }
 
-      if (externalResult.status === "fulfilled") {
-        setExternalEvents(externalResult.value.events ?? []);
-        setSyncBanner(
-          eventsSyncBanner({
-            stale: Boolean(externalResult.value.meta?.stale),
-            emptyFeed: (externalResult.value.events ?? []).length === 0 && (campusResult.status !== "fulfilled" || (campusResult.value.events ?? []).length === 0),
-            lastSuccessfulSync: externalResult.value.meta?.lastSuccessfulSync ?? null,
-            warningText: EVENTS_STALE_NOTICE,
-          }),
-        );
-      } else if (!controller.signal.aborted) {
-        const message =
-          externalResult.reason instanceof Error
-            ? externalResult.reason.message
-            : "Could not load campus events.";
-        setSyncBanner(
-          eventsSyncBanner({
-            stale: true,
-            fetchFailed: true,
-            emptyFeed: campusResult.status !== "fulfilled",
-            warningText: EVENTS_STALE_NOTICE,
-          }),
-        );
-        if (campusResult.status !== "fulfilled") {
-          setError(message);
-        }
+      const userId = currentEventsFeedUserId();
+      if (userId && (nextEvents || nextExternal)) {
+        const previous = readEventsFeedCache(userId);
+        writeEventsFeedCache({
+          userId,
+          events: nextEvents ?? previous?.events ?? [],
+          externalEvents: nextExternal ?? previous?.externalEvents ?? [],
+          savedAt: Date.now(),
+        });
       }
     } catch (loadError) {
       if (generation !== loadGenerationRef.current) return;
       const aborted =
         (loadError instanceof DOMException && loadError.name === "AbortError") ||
         (loadError instanceof Error && loadError.name === "AbortError");
-      if (!aborted) {
+      if (!aborted && !background) {
         setError(loadError instanceof Error ? loadError.message : "Could not load events.");
       }
     } finally {
@@ -192,12 +239,40 @@ export function EventsFeed({
     }
   }
 
+  useLayoutEffect(() => {
+    const userId = currentEventsFeedUserId();
+    const snapshot = userId ? readEventsFeedCache(userId) : null;
+    if (!snapshot) return;
+    setEvents(snapshot.events);
+    setExternalEvents(snapshot.externalEvents);
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
-    void loadEvents();
+    const userId = currentEventsFeedUserId();
+    const snapshot = userId ? readEventsFeedCache(userId) : null;
+    if (snapshot && eventsFeedCacheIsFresh(snapshot.savedAt)) return;
+    void loadEvents({ background: Boolean(snapshot) });
     return () => {
       loadAbortRef.current?.abort();
     };
+    // The feed loads once per visit. A fresh snapshot paints without another request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      const userId = currentEventsFeedUserId();
+      if (!userId) return;
+      if (eventsRef.current.length + externalEventsRef.current.length === 0) return;
+      const previous = readEventsFeedCache(userId);
+      writeEventsFeedCache({
+        userId,
+        events: eventsRef.current,
+        externalEvents: externalEventsRef.current,
+        savedAt: previous?.savedAt ?? Date.now(),
+      });
+    };
   }, []);
 
   useEffect(() => {
@@ -270,11 +345,6 @@ export function EventsFeed({
     const filtered = allFeedEvents.filter((item) => eventPassesListFilters(item, filters, savedOnly));
 
     const searchScoreFor = (item: FeedEvent) => scoreEventsSearch(eventSearchHaystack(item), searchQuery);
-    const forYouRequested = shouldPersonalizeForYouEvents({
-      timeframe: filters.timeframe,
-      searching: Boolean(searchQuery) || savedOnly,
-    });
-    const personalizeForYou = forYouRequested && hasSavedInterests;
 
     if (searchQuery) {
       const ranked = rankRecommendationEntities({
@@ -301,39 +371,62 @@ export function EventsFeed({
         });
     }
 
-    if (!personalizeForYou) {
-      return filtered
-        .sort((a, b) => {
-          const aTime = a.event.startsAt ? new Date(a.event.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
-          const bTime = b.event.startsAt ? new Date(b.event.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
-          return aTime - bTime;
-        })
-        .map((item) => ({ item, recommendation: null as RecommendationScore | null }));
-    }
+    return chronologicalFeed(filtered);
+  }, [allFeedEvents, filters, recProfile, savedOnly]);
 
-    return rankRecommendationEntities({
-      items: filtered,
-      toEntity: (entry) =>
-        entry.kind === "campus"
-          ? campusEventToRecommendationEntity(entry.event)
-          : externalEventToRecommendationEntity(entry.event),
-      profile: recProfile,
-      nowMs: recommendationTimeBucket(),
-      diversity: true,
-      exploreEvery: 0,
-    }).map((row) => ({ item: row.item, recommendation: row.recommendation }));
-  }, [allFeedEvents, filters, hasSavedInterests, recProfile, savedOnly]);
+  const personalizeForYou =
+    shouldPersonalizeForYouEvents({
+      timeframe: filters.timeframe,
+      searching: Boolean(filters.search.trim()) || savedOnly,
+    }) && hasSavedInterests;
+  const feedSignature = useMemo(
+    () => prioritizedEvents.map((row) => `${row.item.kind}:${row.item.event.id}`).join("|"),
+    [prioritizedEvents],
+  );
+  const [personalized, setPersonalized] = useState<{
+    signature: string;
+    rows: Array<{ item: FeedEvent; recommendation: RecommendationScore | null }>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!personalizeForYou) return;
+    const signature = feedSignature;
+    const items = prioritizedEvents.map((row) => row.item);
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      const rows = rankRecommendationEntities({
+        items,
+        toEntity: (entry) =>
+          entry.kind === "campus"
+            ? campusEventToRecommendationEntity(entry.event)
+            : externalEventToRecommendationEntity(entry.event),
+        profile: recProfile,
+        nowMs: recommendationTimeBucket(),
+        diversity: true,
+        exploreEvery: 0,
+      }).map((row) => ({ item: row.item, recommendation: row.recommendation }));
+      setPersonalized({ signature, rows });
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [feedSignature, personalizeForYou, prioritizedEvents, recProfile]);
+
+  const rankedEvents =
+    personalizeForYou && personalized?.signature === feedSignature ? personalized.rows : prioritizedEvents;
 
   const discoverySections = useMemo(
     () =>
       partitionDiscoverySections({
-        ranked: prioritizedEvents,
+        ranked: rankedEvents,
         timeframe: filters.timeframe,
         searchQuery: filters.search,
         savedOnly,
         forYouLimit: forYouExpanded ? 40 : 8,
       }),
-    [prioritizedEvents, filters.timeframe, filters.search, savedOnly, forYouExpanded],
+    [rankedEvents, filters.timeframe, filters.search, savedOnly, forYouExpanded],
   );
 
   const emptyCopy = eventsEmptyStateCopy({
@@ -342,6 +435,7 @@ export function EventsFeed({
     hasSearch: Boolean(filters.search.trim()),
     category: filters.categories.length === 1 ? filters.categories[0] : "",
     savedOnly,
+    date: filters.date,
     sheetFilterCount:
       Math.max(0, filters.categories.length - (filters.categories.length === 1 ? 1 : 0)) +
       (filters.when.length > 1 ? filters.when.length : 0) +
@@ -478,7 +572,9 @@ export function EventsFeed({
     setFilters((prev) => ({
       ...draftFilters,
       search: prev.search,
-      timeframe: timeframeAfterWhenChange(prev.timeframe, draftFilters.when),
+      timeframe: draftFilters.date?.trim()
+        ? "all"
+        : timeframeAfterWhenChange(prev.timeframe, draftFilters.when),
     }));
     setFiltersOpen(false);
   }
@@ -494,13 +590,14 @@ export function EventsFeed({
   function selectQuickFilter(value: "for_you" | "today" | "this_weekend") {
     setSavedOnly(false);
     setFilters((prev) => {
-      if (value === "for_you") return { ...prev, when: [], timeframe: "for_you" };
-      return { ...prev, when: [value], timeframe: value };
+      if (value === "for_you") return { ...prev, when: [], date: "", timeframe: "for_you" };
+      return { ...prev, when: [value], date: "", timeframe: value };
     });
   }
 
   function quickFilterSelected(value: "for_you" | EventsWhenFilter) {
     if (savedOnly) return false;
+    if (filters.date?.trim()) return false;
     if (value === "for_you") return filters.timeframe === "for_you" && filters.when.length === 0;
     return filters.when.length === 1 && filters.when[0] === value;
   }
@@ -517,6 +614,39 @@ export function EventsFeed({
 
   const searching = Boolean(filters.search.trim()) || savedOnly;
   const showForYouSection = filters.timeframe === "for_you" && !searching;
+  const showSkeleton = loading && events.length + externalEvents.length === 0;
+  const moreResetKey = [
+    filters.timeframe,
+    filters.search,
+    savedOnly ? "saved" : "",
+    filters.date ?? "",
+    filters.categories.join(","),
+    filters.when.join(","),
+    filters.organizationKey,
+    filters.isPaid,
+    filters.foodOnly ? "food" : "",
+    filters.location,
+    filters.sport,
+  ].join("|");
+  useEffect(() => {
+    setMoreVisible(MORE_EVENTS_BATCH);
+  }, [moreResetKey]);
+  const visibleMore = discoverySections.more.slice(0, moreVisible);
+  const moreSentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const node = moreSentinelRef.current;
+    if (!node || visibleMore.length >= discoverySections.more.length) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setMoreVisible((count) => count + MORE_EVENTS_BATCH);
+        }
+      },
+      { rootMargin: "480px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [discoverySections.more.length, visibleMore.length]);
 
   function renderFeedCard(row: (typeof prioritizedEvents)[number], index = 0) {
     const item = row.item;
@@ -526,7 +656,7 @@ export function EventsFeed({
         item={item}
         recommendation={row.recommendation}
         interestedPending={rsvping === item.event.id}
-        priority={index < 4}
+        priority={index < 1}
         onView={openDetail}
         onViewOnMap={onViewOnMap ? () => onViewOnMap(item.event.id) : undefined}
         onRsvpGoing={
@@ -679,14 +809,8 @@ export function EventsFeed({
           {syncBanner.text}
         </div>
       ) : null}
-      {loading ? (
-        <div className="cq-events-skeletons" aria-busy="true" aria-label="Loading events">
-          <div className="cq-events-skeleton cq-events-skeleton--hero" />
-          <div className="cq-events-skeleton cq-events-skeleton--row" />
-          <div className="cq-events-skeleton cq-events-skeleton--row" />
-        </div>
-      ) : null}
-      {!loading && prioritizedEvents.length === 0 ? (
+      {showSkeleton ? <EventsFeedSkeleton /> : null}
+      {!showSkeleton && rankedEvents.length === 0 ? (
         <div className="cq-events-zero" role="status">
           <span className="cq-events-zero__icon" aria-hidden>
             <CalendarSearch className="h-6 w-6" strokeWidth={1.75} />
@@ -695,7 +819,7 @@ export function EventsFeed({
           <p className="cq-events-zero__detail">{emptyCopy.detail}</p>
           {emptyCopy.action === "clear_filters" ? (
             <button type="button" onClick={clearEventFilters} className="cq-events-zero__cta cq-tap-press">
-              Clear filters
+              {emptyCopy.actionLabel ?? "Clear filters"}
             </button>
           ) : (
             <button type="button" onClick={() => void loadEvents()} className="cq-events-zero__cta cq-tap-press">
@@ -705,7 +829,7 @@ export function EventsFeed({
         </div>
       ) : null}
 
-      {!loading && !searching ? (
+      {!showSkeleton && !searching ? (
         <HappeningSoonCarousel
           rows={discoverySections.happeningSoon}
           rsvpingId={rsvping}
@@ -715,7 +839,7 @@ export function EventsFeed({
         />
       ) : null}
 
-      {!loading && showForYouSection && prioritizedEvents.length > 0 ? (
+      {!showSkeleton && showForYouSection && rankedEvents.length > 0 ? (
         <section className="cq-events-foryou" aria-labelledby="cq-events-foryou-title">
           <div className="cq-events-section-head">
             <div>
@@ -748,12 +872,23 @@ export function EventsFeed({
         </section>
       ) : null}
 
-      {!loading && discoverySections.more.length > 0 ? (
+      {!showSkeleton && visibleMore.length > 0 ? (
         <section className="cq-events-more" aria-labelledby="cq-events-more-title">
           <h2 id="cq-events-more-title" className="cq-events-section-title">
             {searching ? (savedOnly ? "Saved" : "Search results") : showForYouSection ? "More events" : "Upcoming"}
           </h2>
-          <div className="cq-events-feed">{discoverySections.more.map(renderFeedCard)}</div>
+          <div className="cq-events-feed">{visibleMore.map((row) => renderFeedCard(row, 1))}</div>
+          {discoverySections.more.length > visibleMore.length ? (
+            <div ref={moreSentinelRef} className="cq-events-more-sentinel">
+              <button
+                type="button"
+                className="cq-events-more-sentinel-btn"
+                onClick={() => setMoreVisible((count) => count + MORE_EVENTS_BATCH)}
+              >
+                Show more events
+              </button>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -772,7 +907,7 @@ export function EventsFeed({
     {liveDetail ? (
       <EventDetailScreen
         item={liveDetail}
-        recommendation={prioritizedEvents.find((row) => row.item.event.id === liveDetail.event.id)?.recommendation ?? null}
+        recommendation={rankedEvents.find((row) => row.item.event.id === liveDetail.event.id)?.recommendation ?? null}
         error={error}
         interestedPending={rsvping === liveDetail.event.id}
         onBack={closeDetail}
@@ -793,5 +928,31 @@ export function EventsFeed({
       />
     ) : null}
     </>
+  );
+}
+
+function EventsFeedSkeleton() {
+  return (
+    <div className="cq-events-skeletons" aria-busy="true" aria-label="Loading events">
+      <div className="cq-events-skeleton-card cq-events-skeleton-card--feature">
+        <div className="cq-events-skeleton-media" />
+        <div className="cq-events-skeleton-copy">
+          <span className="cq-events-skeleton-line cq-events-skeleton-line--title" />
+          <span className="cq-events-skeleton-line" />
+          <span className="cq-events-skeleton-line cq-events-skeleton-line--short" />
+        </div>
+      </div>
+      <div className="cq-events-skeleton-grid">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className="cq-events-skeleton-card">
+            <div className="cq-events-skeleton-media cq-events-skeleton-media--square" />
+            <div className="cq-events-skeleton-copy">
+              <span className="cq-events-skeleton-line cq-events-skeleton-line--title" />
+              <span className="cq-events-skeleton-line cq-events-skeleton-line--short" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

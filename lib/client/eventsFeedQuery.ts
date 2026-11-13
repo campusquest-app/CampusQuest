@@ -10,11 +10,13 @@ import { feedEventLocationText } from "@/lib/client/eventFeedTypes";
 import {
   eventIsCancelled,
   eventIsCurrentOrUpcoming,
+  eventOverlapsCampusDate,
   matchesAnyEventsWhen,
   matchesEventsSearch,
   type EventsFeedTimeframe,
   type EventsWhenFilter,
 } from "@/lib/client/eventsFeedFilters";
+import { formatCampusDateLabel } from "@/lib/realm/campusTime";
 
 export type { EventsWhenFilter };
 
@@ -28,6 +30,8 @@ export type EventsFeedFilterState = {
   foodOnly: boolean;
   location: string;
   sport: string;
+  /** Campus calendar day, YYYY-MM-DD. Empty means no custom date. */
+  date?: string;
 };
 
 export type ActiveEventFilterChip = {
@@ -95,7 +99,12 @@ export function eventPassesListFilters(
   ) {
     return false;
   }
-  if (!matchesAnyEventsWhen(item.event.startsAt, filters.when, now)) return false;
+  const chosenDate = filters.date?.trim() ?? "";
+  if (chosenDate) {
+    if (!eventOverlapsCampusDate(item.event.startsAt, item.event.endsAt, chosenDate)) return false;
+  } else if (!matchesAnyEventsWhen(item.event.startsAt, filters.when, now)) {
+    return false;
+  }
   if (savedOnly && !feedEventIsSaved(item)) return false;
   if (!matchesEventsSearch(eventSearchHaystack(item), filters.search)) {
     return false;
@@ -140,6 +149,9 @@ export function activeEventFilterChips(
       chips.push({ id: `when:${when}`, label: WHEN_LABELS[when] });
     }
   }
+  if (filters.date?.trim()) {
+    chips.push({ id: "date", label: formatCampusDateLabel(filters.date.trim()) });
+  }
 
   if (filters.isPaid === "free") chips.push({ id: "free", label: "Free" });
   if (filters.foodOnly) chips.push({ id: "food", label: "Food" });
@@ -170,10 +182,37 @@ export function removeActiveEventFilter(
       timeframe: when.length === 1 ? when[0] : when.length > 1 ? "all" : filters.timeframe === "all" ? "all" : "for_you",
     };
   }
+  if (chipId === "date") {
+    const when = filters.when;
+    return {
+      ...filters,
+      date: "",
+      timeframe: when.length === 1 ? when[0] : when.length > 1 ? "all" : "for_you",
+    };
+  }
   if (chipId === "free") return { ...filters, isPaid: "all" };
   if (chipId === "food") return { ...filters, foodOnly: false };
   if (chipId === "sport") return { ...filters, sport: "" };
   if (chipId === "organization") return { ...filters, organizationKey: "" };
   if (chipId === "location") return { ...filters, location: "" };
   return filters;
+}
+
+/** A chosen date replaces every When preset so the two cannot apply together. */
+export function selectEventsCalendarDate(filters: EventsFeedFilterState, date: string): EventsFeedFilterState {
+  return { ...filters, date, when: [] };
+}
+
+export function clearEventsCalendarDate(filters: EventsFeedFilterState): EventsFeedFilterState {
+  return { ...filters, date: "" };
+}
+
+/** Choosing a preset clears a custom date. */
+export function toggleEventsWhenFilter(filters: EventsFeedFilterState, value: EventsWhenFilter): EventsFeedFilterState {
+  const selected = filters.when.includes(value);
+  return {
+    ...filters,
+    date: "",
+    when: selected ? filters.when.filter((entry) => entry !== value) : [...filters.when, value],
+  };
 }

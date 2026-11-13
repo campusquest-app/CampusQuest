@@ -71,6 +71,13 @@ describe("Events experience source contracts", () => {
 
   it("defaults discovery to For You and opens filters in a centered modal", () => {
     expect(feedSrc).toContain('timeframe: "for_you"');
+    expect(feedSrc).toContain("readEventsFeedCache");
+    expect(feedSrc).toContain("EventsFeedSkeleton");
+    expect(feedSrc).toContain("visibleMore");
+    expect(feedSrc).not.toContain("_=${Date.now()}");
+    const externalSrc = readFileSync(join(process.cwd(), "lib/server/externalContent.ts"), "utf8");
+    expect(externalSrc).toContain('.gte("starts_at", pastCutoffIso)');
+    expect(externalSrc).not.toContain("getUrinvolvedSyncStatus");
     expect(feedSrc).toContain("EventsFilterSheet");
     expect(feedSrc).toContain("cq-events-filter-count");
     expect(feedSrc).toContain("EVENTS_SEARCH_PLACEHOLDER");

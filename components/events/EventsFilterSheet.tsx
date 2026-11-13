@@ -12,9 +12,15 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { EventDateField } from "@/components/events/EventDateField";
 import { CqModalLayer } from "@/components/ui/CqModalLayer";
 import { EVENTS_CATEGORY_RAIL, EVENTS_FILTER_CATEGORY_LABELS } from "@/lib/client/eventCardPresentation";
-import type { EventsFeedFilterState } from "@/lib/client/eventsFeedQuery";
+import {
+  clearEventsCalendarDate,
+  selectEventsCalendarDate,
+  toggleEventsWhenFilter,
+  type EventsFeedFilterState,
+} from "@/lib/client/eventsFeedQuery";
 import type { EventsWhenFilter } from "@/lib/client/eventsFeedFilters";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -68,11 +74,7 @@ export function EventsFilterSheet({
   }
 
   function toggleWhen(value: EventsWhenFilter) {
-    const selected = draft.when.includes(value);
-    onChange({
-      ...draft,
-      when: selected ? draft.when.filter((entry) => entry !== value) : [...draft.when, value],
-    });
+    onChange(toggleEventsWhenFilter(draft, value));
   }
 
   return (
@@ -155,6 +157,11 @@ export function EventsFilterSheet({
               );
             })}
           </div>
+          <EventDateField
+            date={draft.date?.trim() ?? ""}
+            onSelect={(date) => onChange(selectEventsCalendarDate(draft, date))}
+            onClear={() => onChange(clearEventsCalendarDate(draft))}
+          />
         </fieldset>
 
         <fieldset className="cq-events-filter-fieldset">

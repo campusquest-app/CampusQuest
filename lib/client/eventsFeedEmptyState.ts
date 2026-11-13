@@ -1,4 +1,5 @@
 import type { EventsFeedTimeframe } from "@/lib/client/eventsFeedFilters";
+import { formatCampusDateLabel } from "@/lib/realm/campusTime";
 
 export const EVENTS_STALE_NOTICE = "Some event information may be out of date.";
 export const EVENTS_FOR_YOU_EMPTY_TITLE = "We're still learning what you like.";
@@ -21,12 +22,16 @@ export function eventsEmptyStateCopy(input: {
   savedOnly?: boolean;
   /** Organization, price, location, or sport filters from the filter sheet. */
   sheetFilterCount?: number;
-}): { title: string; detail: string; action?: "clear_filters" } {
+  /** Applied campus calendar day, YYYY-MM-DD. */
+  date?: string;
+}): { title: string; detail: string; action?: "clear_filters"; actionLabel?: string } {
   const category = input.category?.trim() ?? "";
   const sheetFilters = Math.max(0, input.sheetFilterCount ?? 0);
+  const date = input.date?.trim() ?? "";
   let active = sheetFilters;
   if (category) active += 1;
   if (dateFilterIsNarrow(input.timeframe)) active += 1;
+  if (date) active += 1;
   if (input.hasSearch) active += 1;
   if (input.savedOnly) active += 1;
 
@@ -59,6 +64,15 @@ export function eventsEmptyStateCopy(input: {
       title: `No ${category} events`,
       detail: FILTER_DETAIL,
       action: "clear_filters",
+    };
+  }
+
+  if (date && active === 1) {
+    return {
+      title: `No events on ${formatCampusDateLabel(date)}`,
+      detail: "Nothing is scheduled then. Clear the date filter to see the rest of campus.",
+      action: "clear_filters",
+      actionLabel: "Clear date",
     };
   }
 

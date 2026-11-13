@@ -1,4 +1,5 @@
 import { CAMPUS_TIME_ZONE, getCampusDayWindow } from "@/lib/realm/eventCountdown";
+import { campusDateWindow } from "@/lib/realm/campusTime";
 
 export type EventsFeedTimeframe =
   | "for_you"
@@ -113,6 +114,25 @@ export function matchesEventsTimeframe(
 }
 
 export type EventsWhenFilter = "today" | "tomorrow" | "this_weekend" | "this_week";
+
+/**
+ * True when the event's campus schedule overlaps the calendar day.
+ * A missing end is a single instant, so it matches only the start day.
+ * An end exactly at the next midnight does not spill into that next day.
+ */
+export function eventOverlapsCampusDate(
+  startsAt: string | null,
+  endsAt: string | null | undefined,
+  dateKey: string,
+): boolean {
+  const day = campusDateWindow(dateKey);
+  if (!day || !startsAt) return false;
+  const startMs = new Date(startsAt).getTime();
+  if (!Number.isFinite(startMs)) return false;
+  const parsedEnd = endsAt ? new Date(endsAt).getTime() : startMs;
+  const endMs = Number.isFinite(parsedEnd) && parsedEnd > startMs ? parsedEnd : startMs + 1;
+  return startMs < day.end.getTime() && endMs > day.start.getTime();
+}
 
 /** An event matches when it falls in any selected window. No selection means every date. */
 export function matchesAnyEventsWhen(

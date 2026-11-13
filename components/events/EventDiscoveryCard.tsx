@@ -102,6 +102,7 @@ export const EventDiscoveryCard = memo(function EventDiscoveryCard({
           alt=""
           className="cq-event-card-thumb"
           loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
           fallbackBrand={fallbackBrand}
           fit={fit}
           showBlurFill={fit === "contain"}

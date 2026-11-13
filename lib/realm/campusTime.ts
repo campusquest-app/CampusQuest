@@ -20,17 +20,53 @@ export function isOnCampusDay(instant: Date, now: Date = new Date()): boolean {
 }
 
 function campusMidnightUtcMs(now: Date): number {
+  const key = campusDateKey(now);
+  const [year, month, day] = key.split("-").map(Number);
+  return campusWallMidnightUtc(year!, month!, day!);
+}
+
+/** Campus calendar day as YYYY-MM-DD. */
+export function campusDateKey(instant: Date): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: CAMPUS_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(now);
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
-  const year = get("year");
-  const month = get("month");
-  const day = get("day");
+  }).formatToParts(instant);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
 
+/** Midnight-to-midnight window for one campus calendar day. Invalid dates return null. */
+export function campusDateWindow(dateKey: string): { start: Date; end: Date } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const startMs = campusWallMidnightUtc(year, month, day);
+  const start = new Date(startMs);
+  if (campusDateKey(start) !== dateKey) return null;
+  const next = new Date(Date.UTC(year, month - 1, day + 1));
+  const endMs = campusWallMidnightUtc(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate());
+  if (endMs <= startMs) return null;
+  return { start, end: new Date(endMs) };
+}
+
+/** "Nov 12" in campus time. A different year includes the year. */
+export function formatCampusDateLabel(dateKey: string, now: Date = new Date()): string {
+  const window = campusDateWindow(dateKey);
+  if (!window) return dateKey;
+  const sameYear = campusDateKey(now).slice(0, 4) === dateKey.slice(0, 4);
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: CAMPUS_TIME_ZONE,
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  }).format(window.start);
+}
+
+function campusWallMidnightUtc(year: number, month: number, day: number): number {
   // Two-pass: guess UTC midnight, then correct by the zone offset at that instant.
   let guess = Date.UTC(year, month - 1, day, 0, 0, 0);
   for (let i = 0; i < 2; i += 1) {
