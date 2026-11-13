@@ -46,7 +46,8 @@ describe("primary bottom navigation destinations", () => {
 
   it("marks the Social feed scroll surface for auto-hide", () => {
     const quadSrc = readFileSync(join(process.cwd(), "components/TheQuad.tsx"), "utf8");
-    expect(quadSrc).toContain('setAttribute("data-cq-quad-scroll-root"');
+    expect(quadSrc).toContain("data-cq-quad-scroll-root");
+    expect(quadSrc).toContain("cq-quad-scroll-root");
     expect(navSrc).toContain("resolveBottomNavScrollRoot");
   });
 

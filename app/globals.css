@@ -8819,7 +8819,9 @@ html[data-cq-media-pinching] {
   z-index: 50;
   width: 100%;
   --cq-hide: var(--cq-quad-hide-progress, 0);
-  transform: translate3d(0, calc(var(--cq-hide) * -100%), 0);
+  /* min(0px, …) clamps the shell at its fully visible seat under the status
+     bar — never translate downward into a blank strip on overscroll/reveal. */
+  transform: translate3d(0, min(0px, calc(var(--cq-hide) * -100%)), 0);
   opacity: max(0, calc(1 - var(--cq-hide) * 1.15));
   will-change: transform, opacity;
   background: linear-gradient(180deg, rgba(8, 12, 22, 0.92) 0%, rgba(6, 10, 18, 0.88) 100%);
@@ -9374,8 +9376,10 @@ html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-map-btn svg {
   box-sizing: border-box;
   min-height: 0;
   overflow: visible;
-  /* Room for the floating compose button, which sits above the dock clearance. */
-  padding-bottom: calc(2.75rem + 1rem);
+  /* FAB clearance + dock clearance (pad bottom is 0 while document scroll is locked). */
+  padding-bottom: calc(
+    2.75rem + 1rem + var(--cq-feed-bottom-clearance, calc(var(--cq-bottom-nav-h, 4.75rem) + 0.875rem))
+  );
 }
 
 .cq-quad-status-shield {
@@ -9387,6 +9391,45 @@ html[data-cq-bottom-chrome="minimized"] .cq-bottom-nav-map-btn svg {
   height: env(safe-area-inset-top, 0px);
   background: var(--cq-bg-app);
   pointer-events: none;
+}
+
+/* Home/Quad: lock the document so iOS rubber-band cannot drag the fixed
+   header + status shield (portaled to body). Feed scrolling lives in
+   .cq-quad-scroll-root — kept as a normal block (not position:fixed) so the
+   tab swipe shell's will-change:transform does not trap it. */
+html[data-cq-on-quad],
+html[data-cq-on-quad] body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  height: 100%;
+  height: 100dvh;
+}
+
+html[data-cq-on-quad] .cq-dashboard-scroll-pad {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  /* Dock clearance stays on the feed body / FAB; pad must not grow the page. */
+  padding-bottom: 0;
+}
+
+html[data-cq-on-quad] .cq-tab-swipe-shell,
+html[data-cq-on-quad] .cq-tab-shell {
+  height: 100%;
+  min-height: 0;
+}
+
+.cq-quad-scroll-root {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Contain bounce inside the feed scroller; header stays outside it. */
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: none;
+  box-sizing: border-box;
 }
 
 [data-cq-scroll-root] {

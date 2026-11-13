@@ -70,4 +70,19 @@ describe("useScrollChrome", () => {
       computeHeaderHideOffset({ prevOffsetPx: 100, delta: 30, scrollY: 4, range: 140 }),
     ).toBe(0);
   });
+
+  it("pins fully visible on negative overscroll and never returns a downward offset", () => {
+    expect(
+      computeHeaderHideOffset({ prevOffsetPx: 80, delta: -40, scrollY: -24, range: 140 }),
+    ).toBe(0);
+    expect(
+      computeHeaderHideOffset({ prevOffsetPx: 0, delta: -12, scrollY: 0, range: 140 }),
+    ).toBe(0);
+  });
+
+  it("floors upward reveal at zero so the header cannot travel below its seat", () => {
+    expect(
+      computeHeaderHideOffset({ prevOffsetPx: 10, delta: -80, scrollY: 120, range: 140 }),
+    ).toBe(0);
+  });
 });

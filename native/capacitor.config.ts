@@ -25,7 +25,11 @@ const config: CapacitorConfig = {
     ],
   },
   ios: {
-    contentInset: "automatic",
+    // Never: the web UI applies env(safe-area-inset-*) once in CSS (TopNav).
+    // "automatic" double-applies the top inset and lets WKWebView rubber-band
+    // the document under the status bar, which opens a blank strip above the
+    // fixed Home header when scrolling back to the top.
+    contentInset: "never",
     preferredContentMode: "mobile",
     allowsLinkPreview: false,
     scrollEnabled: true,
