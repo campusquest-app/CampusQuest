@@ -192,12 +192,12 @@ describe("happening soon ranking", () => {
     const merged = dedupeFeedEvents([localist.item, urinvolved.item, nextWeek.item]);
     expect(merged).toHaveLength(2);
     expect(merged.map((item) => item.event.id).sort()).toEqual(["fest-week-2", "localist-fest"]);
-    expect(merged.find((item) => item.event.id === "localist-fest")?.event.imageUrl).toBe(
-      "https://example.com/fest-a.jpg",
-    );
-    expect(merged.find((item) => item.event.id === "localist-fest")?.event.venueName).toContain(
-      "Memorial Union Ballroom",
-    );
+    const fest = merged.find((item) => item.event.id === "localist-fest");
+    expect(fest?.kind).toBe("external");
+    if (fest?.kind === "external") {
+      expect(fest.event.imageUrl).toBe("https://example.com/fest-a.jpg");
+      expect(fest.event.venueName).toContain("Memorial Union Ballroom");
+    }
 
     const sections = partitionDiscoverySections({
       ranked: merged.map((item) => ({ item, recommendation: null })),
