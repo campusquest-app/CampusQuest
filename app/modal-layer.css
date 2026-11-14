@@ -1,7 +1,8 @@
 /*
  * App-level modal layer (components/ui/CqModalLayer.tsx).
- * Sits above the dock nav (9999), side drawer (10051), and composer (10060) so
- * Edit Post / Add Tags can open from the feed or from inside the composer.
+ * Sits above the dock nav (9999), side drawer (10051), composer (13000), and
+ * identity sheet (13080) so Edit Post / Add Tags / anonymous notice can open
+ * from the feed or from inside New Post.
  * Height/top follow the visual viewport (vars set by lib/client/modalLayer.ts)
  * so the iOS keyboard never covers the header or Save/Done actions.
  */
@@ -11,7 +12,7 @@
   right: 0;
   top: var(--cq-modal-vv-top, 0px);
   height: var(--cq-modal-vv-h, 100dvh);
-  z-index: 10100;
+  z-index: 13100;
   display: flex;
   align-items: flex-end;
   justify-content: center;

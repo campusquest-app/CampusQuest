@@ -31031,7 +31031,8 @@ button.cq-loc-activity-card {
 .cq-identity-sheet-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 10080;
+  /* Above New Post (13000); below shared modal layer (13100) for the anonymity notice. */
+  z-index: 13080;
   display: flex;
   align-items: flex-end;
   justify-content: center;

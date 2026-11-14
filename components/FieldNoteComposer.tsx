@@ -28,6 +28,7 @@ import {
   ANONYMOUS_STUDENT_NAME,
 } from "@/lib/anonymousPost";
 import { AnonymousPostNotice } from "@/components/posts/AnonymousPostNotice";
+import { CqModalLayer } from "@/components/ui/CqModalLayer";
 import { AvatarDisplay } from "@/components/AvatarDisplay";
 import type { Character } from "@/lib/types";
 import type { QuadPostVisibility } from "@/lib/types";
@@ -211,6 +212,12 @@ export function FieldNoteComposer({
   const [noticeOpen, setNoticeOpen] = useState(false);
   const [noticeAccepted, setNoticeAccepted] = useState(false);
   const [noticeBusy, setNoticeBusy] = useState(false);
+  type ComposerFeedDestination = "campus" | "local_businesses" | "organizations";
+  const [pendingAnonymousExit, setPendingAnonymousExit] = useState<
+    | { kind: "destination"; value: ComposerFeedDestination }
+    | { kind: "visibility"; value: QuadPostVisibility }
+    | null
+  >(null);
   const photoFileRef = useRef<HTMLInputElement>(null);
   const cameraFileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -234,6 +241,7 @@ export function FieldNoteComposer({
     setVisibility("public");
     setAnonymousMode(true);
     setIdentityNotice(null);
+    setPendingAnonymousExit(null);
   }
 
   function leaveAnonymousMode() {
@@ -242,11 +250,41 @@ export function FieldNoteComposer({
     setAnonymousMode(false);
   }
 
+  function requestFeedDestination(next: ComposerFeedDestination) {
+    if (anonymousMode && next !== "campus") {
+      setPendingAnonymousExit({ kind: "destination", value: next });
+      return;
+    }
+    setFeedDestination(next);
+    if (next === "campus") setIdentityNotice(null);
+  }
+
+  function requestVisibility(next: QuadPostVisibility) {
+    if (anonymousMode && next !== "public") {
+      setPendingAnonymousExit({ kind: "visibility", value: next });
+      return;
+    }
+    setVisibility(next);
+  }
+
+  function confirmAnonymousExit() {
+    if (!pendingAnonymousExit) return;
+    const pending = pendingAnonymousExit;
+    leaveAnonymousMode();
+    if (pending.kind === "destination") setFeedDestination(pending.value);
+    else setVisibility(pending.value);
+    setPendingAnonymousExit(null);
+    setIdentityNotice(
+      "Anonymous posts are only available in Campus Feed → Public. Switched back to your profile. Your draft is still here.",
+    );
+  }
+
   useEffect(() => {
     if (!anonymousMode || feedDestination === "campus") return;
+    // Safety net for locked destinations that bypass the destination buttons.
     leaveAnonymousMode();
     setIdentityNotice(
-      "Anonymous posts are only available in the Campus Feed. Switched back to your profile. Your draft is still here.",
+      "Anonymous posts are only available in Campus Feed → Public. Switched back to your profile. Your draft is still here.",
     );
     // leaveAnonymousMode closes over the audience saved when anonymous mode started.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -686,7 +724,7 @@ export function FieldNoteComposer({
               <div className="cq-composer-visibility" role="group" aria-label="Where to post">
                 <button
                   type="button"
-                  onClick={() => setFeedDestination("campus")}
+                  onClick={() => requestFeedDestination("campus")}
                   className={`cq-composer-visibility-btn ${!postingToLocalBusinesses && !postingToOrganizations ? "cq-composer-visibility-btn--active" : ""}`}
                 >
                   Campus Feed
@@ -694,7 +732,7 @@ export function FieldNoteComposer({
                 {canPostOrganizations ? (
                   <button
                     type="button"
-                    onClick={() => setFeedDestination("organizations")}
+                    onClick={() => requestFeedDestination("organizations")}
                     className={`cq-composer-visibility-btn ${postingToOrganizations ? "cq-composer-visibility-btn--active" : ""}`}
                   >
                     Organizations
@@ -703,7 +741,7 @@ export function FieldNoteComposer({
                 {canPostLocalBusinesses ? (
                   <button
                     type="button"
-                    onClick={() => setFeedDestination("local_businesses")}
+                    onClick={() => requestFeedDestination("local_businesses")}
                     className={`cq-composer-visibility-btn ${postingToLocalBusinesses ? "cq-composer-visibility-btn--active" : ""}`}
                   >
                     Local Businesses
@@ -723,14 +761,14 @@ export function FieldNoteComposer({
             <div className="cq-composer-visibility" role="group" aria-label="Who can see this post">
               <button
                 type="button"
-                onClick={() => setVisibility("public")}
+                onClick={() => requestVisibility("public")}
                 className={`cq-composer-visibility-btn ${visibility === "public" ? "cq-composer-visibility-btn--active" : ""}`}
               >
                 🌐 Public
               </button>
               <button
                 type="button"
-                onClick={() => setVisibility("friends")}
+                onClick={() => requestVisibility("friends")}
                 className={`cq-composer-visibility-btn ${visibility === "friends" ? "cq-composer-visibility-btn--active" : ""}`}
               >
                 👥 Following
@@ -1142,6 +1180,7 @@ export function FieldNoteComposer({
         busy={noticeBusy}
         onCancel={() => {
           setNoticeOpen(false);
+          // Keep the named identity and the entire draft; never flip into anonymous.
           setAnonymousMode(false);
         }}
         onAccept={() => {
@@ -1158,6 +1197,42 @@ export function FieldNoteComposer({
             .finally(() => setNoticeBusy(false));
         }}
       />
+
+      <CqModalLayer
+        open={Boolean(pendingAnonymousExit)}
+        onDismiss={() => setPendingAnonymousExit(null)}
+        labelledBy="cq-anonymous-exit-title"
+        placement="dialog"
+        panelClassName="cq-anonymous-notice border border-white/15 bg-uri-navy shadow-2xl"
+      >
+        <header className="cq-modal-header border-b border-white/10 px-5 pb-3 pt-4">
+          <h2 id="cq-anonymous-exit-title" className="font-display text-lg font-bold text-white">
+            Leave anonymous posting?
+          </h2>
+        </header>
+        <div className="cq-modal-body space-y-3 overflow-y-auto px-5 py-4 text-sm leading-relaxed text-white/90">
+          <p>
+            Anonymous posts are only available in Campus Feed → Public. Switching destination or audience will
+            post as your profile again. Your draft stays here.
+          </p>
+        </div>
+        <footer className="cq-modal-footer flex gap-2 border-t border-white/10 px-5 py-3">
+          <button
+            type="button"
+            className="cq-composer-head-cancel min-h-11 flex-1"
+            onClick={() => setPendingAnonymousExit(null)}
+          >
+            Stay anonymous
+          </button>
+          <button
+            type="button"
+            className="min-h-11 flex-1 rounded-full bg-uri-keaney px-3 text-sm font-bold text-uri-navy"
+            onClick={confirmAnonymousExit}
+          >
+            Switch identity
+          </button>
+        </footer>
+      </CqModalLayer>
 
       {posted ? (
         <div className="cq-composer-success-overlay" role="status" aria-live="polite">

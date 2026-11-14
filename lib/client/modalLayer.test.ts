@@ -269,7 +269,9 @@ describe("Edit Post and Add Tags use the shared modal layer", () => {
 
   it("stacks above the dock nav and composer and hides the dock while open", () => {
     const z = Number(/\.cq-modal-layer \{[^}]*z-index:\s*(\d+)/.exec(css)?.[1]);
-    expect(z).toBeGreaterThan(10060);
+    const composerZ = Number(/\.cq-composer-overlay \{[^}]*z-index:\s*(\d+)/.exec(read("app/globals.css"))?.[1]);
+    expect(composerZ).toBe(13000);
+    expect(z).toBeGreaterThan(composerZ);
     expect(css).toContain("html[data-cq-modal-open] .cq-dock-nav");
     expect(css).toContain("var(--cq-modal-vv-h");
     expect(css).toContain("env(safe-area-inset-bottom)");

@@ -16,6 +16,16 @@ describe("New Post header vs feed selector layout", () => {
     expect(topNav).toContain("setFeedMenuOpen(false)");
   });
 
+  it("keeps the Posting as sheet and anonymity notice above New Post", () => {
+    const composerZ = Number(/\.cq-composer-overlay \{[^}]*z-index:\s*(\d+)/.exec(css)?.[1]);
+    const identityZ = Number(/\.cq-identity-sheet-backdrop \{[^}]*z-index:\s*(\d+)/.exec(css)?.[1]);
+    const modalCss = readFileSync(join(process.cwd(), "app/modal-layer.css"), "utf8");
+    const modalZ = Number(/\.cq-modal-layer \{[^}]*z-index:\s*(\d+)/.exec(modalCss)?.[1]);
+    expect(composerZ).toBe(13000);
+    expect(identityZ).toBeGreaterThan(composerZ);
+    expect(modalZ).toBeGreaterThan(identityZ);
+  });
+
   it("keeps New Post safe-area padding stable on iOS", () => {
     expect(css).toContain("var(--cq-safe-top, 0px)");
     expect(modal).toContain("rememberSafeTopInset");

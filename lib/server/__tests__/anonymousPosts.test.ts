@@ -113,10 +113,27 @@ describe("composer identity", () => {
   });
 
   it("restores the personal identity when the feed cannot host an anonymous post", () => {
-    expect(composer).toContain("Anonymous posts are only available in the Campus Feed");
+    expect(composer).toContain("Anonymous posts are only available in Campus Feed → Public");
     expect(composer).toContain("Your draft is still here.");
     expect(composer).toContain("ANONYMOUS_ACCOUNTABILITY_LINE");
     expect(composer).toContain("ANONYMOUS_IDENTITY_HINT");
+    expect(composer).toContain("requestFeedDestination");
+    expect(composer).toContain("pendingAnonymousExit");
+    expect(composer).toContain("Leave anonymous posting?");
+    expect(composer).toContain("Stay anonymous");
+  });
+
+  it("opens the anonymity notice above the composer stack", () => {
+    const css = read("app/globals.css");
+    const modalCss = read("app/modal-layer.css");
+    const composerZ = Number(/\.cq-composer-overlay \{[^}]*z-index:\s*(\d+)/.exec(css)?.[1]);
+    const identityZ = Number(/\.cq-identity-sheet-backdrop \{[^}]*z-index:\s*(\d+)/.exec(css)?.[1]);
+    const modalZ = Number(/\.cq-modal-layer \{[^}]*z-index:\s*(\d+)/.exec(modalCss)?.[1]);
+    expect(composerZ).toBe(13000);
+    expect(identityZ).toBeGreaterThan(composerZ);
+    expect(modalZ).toBeGreaterThan(identityZ);
+    expect(composer).toContain("setNoticeOpen(true)");
+    expect(composer).toContain('<AnonymousPostNotice');
   });
 });
 
