@@ -34,6 +34,11 @@ export type StudentRewardEligibilityInput = {
   accountStatus: string | null;
   suspendedUntil: string | null;
   now: Date;
+  /**
+   * When true, any signed-in (non-restricted) CampusQuest member may open the pass
+   * without campus-email verification. Used only for partners on the open-membership list.
+   */
+  openMembership?: boolean;
 };
 
 export type StudentRewardEligibility =
@@ -72,6 +77,10 @@ export function evaluateStudentRewardEligibility(input: StudentRewardEligibility
   }
   // Platform admins manage/preview Community Quests without student verification.
   if (isCommunityQuestsAdminPreviewRole(input.role)) {
+    return { eligible: true };
+  }
+  // Partner-scoped open membership: any signed-in member (including unverified).
+  if (input.openMembership) {
     return { eligible: true };
   }
   if (input.role !== "student" || (input.studentStatus && NON_STUDENT_STATUSES.has(input.studentStatus))) {
@@ -121,6 +130,8 @@ export type StudentRewardPass = {
   serverNow: string;
   /** App Review demo pass: watermarked, not valid for redemption, never logged. */
   demo?: boolean;
+  /** Business-manager preview: view-only, never logged as a redemption/authorization. */
+  preview?: boolean;
 };
 
 export type RewardPassResponse = { pass: StudentRewardPass };

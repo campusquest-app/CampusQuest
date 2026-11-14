@@ -87,15 +87,16 @@ describe("Community Quests screen", () => {
     expect(html).not.toContain("CampusQuest Partners</h1>");
   });
 
-  it("features Daisy's 20% OFF with photo, open status, and a View Deal button", () => {
+  it("features Daisy's and Pocket Café 20% OFF deals with View Deal", () => {
     const html = renderScreen(ready);
     const start = html.indexOf('id="cq-perks-featured-title"');
     const featured = html.slice(start, html.indexOf('id="cq-perks-explore-title"'));
     expect(start).toBeGreaterThan(-1);
     expect(featured).toContain("Featured Community Quests");
     expect(featured).toContain("cq-perks-section__pin");
-    expect(featured).toContain("cq-perks-featured--solo");
+    expect(featured).toContain("cq-perks-featured--carousel");
     expect(featured).toContain(DAISYS_HTML);
+    expect(featured).toContain(pocketCafe.name);
     expect(featured).toContain("20% OFF");
     expect(featured).toContain("Go on a quest for 20% OFF at Daisy");
     expect(featured).toContain('src="/partners/daisys/logo.jpg"');
@@ -109,10 +110,10 @@ describe("Community Quests screen", () => {
     expect(featured).toContain("cq-perk-featured__name-btn");
     expect(featured).not.toContain("View Quest Deal");
     expect(featured).not.toContain(sandbar.name);
-    expect(featured).not.toContain("cq-perks-featured--carousel");
+    expect((featured.match(/cq-perks-featured__slide/g) ?? []).length).toBe(2);
   });
 
-  it("turns multiple featured deals into a swipeable carousel without duplicating entries", () => {
+  it("keeps featured deals unique when another live offer is added", () => {
     const extra = definePartner({
       ...daisys,
       id: "second-featured-shop",
@@ -129,12 +130,13 @@ describe("Community Quests screen", () => {
     expect(featured).toContain("cq-perks-featured__slide");
     expect(featured).toContain(DAISYS_HTML);
     expect(featured).toContain("Second Featured Shop");
-    expect((featured.match(/cq-perks-featured__slide/g) ?? []).length).toBe(2);
+    expect(featured).toContain(pocketCafe.name);
+    expect((featured.match(/cq-perks-featured__slide/g) ?? []).length).toBe(3);
     expect(featured.split(`id="cq-perk-featured-${extra.id}-name"`).length - 1).toBe(1);
     expect(featured.split(`id="cq-perk-featured-${daisys.id}-name"`).length - 1).toBe(1);
   });
 
-  it("lists partner and free local businesses in Explore with category, hours/location, and actions", () => {
+  it("lists partner businesses in Explore with category, hours/location, and actions", () => {
     const explore = exploreSection(renderScreen(ready));
     expect(explore).toContain("Explore Local Businesses");
     expect(explore).toContain("Browse nearby spots and student deals");
@@ -148,8 +150,8 @@ describe("Community Quests screen", () => {
     expect(explore).toContain("Reward soon");
     expect(explore).toContain('src="/partners/sandbar/logo.png"');
     expect(explore).toContain(pocketCafe.name);
-    expect(explore).toContain("99 Fortin Rd, Kingston, RI");
-    expect(explore).toContain("View Details");
+    expect(explore).toContain("20% OFF");
+    expect(explore).toContain("Hours Unavailable");
     expect(explore).toContain('src="/partners/daisys/logo.jpg"');
     expect(explore).toContain('src="/partners/daisys/cover.jpg"');
     expect(explore).toContain('src="/partners/international-pocket-cafe/logo.png"');
@@ -308,16 +310,16 @@ describe("PartnerCard and FeaturedDealCard", () => {
     expect(html).toContain('src="/partners/international-pocket-cafe/cover.jpg"');
   });
 
-  it("shows Hours Unavailable on free listings when hours are not configured, without dropping the address", () => {
+  it("shows Hours Unavailable and 20% OFF for Pocket Café when hours are not configured", () => {
     const html = renderToStaticMarkup(
       createElement(PartnerCard, { partner: pocketCafe, now: AFTERNOON, onSelect: () => {} }),
     );
     expect(html).toContain("Hours Unavailable");
     expect(html).toContain("cq-perk-status--unavailable");
-    expect(html).toContain("99 Fortin Rd, Kingston, RI");
+    expect(html).toContain("20% OFF");
   });
 
-  it("shows live Open/Closed on free listings once hours exist", () => {
+  it("shows live Open/Closed for Pocket Café once hours exist", () => {
     const withHours = {
       ...pocketCafe,
       hours: {
@@ -414,7 +416,7 @@ describe("PartnerDetailView", () => {
     expect(html).toContain("Closed");
   });
 
-  it("shows free local listings with description, directions, and website — never rewards or partnership claims", () => {
+  it("shows International Pocket Café with live 20% OFF open to all CampusQuest members", () => {
     const html = renderDetail(pocketCafe);
     expect(html).toContain(pocketCafe.name);
     expect(html).toContain('src="/partners/international-pocket-cafe/cover.jpg"');
@@ -422,19 +424,17 @@ describe("PartnerDetailView", () => {
     expect(html).toContain("Food &amp; Dining");
     expect(html).toContain(pocketCafe.description!);
     expect(html).toContain("99 Fortin Rd, Kingston, RI");
-    expect(html).toContain("Get Directions");
+    expect(html).toContain("Directions");
     expect(html).toContain(
       `href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(`${pocketCafe.name}, ${pocketCafe.address}`)}"`,
     );
-    expect(html).toContain("Visit Website");
+    expect(html).toContain("Website");
     expect(html).toContain('href="https://internationalpocketcafe.com/"');
-    expect(html).not.toContain("Verified CampusQuest Partner");
-    expect(html).not.toContain("Quest deal");
-    expect(html).not.toContain("Student deal");
+    expect(html).toContain("20% OFF");
+    expect(html).toContain("View Deal");
+    expect(html).toContain("Available to all CampusQuest members");
+    expect(html).toContain("Verified CampusQuest Partner");
     expect(html).not.toContain("Coming soon");
-    expect(html).not.toContain("View Deal");
-    expect(html).not.toContain("Redeem");
-    expect(html).not.toContain("% OFF");
     expect(html).toContain("Hours Unavailable");
     expect(html).toContain("cq-perk-status--unavailable");
   });
@@ -638,7 +638,7 @@ describe("partners directory data", () => {
     expect(sandbar.hours?.weekly).toEqual(everyDay({ open: "07:00", close: "12:00" }));
   });
 
-  it("keeps Daisy's 20% OFF, Sandbar without a reward, and Pocket Café as a free listing", () => {
+  it("keeps Daisy's 20% OFF, Sandbar without a reward, and Pocket Café's open-membership 20% OFF", () => {
     expect(daisys.discountValue).toBe("20% OFF");
     expect(daisys.offerTitle).toBe("Go on a quest for 20% OFF at Daisy\u2019s");
     expect(daisys.rewardTerms).toBeNull();
@@ -648,11 +648,11 @@ describe("partners directory data", () => {
     expect(sandbar.redemptionInstructions).toBeNull();
     expect(sandbar.rewardTerms).toBeNull();
     expect(sandbar.listingType).toBe("partner");
-    expect(pocketCafe.listingType).toBe("free_local_business");
-    expect(pocketCafe.discountValue).toBeNull();
-    expect(pocketCafe.offerTitle).toBeNull();
-    expect(pocketCafe.redemptionInstructions).toBeNull();
-    expect(pocketCafe.partnerSince).toBeNull();
+    expect(pocketCafe.listingType).toBe("partner");
+    expect(pocketCafe.discountValue).toBe("20% OFF");
+    expect(pocketCafe.offerTitle).toMatch(/20% Off/i);
+    expect(pocketCafe.redemptionInstructions).toBeTruthy();
+    expect(pocketCafe.rewardTerms).toBe("Available to all CampusQuest members");
     expect(pocketCafe.websiteUrl).toBe("https://internationalpocketcafe.com/");
     expect(PARTNER_DIRECTORY).toHaveLength(3);
     expect(PARTNER_DIRECTORY.filter((p) => p.slug === "international-pocket-cafe")).toHaveLength(1);

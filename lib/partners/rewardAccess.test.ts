@@ -46,6 +46,22 @@ describe("evaluateStudentRewardEligibility", () => {
     expect(codeOf(check({ email: null }))).toBe(REWARD_ERROR_CODES.verificationRequired);
   });
 
+  it("allows open-membership partners without campus email verification", () => {
+    expect(check({ campusEmailVerifiedAt: null, email: "guest@gmail.com", openMembership: true })).toEqual({
+      eligible: true,
+    });
+    expect(
+      check({
+        role: "qa",
+        studentStatus: "not_student",
+        campusEmailVerifiedAt: null,
+        email: "friend@example.com",
+        activeIdentityType: "business",
+        openMembership: true,
+      }),
+    ).toEqual({ eligible: true });
+  });
+
   it("denies faculty/staff and non-admin non-student roles, including unset roles", () => {
     for (const role of ["faculty_staff", "qa", "beta_internal", null, "STUDENT", ""]) {
       expect(codeOf(check({ role }))).toBe(REWARD_ERROR_CODES.ineligible);
