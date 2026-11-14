@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Calendar, CalendarSearch, Search, SlidersHorizontal, Sparkles, X } from "lucide-react";
+import { Bookmark, Calendar, CalendarSearch, Search, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { fetchAuthed, postAuthed } from "@/lib/client/dashboardApi";
+import { EventDateField } from "@/components/events/EventDateField";
 import { EventDetailScreen } from "@/components/events/EventDetailScreen";
 import { EventDiscoveryCard } from "@/components/events/EventDiscoveryCard";
 import { EventsFilterSheet } from "@/components/events/EventsFilterSheet";
@@ -12,8 +13,10 @@ import { ScreenDataState } from "@/components/ui/ScreenDataState";
 import { timeframeAfterWhenChange, type EventsWhenFilter } from "@/lib/client/eventsFeedFilters";
 import {
   activeEventFilterChips,
+  clearEventsCalendarDate,
   eventPassesListFilters,
   removeActiveEventFilter,
+  selectEventsCalendarDate,
   type EventsFeedFilterState,
 } from "@/lib/client/eventsFeedQuery";
 import {
@@ -80,11 +83,30 @@ const initialFilters: Filters = {
   date: "",
 };
 
-const TIMEFRAME_OPTIONS: Array<{ value: "for_you" | "today" | "this_weekend"; label: string }> = [
+const TIMEFRAME_OPTIONS: Array<{ value: "for_you" | "today" | "tomorrow" | "this_weekend"; label: string }> = [
   { value: "for_you", label: "For You" },
   { value: "today", label: "Today" },
+  { value: "tomorrow", label: "Tomorrow" },
   { value: "this_weekend", label: "This Weekend" },
 ];
+
+function profileHasForYouSignals(profile: {
+  explicitInterests: string[];
+  explicitCommunities: string[];
+  followedOrganizationIds: string[];
+  followedOrganizationNames: string[];
+  inferredAffinities: Record<string, number>;
+  attendedEventIds: string[];
+}): boolean {
+  return (
+    profile.explicitInterests.length > 0 ||
+    profile.explicitCommunities.length > 0 ||
+    profile.followedOrganizationIds.length > 0 ||
+    profile.followedOrganizationNames.length > 0 ||
+    profile.attendedEventIds.length > 0 ||
+    Object.keys(profile.inferredAffinities).length > 0
+  );
+}
 
 export function EventsFeed({
   personalization,
@@ -116,6 +138,7 @@ export function EventsFeed({
   const [draftFilters, setDraftFilters] = useState<Filters>(initialFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [savedOnly, setSavedOnly] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [forYouExpanded, setForYouExpanded] = useState(false);
   const [moreVisible, setMoreVisible] = useState(MORE_EVENTS_BATCH);
   const [activeDetail, setActiveDetail] = useState<FeedEvent | null>(null);
@@ -127,7 +150,7 @@ export function EventsFeed({
   eventsRef.current = events;
   externalEventsRef.current = externalEvents;
   const recProfile = useRecommendationProfile(personalization);
-  const hasSavedInterests = recProfile.explicitInterests.length > 0;
+  const hasForYouSignals = profileHasForYouSignals(recProfile);
   const openDetail = useCallback((item: FeedEvent) => {
     setActiveDetail(item);
   }, []);
@@ -378,7 +401,7 @@ export function EventsFeed({
     shouldPersonalizeForYouEvents({
       timeframe: filters.timeframe,
       searching: Boolean(filters.search.trim()) || savedOnly,
-    }) && hasSavedInterests;
+    }) && hasForYouSignals;
   const feedSignature = useMemo(
     () => prioritizedEvents.map((row) => `${row.item.kind}:${row.item.event.id}`).join("|"),
     [prioritizedEvents],
@@ -587,8 +610,9 @@ export function EventsFeed({
     setFiltersOpen(false);
   }
 
-  function selectQuickFilter(value: "for_you" | "today" | "this_weekend") {
+  function selectQuickFilter(value: "for_you" | "today" | "tomorrow" | "this_weekend") {
     setSavedOnly(false);
+    setDatePickerOpen(false);
     setFilters((prev) => {
       if (value === "for_you") return { ...prev, when: [], date: "", timeframe: "for_you" };
       return { ...prev, when: [value], date: "", timeframe: value };
@@ -600,6 +624,18 @@ export function EventsFeed({
     if (filters.date?.trim()) return false;
     if (value === "for_you") return filters.timeframe === "for_you" && filters.when.length === 0;
     return filters.when.length === 1 && filters.when[0] === value;
+  }
+
+  function applyHeaderDate(date: string) {
+    setSavedOnly(false);
+    setFilters((prev) => ({ ...selectEventsCalendarDate(prev, date), timeframe: "all" }));
+    setDraftFilters((prev) => selectEventsCalendarDate(prev, date));
+    setDatePickerOpen(false);
+  }
+
+  function clearHeaderDate() {
+    setFilters((prev) => ({ ...clearEventsCalendarDate(prev), timeframe: "for_you", when: [] }));
+    setDraftFilters((prev) => clearEventsCalendarDate(prev));
   }
 
   const liveDetail =
@@ -693,12 +729,48 @@ export function EventsFeed({
             <button
               type="button"
               className={`cq-events-saved ${savedOnly ? "cq-events-saved--on" : ""}`}
-              onClick={() => setSavedOnly((prev) => !prev)}
+              onClick={() => {
+                setDatePickerOpen(false);
+                setSavedOnly((prev) => !prev);
+              }}
               aria-pressed={savedOnly}
               aria-label={savedOnly ? "Show all events" : "Show saved events"}
             >
-              <Calendar className="h-5 w-5" strokeWidth={2.1} />
+              <Bookmark className="h-5 w-5" strokeWidth={2.1} fill={savedOnly ? "currentColor" : "none"} />
             </button>
+            <div className="cq-events-date-menu">
+              <button
+                type="button"
+                className={`cq-events-saved ${filters.date?.trim() || datePickerOpen ? "cq-events-saved--on" : ""}`}
+                onClick={() => {
+                  setSavedOnly(false);
+                  setDatePickerOpen((open) => !open);
+                }}
+                aria-pressed={Boolean(filters.date?.trim())}
+                aria-expanded={datePickerOpen}
+                aria-controls="cq-events-header-date-picker"
+                aria-label={
+                  filters.date?.trim()
+                    ? `Change date filter, currently ${filters.date.trim()}`
+                    : "Pick a specific date"
+                }
+              >
+                <Calendar className="h-5 w-5" strokeWidth={2.1} />
+              </button>
+              {datePickerOpen ? (
+                <div id="cq-events-header-date-picker" className="cq-events-date-menu-panel">
+                  <EventDateField
+                    date={filters.date?.trim() ?? ""}
+                    defaultOpen
+                    onSelect={applyHeaderDate}
+                    onClear={() => {
+                      clearHeaderDate();
+                      setDatePickerOpen(false);
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
         <p className="sr-only">
@@ -848,7 +920,7 @@ export function EventsFeed({
                 For You
               </h2>
               <p className="cq-events-section-sub">
-                {hasSavedInterests ? "Based on your interests" : EVENTS_INTEREST_PROMPT}
+                {hasForYouSignals ? "Based on your interests" : EVENTS_INTEREST_PROMPT}
               </p>
             </div>
             {discoverySections.more.length > 0 || forYouExpanded ? (

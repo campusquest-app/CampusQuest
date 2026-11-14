@@ -34,6 +34,8 @@ export type AthleticsJsonEvent = {
   status?: string;
   score?: string;
   cancelled?: boolean;
+  /** Source provided a calendar date without a clock time. */
+  timeTbd?: boolean;
 };
 
 export type AthleticsFeedPayload = {
@@ -197,7 +199,7 @@ export function athleticsJsonToNormalized(row: AthleticsJsonEvent): NormalizedCa
   const eventUrl = decodeFeedUrl(row.eventUrl ?? row.url);
   const ticketUrl = decodeFeedUrl(row.ticketUrl) ?? extras.ticketUrl;
   const broadcastUrl = decodeFeedUrl(row.broadcastUrl ?? row.watchUrl) ?? extras.broadcastUrl;
-  const tags = [sport, opponent, team, homeAway].filter(Boolean) as string[];
+  const tags = [sport, opponent, team, homeAway, row.timeTbd ? "time_tbd" : null].filter(Boolean) as string[];
 
   return {
     source: "athletics",
@@ -249,6 +251,7 @@ export function athleticsIcsToNormalized(raw: string): NormalizedCampusEvent[] {
         sport: event.categories[0],
         status: event.status ?? undefined,
         cancelled: /cancell?ed/i.test(event.status ?? ""),
+        timeTbd: event.startsAtTimeTbd,
       }),
     )
     .filter((event): event is NormalizedCampusEvent => event != null);

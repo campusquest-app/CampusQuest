@@ -14,6 +14,7 @@ import { eventArtworkFallbackBrand, resolveEventArtwork } from "@/lib/client/eve
 import { resolveEventArtworkFit, type EventArtworkFit } from "@/lib/client/eventArtworkFit";
 import {
   eventDateTimeIso,
+  eventTagsIndicateTimeTbd,
   formatEventCardStatusBadge,
   formatEventDateTimeRange,
 } from "@/lib/client/eventDateTime";
@@ -45,8 +46,9 @@ export const EventDiscoveryCard = memo(function EventDiscoveryCard({
 }) {
   const event = item.event;
   const title = eventCardDisplayTitle(item);
-  const whenRange = formatEventDateTimeRange(event.startsAt, event.endsAt);
-  const whenIso = eventDateTimeIso(event.startsAt);
+  const timeTbd = item.kind === "external" && eventTagsIndicateTimeTbd(item.event.tags);
+  const whenRange = formatEventDateTimeRange(event.startsAt, event.endsAt, undefined, { timeTbd });
+  const whenIso = timeTbd ? undefined : eventDateTimeIso(event.startsAt);
   const reason = eventInterestMatchLabel(recommendation);
   const venue = eventCardVenueLabel(item);
   const host = feedEventHostPresentation(item);
@@ -152,9 +154,13 @@ export const EventDiscoveryCard = memo(function EventDiscoveryCard({
         ) : null}
       </div>
 
-      <time className="sr-only" dateTime={whenIso}>
-        {whenRange}
-      </time>
+      {whenIso ? (
+        <time className="sr-only" dateTime={whenIso}>
+          {whenRange}
+        </time>
+      ) : (
+        <span className="sr-only">{whenRange}</span>
+      )}
     </article>
   );
 });

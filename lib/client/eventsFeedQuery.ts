@@ -143,7 +143,8 @@ export function activeEventFilterChips(
   }
 
   const exclusiveQuick =
-    filters.when.length === 1 && (filters.when[0] === "today" || filters.when[0] === "this_weekend");
+    filters.when.length === 1 &&
+    (filters.when[0] === "today" || filters.when[0] === "tomorrow" || filters.when[0] === "this_weekend");
   if (!exclusiveQuick) {
     for (const when of filters.when) {
       chips.push({ id: `when:${when}`, label: WHEN_LABELS[when] });
