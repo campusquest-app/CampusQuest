@@ -15,7 +15,7 @@ import {
   isEventLive,
 } from "@/lib/client/eventCardPresentation";
 import { feedEventHostPresentation } from "@/lib/client/eventHostPresentation";
-import { formatEventCardWhen, eventDateTimeIso } from "@/lib/client/eventDateTime";
+import { eventTagsIndicateTimeTbd, formatEventCardWhen, eventDateTimeIso } from "@/lib/client/eventDateTime";
 import { useLiveNow } from "@/lib/client/useLiveNow";
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
 import { isInterestedRsvp } from "@/lib/client/eventInterested";
@@ -40,8 +40,9 @@ function HappeningSoonCard({
   const title = eventCardDisplayTitle(item);
   const sport = eventCardSportSubtitle(item);
   const venue = eventCardVenueLabel(item);
-  const when = formatEventCardWhen(event.startsAt);
-  const whenIso = eventDateTimeIso(event.startsAt);
+  const timeTbd = item.kind === "external" && eventTagsIndicateTimeTbd(item.event.tags);
+  const when = formatEventCardWhen(event.startsAt, { timeTbd });
+  const whenIso = timeTbd ? undefined : eventDateTimeIso(event.startsAt);
   const category = eventCardCategoryChip(item);
   const now = useLiveNow();
   const showOnRealm = Boolean(onViewOnMap) && eventShowOnRealmEligible(item) && isEventLive(item, now);
@@ -51,9 +52,22 @@ function HappeningSoonCard({
       (item.kind === "external" && isInterestedRsvp(item.event.myRsvpStatus ?? null)));
   const host = feedEventHostPresentation(item);
   const accent = eventCardFallbackAccent(item);
+  const primaryLabel = eventCardPrimaryActionLabel(item);
 
   return (
-    <article className="cq-happening-card">
+    <article
+      className="cq-happening-card cq-happening-card--tap"
+      onClick={onView}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onView();
+        }
+      }}
+      role="link"
+      tabIndex={0}
+      aria-label={`${title}. ${primaryLabel}`}
+    >
       <div className="cq-happening-card-media">
         <EventArtwork
           imageUrl={item.kind === "external" ? item.event.imageUrl : null}
@@ -69,7 +83,10 @@ function HappeningSoonCard({
           <button
             type="button"
             className={`cq-happening-card-save ${interested ? "cq-happening-card-save--on" : ""}`}
-            onClick={onToggleInterested}
+            onClick={(click) => {
+              click.stopPropagation();
+              onToggleInterested();
+            }}
             disabled={interestedPending}
             aria-pressed={interested}
             aria-label={interested ? `${title}, Interested, selected` : `Mark ${title} as Interested`}
@@ -83,7 +100,7 @@ function HappeningSoonCard({
         {sport ? <p className="cq-happening-card-sport">{sport}</p> : null}
         <p className="cq-happening-card-meta">
           <Clock className="h-3.5 w-3.5" aria-hidden />
-          <time dateTime={whenIso}>{when}</time>
+          {whenIso ? <time dateTime={whenIso}>{when}</time> : <span>{when}</span>}
         </p>
         {venue ? (
           <p className="cq-happening-card-meta">
@@ -99,17 +116,27 @@ function HappeningSoonCard({
       </div>
       <div className="cq-happening-card-actions">
         {showOnRealm ? (
-          <button type="button" className="cq-happening-card-action" onClick={onViewOnMap}>
+          <button
+            type="button"
+            className="cq-happening-card-action"
+            onClick={(click) => {
+              click.stopPropagation();
+              onViewOnMap?.();
+            }}
+          >
             Show on Realm
           </button>
         ) : null}
         <button
           type="button"
           className="cq-happening-card-action cq-happening-card-action--primary"
-          onClick={onView}
-          aria-label={`${eventCardPrimaryActionLabel(item)} ${title}`}
+          onClick={(click) => {
+            click.stopPropagation();
+            onView();
+          }}
+          aria-label={`${primaryLabel} ${title}`}
         >
-          {eventCardPrimaryActionLabel(item)}
+          {primaryLabel}
         </button>
       </div>
     </article>

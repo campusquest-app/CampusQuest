@@ -25,7 +25,12 @@ function startMs(value: string | null | undefined): number | null {
 }
 
 function normalizeTokenField(value: string | null | undefined): string {
-  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function canonicalUrl(url: string | null | undefined): string | null {
@@ -52,7 +57,10 @@ export function significantTitleTokens(title: string): string[] {
 }
 
 function locationBlob(event: DedupeEventLike): string {
-  return normalizeTokenField([event.venueName, event.locationName, event.address].filter(Boolean).join(" "));
+  const parts = [event.venueName, event.locationName, event.address]
+    .map((value) => normalizeTokenField(value))
+    .filter(Boolean);
+  return Array.from(new Set(parts)).join(" ");
 }
 
 /** Ignore punctuation so "Club Fair!" and "Club Fair" can match. */

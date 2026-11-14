@@ -1,9 +1,11 @@
 import type { FeedEvent } from "@/lib/client/eventFeedTypes";
-import { feedEventLocationText } from "@/lib/client/eventFeedTypes";
+import { campusEventHostLabel, feedEventLocationText } from "@/lib/client/eventFeedTypes";
 import { eventIsCurrentOrUpcoming } from "@/lib/client/eventsFeedFilters";
+import { eventsLikelyDuplicate, type DedupeEventLike } from "@/lib/eventSources/dedupe";
 import type { RecommendationScore } from "@/lib/recommendations/types";
 
 export const HAPPENING_SOON_LIMIT = 6;
+/** Near-term window for Happening Soon; scoring already prefers today and the next few days. */
 export const HAPPENING_SOON_HORIZON_MS = 14 * 24 * 60 * 60 * 1000;
 
 export type RankedFeedEvent = {
@@ -26,44 +28,162 @@ function identityText(value: string): string {
     .trim();
 }
 
+/** Stable fingerprint for section exclusion after fuzzy dedupe. */
 export function feedEventIdentity(item: FeedEvent): string {
   const title = identityText(item.event.title);
   const location = identityText(feedEventLocationText(item));
   return `${title}|${item.event.startsAt ?? ""}|${location}`;
 }
 
+export function feedEventToDedupeLike(item: FeedEvent): DedupeEventLike {
+  if (item.kind === "campus") {
+    return {
+      id: item.event.id,
+      source: item.event.source ?? "campusquest",
+      externalId: item.event.id,
+      title: item.event.title,
+      startsAt: item.event.startsAt,
+      organizationName: campusEventHostLabel(item.event),
+      locationName: item.event.location,
+      venueName: item.event.location,
+    };
+  }
+  return {
+    id: item.event.id,
+    source: item.event.source,
+    externalId: item.event.id,
+    title: item.event.title,
+    startsAt: item.event.startsAt,
+    organizationName: item.event.organizationName,
+    locationName: item.event.location,
+    venueName: item.event.venueName,
+    address: item.event.address,
+    opponent: item.event.opponent,
+    sport: item.event.sport,
+    eventUrl: item.event.eventUrl,
+  };
+}
+
 function feedEventHasArtwork(item: FeedEvent): boolean {
   return item.kind === "external" && Boolean(item.event.imageUrl || item.event.bannerUrl);
 }
 
-/** Native CampusQuest rows win a display tie. Otherwise keep the row that has artwork. */
-function preferFeedDuplicate(existing: FeedEvent, incoming: FeedEvent): FeedEvent {
-  if (incoming.kind === "campus" && existing.kind !== "campus") return incoming;
-  if (existing.kind === "campus" && incoming.kind !== "campus") return existing;
-  if (feedEventHasArtwork(incoming) && !feedEventHasArtwork(existing)) return incoming;
-  return existing;
+function feedEventHasRsvp(item: FeedEvent): boolean {
+  return Boolean(item.event.myRsvpStatus);
 }
 
-/** Collapse the same event imported from more than one provider. Prefer a row that has artwork. */
+function feedEventHasTimeTbd(item: FeedEvent): boolean {
+  if (!item.event.startsAt) return true;
+  if (item.kind !== "external") return false;
+  return (item.event.tags ?? []).some((tag) => /^time[_-]?tbd$/i.test(tag.trim()));
+}
+
+function pickLongerText(a: string | null | undefined, b: string | null | undefined): string | null {
+  const left = (a ?? "").trim();
+  const right = (b ?? "").trim();
+  if (!left) return right || null;
+  if (!right) return left || null;
+  return right.length > left.length ? right : left;
+}
+
+function preferStartsAt(a: FeedEvent, b: FeedEvent): string | null {
+  const aTbd = feedEventHasTimeTbd(a);
+  const bTbd = feedEventHasTimeTbd(b);
+  if (!aTbd && a.event.startsAt) return a.event.startsAt;
+  if (!bTbd && b.event.startsAt) return b.event.startsAt;
+  return a.event.startsAt ?? b.event.startsAt ?? null;
+}
+
+/** Merge donor fields onto base without changing the RSVP/save identity (base.id). */
+export function mergeFeedEventFields(base: FeedEvent, donor: FeedEvent): FeedEvent {
+  if (base.kind === "campus") return base;
+  if (donor.kind === "campus") return donor;
+
+  const baseTags = base.event.tags ?? [];
+  const donorTags = donor.event.tags ?? [];
+  const tags = Array.from(new Set([...baseTags, ...donorTags]));
+  const startsAt = preferStartsAt(base, donor);
+  const keepTimeTbd = feedEventHasTimeTbd(base) && feedEventHasTimeTbd(donor);
+  const nextTags = keepTimeTbd
+    ? tags
+    : tags.filter((tag) => !/^time[_-]?tbd$/i.test(tag.trim()));
+
+  return {
+    kind: "external",
+    event: {
+      ...base.event,
+      description: pickLongerText(base.event.description, donor.event.description) ?? base.event.description,
+      location: pickLongerText(base.event.location, donor.event.location),
+      venueName: pickLongerText(base.event.venueName, donor.event.venueName),
+      address: pickLongerText(base.event.address, donor.event.address) ?? base.event.address,
+      startsAt,
+      endsAt: base.event.endsAt ?? donor.event.endsAt,
+      imageUrl: base.event.imageUrl || donor.event.imageUrl,
+      bannerUrl: base.event.bannerUrl || donor.event.bannerUrl,
+      eventUrl: base.event.eventUrl || donor.event.eventUrl,
+      ticketUrl: base.event.ticketUrl || donor.event.ticketUrl,
+      broadcastUrl: base.event.broadcastUrl || donor.event.broadcastUrl,
+      rsvpUrl: base.event.rsvpUrl || donor.event.rsvpUrl,
+      organizationName: base.event.organizationName || donor.event.organizationName,
+      sport: base.event.sport || donor.event.sport,
+      opponent: base.event.opponent || donor.event.opponent,
+      homeAway: base.event.homeAway || donor.event.homeAway,
+      latitude: base.event.latitude ?? donor.event.latitude,
+      longitude: base.event.longitude ?? donor.event.longitude,
+      tags: nextTags,
+      myRsvpStatus: base.event.myRsvpStatus ?? donor.event.myRsvpStatus,
+      rsvpCount: Math.max(base.event.rsvpCount ?? 0, donor.event.rsvpCount ?? 0),
+      cqRsvpEnabled: Boolean(base.event.cqRsvpEnabled || donor.event.cqRsvpEnabled),
+    },
+  };
+}
+
+/** Native CampusQuest rows win. Otherwise prefer RSVP state, then artwork. */
+function preferFeedDuplicate(existing: FeedEvent, incoming: FeedEvent): FeedEvent {
+  if (incoming.kind === "campus" && existing.kind !== "campus") {
+    return mergeFeedEventFields(incoming, existing);
+  }
+  if (existing.kind === "campus" && incoming.kind !== "campus") {
+    return mergeFeedEventFields(existing, incoming);
+  }
+  if (feedEventHasRsvp(incoming) && !feedEventHasRsvp(existing)) {
+    return mergeFeedEventFields(incoming, existing);
+  }
+  if (feedEventHasRsvp(existing) && !feedEventHasRsvp(incoming)) {
+    return mergeFeedEventFields(existing, incoming);
+  }
+  if (feedEventHasArtwork(incoming) && !feedEventHasArtwork(existing)) {
+    return mergeFeedEventFields(incoming, existing);
+  }
+  return mergeFeedEventFields(existing, incoming);
+}
+
+/**
+ * Collapse the same occurrence imported from more than one provider
+ * (Localist / URInvolved / CampusQuest). Recurring sessions stay separate
+ * because startsAt must agree within the shared dedupe window.
+ */
 export function dedupeFeedEvents(items: FeedEvent[]): FeedEvent[] {
-  const chosen = new Map<string, FeedEvent>();
-  const order: string[] = [];
+  const chosen: FeedEvent[] = [];
+  const byKey = new Set<string>();
+
   for (const item of items) {
     const key = `${item.kind}:${item.event.id}`;
-    const identity = feedEventIdentity(item);
-    if (chosen.has(key)) continue;
-    const existing = chosen.get(identity);
-    if (!existing) {
-      order.push(identity);
-      chosen.set(identity, item);
-      chosen.set(key, item);
+    if (byKey.has(key)) continue;
+    byKey.add(key);
+
+    const like = feedEventToDedupeLike(item);
+    const matchIndex = chosen.findIndex((existing) =>
+      eventsLikelyDuplicate(feedEventToDedupeLike(existing), like),
+    );
+    if (matchIndex < 0) {
+      chosen.push(item);
       continue;
     }
-    const preferred = preferFeedDuplicate(existing, item);
-    chosen.set(identity, preferred);
-    chosen.set(key, preferred);
+    chosen[matchIndex] = preferFeedDuplicate(chosen[matchIndex]!, item);
   }
-  return order.map((key) => chosen.get(key)!);
+
+  return chosen;
 }
 
 export function happeningSoonScore(
@@ -111,7 +231,8 @@ export function selectHappeningSoon(
   limit = HAPPENING_SOON_LIMIT,
 ): RankedFeedEvent[] {
   const seen = new Set<string>();
-  return rows
+  const kept: RankedFeedEvent[] = [];
+  const sorted = rows
     .map((row) => ({ row, score: happeningSoonScore(row.item, row.recommendation, now) }))
     .filter((entry) => entry.score >= 0)
     .sort((a, b) => {
@@ -119,16 +240,22 @@ export function selectHappeningSoon(
       const bTime = b.row.item.event.startsAt ? new Date(b.row.item.event.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
       if (aTime !== bTime) return aTime - bTime;
       return a.row.item.event.id.localeCompare(b.row.item.event.id);
-    })
-    .filter((entry) => {
-      const identity = feedEventIdentity(entry.row.item);
-      if (seen.has(identity) || seen.has(entry.row.item.event.id)) return false;
-      seen.add(identity);
-      seen.add(entry.row.item.event.id);
-      return true;
-    })
-    .slice(0, limit)
-    .map((entry) => entry.row);
+    });
+
+  for (const entry of sorted) {
+    if (seen.has(entry.row.item.event.id)) continue;
+    if (
+      kept.some((existing) =>
+        eventsLikelyDuplicate(feedEventToDedupeLike(existing.item), feedEventToDedupeLike(entry.row.item)),
+      )
+    ) {
+      continue;
+    }
+    seen.add(entry.row.item.event.id);
+    kept.push(entry.row);
+    if (kept.length >= limit) break;
+  }
+  return kept;
 }
 
 export function partitionDiscoverySections(input: {
@@ -149,14 +276,13 @@ export function partitionDiscoverySections(input: {
   }
 
   const happeningSoon = selectHappeningSoon(input.ranked, now);
-  const used = new Set<string>();
-  for (const row of happeningSoon) {
-    used.add(row.item.event.id);
-    used.add(feedEventIdentity(row.item));
-  }
-  const remaining = input.ranked.filter(
-    (row) => !used.has(row.item.event.id) && !used.has(feedEventIdentity(row.item)),
-  );
+  const usedIds = new Set(happeningSoon.map((row) => row.item.event.id));
+  const remaining = input.ranked.filter((row) => {
+    if (usedIds.has(row.item.event.id)) return false;
+    return !happeningSoon.some((featured) =>
+      eventsLikelyDuplicate(feedEventToDedupeLike(featured.item), feedEventToDedupeLike(row.item)),
+    );
+  });
 
   if (input.timeframe !== "for_you") {
     return { happeningSoon, forYou: [], more: remaining };
@@ -164,9 +290,7 @@ export function partitionDiscoverySections(input: {
 
   const forYouLimit = input.forYouLimit ?? 8;
   const forYou = remaining.slice(0, forYouLimit);
-  const forYouIds = new Set(forYou.flatMap((row) => [row.item.event.id, feedEventIdentity(row.item)]));
-  const more = remaining.filter(
-    (row) => !forYouIds.has(row.item.event.id) && !forYouIds.has(feedEventIdentity(row.item)),
-  );
+  const forYouIds = new Set(forYou.map((row) => row.item.event.id));
+  const more = remaining.filter((row) => !forYouIds.has(row.item.event.id));
   return { happeningSoon, forYou, more };
 }
