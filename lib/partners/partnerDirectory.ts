@@ -95,7 +95,7 @@ export const PARTNER_DIRECTORY: Partner[] = [
   definePartner({
     id: "international-pocket-cafe",
     slug: "international-pocket-cafe",
-    listingType: "free_local_business",
+    // Live student perk requires partner listing (same path as Daisy\u2019s). Profile/hours stay editable via overrides.
     name: "International Pocket Caf\u00e9",
     // Logo and cover are from internationalpocketcafe.com (wp-content/uploads).
     logoUrl: "/partners/international-pocket-cafe/logo.png",
@@ -118,6 +118,11 @@ export const PARTNER_DIRECTORY: Partner[] = [
     address: "99 Fortin Rd, Kingston, RI",
     // hours intentionally null until a Kingston-confirmed schedule is saved (directory
     // or partner_profile_overrides). See docs/partners-hours-review.md.
+    offerType: "standard_offer",
+    discountValue: "20% OFF",
+    offerTitle: "20% Off at International Pocket Caf\u00e9",
+    rewardTerms: "Available to all CampusQuest members",
+    redemptionInstructions: "Show your CampusQuest account at checkout.",
     websiteUrl: "https://internationalpocketcafe.com/",
   }),
 ];

@@ -114,13 +114,20 @@ function PassCard({
     <>
       <section
         className={`cq-pass__card${valid ? " is-valid" : " is-lapsed"}${pass.demo ? " is-demo" : ""}`}
-        aria-label={pass.demo ? "Demo reward pass, not valid for redemption" : "Student reward pass"}
+        aria-label={
+          pass.preview
+            ? "Preview reward pass, not valid for redemption"
+            : pass.demo
+              ? "Demo reward pass, not valid for redemption"
+              : "Student reward pass"
+        }
         data-cq-pass-demo={pass.demo ? "true" : undefined}
+        data-cq-pass-preview={pass.preview ? "true" : undefined}
       >
         <span className="cq-pass__glow" aria-hidden />
-        {pass.demo ? (
+        {pass.preview || pass.demo ? (
           <span className="cq-pass__demo-watermark" aria-hidden>
-            DEMO {"\u00b7"} NOT VALID FOR REDEMPTION
+            {pass.preview ? "PREVIEW" : "DEMO"} {"\u00b7"} NOT VALID FOR REDEMPTION
           </span>
         ) : null}
         <div className="cq-pass__biz">
@@ -173,7 +180,11 @@ function PassCard({
 
       {valid ? (
         <p className="cq-pass__checkout">
-          {pass.demo ? "Demo pass for App Review \u2014 no business will honor it" : "Show this screen at checkout"}
+          {pass.preview
+            ? "Preview only \u2014 not valid for redemption"
+            : pass.demo
+              ? "Demo pass for App Review \u2014 no business will honor it"
+              : "Show this screen at checkout"}
         </p>
       ) : null}
       {valid && pass.redemptionInstructions ? <p className="cq-pass__note">{pass.redemptionInstructions}</p> : null}

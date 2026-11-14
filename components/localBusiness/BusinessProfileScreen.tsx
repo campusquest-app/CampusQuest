@@ -10,9 +10,11 @@ import { BusinessLogoField } from "@/components/identity/BusinessLogoField";
 import { BusinessProfileHeader } from "@/components/localBusiness/BusinessProfileHeader";
 import { BusinessSwitcher } from "@/components/localBusiness/BusinessSwitcher";
 import { OfferEditor } from "@/components/localBusiness/OfferEditor";
+import { StudentRewardPass } from "@/components/partners/StudentRewardPass";
 import { offerDraftFromPartner } from "@/lib/localBusiness/offers";
+import { findPartnerById } from "@/lib/partners/partnerDirectory";
 import { getTodayHoursLabel, getWeeklyHoursRows } from "@/lib/partners/partnerHours";
-import { partnerDirectionsUrl, partnerRewardOfferState } from "@/lib/partners/partnerStatus";
+import { partnerDirectionsUrl, partnerHasLiveReward, partnerRewardOfferState } from "@/lib/partners/partnerStatus";
 import { weeklyHoursFromEditor } from "@/lib/localBusiness/profile";
 import type { Partner, PartnerHours } from "@/lib/partners/types";
 import type { FieldNote } from "@/lib/types";
@@ -111,6 +113,7 @@ export function BusinessProfileScreen({
   const [posts, setPosts] = useState<FieldNote[]>([]);
   const [tab, setTab] = useState<Tab>(initialTab);
   const [editingOffer, setEditingOffer] = useState(false);
+  const [previewingOffer, setPreviewingOffer] = useState(false);
   const [offerNotice, setOfferNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -216,6 +219,22 @@ export function BusinessProfileScreen({
   const hoursToday = getTodayHoursLabel(partner.hours as PartnerHours | null);
   const hourRows = getWeeklyHoursRows(partner.hours as PartnerHours | null);
   const isOwner = profile.canEdit;
+  const directoryPartner = findPartnerById(partner.id);
+  const previewPartner: Partner | null = directoryPartner
+    ? {
+        ...directoryPartner,
+        discountValue: partner.discountValue ?? directoryPartner.discountValue,
+        offerTitle: partner.offerTitle ?? directoryPartner.offerTitle,
+        offerDescription: partner.offerDescription ?? directoryPartner.offerDescription,
+        redemptionInstructions: partner.redemptionInstructions ?? directoryPartner.redemptionInstructions,
+        rewardPaused: partner.rewardPaused ?? directoryPartner.rewardPaused,
+        startsAt: partner.startsAt ?? directoryPartner.startsAt,
+        endsAt: partner.endsAt ?? directoryPartner.endsAt,
+        logoUrl: partner.logoUrl ?? directoryPartner.logoUrl,
+        name: partner.name,
+      }
+    : null;
+  const offerIsLive = previewPartner ? partnerHasLiveReward(previewPartner) : false;
 
   return (
     <div className="cq-profile-screen mx-auto w-full max-w-3xl pb-24 text-white">
@@ -469,16 +488,30 @@ export function BusinessProfileScreen({
                 ) : null}
                 {partner.redemptionInstructions ? <p className="mt-2 text-sm text-white/75">{partner.redemptionInstructions}</p> : null}
                 {isOwner ? (
-                  <button
-                    type="button"
-                    className="mt-4 rounded-full border border-white/20 px-4 py-2 text-sm font-bold"
-                    onClick={() => {
-                      setOfferNotice(null);
-                      setEditingOffer(true);
-                    }}
-                  >
-                    Edit Offer
-                  </button>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {offerIsLive ? (
+                      <button
+                        type="button"
+                        className="rounded-full border border-uri-keaney/50 bg-uri-keaney/15 px-4 py-2 text-sm font-bold text-uri-keaney"
+                        onClick={() => {
+                          setOfferNotice(null);
+                          setPreviewingOffer(true);
+                        }}
+                      >
+                        Preview Coupon
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="rounded-full border border-white/20 px-4 py-2 text-sm font-bold"
+                      onClick={() => {
+                        setOfferNotice(null);
+                        setEditingOffer(true);
+                      }}
+                    >
+                      Edit Offer
+                    </button>
+                  </div>
                 ) : null}
               </>
             ) : (
@@ -582,6 +615,10 @@ export function BusinessProfileScreen({
             {saving ? "Saving…" : "Save profile"}
           </button>
         </form>
+      ) : null}
+
+      {previewingOffer && isOwner && previewPartner ? (
+        <StudentRewardPass partner={previewPartner} onClose={() => setPreviewingOffer(false)} />
       ) : null}
     </div>
   );

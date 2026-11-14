@@ -218,12 +218,129 @@ describe("issueStudentRewardPass", () => {
   });
 
   it("refuses reward passes for free local business listings", async () => {
-    const { admin, run } = await issue(
-      { profiles: verifiedProfile },
-      { partnerId: "international-pocket-cafe" },
+    PARTNER_DIRECTORY.push(
+      definePartner({
+        id: "test-free-listing",
+        slug: "test-free-listing",
+        name: "Free Spot",
+        listingType: "free_local_business",
+        discountValue: "20% OFF",
+        offerTitle: "Should not issue",
+      }),
     );
+    added.push("test-free-listing");
+    const { admin, run } = await issue({ profiles: verifiedProfile }, { partnerId: "test-free-listing" });
     await expectApiError(run, 409, REWARD_ERROR_CODES.comingSoon);
     expect(admin.reads).toEqual([]);
+  });
+
+  it("issues International Pocket Café's 20% OFF pass to verified and unverified members", async () => {
+    const IPC = "international-pocket-cafe";
+    const verified = await issue({ profiles: verifiedProfile }, { partnerId: IPC });
+    const verifiedPass = await verified.run;
+    expect(verifiedPass).toMatchObject({
+      partnerId: IPC,
+      discountValue: "20% OFF",
+      verifiedLabel: "Available to all CampusQuest members",
+      rewardTerms: "Available to all CampusQuest members",
+    });
+    expect(verified.admin.inserts.some((row) => row.table === "partner_engagement_events")).toBe(true);
+
+    const unverifiedProfile: Result = {
+      data: {
+        role: "student",
+        student_status: "current_student",
+        campus_email_verified_at: null,
+        display_name: "Guest Rhody",
+        username: "guest",
+      },
+      error: null,
+    };
+    const unverified = await issue(
+      { profiles: unverifiedProfile },
+      { partnerId: IPC, user: { id: STUDENT.id, email: "guest@gmail.com" } },
+    );
+    const pass = await unverified.run;
+    expect(pass.discountValue).toBe("20% OFF");
+    expect(pass.verifiedLabel).toBe("Available to all CampusQuest members");
+  });
+
+  it("lets an authorized IPC manager preview without logging engagement", async () => {
+    const IPC = "international-pocket-cafe";
+    const managerProfile: Result = {
+      data: {
+        role: "local_business",
+        student_status: null,
+        campus_email_verified_at: null,
+        display_name: "IPC Owner",
+        username: "ipc",
+      },
+      error: null,
+    };
+    const membership: Result = {
+      data: [{ partner_id: IPC, approved: true, revoked_at: null }],
+      error: null,
+    };
+    // loadLocalBusinessActor expects maybeSingle for memberships via select().eq — mock returns one shape.
+    // Use a custom client for membership list.
+    const inserts: Array<{ table: string; row: Record<string, unknown> }> = [];
+    const client = {
+      from(table: string) {
+        const rows =
+          table === "profiles"
+            ? managerProfile
+            : table === "local_business_accounts"
+              ? { data: { must_reset_password: false, revoked_at: null }, error: null }
+              : table === "local_business_memberships"
+                ? membership
+                : table === "user_active_identities"
+                  ? { data: { identity_type: "business" }, error: null }
+                  : table === "user_account_safety"
+                    ? { data: null, error: null }
+                    : table === "partner_profile_overrides"
+                      ? { data: null, error: null }
+                      : { data: null, error: null };
+        const builder: Record<string, unknown> = {
+          select() {
+            return builder;
+          },
+          eq() {
+            return builder;
+          },
+          async maybeSingle() {
+            if (table === "local_business_memberships") {
+              return { data: null, error: null };
+            }
+            return rows;
+          },
+          then(resolve: (value: unknown) => void) {
+            // memberships query awaits the builder directly (no maybeSingle).
+            if (table === "local_business_memberships") {
+              resolve(membership);
+              return;
+            }
+            resolve(rows);
+          },
+          async insert(row: Record<string, unknown>) {
+            inserts.push({ table, row });
+            return { error: null };
+          },
+        };
+        return builder;
+      },
+    };
+    const pass = await issueStudentRewardPass({
+      admin: client as never,
+      user: { id: "biz-owner", email: "internationalpocket@campusquestapp.com" },
+      partnerId: IPC,
+      now: NOW,
+    });
+    expect(pass.preview).toBe(true);
+    expect(pass.demo).toBe(true);
+    expect(pass.passId.startsWith("PREV-")).toBe(true);
+    expect(pass.verifiedLabel).toMatch(/Preview/i);
+    expect(pass.studentName).toBeNull();
+    expect(inserts).toEqual([]);
   });
 
   it("returns expired and temporarily unavailable from the offer configuration", async () => {

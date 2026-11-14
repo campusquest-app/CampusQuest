@@ -2,8 +2,16 @@ import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { mergePartnerProfile } from "@/lib/localBusiness/profile";
 import { findPartnerById } from "@/lib/partners/partnerDirectory";
+import {
+  OPEN_MEMBERSHIP_REWARD_COPY,
+  partnerAllowsOpenMembershipRewards,
+} from "@/lib/partners/openMembershipRewards";
 import { isFreeLocalBusinessListing, partnerRewardOfferState } from "@/lib/partners/partnerStatus";
-import { loadPartnerOverride } from "@/lib/server/localBusinessAccount";
+import {
+  actorManagesPartner,
+  loadLocalBusinessActor,
+  loadPartnerOverride,
+} from "@/lib/server/localBusinessAccount";
 import { REVIEW_DEMO_PARTNER } from "@/lib/partners/reviewDemoPartner";
 import {
   evaluateStudentRewardEligibility,
@@ -119,24 +127,29 @@ export async function issueStudentRewardPass(args: {
   const safety = (safetyResult.data ?? null) as { status?: string | null; suspended_until?: string | null } | null;
 
   const role = profile?.role ?? null;
+  const openMembership = partnerAllowsOpenMembershipRewards(partner.id);
+
+  // Authorized managers see a view-only preview of their own offer (no redeemable pass / analytics).
+  const actor = await loadLocalBusinessActor(args.admin as never, args.user.id);
+  const businessPreview = actorManagesPartner(actor, partner.id);
+  const adminPreview = isCommunityQuestsAdminPreviewRole(role);
+  const viewOnlyPreview = businessPreview || adminPreview;
+
   const eligibility = evaluateStudentRewardEligibility({
-    role,
+    role: viewOnlyPreview ? "admin" : role,
     studentStatus: profile?.student_status ?? null,
     campusEmailVerifiedAt: profile?.campus_email_verified_at ?? null,
     email: args.user.email ?? null,
     pilotDomain: getPilotSchoolConfig().schoolDomain,
-    activeIdentityType: identity?.identity_type ?? null,
+    activeIdentityType: viewOnlyPreview ? null : identity?.identity_type ?? null,
     accountStatus: safety?.status ?? null,
     suspendedUntil: safety?.suspended_until ?? null,
     now,
+    openMembership: viewOnlyPreview ? false : openMembership,
   });
   if (!eligibility.eligible) throw new ApiError(eligibility.status, eligibility.message, eligibility.code);
 
-  // Admin/super_admin preview: same UI as a live pass, but watermarked and never logged as a
-  // production authorization. No XP or merchant-liability side effects.
-  const adminPreview = isCommunityQuestsAdminPreviewRole(role);
-
-  if (!args.refresh && !adminPreview) {
+  if (!args.refresh && !viewOnlyPreview) {
     await recordPartnerEngagement(args.admin, {
       userId: args.user.id,
       partnerId: partner.id,
@@ -144,7 +157,20 @@ export async function issueStudentRewardPass(args: {
     });
   }
 
-  const passId = args.passId ?? (adminPreview ? `ADMIN-${generatePassId().slice(0, 3)}` : generatePassId());
+  const passId =
+    args.passId ??
+    (businessPreview
+      ? `PREV-${generatePassId().slice(0, 3)}`
+      : adminPreview
+        ? `ADMIN-${generatePassId().slice(0, 3)}`
+        : generatePassId());
+
+  const memberLabel = openMembership ? OPEN_MEMBERSHIP_REWARD_COPY : verifiedLabel();
+  const previewLabel = businessPreview
+    ? "Preview \u2014 not valid for redemption"
+    : adminPreview
+      ? "Admin preview \u2014 not valid for redemption"
+      : memberLabel;
 
   return {
     passId,
@@ -154,13 +180,17 @@ export async function issueStudentRewardPass(args: {
     discountValue: partner.discountValue,
     offerTitle: partner.offerTitle,
     offerDescription: partner.offerDescription,
-    rewardTerms: partner.rewardTerms,
+    rewardTerms: partner.rewardTerms ?? (openMembership ? OPEN_MEMBERSHIP_REWARD_COPY : null),
     redemptionInstructions: partner.redemptionInstructions,
-    verifiedLabel: adminPreview ? "Admin preview \u2014 not valid for redemption" : verifiedLabel(),
-    studentName: passDisplayName(profile?.display_name, profile?.username),
+    verifiedLabel: previewLabel,
+    studentName: businessPreview ? null : passDisplayName(profile?.display_name, profile?.username),
     issuedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + REWARD_PASS_TTL_SECONDS * 1000).toISOString(),
     serverNow: now.toISOString(),
-    ...(adminPreview ? { demo: true as const } : {}),
+    ...(businessPreview
+      ? { demo: true as const, preview: true as const }
+      : adminPreview
+        ? { demo: true as const }
+        : {}),
   };
 }
