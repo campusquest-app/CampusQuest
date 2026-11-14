@@ -81,14 +81,14 @@ export function PartnerCard({
           {freeListing && partner.description ? (
             <span className="cq-perk-card__blurb">{partner.description}</span>
           ) : null}
+          {/* Always show live open/closed status (or Hours Unavailable). Free listings may also show address. */}
+          <PartnerOpenStatus status={status} className="cq-perk-card__status" />
           {freeListing && partner.address ? (
             <span className="cq-perk-card__location">
               <MapPin className="h-3 w-3 shrink-0" aria-hidden strokeWidth={2.3} />
               <span>{partner.address}</span>
             </span>
-          ) : (
-            <PartnerOpenStatus status={status} className="cq-perk-card__status" />
-          )}
+          ) : null}
           {freeListing ? (
             <span className="cq-perk-card__details">View Details</span>
           ) : (

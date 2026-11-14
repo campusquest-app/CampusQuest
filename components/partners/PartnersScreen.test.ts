@@ -308,6 +308,49 @@ describe("PartnerCard and FeaturedDealCard", () => {
     expect(html).toContain('src="/partners/international-pocket-cafe/cover.jpg"');
   });
 
+  it("shows Hours Unavailable on free listings when hours are not configured, without dropping the address", () => {
+    const html = renderToStaticMarkup(
+      createElement(PartnerCard, { partner: pocketCafe, now: AFTERNOON, onSelect: () => {} }),
+    );
+    expect(html).toContain("Hours Unavailable");
+    expect(html).toContain("cq-perk-status--unavailable");
+    expect(html).toContain("99 Fortin Rd, Kingston, RI");
+  });
+
+  it("shows live Open/Closed on free listings once hours exist", () => {
+    const withHours = {
+      ...pocketCafe,
+      hours: {
+        timeZone: "America/New_York",
+        weekly: [
+          [],
+          [{ open: "11:00", close: "21:00" }],
+          [{ open: "11:00", close: "21:00" }],
+          [{ open: "11:00", close: "21:00" }],
+          [{ open: "11:00", close: "21:00" }],
+          [{ open: "11:00", close: "21:00" }],
+          [{ open: "11:00", close: "20:00" }],
+        ],
+        source: "Business-confirmed test hours",
+        checkedOn: "2026-11-13",
+      },
+    } as typeof pocketCafe;
+    const openHtml = renderToStaticMarkup(
+      createElement(PartnerCard, { partner: withHours, now: AFTERNOON, onSelect: () => {} }),
+    );
+    expect(openHtml).toContain("Open Now");
+    expect(openHtml).toContain("cq-perk-status--open");
+    const closedHtml = renderToStaticMarkup(
+      createElement(PartnerCard, {
+        partner: withHours,
+        now: new Date("2026-10-12T14:00:00Z"),
+        onSelect: () => {},
+      }),
+    );
+    expect(closedHtml).toContain("Closed");
+    expect(closedHtml).toContain("cq-perk-status--closed");
+  });
+
   it("featured card keeps the favorite button outside the media button", () => {
     const html = renderToStaticMarkup(
       createElement(FeaturedDealCard, {
@@ -392,7 +435,8 @@ describe("PartnerDetailView", () => {
     expect(html).not.toContain("View Deal");
     expect(html).not.toContain("Redeem");
     expect(html).not.toContain("% OFF");
-    expect(html).not.toContain("Hours Unavailable");
+    expect(html).toContain("Hours Unavailable");
+    expect(html).toContain("cq-perk-status--unavailable");
   });
 
   it("shows expired and temporarily unavailable rewards without a pass button", () => {

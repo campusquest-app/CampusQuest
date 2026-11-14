@@ -116,6 +116,8 @@ export const PARTNER_DIRECTORY: Partner[] = [
     description:
       "Family-owned Mediterranean caf\u00e9 serving authentic Middle Eastern cuisine \u2014 wraps, platters, falafel, and more \u2014 near campus on Fortin Road.",
     address: "99 Fortin Rd, Kingston, RI",
+    // hours intentionally null until a Kingston-confirmed schedule is saved (directory
+    // or partner_profile_overrides). See docs/partners-hours-review.md.
     websiteUrl: "https://internationalpocketcafe.com/",
   }),
 ];

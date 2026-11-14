@@ -280,12 +280,10 @@ export function PartnerDetailView({ partner, now, onClose, onViewReward, favorit
           </div>
           {freeListing ? null : <VerifiedPartnerBadge />}
 
-          {freeListing ? null : (
-            <div className="cq-perk-detail__status">
-              <PartnerOpenStatus status={status} />
-              {status.note ? <span className="cq-perk-detail__status-note">{status.note}</span> : null}
-            </div>
-          )}
+          <div className="cq-perk-detail__status">
+            <PartnerOpenStatus status={status} />
+            {status.note ? <span className="cq-perk-detail__status-note">{status.note}</span> : null}
+          </div>
 
           {onViewProfile ? (
             <button type="button" className="cq-perk-btn cq-perk-btn--primary cq-tap-press" onClick={() => onViewProfile(partner)}>
@@ -302,9 +300,7 @@ export function PartnerDetailView({ partner, now, onClose, onViewReward, favorit
             </section>
           ) : null}
 
-          {freeListing && !partner.hours ? null : (
-            <HoursSection partner={partner} now={now} initialOpen={initialHoursOpen} />
-          )}
+          <HoursSection partner={partner} now={now} initialOpen={initialHoursOpen} />
 
           {partner.address ? (
             <p className="cq-perk-detail__address">
