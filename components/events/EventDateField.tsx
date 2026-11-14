@@ -35,14 +35,17 @@ export function EventDateField({
   date,
   onSelect,
   onClear,
+  defaultOpen = false,
 }: {
   date: string;
   onSelect: (date: string) => void;
   onClear: () => void;
+  /** Open the month grid immediately (header date picker). */
+  defaultOpen?: boolean;
 }) {
   const todayKey = campusDateKey(new Date());
   const selected = campusMonthParts(date);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [visible, setVisible] = useState(() => selected ?? campusMonthParts(todayKey) ?? { year: 2026, month: 11 });
   const month = selected && !open ? selected : visible;
 

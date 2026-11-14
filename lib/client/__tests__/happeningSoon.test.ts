@@ -161,4 +161,55 @@ describe("happening soon ranking", () => {
     expect(visibleCarouselIndex(280, 320, [0, 300, 600])).toBe(1);
     vi.useRealTimers();
   });
+
+  it("collapses Cultural Fest across Localist and URInvolved when the occurrence matches", () => {
+    const localist = event({
+      id: "localist-fest",
+      title: "Cultural Fest",
+      startsAt: "2026-09-12T23:00:00.000Z",
+      source: "uri_events",
+      venueName: "Memorial Union Ballroom",
+      location: "Memorial Union Ballroom",
+      imageUrl: "https://example.com/fest-a.jpg",
+    });
+    const urinvolved = event({
+      id: "urinvolved-fest",
+      title: "Cultural Fest",
+      startsAt: "2026-09-12T23:05:00.000Z",
+      source: "urinvolved",
+      venueName: "Memorial Union Ballroom, Kingston",
+      location: "Memorial Union Ballroom, Kingston",
+      imageUrl: null,
+    });
+    const nextWeek = event({
+      id: "fest-week-2",
+      title: "Cultural Fest",
+      startsAt: "2026-09-19T23:00:00.000Z",
+      source: "uri_events",
+      venueName: "Memorial Union Ballroom",
+      location: "Memorial Union Ballroom",
+    });
+    const merged = dedupeFeedEvents([localist.item, urinvolved.item, nextWeek.item]);
+    expect(merged).toHaveLength(2);
+    expect(merged.map((item) => item.event.id).sort()).toEqual(["fest-week-2", "localist-fest"]);
+    expect(merged.find((item) => item.event.id === "localist-fest")?.event.imageUrl).toBe(
+      "https://example.com/fest-a.jpg",
+    );
+    expect(merged.find((item) => item.event.id === "localist-fest")?.event.venueName).toContain(
+      "Memorial Union Ballroom",
+    );
+
+    const sections = partitionDiscoverySections({
+      ranked: merged.map((item) => ({ item, recommendation: null })),
+      timeframe: "for_you",
+      searchQuery: "",
+      savedOnly: false,
+      now: new Date("2026-09-10T16:00:00.000Z"),
+      forYouLimit: 8,
+    });
+    const forYouIds = sections.forYou.map((row) => row.item.event.id);
+    const soonIds = sections.happeningSoon.map((row) => row.item.event.id);
+    expect(soonIds).toContain("localist-fest");
+    expect(forYouIds).not.toContain("localist-fest");
+  });
 });

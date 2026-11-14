@@ -137,6 +137,27 @@ describe("official URI Athletics ICS format", () => {
     expect(event?.eventUrl).toBeTruthy();
   });
 
+  it("keeps confirmed midnight UTC start times and marks date-only ICS as Time TBD", () => {
+    const [timed] = athleticsIcsToNormalized(REAL_HOME_BASKETBALL);
+    expect(timed?.startsAt).toBe("2026-11-04T00:00:00.000Z");
+    expect(timed?.tags ?? []).not.toContain("time_tbd");
+
+    const dateOnly = [
+      "BEGIN:VCALENDAR",
+      "BEGIN:VEVENT",
+      "UID:vcal_dateonly-gorhody.com",
+      "DTSTART:20261104",
+      "DTEND:20261105",
+      "LOCATION:Kingston\\, RI, Thomas M. Ryan Center",
+      "SUMMARY:University of Rhode Island Men's Basketball vs Holy Cross",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\n");
+    const [untimed] = athleticsIcsToNormalized(dateOnly);
+    expect(untimed?.tags).toContain("time_tbd");
+    expect(untimed?.startsAt).toMatch(/^2026-11-04T0[45]:00:00\.000Z$/);
+  });
+
   it("marks cancelled and postponed Sidearm events without fabricating a replacement game", () => {
     const ics = [
       "BEGIN:VCALENDAR",

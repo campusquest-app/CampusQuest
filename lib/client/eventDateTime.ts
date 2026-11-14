@@ -44,11 +44,13 @@ export function formatEventDateTimeRange(
   startsAt: string | null | undefined,
   endsAt: string | null | undefined,
   now: Date = new Date(),
+  opts?: { timeTbd?: boolean },
 ): string {
   const start = parseInstant(startsAt);
   if (!start) return "Date TBA";
 
   const prefix = dayPrefix(start, now);
+  if (opts?.timeTbd) return `${prefix} · Time TBD`;
   const startTime = formatCampusTime(start);
   const end = parseInstant(endsAt);
   if (!end || end.getTime() <= start.getTime()) {
@@ -73,7 +75,9 @@ export function formatEventDateLine(startsAt: string | null | undefined, now: Da
 export function formatEventTimeLine(
   startsAt: string | null | undefined,
   endsAt: string | null | undefined,
+  opts?: { timeTbd?: boolean },
 ): string | null {
+  if (opts?.timeTbd) return "Time TBD";
   const start = parseInstant(startsAt);
   if (!start) return null;
   const startTime = formatCampusTime(start);
@@ -83,11 +87,23 @@ export function formatEventTimeLine(
   return `${startTime}–${dayPrefix(end, start)} · ${formatCampusTime(end)}`;
 }
 
-/** Compact card line matching the mobile Events mockup: "Tue, Nov 3 • 7:00 PM". */
-export function formatEventCardWhen(startsAt: string | null | undefined): string {
+/**
+ * Compact card line matching the mobile Events mockup: "Tue, Nov 3 • 7:00 PM".
+ * When the source had no clock time (date-only import), show "Time TBD" instead of midnight.
+ */
+export function formatEventCardWhen(
+  startsAt: string | null | undefined,
+  opts?: { timeTbd?: boolean },
+): string {
   const start = parseInstant(startsAt);
   if (!start) return "Date TBA";
+  if (opts?.timeTbd) return `${campusShortDate(start)} • Time TBD`;
   return `${campusShortDate(start)} • ${formatCampusTime(start)}`;
+}
+
+/** True when tags record a date-only / missing clock time from the importer. */
+export function eventTagsIndicateTimeTbd(tags: string[] | null | undefined): boolean {
+  return (tags ?? []).some((tag) => /^time[_-]?tbd$/i.test(tag.trim()));
 }
 
 /**
@@ -127,7 +143,11 @@ export function formatEventCardStatusBadge(
 }
 
 /** Compact time-only line under the status badge: "7:00 PM". */
-export function formatEventCardTimeOnly(startsAt: string | null | undefined): string | null {
+export function formatEventCardTimeOnly(
+  startsAt: string | null | undefined,
+  opts?: { timeTbd?: boolean },
+): string | null {
+  if (opts?.timeTbd) return "Time TBD";
   const start = parseInstant(startsAt);
   if (!start) return null;
   return formatCampusTime(start);

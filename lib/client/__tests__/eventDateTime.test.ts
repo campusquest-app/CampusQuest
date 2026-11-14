@@ -30,6 +30,9 @@ describe("formatEventDateTimeRange", () => {
 
   it("formats compact card times with a bullet", () => {
     expect(formatEventCardWhen("2026-11-04T00:00:00.000Z")).toBe("Tue, Nov 3 • 7:00 PM");
+    expect(formatEventCardWhen("2026-11-04T05:00:00.000Z", { timeTbd: true })).toBe(
+      "Wed, Nov 4 • Time TBD",
+    );
   });
 
   it("returns Date TBA for missing or invalid starts", () => {

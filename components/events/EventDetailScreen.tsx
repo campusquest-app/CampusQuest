@@ -17,7 +17,13 @@ import { CQ_BOTTOM_NAV_CLEARANCE } from "@/components/AppBottomNav";
 import { MobileSwipeBackSurface } from "@/components/mobile/MobileSwipeBackSurface";
 import { TaggedEntityPostsSection } from "@/components/quad/TaggedEntityPostsSection";
 import { downloadEventIcs } from "@/lib/client/eventCalendar";
-import { eventDateTimeIso, formatEventDateLine, formatEventDateTimeRange, formatEventTimeLine } from "@/lib/client/eventDateTime";
+import {
+  eventDateTimeIso,
+  eventTagsIndicateTimeTbd,
+  formatEventDateLine,
+  formatEventDateTimeRange,
+  formatEventTimeLine,
+} from "@/lib/client/eventDateTime";
 import {
   eventDescriptionParagraphs,
   extractEventKeyFacts,
@@ -217,10 +223,11 @@ function EventDetailBody({
 }) {
   const now = useLiveNow();
   const event = item.event;
-  const when = formatEventDateTimeRange(event.startsAt, event.endsAt);
+  const timeTbd = item.kind === "external" && eventTagsIndicateTimeTbd(item.event.tags);
+  const when = formatEventDateTimeRange(event.startsAt, event.endsAt, now, { timeTbd });
   const dateLine = formatEventDateLine(event.startsAt);
-  const timeLine = formatEventTimeLine(event.startsAt, event.endsAt);
-  const whenIso = eventDateTimeIso(event.startsAt);
+  const timeLine = formatEventTimeLine(event.startsAt, event.endsAt, { timeTbd });
+  const whenIso = timeTbd ? undefined : eventDateTimeIso(event.startsAt);
   const host = feedEventHostPresentation(item);
   const hostName = host.hostName;
   const hostOrgId = host.campusOrganizationId;
@@ -349,7 +356,7 @@ function EventDetailBody({
             <dt className="sr-only">Date</dt>
             <dd>
               <Calendar className="cq-event-detail-meta-icon" aria-hidden />
-              <time dateTime={whenIso}>{dateLine}</time>
+              {whenIso ? <time dateTime={whenIso}>{dateLine}</time> : <span>{dateLine}</span>}
             </dd>
           </div>
           {timeLine ? (
